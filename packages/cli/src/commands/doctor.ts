@@ -1236,6 +1236,7 @@ async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDocto
       DatabaseSync: new (path: string) => SqliteDatabase;
     };
     db = new DatabaseSync(sqlitePath);
+    ensureLocalSqliteCoreMetadataSchema(db);
     db.exec(`
       CREATE TABLE IF NOT EXISTS asset_node_refs (
         asset_id TEXT NOT NULL,
@@ -1295,9 +1296,259 @@ async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDocto
   }
   return [{
     id: "local-sqlite-schema",
-    message: "Ensured local SQLite asset reference and revision index schema.",
+    message: "Ensured local SQLite core metadata, asset reference, and revision index schema.",
     path: sqlitePath,
   }];
+}
+
+function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS local_migration (
+      id TEXT PRIMARY KEY NOT NULL,
+      completed_at INTEGER NOT NULL,
+      source_path TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS project (
+      id TEXT PRIMARY KEY NOT NULL,
+      owner_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS project_preview_asset (
+      project_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      type TEXT NOT NULL,
+      storage_key TEXT NOT NULL,
+      created_at TEXT,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (project_id, asset_id, position)
+    );
+
+    CREATE TABLE IF NOT EXISTS assets (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      src_r2_key TEXT NOT NULL,
+      cover_r2_key TEXT,
+      metadata TEXT,
+      source_model TEXT,
+      source_prompt TEXT,
+      source_task_id TEXT,
+      sources TEXT,
+      signed_url TEXT,
+      signed_url_exp INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      project_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS asset_refs (
+      asset_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      imported_at INTEGER NOT NULL,
+      PRIMARY KEY (asset_id, project_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS runtime_session (
+      id TEXT PRIMARY KEY NOT NULL,
+      project_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL,
+      runtime_id TEXT,
+      agent_id TEXT,
+      agent_template_id TEXT,
+      permission_mode TEXT,
+      acp_session_id TEXT,
+      status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_member (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      runtime_id TEXT NOT NULL,
+      agent_id TEXT,
+      display_name TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_message (
+      session_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      sender_kind TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      turn_id TEXT,
+      events_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (session_id, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS room_message (
+      id TEXT PRIMARY KEY NOT NULL,
+      project_id TEXT NOT NULL,
+      sender_kind TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      sender_user_id TEXT NOT NULL,
+      mentions_json TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS mutation_audit (
+      id TEXT PRIMARY KEY NOT NULL,
+      created_at INTEGER NOT NULL,
+      operation TEXT NOT NULL,
+      entity_kind TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      actor_client_type TEXT,
+      forced INTEGER NOT NULL,
+      accepted INTEGER NOT NULL,
+      reason TEXT,
+      result_entity_id TEXT,
+      error TEXT,
+      mutation_json TEXT NOT NULL
+    );
+  `);
+  for (const column of [
+    "completed_at INTEGER NOT NULL DEFAULT 0",
+    "source_path TEXT NOT NULL DEFAULT ''",
+    "source_sha256 TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "local_migration", column);
+  }
+  for (const column of [
+    "owner_id TEXT NOT NULL DEFAULT ''",
+    "name TEXT NOT NULL DEFAULT ''",
+    "description TEXT",
+    "created_at TEXT NOT NULL DEFAULT ''",
+    "updated_at TEXT NOT NULL DEFAULT ''",
+    "deleted_at TEXT",
+  ]) {
+    ensureSqliteColumn(db, "project", column);
+  }
+  for (const column of [
+    "asset_id TEXT NOT NULL DEFAULT ''",
+    "url TEXT NOT NULL DEFAULT ''",
+    "type TEXT NOT NULL DEFAULT 'image'",
+    "storage_key TEXT NOT NULL DEFAULT ''",
+    "created_at TEXT",
+    "position INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "project_preview_asset", column);
+  }
+  for (const column of [
+    "user_id TEXT NOT NULL DEFAULT ''",
+    "kind TEXT NOT NULL DEFAULT 'image'",
+    "src_r2_key TEXT NOT NULL DEFAULT ''",
+    "cover_r2_key TEXT",
+    "metadata TEXT",
+    "source_model TEXT",
+    "source_prompt TEXT",
+    "source_task_id TEXT",
+    "sources TEXT",
+    "signed_url TEXT",
+    "signed_url_exp INTEGER",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+    "updated_at INTEGER NOT NULL DEFAULT 0",
+    "project_id TEXT",
+  ]) {
+    ensureSqliteColumn(db, "assets", column);
+  }
+  for (const column of [
+    "imported_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "asset_refs", column);
+  }
+  for (const column of [
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "title TEXT NOT NULL DEFAULT ''",
+    "type TEXT NOT NULL DEFAULT 'runtime'",
+    "runtime_id TEXT",
+    "agent_id TEXT",
+    "agent_template_id TEXT",
+    "permission_mode TEXT",
+    "acp_session_id TEXT",
+    "status TEXT",
+    "created_at TEXT NOT NULL DEFAULT ''",
+    "updated_at TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "runtime_session", column);
+  }
+  for (const column of [
+    "user_id TEXT NOT NULL DEFAULT ''",
+    "template_id TEXT NOT NULL DEFAULT ''",
+    "runtime_id TEXT NOT NULL DEFAULT ''",
+    "agent_id TEXT",
+    "display_name TEXT NOT NULL DEFAULT ''",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "agent_member", column);
+  }
+  for (const column of [
+    "sender_kind TEXT NOT NULL DEFAULT ''",
+    "sender_id TEXT NOT NULL DEFAULT ''",
+    "turn_id TEXT",
+    "events_json TEXT NOT NULL DEFAULT '[]'",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "chat_message", column);
+  }
+  for (const column of [
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "sender_kind TEXT NOT NULL DEFAULT ''",
+    "sender_id TEXT NOT NULL DEFAULT ''",
+    "sender_user_id TEXT NOT NULL DEFAULT ''",
+    "mentions_json TEXT NOT NULL DEFAULT '[]'",
+    "text TEXT NOT NULL DEFAULT ''",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "room_message", column);
+  }
+  for (const column of [
+    "created_at INTEGER NOT NULL DEFAULT 0",
+    "operation TEXT NOT NULL DEFAULT ''",
+    "entity_kind TEXT NOT NULL DEFAULT ''",
+    "entity_id TEXT NOT NULL DEFAULT ''",
+    "actor_client_type TEXT",
+    "forced INTEGER NOT NULL DEFAULT 0",
+    "accepted INTEGER NOT NULL DEFAULT 0",
+    "reason TEXT",
+    "result_entity_id TEXT",
+    "error TEXT",
+    "mutation_json TEXT NOT NULL DEFAULT '{}'",
+  ]) {
+    ensureSqliteColumn(db, "mutation_audit", column);
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS project_owner_idx ON project(owner_id, updated_at);
+    CREATE INDEX IF NOT EXISTS assets_user_idx ON assets(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS assets_task_idx ON assets(source_task_id);
+    CREATE INDEX IF NOT EXISTS assets_project_idx ON assets(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS asset_refs_project_idx ON asset_refs(project_id, imported_at);
+    CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
+    CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
+    CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
+  `);
+}
+
+function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition: string): void {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDefinition}`);
+  } catch {
+    // Column already exists, or the existing table is too incompatible for safe repair.
+  }
 }
 
 async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoctorCheck> {
@@ -1317,6 +1568,47 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
     };
     db = new DatabaseSync(sqlitePath);
     const problems: string[] = [];
+    inspectSqliteTableSchema(db, problems, {
+      table: "local_migration",
+      columns: ["id", "completed_at", "source_path", "source_sha256"],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "project",
+      columns: ["id", "owner_id", "name", "description", "created_at", "updated_at", "deleted_at"],
+      indexes: ["project_owner_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "project_preview_asset",
+      columns: ["project_id", "asset_id", "url", "type", "storage_key", "created_at", "position"],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "assets",
+      columns: [
+        "id",
+        "user_id",
+        "kind",
+        "src_r2_key",
+        "cover_r2_key",
+        "metadata",
+        "source_model",
+        "source_prompt",
+        "source_task_id",
+        "sources",
+        "signed_url",
+        "signed_url_exp",
+        "created_at",
+        "updated_at",
+        "project_id",
+      ],
+      indexes: ["assets_user_idx", "assets_task_idx", "assets_project_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "asset_refs",
+      columns: ["asset_id", "project_id", "imported_at"],
+      indexes: ["asset_refs_project_idx"],
+    });
     inspectSqliteTableSchema(db, problems, {
       table: "asset_node_refs",
       columns: ["asset_id", "project_id", "node_id", "node_type", "field_path", "reference_role", "observed_at"],
@@ -1359,18 +1651,78 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
       ],
       indexes: ["timeline_revisions_project_node_idx", "timeline_revisions_timeline_idx"],
     });
+    inspectSqliteTableSchema(db, problems, {
+      table: "runtime_session",
+      columns: [
+        "id",
+        "project_id",
+        "title",
+        "type",
+        "runtime_id",
+        "agent_id",
+        "agent_template_id",
+        "permission_mode",
+        "acp_session_id",
+        "status",
+        "created_at",
+        "updated_at",
+      ],
+      indexes: ["runtime_session_project_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "agent_member",
+      columns: ["id", "user_id", "template_id", "runtime_id", "agent_id", "display_name", "created_at"],
+      indexes: ["agent_member_user_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "chat_message",
+      columns: ["session_id", "id", "sender_kind", "sender_id", "turn_id", "events_json", "created_at"],
+      indexes: ["chat_message_session_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "room_message",
+      columns: [
+        "id",
+        "project_id",
+        "sender_kind",
+        "sender_id",
+        "sender_user_id",
+        "mentions_json",
+        "text",
+        "created_at",
+      ],
+      indexes: ["room_message_project_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "mutation_audit",
+      columns: [
+        "id",
+        "created_at",
+        "operation",
+        "entity_kind",
+        "entity_id",
+        "actor_client_type",
+        "forced",
+        "accepted",
+        "reason",
+        "result_entity_id",
+        "error",
+        "mutation_json",
+      ],
+      indexes: ["mutation_audit_created_idx", "mutation_audit_operation_idx", "mutation_audit_entity_idx"],
+    });
 
     return problems.length > 0
       ? {
           id: "local-sqlite-schema",
           level: "warning",
-          message: `Local SQLite schema is missing agent-first local metadata indexes: ${problems.join("; ")}.`,
+          message: `Local SQLite schema is missing agent-first local metadata schema: ${problems.join("; ")}.`,
           path: sqlitePath,
         }
       : {
           id: "local-sqlite-schema",
           level: "ok",
-          message: "Local SQLite schema supports asset reference indexing and text/timeline revision indexing.",
+          message: "Local SQLite schema supports core metadata, asset reference indexing, and text/timeline revision indexing.",
           path: sqlitePath,
         };
   } catch (error) {

@@ -984,6 +984,31 @@ test("storage doctor warns when local SQLite lacks text and timeline revision in
   assert.match(schemaCheck.message, /timeline_revisions/);
 });
 
+test("storage doctor warns when local SQLite lacks core metadata tables", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  await mkdir(localApiDir, { recursive: true });
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    createAssetReferenceIndexSchema(sqlite);
+    createRevisionIndexSchema(sqlite);
+  } finally {
+    sqlite.close();
+  }
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, true);
+  const schemaCheck = checkById(report, "local-sqlite-schema");
+  assert.equal(schemaCheck.level, "warning");
+  assert.match(schemaCheck.message, /project/);
+  assert.match(schemaCheck.message, /runtime_session/);
+  assert.match(schemaCheck.message, /room_message/);
+  assert.match(schemaCheck.message, /mutation_audit/);
+});
+
 test("storage doctor repair creates workspace roots and fixes local SQLite asset reference schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
@@ -1045,7 +1070,7 @@ test("storage doctor repair creates workspace roots and fixes local SQLite asset
   assert.equal(checkById(verified, "local-sqlite-schema").level, "ok");
 });
 
-test("storage doctor accepts the local SQLite metadata index schema", async () => {
+test("storage doctor repair creates core local SQLite metadata tables", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
@@ -1059,11 +1084,115 @@ test("storage doctor accepts the local SQLite metadata index schema", async () =
     sqlite.close();
   }
 
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
+  assert.equal(repaired.ok, true);
+  assert.equal(checkById(repaired, "local-sqlite-schema").level, "ok");
+  const sqliteAfterRepair = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    for (const table of [
+      "local_migration",
+      "project",
+      "project_preview_asset",
+      "assets",
+      "asset_refs",
+      "runtime_session",
+      "agent_member",
+      "chat_message",
+      "room_message",
+      "mutation_audit",
+    ]) {
+      assert.equal(
+        sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)?.name,
+        table,
+      );
+    }
+    for (const index of [
+      "project_owner_idx",
+      "assets_user_idx",
+      "assets_task_idx",
+      "assets_project_idx",
+      "asset_refs_project_idx",
+      "runtime_session_project_idx",
+      "agent_member_user_idx",
+      "chat_message_session_idx",
+      "room_message_project_idx",
+      "mutation_audit_created_idx",
+      "mutation_audit_operation_idx",
+      "mutation_audit_entity_idx",
+    ]) {
+      assert.equal(
+        sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index)?.name,
+        index,
+      );
+    }
+  } finally {
+    sqliteAfterRepair.close();
+  }
+});
+
+test("storage doctor repair upgrades partial core local SQLite metadata tables", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  await mkdir(localApiDir, { recursive: true });
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    sqlite.exec(`
+      CREATE TABLE local_migration (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE project (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE project_preview_asset (project_id TEXT NOT NULL);
+      CREATE TABLE assets (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE asset_refs (
+        asset_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        PRIMARY KEY (asset_id, project_id)
+      );
+      CREATE TABLE runtime_session (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE agent_member (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE chat_message (
+        session_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        PRIMARY KEY (session_id, id)
+      );
+      CREATE TABLE room_message (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
+    `);
+    createAssetReferenceIndexSchema(sqlite);
+    createRevisionIndexSchema(sqlite);
+  } finally {
+    sqlite.close();
+  }
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const verified = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(repaired.ok, true);
+  assert.equal(checkById(repaired, "local-sqlite-schema").level, "ok");
+  assert.equal(checkById(verified, "local-sqlite-schema").level, "ok");
+});
+
+test("storage doctor accepts the local SQLite core metadata and projection schema", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const localApiDir = join(homeDir, ".clash", "local-api");
+  await mkdir(localApiDir, { recursive: true });
+  const sqlite = openSqlite(join(localApiDir, "local.sqlite"));
+  try {
+    createAssetReferenceIndexSchema(sqlite);
+    createRevisionIndexSchema(sqlite);
+  } finally {
+    sqlite.close();
+  }
+  await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
   const report = await runStorageDoctor({ cwd, env: {}, homeDir });
 
   const schemaCheck = checkById(report, "local-sqlite-schema");
   assert.equal(schemaCheck.level, "ok");
-  assert.match(schemaCheck.message, /supports asset reference indexing/);
+  assert.match(schemaCheck.message, /supports core metadata/);
 });
 
 test("doctor command is registered with storage subcommand", async () => {

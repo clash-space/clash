@@ -383,7 +383,7 @@ Assertions:
 - `clash doctor storage --repair --json` reports explicit repair actions,
 - editable roots exist for drafts, projections, sessions, and asset links,
 - protected runtime root exists but remains protected,
-- local SQLite exists and reports the metadata index schema as ready,
+- local SQLite exists and reports the core metadata/projection schema as ready,
 - project status collaboration mode is `local-only`, not web-openable, not
   multi-user, and does not claim cloud ProjectRoom sequencing,
 - local project action gates deny `openInWeb`/`shareProject` with
@@ -681,7 +681,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T05-42-37-030Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T05-56-57-928Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -695,8 +695,8 @@ Result:
   successful and rejected
   `clash doctor storage-recovery compare --manifest ... --json` calls, and
   follow-up read-only doctor commands produced the expected exit codes,
-- workspace roots and local SQLite metadata index schema for asset references
-  and text/timeline revisions were repaired through public CLI commands,
+- workspace roots and local SQLite core metadata tables plus asset/text/timeline
+  projection indexes were repaired through public CLI commands,
 - a hash-valid writable text revision blob was repaired back to read-only
   permissions through the public `doctor storage --repair --json` path,
 - doctor detected a cwd secondary canvas replica before repair, then
@@ -795,7 +795,7 @@ Current status:
   restored project paths.
 - `clash doctor storage --json` now has first-pass read-only path checks, and
   `clash doctor storage --repair` can initialize missing workspace roots plus
-  the local SQLite metadata index schema.
+  the local SQLite core metadata/projection schema.
 - Direct real Codex E2E now asserts the happy-path workspace roots; the broader
   black-box runner still needs to assert doctor warnings/errors for protected
   cwd, missing replica, and legacy `db.json`.
