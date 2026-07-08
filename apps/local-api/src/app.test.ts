@@ -8,6 +8,7 @@ import {
   assetReadToken,
   assetRefReadToken,
   Canvas,
+  canvasBatchDeleteReadToken,
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
@@ -57,6 +58,7 @@ function providerModelTestMutation(providerId: string, modelId: string) {
 
 const PROJECT_RECEIPT_READ_TOKEN_RE = /^project-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const NODE_RECEIPT_READ_TOKEN_RE = /^node-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
+const CANVAS_BATCH_DELETE_RECEIPT_READ_TOKEN_RE = /^canvas-batch-delete-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const EDGE_RECEIPT_READ_TOKEN_RE = /^edge-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const EDGES_RECEIPT_READ_TOKEN_RE = /^edges-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const ASSET_RECEIPT_READ_TOKEN_RE = /^asset-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
@@ -2372,6 +2374,207 @@ describe("local API app", () => {
     const canvas = new Canvas(recovered, () => {});
     expect(canvas.readNode("script")?.data.content).toBe("before");
     expect(canvas.readNode("loose")).toBeNull();
+  });
+
+  it("requires graph-aware canvas batch delete receipts before agent batch deletes", async () => {
+    const projectId = "project-batch-delete-cas";
+    const replica = new FileReplicaStore(join(dataDir, "projects"));
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("root", { type: "text", data: { label: "Root" } });
+    doc.getMap("nodes").set("child", { type: "image_gen", data: { prompt: "Child", status: "completed" } });
+    doc.getMap("nodes").set("external", { type: "image", data: { assetId: "external-asset", status: "completed" } });
+    doc.getMap("edges").set("root-child", { source: "root", target: "child", type: "reference" });
+    doc.getMap("edges").set("child-external", { source: "child", target: "external", type: "materialized" });
+    await replica.saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const partialPlanResponse = await app.request(`/api/v1/projects/${projectId}/canvas/delete-plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nodeIds: [" root ", "child", "root"] }),
+    });
+    expect(partialPlanResponse.status).toBe(200);
+    const partialPlan = await partialPlanResponse.json() as {
+      nodeIds: string[];
+      nodes: Array<{ id: string }>;
+      edges: Array<{ id: string; source: string; target: string }>;
+      readToken: string;
+    };
+    const partialBaseToken = canvasBatchDeleteReadToken({ nodes: partialPlan.nodes, edges: partialPlan.edges });
+    expect(partialPlan.nodeIds).toEqual(["root", "child"]);
+    expect(partialPlan.readToken).toMatch(CANVAS_BATCH_DELETE_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(partialPlan.readToken)).toBe(partialBaseToken);
+
+    const missingReadProof = await app.request(`/api/v1/projects/${projectId}/canvas/delete-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        nodeIds: ["root", "child"],
+        actorClientType: "agent",
+      }),
+    });
+    expect(missingReadProof.status).toBe(409);
+    expect(await missingReadProof.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas batch delete read proof for agent"),
+      mutation: {
+        operation: "canvas_batch_delete",
+        entity: { kind: "canvas-node-batch", id: "root,child" },
+        beforeReadToken: partialBaseToken,
+        accepted: false,
+      },
+    });
+
+    const bareCas = await app.request(`/api/v1/projects/${projectId}/canvas/delete-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        nodeIds: ["root", "child"],
+        actorClientType: "agent",
+        ifMatch: partialBaseToken,
+      }),
+    });
+    expect(bareCas.status).toBe(409);
+    expect(await bareCas.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas batch delete read receipt for agent"),
+      mutation: {
+        operation: "canvas_batch_delete",
+        entity: { kind: "canvas-node-batch", id: "root,child" },
+        expectedReadToken: partialBaseToken,
+        beforeReadToken: partialBaseToken,
+        accepted: false,
+      },
+    });
+
+    const orphaningDelete = await app.request(`/api/v1/projects/${projectId}/canvas/delete-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        nodeIds: ["root", "child"],
+        actorClientType: "agent",
+        ifMatch: partialPlan.readToken,
+      }),
+    });
+    expect(orphaningDelete.status).toBe(409);
+    expect(await orphaningDelete.json()).toMatchObject({
+      error: expect.stringContaining("Refusing to delete referenced node(s)"),
+      mutation: {
+        operation: "canvas_batch_delete",
+        entity: { kind: "canvas-node-batch", id: "root,child" },
+        expectedReadToken: partialPlan.readToken,
+        beforeReadToken: partialBaseToken,
+        accepted: false,
+      },
+    });
+
+    const fullPlanResponse = await app.request(`/api/v1/projects/${projectId}/canvas/delete-plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nodeIds: ["root", "child", "external"] }),
+    });
+    expect(fullPlanResponse.status).toBe(200);
+    const fullPlan = await fullPlanResponse.json() as {
+      nodeIds: string[];
+      nodes: Array<{ id: string }>;
+      edges: Array<{ id: string; source: string; target: string }>;
+      readToken: string;
+    };
+    const fullBaseToken = canvasBatchDeleteReadToken({ nodes: fullPlan.nodes, edges: fullPlan.edges });
+    expect(fullPlan.readToken).toMatch(CANVAS_BATCH_DELETE_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(fullPlan.readToken)).toBe(fullBaseToken);
+
+    await replica.updateSnapshotAtomic(projectId, (currentDoc) => {
+      const canvas = new Canvas(currentDoc, () => {});
+      expect(canvas.updateNode("external", { label: "Concurrent change" })).toBe(true);
+      return { value: null };
+    });
+
+    const staleDelete = await app.request(`/api/v1/projects/${projectId}/canvas/delete-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        nodeIds: ["root", "child", "external"],
+        actorClientType: "agent",
+        ifMatch: fullPlan.readToken,
+      }),
+    });
+    expect(staleDelete.status).toBe(409);
+    expect(await staleDelete.json()).toMatchObject({
+      error: expect.stringContaining("Stale canvas batch delete rejected"),
+      mutation: {
+        operation: "canvas_batch_delete",
+        entity: { kind: "canvas-node-batch", id: "root,child,external" },
+        expectedReadToken: fullPlan.readToken,
+        accepted: false,
+      },
+    });
+
+    const freshPlanResponse = await app.request(`/api/v1/projects/${projectId}/canvas/delete-plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nodeIds: ["root", "child", "external"] }),
+    });
+    expect(freshPlanResponse.status).toBe(200);
+    const freshPlan = await freshPlanResponse.json() as {
+      nodes: Array<{ id: string }>;
+      edges: Array<{ id: string; source: string; target: string }>;
+      readToken: string;
+    };
+    const freshBaseToken = canvasBatchDeleteReadToken({ nodes: freshPlan.nodes, edges: freshPlan.edges });
+
+    const accepted = await app.request(`/api/v1/projects/${projectId}/canvas/delete-batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        nodeIds: ["root", "child", "external"],
+        actorClientType: "agent",
+        ifMatch: freshPlan.readToken,
+      }),
+    });
+    expect(accepted.status).toBe(200);
+    const acceptedJson = await accepted.json() as {
+      nodeIds: string[];
+      deletedNodeIds: string[];
+      deletedEdgeIds: string[];
+      mutation?: any;
+    };
+    expect(acceptedJson).toMatchObject({
+      deleted: true,
+      nodeIds: ["root", "child", "external"],
+      mutation: {
+        operation: "canvas_batch_delete",
+        entity: { kind: "canvas-node-batch", id: "root,child,external" },
+        expectedReadToken: freshPlan.readToken,
+        beforeReadToken: freshBaseToken,
+        accepted: true,
+        resultEntityId: "root,child,external",
+      },
+    });
+    expect(acceptedJson.deletedNodeIds.sort()).toEqual(["child", "external", "root"]);
+    expect(acceptedJson.deletedEdgeIds.sort()).toEqual(["child-external", "root-child"]);
+
+    const audit = await app.request("/api/v1/mutation-audit?operation=canvas_batch_delete&entityId=root,child,external");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "canvas_batch_delete",
+      entity: { kind: "canvas-node-batch", id: "root,child,external" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "canvas batch delete",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation)).not.toContain("receipt");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
+
+    const recovered = await replica.recover(projectId);
+    const canvas = new Canvas(recovered, () => {});
+    expect(canvas.readNode("root")).toBeNull();
+    expect(canvas.readNode("child")).toBeNull();
+    expect(canvas.readNode("external")).toBeNull();
+    expect(recovered.getMap("edges").get("root-child")).toBeUndefined();
+    expect(recovered.getMap("edges").get("child-external")).toBeUndefined();
   });
 
   it("requires receipt-bearing canvas edge reads before agent edge writes", async () => {

@@ -16,6 +16,7 @@ import {
   assetReadToken,
   assetRefReadToken,
   Canvas,
+  canvasBatchDeleteReadToken,
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
@@ -41,6 +42,8 @@ import {
   TextAppliedRevisionSchema,
   TimelineAppliedRevisionSchema,
   timelineDslFromYaml,
+  validateCanvasBatchDelete,
+  validateCanvasBatchDeleteReadProof,
   validateCanvasEdgeAdd,
   validateCanvasEdgeDelete,
   validateCanvasEdgePatch,
@@ -1856,6 +1859,12 @@ function localApiCanvasEdgesReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
+function localApiCanvasBatchDeleteReadReceipt(readToken: string): string {
+  return createHmac("sha256", LOCAL_API_READ_RECEIPT_SECRET)
+    .update(`canvas-batch-delete:${readToken}`)
+    .digest("base64url");
+}
+
 function canvasNodeReceiptReadToken(node: Parameters<typeof canvasNodeReadToken>[0]): string {
   const readToken = canvasNodeReadToken(node);
   return agentReadReceiptToken({
@@ -1895,6 +1904,19 @@ function verifyLocalApiCanvasEdgesReadReceipt(proof: AgentReadReceiptProof): boo
     proof.receipt === localApiCanvasEdgesReadReceipt(proof.baseReadToken);
 }
 
+function canvasBatchDeleteReceiptReadToken(options: Parameters<typeof canvasBatchDeleteReadToken>[0]): string {
+  const readToken = canvasBatchDeleteReadToken(options);
+  return agentReadReceiptToken({
+    readToken,
+    receipt: localApiCanvasBatchDeleteReadReceipt(readToken),
+  });
+}
+
+function verifyLocalApiCanvasBatchDeleteReadReceipt(proof: AgentReadReceiptProof): boolean {
+  return proof.namespace === "canvas-batch-delete" &&
+    proof.receipt === localApiCanvasBatchDeleteReadReceipt(proof.baseReadToken);
+}
+
 function listCanvasReadProofEdges(doc: LoroDoc): CanvasReadProofEdgeLike[] {
   const edgesMap = doc.getMap("edges");
   const edges: CanvasReadProofEdgeLike[] = [];
@@ -1924,6 +1946,34 @@ function readCanvasEdge(doc: LoroDoc, edgeId: string): CanvasReadProofEdgeLike |
 
 function canvasEdgeResponse(edge: CanvasReadProofEdgeLike): CanvasReadProofEdgeLike & { readToken: string } {
   return { ...edge, readToken: canvasEdgeReceiptReadToken(edge) };
+}
+
+function normalizeCanvasBatchDeleteNodeIds(nodeIds: string[]): string[] {
+  return [...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))];
+}
+
+function readCanvasBatchDeletePlan(doc: LoroDoc, nodeIds: string[]):
+  | { ok: true; nodeIds: string[]; nodes: NonNullable<ReturnType<Canvas["readNode"]>>[]; edges: CanvasReadProofEdgeLike[]; readToken: string }
+  | { ok: false; error: string; status: 400 | 404 } {
+  const uniqueNodeIds = normalizeCanvasBatchDeleteNodeIds(nodeIds);
+  if (uniqueNodeIds.length === 0) return { ok: false, error: "delete batch requires at least one node id", status: 400 };
+  const canvas = new Canvas(doc, () => {});
+  const nodes: NonNullable<ReturnType<Canvas["readNode"]>>[] = [];
+  const missing: string[] = [];
+  for (const nodeId of uniqueNodeIds) {
+    const node = canvas.readNode(nodeId);
+    if (!node) missing.push(nodeId);
+    else nodes.push(node);
+  }
+  if (missing.length > 0) return { ok: false, error: `Node(s) not found: ${missing.join(", ")}`, status: 404 };
+  const edges = listCanvasReadProofEdges(doc);
+  return {
+    ok: true,
+    nodeIds: uniqueNodeIds,
+    nodes,
+    edges,
+    readToken: canvasBatchDeleteReceiptReadToken({ nodes, edges }),
+  };
 }
 
 function readCanvasGuardrailNodes(doc: LoroDoc): CanvasUpdateNodeWithIdLike[] {
@@ -5399,6 +5449,138 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           mutation,
           actorClientType: preconditions.actorClientType,
           reason: "canvas node delete",
+        }));
+      }
+    }
+    return c.json(result.body, result.status);
+  });
+
+  app.post("/api/v1/projects/:projectId/canvas/delete-plan", async (c) => {
+    const projectId = c.req.param("projectId");
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const nodeIds = stringArray(body.nodeIds);
+    const doc = await replicaStore.recover(projectId);
+    const plan = readCanvasBatchDeletePlan(doc, nodeIds);
+    if (!plan.ok) return c.json({ error: plan.error }, plan.status);
+    return c.json({
+      projectId,
+      nodeIds: plan.nodeIds,
+      nodes: plan.nodes,
+      edges: plan.edges,
+      readToken: plan.readToken,
+    });
+  });
+
+  app.post("/api/v1/projects/:projectId/canvas/delete-batch", async (c) => {
+    const projectId = c.req.param("projectId");
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
+    const nodeIds = normalizeCanvasBatchDeleteNodeIds(stringArray(body.nodeIds));
+    const batchId = nodeIds.join(",");
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const envelope = {
+      operation: "canvas_batch_delete",
+      entity: { kind: "canvas-node-batch", id: batchId },
+      expectedReadToken: preconditions.expectedReadToken,
+      forced: preconditions.force,
+    };
+    if (nodeIds.length === 0) {
+      const message = "delete batch requires at least one node id";
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected(envelope, message),
+      }, 400);
+    }
+
+    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
+      const plan = readCanvasBatchDeletePlan(doc, nodeIds);
+      if (!plan.ok) {
+        return {
+          save: false,
+          value: {
+            status: plan.status,
+            body: {
+              error: plan.error,
+              mutation: hostMutationRejected(envelope, plan.error),
+            },
+          },
+        };
+      }
+      const currentReadToken = canvasBatchDeleteReadToken({ nodes: plan.nodes, edges: plan.edges });
+      const readProof = validateCanvasBatchDeleteReadProof({
+        actorClientType: preconditions.actorClientType,
+        nodes: plan.nodes,
+        edges: plan.edges,
+        expectedReadToken: preconditions.expectedReadToken,
+        requireReceipt: true,
+        readReceiptVerifier: verifyLocalApiCanvasBatchDeleteReadReceipt,
+        force: preconditions.force,
+      });
+      const guardrailEdges = canvasGuardrailEdges(plan.edges);
+      const deleteGuard = validateCanvasBatchDelete({
+        nodeIds: plan.nodeIds,
+        edges: guardrailEdges,
+        force: preconditions.force,
+      });
+      const hostMutation = validateHostMutationEnvelope({
+        operation: "canvas_batch_delete",
+        entity: { kind: "canvas-node-batch", id: batchId },
+        expectedReadToken: preconditions.expectedReadToken,
+        currentReadToken,
+        force: preconditions.force,
+        guard: readProof.ok ? deleteGuard : readProof,
+      });
+      if (!hostMutation.ok) {
+        return {
+          save: false,
+          value: {
+            status: 409 as const,
+            body: {
+              error: hostMutation.error,
+              mutation: hostMutation.mutation,
+            },
+          },
+        };
+      }
+
+      const orphanedReferences = plan.nodeIds.flatMap((nodeId) => canvasDownstreamTargets(nodeId, guardrailEdges));
+      const canvas = new Canvas(doc, () => {});
+      const deleteResult = canvas.deleteNodes(plan.nodeIds);
+      if (deleteResult.deletedNodeIds.length === 0) {
+        const message = `Node(s) not found: ${plan.nodeIds.join(", ")}`;
+        return {
+          save: false,
+          value: {
+            status: 404 as const,
+            body: {
+              error: message,
+              mutation: hostMutationRejected(hostMutation.envelope, message),
+            },
+          },
+        };
+      }
+      return {
+        value: {
+          status: 200 as const,
+          body: {
+            deleted: true,
+            nodeIds: plan.nodeIds,
+            deletedNodeIds: [...deleteResult.deletedNodeIds].sort(),
+            deletedEdgeIds: [...deleteResult.deletedEdgeIds].sort(),
+            mutation: hostMutationSucceeded(hostMutation.envelope, {
+              resultEntityId: batchId,
+            }),
+            ...(preconditions.force ? { forced: true, orphanedReferences } : {}),
+          },
+        },
+      };
+    });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "canvas batch delete",
         }));
       }
     }

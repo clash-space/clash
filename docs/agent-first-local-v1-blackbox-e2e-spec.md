@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T12-10-00-565Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T12-26-35-388Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 146 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 151 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -687,7 +687,9 @@ Result:
   canonical project replica deletion, and sanitized local mutation audit
   evidence without reusable read receipts; local-api canvas node update/delete
   now requires receipt-bearing node reads, rejects downstream text content patch,
-  and writes sanitized audit evidence; session delete, provider account
+  local-api canvas batch delete now requires a graph-aware delete-plan receipt,
+  rejects orphaning external references and bare CAS tokens, and writes sanitized
+  audit evidence; session delete, provider account
   delete, provider OAuth delete, asset-ref delete, asset GC delete, and local-api canvas edge delete also write sanitized local mutation audit
   evidence after accepted agent writes,
 - stale provider, OAuth, asset GC, project restore, and session receipts were
@@ -898,9 +900,10 @@ Current status:
   `session list -> session delete` receipt enforcement against missing, bare,
   stale, and accepted tokens where each entity supports the state transition,
   plus local-api canvas node read/update/delete receipt enforcement,
-  downstream text content patch rejection, local-api canvas edge list/delete
+  downstream text content patch rejection, local-api canvas batch delete
+  plan/apply receipt enforcement, external orphan rejection, local-api canvas edge list/delete
   receipt enforcement, and sanitized audit evidence for accepted asset GC,
-  session deletion, node update/delete, and edge deletion;
+  session deletion, node update/delete, batch deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
 - `clash text pull/apply/replace` exists; Suite D still needs real project

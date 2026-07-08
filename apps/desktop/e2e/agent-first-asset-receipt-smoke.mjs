@@ -1973,6 +1973,118 @@ async function main() {
     JSON.stringify(nodeDeleteAudit),
   );
 
+  const batchAuditProjectId = "project-batch-audit-smoke";
+  await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(batchAuditProjectId, (doc) => {
+    doc.getMap("nodes").set("batch-root", { type: "text", data: { label: "Root" } });
+    doc.getMap("nodes").set("batch-child", { type: "image_gen", data: { prompt: "child", status: "completed" } });
+    doc.getMap("nodes").set("batch-external", { type: "image", data: { assetId: "batch-output-asset", status: "completed" } });
+    doc.getMap("edges").set("batch-root-child", {
+      source: "batch-root",
+      target: "batch-child",
+      type: "reference",
+    });
+    doc.getMap("edges").set("batch-child-external", {
+      source: "batch-child",
+      target: "batch-external",
+      type: "materialized",
+    });
+    return { value: null };
+  });
+
+  const partialBatchPlanResponse = await request(`/api/v1/projects/${batchAuditProjectId}/canvas/delete-plan`, {
+    method: "POST",
+    body: JSON.stringify({ nodeIds: ["batch-root", "batch-child"] }),
+  });
+  const partialBatchPlan = await parseJsonResponse(partialBatchPlanResponse);
+  recordCheck(
+    "canvas batch delete plan returns graph receipt read token",
+    partialBatchPlanResponse.status === 200 &&
+      hasReceipt(partialBatchPlan.readToken, "canvas-batch-delete") &&
+      partialBatchPlan.nodes?.length === 2 &&
+      partialBatchPlan.edges?.length === 2,
+    JSON.stringify(partialBatchPlan),
+    { readToken: partialBatchPlan.readToken },
+  );
+
+  const partialBatchDeleteResponse = await request(`/api/v1/projects/${batchAuditProjectId}/canvas/delete-batch`, {
+    method: "POST",
+    body: JSON.stringify({
+      nodeIds: ["batch-root", "batch-child"],
+      actorClientType: "agent",
+      ifMatch: partialBatchPlan.readToken,
+    }),
+  });
+  const partialBatchDelete = await parseJsonResponse(partialBatchDeleteResponse);
+  recordCheck(
+    "canvas batch delete rejects orphaning external references",
+    partialBatchDeleteResponse.status === 409 &&
+      /Refusing to delete referenced node/.test(partialBatchDelete.error ?? "") &&
+      partialBatchDelete.mutation?.operation === "canvas_batch_delete" &&
+      partialBatchDelete.mutation?.accepted === false,
+    JSON.stringify(partialBatchDelete),
+    { mutation: partialBatchDelete.mutation },
+  );
+
+  const fullBatchPlanResponse = await request(`/api/v1/projects/${batchAuditProjectId}/canvas/delete-plan`, {
+    method: "POST",
+    body: JSON.stringify({ nodeIds: ["batch-root", "batch-child", "batch-external"] }),
+  });
+  const fullBatchPlan = await parseJsonResponse(fullBatchPlanResponse);
+  const bareBatchDeleteResponse = await request(`/api/v1/projects/${batchAuditProjectId}/canvas/delete-batch`, {
+    method: "POST",
+    body: JSON.stringify({
+      nodeIds: ["batch-root", "batch-child", "batch-external"],
+      actorClientType: "agent",
+      ifMatch: baseReadToken(fullBatchPlan.readToken),
+    }),
+  });
+  const bareBatchDelete = await parseJsonResponse(bareBatchDeleteResponse);
+  recordCheck(
+    "canvas batch delete with bare CAS token is rejected",
+    bareBatchDeleteResponse.status === 409 &&
+      /Missing canvas batch delete read receipt for agent/.test(bareBatchDelete.error ?? ""),
+    JSON.stringify(bareBatchDelete),
+    { mutation: bareBatchDelete.mutation },
+  );
+
+  const batchDeleteResponse = await request(`/api/v1/projects/${batchAuditProjectId}/canvas/delete-batch`, {
+    method: "POST",
+    body: JSON.stringify({
+      nodeIds: ["batch-root", "batch-child", "batch-external"],
+      actorClientType: "agent",
+      ifMatch: fullBatchPlan.readToken,
+    }),
+  });
+  const batchDelete = await parseJsonResponse(batchDeleteResponse);
+  recordCheck(
+    "canvas batch delete with receipt is accepted",
+    batchDeleteResponse.status === 200 &&
+      batchDelete.deleted === true &&
+      batchDelete.mutation?.operation === "canvas_batch_delete" &&
+      batchDelete.mutation?.expectedReadToken === fullBatchPlan.readToken &&
+      batchDelete.mutation?.beforeReadToken === baseReadToken(fullBatchPlan.readToken) &&
+      batchDelete.mutation?.accepted === true,
+    JSON.stringify(batchDelete),
+    { mutation: batchDelete.mutation },
+  );
+
+  const batchDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_batch_delete&entityId=batch-root,batch-child,batch-external");
+  const batchDeleteAudit = await parseJsonResponse(batchDeleteAuditResponse);
+  const batchDeleteAuditRecord = batchDeleteAudit.records?.[0];
+  recordCheck(
+    "canvas batch delete writes sanitized local mutation audit evidence",
+    batchDeleteAuditResponse.status === 200 &&
+      batchDeleteAudit.records?.length === 1 &&
+      batchDeleteAuditRecord.operation === "canvas_batch_delete" &&
+      batchDeleteAuditRecord.entity?.id === "batch-root,batch-child,batch-external" &&
+      batchDeleteAuditRecord.accepted === true &&
+      batchDeleteAuditRecord.reason === "canvas batch delete" &&
+      !JSON.stringify(batchDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
+      batchDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      batchDeleteAuditRecord.mutation?.beforeReadToken == null,
+    JSON.stringify(batchDeleteAudit),
+  );
+
   const edgeAuditProjectId = "project-edge-audit-smoke";
   await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(edgeAuditProjectId, (doc) => {
     doc.getMap("nodes").set("edge-source", { type: "text", data: { label: "Edge source" } });
@@ -2737,6 +2849,11 @@ async function main() {
       canvasNodeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas node delete with receipt is accepted" && check.status === "pass"),
       canvasNodeUpdateAuditRecorded: checks.some((check) => check.name === "canvas node update writes sanitized local mutation audit evidence" && check.status === "pass"),
       canvasNodeDeleteAuditRecorded: checks.some((check) => check.name === "canvas node delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      canvasBatchDeletePlanReceiptReturned: checks.some((check) => check.name === "canvas batch delete plan returns graph receipt read token" && check.status === "pass"),
+      canvasBatchDeleteOrphanRejected: checks.some((check) => check.name === "canvas batch delete rejects orphaning external references" && check.status === "pass"),
+      canvasBatchDeleteBareCasRejected: checks.some((check) => check.name === "canvas batch delete with bare CAS token is rejected" && check.status === "pass"),
+      canvasBatchDeleteReceiptAccepted: checks.some((check) => check.name === "canvas batch delete with receipt is accepted" && check.status === "pass"),
+      canvasBatchDeleteAuditRecorded: checks.some((check) => check.name === "canvas batch delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       canvasEdgeListReceiptReturned: checks.some((check) => check.name === "canvas edge list returns graph and edge receipt read tokens" && check.status === "pass"),
       canvasEdgeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas edge delete with receipt is accepted" && check.status === "pass"),
       canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
