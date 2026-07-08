@@ -558,9 +558,11 @@ Text content should be versioned like other assets, but it should not be
 forced into the existing image/video/audio `assets` row shape. The v1 path is a
 text/content revision milestone created by apply/replace plus a host-owned
 SQLite `text_revisions` index exposed through explicit local-api endpoints.
-That index is a query surface for the host and UI; it is not an agent-editable
-database or JSON log, and it does not make canvas `data.content` a canonical
-file-backed text asset yet.
+When the apply/replace client sends the Markdown body, the host validates the
+revision hash and stores that body as an immutable content-addressed text
+revision blob. The SQLite index remains a query surface for the host and UI; it
+is not an agent-editable database or JSON log, and these blobs do not make
+canvas `data.content` a canonical file-backed text asset yet.
 
 If a text node has no downstream references:
 

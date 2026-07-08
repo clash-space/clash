@@ -253,7 +253,7 @@ test("registers text revisions through the host index API when available", async
   });
   const calls: Array<{ path: string; contentType: string | null; body: unknown }> = [];
 
-  const result = await registerTextRevisionIndex(revision, async (path, init) => {
+  const result = await registerTextRevisionIndex(revision, "indexed copy", async (path, init) => {
     const headers = new Headers(init?.headers);
     calls.push({
       path,
@@ -264,7 +264,11 @@ test("registers text revisions through the host index API when available", async
   });
 
   assert.deepEqual(result, { indexed: true });
-  assert.deepEqual(calls, [{ path: "/api/v1/text-revisions", contentType: "application/json", body: { revision } }]);
+  assert.deepEqual(calls, [{
+    path: "/api/v1/text-revisions",
+    contentType: "application/json",
+    body: { revision, content: "indexed copy" },
+  }]);
 });
 
 test("keeps text apply compatible when the host text revision index is unavailable", async () => {
@@ -277,7 +281,7 @@ test("keeps text apply compatible when the host text revision index is unavailab
     createdAt: "2026-07-07T00:00:00.000Z",
   });
 
-  const result = await registerTextRevisionIndex(revision, async () =>
+  const result = await registerTextRevisionIndex(revision, "remote copy", async () =>
     new Response("missing", { status: 404 }),
   );
 

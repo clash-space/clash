@@ -1056,6 +1056,17 @@ export function createLocalMetadataStore(dataDir: string) {
     `).all(...params).map(textRevisionFromRow));
   }
 
+  async function getTextRevision(projectId: string, revisionId: string): Promise<TextAppliedRevision | null> {
+    const row = await withDb((db) => db.prepare(`
+      SELECT revision_id, text_id, parent_revision_id, project_id, node_id,
+             created_at, content_hash, hash_algorithm, source_file_path,
+             source_file_hash, actor_json
+        FROM text_revisions
+       WHERE project_id = ? AND revision_id = ?
+    `).get(projectId, revisionId));
+    return row ? textRevisionFromRow(row) : null;
+  }
+
   async function upsertTimelineRevision(revision: TimelineAppliedRevision): Promise<TimelineAppliedRevision> {
     await withDb((db) => {
       const existing = db.prepare(`
@@ -1127,6 +1138,7 @@ export function createLocalMetadataStore(dataDir: string) {
     listMutationAudit,
     upsertTextRevision,
     listTextRevisions,
+    getTextRevision,
     upsertTimelineRevision,
     listTimelineRevisions,
   };

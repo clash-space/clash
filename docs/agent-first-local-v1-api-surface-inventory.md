@@ -622,12 +622,16 @@ Implemented locally in SQLite:
 
 - `POST /api/v1/text-revisions`
 - `GET /api/v1/projects/:projectId/text-revisions`
+- `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`
 
 Rules:
 
 - stores applied text revision metadata in host-owned SQLite `text_revisions`,
 - does not create media `assets` rows for text revisions,
 - validates project-relative source paths and hash consistency before indexing,
+- when content is supplied, stores the applied Markdown body as an immutable
+  app-owned content-addressed text blob and serves it through the content GET
+  endpoint,
 - rejects same revision id with different payloads,
 - returns an accepted host mutation record for successful index writes,
 - keeps text body editing behind `clash text pull/apply/replace` CAS rather

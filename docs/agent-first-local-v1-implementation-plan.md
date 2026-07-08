@@ -310,9 +310,12 @@ Current status:
   `text_revisions` rows via `POST /api/v1/text-revisions`, exposes project/node
   lookup via `GET /api/v1/projects/:projectId/text-revisions`, and keeps those
   rows out of the media `assets` table.
-- `clash text apply/replace` registers the applied revision with that local API
-  after a successful canvas mutation, while keeping older targets compatible
-  when the index endpoint is unavailable.
+- When `clash text apply/replace` registers a revision, it also sends the
+  applied Markdown content. Local-api validates the revision hash, stores the
+  body as an immutable app-owned text blob under `text-revision-blobs/`, and
+  exposes it through
+  `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`.
+  Older targets remain compatible when the index endpoint is unavailable.
 - `clash text history` reads that host-owned revision index through
   `GET /api/v1/projects/:projectId/text-revisions`, giving agents a CLI
   history surface without direct SQLite access.
@@ -339,7 +342,8 @@ Current status:
 Remaining gap:
 
 - Text nodes are still canvas `data.content`; the durable SQLite row is a
-  revision/provenance index, not a canonical text asset body.
+  revision/provenance index, and applied revision bodies are immutable
+  app-owned blobs, not yet the canonical live text asset body.
 - Richer visual history UI, conflict recovery, canonical file-backed text mode,
   and sync mirror policy are still open.
 - No text frontmatter metadata is projected yet.
@@ -884,9 +888,10 @@ Remaining gap:
   still rejects in-place mutation by default; unmaterialized action-draft
   references can still be edited in place, and explicit `--force` can rewrite a
   checkpoint. Successful apply/replace now also creates an applied text revision
-  milestone and registers it in the local SQLite `text_revisions` index; the
-  remaining gap is richer UI/history, conflict recovery, canonical file-backed
-  text mode, and sync policy, not basic revision evidence.
+  milestone, registers it in the local SQLite `text_revisions` index, and stores
+  the applied Markdown body as an immutable text revision blob; the remaining
+  gap is richer UI/history, conflict recovery, canonical file-backed text mode,
+  and sync policy, not basic revision evidence.
 - Timeline COW/versioned replacement has a first-pass explicit
   `clash timeline replace` implementation. Current `apply` still detects
   materialized downstream render/checkpoint references and rejects the in-place

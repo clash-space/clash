@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { Hono } from "hono";
@@ -327,6 +327,55 @@ function formatLocalAcpSessionError(error: unknown): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function textRevisionContentHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+function textRevisionContentBlobPath(dataDir: string, contentHash: string): string {
+  if (!/^[a-f0-9]{16}$/.test(contentHash)) {
+    throw new Error("Invalid text revision content hash");
+  }
+  return join(dataDir, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
+}
+
+function textRevisionContentUrl(revision: TextAppliedRevision): string {
+  return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
+}
+
+async function storeTextRevisionContentBlob(
+  dataDir: string,
+  revision: TextAppliedRevision,
+  content: string,
+) {
+  if (textRevisionContentHash(content) !== revision.contentHash) {
+    throw new Error("text revision contentHash does not match content");
+  }
+  const path = textRevisionContentBlobPath(dataDir, revision.contentHash);
+  const existing = await readFile(path, "utf8").catch((error: unknown) => {
+    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
+    throw error;
+  });
+  if (existing !== null) {
+    if (existing !== content) {
+      throw new Error("text revision content blob already exists with different content");
+    }
+    await chmod(path, 0o444).catch(() => undefined);
+    return {
+      stored: true,
+      contentHash: revision.contentHash,
+      url: textRevisionContentUrl(revision),
+    };
+  }
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content, { encoding: "utf8", mode: 0o444 });
+  await chmod(path, 0o444).catch(() => undefined);
+  return {
+    stored: true,
+    contentHash: revision.contentHash,
+    url: textRevisionContentUrl(revision),
+  };
 }
 
 function localMutationEnvelope(operation: string, kind: string, id: string) {
@@ -743,6 +792,11 @@ function createDb(dataDir: string) {
     return metadataStore.listTextRevisions(filter);
   }
 
+  async function getTextRevision(projectId: string, revisionId: string): Promise<TextAppliedRevision | null> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.getTextRevision(projectId, revisionId);
+  }
+
   async function upsertTimelineRevision(revision: TimelineAppliedRevision): Promise<TimelineAppliedRevision> {
     const task = writeQueue.catch(() => undefined).then(() => metadataStore.upsertTimelineRevision(revision));
     writeQueue = task.then(() => undefined, () => undefined);
@@ -761,6 +815,7 @@ function createDb(dataDir: string) {
     listMutationAudit,
     upsertTextRevision,
     listTextRevisions,
+    getTextRevision,
     upsertTimelineRevision,
     listTimelineRevisions,
   };
@@ -4456,7 +4511,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
 
   app.post("/api/v1/text-revisions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown; content?: unknown };
     const parsed = parseTextRevisionForIndex(body.revision);
     const envelope = {
       operation: "text_revision_index",
@@ -4469,6 +4524,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         mutation: hostMutationRejected(envelope, parsed.error),
       }, 400);
     }
+    const content = typeof body.content === "string" ? body.content : undefined;
+    let contentRecord: Awaited<ReturnType<typeof storeTextRevisionContentBlob>> | undefined;
+    if (content !== undefined) {
+      try {
+        contentRecord = await storeTextRevisionContentBlob(options.dataDir, parsed.revision, content);
+      } catch (error) {
+        const message = errorMessage(error);
+        return c.json({
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        }, message.includes("already exists with different content") ? 409 : 400);
+      }
+    }
 
     try {
       const revision = await db.upsertTextRevision(parsed.revision);
@@ -4477,7 +4545,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         mutation,
         reason: "text revision indexed",
       }));
-      return c.json({ revision, mutation });
+      return c.json({
+        revision,
+        ...(contentRecord ? { content: contentRecord } : {}),
+        mutation,
+      });
     } catch (error) {
       const message = errorMessage(error);
       return c.json({
@@ -4495,6 +4567,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       limit: Number.isFinite(limit) ? limit : undefined,
     });
     return c.json({ revisions });
+  });
+
+  app.get("/api/v1/projects/:projectId/text-revisions/:revisionId/content", async (c) => {
+    const revision = await db.getTextRevision(c.req.param("projectId"), c.req.param("revisionId"));
+    if (!revision) return c.json({ error: "text revision not found" }, 404);
+    let content: string;
+    try {
+      content = await readFile(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
+    } catch {
+      return c.json({ error: "text revision content not found" }, 404);
+    }
+    if (textRevisionContentHash(content) !== revision.contentHash) {
+      return c.json({ error: "text revision content blob hash mismatch" }, 409);
+    }
+    return new Response(content, {
+      headers: {
+        "content-type": "text/markdown; charset=utf-8",
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-clash-content-hash": revision.contentHash,
+      },
+    });
   });
 
   app.post("/api/v1/timeline-revisions", async (c) => {

@@ -174,7 +174,7 @@ textCommand
     });
     mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-    const textRevisionIndex = await registerTextRevisionIndex(textRevision);
+    const textRevisionIndex = await registerTextRevisionIndex(textRevision, content);
     const payload = {
       ...result,
       projectId,
@@ -257,7 +257,7 @@ textCommand
     });
     mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-    const textRevisionIndex = await registerTextRevisionIndex(textRevision);
+    const textRevisionIndex = await registerTextRevisionIndex(textRevision, content);
     const payload = {
       ...result,
       projectId,
@@ -358,13 +358,21 @@ export type TextRevisionIndexResult =
 
 export async function registerTextRevisionIndex(
   revision: TextAppliedRevision,
-  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+  contentOrRequest?: string | ((path: string, init?: RequestInit) => Promise<Response>),
+  requestOverride?: (path: string, init?: RequestInit) => Promise<Response>,
 ): Promise<TextRevisionIndexResult> {
+  const content = typeof contentOrRequest === "string" ? contentOrRequest : undefined;
+  const request = typeof contentOrRequest === "function"
+    ? contentOrRequest
+    : requestOverride ?? apiFetch;
   try {
     const response = await request("/api/v1/text-revisions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision }),
+      body: JSON.stringify({
+        revision,
+        ...(content !== undefined ? { content } : {}),
+      }),
     });
     if (response.ok) return { indexed: true };
     if (response.status === 404) {

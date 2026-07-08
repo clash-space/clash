@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -38,6 +39,10 @@ function openSqlite() {
 
 function baseReadToken(readToken: string): string {
   return readToken.split(":receipt:")[0];
+}
+
+function projectionContentHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
 function providerModelTestMutation(providerId: string, modelId: string) {
@@ -1175,8 +1180,10 @@ describe("local API app", () => {
     expect(body.assets.map((asset) => asset.srcR2Key).sort()).toEqual([...keys].sort());
   });
 
-  it("indexes applied text revisions without creating media asset rows", async () => {
+  it("indexes applied text revisions with immutable content blobs without creating media asset rows", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const content = "# Scene 3\n\nIndexed copy";
+    const contentHash = projectionContentHash(content);
     const revision = {
       schemaVersion: 1,
       kind: "clash.text.revision",
@@ -1186,21 +1193,27 @@ describe("local API app", () => {
       projectId: "project-text",
       nodeId: "script",
       createdAt: "2026-07-07T00:00:00.000Z",
-      contentHash: "1234567890abcdef",
+      contentHash,
       hashAlgorithm: "sha256-64",
       sourceFilePath: "projections/text/script.md",
-      sourceFileHash: "1234567890abcdef",
+      sourceFileHash: contentHash,
       actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
     };
 
     const registered = await app.request("/api/v1/text-revisions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision }),
+      body: JSON.stringify({ revision, content }),
     });
     expect(registered.status).toBe(200);
-    expect(await registered.json()).toMatchObject({
+    const registeredJson = await registered.json();
+    expect(registeredJson).toMatchObject({
       revision,
+      content: {
+        stored: true,
+        contentHash,
+        url: `/api/v1/projects/project-text/text-revisions/${revision.revisionId}/content`,
+      },
       mutation: {
         operation: "text_revision_index",
         entity: { kind: "text", id: "project-text:script" },
@@ -1212,6 +1225,16 @@ describe("local API app", () => {
     const listed = await app.request("/api/v1/projects/project-text/text-revisions?nodeId=script");
     expect(await listed.json()).toEqual({ revisions: [revision] });
 
+    const contentResponse = await app.request(registeredJson.content.url);
+    expect(contentResponse.status).toBe(200);
+    expect(contentResponse.headers.get("content-type")).toContain("text/markdown");
+    expect(contentResponse.headers.get("x-clash-content-hash")).toBe(contentHash);
+    expect(await contentResponse.text()).toBe(content);
+
+    const blobPath = join(dataDir, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
+    expect(await readFile(blobPath, "utf8")).toBe(content);
+    expect((await stat(blobPath)).mode & 0o777).toBe(0o444);
+
     const sqlite = openSqlite();
     try {
       expect(sqlite.prepare("select count(*) as count from text_revisions").get()).toEqual({ count: 1 });
@@ -1219,6 +1242,44 @@ describe("local API app", () => {
     } finally {
       sqlite.close();
     }
+  });
+
+  it("rejects text revision content whose hash does not match the revision", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const revision = {
+      schemaVersion: 1,
+      kind: "clash.text.revision",
+      textId: "text:project-text:script",
+      revisionId: "txrev-1234567890abcdef-badcontent",
+      projectId: "project-text",
+      nodeId: "script",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      contentHash: "1234567890abcdef",
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "projections/text/script.md",
+      sourceFileHash: "1234567890abcdef",
+    };
+
+    const registered = await app.request("/api/v1/text-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision, content: "different content" }),
+    });
+
+    expect(registered.status).toBe(400);
+    expect(await registered.json()).toMatchObject({
+      error: "text revision contentHash does not match content",
+      mutation: {
+        operation: "text_revision_index",
+        accepted: false,
+        error: "text revision contentHash does not match content",
+      },
+    });
+
+    const listed = await app.request("/api/v1/projects/project-text/text-revisions?nodeId=script");
+    expect(await listed.json()).toEqual({ revisions: [] });
+    await expect(stat(join(dataDir, "text-revision-blobs", "12", "1234567890abcdef.md")))
+      .rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("indexes applied timeline revisions without creating media asset rows", async () => {
