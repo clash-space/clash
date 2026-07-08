@@ -678,6 +678,10 @@ Rules:
 - when content is supplied, parses the applied YAML, validates its semantic
   timeline hash, stores it as an immutable app-owned content-addressed timeline
   revision blob, and serves it through the content GET endpoint,
+- timeline revision history entries with stored bodies expose a `content`
+  descriptor (`kind: "timeline-revision-content"`, hash, media type, URL,
+  immutable flag), so agents can discover recovery/provenance YAML without
+  direct DB/filesystem access,
 - rejects same revision id with different payloads,
 - returns an accepted host mutation record for successful index writes,
 - keeps timeline body editing behind `clash timeline pull/apply/replace` CAS

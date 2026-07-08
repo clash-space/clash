@@ -15,6 +15,15 @@ export const TimelineRevisionDependenciesSchema = z.object({
 });
 export type TimelineRevisionDependencies = z.infer<typeof TimelineRevisionDependenciesSchema>;
 
+export const TimelineRevisionContentDescriptorSchema = z.object({
+  kind: z.literal('timeline-revision-content'),
+  timelineHash: z.string(),
+  mediaType: z.literal('application/yaml'),
+  url: z.string(),
+  immutable: z.literal(true),
+});
+export type TimelineRevisionContentDescriptor = z.infer<typeof TimelineRevisionContentDescriptorSchema>;
+
 export const TimelineAppliedRevisionSchema = z.object({
   schemaVersion: z.literal(1),
   kind: z.literal('clash.timeline.revision'),
@@ -34,3 +43,8 @@ export const TimelineAppliedRevisionSchema = z.object({
   dependencies: TimelineRevisionDependenciesSchema,
 });
 export type TimelineAppliedRevision = z.infer<typeof TimelineAppliedRevisionSchema>;
+
+export const TimelineRevisionHistoryEntrySchema = TimelineAppliedRevisionSchema.extend({
+  content: TimelineRevisionContentDescriptorSchema.optional(),
+});
+export type TimelineRevisionHistoryEntry = z.infer<typeof TimelineRevisionHistoryEntrySchema>;

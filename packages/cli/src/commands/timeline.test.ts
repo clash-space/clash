@@ -649,14 +649,24 @@ tracks:
     dsl: parsed.dsl,
     createdAt: "2026-07-07T00:00:00.000Z",
   });
+  const revisionWithContent = {
+    ...revision,
+    content: {
+      kind: "timeline-revision-content",
+      timelineHash: revision.timelineHash,
+      mediaType: "application/yaml",
+      url: `/api/v1/projects/project-1/timeline-revisions/${revision.revisionId}/content`,
+      immutable: true,
+    },
+  };
   const calls: Array<{ path: string; method: string | undefined }> = [];
 
   const result = await fetchTimelineRevisionHistory("project-1", { nodeId: "editor-1", limit: 2 }, async (path, init) => {
     calls.push({ path, method: init?.method });
-    return new Response(JSON.stringify({ revisions: [revision] }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ revisions: [revisionWithContent] }), { status: 200, headers: { "content-type": "application/json" } });
   });
 
-  assert.deepEqual(result, { revisions: [revision] });
+  assert.deepEqual(result, { revisions: [revisionWithContent] });
   assert.deepEqual(calls, [{
     path: "/api/v1/projects/project-1/timeline-revisions?nodeId=editor-1&limit=2",
     method: "GET",

@@ -344,8 +344,12 @@ Current status:
   `timeline-revision-blobs/`, and exposes it through
   `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`.
 - `clash timeline history` reads that host-owned milestone index, giving agents
-  a CLI provenance/history surface without direct SQLite access. Timeline body
-  head and fine-grained collaborative history remain in the Loro canvas state.
+  a CLI provenance/history surface without direct SQLite access. Entries with a
+  stored YAML body include a `content` descriptor (`kind:
+  "timeline-revision-content"`, hash, media type, URL, immutable flag), making
+  applied timeline bodies addressable without mixing them into the media
+  `assets` table. Timeline body head and fine-grained collaborative history
+  remain in the Loro canvas state.
 - `clash timeline content --revision <id> [--out <path>]` reads the immutable
   YAML body through the host content endpoint, giving agents a first-class
   recovery/diff surface without constructing API URLs or opening SQLite.

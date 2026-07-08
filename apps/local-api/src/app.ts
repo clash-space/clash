@@ -56,6 +56,8 @@ import {
   type TextRevisionContentDescriptor,
   type TextRevisionHistoryEntry,
   type TimelineAppliedRevision,
+  type TimelineRevisionContentDescriptor,
+  type TimelineRevisionHistoryEntry,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import {
@@ -393,6 +395,20 @@ function timelineRevisionContentUrl(revision: TimelineAppliedRevision): string {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/timeline-revisions/${encodeURIComponent(revision.revisionId)}/content`;
 }
 
+function timelineRevisionContentDescriptor(
+  revision: TimelineAppliedRevision,
+  options: { stored?: true } = {},
+): TimelineRevisionContentDescriptor & { stored?: true } {
+  return {
+    kind: "timeline-revision-content",
+    ...(options.stored ? { stored: true } : {}),
+    timelineHash: revision.timelineHash,
+    mediaType: "application/yaml",
+    url: timelineRevisionContentUrl(revision),
+    immutable: true,
+  };
+}
+
 async function storeTextRevisionContentBlob(
   dataDir: string,
   revision: TextAppliedRevision,
@@ -455,18 +471,27 @@ async function storeTimelineRevisionContentBlob(
     }
     await chmod(path, 0o444).catch(() => undefined);
     return {
-      stored: true,
-      timelineHash: revision.timelineHash,
-      url: timelineRevisionContentUrl(revision),
+      ...timelineRevisionContentDescriptor(revision, { stored: true }),
     };
   }
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, content, { encoding: "utf8", mode: 0o444 });
   await chmod(path, 0o444).catch(() => undefined);
   return {
-    stored: true,
-    timelineHash: revision.timelineHash,
-    url: timelineRevisionContentUrl(revision),
+    ...timelineRevisionContentDescriptor(revision, { stored: true }),
+  };
+}
+
+async function withTimelineRevisionContentDescriptor(
+  dataDir: string,
+  revision: TimelineAppliedRevision,
+): Promise<TimelineRevisionHistoryEntry> {
+  const path = timelineRevisionContentBlobPath(dataDir, revision.timelineHash);
+  const fileStat = await stat(path).catch(() => null);
+  if (!fileStat?.isFile()) return revision;
+  return {
+    ...revision,
+    content: timelineRevisionContentDescriptor(revision),
   };
 }
 
@@ -4755,7 +4780,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       nodeId: normalizeString(c.req.query("nodeId")),
       limit: Number.isFinite(limit) ? limit : undefined,
     });
-    return c.json({ revisions });
+    const entries = await Promise.all(
+      revisions.map((revision) => withTimelineRevisionContentDescriptor(options.dataDir, revision)),
+    );
+    return c.json({ revisions: entries });
   });
 
   app.get("/api/v1/projects/:projectId/timeline-revisions/:revisionId/content", async (c) => {

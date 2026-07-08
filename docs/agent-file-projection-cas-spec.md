@@ -671,7 +671,9 @@ reports the index miss as a compatibility warning. When the host receives the
 applied YAML body, it parses the YAML, validates the semantic timeline hash, and
 stores that body as an immutable content-addressed timeline revision blob. The
 timeline body itself is not written to SQLite; SQLite stores only milestone
-metadata and provenance.
+metadata and provenance. History entries with stored YAML bodies include an
+immutable `timeline-revision-content` descriptor, making applied timeline
+content addressable without treating it as a media asset row.
 
 Do not record every keystroke or every CRDT operation as a user-visible JSON
 revision. Fine-grained history is already in Loro. Timeline revision records

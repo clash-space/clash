@@ -3,7 +3,12 @@ import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { LoroSyncClient, TimelineAppliedRevisionSchema, type ResolvedTimelineDsl } from "@clash/shared-types";
+import {
+  LoroSyncClient,
+  TimelineRevisionHistoryEntrySchema,
+  type ResolvedTimelineDsl,
+  type TimelineRevisionHistoryEntry,
+} from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson, printTable } from "../lib/output";
@@ -454,7 +459,7 @@ export async function registerTimelineRevisionIndex(
 }
 
 export type TimelineRevisionHistoryResult = {
-  revisions: TimelineAppliedRevision[];
+  revisions: TimelineRevisionHistoryEntry[];
 };
 
 export async function fetchTimelineRevisionHistory(
@@ -483,7 +488,7 @@ export async function fetchTimelineRevisionHistory(
   }
   return {
     revisions: body.revisions.map((revision) => {
-      const parsed = TimelineAppliedRevisionSchema.safeParse(revision);
+      const parsed = TimelineRevisionHistoryEntrySchema.safeParse(revision);
       if (!parsed.success) {
         throw new Error("Invalid timeline revision history response");
       }

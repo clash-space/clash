@@ -1347,9 +1347,12 @@ describe("local API app", () => {
     expect(registeredJson).toMatchObject({
       revision,
       content: {
+        kind: "timeline-revision-content",
         stored: true,
         timelineHash,
+        mediaType: "application/yaml",
         url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
+        immutable: true,
       },
       mutation: {
         operation: "timeline_revision_index",
@@ -1360,7 +1363,18 @@ describe("local API app", () => {
     });
 
     const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
-    expect(await listed.json()).toEqual({ revisions: [revision] });
+    expect(await listed.json()).toEqual({
+      revisions: [{
+        ...revision,
+        content: {
+          kind: "timeline-revision-content",
+          timelineHash,
+          mediaType: "application/yaml",
+          url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
+          immutable: true,
+        },
+      }],
+    });
 
     const contentResponse = await app.request(registeredJson.content.url);
     expect(contentResponse.status).toBe(200);

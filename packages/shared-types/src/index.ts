@@ -501,10 +501,14 @@ export {
 export {
   TimelineAppliedRevisionSchema,
   TimelineRevisionActorSchema,
+  TimelineRevisionContentDescriptorSchema,
   TimelineRevisionDependenciesSchema,
+  TimelineRevisionHistoryEntrySchema,
   type TimelineAppliedRevision,
   type TimelineRevisionActor,
+  type TimelineRevisionContentDescriptor,
   type TimelineRevisionDependencies,
+  type TimelineRevisionHistoryEntry,
 } from './timeline-revisions';
 
 // Pipeline types
