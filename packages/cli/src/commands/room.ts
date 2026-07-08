@@ -21,7 +21,7 @@
  */
 
 import { Command } from "commander";
-import { apiJson } from "../lib/api";
+import { ApiJsonError, apiJson } from "../lib/api";
 import { isJsonMode, printJson } from "../lib/output";
 
 export const roomCommand = new Command("room")
@@ -105,6 +105,20 @@ function failRoomCommand(error: unknown, projectId: string): never {
   process.exit(1);
 }
 
+function failRoomJsonCommand(error: unknown, projectId: string): never {
+  if (error instanceof ApiJsonError && error.jsonBody !== undefined) {
+    printJson(error.jsonBody);
+  }
+  failRoomCommand(error, projectId);
+}
+
+function failRoomCommandForMode(error: unknown, projectId: string, options: { json?: boolean }): never {
+  if (isJsonMode(options)) {
+    return failRoomJsonCommand(error, projectId);
+  }
+  return failRoomCommand(error, projectId);
+}
+
 roomCommand
   .command("say")
   .description("Broadcast a message to the project's group-chat room")
@@ -128,7 +142,7 @@ roomCommand
         sender_id: senderId,
         ...(mentions.length > 0 ? { mentions } : {}),
       }),
-    }).catch((error) => failRoomCommand(error, pid));
+    }).catch((error) => failRoomCommandForMode(error, pid, options));
 
     if (isJsonMode(options)) {
       printJson(data);
@@ -147,7 +161,7 @@ roomCommand
     const limit = Math.min(Number(options.limit ?? 50), 200);
     const data = await apiJson<{ messages: RoomMessage[]; sync?: RoomSyncMeta }>(
       `/api/v1/projects/${pid}/room/messages?limit=${limit}`,
-    ).catch((error) => failRoomCommand(error, pid));
+    ).catch((error) => failRoomCommandForMode(error, pid, options));
 
     if (isJsonMode(options)) {
       printJson(data);
@@ -173,7 +187,7 @@ roomCommand
     const pid = projectId();
     const data = await apiJson<RoomSyncResult>(`/api/v1/projects/${pid}/room/sync`, {
       method: "POST",
-    }).catch((error) => failRoomCommand(error, pid));
+    }).catch((error) => failRoomCommandForMode(error, pid, options));
 
     if (isJsonMode(options)) {
       printJson(data);

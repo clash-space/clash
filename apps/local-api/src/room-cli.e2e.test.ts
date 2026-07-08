@@ -181,6 +181,27 @@ describe("local room CLI e2e", () => {
       expect(sync.status, formatCliResult(sync)).toBe(1);
       expect(sync.stderr).toContain("API error 409");
       expect(sync.stderr).toContain("remote room sync is not configured");
+      expect(parseCliJson(sync.stdout)).toMatchObject({
+        error: "remote room sync is not configured",
+        admission: {
+          allowed: false,
+          reason: "remote-room-not-configured",
+          requirements: ["enable-sync"],
+        },
+        sync: {
+          mode: "local-only",
+          remote_room: {
+            enabled: false,
+            status: "disabled",
+            error: "remote room sync is not configured",
+          },
+        },
+        mutation: {
+          operation: "room_sync",
+          accepted: false,
+          error: "remote room sync is not configured",
+        },
+      });
     } finally {
       await server.close();
     }

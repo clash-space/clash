@@ -260,7 +260,8 @@ Current evidence:
   gate (`remote-room-not-configured`, requiring `enable-sync`).
 - `clash room sync --json` exposes the mirror action to agents with
   exported/imported/matched/conflict ids and accepted/rejected mutation
-  evidence.
+  evidence; denied local-only sync also prints the structured admission body
+  on stdout while retaining stderr compatibility.
 
 v1 decision:
 

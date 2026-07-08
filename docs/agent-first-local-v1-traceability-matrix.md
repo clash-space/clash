@@ -318,7 +318,8 @@ Evidence:
   local-only export, accepted `room_sync` mutation records, and same-id conflict
   rejection without local overwrite.
 - `clash room sync` exposes the explicit mirror action and preserves the JSON
-  sync/plan/mutation result for agents.
+  sync/plan/mutation result for agents; `--json` denied sync preserves the
+  structured admission/rejected-mutation body on stdout.
 - `apps/local-api/src/room-cli.e2e.test.ts` drives `clash room say/read`
   through a spawned CLI process against a real local-api loopback server and
   asserts `sync.remote_room.enabled=false`.

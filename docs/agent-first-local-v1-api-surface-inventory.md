@@ -616,6 +616,9 @@ Rules:
 - Local-only room sync rejection includes a machine-readable `admission` gate
   with `allowed: false`, `reason: "remote-room-not-configured"`, and
   `requirements: ["enable-sync"]`.
+- `clash room sync --json` preserves that rejected API body on stdout while
+  keeping the nonzero exit and stderr error text, so agents can parse the
+  admission/mutation evidence even when sync is denied.
 
 Remaining:
 
