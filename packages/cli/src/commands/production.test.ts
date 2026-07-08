@@ -15,6 +15,7 @@ import { renderMgProductionProjection } from "../lib/mg-production";
 import { exportMgSnapshotAsset } from "../lib/mg-snapshot-export";
 import { planTalkingHeadTextCutAction } from "../lib/talking-head-plan";
 import { analyzeWavBeatAction } from "../lib/audio-beat-analysis";
+import { exportTextCutMedia } from "../lib/text-cut-media-export";
 import { planReferenceReviewAction } from "../lib/reference-review-plan";
 import { planStoryboardConsistencyAction } from "../lib/storyboard-plan";
 
@@ -4380,6 +4381,8 @@ test("runs production export-text-cut-media as a non-destructive talking-head cu
   assert.equal(payload.keepSegments, 2);
   assert.equal(payload.deletedRanges, 2);
   assert.equal(payload.reviewRanges, 0);
+  assert.equal(payload.sourceActionPath, "actions/talking-head-text-cut.json");
+  assert.match(payload.sourceActionHash, /^[a-f0-9]{16}$/);
   assert.ok(payload.probe.durationSeconds >= 1.7 && payload.probe.durationSeconds <= 1.9);
   assert.equal(payload.probe.hasVideo, true);
   assert.equal(payload.probe.hasAudio, true);
@@ -4389,6 +4392,8 @@ test("runs production export-text-cut-media as a non-destructive talking-head cu
   const cutPackage = JSON.parse(await readFile(payload.packagePath, "utf8"));
   assert.equal(cutPackage.kind, "clash.talking-head.media-cut-export");
   assert.equal(cutPackage.sourceAssetId, "asset-talk");
+  assert.equal(cutPackage.sourceActionPath, payload.sourceActionPath);
+  assert.equal(cutPackage.sourceActionHash, payload.sourceActionHash);
   assert.deepEqual(cutPackage.keepSegments.map((segment: any) => [
     segment.sourceStartFrame,
     segment.sourceEndFrame,
@@ -4412,6 +4417,9 @@ test("runs production export-text-cut-media as a non-destructive talking-head cu
   ]);
   assert.deepEqual(cutPackage.reviewRanges, []);
   assert.equal(cutPackage.probe.hasAudio, true);
+  const ffmpegPlan = JSON.parse(await readFile(payload.ffmpegPlanPath, "utf8"));
+  assert.equal(ffmpegPlan.sourceActionPath, cutPackage.sourceActionPath);
+  assert.equal(ffmpegPlan.sourceActionHash, cutPackage.sourceActionHash);
   const concatPlan = await readFile(payload.concatPath, "utf8");
   assert.match(concatPlan, /^ffconcat version 1\.0/);
   assert.match(concatPlan, /inpoint 0\.000000/);
@@ -4423,6 +4431,8 @@ test("runs production export-text-cut-media as a non-destructive talking-head cu
   assert.equal(outputAsset.type, "video");
   assert.equal(outputAsset.path, "assets/video/talk-clean.mp4");
   assert.equal(outputAsset.metadata["talking-head.media-cut-export"].sourceAssetId, "asset-talk");
+  assert.equal(outputAsset.metadata["talking-head.media-cut-export"].sourceActionPath, cutPackage.sourceActionPath);
+  assert.equal(outputAsset.metadata["talking-head.media-cut-export"].sourceActionHash, cutPackage.sourceActionHash);
   assert.deepEqual(outputAsset.metadata["talking-head.media-cut-export"].sourceToOutputMap, [
     { sourceStartFrame: 0, sourceEndFrame: 12, outputStartFrame: 0, outputEndFrame: 12 },
     { sourceStartFrame: 30, sourceEndFrame: 72, outputStartFrame: 12, outputEndFrame: 54 },
@@ -4530,6 +4540,41 @@ test("blocks production export-text-cut-media render when review cuts are still 
   );
   assert.equal(renderChild.status, 1);
   assert.match(renderChild.stderr, /review range\(s\)/);
+});
+
+test("text-cut media export rejects symlinked action paths that resolve outside cwd", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-text-cut-export-action-symlink-"));
+  const outside = await mkdtemp(join(tmpdir(), "clash-production-text-cut-export-action-outside-"));
+  await writeJson(join(outside, "talking-head-text-cut.json"), {
+    schemaVersion: 1,
+    kind: "clash.asset.metadata-fill.action",
+    actionId: "act-talk",
+    targetAssetId: "asset-talk",
+    metadataKind: "talking-head.analysis",
+    metadata: {
+      kind: "talking-head.analysis",
+      fps: 30,
+      words: [],
+      cuts: [],
+      disfluencies: [],
+      captionCues: [],
+    },
+  });
+  await mkdir(join(cwd, "actions"), { recursive: true });
+  await symlink(join(outside, "talking-head-text-cut.json"), join(cwd, "actions", "linked-action.json"));
+  await writeJson(join(cwd, "assets", "manifest.json"), {
+    assets: [{ id: "asset-talk", type: "video", path: "assets/source/talk.mp4", metadata: {} }],
+  });
+
+  await assert.rejects(
+    () => exportTextCutMedia({
+      cwd,
+      actionPath: "actions/linked-action.json",
+      assetsPath: "assets/manifest.json",
+      outputAssetId: "asset-talk-clean",
+    }),
+    /action path must stay inside the project/,
+  );
 });
 
 test("analyzes a local WAV click track into MV beat metadata", async () => {

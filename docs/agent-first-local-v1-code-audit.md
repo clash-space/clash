@@ -96,6 +96,11 @@ The main v1 gaps are:
   host/UI integration, recovery/rewire flows, host-issued receipt paths, and
   adoption of the generic lock envelope by future non-JSON/editor projections
   remain pending.
+- talking-head text-cut media export now records source action path/hash in the
+  CLI result, ffmpeg plan, media-cut package, and output asset metadata. Its
+  source action input is checked through the cwd plus realpath boundary before
+  parsing, so a symlink in the agent cwd cannot make a rendered export depend on
+  an out-of-project action file.
 
 ## Evidence Snapshot
 

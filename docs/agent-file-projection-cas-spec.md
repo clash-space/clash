@@ -137,6 +137,15 @@ match the current asset metadata in `assets/manifest.json`, the lock path must
 match the edited file, and a successful apply refreshes the lock to the new
 metadata hash.
 
+Export outputs that materialize an action decision should carry the same
+source-action proof even when they are not themselves editable projections. For
+example, `clash production export-text-cut-media` validates the source action
+path through the project cwd plus realpath boundary, computes a stable
+`sourceActionHash`, and writes `sourceActionPath` / `sourceActionHash` into the
+CLI result, ffmpeg plan, media-cut package, and output asset metadata. This lets
+agents and users inspect a rendered talking-head cut and recover which ASR/text
+cut action version produced it without reading SQLite or canvas internals.
+
 The remaining v1 gap is that storyboard prompt packs and asset metadata still
 run as file-only CAS paths rather than host-issued receipt paths, and the
 mechanism does not yet cover non-JSON storyboard files or future editor

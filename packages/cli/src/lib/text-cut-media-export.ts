@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { AssetMetadataFillActionSchema } from "@clash/shared-types";
+import { hashProjectionContent } from "./projection-cas";
 
 type ProductionAssetManifestAsset = {
   id: string;
@@ -78,6 +79,8 @@ export type ExportTextCutMediaResult = {
   keepSegments: number;
   deletedRanges: number;
   reviewRanges: number;
+  sourceActionPath: string;
+  sourceActionHash: string;
   probe?: TextCutMediaProbe;
 };
 
@@ -87,12 +90,15 @@ export async function exportTextCutMedia(
   const cwd = resolve(options.cwd);
   const assetsPath = resolveProjectPath(cwd, options.assetsPath ?? join("assets", "manifest.json"), "assets path");
   const actionPath = resolveProjectPath(cwd, options.actionPath, "action path");
+  await assertExistingProjectPathRealpath(cwd, actionPath, "action path");
   const action = AssetMetadataFillActionSchema.parse(
     JSON.parse(await readFile(actionPath, "utf8")),
   );
   if (action.metadata.kind !== "talking-head.analysis") {
     throw new Error(`export-text-cut-media requires talking-head.analysis metadata, got ${action.metadata.kind}`);
   }
+  const sourceActionPath = toProjectRelativePath(cwd, actionPath);
+  const sourceActionHash = sourceActionHashForTextCut(action);
 
   const sourceAssetId = options.sourceAssetId ?? action.targetAssetId;
   const manifest = parseAssetManifest(await readFile(assetsPath, "utf8"), assetsPath);
@@ -139,6 +145,8 @@ export async function exportTextCutMedia(
   const ffmpegPlan = {
     kind: "clash.talking-head.ffmpeg-plan",
     version: 1,
+    sourceActionPath,
+    sourceActionHash,
     ffmpeg: options.ffmpegPath ?? process.env.CLASH_FFMPEG_PATH ?? process.env.FFMPEG_PATH ?? "ffmpeg",
     args: ffmpegArgs,
     concatPath: toProjectRelativePath(cwd, concatPath),
@@ -163,6 +171,8 @@ export async function exportTextCutMedia(
     sourcePath: toProjectRelativePath(cwd, sourcePath),
     outputPath: outputRelativePath,
     actionId: action.actionId,
+    sourceActionPath,
+    sourceActionHash,
     metadataKind: action.metadataKind,
     fps: action.metadata.fps,
     rendered: shouldRender,
@@ -194,6 +204,8 @@ export async function exportTextCutMedia(
       "talking-head.media-cut-export": {
         sourceAssetId,
         actionId: action.actionId,
+        sourceActionPath,
+        sourceActionHash,
         metadataKind: action.metadataKind,
         rendered: shouldRender,
         packagePath: packageRelativePath,
@@ -222,6 +234,8 @@ export async function exportTextCutMedia(
     keepSegments: keepSegments.length,
     deletedRanges: deletedRanges.length,
     reviewRanges: reviewRanges.length,
+    sourceActionPath,
+    sourceActionHash,
     ...(probe ? { probe } : {}),
   };
 }
@@ -410,6 +424,14 @@ function resolveProjectPath(cwd: string, path: string, label: string): string {
   return absolutePath;
 }
 
+async function assertExistingProjectPathRealpath(cwd: string, path: string, label: string): Promise<void> {
+  const [realCwd, realPath] = await Promise.all([realpath(cwd), realpath(path)]);
+  const relativePath = relative(realCwd, realPath);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error(`${label} must stay inside the project`);
+  }
+}
+
 function normalizeProjectRelativePath(path: string, label: string): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) {
     throw new Error(`${label} must be a local project-relative path, not a URL`);
@@ -431,6 +453,24 @@ function toProjectRelativePath(cwd: string, path: string): string {
 function safeFileStem(value: string): string {
   const stem = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return stem.length > 0 ? stem : "text-cut-media";
+}
+
+function sourceActionHashForTextCut(action: unknown): string {
+  return hashProjectionContent(stableJson(action));
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function frameToSeconds(frame: number, fps: number): number {
