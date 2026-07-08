@@ -1128,6 +1128,18 @@ export function createLocalMetadataStore(dataDir: string) {
     `).all(...params).map(timelineRevisionFromRow));
   }
 
+  async function getTimelineRevision(projectId: string, revisionId: string): Promise<TimelineAppliedRevision | null> {
+    const row = await withDb((db) => db.prepare(`
+      SELECT revision_id, timeline_id, parent_revision_id, project_id, node_id,
+             created_at, timeline_hash, hash_algorithm, source_file_path,
+             source_file_hash, actor_json, loro_frontiers_json,
+             loro_version_vector_json, dependencies_json
+        FROM timeline_revisions
+       WHERE project_id = ? AND revision_id = ?
+    `).get(projectId, revisionId));
+    return row ? timelineRevisionFromRow(row) : null;
+  }
+
   return {
     path,
     load,
@@ -1141,5 +1153,6 @@ export function createLocalMetadataStore(dataDir: string) {
     getTextRevision,
     upsertTimelineRevision,
     listTimelineRevisions,
+    getTimelineRevision,
   };
 }

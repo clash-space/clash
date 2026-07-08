@@ -156,7 +156,8 @@ timelineCommand
       file: options.file,
       timeline: options.timeline,
     });
-    const parsed = parseTimelineFileForApply(readFileSync(filePath, "utf8"));
+    const content = readFileSync(filePath, "utf8");
+    const parsed = parseTimelineFileForApply(content);
     if (!parsed.ok) {
       console.error(`error: ${parsed.error}`);
       process.exit(1);
@@ -202,7 +203,7 @@ timelineCommand
       readToken: result.readToken,
     });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision);
+    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision, content);
 
     const payload = { ...result, timelineRevision, timelineRevisionIndex, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
     if (isJsonMode(options)) printJson(payload);
@@ -235,7 +236,8 @@ timelineCommand
       file: options.file,
       timeline: options.timeline,
     });
-    const parsed = parseTimelineFileForApply(readFileSync(filePath, "utf8"));
+    const content = readFileSync(filePath, "utf8");
+    const parsed = parseTimelineFileForApply(content);
     if (!parsed.ok) {
       console.error(`error: ${parsed.error}`);
       process.exit(1);
@@ -283,7 +285,7 @@ timelineCommand
       readToken: result.readToken,
     });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision);
+    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision, content);
 
     const payload = { ...result, timelineRevision, timelineRevisionIndex, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
     if (isJsonMode(options)) printJson(payload);
@@ -376,13 +378,21 @@ export type TimelineRevisionIndexResult =
 
 export async function registerTimelineRevisionIndex(
   revision: TimelineAppliedRevision,
-  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+  contentOrRequest?: string | ((path: string, init?: RequestInit) => Promise<Response>),
+  requestOverride?: (path: string, init?: RequestInit) => Promise<Response>,
 ): Promise<TimelineRevisionIndexResult> {
+  const content = typeof contentOrRequest === "string" ? contentOrRequest : undefined;
+  const request = typeof contentOrRequest === "function"
+    ? contentOrRequest
+    : requestOverride ?? apiFetch;
   try {
     const response = await request("/api/v1/timeline-revisions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision }),
+      body: JSON.stringify({
+        revision,
+        ...(content !== undefined ? { content } : {}),
+      }),
     });
     if (response.ok) return { indexed: true };
     if (response.status === 404) {

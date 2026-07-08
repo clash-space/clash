@@ -49,7 +49,9 @@ The main v1 gaps are:
 - agent cwd currently points at the canonical project root with first-pass
   editable/protected root checks, but not a full workspace migration model,
 - timeline has projection CAS plus explicit first-pass COW replacement through
-  `clash timeline pull/apply/replace`,
+  `clash timeline pull/apply/replace`; successful apply/replace registers
+  `clash.timeline.revision` milestones and local-api stores supplied YAML bodies
+  as immutable timeline revision blobs readable through the host API,
 - text nodes now have first-pass Markdown projection CAS plus explicit COW
   replacement through `clash text pull/apply/replace`; successful apply/replace
   records `clash.text.revision` milestones with source path, content hash,

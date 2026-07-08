@@ -4,7 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { timelineDslHash } from "@clash/shared-types";
+import { timelineDslHash, timelineDslToYaml } from "@clash/shared-types";
 import {
   assertTimelineCas,
   assertTimelineNotMaterializedReferenced,
@@ -581,7 +581,9 @@ tracks:
   });
   const calls: Array<{ path: string; contentType: string | null; body: unknown }> = [];
 
-  const result = await registerTimelineRevisionIndex(revision, async (path, init) => {
+  const content = timelineDslToYaml(parsed.dsl);
+
+  const result = await registerTimelineRevisionIndex(revision, content, async (path, init) => {
     const headers = new Headers(init?.headers);
     calls.push({
       path,
@@ -592,7 +594,11 @@ tracks:
   });
 
   assert.deepEqual(result, { indexed: true });
-  assert.deepEqual(calls, [{ path: "/api/v1/timeline-revisions", contentType: "application/json", body: { revision } }]);
+  assert.deepEqual(calls, [{
+    path: "/api/v1/timeline-revisions",
+    contentType: "application/json",
+    body: { revision, content },
+  }]);
 });
 
 test("keeps timeline apply compatible when the host timeline revision index is unavailable", async () => {
@@ -614,7 +620,7 @@ tracks:
     createdAt: "2026-07-07T00:00:00.000Z",
   });
 
-  const result = await registerTimelineRevisionIndex(revision, async () =>
+  const result = await registerTimelineRevisionIndex(revision, timelineDslToYaml(parsed.dsl), async () =>
     new Response("missing", { status: 404 }),
   );
 

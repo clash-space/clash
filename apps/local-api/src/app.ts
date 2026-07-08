@@ -34,6 +34,7 @@ import {
   sessionReadToken,
   TextAppliedRevisionSchema,
   TimelineAppliedRevisionSchema,
+  timelineDslFromYaml,
   validateCanvasEdgeAdd,
   validateCanvasEdgeDelete,
   validateCanvasEdgePatch,
@@ -344,6 +345,38 @@ function textRevisionContentUrl(revision: TextAppliedRevision): string {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
 }
 
+function stableJsonForTimelineHash(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJsonForTimelineHash).join(",")}]`;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value as object)
+      .filter((key) => key !== "fromExpr")
+      .sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stableJsonForTimelineHash((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function timelineRevisionSemanticHash(content: string): string {
+  const parsed = timelineDslFromYaml(content);
+  if (!parsed.ok) {
+    throw new Error(`Invalid timeline revision content: ${parsed.error}`);
+  }
+  return createHash("sha256").update(stableJsonForTimelineHash(parsed.dsl)).digest("hex").slice(0, 16);
+}
+
+function timelineRevisionContentBlobPath(dataDir: string, timelineHash: string): string {
+  if (!/^[a-f0-9]{16}$/.test(timelineHash)) {
+    throw new Error("Invalid timeline revision hash");
+  }
+  return join(dataDir, "timeline-revision-blobs", timelineHash.slice(0, 2), `${timelineHash}.timeline.yaml`);
+}
+
+function timelineRevisionContentUrl(revision: TimelineAppliedRevision): string {
+  return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/timeline-revisions/${encodeURIComponent(revision.revisionId)}/content`;
+}
+
 async function storeTextRevisionContentBlob(
   dataDir: string,
   revision: TextAppliedRevision,
@@ -375,6 +408,40 @@ async function storeTextRevisionContentBlob(
     stored: true,
     contentHash: revision.contentHash,
     url: textRevisionContentUrl(revision),
+  };
+}
+
+async function storeTimelineRevisionContentBlob(
+  dataDir: string,
+  revision: TimelineAppliedRevision,
+  content: string,
+) {
+  if (timelineRevisionSemanticHash(content) !== revision.timelineHash) {
+    throw new Error("timeline revision timelineHash does not match content");
+  }
+  const path = timelineRevisionContentBlobPath(dataDir, revision.timelineHash);
+  const existing = await readFile(path, "utf8").catch((error: unknown) => {
+    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
+    throw error;
+  });
+  if (existing !== null) {
+    if (existing !== content) {
+      throw new Error("timeline revision content blob already exists with different content");
+    }
+    await chmod(path, 0o444).catch(() => undefined);
+    return {
+      stored: true,
+      timelineHash: revision.timelineHash,
+      url: timelineRevisionContentUrl(revision),
+    };
+  }
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, content, { encoding: "utf8", mode: 0o444 });
+  await chmod(path, 0o444).catch(() => undefined);
+  return {
+    stored: true,
+    timelineHash: revision.timelineHash,
+    url: timelineRevisionContentUrl(revision),
   };
 }
 
@@ -808,6 +875,11 @@ function createDb(dataDir: string) {
     return metadataStore.listTimelineRevisions(filter);
   }
 
+  async function getTimelineRevision(projectId: string, revisionId: string): Promise<TimelineAppliedRevision | null> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.getTimelineRevision(projectId, revisionId);
+  }
+
   return {
     load,
     update,
@@ -818,6 +890,7 @@ function createDb(dataDir: string) {
     getTextRevision,
     upsertTimelineRevision,
     listTimelineRevisions,
+    getTimelineRevision,
   };
 }
 
@@ -4591,7 +4664,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
 
   app.post("/api/v1/timeline-revisions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown; content?: unknown };
     const parsed = parseTimelineRevisionForIndex(body.revision);
     const envelope = {
       operation: "timeline_revision_index",
@@ -4604,6 +4677,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         mutation: hostMutationRejected(envelope, parsed.error),
       }, 400);
     }
+    const content = typeof body.content === "string" ? body.content : undefined;
+    let contentRecord: Awaited<ReturnType<typeof storeTimelineRevisionContentBlob>> | undefined;
+    if (content !== undefined) {
+      try {
+        contentRecord = await storeTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
+      } catch (error) {
+        const message = errorMessage(error);
+        return c.json({
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        }, message.includes("already exists with different content") ? 409 : 400);
+      }
+    }
 
     try {
       const revision = await db.upsertTimelineRevision(parsed.revision);
@@ -4612,7 +4698,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         mutation,
         reason: "timeline revision indexed",
       }));
-      return c.json({ revision, mutation });
+      return c.json({
+        revision,
+        ...(contentRecord ? { content: contentRecord } : {}),
+        mutation,
+      });
     } catch (error) {
       const message = errorMessage(error);
       return c.json({
@@ -4630,6 +4720,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       limit: Number.isFinite(limit) ? limit : undefined,
     });
     return c.json({ revisions });
+  });
+
+  app.get("/api/v1/projects/:projectId/timeline-revisions/:revisionId/content", async (c) => {
+    const revision = await db.getTimelineRevision(c.req.param("projectId"), c.req.param("revisionId"));
+    if (!revision) return c.json({ error: "timeline revision not found" }, 404);
+    let content: string;
+    try {
+      content = await readFile(timelineRevisionContentBlobPath(options.dataDir, revision.timelineHash), "utf8");
+    } catch {
+      return c.json({ error: "timeline revision content not found" }, 404);
+    }
+    if (timelineRevisionSemanticHash(content) !== revision.timelineHash) {
+      return c.json({ error: "timeline revision content blob hash mismatch" }, 409);
+    }
+    return new Response(content, {
+      headers: {
+        "content-type": "application/yaml; charset=utf-8",
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-clash-timeline-hash": revision.timelineHash,
+      },
+    });
   });
 
   app.get("/api/v1/projects/:id", async (c) => {

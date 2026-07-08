@@ -1282,8 +1282,23 @@ describe("local API app", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("indexes applied timeline revisions without creating media asset rows", async () => {
+  it("indexes applied timeline revisions with immutable content blobs without creating media asset rows", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const content = [
+      "tracks:",
+      "  - id: main",
+      "    items:",
+      "      - id: scene-001-video",
+      "        type: video",
+      "        from: start",
+      "        durationInFrames: 30",
+      "        sourceNodeId: scene-001",
+      "        assetId: asset-001",
+      "        componentId: lower-third",
+      "        textNodeId: script-001",
+      "",
+    ].join("\n");
+    const timelineHash = "e727416a48c14543";
     const revision = {
       schemaVersion: 1,
       kind: "clash.timeline.revision",
@@ -1293,10 +1308,10 @@ describe("local API app", () => {
       projectId: "project-timeline",
       nodeId: "editor",
       createdAt: "2026-07-07T00:00:00.000Z",
-      timelineHash: "1234567890abcdef",
+      timelineHash,
       hashAlgorithm: "sha256-64",
       sourceFilePath: "timelines/main.timeline.yaml",
-      sourceFileHash: "1234567890abcdef",
+      sourceFileHash: timelineHash,
       actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
       loroFrontiers: [{ peer: "1", counter: 4 }],
       loroVersionVector: { "1": 4 },
@@ -1311,11 +1326,17 @@ describe("local API app", () => {
     const registered = await app.request("/api/v1/timeline-revisions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision }),
+      body: JSON.stringify({ revision, content }),
     });
     expect(registered.status).toBe(200);
-    expect(await registered.json()).toMatchObject({
+    const registeredJson = await registered.json();
+    expect(registeredJson).toMatchObject({
       revision,
+      content: {
+        stored: true,
+        timelineHash,
+        url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
+      },
       mutation: {
         operation: "timeline_revision_index",
         entity: { kind: "timeline", id: "project-timeline:editor" },
@@ -1327,6 +1348,16 @@ describe("local API app", () => {
     const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
     expect(await listed.json()).toEqual({ revisions: [revision] });
 
+    const contentResponse = await app.request(registeredJson.content.url);
+    expect(contentResponse.status).toBe(200);
+    expect(contentResponse.headers.get("content-type")).toContain("application/yaml");
+    expect(contentResponse.headers.get("x-clash-timeline-hash")).toBe(timelineHash);
+    expect(await contentResponse.text()).toBe(content);
+
+    const blobPath = join(dataDir, "timeline-revision-blobs", timelineHash.slice(0, 2), `${timelineHash}.timeline.yaml`);
+    expect(await readFile(blobPath, "utf8")).toBe(content);
+    expect((await stat(blobPath)).mode & 0o777).toBe(0o444);
+
     const sqlite = openSqlite();
     try {
       expect(sqlite.prepare("select count(*) as count from timeline_revisions").get()).toEqual({ count: 1 });
@@ -1334,6 +1365,50 @@ describe("local API app", () => {
     } finally {
       sqlite.close();
     }
+  });
+
+  it("rejects timeline revision content whose semantic hash does not match the revision", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const revision = {
+      schemaVersion: 1,
+      kind: "clash.timeline.revision",
+      timelineId: "timeline:project-timeline:editor",
+      revisionId: "tlrev-1234567890abcdef-badcontent",
+      projectId: "project-timeline",
+      nodeId: "editor",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      timelineHash: "1234567890abcdef",
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "timelines/main.timeline.yaml",
+      sourceFileHash: "1234567890abcdef",
+      dependencies: {
+        sourceNodeIds: [],
+        assetIds: [],
+        componentIds: [],
+        textNodeIds: [],
+      },
+    };
+
+    const registered = await app.request("/api/v1/timeline-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision, content: "tracks: []\n" }),
+    });
+
+    expect(registered.status).toBe(400);
+    expect(await registered.json()).toMatchObject({
+      error: "timeline revision timelineHash does not match content",
+      mutation: {
+        operation: "timeline_revision_index",
+        accepted: false,
+        error: "timeline revision timelineHash does not match content",
+      },
+    });
+
+    const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
+    expect(await listed.json()).toEqual({ revisions: [] });
+    await expect(stat(join(dataDir, "timeline-revision-blobs", "12", "1234567890abcdef.timeline.yaml")))
+      .rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects asset create paths that escape local asset storage", async () => {

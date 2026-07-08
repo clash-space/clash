@@ -332,9 +332,14 @@ Current status:
   `timeline_revisions` rows via `POST /api/v1/timeline-revisions`, exposes
   project/node lookup via `GET /api/v1/projects/:projectId/timeline-revisions`,
   and keeps those rows out of the media `assets` table.
+- When `clash timeline apply/replace` registers a revision, it also sends the
+  applied YAML body. Local-api parses the YAML, validates the semantic timeline
+  hash, stores the body as an immutable app-owned timeline revision blob under
+  `timeline-revision-blobs/`, and exposes it through
+  `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`.
 - `clash timeline history` reads that host-owned milestone index, giving agents
   a CLI provenance/history surface without direct SQLite access. Timeline body
-  and fine-grained collaborative history remain in the Loro canvas state.
+  head and fine-grained collaborative history remain in the Loro canvas state.
 - Covered by `packages/cli/src/commands/text.test.ts`,
   `packages/cli/src/commands/timeline.test.ts`, and the local-api revision
   index tests.
@@ -895,7 +900,9 @@ Remaining gap:
 - Timeline COW/versioned replacement has a first-pass explicit
   `clash timeline replace` implementation. Current `apply` still detects
   materialized downstream render/checkpoint references and rejects the in-place
-  mutation unless `--force` is used.
+  mutation unless `--force` is used. Successful apply/replace also stores the
+  applied YAML body as an immutable timeline revision blob, giving future
+  render/export flows a host-readable pinned source body.
 - Fulfilled media asset replacement and storyboard prompt-pack replacement now
   have first-pass explicit COW commands. `clash asset replace --node --file`
   adds the local-file import plus COW replacement surface. Remaining storyboard
