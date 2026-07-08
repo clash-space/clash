@@ -29,6 +29,11 @@ reports a conflict.
 
 Treat the status payload as your filesystem contract:
 
+- Read `currentWorkspace` before assuming what the cwd owns. It identifies
+  the current marker/reference workspace, whether it is inside
+  `projectWorkspaceRoot`, and whether deleting that workspace would delete
+  project state. Treat `deletionDeletesProjectState: false` as proof that
+  project deletion must go through an explicit Clash command, not file cleanup.
 - Write drafts, projections, session work files, and asset links only under
   paths listed in `editablePaths`.
 - Treat every path listed in `protectedPaths` as internal Clash state.

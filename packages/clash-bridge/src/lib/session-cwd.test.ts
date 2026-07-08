@@ -124,6 +124,8 @@ it("ensureAgentCwd installs standard Clash setup/init guidance", async () => {
     expect(agents).toContain("Do not add `--project`");
     expect(agents).toContain("editablePaths");
     expect(agents).toContain("protectedPaths");
+    expect(agents).toContain("currentWorkspace");
+    expect(agents).toContain("deletionDeletesProjectState");
     expect(agents).toContain("runtimeRoot");
     expect(agents).toContain("Do not read or edit `snapshot.bin`");
     expect(agents).toContain("Master Clash");
