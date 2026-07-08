@@ -42,6 +42,23 @@ export interface ProjectStatusStorage {
     ownsCanonicalMetadata: false;
     editablePaths: string[];
     protectedPaths: string[];
+    viewFiles: {
+      timelines: {
+        kind: "agent-editable-view-files";
+        path: string;
+        defaultFile: "main.timeline.yaml";
+        applyCommand: "clash timeline apply";
+        casRequired: true;
+        ownsCanonicalState: false;
+      };
+      timelineProjections: {
+        kind: "agent-editable-projection-files";
+        path: string;
+        applyCommand: "clash timeline apply";
+        casRequired: true;
+        ownsCanonicalState: false;
+      };
+    };
   };
   canonicalReplica: {
     role: "single-machine-project-replica";
@@ -146,6 +163,7 @@ export interface ProjectStatus {
   roots: {
     drafts: string;
     projections: string;
+    timelines: string;
     sessions: string;
     assetLinks: string;
     runtime: string;
@@ -182,6 +200,8 @@ export function buildProjectStatus(
     encodeURIComponent(context.projectId),
   );
   const projections = joinPath(projectWorkspaceRoot, "projections");
+  const timelines = joinPath(projectWorkspaceRoot, "timelines");
+  const timelineProjections = joinPath(projections, "timelines");
   const drafts = joinPath(projectWorkspaceRoot, "drafts");
   const sessions = joinPath(projectWorkspaceRoot, "sessions");
   const assetLinks = joinPath(projectWorkspaceRoot, "assets", "links");
@@ -201,6 +221,7 @@ export function buildProjectStatus(
   const editablePaths = [
     drafts,
     projections,
+    timelines,
     sessions,
     assetLinks,
   ];
@@ -258,6 +279,7 @@ export function buildProjectStatus(
     roots: {
       drafts,
       projections,
+      timelines,
       sessions,
       assetLinks,
       runtime: runtimeRoot,
@@ -284,6 +306,23 @@ export function buildProjectStatus(
         ownsCanonicalMetadata: false,
         editablePaths,
         protectedPaths: [runtimeRoot],
+        viewFiles: {
+          timelines: {
+            kind: "agent-editable-view-files",
+            path: timelines,
+            defaultFile: "main.timeline.yaml",
+            applyCommand: "clash timeline apply",
+            casRequired: true,
+            ownsCanonicalState: false,
+          },
+          timelineProjections: {
+            kind: "agent-editable-projection-files",
+            path: timelineProjections,
+            applyCommand: "clash timeline apply",
+            casRequired: true,
+            ownsCanonicalState: false,
+          },
+        },
       },
       canonicalReplica: {
         role: "single-machine-project-replica",

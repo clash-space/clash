@@ -677,6 +677,7 @@ async function main() {
     status.roots.drafts,
     path.join(status.roots.projections, "text"),
     path.join(status.roots.projections, "timelines"),
+    status.roots.timelines,
     path.join(status.roots.projections, "storyboards"),
     path.join(status.roots.projections, "prompts"),
     path.join(status.roots.projections, "metadata"),

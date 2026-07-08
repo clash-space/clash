@@ -8074,6 +8074,7 @@ describe("local API app", () => {
       roots: {
         drafts: join(clashRoot, "projects", project.id, "drafts"),
         projections: join(clashRoot, "projects", project.id, "projections"),
+        timelines: join(clashRoot, "projects", project.id, "timelines"),
         assetLinks: join(clashRoot, "projects", project.id, "assets", "links"),
         runtime: join(clashRoot, "projects", project.id, "runtime"),
       },
@@ -8083,6 +8084,7 @@ describe("local API app", () => {
     });
     expect(status.runtimeRoot).toBe(status.roots.runtime);
     expect(status.editablePaths).toContain(status.roots.projections);
+    expect(status.editablePaths).toContain(status.roots.timelines);
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
     expect(status.protectedPaths).toContain(status.roots.runtime);
     expect(status.storage.workspace).toMatchObject({
@@ -8090,6 +8092,23 @@ describe("local API app", () => {
       root: status.projectWorkspaceRoot,
       ownsCanonicalSnapshot: false,
       ownsCanonicalMetadata: false,
+      viewFiles: {
+        timelines: {
+          kind: "agent-editable-view-files",
+          path: status.roots.timelines,
+          defaultFile: "main.timeline.yaml",
+          applyCommand: "clash timeline apply",
+          casRequired: true,
+          ownsCanonicalState: false,
+        },
+        timelineProjections: {
+          kind: "agent-editable-projection-files",
+          path: join(status.roots.projections, "timelines"),
+          applyCommand: "clash timeline apply",
+          casRequired: true,
+          ownsCanonicalState: false,
+        },
+      },
     });
     expect(status.storage.canonicalReplica).toMatchObject({
       role: "single-machine-project-replica",

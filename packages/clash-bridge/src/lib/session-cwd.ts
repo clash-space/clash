@@ -110,6 +110,7 @@ async function ensureProjectWorkspaceLayout(cwd: string): Promise<void> {
     mkdir(join(cwd, "projections", "storyboards"), { recursive: true }),
     mkdir(join(cwd, "projections", "prompts"), { recursive: true }),
     mkdir(join(cwd, "projections", "metadata"), { recursive: true }),
+    mkdir(join(cwd, "timelines"), { recursive: true }),
     mkdir(join(cwd, "sessions"), { recursive: true }),
     mkdir(join(cwd, "assets", "links"), { recursive: true }),
     mkdir(join(cwd, "runtime"), { recursive: true }),

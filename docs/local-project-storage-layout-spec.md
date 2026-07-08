@@ -174,6 +174,9 @@ Recommended v1 target. `~/.clash` below means the default
       assets/
         links/
           <assetId> -> ../../../assets/blobs/<sha256>/original.ext
+      timelines/
+        main.timeline.yaml
+        main.timeline.lock.json
       projections/
         timelines/
         text/
@@ -212,6 +215,12 @@ Notes:
   protected content-addressed roots for applied Markdown/YAML revision bodies.
   They are recovery/provenance stores referenced by SQLite revision indexes and
   API/CLI descriptors, not agent-writable projection folders.
+- `storage.workspace.viewFiles.timelines` points at `timelines/`, the primary
+  agent-editable timeline view surface used by `clash timeline pull/apply`.
+  `storage.workspace.viewFiles.timelineProjections` points at
+  `projections/timelines/`, the generated timeline projection surface used by
+  production/action steps. Both require explicit CAS apply and neither owns the
+  canonical Loro timeline head.
 - A future project-export feature may materialize project rows into
   `<projectId>/local.sqlite` or an export bundle, but that is not required for
   v1 alpha.

@@ -100,6 +100,7 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.equal(status.loro.updatesLogPath, join(loroRoot, "updates.log"));
   assert.equal(status.roots.drafts, join(projectStore, "drafts"));
   assert.equal(status.roots.projections, join(projectStore, "projections"));
+  assert.equal(status.roots.timelines, join(projectStore, "timelines"));
   assert.equal(status.roots.sessions, join(projectStore, "sessions"));
   assert.equal(status.roots.assetLinks, join(projectStore, "assets", "links"));
   assert.equal(status.roots.runtime, join(projectStore, "runtime"));
@@ -111,6 +112,7 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.deepEqual(status.editablePaths, [
     join(projectStore, "drafts"),
     join(projectStore, "projections"),
+    join(projectStore, "timelines"),
     join(projectStore, "sessions"),
     join(projectStore, "assets", "links"),
   ]);
@@ -140,6 +142,23 @@ test("project status exposes agent-readable project roots and protected local fi
       ownsCanonicalMetadata: false,
       editablePaths: status.editablePaths,
       protectedPaths: [status.roots.runtime],
+      viewFiles: {
+        timelines: {
+          kind: "agent-editable-view-files",
+          path: join(projectStore, "timelines"),
+          defaultFile: "main.timeline.yaml",
+          applyCommand: "clash timeline apply",
+          casRequired: true,
+          ownsCanonicalState: false,
+        },
+        timelineProjections: {
+          kind: "agent-editable-projection-files",
+          path: join(projectStore, "projections", "timelines"),
+          applyCommand: "clash timeline apply",
+          casRequired: true,
+          ownsCanonicalState: false,
+        },
+      },
     },
     canonicalReplica: {
       role: "single-machine-project-replica",

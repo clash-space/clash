@@ -46,6 +46,7 @@ async function assertProjectWorkspaceLayout(projectId) {
     "drafts",
     "projections/text",
     "projections/timelines",
+    "timelines",
     "assets/links",
     "sessions",
     "runtime",

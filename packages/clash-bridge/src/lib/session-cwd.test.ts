@@ -25,6 +25,7 @@ it("ensureAgentCwd writes a v1 project marker for managed project cwd", async ()
     await expectDirectory(join(cwd, "drafts"));
     await expectDirectory(join(cwd, "projections", "text"));
     await expectDirectory(join(cwd, "projections", "timelines"));
+    await expectDirectory(join(cwd, "timelines"));
     await expectDirectory(join(cwd, "assets", "links"));
     await expectDirectory(join(cwd, "sessions"));
     await expectDirectory(join(cwd, "runtime"));
@@ -125,6 +126,9 @@ it("ensureAgentCwd installs standard Clash setup/init guidance", async () => {
     expect(agents).toContain("clash canvas list --json");
     expect(agents).toContain("Do not add `--project`");
     expect(agents).toContain("editablePaths");
+    expect(agents).toContain("viewFiles");
+    expect(agents).toContain("timelines/");
+    expect(agents).toContain("projections/timelines/");
     expect(agents).toContain("protectedPaths");
     expect(agents).toContain("currentWorkspace");
     expect(agents).toContain("deletionDeletesProjectState");

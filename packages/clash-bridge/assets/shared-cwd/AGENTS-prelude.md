@@ -36,6 +36,10 @@ Treat the status payload as your filesystem contract:
   project deletion must go through an explicit Clash command, not file cleanup.
 - Write drafts, projections, session work files, and asset links only under
   paths listed in `editablePaths`.
+- Use `storage.workspace.viewFiles` to distinguish primary timeline view files
+  (`timelines/`, for `clash timeline pull/apply`) from generated timeline
+  projections (`projections/timelines/`, for action outputs that still require
+  explicit CAS apply).
 - Treat every path listed in `protectedPaths` as internal Clash state.
 - `runtimeRoot` is a protected runtime/cache directory, not scratch space.
 - Do not read or edit `snapshot.bin`, `updates.log`, `local.sqlite`, or

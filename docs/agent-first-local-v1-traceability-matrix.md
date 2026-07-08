@@ -118,12 +118,15 @@ Conclusion:
   metadata/provider auth table-key/projection schema, broken/invalid asset
   links, and legacy `db.json`.
 - Direct real Codex E2E now fails unless the actual spawned cwd contains
-  `drafts`, `projections/text`, `projections/timelines`, `assets/links`,
+  `drafts`, `projections/text`, `projections/timelines`, `timelines`,
+  `assets/links`,
   `sessions`, and `runtime`, and unless local-api project status exposes
   `runtimeRoot` inside `protectedPaths`.
 - Bundled AGENTS.md now tells agents to write only under `editablePaths` and to
-  avoid `protectedPaths`, `runtimeRoot`, `snapshot.bin`, `updates.log`, SQLite,
-  and legacy `db.json` as direct state surfaces.
+  use `storage.workspace.viewFiles` to distinguish `timelines/` view files from
+  `projections/timelines/` generated action projections, while avoiding
+  `protectedPaths`, `runtimeRoot`, `snapshot.bin`, `updates.log`, SQLite, and
+  legacy `db.json` as direct state surfaces.
 - Missing: automatic repair/migration for older layouts and broader store
   recovery validation.
 

@@ -218,6 +218,7 @@ test("storage doctor reports marker project with non-fatal missing-store warning
   assert.equal(checkById(report, "project-workspace").level, "warning");
   assert.equal(checkById(report, "editable-drafts-root").level, "warning");
   assert.equal(checkById(report, "editable-projections-root").level, "warning");
+  assert.equal(checkById(report, "editable-timelines-root").level, "warning");
   assert.equal(checkById(report, "editable-sessions-root").level, "warning");
   assert.equal(checkById(report, "editable-asset-links-root").level, "warning");
   assert.equal(checkById(report, "protected-runtime-root").level, "warning");
@@ -235,6 +236,7 @@ test("storage doctor reports v1 project workspace roots when they exist", async 
     mkdir(join(projectRoot, "drafts"), { recursive: true }),
     mkdir(join(projectRoot, "projections", "text"), { recursive: true }),
     mkdir(join(projectRoot, "projections", "timelines"), { recursive: true }),
+    mkdir(join(projectRoot, "timelines"), { recursive: true }),
     mkdir(join(projectRoot, "sessions"), { recursive: true }),
     mkdir(join(projectRoot, "assets", "links"), { recursive: true }),
     mkdir(join(projectRoot, "runtime"), { recursive: true }),
@@ -246,6 +248,7 @@ test("storage doctor reports v1 project workspace roots when they exist", async 
   assert.equal(checkById(report, "project-workspace").level, "ok");
   assert.equal(checkById(report, "editable-drafts-root").level, "ok");
   assert.equal(checkById(report, "editable-projections-root").level, "ok");
+  assert.equal(checkById(report, "editable-timelines-root").level, "ok");
   assert.equal(checkById(report, "editable-sessions-root").level, "ok");
   assert.equal(checkById(report, "editable-asset-links-root").level, "ok");
   assert.equal(checkById(report, "protected-runtime-root").level, "ok");
@@ -260,6 +263,7 @@ test("storage doctor fails on broken project asset links", async () => {
   await Promise.all([
     mkdir(join(projectRoot, "drafts"), { recursive: true }),
     mkdir(join(projectRoot, "projections"), { recursive: true }),
+    mkdir(join(projectRoot, "timelines"), { recursive: true }),
     mkdir(join(projectRoot, "sessions"), { recursive: true }),
     mkdir(assetLinksRoot, { recursive: true }),
     mkdir(join(projectRoot, "runtime"), { recursive: true }),
@@ -1440,6 +1444,7 @@ test("storage doctor repair creates workspace roots and fixes local SQLite asset
   assert.equal(checkById(repaired, "project-workspace").level, "ok");
   assert.equal(checkById(repaired, "editable-drafts-root").level, "ok");
   assert.equal(checkById(repaired, "editable-projections-root").level, "ok");
+  assert.equal(checkById(repaired, "editable-timelines-root").level, "ok");
   assert.equal(checkById(repaired, "editable-sessions-root").level, "ok");
   assert.equal(checkById(repaired, "editable-asset-links-root").level, "ok");
   assert.equal(checkById(repaired, "protected-runtime-root").level, "ok");

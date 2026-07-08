@@ -290,6 +290,15 @@ export async function runStorageDoctor(options: {
   });
 
   await pushPathCheck(checks, {
+    id: "editable-timelines-root",
+    path: status.roots.timelines,
+    kind: "directory",
+    missingLevel: "warning",
+    existsMessage: "Editable timeline view root exists.",
+    missingMessage: "Editable timeline view root is missing; clash timeline pull defaults are not ready for agent edits.",
+  });
+
+  await pushPathCheck(checks, {
     id: "editable-sessions-root",
     path: status.roots.sessions,
     kind: "directory",
@@ -1634,6 +1643,7 @@ async function repairProjectWorkspace(status: ProjectStatus): Promise<StorageDoc
     { id: "project-workspace", path: status.projectWorkspaceRoot, message: "Created project workspace root." },
     { id: "editable-drafts-root", path: status.roots.drafts, message: "Created editable drafts root." },
     { id: "editable-projections-root", path: status.roots.projections, message: "Created editable projections root." },
+    { id: "editable-timelines-root", path: status.roots.timelines, message: "Created editable timeline view root." },
     { id: "editable-projections-text-root", path: join(status.roots.projections, "text"), message: "Created editable text projections root." },
     { id: "editable-projections-timelines-root", path: join(status.roots.projections, "timelines"), message: "Created editable timeline projections root." },
     { id: "editable-projections-storyboards-root", path: join(status.roots.projections, "storyboards"), message: "Created editable storyboard projections root." },

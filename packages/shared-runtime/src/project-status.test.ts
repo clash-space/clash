@@ -20,6 +20,7 @@ describe("project status path builder", () => {
       deletionDeletesProjectState: false,
     });
     expect(status.roots.projections).toBe("/tmp/clash-home/projects/project%2Fone/projections");
+    expect(status.roots.timelines).toBe("/tmp/clash-home/projects/project%2Fone/timelines");
     expect(status.roots.assetLinks).toBe("/tmp/clash-home/projects/project%2Fone/assets/links");
     expect(status.roots.runtime).toBe("/tmp/clash-home/projects/project%2Fone/runtime");
     expect(status.runtimeRoot).toBe(status.roots.runtime);
@@ -28,6 +29,7 @@ describe("project status path builder", () => {
     expect(status.storage.canonicalReplica.contentBlobs.textRevisions.path).toBe("/tmp/clash-home/local-api/text-revision-blobs");
     expect(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path).toBe("/tmp/clash-home/local-api/timeline-revision-blobs");
     expect(status.editablePaths).toContain(status.roots.drafts);
+    expect(status.editablePaths).toContain(status.roots.timelines);
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
@@ -87,6 +89,23 @@ describe("project status path builder", () => {
         ownsCanonicalMetadata: false,
         editablePaths: status.editablePaths,
         protectedPaths: [status.roots.runtime],
+        viewFiles: {
+          timelines: {
+            kind: "agent-editable-view-files",
+            path: "/tmp/clash-home/projects/project%2Fone/timelines",
+            defaultFile: "main.timeline.yaml",
+            applyCommand: "clash timeline apply",
+            casRequired: true,
+            ownsCanonicalState: false,
+          },
+          timelineProjections: {
+            kind: "agent-editable-projection-files",
+            path: "/tmp/clash-home/projects/project%2Fone/projections/timelines",
+            applyCommand: "clash timeline apply",
+            casRequired: true,
+            ownsCanonicalState: false,
+          },
+        },
       },
       canonicalReplica: {
         role: "single-machine-project-replica",
@@ -120,6 +139,23 @@ describe("project status path builder", () => {
             agentWritable: false,
           },
         },
+      },
+    });
+    expect(status.storage.workspace.viewFiles).toEqual({
+      timelines: {
+        kind: "agent-editable-view-files",
+        path: status.roots.timelines,
+        defaultFile: "main.timeline.yaml",
+        applyCommand: "clash timeline apply",
+        casRequired: true,
+        ownsCanonicalState: false,
+      },
+      timelineProjections: {
+        kind: "agent-editable-projection-files",
+        path: "/tmp/clash-home/projects/project%2Fone/projections/timelines",
+        applyCommand: "clash timeline apply",
+        casRequired: true,
+        ownsCanonicalState: false,
       },
     });
   });

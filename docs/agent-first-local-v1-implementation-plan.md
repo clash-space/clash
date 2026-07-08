@@ -463,6 +463,10 @@ Current status:
   - `currentWorkspace` for CLI calls, identifying the actual cwd/marker root as
     a reference workspace that does not own canonical snapshot or metadata,
     including marker `workspace_id` as `markerWorkspaceId` when present,
+  - `roots.timelines` and `storage.workspace.viewFiles`, distinguishing the
+    primary agent-editable timeline view files in `timelines/` from generated
+    action timeline projections in `projections/timelines/`; both require
+    explicit CAS apply and neither owns the canonical Loro timeline head,
   - protected text/timeline revision content blob roots under
     `storage.canonicalReplica.contentBlobs`.
 - The command treats a marker in the cwd as context only. If `--project`
@@ -485,10 +489,11 @@ Current status:
 - `packages/clash-bridge/src/lib/session-cwd.ts` now creates alpha agent
   workspace directories for `drafts`, `projections/text`,
   `projections/timelines`, `projections/storyboards`, `projections/prompts`,
-  `projections/metadata`, `assets/links`, `sessions`, and protected
+  `projections/metadata`, `timelines`, `assets/links`, `sessions`, and protected
   `runtime`.
 - Bundled AGENTS.md now instructs spawned agents to treat `editablePaths` as
-  their writable surface and `protectedPaths`/`runtimeRoot`/Loro/SQLite/legacy
+  their writable surface, use `storage.workspace.viewFiles` for timeline path
+  selection, and treat `protectedPaths`/`runtimeRoot`/Loro/SQLite/legacy
   `db.json` as internal state reachable only through explicit `clash` commands.
 - `clash project status --json` and local-api project status now expose a
   structured `storage` contract: `storage.workspace` is the draft/projection

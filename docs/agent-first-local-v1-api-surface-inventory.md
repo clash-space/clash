@@ -524,6 +524,7 @@ Agents need a stable inspection payload:
   "roots": {
     "drafts": ".../drafts",
     "projections": ".../projections",
+    "timelines": ".../timelines",
     "sessions": ".../sessions",
     "assetLinks": ".../assets/links",
     "runtime": ".../runtime"
@@ -547,8 +548,25 @@ Agents need a stable inspection payload:
       "root": "${CLASH_HOME:-~/.clash}/projects/project_123",
       "ownsCanonicalSnapshot": false,
       "ownsCanonicalMetadata": false,
-      "editablePaths": [".../drafts", ".../projections", ".../sessions", ".../assets/links"],
-      "protectedPaths": [".../runtime"]
+      "editablePaths": [".../drafts", ".../projections", ".../timelines", ".../sessions", ".../assets/links"],
+      "protectedPaths": [".../runtime"],
+      "viewFiles": {
+        "timelines": {
+          "kind": "agent-editable-view-files",
+          "path": ".../timelines",
+          "defaultFile": "main.timeline.yaml",
+          "applyCommand": "clash timeline apply",
+          "casRequired": true,
+          "ownsCanonicalState": false
+        },
+        "timelineProjections": {
+          "kind": "agent-editable-projection-files",
+          "path": ".../projections/timelines",
+          "applyCommand": "clash timeline apply",
+          "casRequired": true,
+          "ownsCanonicalState": false
+        }
+      }
     },
     "canonicalReplica": {
       "role": "single-machine-project-replica",
