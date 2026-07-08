@@ -16,6 +16,9 @@
     "./lib/layout/*": "./src/lib/layout/*.ts",
     "./lib/utils/*": "./src/lib/utils/*.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
     "@ariakit/react": "^0.4.31",
@@ -76,7 +79,9 @@
     "react-router": "^7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.13.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "jsdom": "^29.0.2",
