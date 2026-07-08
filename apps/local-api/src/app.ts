@@ -3940,13 +3940,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const enabledIds = rawIds.filter((id): id is string => typeof id === "string");
     try {
       const result = await options.localAcp.updateHarnesses(enabledIds);
+      const readToken = localHarnessesReceiptReadToken(result);
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+        resultEntityId: "enabled",
+        ...(hostMutation ? { afterReadToken: readToken } : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local harness enablement update",
+      }));
       return c.json({
         ...result,
-        readToken: localHarnessesReceiptReadToken(result),
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-          resultEntityId: "enabled",
-          ...(hostMutation ? { afterReadToken: localHarnessesReceiptReadToken(result) } : {}),
-        }),
+        readToken,
+        mutation,
       });
     } catch (error) {
       const message = errorMessage(error);
@@ -3996,13 +4003,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     try {
       const result = await options.localAcp.updateAgentServers(rawServers as LocalAcpAgentServersConfig);
+      const readToken = localAgentServersReceiptReadToken(result);
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+        resultEntityId: "agent-servers",
+        ...(hostMutation ? { afterReadToken: readToken } : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local agent servers update",
+      }));
       return c.json({
         ...result,
-        readToken: localAgentServersReceiptReadToken(result),
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-          resultEntityId: "agent-servers",
-          ...(hostMutation ? { afterReadToken: localAgentServersReceiptReadToken(result) } : {}),
-        }),
+        readToken,
+        mutation,
       });
     } catch (error) {
       const message = errorMessage(error);
@@ -4049,13 +4063,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ? await options.localAcp.installHarness(harnessId)
         : await options.localAcp.installHarnessAdapter!(harnessId);
       const afterReadToken = localHarnessesReceiptReadToken(result);
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+        resultEntityId: harnessId,
+        ...(hostMutation ? { afterReadToken } : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local harness install",
+      }));
       return c.json({
         ...result,
         readToken: afterReadToken,
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-          resultEntityId: harnessId,
-          ...(hostMutation ? { afterReadToken } : {}),
-        }),
+        mutation,
       });
     } catch (error) {
       const message = errorMessage(error);

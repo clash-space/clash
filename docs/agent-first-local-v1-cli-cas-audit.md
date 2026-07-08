@@ -237,9 +237,10 @@ Remaining guardrails:
   rejects active projects, defaults to a 7-day purge delay, and treats
   `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, local sync
-  config update, local audio config update/install, and session create/delete responses include accepted/rejected mutation records.
+  config update, local audio config update/install, local harness enablement/install,
+  local agent-server config update, and session create/delete responses include accepted/rejected mutation records.
   Accepted v1 project create/delete, accepted legacy project create/update/delete,
-  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, and accepted session create/delete write
+  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install, accepted local agent-server config update, and accepted session create/delete write
   first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,
@@ -249,6 +250,9 @@ Remaining guardrails:
   `clash audit mutations --operation local_sync_config_update --entity sync --json`,
   `clash audit mutations --operation local_audio_config_update --entity audio --json`,
   `clash audit mutations --operation local_audio_model_install --entity audio --json`,
+  `clash audit mutations --operation local_harness_enablement_update --entity enabled --json`,
+  `clash audit mutations --operation local_harness_install --entity <harnessId> --json`,
+  `clash audit mutations --operation local_agent_servers_update --entity agent-servers --json`,
   `clash audit mutations --operation session_create --entity <threadId> --json`,
   or `clash audit mutations --operation session_delete --entity <threadId> --json`
   without exposing receipt-bearing read tokens or raw SQLite.

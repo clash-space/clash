@@ -716,6 +716,34 @@ async function main() {
     JSON.stringify(acceptedHarnessUpdateJson),
     { mutation: acceptedHarnessUpdateJson.mutation },
   );
+  const harnessEnablementAuditResponse = await request("/api/v1/mutation-audit?operation=local_harness_enablement_update&entityId=enabled");
+  const harnessEnablementAudit = await parseJsonResponse(harnessEnablementAuditResponse);
+  const harnessEnablementAuditAgentRecord = harnessEnablementAudit.records?.find((record) => record.actorClientType === "agent");
+  recordCheck(
+    "local harness enablement update writes sanitized local mutation audit evidence",
+    harnessEnablementAuditResponse.status === 200 &&
+      harnessEnablementAudit.records?.length === 2 &&
+      harnessEnablementAuditAgentRecord?.operation === "local_harness_enablement_update" &&
+      harnessEnablementAuditAgentRecord.entity?.id === "enabled" &&
+      harnessEnablementAuditAgentRecord.accepted === true &&
+      harnessEnablementAuditAgentRecord.actorClientType === "agent" &&
+      harnessEnablementAuditAgentRecord.reason === "local harness enablement update" &&
+      !JSON.stringify(harnessEnablementAudit.records ?? []).includes("receipt") &&
+      harnessEnablementAudit.records.every((record) =>
+        record.mutation?.expectedReadToken == null &&
+        record.mutation?.beforeReadToken == null &&
+        record.mutation?.afterReadToken == null
+      ),
+    JSON.stringify({
+      harnessEnablementAudit,
+      acceptedMutation: {
+        operation: acceptedHarnessUpdateJson.mutation?.operation,
+        accepted: acceptedHarnessUpdateJson.mutation?.accepted,
+        resultEntityId: acceptedHarnessUpdateJson.mutation?.resultEntityId,
+      },
+    }),
+    { mutation: acceptedHarnessUpdateJson.mutation },
+  );
 
   const missingHarnessInstall = await request("/api/v1/local/harnesses/gemini/install", {
     method: "POST",
@@ -762,6 +790,32 @@ async function main() {
       acceptedHarnessInstallJson.readToken !== acceptedHarnessUpdateJson.readToken &&
       acceptedHarnessInstallJson.harnesses?.find((row) => row.id === "gemini")?.installed === true,
     JSON.stringify(acceptedHarnessInstallJson),
+    { mutation: acceptedHarnessInstallJson.mutation },
+  );
+  const harnessInstallAuditResponse = await request("/api/v1/mutation-audit?operation=local_harness_install&entityId=gemini");
+  const harnessInstallAudit = await parseJsonResponse(harnessInstallAuditResponse);
+  const harnessInstallAuditRecord = harnessInstallAudit.records?.[0];
+  recordCheck(
+    "local harness install writes sanitized local mutation audit evidence",
+    harnessInstallAuditResponse.status === 200 &&
+      harnessInstallAudit.records?.length === 1 &&
+      harnessInstallAuditRecord.operation === "local_harness_install" &&
+      harnessInstallAuditRecord.entity?.id === "gemini" &&
+      harnessInstallAuditRecord.accepted === true &&
+      harnessInstallAuditRecord.actorClientType === "agent" &&
+      harnessInstallAuditRecord.reason === "local harness install" &&
+      !JSON.stringify(harnessInstallAudit.records ?? []).includes("receipt") &&
+      harnessInstallAuditRecord.mutation?.expectedReadToken == null &&
+      harnessInstallAuditRecord.mutation?.beforeReadToken == null &&
+      harnessInstallAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify({
+      harnessInstallAudit,
+      acceptedMutation: {
+        operation: acceptedHarnessInstallJson.mutation?.operation,
+        accepted: acceptedHarnessInstallJson.mutation?.accepted,
+        resultEntityId: acceptedHarnessInstallJson.mutation?.resultEntityId,
+      },
+    }),
     { mutation: acceptedHarnessInstallJson.mutation },
   );
 
@@ -876,6 +930,34 @@ async function main() {
       hasReceipt(acceptedAgentServersUpdateJson.readToken, "local-config") &&
       JSON.stringify(acceptedAgentServersUpdateJson.agent_servers) === JSON.stringify(nextAgentServers),
     JSON.stringify(acceptedAgentServersUpdateJson),
+    { mutation: acceptedAgentServersUpdateJson.mutation },
+  );
+  const agentServersAuditResponse = await request("/api/v1/mutation-audit?operation=local_agent_servers_update&entityId=agent-servers");
+  const agentServersAudit = await parseJsonResponse(agentServersAuditResponse);
+  const agentServersAuditAgentRecord = agentServersAudit.records?.find((record) => record.actorClientType === "agent");
+  recordCheck(
+    "local agent servers update writes sanitized local mutation audit evidence",
+    agentServersAuditResponse.status === 200 &&
+      agentServersAudit.records?.length === 2 &&
+      agentServersAuditAgentRecord?.operation === "local_agent_servers_update" &&
+      agentServersAuditAgentRecord.entity?.id === "agent-servers" &&
+      agentServersAuditAgentRecord.accepted === true &&
+      agentServersAuditAgentRecord.actorClientType === "agent" &&
+      agentServersAuditAgentRecord.reason === "local agent servers update" &&
+      !JSON.stringify(agentServersAudit.records ?? []).includes("receipt") &&
+      agentServersAudit.records.every((record) =>
+        record.mutation?.expectedReadToken == null &&
+        record.mutation?.beforeReadToken == null &&
+        record.mutation?.afterReadToken == null
+      ),
+    JSON.stringify({
+      agentServersAudit,
+      acceptedMutation: {
+        operation: acceptedAgentServersUpdateJson.mutation?.operation,
+        accepted: acceptedAgentServersUpdateJson.mutation?.accepted,
+        resultEntityId: acceptedAgentServersUpdateJson.mutation?.resultEntityId,
+      },
+    }),
     { mutation: acceptedAgentServersUpdateJson.mutation },
   );
 
@@ -3181,15 +3263,18 @@ async function main() {
       localHarnessBareCasRejected: checks.some((check) => check.name === "local harness enablement update with bare CAS token is rejected" && check.status === "pass"),
       localHarnessStaleReceiptRejected: checks.some((check) => check.name === "local harness enablement update with stale receipt is rejected" && check.status === "pass"),
       localHarnessReceiptAccepted: checks.some((check) => check.name === "local harness enablement update with receipt read token is accepted" && check.status === "pass"),
+      localHarnessAuditRecorded: checks.some((check) => check.name === "local harness enablement update writes sanitized local mutation audit evidence" && check.status === "pass"),
       localHarnessInstallMissingReadRejected: checks.some((check) => check.name === "local harness install without prior read is rejected" && check.status === "pass"),
       localHarnessInstallBareCasRejected: checks.some((check) => check.name === "local harness install with bare CAS token is rejected" && check.status === "pass"),
       localHarnessInstallReceiptAccepted: checks.some((check) => check.name === "local harness install with receipt read token is accepted" && check.status === "pass"),
+      localHarnessInstallAuditRecorded: checks.some((check) => check.name === "local harness install writes sanitized local mutation audit evidence" && check.status === "pass"),
       localHarnessUninstallStaleReceiptRejected: checks.some((check) => check.name === "local harness uninstall with stale receipt is rejected" && check.status === "pass"),
       localAgentServersGetReceiptReturned: checks.some((check) => check.name === "local agent servers get returns receipt read token" && check.status === "pass"),
       localAgentServersMissingReadRejected: checks.some((check) => check.name === "local agent servers update without prior read is rejected" && check.status === "pass"),
       localAgentServersBareCasRejected: checks.some((check) => check.name === "local agent servers update with bare CAS token is rejected" && check.status === "pass"),
       localAgentServersStaleReceiptRejected: checks.some((check) => check.name === "local agent servers update with stale receipt is rejected" && check.status === "pass"),
       localAgentServersReceiptAccepted: checks.some((check) => check.name === "local agent servers update with receipt read token is accepted" && check.status === "pass"),
+      localAgentServersAuditRecorded: checks.some((check) => check.name === "local agent servers update writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerAccountsGetReceiptReturned: checks.some((check) => check.name === "provider accounts get returns collection receipt read token" && check.status === "pass"),
       providerAccountGetReceiptReturned: checks.some((check) => check.name === "provider account get returns account receipt read token" && check.status === "pass"),
       providerAccountsMissingReadRejected: checks.some((check) => check.name === "provider accounts update without prior read is rejected" && check.status === "pass"),

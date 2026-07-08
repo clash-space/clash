@@ -6996,6 +6996,36 @@ describe("local API app", () => {
     });
     expect(acceptedJson.harnesses.find((row) => row.id === "claude-acp")?.enabled).toBe(true);
     expect(acceptedJson.harnesses.find((row) => row.id === "codex-acp")?.enabled).toBe(false);
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_harness_enablement_update&entityId=enabled");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(2);
+    const humanAuditRecord = auditJson.records.find((record) => record.actorClientType == null);
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(humanAuditRecord).toMatchObject({
+      operation: "local_harness_enablement_update",
+      entity: { kind: "local-harness-config", id: "enabled" },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "local harness enablement update",
+      resultEntityId: "enabled",
+    });
+    expect(agentAuditRecord).toMatchObject({
+      operation: "local_harness_enablement_update",
+      entity: { kind: "local-harness-config", id: "enabled" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "local harness enablement update",
+      resultEntityId: "enabled",
+    });
+    for (const record of auditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
   });
 
   it("requires receipt-bearing local harness reads before agent runtime actions", async () => {
@@ -7152,6 +7182,23 @@ describe("local API app", () => {
       resultEntityId: "gemini",
     });
     expect(installHarness).toHaveBeenCalledTimes(1);
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_harness_install&entityId=gemini");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "local_harness_install",
+      entity: { kind: "local-harness", id: "gemini" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "local harness install",
+      resultEntityId: "gemini",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const staleUninstall = await app.request("/api/v1/local/harnesses/gemini/install", {
       method: "DELETE",
@@ -7442,6 +7489,36 @@ describe("local API app", () => {
       afterReadToken: acceptedJson.readToken,
       accepted: true,
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_agent_servers_update&entityId=agent-servers");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(2);
+    const humanAuditRecord = auditJson.records.find((record) => record.actorClientType == null);
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(humanAuditRecord).toMatchObject({
+      operation: "local_agent_servers_update",
+      entity: { kind: "local-harness-config", id: "agent-servers" },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "local agent servers update",
+      resultEntityId: "agent-servers",
+    });
+    expect(agentAuditRecord).toMatchObject({
+      operation: "local_agent_servers_update",
+      entity: { kind: "local-harness-config", id: "agent-servers" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "local agent servers update",
+      resultEntityId: "agent-servers",
+    });
+    for (const record of auditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
   });
 
   it("installs local registry agents through the local ACP adapter", async () => {
