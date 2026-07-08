@@ -97,6 +97,12 @@ import {
 } from "./local-asset-paths.js";
 import { createLocalProviderStore } from "./local-provider-store.js";
 import {
+  planRoomMirror,
+  type RemoteRoomMessage,
+  type RemoteRoomMessageInput,
+  type RoomMirrorPlan,
+} from "./room-sync.js";
+import {
   createLocalMetadataStore,
   type LocalMetadataAssetNodeRef,
   type LocalMetadataAgentMember as LocalAgentMember,
@@ -428,16 +434,73 @@ function publicRoomMessage(message: LocalRoomMessage) {
   };
 }
 
-async function publicRoomSyncMeta(syncConfig: LocalSyncConfigStore) {
+type PublicRoomSyncStatus = "disabled" | "pending" | "imported" | "mirrored" | "failed";
+
+function localRoomMessageToRemote(message: LocalRoomMessage): RemoteRoomMessage {
+  return {
+    id: message.id,
+    project_id: message.project_id,
+    sender_kind: message.sender_kind,
+    sender_id: message.sender_id,
+    sender_user_id: message.sender_user_id,
+    mentions: message.mentions.map((mention) => ({
+      ...(mention.user_id ? { user_id: mention.user_id } : {}),
+      ...(mention.agent_member_id ? { agent_member_id: mention.agent_member_id } : {}),
+    })),
+    text: message.text,
+    at: message.created_at,
+  };
+}
+
+function remoteRoomMessageInput(message: RemoteRoomMessage): RemoteRoomMessageInput {
+  return {
+    id: message.id,
+    sender_kind: message.sender_kind,
+    sender_id: message.sender_id,
+    sender_user_id: message.sender_user_id,
+    text: message.text,
+    mentions: message.mentions,
+  };
+}
+
+function remoteRoomMessageToLocal(projectId: string, message: RemoteRoomMessage): LocalRoomMessage {
+  return {
+    id: message.id,
+    project_id: projectId,
+    sender_kind: message.sender_kind,
+    sender_id: message.sender_id,
+    sender_user_id: message.sender_user_id,
+    mentions: message.mentions,
+    text: message.text,
+    created_at: message.at,
+  };
+}
+
+function publicRoomMirrorPlan(plan: RoomMirrorPlan) {
+  return {
+    exportedIds: plan.exportToRemote.map((message) => message.id),
+    importedIds: plan.importToLocal.map((message) => message.id),
+    matchedIds: plan.matchedIds,
+    conflicts: plan.conflicts.map((conflict) => ({
+      id: conflict.id,
+      reason: conflict.reason,
+    })),
+  };
+}
+
+async function publicRoomSyncMeta(
+  syncConfig: LocalSyncConfigStore,
+  override?: { status?: PublicRoomSyncStatus; error?: string },
+) {
   const config = await syncConfig.getPublicConfig();
+  const remoteConfigured = config.mode === "cloud-sync" && config.remote_loro.enabled;
+  const status = remoteConfigured ? override?.status ?? "pending" : "disabled";
   return {
     mode: config.mode,
     remote_room: {
-      enabled: false,
-      status: "disabled" as const,
-      ...(config.mode === "cloud-sync"
-        ? { error: "room sync is not implemented yet; local room messages remain local" }
-        : {}),
+      enabled: remoteConfigured,
+      status,
+      ...(override?.error ? { error: override.error } : {}),
     },
   };
 }
@@ -4172,6 +4235,120 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({
       sync: await publicRoomSyncMeta(syncConfig),
       messages: messages.slice(0, limit).map(publicRoomMessage),
+    });
+  });
+
+  app.post("/api/v1/projects/:id/room/sync", async (c) => {
+    const projectId = c.req.param("id");
+    const envelope = localMutationEnvelope("room_sync", "room", projectId);
+    const remoteRoom = await syncConfig.resolveRemoteRoomSync();
+    if (!remoteRoom) {
+      const error = "remote room sync is not configured";
+      return c.json({
+        error,
+        sync: await publicRoomSyncMeta(syncConfig, { error }),
+        mutation: hostMutationRejected(envelope, error),
+      }, 409);
+    }
+
+    const state = await db.load();
+    const project = findActiveProject(state, projectId, userId);
+    if (!project) {
+      return c.json({
+        error: "not found",
+        mutation: hostMutationRejected(envelope, "not found"),
+      }, 404);
+    }
+
+    const localMessages = state.roomMessages
+      .filter((message) => message.project_id === projectId)
+      .map(localRoomMessageToRemote);
+
+    let remoteMessages: RemoteRoomMessage[];
+    try {
+      remoteMessages = (await remoteRoom.listMessages(projectId))
+        .map((message) => ({ ...message, project_id: projectId }));
+    } catch (error) {
+      const message = `room sync failed: ${errorMessage(error)}`;
+      return c.json({
+        error: message,
+        sync: await publicRoomSyncMeta(syncConfig, { status: "failed", error: message }),
+        mutation: hostMutationRejected(envelope, message),
+      }, 502);
+    }
+
+    const plan = planRoomMirror({ localMessages, remoteMessages });
+    const publicPlan = publicRoomMirrorPlan(plan);
+    if (plan.conflicts.length > 0) {
+      const error = "room sync conflict";
+      return c.json({
+        error,
+        sync: await publicRoomSyncMeta(syncConfig, { status: "failed", error }),
+        plan: publicPlan,
+        mutation: hostMutationRejected(envelope, error),
+      }, 409);
+    }
+
+    try {
+      for (const message of plan.exportToRemote) {
+        await remoteRoom.postMessage(projectId, remoteRoomMessageInput(message));
+      }
+    } catch (error) {
+      const message = `room sync failed: ${errorMessage(error)}`;
+      return c.json({
+        error: message,
+        sync: await publicRoomSyncMeta(syncConfig, { status: "failed", error: message }),
+        plan: publicPlan,
+        mutation: hostMutationRejected(envelope, message),
+      }, 502);
+    }
+
+    const imported = await db.update((current) => {
+      const activeProject = findActiveProject(current, projectId, userId);
+      if (!activeProject) return null;
+      const importedRows: LocalRoomMessage[] = [];
+      for (const remoteMessage of plan.importToLocal) {
+        const existing = current.roomMessages.find((candidate) => candidate.id === remoteMessage.id);
+        if (existing) {
+          if (existing.project_id === projectId && roomMessageCreateMatchesExisting(existing, {
+            sender_kind: remoteMessage.sender_kind,
+            sender_id: remoteMessage.sender_id,
+            sender_user_id: remoteMessage.sender_user_id,
+            mentions: remoteMessage.mentions,
+            text: remoteMessage.text,
+          })) {
+            continue;
+          }
+          return { error: "room sync conflict" } as const;
+        }
+        const next = remoteRoomMessageToLocal(projectId, remoteMessage);
+        current.roomMessages.unshift(next);
+        importedRows.push(next);
+      }
+      return importedRows;
+    });
+
+    if (!imported) {
+      return c.json({
+        error: "not found",
+        sync: await publicRoomSyncMeta(syncConfig, { status: "failed", error: "not found" }),
+        plan: publicPlan,
+        mutation: hostMutationRejected(envelope, "not found"),
+      }, 404);
+    }
+    if ("error" in imported) {
+      return c.json({
+        error: imported.error,
+        sync: await publicRoomSyncMeta(syncConfig, { status: "failed", error: imported.error }),
+        plan: publicPlan,
+        mutation: hostMutationRejected(envelope, imported.error),
+      }, 409);
+    }
+
+    return c.json({
+      sync: await publicRoomSyncMeta(syncConfig, { status: "mirrored" }),
+      plan: publicPlan,
+      mutation: hostMutationSucceeded(envelope, { resultEntityId: projectId }),
     });
   });
 

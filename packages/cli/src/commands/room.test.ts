@@ -37,3 +37,12 @@ test("room read json preserves local/cloud sync metadata", () => {
   assert.match(readSource, /apiJson<\{ messages: RoomMessage\[\]; sync\?: RoomSyncMeta \}>/);
   assert.match(readSource, /printJson\(data\)/);
 });
+
+test("room sync exposes explicit project room mirror action", () => {
+  const syncSource = commandBlock(roomSource, "sync");
+
+  assert.match(syncSource, /apiJson<RoomSyncResult>/);
+  assert.match(syncSource, /\/api\/v1\/projects\/\$\{pid\}\/room\/sync/);
+  assert.match(syncSource, /method: "POST"/);
+  assert.match(syncSource, /printJson\(data\)/);
+});

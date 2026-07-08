@@ -17,6 +17,7 @@ import { createLocalApiApp, type LocalAcpAgentServersConfig } from "./app";
 import { createLocalAudioConfigStore } from "./audio-config";
 import { createMockFalQueueService } from "./fal-mock";
 import { FileReplicaStore } from "./loro/file-replica-store";
+import { createLocalSyncConfigStore } from "./sync-config";
 
 let dataDir = "";
 
@@ -8579,7 +8580,7 @@ describe("local API app", () => {
     }
   });
 
-  it("does not claim local room messages are remote-synced in cloud-sync mode yet", async () => {
+  it("reports explicit room sync as pending in cloud-sync mode", async () => {
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -8600,12 +8601,210 @@ describe("local API app", () => {
       sync: {
         mode: "cloud-sync",
         remote_room: {
-          enabled: false,
-          status: "disabled",
-          error: "room sync is not implemented yet; local room messages remain local",
+          enabled: true,
+          status: "pending",
         },
       },
       messages: [],
+    });
+  });
+
+  it("explicitly mirrors local and remote room messages without a blind overwrite", async () => {
+    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
+      if (init?.method === "GET") {
+        return new Response(JSON.stringify({
+          messages: [
+            {
+              id: "remote-room-1",
+              project_id: "pending-project",
+              sender_kind: "user",
+              sender_id: "remote-user",
+              sender_user_id: "remote-user",
+              mentions: [{ user_id: "local-user" }],
+              text: "remote only",
+              at: 900,
+            },
+          ],
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (init?.method === "POST") {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected remote room request", { status: 500 });
+    });
+    const syncConfig = createLocalSyncConfigStore({
+      dataDir,
+      env: {
+        CLASH_REMOTE_LORO_URL: "https://api.example.com",
+        CLASH_REMOTE_LORO_TOKEN: "token-1",
+      },
+      fetch: fetchMock,
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Sync Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "local-room-1",
+        text: "local only",
+        mentions: [{ user_id: "remote-user" }],
+      }),
+    });
+    expect(posted.status).toBe(200);
+
+    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    expect(synced.status).toBe(200);
+    expect(await synced.json()).toMatchObject({
+      sync: {
+        mode: "cloud-sync",
+        remote_room: { enabled: true, status: "mirrored" },
+      },
+      plan: {
+        exportedIds: ["local-room-1"],
+        importedIds: ["remote-room-1"],
+        matchedIds: [],
+        conflicts: [],
+      },
+      mutation: {
+        operation: "room_sync",
+        entity: { kind: "room", id: project.id },
+        forced: false,
+        accepted: true,
+        resultEntityId: project.id,
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://api.example.com/api/v1/projects/${encodeURIComponent(project.id)}/room/messages`,
+      expect.objectContaining({ method: "GET" }),
+    );
+    const remotePost = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(remotePost).toBeTruthy();
+    expect(remotePost?.[0]).toBe(
+      `https://api.example.com/api/v1/projects/${encodeURIComponent(project.id)}/room/messages`,
+    );
+    expect(JSON.parse(String(remotePost?.[1]?.body))).toEqual({
+      id: "local-room-1",
+      sender_kind: "user",
+      sender_id: "local-user",
+      sender_user_id: "local-user",
+      text: "local only",
+      mentions: [{ user_id: "remote-user" }],
+    });
+    const remotePostHeaders = remotePost?.[1]?.headers as Headers;
+    expect(remotePostHeaders.get("authorization")).toBe("Bearer token-1");
+
+    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
+    expect(await listed.json()).toMatchObject({
+      sync: {
+        mode: "cloud-sync",
+        remote_room: { enabled: true, status: "pending" },
+      },
+      messages: expect.arrayContaining([
+        expect.objectContaining({ id: "local-room-1", text: "local only" }),
+        expect.objectContaining({
+          id: "remote-room-1",
+          sender_id: "remote-user",
+          sender_user_id: "remote-user",
+          text: "remote only",
+        }),
+      ]),
+    });
+  });
+
+  it("rejects explicit room sync conflicts without overwriting local rows", async () => {
+    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
+      if (init?.method === "GET") {
+        return new Response(JSON.stringify({
+          messages: [
+            {
+              id: "room-conflict",
+              project_id: "ignored-project",
+              sender_kind: "user",
+              sender_id: "remote-user",
+              sender_user_id: "remote-user",
+              mentions: [],
+              text: "remote text",
+              at: 1000,
+            },
+          ],
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("unexpected remote room write", { status: 500 });
+    });
+    const syncConfig = createLocalSyncConfigStore({
+      dataDir,
+      env: {
+        CLASH_REMOTE_LORO_URL: "https://api.example.com",
+        CLASH_REMOTE_LORO_TOKEN: "token-1",
+      },
+      fetch: fetchMock,
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Conflict Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "room-conflict",
+        text: "local text",
+      }),
+    });
+    expect(posted.status).toBe(200);
+
+    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    expect(synced.status).toBe(409);
+    expect(await synced.json()).toMatchObject({
+      error: "room sync conflict",
+      sync: {
+        mode: "cloud-sync",
+        remote_room: {
+          enabled: true,
+          status: "failed",
+          error: "room sync conflict",
+        },
+      },
+      plan: {
+        exportedIds: [],
+        importedIds: [],
+        matchedIds: [],
+        conflicts: [{ id: "room-conflict", reason: "content-mismatch" }],
+      },
+      mutation: {
+        operation: "room_sync",
+        entity: { kind: "room", id: project.id },
+        forced: false,
+        accepted: false,
+        error: "room sync conflict",
+      },
+    });
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+
+    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
+    expect(await listed.json()).toMatchObject({
+      messages: [{ id: "room-conflict", text: "local text" }],
     });
   });
 

@@ -30,7 +30,7 @@ import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 const ROOM_BASE = '/api/v1/projects';
 
-export type RoomSyncStatus = 'disabled' | 'imported' | 'mirrored' | 'failed';
+export type RoomSyncStatus = 'disabled' | 'pending' | 'imported' | 'mirrored' | 'failed';
 
 export interface RoomSyncMeta {
   mode: 'local-only' | 'cloud-sync';

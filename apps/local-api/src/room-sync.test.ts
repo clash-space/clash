@@ -66,6 +66,7 @@ describe("createHttpRemoteRoomSync", () => {
       text: "ping",
       sender_kind: "agent",
       sender_id: "agent-1",
+      sender_user_id: "local-user",
       mentions: [{ agent_member_id: "agent-2" }],
     });
 
@@ -78,6 +79,7 @@ describe("createHttpRemoteRoomSync", () => {
           text: "ping",
           sender_kind: "agent",
           sender_id: "agent-1",
+          sender_user_id: "local-user",
           mentions: [{ agent_member_id: "agent-2" }],
         }),
       }),

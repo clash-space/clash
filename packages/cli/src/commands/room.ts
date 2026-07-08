@@ -17,6 +17,7 @@
  * Subcommands:
  *   say <text>            POST a message as the current agent
  *   read [--limit N]      GET recent messages (newest first)
+ *   sync                  Explicitly mirror local/remote room messages
  */
 
 import { Command } from "commander";
@@ -40,7 +41,25 @@ interface RoomSyncMeta {
   mode: "local-only" | "cloud-sync";
   remote_room: {
     enabled: boolean;
-    status: "disabled" | "imported" | "mirrored" | "failed";
+    status: "disabled" | "pending" | "imported" | "mirrored" | "failed";
+    error?: string;
+  };
+}
+
+interface RoomSyncPlan {
+  exportedIds: string[];
+  importedIds: string[];
+  matchedIds: string[];
+  conflicts: Array<{ id: string; reason: string }>;
+}
+
+interface RoomSyncResult {
+  sync: RoomSyncMeta;
+  plan: RoomSyncPlan;
+  mutation?: {
+    operation: "room_sync";
+    accepted: boolean;
+    resultEntityId?: string;
     error?: string;
   };
 }
@@ -144,4 +163,25 @@ roomCommand
       const tag = m.sender_kind === "agent" ? "agent" : "user";
       console.log(`[${t}] ${tag}/${m.sender_id.slice(0, 12)}: ${m.text}`);
     }
+  });
+
+roomCommand
+  .command("sync")
+  .description("Explicitly mirror local and configured remote room messages")
+  .option("--json", "Output the room sync result as JSON")
+  .action(async (options: { json?: boolean }) => {
+    const pid = projectId();
+    const data = await apiJson<RoomSyncResult>(`/api/v1/projects/${pid}/room/sync`, {
+      method: "POST",
+    }).catch((error) => failRoomCommand(error, pid));
+
+    if (isJsonMode(options)) {
+      printJson(data);
+      return;
+    }
+
+    console.log(
+      `synced room: exported=${data.plan.exportedIds.length} ` +
+      `imported=${data.plan.importedIds.length} matched=${data.plan.matchedIds.length}`,
+    );
   });

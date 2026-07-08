@@ -252,15 +252,23 @@ Current evidence:
 - local-api room sync tests now cover deterministic mirror planning: local-only
   export, remote-only import, already-mirrored same-id rows, and same-id content
   conflicts.
+- local-api app tests cover explicit room sync metadata, remote-only import,
+  local-only export, accepted `room_sync` mutation records, and same-id conflict
+  rejection without local overwrite.
+- `clash room sync --json` exposes the mirror action to agents with
+  exported/imported/matched/conflict ids and accepted/rejected mutation
+  evidence.
 
 v1 decision:
 
 - Keep local room as project-visible SQLite rows.
 - Keep cloud room routes compatible.
-- Treat cloud sync as a separate boundary with explicit conflict/idempotency
-  and mirror-sequencing tests before exposing it as synced.
-- Do not expose `remote_room.enabled=true` until that planner is wired to an
-  admission-controlled sync loop and conflict recovery surface.
+- Treat cloud sync as a separate boundary with explicit conflict/idempotency and
+  mirror-sequencing tests. Cloud-configured local room reads report
+  `remote_room.enabled=true` with `status=pending`; only explicit sync action
+  results can report `mirrored` or `failed`.
+- Do not introduce background room sync until admission controls, conflict
+  recovery, and live room parity are designed and tested.
 
 Reason:
 

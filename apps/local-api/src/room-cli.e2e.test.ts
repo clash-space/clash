@@ -176,6 +176,11 @@ describe("local room CLI e2e", () => {
           },
         ],
       });
+
+      const sync = await runCli(["room", "sync", "--json"]);
+      expect(sync.status, formatCliResult(sync)).toBe(1);
+      expect(sync.stderr).toContain("API error 409");
+      expect(sync.stderr).toContain("remote room sync is not configured");
     } finally {
       await server.close();
     }

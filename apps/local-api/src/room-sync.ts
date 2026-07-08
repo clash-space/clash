@@ -20,6 +20,7 @@ export interface RemoteRoomMessageInput {
   mentions: RemoteRoomMention[];
   sender_kind: "user" | "agent";
   sender_id: string;
+  sender_user_id: string;
 }
 
 export interface RemoteRoomSync {

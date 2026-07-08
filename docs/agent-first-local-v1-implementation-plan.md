@@ -564,11 +564,15 @@ Current status:
   server and drives `clash room say/read` through a spawned CLI process, proving
   the agent-facing command path can post/read local-only room messages and see
   the response-level sync metadata.
+- Local-api exposes explicit `POST /api/v1/projects/:projectId/room/sync`, and
+  `clash room sync --json` gives agents an auditable mirror action. Cloud
+  configured reads report room sync as `pending`; explicit action results can
+  report `mirrored` or `failed`.
 
 Remaining gap:
 
-- The planner still needs a real sync loop, mirror admission gates, conflict
-  recovery UI, and live room UI parity before remote room sync can be exposed.
+- Background room sync, mirror admission gates, conflict recovery UI, and live
+  room UI parity are still incomplete.
 
 Minimum tests:
 
@@ -1140,7 +1144,8 @@ Storage layout guardrails
 
 Do not implement text projection without CAS.
 Do not implement asset editing without copy-on-write.
-Do not expose local room as cloud-synced until the sync boundary is real.
+Do not present `remote_room.status=pending` as synced; room mirroring must stay
+an explicit action until background admission and conflict recovery are real.
 
 ## Done Criteria For v1 Local/Agent-First
 

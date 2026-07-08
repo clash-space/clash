@@ -815,6 +815,12 @@ Local room create is append-first: a client-provided message id may replay only
 the same normalized sender/text/mentions payload. Reusing the id for different
 content is a conflict, not an update.
 
+Cloud-configured local rooms expose sync as an explicit action, not an implicit
+background write. Reads can report `remote_room.status=pending`; only
+`clash room sync` / `POST /api/v1/projects/:projectId/room/sync` may import
+remote-only rows, export local-only rows, or report `mirrored`/`failed` with a
+host mutation envelope.
+
 ### P1: Host-owned mutation API
 
 CLI and local agents should converge on a host-owned mutation API:
@@ -869,7 +875,8 @@ That is simple and probably acceptable for v1 alpha, but internal files
 4. Is `room` removed or kept?
 
    Keep room as project chat. Remove only legacy room assumptions if any.
-   Room is not agent trace; it is the shared project conversation.
+   Room is not agent trace; it is the shared project conversation. Remote room
+   mirroring is explicit and conflict-aware in v1, not background sync.
 
 5. How much of an agent session is syncable?
 
