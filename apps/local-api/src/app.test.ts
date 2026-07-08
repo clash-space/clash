@@ -2135,6 +2135,245 @@ describe("local API app", () => {
     });
   });
 
+  it("requires receipt-bearing canvas node reads before agent node writes", async () => {
+    const projectId = "project-node-cas";
+    const doc = new LoroDoc();
+    doc.getMap("nodes").set("script", {
+      type: "text",
+      data: { label: "Script", content: "before" },
+    });
+    doc.getMap("nodes").set("action", {
+      type: "image_gen",
+      data: { prompt: "Use script", status: "completed" },
+    });
+    doc.getMap("nodes").set("output", {
+      type: "image",
+      data: { assetId: "asset-output", status: "completed" },
+    });
+    doc.getMap("nodes").set("loose", {
+      type: "text",
+      data: { label: "Loose", content: "draft" },
+    });
+    doc.getMap("edges").set("script-action", {
+      source: "script",
+      target: "action",
+      type: "reference",
+    });
+    doc.getMap("edges").set("action-output", {
+      source: "action",
+      target: "output",
+      type: "materialized",
+    });
+    await new FileReplicaStore(join(dataDir, "projects")).saveSnapshotAtomic(projectId, doc.export({ mode: "snapshot" }));
+
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const scriptBaseToken = canvasNodeReadToken(new Canvas(doc, () => {}).readNode("script")!);
+
+    const bareUpdate = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/script`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: "after",
+        actorClientType: "agent",
+        ifMatch: scriptBaseToken,
+      }),
+    });
+    expect(bareUpdate.status).toBe(409);
+    expect(await bareUpdate.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas update read receipt for agent"),
+      mutation: {
+        operation: "canvas_update",
+        entity: { kind: "canvas-node", id: "script" },
+        expectedReadToken: scriptBaseToken,
+        beforeReadToken: scriptBaseToken,
+        accepted: false,
+      },
+    });
+
+    const scriptRead = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/script`);
+    expect(scriptRead.status).toBe(200);
+    const scriptReadJson = await scriptRead.json() as { readToken: string };
+    expect(scriptReadJson.readToken).toMatch(NODE_RECEIPT_READ_TOKEN_RE);
+    expect(baseReadToken(scriptReadJson.readToken)).toBe(scriptBaseToken);
+
+    const blockedContentPatch = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/script`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        content: "after",
+        actorClientType: "agent",
+        ifMatch: scriptReadJson.readToken,
+      }),
+    });
+    expect(blockedContentPatch.status).toBe(409);
+    expect(await blockedContentPatch.json()).toMatchObject({
+      error: expect.stringContaining("Refusing to patch referenced text content"),
+      mutation: {
+        operation: "canvas_update",
+        entity: { kind: "canvas-node", id: "script" },
+        expectedReadToken: scriptReadJson.readToken,
+        beforeReadToken: scriptBaseToken,
+        accepted: false,
+      },
+    });
+
+    const looseRead = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/loose`);
+    expect(looseRead.status).toBe(200);
+    const looseReadJson = await looseRead.json() as { readToken: string };
+    expect(looseReadJson.readToken).toMatch(NODE_RECEIPT_READ_TOKEN_RE);
+
+    const updated = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/loose`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        label: "Loose v2",
+        content: "after",
+        actorClientType: "agent",
+        ifMatch: looseReadJson.readToken,
+      }),
+    });
+    expect(updated.status).toBe(200);
+    const updatedJson = await updated.json() as { readToken: string; node?: { data?: Record<string, unknown> }; mutation?: any };
+    expect(updatedJson.readToken).toMatch(NODE_RECEIPT_READ_TOKEN_RE);
+    expect(updatedJson.readToken).not.toBe(looseReadJson.readToken);
+    expect(updatedJson).toMatchObject({
+      updated: true,
+      nodeId: "loose",
+      node: { data: { label: "Loose v2", content: "after" } },
+      mutation: {
+        operation: "canvas_update",
+        entity: { kind: "canvas-node", id: "loose" },
+        expectedReadToken: looseReadJson.readToken,
+        beforeReadToken: baseReadToken(looseReadJson.readToken),
+        afterReadToken: updatedJson.readToken,
+        accepted: true,
+        resultEntityId: "loose",
+      },
+    });
+
+    const staleUpdate = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/loose`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        label: "stale",
+        actorClientType: "agent",
+        ifMatch: looseReadJson.readToken,
+      }),
+    });
+    expect(staleUpdate.status).toBe(409);
+    expect(await staleUpdate.json()).toMatchObject({
+      error: expect.stringContaining("Stale canvas update rejected"),
+      mutation: {
+        operation: "canvas_update",
+        entity: { kind: "canvas-node", id: "loose" },
+        expectedReadToken: looseReadJson.readToken,
+        beforeReadToken: baseReadToken(updatedJson.readToken),
+        accepted: false,
+      },
+    });
+
+    const referencedDelete = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/script`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorClientType: "agent",
+        ifMatch: scriptReadJson.readToken,
+      }),
+    });
+    expect(referencedDelete.status).toBe(409);
+    expect(await referencedDelete.json()).toMatchObject({
+      error: expect.stringContaining("Refusing to delete referenced node script"),
+      mutation: {
+        operation: "canvas_delete",
+        entity: { kind: "canvas-node", id: "script" },
+        expectedReadToken: scriptReadJson.readToken,
+        beforeReadToken: scriptBaseToken,
+        accepted: false,
+      },
+    });
+
+    const bareDelete = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/loose`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorClientType: "agent",
+        ifMatch: baseReadToken(updatedJson.readToken),
+      }),
+    });
+    expect(bareDelete.status).toBe(409);
+    expect(await bareDelete.json()).toMatchObject({
+      error: expect.stringContaining("Missing canvas delete read receipt for agent"),
+      mutation: {
+        operation: "canvas_delete",
+        entity: { kind: "canvas-node", id: "loose" },
+        expectedReadToken: baseReadToken(updatedJson.readToken),
+        beforeReadToken: baseReadToken(updatedJson.readToken),
+        accepted: false,
+      },
+    });
+
+    const deleted = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/loose`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorClientType: "agent",
+        ifMatch: updatedJson.readToken,
+      }),
+    });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toMatchObject({
+      deleted: true,
+      nodeId: "loose",
+      mutation: {
+        operation: "canvas_delete",
+        entity: { kind: "canvas-node", id: "loose" },
+        expectedReadToken: updatedJson.readToken,
+        beforeReadToken: baseReadToken(updatedJson.readToken),
+        accepted: true,
+        resultEntityId: "loose",
+      },
+    });
+
+    const updateAudit = await app.request("/api/v1/mutation-audit?operation=canvas_update&entityId=loose");
+    expect(updateAudit.status).toBe(200);
+    const updateAuditJson = await updateAudit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(updateAuditJson.records).toHaveLength(1);
+    expect(updateAuditJson.records[0]).toMatchObject({
+      operation: "canvas_update",
+      entity: { kind: "canvas-node", id: "loose" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "canvas node update",
+    });
+    expect(JSON.stringify(updateAuditJson.records[0].mutation)).not.toContain("receipt");
+    expect(updateAuditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(updateAuditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
+    expect(updateAuditJson.records[0].mutation).not.toHaveProperty("afterReadToken");
+
+    const deleteAudit = await app.request("/api/v1/mutation-audit?operation=canvas_delete&entityId=loose");
+    expect(deleteAudit.status).toBe(200);
+    const deleteAuditJson = await deleteAudit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(deleteAuditJson.records).toHaveLength(1);
+    expect(deleteAuditJson.records[0]).toMatchObject({
+      operation: "canvas_delete",
+      entity: { kind: "canvas-node", id: "loose" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "canvas node delete",
+    });
+    expect(JSON.stringify(deleteAuditJson.records[0].mutation)).not.toContain("receipt");
+    expect(deleteAuditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(deleteAuditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
+    expect(deleteAuditJson.records[0].mutation).not.toHaveProperty("afterReadToken");
+
+    const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
+    const canvas = new Canvas(recovered, () => {});
+    expect(canvas.readNode("script")?.data.content).toBe("before");
+    expect(canvas.readNode("loose")).toBeNull();
+  });
+
   it("requires receipt-bearing canvas edge reads before agent edge writes", async () => {
     const projectId = "project-edge-cas";
     const doc = new LoroDoc();

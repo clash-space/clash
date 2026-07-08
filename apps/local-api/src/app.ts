@@ -19,6 +19,7 @@ import {
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
+  canvasDownstreamTargets,
   createMediaAssetCowNodeData,
   hostMutationRejected,
   hostMutationSucceeded,
@@ -46,6 +47,8 @@ import {
   validateCanvasEdgeReadProof,
   validateCanvasEdgesReadProof,
   validateCanvasReadProof,
+  validateCanvasDelete,
+  validateCanvasNodePatch,
   validateAgentReadProof,
   validateHostMutationEnvelope,
   type AgentReadReceiptProof,
@@ -1961,6 +1964,37 @@ function canvasEdgePatchFromBody(body: Record<string, unknown>): Record<string, 
     if (value !== undefined) patch[key] = value;
   }
   return patch;
+}
+
+function canvasNodeDataPatchFromBody(body: Record<string, unknown>):
+  | { ok: true; patch: Record<string, unknown> }
+  | { ok: false; error: string } {
+  const patch: Record<string, unknown> = {};
+  const nestedData = body.data;
+  if (nestedData !== undefined) {
+    if (!isRecord(nestedData)) return { ok: false, error: "Invalid node data patch" };
+    for (const [key, value] of Object.entries(nestedData)) {
+      if (value !== undefined) patch[key] = value;
+    }
+  }
+
+  for (const [key, value] of Object.entries(body)) {
+    if (
+      key === "actorClientType" ||
+      key === "ifMatch" ||
+      key === "force" ||
+      key === "id" ||
+      key === "nodeId" ||
+      key === "projectId" ||
+      key === "readToken" ||
+      key === "data"
+    ) {
+      continue;
+    }
+    if (value !== undefined) patch[key] = value;
+  }
+
+  return { ok: true, patch };
 }
 
 function localApiAssetReadReceipt(readToken: string): string {
@@ -5133,6 +5167,242 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       node,
       readToken: canvasNodeReceiptReadToken(node),
     });
+  });
+
+  app.patch("/api/v1/projects/:projectId/canvas/nodes/:nodeId", async (c) => {
+    const projectId = c.req.param("projectId");
+    const nodeId = c.req.param("nodeId");
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const envelope = {
+      operation: "canvas_update",
+      entity: { kind: "canvas-node", id: nodeId },
+      expectedReadToken: preconditions.expectedReadToken,
+      forced: preconditions.force,
+    };
+    const parsedPatch = canvasNodeDataPatchFromBody(body);
+    if (!parsedPatch.ok) {
+      return c.json({
+        error: parsedPatch.error,
+        mutation: hostMutationRejected(envelope, parsedPatch.error),
+      }, 400);
+    }
+    const patch = parsedPatch.patch;
+    if (Object.keys(patch).length === 0) {
+      const message = "Provide at least one node data field to update";
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected(envelope, message),
+      }, 400);
+    }
+
+    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
+      const canvas = new Canvas(doc, () => {});
+      const node = canvas.readNode(nodeId);
+      if (!node) {
+        const message = `Node not found: ${nodeId}`;
+        return {
+          save: false,
+          value: {
+            status: 404 as const,
+            body: {
+              error: message,
+              mutation: hostMutationRejected(envelope, message),
+            },
+          },
+        };
+      }
+
+      const currentReadToken = canvasNodeReadToken(node);
+      const readProof = validateCanvasReadProof({
+        operation: "update",
+        actorClientType: preconditions.actorClientType,
+        node,
+        expectedReadToken: preconditions.expectedReadToken,
+        requireReceipt: true,
+        readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
+        force: preconditions.force,
+      });
+      const edges = canvasGuardrailEdges(listCanvasReadProofEdges(doc));
+      const patchGuard = validateCanvasNodePatch({
+        nodeId,
+        node: { type: node.type, data: node.data as Record<string, unknown> },
+        nodes: readCanvasGuardrailNodes(doc),
+        edges,
+        patch,
+      });
+      const hostMutation = validateHostMutationEnvelope({
+        operation: "canvas_update",
+        entity: { kind: "canvas-node", id: nodeId },
+        expectedReadToken: preconditions.expectedReadToken,
+        currentReadToken,
+        force: preconditions.force,
+        guard: readProof.ok ? patchGuard : readProof,
+      });
+      if (!hostMutation.ok) {
+        return {
+          save: false,
+          value: {
+            status: 409 as const,
+            body: {
+              error: hostMutation.error,
+              mutation: hostMutation.mutation,
+            },
+          },
+        };
+      }
+
+      const ok = canvas.updateNode(nodeId, patch);
+      if (!ok) {
+        const message = `Node not found: ${nodeId}`;
+        return {
+          save: false,
+          value: {
+            status: 404 as const,
+            body: {
+              error: message,
+              mutation: hostMutationRejected(hostMutation.envelope, message),
+            },
+          },
+        };
+      }
+      const updatedNode = canvas.readNode(nodeId);
+      const afterReadToken = updatedNode ? canvasNodeReceiptReadToken(updatedNode) : undefined;
+      return {
+        value: {
+          status: 200 as const,
+          body: {
+            updated: true,
+            nodeId,
+            ...(updatedNode ? { node: updatedNode } : {}),
+            ...(afterReadToken ? { readToken: afterReadToken } : {}),
+            mutation: hostMutationSucceeded(hostMutation.envelope, {
+              resultEntityId: nodeId,
+              afterReadToken,
+            }),
+            ...(preconditions.force ? { forced: true } : {}),
+          },
+        },
+      };
+    });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "canvas node update",
+        }));
+      }
+    }
+    return c.json(result.body, result.status);
+  });
+
+  app.delete("/api/v1/projects/:projectId/canvas/nodes/:nodeId", async (c) => {
+    const projectId = c.req.param("projectId");
+    const nodeId = c.req.param("nodeId");
+    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const envelope = {
+      operation: "canvas_delete",
+      entity: { kind: "canvas-node", id: nodeId },
+      expectedReadToken: preconditions.expectedReadToken,
+      forced: preconditions.force,
+    };
+    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
+      const canvas = new Canvas(doc, () => {});
+      const node = canvas.readNode(nodeId);
+      if (!node) {
+        const message = `Node not found: ${nodeId}`;
+        return {
+          save: false,
+          value: {
+            status: 404 as const,
+            body: {
+              error: message,
+              mutation: hostMutationRejected(envelope, message),
+            },
+          },
+        };
+      }
+
+      const currentReadToken = canvasNodeReadToken(node);
+      const readProof = validateCanvasReadProof({
+        operation: "delete",
+        actorClientType: preconditions.actorClientType,
+        node,
+        expectedReadToken: preconditions.expectedReadToken,
+        requireReceipt: true,
+        readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
+        force: preconditions.force,
+      });
+      const edges = canvasGuardrailEdges(listCanvasReadProofEdges(doc));
+      const deleteGuard = validateCanvasDelete({
+        nodeId,
+        edges,
+        force: preconditions.force,
+      });
+      const hostMutation = validateHostMutationEnvelope({
+        operation: "canvas_delete",
+        entity: { kind: "canvas-node", id: nodeId },
+        expectedReadToken: preconditions.expectedReadToken,
+        currentReadToken,
+        force: preconditions.force,
+        guard: readProof.ok ? deleteGuard : readProof,
+      });
+      if (!hostMutation.ok) {
+        return {
+          save: false,
+          value: {
+            status: 409 as const,
+            body: {
+              error: hostMutation.error,
+              mutation: hostMutation.mutation,
+            },
+          },
+        };
+      }
+
+      const orphanedReferences = canvasDownstreamTargets(nodeId, edges);
+      const ok = canvas.deleteNode(nodeId);
+      if (!ok) {
+        const message = `Node not found: ${nodeId}`;
+        return {
+          save: false,
+          value: {
+            status: 404 as const,
+            body: {
+              error: message,
+              mutation: hostMutationRejected(hostMutation.envelope, message),
+            },
+          },
+        };
+      }
+      return {
+        value: {
+          status: 200 as const,
+          body: {
+            deleted: true,
+            nodeId,
+            mutation: hostMutationSucceeded(hostMutation.envelope, {
+              resultEntityId: nodeId,
+            }),
+            ...(preconditions.force ? { forced: true, orphanedReferences } : {}),
+          },
+        },
+      };
+    });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "canvas node delete",
+        }));
+      }
+    }
+    return c.json(result.body, result.status);
   });
 
   app.get("/api/v1/projects/:projectId/canvas/edges", async (c) => {

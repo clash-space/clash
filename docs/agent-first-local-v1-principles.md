@@ -565,8 +565,9 @@ Every projection apply must require a lock unless `--force` is present.
 `--force` should be explicit and logged as intentional overwrite. The local
 API now has first-pass sanitized mutation audit evidence for v1/legacy project
 delete plus project restore/purge, session delete, provider account delete,
-provider OAuth delete, asset-ref delete, asset GC delete, and local-api canvas edge delete,
-readable through `GET /api/v1/mutation-audit` and `clash audit mutations`;
+provider OAuth delete, asset-ref delete, asset GC delete, local-api canvas node
+update/delete, and local-api canvas edge delete, readable through
+`GET /api/v1/mutation-audit` and `clash audit mutations`;
 broader forced projection/daemon/Web direct writes should join the same
 audit model instead of generating unbounded generic edit logs. In shared
 projects it may need stronger permission or UI confirmation.

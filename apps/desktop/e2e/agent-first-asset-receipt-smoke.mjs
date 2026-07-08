@@ -1819,6 +1819,160 @@ async function main() {
     (error) => recordCheck("asset GC smoke data dir remains intact", false, String(error)),
   );
 
+  const nodeAuditProjectId = "project-node-audit-smoke";
+  await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(nodeAuditProjectId, (doc) => {
+    doc.getMap("nodes").set("node-script", { type: "text", data: { label: "Script", content: "before" } });
+    doc.getMap("nodes").set("node-action", { type: "image_gen", data: { prompt: "use script", status: "completed" } });
+    doc.getMap("nodes").set("node-output", { type: "image", data: { assetId: "node-output-asset", status: "completed" } });
+    doc.getMap("nodes").set("node-loose", { type: "text", data: { label: "Loose", content: "draft" } });
+    doc.getMap("edges").set("node-script-node-action", {
+      source: "node-script",
+      target: "node-action",
+      type: "reference",
+    });
+    doc.getMap("edges").set("node-action-node-output", {
+      source: "node-action",
+      target: "node-output",
+      type: "materialized",
+    });
+    return { value: null };
+  });
+
+  const scriptReadResponse = await request(`/api/v1/projects/${nodeAuditProjectId}/canvas/nodes/node-script`);
+  const scriptRead = await parseJsonResponse(scriptReadResponse);
+  recordCheck(
+    "canvas node read returns receipt read token",
+    scriptReadResponse.status === 200 && hasReceipt(scriptRead.readToken, "node"),
+    JSON.stringify(scriptRead),
+    { readToken: scriptRead.readToken },
+  );
+
+  const referencedNodePatchResponse = await request(`/api/v1/projects/${nodeAuditProjectId}/canvas/nodes/node-script`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      actorClientType: "agent",
+      ifMatch: scriptRead.readToken,
+      content: "after",
+    }),
+  });
+  const referencedNodePatch = await parseJsonResponse(referencedNodePatchResponse);
+  recordCheck(
+    "canvas node content update with downstream reference is rejected",
+    referencedNodePatchResponse.status === 409 &&
+      /Refusing to patch referenced text content/.test(referencedNodePatch.error ?? "") &&
+      referencedNodePatch.mutation?.operation === "canvas_update" &&
+      referencedNodePatch.mutation?.accepted === false,
+    JSON.stringify(referencedNodePatch),
+    { mutation: referencedNodePatch.mutation },
+  );
+
+  const looseReadResponse = await request(`/api/v1/projects/${nodeAuditProjectId}/canvas/nodes/node-loose`);
+  const looseRead = await parseJsonResponse(looseReadResponse);
+  recordCheck(
+    "canvas node loose read returns receipt read token",
+    looseReadResponse.status === 200 && hasReceipt(looseRead.readToken, "node"),
+    JSON.stringify(looseRead),
+    { readToken: looseRead.readToken },
+  );
+
+  const bareNodeUpdateResponse = await request(`/api/v1/projects/${nodeAuditProjectId}/canvas/nodes/node-loose`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      actorClientType: "agent",
+      ifMatch: baseReadToken(looseRead.readToken),
+      label: "Bare CAS rejected",
+    }),
+  });
+  const bareNodeUpdate = await parseJsonResponse(bareNodeUpdateResponse);
+  recordCheck(
+    "canvas node update with bare CAS token is rejected",
+    bareNodeUpdateResponse.status === 409 &&
+      /Missing canvas update read receipt for agent/.test(bareNodeUpdate.error ?? "") &&
+      bareNodeUpdate.mutation?.expectedReadToken === baseReadToken(looseRead.readToken),
+    JSON.stringify(bareNodeUpdate),
+    { mutation: bareNodeUpdate.mutation },
+  );
+
+  const nodeUpdateResponse = await request(`/api/v1/projects/${nodeAuditProjectId}/canvas/nodes/node-loose`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      actorClientType: "agent",
+      ifMatch: looseRead.readToken,
+      label: "Loose v2",
+      content: "after",
+    }),
+  });
+  const nodeUpdate = await parseJsonResponse(nodeUpdateResponse);
+  recordCheck(
+    "canvas node update with receipt is accepted",
+    nodeUpdateResponse.status === 200 &&
+      hasReceipt(nodeUpdate.readToken, "node") &&
+      nodeUpdate.node?.data?.label === "Loose v2" &&
+      nodeUpdate.node?.data?.content === "after" &&
+      nodeUpdate.mutation?.operation === "canvas_update" &&
+      nodeUpdate.mutation?.expectedReadToken === looseRead.readToken &&
+      nodeUpdate.mutation?.beforeReadToken === baseReadToken(looseRead.readToken) &&
+      nodeUpdate.mutation?.afterReadToken === nodeUpdate.readToken,
+    JSON.stringify(nodeUpdate),
+    { mutation: nodeUpdate.mutation, readToken: nodeUpdate.readToken },
+  );
+
+  const nodeDeleteResponse = await request(`/api/v1/projects/${nodeAuditProjectId}/canvas/nodes/node-loose`, {
+    method: "DELETE",
+    body: JSON.stringify({
+      actorClientType: "agent",
+      ifMatch: nodeUpdate.readToken,
+    }),
+  });
+  const nodeDelete = await parseJsonResponse(nodeDeleteResponse);
+  recordCheck(
+    "canvas node delete with receipt is accepted",
+    nodeDeleteResponse.status === 200 &&
+      nodeDelete.deleted === true &&
+      nodeDelete.mutation?.operation === "canvas_delete" &&
+      nodeDelete.mutation?.expectedReadToken === nodeUpdate.readToken &&
+      nodeDelete.mutation?.beforeReadToken === baseReadToken(nodeUpdate.readToken) &&
+      nodeDelete.mutation?.accepted === true,
+    JSON.stringify(nodeDelete),
+    { mutation: nodeDelete.mutation },
+  );
+
+  const nodeUpdateAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_update&entityId=node-loose");
+  const nodeUpdateAudit = await parseJsonResponse(nodeUpdateAuditResponse);
+  const nodeUpdateAuditRecord = nodeUpdateAudit.records?.[0];
+  recordCheck(
+    "canvas node update writes sanitized local mutation audit evidence",
+    nodeUpdateAuditResponse.status === 200 &&
+      nodeUpdateAudit.records?.length === 1 &&
+      nodeUpdateAuditRecord.operation === "canvas_update" &&
+      nodeUpdateAuditRecord.entity?.id === "node-loose" &&
+      nodeUpdateAuditRecord.accepted === true &&
+      nodeUpdateAuditRecord.reason === "canvas node update" &&
+      !JSON.stringify(nodeUpdateAuditRecord.mutation ?? {}).includes("receipt") &&
+      nodeUpdateAuditRecord.mutation?.expectedReadToken == null &&
+      nodeUpdateAuditRecord.mutation?.beforeReadToken == null &&
+      nodeUpdateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(nodeUpdateAudit),
+  );
+
+  const nodeDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_delete&entityId=node-loose");
+  const nodeDeleteAudit = await parseJsonResponse(nodeDeleteAuditResponse);
+  const nodeDeleteAuditRecord = nodeDeleteAudit.records?.[0];
+  recordCheck(
+    "canvas node delete writes sanitized local mutation audit evidence",
+    nodeDeleteAuditResponse.status === 200 &&
+      nodeDeleteAudit.records?.length === 1 &&
+      nodeDeleteAuditRecord.operation === "canvas_delete" &&
+      nodeDeleteAuditRecord.entity?.id === "node-loose" &&
+      nodeDeleteAuditRecord.accepted === true &&
+      nodeDeleteAuditRecord.reason === "canvas node delete" &&
+      !JSON.stringify(nodeDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
+      nodeDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      nodeDeleteAuditRecord.mutation?.beforeReadToken == null &&
+      nodeDeleteAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(nodeDeleteAudit),
+  );
+
   const edgeAuditProjectId = "project-edge-audit-smoke";
   await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(edgeAuditProjectId, (doc) => {
     doc.getMap("nodes").set("edge-source", { type: "text", data: { label: "Edge source" } });
@@ -2576,6 +2730,13 @@ async function main() {
       assetGcFreshPlanReturned: checks.some((check) => check.name === "asset GC fresh dry-run sees current orphan plan" && check.status === "pass"),
       assetGcReceiptAccepted: checks.some((check) => check.name === "asset GC delete with dry-run receipt is accepted" && check.status === "pass"),
       assetGcAuditRecorded: checks.some((check) => check.name === "asset GC delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      canvasNodeReadReceiptReturned: checks.some((check) => check.name === "canvas node read returns receipt read token" && check.status === "pass"),
+      canvasNodeReferencedPatchRejected: checks.some((check) => check.name === "canvas node content update with downstream reference is rejected" && check.status === "pass"),
+      canvasNodeBareCasRejected: checks.some((check) => check.name === "canvas node update with bare CAS token is rejected" && check.status === "pass"),
+      canvasNodeUpdateReceiptAccepted: checks.some((check) => check.name === "canvas node update with receipt is accepted" && check.status === "pass"),
+      canvasNodeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas node delete with receipt is accepted" && check.status === "pass"),
+      canvasNodeUpdateAuditRecorded: checks.some((check) => check.name === "canvas node update writes sanitized local mutation audit evidence" && check.status === "pass"),
+      canvasNodeDeleteAuditRecorded: checks.some((check) => check.name === "canvas node delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       canvasEdgeListReceiptReturned: checks.some((check) => check.name === "canvas edge list returns graph and edge receipt read tokens" && check.status === "pass"),
       canvasEdgeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas edge delete with receipt is accepted" && check.status === "pass"),
       canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
