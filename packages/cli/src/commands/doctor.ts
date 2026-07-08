@@ -4,6 +4,10 @@ import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  buildProjectRecoveryPolicy,
+  type ProjectRecoveryPolicy,
+} from "@clash/shared-runtime";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { isJsonMode, printJson } from "../lib/output";
 import {
@@ -70,23 +74,7 @@ export interface SecondaryCanvasRecoveryCompareFile {
   sameBytes: boolean;
 }
 
-export interface SecondaryCanvasRecoveryPolicy {
-  scope: "local-canonical-replica";
-  collaborationMode: ProjectStatus["collaboration"]["mode"];
-  rawSyncMode: string;
-  roomAuthority: ProjectStatus["collaboration"]["roomAuthority"];
-  cloudProjectRoom: ProjectStatus["collaboration"]["cloudProjectRoom"];
-  syncReadinessStatus: ProjectStatus["collaboration"]["syncReadiness"]["status"];
-  localRestoreAllowed: boolean;
-  cloudStateIncluded: false;
-  cloudStateMutated: false;
-  requiresCloudConflictReview: boolean;
-  reason:
-    | "local-only-manual-review-required"
-    | "cloud-sync-local-replica-review-required"
-    | "shared-cloud-sequencer-restore-blocked"
-    | "sync-mode-unknown-local-replica-review-required";
-}
+export type SecondaryCanvasRecoveryPolicy = ProjectRecoveryPolicy;
 
 export interface SecondaryCanvasRecoveryCompareReport {
   schemaVersion: 1;
@@ -1265,65 +1253,7 @@ export async function listSecondaryCanvasRecoveries(options: {
 }
 
 function secondaryCanvasRecoveryPolicy(status: ProjectStatus): SecondaryCanvasRecoveryPolicy {
-  const collaboration = status.collaboration;
-  if (collaboration.mode === "shared") {
-    return {
-      scope: "local-canonical-replica",
-      collaborationMode: collaboration.mode,
-      rawSyncMode: collaboration.rawMode,
-      roomAuthority: collaboration.roomAuthority,
-      cloudProjectRoom: collaboration.cloudProjectRoom,
-      syncReadinessStatus: collaboration.syncReadiness.status,
-      localRestoreAllowed: false,
-      cloudStateIncluded: false,
-      cloudStateMutated: false,
-      requiresCloudConflictReview: true,
-      reason: "shared-cloud-sequencer-restore-blocked",
-    };
-  }
-  if (collaboration.mode === "synced") {
-    return {
-      scope: "local-canonical-replica",
-      collaborationMode: collaboration.mode,
-      rawSyncMode: collaboration.rawMode,
-      roomAuthority: collaboration.roomAuthority,
-      cloudProjectRoom: collaboration.cloudProjectRoom,
-      syncReadinessStatus: collaboration.syncReadiness.status,
-      localRestoreAllowed: true,
-      cloudStateIncluded: false,
-      cloudStateMutated: false,
-      requiresCloudConflictReview: true,
-      reason: "cloud-sync-local-replica-review-required",
-    };
-  }
-  if (collaboration.mode === "unknown") {
-    return {
-      scope: "local-canonical-replica",
-      collaborationMode: collaboration.mode,
-      rawSyncMode: collaboration.rawMode,
-      roomAuthority: collaboration.roomAuthority,
-      cloudProjectRoom: collaboration.cloudProjectRoom,
-      syncReadinessStatus: collaboration.syncReadiness.status,
-      localRestoreAllowed: false,
-      cloudStateIncluded: false,
-      cloudStateMutated: false,
-      requiresCloudConflictReview: true,
-      reason: "sync-mode-unknown-local-replica-review-required",
-    };
-  }
-  return {
-    scope: "local-canonical-replica",
-    collaborationMode: collaboration.mode,
-    rawSyncMode: collaboration.rawMode,
-    roomAuthority: collaboration.roomAuthority,
-    cloudProjectRoom: collaboration.cloudProjectRoom,
-    syncReadinessStatus: collaboration.syncReadiness.status,
-    localRestoreAllowed: true,
-    cloudStateIncluded: false,
-    cloudStateMutated: false,
-    requiresCloudConflictReview: false,
-    reason: "local-only-manual-review-required",
-  };
+  return buildProjectRecoveryPolicy(status);
 }
 
 async function collectSecondaryCanvasRecoveryInventory(status: ProjectStatus): Promise<{

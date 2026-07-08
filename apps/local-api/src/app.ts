@@ -4,7 +4,12 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
-import { buildProjectStatus, defaultRuntimeCapabilities } from "@clash/shared-runtime";
+import {
+  buildProjectRecoveryPolicy,
+  buildProjectStatus,
+  defaultRuntimeCapabilities,
+  type ProjectRecoveryPolicy,
+} from "@clash/shared-runtime";
 import {
   agentReadToken,
   agentReadReceiptToken,
@@ -81,7 +86,6 @@ import {
 import {
   createLocalSyncConfigStore,
   LocalSyncConfigError,
-  type PublicLocalSyncConfig,
   type LocalSyncConfigReadState,
   type LocalSyncConfigStore,
 } from "./sync-config.js";
@@ -782,67 +786,20 @@ function roomSyncAdmissionError(reason: RoomSyncAdmissionReason | null | undefin
     : "remote room sync is not configured";
 }
 
-interface ProjectRecoveryPolicy {
-  scope: "local-canonical-replica";
-  collaborationMode: "local-only" | "synced" | "shared" | "unknown";
-  rawSyncMode: string;
-  roomAuthority: "local" | "local-with-cloud-mirror" | "cloud-sequencer";
-  cloudProjectRoom: "disabled" | "sequencer";
-  syncReadinessStatus: "disabled" | "pending" | "ready";
-  localRestoreAllowed: boolean;
-  cloudStateIncluded: false;
-  cloudStateMutated: false;
-  requiresCloudConflictReview: boolean;
-  reason:
-    | "local-only-manual-review-required"
-    | "cloud-sync-local-replica-review-required"
-    | "shared-cloud-sequencer-restore-blocked"
-    | "sync-mode-unknown-local-replica-review-required";
-}
-
-function projectRecoveryPolicyFromSync(
-  sync: PublicLocalSyncConfig,
-  options: { localRestoreAllowed?: boolean } = {},
-): ProjectRecoveryPolicy {
-  const status = buildProjectStatus(
-    { projectId: "_project_recovery_policy", source: "explicit" },
-    {
-      clashRoot: "/clash",
-      localApiDataDir: "/clash/local-api",
-      marker: { sync: { mode: sync.mode, capabilities: sync.capabilities } },
-    },
-  );
-  const collaboration = status.collaboration;
-  const defaultLocalRestoreAllowed =
-    collaboration.mode !== "shared" && collaboration.mode !== "unknown";
-  const reason = collaboration.mode === "shared"
-    ? "shared-cloud-sequencer-restore-blocked"
-    : collaboration.mode === "synced"
-      ? "cloud-sync-local-replica-review-required"
-      : collaboration.mode === "unknown"
-        ? "sync-mode-unknown-local-replica-review-required"
-        : "local-only-manual-review-required";
-  return {
-    scope: "local-canonical-replica",
-    collaborationMode: collaboration.mode,
-    rawSyncMode: collaboration.rawMode,
-    roomAuthority: collaboration.roomAuthority,
-    cloudProjectRoom: collaboration.cloudProjectRoom,
-    syncReadinessStatus: collaboration.syncReadiness.status,
-    localRestoreAllowed: options.localRestoreAllowed ?? defaultLocalRestoreAllowed,
-    cloudStateIncluded: false,
-    cloudStateMutated: false,
-    requiresCloudConflictReview: collaboration.mode !== "local-only",
-    reason,
-  };
-}
-
 async function projectRecoveryPolicy(
   syncConfig: LocalSyncConfigStore,
   options: { localRestoreAllowed?: boolean } = {},
 ): Promise<ProjectRecoveryPolicy> {
-  return projectRecoveryPolicyFromSync(
-    await syncConfig.getPublicConfig(),
+  const sync = await syncConfig.getPublicConfig();
+  return buildProjectRecoveryPolicy(
+    buildProjectStatus(
+      { projectId: "_project_recovery_policy", source: "explicit" },
+      {
+        clashRoot: "/clash",
+        localApiDataDir: "/clash/local-api",
+        marker: { sync: { mode: sync.mode, capabilities: sync.capabilities } },
+      },
+    ),
     options,
   );
 }

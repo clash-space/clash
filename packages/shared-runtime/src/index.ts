@@ -10,8 +10,11 @@ export {
 } from "./text-generation.js";
 
 export {
+  buildProjectRecoveryPolicy,
   buildProjectStatus,
   projectIdPathSegment,
+  type ProjectRecoveryPolicy,
+  type ProjectRecoveryPolicyReason,
   type ProjectStatusActionGate,
   type ProjectStatusActionGateReason,
   type ProjectStatusActionGates,

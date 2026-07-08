@@ -233,6 +233,26 @@ export interface ProjectStatusCollaboration {
   tracePolicy: ProjectStatusTracePolicy;
 }
 
+export type ProjectRecoveryPolicyReason =
+  | "local-only-manual-review-required"
+  | "cloud-sync-local-replica-review-required"
+  | "shared-cloud-sequencer-restore-blocked"
+  | "sync-mode-unknown-local-replica-review-required";
+
+export interface ProjectRecoveryPolicy {
+  scope: "local-canonical-replica";
+  collaborationMode: ProjectCollaborationMode;
+  rawSyncMode: string;
+  roomAuthority: ProjectRoomAuthority;
+  cloudProjectRoom: ProjectCloudRoomMode;
+  syncReadinessStatus: ProjectSyncReadinessStatus;
+  localRestoreAllowed: boolean;
+  cloudStateIncluded: false;
+  cloudStateMutated: false;
+  requiresCloudConflictReview: boolean;
+  reason: ProjectRecoveryPolicyReason;
+}
+
 export interface ProjectStatus {
   projectId: string;
   source: ProjectStatusSource;
@@ -267,6 +287,36 @@ export interface ProjectStatus {
   protectedPaths: string[];
   collaboration: ProjectStatusCollaboration;
   storage: ProjectStatusStorage;
+}
+
+export function buildProjectRecoveryPolicy(
+  status: Pick<ProjectStatus, "collaboration">,
+  options: { localRestoreAllowed?: boolean } = {},
+): ProjectRecoveryPolicy {
+  const collaboration = status.collaboration;
+  const defaultLocalRestoreAllowed =
+    collaboration.mode !== "shared" && collaboration.mode !== "unknown";
+  const reason: ProjectRecoveryPolicyReason = collaboration.mode === "shared"
+    ? "shared-cloud-sequencer-restore-blocked"
+    : collaboration.mode === "synced"
+      ? "cloud-sync-local-replica-review-required"
+      : collaboration.mode === "unknown"
+        ? "sync-mode-unknown-local-replica-review-required"
+        : "local-only-manual-review-required";
+
+  return {
+    scope: "local-canonical-replica",
+    collaborationMode: collaboration.mode,
+    rawSyncMode: collaboration.rawMode,
+    roomAuthority: collaboration.roomAuthority,
+    cloudProjectRoom: collaboration.cloudProjectRoom,
+    syncReadinessStatus: collaboration.syncReadiness.status,
+    localRestoreAllowed: options.localRestoreAllowed ?? defaultLocalRestoreAllowed,
+    cloudStateIncluded: false,
+    cloudStateMutated: false,
+    requiresCloudConflictReview: collaboration.mode !== "local-only",
+    reason,
+  };
 }
 
 export function buildProjectStatus(

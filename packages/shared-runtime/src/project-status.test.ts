@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProjectStatus } from "./project-status";
+import { buildProjectRecoveryPolicy, buildProjectStatus } from "./project-status";
 
 const expectedTracePolicy = {
   schemaVersion: 1,
@@ -432,6 +432,83 @@ describe("project status path builder", () => {
           requirements: ["owner-machine-online"],
         },
       },
+    });
+  });
+
+  it("derives recovery policy from project collaboration status", () => {
+    const local = buildProjectStatus(
+      { projectId: "project-local", source: "explicit" },
+      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "local" } } },
+    );
+    const cloudSync = buildProjectStatus(
+      { projectId: "project-synced", source: "explicit" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: {
+          sync: {
+            mode: "cloud-sync",
+            capabilities: {
+              canvas: true,
+              room: true,
+              assetMetadata: true,
+              revisionContent: true,
+            },
+          },
+        },
+      },
+    );
+    const shared = buildProjectStatus(
+      { projectId: "project-shared", source: "explicit" },
+      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "shared" } } },
+    );
+    const unknown = buildProjectStatus(
+      { projectId: "project-unknown", source: "explicit" },
+      { clashRoot: "/tmp/clash-home" },
+    );
+
+    expect(buildProjectRecoveryPolicy(local)).toMatchObject({
+      scope: "local-canonical-replica",
+      collaborationMode: "local-only",
+      rawSyncMode: "local",
+      localRestoreAllowed: true,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: false,
+      reason: "local-only-manual-review-required",
+    });
+    expect(buildProjectRecoveryPolicy(cloudSync)).toMatchObject({
+      collaborationMode: "synced",
+      rawSyncMode: "cloud-sync",
+      roomAuthority: "local-with-cloud-mirror",
+      syncReadinessStatus: "ready",
+      localRestoreAllowed: true,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: true,
+      reason: "cloud-sync-local-replica-review-required",
+    });
+    expect(buildProjectRecoveryPolicy(shared)).toMatchObject({
+      collaborationMode: "shared",
+      rawSyncMode: "shared",
+      roomAuthority: "cloud-sequencer",
+      cloudProjectRoom: "sequencer",
+      syncReadinessStatus: "ready",
+      localRestoreAllowed: false,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: true,
+      reason: "shared-cloud-sequencer-restore-blocked",
+    });
+    expect(buildProjectRecoveryPolicy(unknown)).toMatchObject({
+      collaborationMode: "unknown",
+      localRestoreAllowed: false,
+      requiresCloudConflictReview: true,
+      reason: "sync-mode-unknown-local-replica-review-required",
+    });
+    expect(buildProjectRecoveryPolicy(cloudSync, { localRestoreAllowed: false })).toMatchObject({
+      collaborationMode: "synced",
+      localRestoreAllowed: false,
+      reason: "cloud-sync-local-replica-review-required",
     });
   });
 

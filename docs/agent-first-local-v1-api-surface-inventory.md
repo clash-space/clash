@@ -746,11 +746,13 @@ canonical files when present, and rejects stale tokens before promotion.
 Successful restore writes a local `restore-receipt.json` under the recovery
 set's `canonical-before-restore/` directory so the explicit promotion can be
 audited without adding a broad append-only product log.
-The recovery JSON payloads expose `recoveryPolicy`: local-only restores remain
-manual, `cloud-sync` restores are local-replica promotions that require cloud
-conflict review, and `shared`/`cloud-sequencer` projects are evidence-only for
-local recovery because restore is rejected before overwrite. Broader recovery
-UX and old-layout migration checks are still needed.
+The recovery JSON payloads expose `recoveryPolicy`, derived from the same
+shared-runtime `ProjectStatus.collaboration` helper used by local-api project
+delete/restore/purge: local-only restores remain manual, `cloud-sync` restores
+are local-replica promotions that require cloud conflict review, and
+`shared`/`cloud-sequencer` projects are evidence-only for local recovery
+because restore is rejected before overwrite. Broader recovery UX and
+old-layout migration checks are still needed.
 
 ### Local room endpoints
 

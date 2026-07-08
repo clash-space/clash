@@ -1043,6 +1043,10 @@ Current status:
   operations report `cloudStateMutated: false` and require cloud conflict
   review, and shared/cloud-sequencer modes are blocked from claiming local
   restore as cloud recovery.
+- `recoveryPolicy` is derived by `@clash/shared-runtime` from
+  `ProjectStatus.collaboration`; local-api project delete/restore/purge and
+  CLI storage-recovery use the same policy helper instead of duplicating
+  local/cloud/shared branching.
 - CLI `clash project get --include-deleted --json` exposes the deleted-project
   restore receipt, and `clash project restore --if-match <readToken>` passes it
   for agent read-before-write CAS.

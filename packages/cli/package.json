@@ -15,9 +15,9 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm --prefix ../shared-runtime run build && tsc --noEmit",
     "clean": "rm -rf dist",
-    "test": "node scripts/run-tests.mjs",
+    "test": "npm --prefix ../shared-runtime run build && node scripts/run-tests.mjs",
     "test:e2e": "node --test e2e/canvas-add-refs.test.mjs"
   },
   "dependencies": {
