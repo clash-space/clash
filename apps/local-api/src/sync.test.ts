@@ -414,6 +414,14 @@ describe("LocalLoroRoom", () => {
     });
     expect(revision.revisionId).toEqual(expect.stringMatching(/^txrev-[a-f0-9]{16}-/));
     expect(revision.contentHash).toBe(revision.sourceFileHash);
+    const revisionBodyPath = join(
+      dataDir,
+      "text-revision-blobs",
+      revision.contentHash.slice(0, 2),
+      `${revision.contentHash}.md`,
+    );
+    expect(await readFile(revisionBodyPath, "utf8")).toBe(textNode.data.content);
+    expect((await stat(revisionBodyPath)).mode & 0o222).toBe(0);
     const audits = await metadataStore.listMutationAudit({
       operation: "text_generate",
       entityId: revision.revisionId,

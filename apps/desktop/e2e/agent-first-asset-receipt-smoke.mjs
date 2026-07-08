@@ -2021,6 +2021,12 @@ async function main() {
   );
   const workflowTextRevisions = await parseJsonResponse(workflowTextRevisionResponse);
   const workflowTextRevision = workflowTextRevisions.revisions?.[0];
+  const workflowTextContentResponse = workflowTextRevision?.content?.url
+    ? await request(workflowTextRevision.content.url)
+    : null;
+  const workflowTextContent = workflowTextContentResponse
+    ? await workflowTextContentResponse.text()
+    : "";
   recordCheck(
     "workflow generated text indexes host text revision",
     workflowTextData.status === "completed" &&
@@ -2033,10 +2039,21 @@ async function main() {
       workflowTextRevision.projectId === workflowTextProjectId &&
       workflowTextRevision.nodeId === "workflow-text-node" &&
       workflowTextRevision.sourceFilePath === "workflow/workflow-text-node.md" &&
+      workflowTextRevision.content?.stored === true &&
+      workflowTextRevision.content?.storage?.registry === "text_revisions" &&
+      workflowTextRevision.content?.storage?.mediaAsset === false &&
+      workflowTextRevision.content?.storage?.agentWritable === false &&
       workflowTextRevision.actor?.actorType === "agent" &&
       workflowTextRevision.actor?.actorAgentId === "asset-receipt-agent" &&
       sqliteCount("select count(*) as count from assets where project_id = ?", [workflowTextProjectId]) === 0,
     JSON.stringify({ workflowTextData, workflowTextRevisions }),
+  );
+  recordCheck(
+    "workflow generated text content endpoint returns revision body",
+    workflowTextContentResponse?.status === 200 &&
+      workflowTextContent === workflowTextData.content &&
+      workflowTextContentResponse.headers.get("x-clash-content-hash") === workflowTextRevision?.contentHash,
+    JSON.stringify({ status: workflowTextContentResponse?.status, workflowTextContent }),
   );
 
   const workflowTextAuditResponse = workflowTextRevision?.revisionId
@@ -3852,6 +3869,7 @@ async function main() {
       workflowGeneratedAssetAccepted: checks.some((check) => check.name === "workflow generated asset accepts agent local generation" && check.status === "pass"),
       workflowGeneratedAssetAuditRecorded: checks.some((check) => check.name === "workflow generated asset writes sanitized local mutation audit evidence" && check.status === "pass"),
       workflowGeneratedTextRevisionIndexed: checks.some((check) => check.name === "workflow generated text indexes host text revision" && check.status === "pass"),
+      workflowGeneratedTextContentReturned: checks.some((check) => check.name === "workflow generated text content endpoint returns revision body" && check.status === "pass"),
       workflowGeneratedTextAuditRecorded: checks.some((check) => check.name === "workflow generated text writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
       assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),

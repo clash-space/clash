@@ -667,19 +667,20 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T15-09-54-510Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T15-17-10-397Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 186 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 187 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
   upload/read symlinked-root/parent rejection plus workflow-generated asset
   acceptance, sanitized audit evidence, and symlinked-parent rejection,
-  workflow-generated text host revision indexing and sanitized audit evidence,
+  workflow-generated text host revision indexing, immutable content endpoint body
+  retrieval, and sanitized audit evidence,
   metadata/ref/GC, project delete/restore/purge, and session delete agent writes
   rejected missing or bare read proofs; asset create/cover rejected invalid
   storage keys before metadata persistence; accepted sync config updates, audio

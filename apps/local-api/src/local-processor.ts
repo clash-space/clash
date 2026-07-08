@@ -7,6 +7,7 @@ import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { assetPathForWrite } from "./local-asset-paths.js";
+import { storeTextRevisionContentBlob } from "./text-revision-content.js";
 
 export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
@@ -162,6 +163,7 @@ async function recordGeneratedTextRevision(options: {
     entity: { kind: "text-revision", id: revision.revisionId },
     forced: false,
   }, { resultEntityId: revision.revisionId });
+  await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await createLocalMetadataStore(options.dataDir).upsertTextRevision(revision, {
     id: randomUUID(),
     createdAt: Date.now(),

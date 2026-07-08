@@ -723,9 +723,10 @@ Current first pass:
   `text_revisions`, and exposes project/node lookup through
   `GET /api/v1/projects/:projectId/text-revisions`. `clash text apply/replace`
   registers the revision plus applied Markdown body through
-  `POST /api/v1/text-revisions` after a successful canvas apply. The host stores
-  the body as an immutable
-  content-addressed text revision blob and exposes it through
+  `POST /api/v1/text-revisions` after a successful canvas apply. Workflow text
+  generation records the generated Markdown body through the same immutable
+  text revision content path. The host stores those bodies as immutable
+  content-addressed text revision blobs and exposes them through
   `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`. History
   entries with stored bodies include `content.stored: true` so agents can tell
   the body is host-persisted without opening SQLite or protected blob paths.

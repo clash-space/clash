@@ -59,9 +59,10 @@ The main v1 gaps are:
   records `clash.text.revision` milestones with source path, content hash,
   parent revision, and actor attribution, and local-api indexes those revisions
   in SQLite `text_revisions`; workflow text generation now records host text
-  revision metadata and sanitized audit evidence, while explicit apply stores
-  supplied Markdown bodies as immutable text revision blobs readable through the
-  host API; `clash text
+  revision metadata, stores the generated Markdown body as an immutable text
+  revision blob, and writes sanitized audit evidence, while explicit apply
+  stores supplied Markdown bodies through the same protected content path
+  readable through the host API; `clash text
   history` reads that index through the host API, and `clash text content
   --revision <id> [--out <path>]` retrieves immutable revision Markdown without
   opening SQLite; richer visual history UI, conflict recovery, canonical
@@ -564,7 +565,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-07T16-18-46-276Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T15-17-10-397Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:
