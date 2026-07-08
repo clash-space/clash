@@ -3038,12 +3038,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth);
     });
     const response = publicModelProvidersResponse(providers);
+    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+      resultEntityId: userId,
+      ...(hostMutation ? { afterReadToken: response.readToken } : {}),
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider accounts update",
+    }));
     return c.json({
       ...response,
-      mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: userId,
-        ...(hostMutation ? { afterReadToken: response.readToken } : {}),
-      }),
+      mutation,
     });
   });
   app.delete("/api/v1/model-providers/:accountId", async (c) => {
@@ -3454,17 +3460,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         error: undefined,
       });
     });
+    const readToken = providerOAuthReceiptReadToken(record);
+    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+      operation: "provider_oauth_start",
+      entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
+      forced: preconditions.force,
+    }, {
+      resultEntityId: providerOAuthEntityId(providerId, accountId),
+      ...(hostMutation ? { afterReadToken: readToken } : {}),
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider OAuth start",
+    }));
     return c.json({
       ...publicProviderOAuth(record),
-      ...(hostMutation ? { readToken: providerOAuthReceiptReadToken(record) } : {}),
-      mutation: hostMutationSucceeded(hostMutation?.envelope ?? {
-        operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-        forced: preconditions.force,
-      }, {
-        resultEntityId: providerOAuthEntityId(providerId, accountId),
-        ...(hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record) } : {}),
-      }),
+      ...(hostMutation ? { readToken } : {}),
+      mutation,
     });
   });
   app.post("/api/v1/provider-oauth/:providerId/complete", async (c) => {
@@ -3556,16 +3569,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           error: message,
         });
       });
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+        operation: "provider_oauth_complete",
+        entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
+        forced: preconditions.force,
+      }, {
+        resultEntityId: providerOAuthEntityId(providerId, accountId),
+        ...(hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record) } : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider OAuth complete",
+      }));
       return c.json({
         error: message,
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? {
-          operation: "provider_oauth_complete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-          forced: preconditions.force,
-        }, {
-          resultEntityId: providerOAuthEntityId(providerId, accountId),
-          ...(hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record) } : {}),
-        }),
+        mutation,
       }, 502);
     }
     const record = await db.update((state) => {
@@ -3584,17 +3603,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         error: undefined,
       });
     });
+    const readToken = providerOAuthReceiptReadToken(record);
+    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
+      operation: "provider_oauth_complete",
+      entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
+      forced: preconditions.force,
+    }, {
+      resultEntityId: providerOAuthEntityId(providerId, accountId),
+      ...(hostMutation ? { afterReadToken: readToken } : {}),
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "provider OAuth complete",
+    }));
     return c.json({
       ...publicProviderOAuth(record),
-      ...(hostMutation ? { readToken: providerOAuthReceiptReadToken(record) } : {}),
-      mutation: hostMutationSucceeded(hostMutation?.envelope ?? {
-        operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-        forced: preconditions.force,
-      }, {
-        resultEntityId: providerOAuthEntityId(providerId, accountId),
-        ...(hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record) } : {}),
-      }),
+      ...(hostMutation ? { readToken } : {}),
+      mutation,
     });
   });
   app.delete("/api/v1/provider-oauth/:providerId", async (c) => {

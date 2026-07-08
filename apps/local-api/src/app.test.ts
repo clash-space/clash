@@ -5178,6 +5178,36 @@ describe("local API app", () => {
       afterReadToken: updatedJson.readToken,
       accepted: true,
     });
+    const updateAudit = await app.request("/api/v1/mutation-audit?operation=provider_accounts_update&entityId=local-user");
+    expect(updateAudit.status).toBe(200);
+    const updateAuditJson = await updateAudit.json() as { records: Array<any> };
+    expect(updateAuditJson.records).toHaveLength(2);
+    const humanUpdateAuditRecord = updateAuditJson.records.find((record) => record.actorClientType == null);
+    const agentUpdateAuditRecord = updateAuditJson.records.find((record) => record.actorClientType === "agent");
+    expect(humanUpdateAuditRecord).toMatchObject({
+      operation: "provider_accounts_update",
+      entity: { kind: "provider-accounts", id: "local-user" },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "provider accounts update",
+      resultEntityId: "local-user",
+    });
+    expect(agentUpdateAuditRecord).toMatchObject({
+      operation: "provider_accounts_update",
+      entity: { kind: "provider-accounts", id: "local-user" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "provider accounts update",
+      resultEntityId: "local-user",
+    });
+    for (const record of updateAuditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
 
     const missingDelete = await app.request("/api/v1/model-providers/replicate-primary", {
       method: "DELETE",
@@ -5687,6 +5717,36 @@ describe("local API app", () => {
       resultEntityId: "dreamina:jimeng-primary",
     });
     expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
+    const startAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=dreamina%3Ajimeng-primary");
+    expect(startAudit.status).toBe(200);
+    const startAuditJson = await startAudit.json() as { records: Array<any> };
+    expect(startAuditJson.records).toHaveLength(2);
+    const humanStartAuditRecord = startAuditJson.records.find((record) => record.actorClientType == null);
+    const agentStartAuditRecord = startAuditJson.records.find((record) => record.actorClientType === "agent");
+    expect(humanStartAuditRecord).toMatchObject({
+      operation: "provider_oauth_start",
+      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "provider OAuth start",
+      resultEntityId: "dreamina:jimeng-primary",
+    });
+    expect(agentStartAuditRecord).toMatchObject({
+      operation: "provider_oauth_start",
+      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "provider OAuth start",
+      resultEntityId: "dreamina:jimeng-primary",
+    });
+    for (const record of startAuditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
 
     const staleStart = await app.request("/api/v1/provider-oauth/dreamina/start", {
       method: "POST",
@@ -5824,6 +5884,23 @@ describe("local API app", () => {
       resultEntityId: "dreamina:jimeng-primary",
     });
     expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
+    const completeAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=dreamina%3Ajimeng-primary");
+    expect(completeAudit.status).toBe(200);
+    const completeAuditJson = await completeAudit.json() as { records: Array<any> };
+    expect(completeAuditJson.records).toHaveLength(1);
+    expect(completeAuditJson.records[0]).toMatchObject({
+      operation: "provider_oauth_complete",
+      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "provider OAuth complete",
+      resultEntityId: "dreamina:jimeng-primary",
+    });
+    expect(JSON.stringify(completeAuditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(completeAuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(completeAuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(completeAuditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const staleComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
       method: "POST",

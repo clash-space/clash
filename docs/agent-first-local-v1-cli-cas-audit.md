@@ -238,9 +238,10 @@ Remaining guardrails:
   `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
   legacy project create/update/delete, asset create/ref-delete/cover-update, local sync
   config update, local audio config update/install, local harness enablement/install,
-  local agent-server config update, and session create/delete responses include accepted/rejected mutation records.
+  local agent-server config update, provider account update/delete, provider OAuth
+  start/complete/delete, and session create/delete responses include accepted/rejected mutation records.
   Accepted v1 project create/delete, accepted legacy project create/update/delete,
-  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install, accepted local agent-server config update, and accepted session create/delete write
+  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, and accepted session create/delete write
   first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,
@@ -253,6 +254,11 @@ Remaining guardrails:
   `clash audit mutations --operation local_harness_enablement_update --entity enabled --json`,
   `clash audit mutations --operation local_harness_install --entity <harnessId> --json`,
   `clash audit mutations --operation local_agent_servers_update --entity agent-servers --json`,
+  `clash audit mutations --operation provider_accounts_update --entity <userId> --json`,
+  `clash audit mutations --operation provider_account_delete --entity <accountId> --json`,
+  `clash audit mutations --operation provider_oauth_start --entity <providerId>[:<accountId>] --json`,
+  `clash audit mutations --operation provider_oauth_complete --entity <providerId>[:<accountId>] --json`,
+  `clash audit mutations --operation provider_oauth_delete --entity <providerId>[:<accountId>] --json`,
   `clash audit mutations --operation session_create --entity <threadId> --json`,
   or `clash audit mutations --operation session_delete --entity <threadId> --json`
   without exposing receipt-bearing read tokens or raw SQLite.
@@ -375,7 +381,7 @@ Required behavior:
 
 - Add admin/debug commands for explicit low-level patching.
 - Extend first-pass local mutation audit beyond project create/update/delete/restore/purge,
-  session create/delete, provider account delete, provider OAuth delete, asset-ref
+  session create/delete, provider account update/delete, provider OAuth start/complete/delete, asset-ref
   delete, asset create, asset import, custom action upload, asset cover update, asset reference refresh, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
   force/destructive mutation surfaces.
 - Broaden direct canvas read-token fixtures beyond the live local-api node/batch/edge

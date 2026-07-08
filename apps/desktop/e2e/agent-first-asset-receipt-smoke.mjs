@@ -1055,6 +1055,26 @@ async function main() {
     JSON.stringify(acceptedProviderUpdateJson),
     { mutation: acceptedProviderUpdateJson.mutation },
   );
+  const providerAccountsUpdateAuditResponse = await request("/api/v1/mutation-audit?operation=provider_accounts_update&entityId=asset-receipt-smoke-user");
+  const providerAccountsUpdateAudit = await parseJsonResponse(providerAccountsUpdateAuditResponse);
+  const providerAccountsUpdateAuditAgentRecord = providerAccountsUpdateAudit.records?.find((record) => record.actorClientType === "agent");
+  recordCheck(
+    "provider accounts update writes sanitized local mutation audit evidence",
+    providerAccountsUpdateAuditResponse.status === 200 &&
+      providerAccountsUpdateAudit.records?.length === 2 &&
+      providerAccountsUpdateAuditAgentRecord?.operation === "provider_accounts_update" &&
+      providerAccountsUpdateAuditAgentRecord.entity?.id === "asset-receipt-smoke-user" &&
+      providerAccountsUpdateAuditAgentRecord.accepted === true &&
+      providerAccountsUpdateAuditAgentRecord.actorClientType === "agent" &&
+      providerAccountsUpdateAuditAgentRecord.reason === "provider accounts update" &&
+      providerAccountsUpdateAudit.records.every((record) =>
+        record.mutation?.expectedReadToken == null &&
+        record.mutation?.beforeReadToken == null &&
+        record.mutation?.afterReadToken == null
+      ),
+    JSON.stringify(providerAccountsUpdateAudit),
+    { mutation: acceptedProviderUpdateJson.mutation },
+  );
 
   const providerModelTestResponse = await request("/api/v1/model-providers/test", {
     method: "POST",
@@ -1233,6 +1253,26 @@ async function main() {
     JSON.stringify(oauthRestart),
     { mutation: oauthRestart.mutation },
   );
+  const providerOAuthStartAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=dreamina%3Ajimeng-smoke");
+  const providerOAuthStartAudit = await parseJsonResponse(providerOAuthStartAuditResponse);
+  const providerOAuthStartAuditAgentRecord = providerOAuthStartAudit.records?.find((record) => record.actorClientType === "agent");
+  recordCheck(
+    "provider OAuth start writes sanitized local mutation audit evidence",
+    providerOAuthStartAuditResponse.status === 200 &&
+      providerOAuthStartAudit.records?.length === 2 &&
+      providerOAuthStartAuditAgentRecord?.operation === "provider_oauth_start" &&
+      providerOAuthStartAuditAgentRecord.entity?.id === "dreamina:jimeng-smoke" &&
+      providerOAuthStartAuditAgentRecord.accepted === true &&
+      providerOAuthStartAuditAgentRecord.actorClientType === "agent" &&
+      providerOAuthStartAuditAgentRecord.reason === "provider OAuth start" &&
+      providerOAuthStartAudit.records.every((record) =>
+        record.mutation?.expectedReadToken == null &&
+        record.mutation?.beforeReadToken == null &&
+        record.mutation?.afterReadToken == null
+      ),
+    JSON.stringify(providerOAuthStartAudit),
+    { mutation: oauthRestart.mutation },
+  );
 
   const staleOAuthStart = await request("/api/v1/provider-oauth/dreamina/start", {
     method: "POST",
@@ -1329,6 +1369,24 @@ async function main() {
       hasReceipt(oauthComplete.readToken, "provider-oauth") &&
       oauthComplete.readToken !== pendingOAuth.readToken,
     JSON.stringify(oauthComplete),
+    { mutation: oauthComplete.mutation },
+  );
+  const providerOAuthCompleteAuditResponse = await request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=dreamina%3Ajimeng-smoke");
+  const providerOAuthCompleteAudit = await parseJsonResponse(providerOAuthCompleteAuditResponse);
+  const providerOAuthCompleteAuditRecord = providerOAuthCompleteAudit.records?.[0];
+  recordCheck(
+    "provider OAuth complete writes sanitized local mutation audit evidence",
+    providerOAuthCompleteAuditResponse.status === 200 &&
+      providerOAuthCompleteAudit.records?.length === 1 &&
+      providerOAuthCompleteAuditRecord.operation === "provider_oauth_complete" &&
+      providerOAuthCompleteAuditRecord.entity?.id === "dreamina:jimeng-smoke" &&
+      providerOAuthCompleteAuditRecord.accepted === true &&
+      providerOAuthCompleteAuditRecord.actorClientType === "agent" &&
+      providerOAuthCompleteAuditRecord.reason === "provider OAuth complete" &&
+      providerOAuthCompleteAuditRecord.mutation?.expectedReadToken == null &&
+      providerOAuthCompleteAuditRecord.mutation?.beforeReadToken == null &&
+      providerOAuthCompleteAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(providerOAuthCompleteAudit),
     { mutation: oauthComplete.mutation },
   );
 
@@ -3280,6 +3338,7 @@ async function main() {
       providerAccountsMissingReadRejected: checks.some((check) => check.name === "provider accounts update without prior read is rejected" && check.status === "pass"),
       providerAccountsBareCasRejected: checks.some((check) => check.name === "provider accounts update with bare CAS token is rejected" && check.status === "pass"),
       providerAccountsReceiptAccepted: checks.some((check) => check.name === "provider accounts update with receipt read token is accepted" && check.status === "pass"),
+      providerAccountsUpdateAuditRecorded: checks.some((check) => check.name === "provider accounts update writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerModelTestMutationRecorded: checks.some((check) => check.name === "provider model test action returns host mutation record" && check.status === "pass"),
       providerAccountDeleteMissingReadRejected: checks.some((check) => check.name === "provider account delete without prior read is rejected" && check.status === "pass"),
       providerAccountDeleteStaleReceiptRejected: checks.some((check) => check.name === "provider account delete with stale receipt is rejected" && check.status === "pass"),
@@ -3291,6 +3350,7 @@ async function main() {
       providerOAuthStartMissingReadRejected: checks.some((check) => check.name === "provider OAuth start without prior read is rejected" && check.status === "pass"),
       providerOAuthStartBareCasRejected: checks.some((check) => check.name === "provider OAuth start with bare CAS token is rejected" && check.status === "pass"),
       providerOAuthStartReceiptAccepted: checks.some((check) => check.name === "provider OAuth start with receipt read token is accepted" && check.status === "pass"),
+      providerOAuthStartAuditRecorded: checks.some((check) => check.name === "provider OAuth start writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerOAuthStartStaleReceiptRejected: checks.some((check) => check.name === "provider OAuth start with stale receipt is rejected" && check.status === "pass"),
       providerOAuthStartDeletedRowStaleReceiptRejected: checks.some((check) => check.name === "provider OAuth start with deleted-row stale receipt is rejected" && check.status === "pass"),
       providerOAuthDeleteMissingReadRejected: checks.some((check) => check.name === "provider OAuth delete without prior read is rejected" && check.status === "pass"),
@@ -3298,6 +3358,7 @@ async function main() {
       providerOAuthCompleteMissingReadRejected: checks.some((check) => check.name === "provider OAuth complete without prior read is rejected" && check.status === "pass"),
       providerOAuthCompleteBareCasRejected: checks.some((check) => check.name === "provider OAuth complete with bare CAS token is rejected" && check.status === "pass"),
       providerOAuthCompleteReceiptAccepted: checks.some((check) => check.name === "provider OAuth complete with receipt read token is accepted" && check.status === "pass"),
+      providerOAuthCompleteAuditRecorded: checks.some((check) => check.name === "provider OAuth complete writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerOAuthCompleteStaleReceiptRejected: checks.some((check) => check.name === "provider OAuth complete with stale receipt is rejected" && check.status === "pass"),
       providerOAuthDeleteStaleReceiptRejected: checks.some((check) => check.name === "provider OAuth delete with stale receipt is rejected" && check.status === "pass"),
       providerOAuthAuthorizedFreshReceiptReturned: checks.some((check) => check.name === "provider OAuth authorized get returns fresh receipt read token" && check.status === "pass"),
