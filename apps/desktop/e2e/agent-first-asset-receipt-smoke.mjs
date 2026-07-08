@@ -82,6 +82,11 @@ async function pathIsMissing(filePath) {
   }
 }
 
+function isSameOrInside(childPath, parentPath) {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 async function parseJsonResponse(response) {
   const text = await response.text();
   return text ? JSON.parse(text) : {};
@@ -2019,6 +2024,26 @@ async function main() {
     { mutation: acceptedProjectRestoreJson.mutation },
   );
 
+  const restoredProjectStatusResponse = await request(`/api/v1/projects/${encodeURIComponent(restoreProject.id)}/status`);
+  const restoredProjectStatus = await parseJsonResponse(restoredProjectStatusResponse);
+  recordCheck(
+    "restored project status preserves local storage path contract",
+    restoredProjectStatusResponse.status === 200 &&
+      restoredProjectStatus.projectId === restoreProject.id &&
+      restoredProjectStatus.source === "explicit" &&
+      restoredProjectStatus.localApiDataDir === path.resolve(dataDir) &&
+      restoredProjectStatus.localSqlitePath === path.join(path.resolve(dataDir), "local.sqlite") &&
+      restoredProjectStatus.storage?.workspace?.ownsCanonicalSnapshot === false &&
+      restoredProjectStatus.storage?.workspace?.ownsCanonicalMetadata === false &&
+      restoredProjectStatus.storage?.canonicalReplica?.metadata?.path === restoredProjectStatus.localSqlitePath &&
+      restoredProjectStatus.storage?.canonicalReplica?.metadata?.agentWritable === false &&
+      restoredProjectStatus.storage?.canonicalReplica?.canvas?.agentWritable === false &&
+      isSameOrInside(restoredProjectStatus.roots?.runtime ?? "", restoredProjectStatus.projectWorkspaceRoot ?? "") &&
+      restoredProjectStatus.protectedPaths?.includes(restoredProjectStatus.roots?.runtime) === true &&
+      restoredProjectStatus.protectedPaths?.includes(restoredProjectStatus.loro?.snapshotPath) === true,
+    JSON.stringify(restoredProjectStatus),
+  );
+
   const restoreAuditResponse = await request(`/api/v1/mutation-audit?operation=project_restore&entityId=${encodeURIComponent(restoreProject.id)}`);
   const restoreAudit = await parseJsonResponse(restoreAuditResponse);
   const restoreAuditRecord = restoreAudit.records?.[0];
@@ -2561,6 +2586,7 @@ async function main() {
       projectRestoreBareCasRejected: checks.some((check) => check.name === "project restore with bare CAS token is rejected" && check.status === "pass"),
       projectRestoreStaleReceiptRejected: checks.some((check) => check.name === "project restore with stale active receipt is rejected" && check.status === "pass"),
       projectRestoreReceiptAccepted: checks.some((check) => check.name === "project restore with deleted-project receipt is accepted" && check.status === "pass"),
+      projectRestoreStatusPathStable: checks.some((check) => check.name === "restored project status preserves local storage path contract" && check.status === "pass"),
       projectRestoreAuditRecorded: checks.some((check) => check.name === "project restore writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectPurgeGetReceiptReturned: checks.some((check) => check.name === "project purge deleted get returns purge receipt" && check.status === "pass"),
       projectPurgeMissingReadRejected: checks.some((check) => check.name === "project purge without prior deleted read is rejected" && check.status === "pass"),

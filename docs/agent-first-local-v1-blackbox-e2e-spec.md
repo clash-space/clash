@@ -651,13 +651,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T04-11-11-157Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T06-40-12-769Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 137 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 138 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -676,6 +676,7 @@ Result:
 - stale provider, OAuth, asset GC, project restore, and session receipts were
   rejected,
 - fresh host-issued receipts were accepted and reported mutation envelopes,
+- restored project status preserved the local storage path contract,
 - room sync checked project existence before remote admission, and local-only
   room sync returned a machine-readable admission gate requiring `enable-sync`.
 
