@@ -6777,7 +6777,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       bytes?: unknown;
       contentType?: unknown;
       originalName?: unknown;
-    };
+    } & ProjectWriteBody;
+    const actorClientType = optionalBodyString(body.actorClientType) ??
+      normalizeString(c.req.header("x-clash-client-type")) ??
+      normalizeString(c.req.header("x-clash-actor-client-type"));
     const projectId = optionalBodyString(body.projectId);
     const contentHash = optionalBodyString(body.contentHash);
     const localBlobKey = optionalBodyString(body.localBlobKey);
@@ -6891,14 +6894,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 409);
     }
 
+    const mutation = hostMutationSucceeded(envelope, {
+      resultEntityId: asset.id,
+    });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType,
+      reason: "asset import",
+    }));
     return c.json({
       id: importResult.asset.id,
       srcR2Key: importResult.asset.srcR2Key,
       signedUrl: localAssetUrl(c, importResult.asset.srcR2Key),
       signedUrlExp: asset.signedUrlExp,
-      mutation: hostMutationSucceeded(envelope, {
-        resultEntityId: asset.id,
-      }),
+      mutation,
     });
   });
 

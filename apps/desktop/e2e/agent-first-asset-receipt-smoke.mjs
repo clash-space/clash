@@ -1283,6 +1283,7 @@ async function main() {
 
   const importedLocalAssetResponse = await request("/api/v1/assets/import", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: JSON.stringify({
       projectId,
       kind: "image",
@@ -1300,6 +1301,25 @@ async function main() {
       importedLocalAsset.mutation?.accepted === true,
     JSON.stringify(importedLocalAsset),
     { mutation: importedLocalAsset.mutation },
+  );
+
+  const assetImportAuditResponse = await request(`/api/v1/mutation-audit?operation=asset_import&entityId=${encodeURIComponent(importedAssetId)}`);
+  const assetImportAudit = await parseJsonResponse(assetImportAuditResponse);
+  const assetImportAuditRecord = assetImportAudit.records?.[0];
+  recordCheck(
+    "asset import writes sanitized local mutation audit evidence",
+    assetImportAuditResponse.status === 200 &&
+      assetImportAudit.records?.length === 1 &&
+      assetImportAuditRecord.operation === "asset_import" &&
+      assetImportAuditRecord.entity?.id === importedAssetId &&
+      assetImportAuditRecord.accepted === true &&
+      assetImportAuditRecord.actorClientType === "agent" &&
+      assetImportAuditRecord.reason === "asset import" &&
+      !JSON.stringify(assetImportAuditRecord.mutation ?? {}).includes("receipt") &&
+      assetImportAuditRecord.mutation?.expectedReadToken == null &&
+      assetImportAuditRecord.mutation?.beforeReadToken == null &&
+      assetImportAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(assetImportAudit),
   );
 
   const conflictingLocalAssetResponse = await request("/api/v1/assets/import", {
@@ -2972,6 +2992,7 @@ async function main() {
       providerOAuthDeleteAuditRecorded: checks.some((check) => check.name === "provider OAuth delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerOAuthDeletePersisted: checks.some((check) => check.name === "provider OAuth delete persists in host state" && check.status === "pass"),
       assetImportImmutableCreateAccepted: checks.some((check) => check.name === "asset import accepts new immutable local blob" && check.status === "pass"),
+      assetImportAuditRecorded: checks.some((check) => check.name === "asset import writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetImportImmutableConflictRejected: checks.some((check) => check.name === "asset import rejects existing asset id with different immutable content" && check.status === "pass"),
       customActionCheckpointCreateAccepted: checks.some((check) => check.name === "custom action upload accepts first checkpoint output" && check.status === "pass"),
       customActionCheckpointOverwriteRejected: checks.some((check) => check.name === "custom action upload rejects checkpoint overwrite" && check.status === "pass"),
