@@ -6437,6 +6437,12 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    await expectSingleMutationAudit(app, {
+      operation: "runtime_session_create",
+      entityId: "local-session-1",
+      entityKind: "session",
+      reason: "runtime session create",
+    });
     expect(starts).toMatchObject([
       {
         runtimeId: "desktop-local",
@@ -8155,6 +8161,12 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    await expectSingleMutationAudit(app, {
+      operation: "runtime_session_attach",
+      entityId: "local-session-existing",
+      entityKind: "session",
+      reason: "runtime session attach",
+    });
     expect(attaches).toMatchObject([
       {
         sessionId: "local-session-existing",
@@ -8353,6 +8365,12 @@ describe("local API app", () => {
         forced: false,
         accepted: true,
       },
+    });
+    await expectSingleMutationAudit(app, {
+      operation: "runtime_session_attach",
+      entityId: sessionId,
+      entityKind: "session",
+      reason: "runtime session attach",
     });
 
     const listed = await app.request("/api/v1/sessions?projectId=project-attach-fail");

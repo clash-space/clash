@@ -239,9 +239,9 @@ Remaining guardrails:
   legacy project create/update/delete, asset create/ref-delete/cover-update, local sync
   config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate,
   local agent-server config update, provider account update/delete, provider OAuth
-  start/complete/delete, and session create/delete responses include accepted/rejected mutation records.
+  start/complete/delete, session create/delete, and runtime session create/attach responses include accepted/rejected mutation records.
   Accepted v1 project create/delete, accepted legacy project create/update/delete,
-  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, and accepted session create/delete write
+  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, accepted session create/delete, and accepted runtime session create/attach write
   first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,
@@ -384,7 +384,7 @@ Required behavior:
 
 - Add admin/debug commands for explicit low-level patching.
 - Extend first-pass local mutation audit beyond project create/update/delete/restore/purge,
-  session create/delete, provider account update/delete, provider OAuth start/complete/delete, asset-ref
+  session create/delete, runtime session create/attach, provider account update/delete, provider OAuth start/complete/delete, asset-ref
   delete, asset create, asset import, custom action upload, asset cover update, asset reference refresh, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
   force/destructive mutation surfaces.
 - Broaden direct canvas read-token fixtures beyond the live local-api node/batch/edge

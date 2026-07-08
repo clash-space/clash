@@ -3134,6 +3134,22 @@ async function main() {
 	    JSON.stringify(runtimeSession),
 	    { mutation: runtimeSession.mutation },
 	  );
+	  const runtimeSessionCreateAuditResponse = await request(`/api/v1/mutation-audit?operation=runtime_session_create&entityId=${encodeURIComponent(runtimeSession.session_id)}`);
+	  const runtimeSessionCreateAudit = await parseJsonResponse(runtimeSessionCreateAuditResponse);
+	  const runtimeSessionCreateAuditRecord = runtimeSessionCreateAudit.records?.[0];
+	  recordCheck(
+	    "runtime session create writes sanitized local mutation audit evidence",
+	    runtimeSessionCreateAuditResponse.status === 200 &&
+	      runtimeSessionCreateAudit.records?.length === 1 &&
+	      runtimeSessionCreateAuditRecord.operation === "runtime_session_create" &&
+	      runtimeSessionCreateAuditRecord.entity?.id === runtimeSession.session_id &&
+	      runtimeSessionCreateAuditRecord.accepted === true &&
+	      runtimeSessionCreateAuditRecord.actorClientType == null &&
+	      runtimeSessionCreateAuditRecord.reason === "runtime session create" &&
+	      mutationAuditRecordsHaveNoReadTokens(runtimeSessionCreateAudit.records),
+	    JSON.stringify(runtimeSessionCreateAudit),
+	    { mutation: runtimeSession.mutation },
+	  );
 
 	  const runtimeSessionsResponse = await request(`/api/v1/sessions?projectId=${encodeURIComponent(sessionProject.id)}`);
 	  const runtimeSessions = await parseJsonResponse(runtimeSessionsResponse);
@@ -3192,6 +3208,22 @@ async function main() {
 	      acceptedRuntimeAttachJson.mutation?.beforeReadToken === baseReadToken(runtimeHistory.readToken) &&
 	      hasReceipt(acceptedRuntimeAttachJson.mutation?.afterReadToken, "session"),
 	    JSON.stringify(acceptedRuntimeAttachJson),
+	    { mutation: acceptedRuntimeAttachJson.mutation },
+	  );
+	  const runtimeSessionAttachAuditResponse = await request(`/api/v1/mutation-audit?operation=runtime_session_attach&entityId=${encodeURIComponent(runtimeSession.session_id)}`);
+	  const runtimeSessionAttachAudit = await parseJsonResponse(runtimeSessionAttachAuditResponse);
+	  const runtimeSessionAttachAuditRecord = runtimeSessionAttachAudit.records?.[0];
+	  recordCheck(
+	    "runtime session attach writes sanitized local mutation audit evidence",
+	    runtimeSessionAttachAuditResponse.status === 200 &&
+	      runtimeSessionAttachAudit.records?.length === 1 &&
+	      runtimeSessionAttachAuditRecord.operation === "runtime_session_attach" &&
+	      runtimeSessionAttachAuditRecord.entity?.id === runtimeSession.session_id &&
+	      runtimeSessionAttachAuditRecord.accepted === true &&
+	      runtimeSessionAttachAuditRecord.actorClientType === "agent" &&
+	      runtimeSessionAttachAuditRecord.reason === "runtime session attach" &&
+	      mutationAuditRecordsHaveNoReadTokens(runtimeSessionAttachAudit.records),
+	    JSON.stringify(runtimeSessionAttachAudit),
 	    { mutation: acceptedRuntimeAttachJson.mutation },
 	  );
 
@@ -3524,6 +3556,8 @@ async function main() {
 	      runtimeSessionAttachMissingReadRejected: checks.some((check) => check.name === "runtime session attach without prior read is rejected" && check.status === "pass"),
 	      runtimeSessionAttachBareCasRejected: checks.some((check) => check.name === "runtime session attach with bare CAS token is rejected" && check.status === "pass"),
 	      runtimeSessionAttachReceiptAccepted: checks.some((check) => check.name === "runtime session attach with receipt read token is accepted" && check.status === "pass"),
+	      runtimeSessionCreateAuditRecorded: checks.some((check) => check.name === "runtime session create writes sanitized local mutation audit evidence" && check.status === "pass"),
+	      runtimeSessionAttachAuditRecorded: checks.some((check) => check.name === "runtime session attach writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      localRoomMessageCreateAccepted: checks.some((check) => check.name === "local room message create accepts first client id" && check.status === "pass"),
 	      localRoomMessageConflictRejected: checks.some((check) => check.name === "local room message id replay with different content is rejected" && check.status === "pass"),
 	      localRoomMessageOriginalPreserved: checks.some((check) => check.name === "local room message conflict preserves original content" && check.status === "pass"),

@@ -4371,7 +4371,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       permission_mode?: string;
       project_id?: string;
       resume_session_id?: string;
-    };
+    } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
     let agentTemplateId = body.agent_template_id?.trim() || undefined;
     let agentMemberId = body.agent_member_id?.trim() || undefined;
     const requestedAgentId = body.agent_id?.trim() || undefined;
@@ -4479,15 +4480,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           },
         );
       }
+      const mutation = hostMutationSucceeded({
+        operation: "runtime_session_create",
+        entity: { kind: "session", id: created.session_id },
+        forced: false,
+      }, {
+        resultEntityId: created.session_id,
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "runtime session create",
+      }));
       return c.json({
         ...created,
-        mutation: hostMutationSucceeded({
-          operation: "runtime_session_create",
-          entity: { kind: "session", id: created.session_id },
-          forced: false,
-        }, {
-          resultEntityId: created.session_id,
-        }),
+        mutation,
       });
     } catch (error) {
       const message = formatLocalAcpSessionError(error);
@@ -4501,10 +4508,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         forced: false,
       };
       if (localSessionId) {
+        const mutation = hostMutationSucceeded(envelope, { resultEntityId: localSessionId });
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "runtime session create",
+        }));
         return c.json({
           error: message,
           session_id: localSessionId,
-          mutation: hostMutationSucceeded(envelope, { resultEntityId: localSessionId }),
+          mutation,
         }, 503);
       }
       return c.json({
@@ -4629,12 +4642,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 		        ? (await db.load()).sessions.find((candidate) => candidate.id === sessionId)
 		        : undefined;
 		      const afterReadToken = afterSession ? sessionReceiptReadToken(afterSession) : undefined;
+		      const mutation = hostMutationSucceeded(attachEnvelope, {
+		        resultEntityId: attached.session_id,
+		        afterReadToken,
+		      });
+		      await db.appendMutationAudit(mutationAuditRecord({
+		        mutation,
+		        actorClientType: preconditions.actorClientType,
+		        reason: "runtime session attach",
+		      }));
 		      return c.json({
 		        ...attached,
-		        mutation: hostMutationSucceeded(attachEnvelope, {
-		          resultEntityId: attached.session_id,
-		          afterReadToken,
-		        }),
+		        mutation,
 		      });
 		    } catch (error) {
 		      const message = formatLocalAcpSessionError(error);
@@ -4644,13 +4663,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 		        ? (await db.load()).sessions.find((candidate) => candidate.id === sessionId)
 		        : undefined;
 		      const afterReadToken = afterSession ? sessionReceiptReadToken(afterSession) : undefined;
+		      const mutation = hostMutationSucceeded(attachEnvelope, {
+		        resultEntityId: sessionId,
+		        afterReadToken,
+		      });
+		      await db.appendMutationAudit(mutationAuditRecord({
+		        mutation,
+		        actorClientType: preconditions.actorClientType,
+		        reason: "runtime session attach",
+		      }));
 		      return c.json({
 		        error: message,
 		        session_id: sessionId,
-		        mutation: hostMutationSucceeded(attachEnvelope, {
-		          resultEntityId: sessionId,
-		          afterReadToken,
-		        }),
+		        mutation,
 		      }, 503);
 		    }
   });
