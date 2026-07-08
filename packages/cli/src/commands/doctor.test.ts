@@ -1445,6 +1445,39 @@ test("storage doctor fails when timeline view files point at canonical state", (
   assert.match(contract.message, /timeline projection files point at protected canonical state/);
 });
 
+test("storage doctor fails when text content model points at the media asset table", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      contentModel: {
+        ...status.storage.contentModel,
+        textNodes: {
+          ...status.storage.contentModel.textNodes,
+          contentRegistry: {
+            kind: "sqlite-non-media-revision-registry",
+            table: "assets",
+            blobStore: "storage.canonicalReplica.mediaAssets",
+            mediaAssetTable: true,
+          },
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /text content model registry table is wrong/);
+  assert.match(contract.message, /text content model incorrectly uses media asset table/);
+  assert.match(contract.message, /text content model registry blob store is wrong/);
+});
+
 test("storage doctor fails when text revision content blobs are writable or hash-mismatched", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

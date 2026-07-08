@@ -280,6 +280,10 @@ does not match the text content hash / semantic timeline hash.
 live text/timeline view state is in the Loro canvas replica, agent-editable
 files are projections, and applied text/timeline bodies are indexed by
 `text_revisions` / `timeline_revisions` with non-media revision blob storage.
+Each content-model entry also carries a `contentRegistry` object whose
+`kind` is `sqlite-non-media-revision-registry`, whose `table` is the revision
+table, and whose `mediaAssetTable` is `false`; doctor treats pointing this
+registry at the media `assets` table as a storage contract violation.
 
 JSON/YAML remains appropriate only for:
 
@@ -524,7 +528,8 @@ Synced:
 - asset metadata is mirrored through SQLite indexes while media blob transport
   remains a separate content-addressed asset storage concern,
 - text/timeline revision content is mirrored as non-media immutable revision
-  content, not as editable asset rows,
+  content through `text_revisions` / `timeline_revisions` registries, not as
+  editable media `assets` rows,
 - room messages sync,
 - local-only runtime traces remain local unless opted in.
 - explicit room mirroring is admitted only when the remote endpoint is

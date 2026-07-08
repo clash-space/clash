@@ -723,7 +723,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T11-51-58-477Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T15-53-17-254Z/storage-doctor-repair-report.json
 ```
 
 Result:

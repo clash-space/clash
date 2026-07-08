@@ -116,9 +116,21 @@ describe("project status path builder", () => {
     expect(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path).toBe("/tmp/clash-home/local-api/timeline-revision-blobs");
     expect(status.storage.contentModel.textNodes.revisionRegistry).toBe("text_revisions");
     expect(status.storage.contentModel.textNodes.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
+    expect(status.storage.contentModel.textNodes.contentRegistry).toEqual({
+      kind: "sqlite-non-media-revision-registry",
+      table: "text_revisions",
+      blobStore: "storage.canonicalReplica.contentBlobs.textRevisions",
+      mediaAssetTable: false,
+    });
     expect(status.storage.contentModel.textNodes.mediaAsset).toBe(false);
     expect(status.storage.contentModel.timelines.revisionRegistry).toBe("timeline_revisions");
     expect(status.storage.contentModel.timelines.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
+    expect(status.storage.contentModel.timelines.contentRegistry).toEqual({
+      kind: "sqlite-non-media-revision-registry",
+      table: "timeline_revisions",
+      blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
+      mediaAssetTable: false,
+    });
     expect(status.storage.contentModel.timelines.mediaAsset).toBe(false);
     expect(status.editablePaths).toContain(status.roots.drafts);
     expect(status.editablePaths).toContain(status.roots.timelines);
@@ -283,6 +295,12 @@ describe("project status path builder", () => {
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "text_revisions",
           revisionBlobPath: "/tmp/clash-home/local-api/text-revision-blobs",
+          contentRegistry: {
+            kind: "sqlite-non-media-revision-registry",
+            table: "text_revisions",
+            blobStore: "storage.canonicalReplica.contentBlobs.textRevisions",
+            mediaAssetTable: false,
+          },
           mediaAsset: false,
           agentWritableCanonicalState: false,
         },
@@ -296,6 +314,12 @@ describe("project status path builder", () => {
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "timeline_revisions",
           revisionBlobPath: "/tmp/clash-home/local-api/timeline-revision-blobs",
+          contentRegistry: {
+            kind: "sqlite-non-media-revision-registry",
+            table: "timeline_revisions",
+            blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
+            mediaAssetTable: false,
+          },
           mediaAsset: false,
           agentWritableCanonicalState: false,
         },

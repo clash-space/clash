@@ -721,6 +721,7 @@ function validateContentModelContract(
     replaceCommand: "clash text replace",
     revisionRegistry: "text_revisions",
     revisionBlobPath: storage.canonicalReplica.contentBlobs?.textRevisions?.path,
+    registryBlobStore: "storage.canonicalReplica.contentBlobs.textRevisions",
     mediaBlobPath: storage.canonicalReplica.mediaAssets?.path,
   });
   validateContentModelEntry(problems, status, {
@@ -733,6 +734,7 @@ function validateContentModelContract(
     replaceCommand: "clash timeline replace",
     revisionRegistry: "timeline_revisions",
     revisionBlobPath: storage.canonicalReplica.contentBlobs?.timelineRevisions?.path,
+    registryBlobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
     mediaBlobPath: storage.canonicalReplica.mediaAssets?.path,
   });
 }
@@ -750,6 +752,7 @@ function validateContentModelEntry(
     replaceCommand: string;
     revisionRegistry: string;
     revisionBlobPath?: string;
+    registryBlobStore: string;
     mediaBlobPath?: string;
   },
 ): void {
@@ -782,6 +785,23 @@ function validateContentModelEntry(
   }
   if (expected.entry.revisionRegistry !== expected.revisionRegistry) {
     problems.push(`${expected.label} content model revision registry is wrong`);
+  }
+  const contentRegistry = expected.entry.contentRegistry;
+  if (!contentRegistry) {
+    problems.push(`${expected.label} content model registry is missing`);
+  } else {
+    if (contentRegistry.kind !== "sqlite-non-media-revision-registry") {
+      problems.push(`${expected.label} content model registry kind is wrong`);
+    }
+    if (contentRegistry.table !== expected.revisionRegistry) {
+      problems.push(`${expected.label} content model registry table is wrong`);
+    }
+    if (contentRegistry.blobStore !== expected.registryBlobStore) {
+      problems.push(`${expected.label} content model registry blob store is wrong`);
+    }
+    if (contentRegistry.mediaAssetTable !== false) {
+      problems.push(`${expected.label} content model incorrectly uses media asset table`);
+    }
   }
   if (!expected.revisionBlobPath) {
     problems.push(`${expected.label} content model expected revision blob path is unavailable`);

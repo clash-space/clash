@@ -710,6 +710,10 @@ async function main() {
       contentModel.textNodes.copyOnWriteWhenReferenced === true &&
       contentModel.textNodes.revisionRegistry === "text_revisions" &&
       contentModel.textNodes.revisionBlobPath === textRevisionBlobs?.path &&
+      contentModel.textNodes.contentRegistry?.kind === "sqlite-non-media-revision-registry" &&
+      contentModel.textNodes.contentRegistry?.table === "text_revisions" &&
+      contentModel.textNodes.contentRegistry?.blobStore === "storage.canonicalReplica.contentBlobs.textRevisions" &&
+      contentModel.textNodes.contentRegistry?.mediaAssetTable === false &&
       contentModel.textNodes.mediaAsset === false &&
       contentModel.textNodes.agentWritableCanonicalState === false &&
       contentModel?.timelines?.liveState === "loro-canvas-video-editor-node-data" &&
@@ -721,6 +725,10 @@ async function main() {
       contentModel.timelines.copyOnWriteWhenReferenced === true &&
       contentModel.timelines.revisionRegistry === "timeline_revisions" &&
       contentModel.timelines.revisionBlobPath === timelineRevisionBlobs?.path &&
+      contentModel.timelines.contentRegistry?.kind === "sqlite-non-media-revision-registry" &&
+      contentModel.timelines.contentRegistry?.table === "timeline_revisions" &&
+      contentModel.timelines.contentRegistry?.blobStore === "storage.canonicalReplica.contentBlobs.timelineRevisions" &&
+      contentModel.timelines.contentRegistry?.mediaAssetTable === false &&
       contentModel.timelines.mediaAsset === false &&
       contentModel.timelines.agentWritableCanonicalState === false &&
       contentModel.textNodes.revisionBlobPath !== mediaAssets?.path &&

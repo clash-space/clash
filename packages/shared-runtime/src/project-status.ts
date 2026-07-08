@@ -124,6 +124,12 @@ export interface ProjectStatusStorage {
       copyOnWriteWhenReferenced: true;
       revisionRegistry: "text_revisions";
       revisionBlobPath: string;
+      contentRegistry: {
+        kind: "sqlite-non-media-revision-registry";
+        table: "text_revisions";
+        blobStore: "storage.canonicalReplica.contentBlobs.textRevisions";
+        mediaAssetTable: false;
+      };
       mediaAsset: false;
       agentWritableCanonicalState: false;
     };
@@ -137,6 +143,12 @@ export interface ProjectStatusStorage {
       copyOnWriteWhenReferenced: true;
       revisionRegistry: "timeline_revisions";
       revisionBlobPath: string;
+      contentRegistry: {
+        kind: "sqlite-non-media-revision-registry";
+        table: "timeline_revisions";
+        blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions";
+        mediaAssetTable: false;
+      };
       mediaAsset: false;
       agentWritableCanonicalState: false;
     };
@@ -599,6 +611,12 @@ export function buildProjectStatus(
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "text_revisions",
           revisionBlobPath: textRevisionBlobRoot,
+          contentRegistry: {
+            kind: "sqlite-non-media-revision-registry",
+            table: "text_revisions",
+            blobStore: "storage.canonicalReplica.contentBlobs.textRevisions",
+            mediaAssetTable: false,
+          },
           mediaAsset: false,
           agentWritableCanonicalState: false,
         },
@@ -612,6 +630,12 @@ export function buildProjectStatus(
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "timeline_revisions",
           revisionBlobPath: timelineRevisionBlobRoot,
+          contentRegistry: {
+            kind: "sqlite-non-media-revision-registry",
+            table: "timeline_revisions",
+            blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
+            mediaAssetTable: false,
+          },
           mediaAsset: false,
           agentWritableCanonicalState: false,
         },
