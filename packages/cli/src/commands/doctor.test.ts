@@ -380,6 +380,68 @@ test("storage doctor fails when revision content blobs are editable by agents", 
   assert.match(contract.message, /editable workspace includes canonical content path/);
 });
 
+test("storage doctor fails when text revision content blobs are writable or hash-mismatched", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const blobPath = join(
+    homeDir,
+    ".clash",
+    "local-api",
+    "text-revision-blobs",
+    "12",
+    "1234567890abcdef.md",
+  );
+  await mkdir(join(blobPath, ".."), { recursive: true });
+  await writeFile(blobPath, "tampered text body", { encoding: "utf8", mode: 0o644 });
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, false);
+  const check = checkById(report, "text-revision-blob-integrity");
+  assert.equal(check.level, "error");
+  assert.equal(check.path, blobPath);
+  assert.match(check.message, /hash mismatch/);
+  assert.match(check.message, /writable/);
+});
+
+test("storage doctor fails when timeline revision content blobs are writable or hash-mismatched", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const blobPath = join(
+    homeDir,
+    ".clash",
+    "local-api",
+    "timeline-revision-blobs",
+    "12",
+    "1234567890abcdef.timeline.yaml",
+  );
+  await mkdir(join(blobPath, ".."), { recursive: true });
+  await writeFile(
+    blobPath,
+    [
+      "fps: 30",
+      "durationInFrames: 30",
+      "tracks:",
+      "  - id: v1",
+      "    name: Video",
+      "    items: []",
+      "",
+    ].join("\n"),
+    { encoding: "utf8", mode: 0o644 },
+  );
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, false);
+  const check = checkById(report, "timeline-revision-blob-integrity");
+  assert.equal(check.level, "error");
+  assert.equal(check.path, blobPath);
+  assert.match(check.message, /hash mismatch/);
+  assert.match(check.message, /writable/);
+});
+
 test("storage doctor warns when legacy db.json exists", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

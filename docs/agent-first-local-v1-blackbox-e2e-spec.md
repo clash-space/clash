@@ -681,13 +681,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T04-52-14-749Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T05-05-00-505Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 45 checks passed,
+- 47 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -719,7 +719,10 @@ Result:
   workspace root,
 - text/timeline revision content blob roots were exposed through
   `storage.canonicalReplica.contentBlobs`, marked immutable/non-agent-writable,
-  included in `protectedPaths`, and kept outside the editable workspace root.
+  included in `protectedPaths`, and kept outside the editable workspace root,
+- doctor rejected tampered/writable text and timeline revision blobs with a
+  parseable JSON report that identified `text-revision-blob-integrity` and
+  `timeline-revision-blob-integrity` failures.
 
 Target boundary:
 

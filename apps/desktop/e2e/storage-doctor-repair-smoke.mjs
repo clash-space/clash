@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -335,6 +335,50 @@ async function main() {
       protectedPaths: status?.protectedPaths,
     }),
   );
+  const tamperedTextBlob = path.join(textRevisionBlobs.path, "12", "1234567890abcdef.md");
+  const tamperedTimelineBlob = path.join(timelineRevisionBlobs.path, "12", "1234567890abcdef.timeline.yaml");
+  await mkdir(path.dirname(tamperedTextBlob), { recursive: true });
+  await mkdir(path.dirname(tamperedTimelineBlob), { recursive: true });
+  await writeFile(tamperedTextBlob, "tampered text body", { encoding: "utf8", mode: 0o644 });
+  await writeFile(
+    tamperedTimelineBlob,
+    [
+      "fps: 30",
+      "durationInFrames: 30",
+      "tracks:",
+      "  - id: v1",
+      "    name: Video",
+      "    items: []",
+      "",
+    ].join("\n"),
+    { encoding: "utf8", mode: 0o644 },
+  );
+  const tamperedRevisionBlobs = runCli(["doctor", "storage", "--json"]);
+  recordCheck(
+    "doctor storage detects tampered revision content blobs",
+    tamperedRevisionBlobs.status === 1,
+    tamperedRevisionBlobs.stderr || tamperedRevisionBlobs.stdout,
+    { command: tamperedRevisionBlobs.command },
+  );
+  const tamperedRevisionBlobReport = parseStdoutJson(tamperedRevisionBlobs);
+  recordCheck(
+    "doctor tampered revision blob report is parseable and path-specific",
+    tamperedRevisionBlobReport.ok === false &&
+      checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.level === "error" &&
+      checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.path === tamperedTextBlob &&
+      checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.message?.includes("hash mismatch") === true &&
+      checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.message?.includes("writable") === true &&
+      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.level === "error" &&
+      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.path === tamperedTimelineBlob &&
+      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.message?.includes("hash mismatch") === true &&
+      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.message?.includes("writable") === true,
+    JSON.stringify({
+      text: checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity"),
+      timeline: checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity"),
+    }),
+  );
+  await rm(textRevisionBlobs.path, { recursive: true, force: true });
+  await rm(timelineRevisionBlobs.path, { recursive: true, force: true });
 
   for (const targetPath of [
     status.roots.drafts,
@@ -438,7 +482,7 @@ async function main() {
       startedAt,
       finishedAt: now(),
     },
-    commands: [init, before, duplicate, repair, recoveryCompare, after, cloudSyncStatusResult].map((result) => ({
+    commands: [init, before, duplicate, repair, recoveryCompare, tamperedRevisionBlobs, after, cloudSyncStatusResult].map((result) => ({
       command: result.command,
       status: result.status,
       stdout: result.stdout.slice(0, 2000),

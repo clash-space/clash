@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
 import { lstat, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { isJsonMode, printJson } from "../lib/output";
 import {
   resolveProjectStatus,
@@ -171,6 +172,8 @@ export async function runStorageDoctor(options: {
         message: "Current working directory is not inside a protected Clash storage path.",
       });
   checks.push(...inspectStorageContract(status));
+  checks.push(await inspectTextRevisionBlobIntegrity(status));
+  checks.push(await inspectTimelineRevisionBlobIntegrity(status));
 
   if (options.repair === true) {
     repairs.push(...await repairProjectWorkspace(status));
@@ -428,6 +431,10 @@ function dedupe(items: string[]): string[] {
   return Array.from(new Set(items));
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function inspectSecondaryCanvasReplica(
   status: ProjectStatus,
   cwd: string,
@@ -476,6 +483,147 @@ async function findSecondaryCanvasReplicaPaths(status: ProjectStatus, cwd: strin
 
   await collectCanvasReplicaFiles(status.projectWorkspaceRoot, status, found, 4);
   return Array.from(found);
+}
+
+async function inspectTextRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
+  return inspectRevisionBlobIntegrity({
+    id: "text-revision-blob-integrity",
+    label: "Text revision content blobs",
+    root: status.storage.canonicalReplica.contentBlobs.textRevisions.path,
+    extension: ".md",
+    expectedHashFromName(fileName) {
+      const match = /^([a-f0-9]{16})\.md$/.exec(fileName);
+      return match?.[1] ?? null;
+    },
+    async contentHash(content) {
+      return createHash("sha256").update(content).digest("hex").slice(0, 16);
+    },
+  });
+}
+
+async function inspectTimelineRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
+  return inspectRevisionBlobIntegrity({
+    id: "timeline-revision-blob-integrity",
+    label: "Timeline revision content blobs",
+    root: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
+    extension: ".timeline.yaml",
+    expectedHashFromName(fileName) {
+      const match = /^([a-f0-9]{16})\.timeline\.yaml$/.exec(fileName);
+      return match?.[1] ?? null;
+    },
+    async contentHash(content) {
+      const parsed = timelineDslFromYaml(content);
+      if (!parsed.ok) {
+        throw new Error(`invalid timeline YAML: ${parsed.error}`);
+      }
+      return timelineDslHash(parsed.dsl);
+    },
+  });
+}
+
+async function inspectRevisionBlobIntegrity(options: {
+  id: string;
+  label: string;
+  root: string;
+  extension: string;
+  expectedHashFromName(fileName: string): string | null;
+  contentHash(content: string): Promise<string>;
+}): Promise<StorageDoctorCheck> {
+  const entries = await collectRevisionBlobFiles(options.root, options.extension);
+  if (entries === null) {
+    return {
+      id: options.id,
+      level: "ok",
+      message: `${options.label} root does not exist yet.`,
+      path: options.root,
+    };
+  }
+
+  const problems: string[] = [];
+  let firstProblemPath: string | undefined;
+  for (const filePath of entries) {
+    const fileName = basename(filePath);
+    const expectedHash = options.expectedHashFromName(fileName);
+    const fileProblems: string[] = [];
+    const info = await lstat(filePath);
+    if (info.isSymbolicLink()) {
+      fileProblems.push("symlink is not allowed");
+    } else if (!info.isFile()) {
+      fileProblems.push("not a file");
+    } else {
+      if ((info.mode & 0o222) !== 0) {
+        fileProblems.push(`writable mode ${(info.mode & 0o777).toString(8).padStart(3, "0")}`);
+      }
+      if (!expectedHash) {
+        fileProblems.push("invalid content hash filename");
+      } else {
+        try {
+          const actualHash = await options.contentHash(await readFile(filePath, "utf8"));
+          if (actualHash !== expectedHash) {
+            fileProblems.push(`hash mismatch expected ${expectedHash} actual ${actualHash}`);
+          }
+        } catch (error) {
+          fileProblems.push(errorMessage(error));
+        }
+      }
+    }
+    if (fileProblems.length > 0) {
+      firstProblemPath ??= filePath;
+      problems.push(`${filePath} (${fileProblems.join("; ")})`);
+    }
+  }
+
+  if (problems.length > 0) {
+    const sample = problems.slice(0, 4).join(", ");
+    const suffix = problems.length > 4 ? `, and ${problems.length - 4} more` : "";
+    return {
+      id: options.id,
+      level: "error",
+      message: `${options.label} failed immutable content checks: ${sample}${suffix}.`,
+      path: firstProblemPath,
+    };
+  }
+
+  return {
+    id: options.id,
+    level: "ok",
+    message: entries.length === 0
+      ? `${options.label} root is empty.`
+      : `${options.label} are content-addressed and read-only.`,
+    path: options.root,
+  };
+}
+
+async function collectRevisionBlobFiles(
+  root: string,
+  extension: string,
+): Promise<string[] | null> {
+  const files: string[] = [];
+
+  async function visit(directory: string, depth: number): Promise<void> {
+    let entries: Dirent<string>[];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT" && depth === 0) return;
+      throw error;
+    }
+    for (const entry of entries) {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < 2) await visit(entryPath, depth + 1);
+        continue;
+      }
+      if (entry.name.endsWith(extension)) {
+        files.push(entryPath);
+      }
+    }
+  }
+
+  if (!(await pathExists(root, "directory"))) return null;
+  await visit(root, 0);
+  files.sort((a, b) => a.localeCompare(b));
+  return files;
 }
 
 async function collectCanvasReplicaFiles(

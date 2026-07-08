@@ -79,8 +79,9 @@ vault.
 `clash doctor storage --json` verifies this role contract and warns when local
 SQLite is missing the `asset_node_refs` / `reference_role` schema required for
 host-readable asset usage lookups. It also fails when the revision content blob
-roots are moved into editable agent paths, or when the cwd or project workspace
-contains stray `snapshot.bin` / `updates.log` files outside
+roots are moved into editable agent paths, when existing revision blob files
+are writable or no longer match their content-addressed filenames, or when the
+cwd or project workspace contains stray `snapshot.bin` / `updates.log` files outside
 `storage.canonicalReplica.canvas.replicaRoot`, because that would imply a
 second local canvas replica.
 
@@ -229,7 +230,9 @@ assets. Current examples are applied text Markdown under
 `local-api/text-revision-blobs/` and applied timeline YAML under
 `local-api/timeline-revision-blobs/`. The rows in SQLite are the index; the blob
 files are the immutable payloads; cwd projection files remain the editable
-draft surface that must be applied back through CAS.
+draft surface that must be applied back through CAS. Doctor treats existing
+blob files as unsafe if they have writable permission bits or if their path hash
+does not match the text content hash / semantic timeline hash.
 
 JSON/YAML remains appropriate only for:
 

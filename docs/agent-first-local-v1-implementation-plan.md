@@ -317,7 +317,9 @@ Current status:
   `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`.
   `project status.storage.canonicalReplica.contentBlobs.textRevisions` exposes
   that protected content-addressed root and `doctor storage` verifies it is not
-  agent-writable or inside an editable projection path.
+  agent-writable or inside an editable projection path. If blob files exist,
+  doctor also verifies filename/content-hash consistency and read-only
+  permissions.
   Older targets remain compatible when the index endpoint is unavailable.
 - `clash text history` reads that host-owned revision index through
   `GET /api/v1/projects/:projectId/text-revisions`, giving agents a CLI
@@ -348,7 +350,9 @@ Current status:
   `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`.
   `project status.storage.canonicalReplica.contentBlobs.timelineRevisions`
   exposes that protected content-addressed root and `doctor storage` verifies it
-  is not agent-writable or inside an editable projection path.
+  is not agent-writable or inside an editable projection path. If blob files
+  exist, doctor verifies semantic timeline-hash consistency and read-only
+  permissions.
 - `clash timeline history` reads that host-owned milestone index, giving agents
   a CLI provenance/history surface without direct SQLite access. Entries with a
   stored YAML body include a `content` descriptor (`kind:
@@ -468,7 +472,9 @@ Current status:
   runtime root, Loro replica, local SQLite target, broken/invalid asset links,
   ignored legacy `db.json`, and the structured `storage` role contract that
   keeps agent workspace paths separate from the protected canonical replica,
-  including immutable text/timeline revision content blob roots.
+  including immutable text/timeline revision content blob roots. Existing
+  revision blob files are checked for content-addressed filename consistency and
+  no writable permission bits.
 - `packages/clash-bridge/src/lib/session-cwd.ts` now creates alpha agent
   workspace directories for `drafts`, `projections/text`,
   `projections/timelines`, `projections/storyboards`, `projections/prompts`,
