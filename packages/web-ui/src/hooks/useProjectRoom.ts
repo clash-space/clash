@@ -41,7 +41,7 @@ export interface RoomSyncMeta {
   };
   admission?: {
     allowed: boolean;
-    reason: 'remote-room-not-configured' | null;
+    reason: 'remote-room-not-configured' | 'room-sync-capability-not-ready' | null;
     requirements: string[];
   };
 }

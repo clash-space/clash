@@ -124,6 +124,8 @@ describe("GroupChatPanel primitives", () => {
 
     expect(panelSource).toContain("remote-room-not-configured");
     expect(panelSource).toContain("Enable sync to mirror this room to cloud");
+    expect(panelSource).toContain("room-sync-capability-not-ready");
+    expect(panelSource).toContain("room mirror capability is not ready");
   });
 
   it("surfaces room sync conflict recovery hints instead of a generic failed indicator only", () => {

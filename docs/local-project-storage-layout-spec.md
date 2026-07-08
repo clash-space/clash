@@ -514,6 +514,9 @@ Synced:
   content, not as editable asset rows,
 - room messages sync,
 - local-only runtime traces remain local unless opted in.
+- explicit room mirroring is admitted only when the remote endpoint is
+  configured and the local sync capability flag `room=true` is ready; a remote
+  URL alone keeps room sync pending and non-writing.
 
 Shared:
 

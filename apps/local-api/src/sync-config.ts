@@ -268,7 +268,9 @@ export function createLocalSyncConfigStore(
 
     async resolveRemoteRoomSync() {
       const config = await effective();
-      if (config.mode !== "cloud-sync" || !config.remoteLoroUrl) return undefined;
+      if (config.mode !== "cloud-sync" || !config.remoteLoroUrl || config.capabilities.room !== true) {
+        return undefined;
+      }
       return createHttpRemoteRoomSync({
         baseUrl: config.remoteLoroUrl,
         token: config.remoteLoroToken ?? undefined,

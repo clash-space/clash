@@ -734,11 +734,13 @@ function splitRoomConflicts(
   };
 }
 
-function deniedRoomSyncAdmission(reason: "remote-room-not-configured") {
+type RoomSyncAdmissionReason = "remote-room-not-configured" | "room-sync-capability-not-ready";
+
+function deniedRoomSyncAdmission(reason: RoomSyncAdmissionReason) {
   return {
     allowed: false,
     reason,
-    requirements: ["enable-sync"],
+    requirements: reason === "remote-room-not-configured" ? ["enable-sync"] : ["room"],
   };
 }
 
@@ -757,6 +759,11 @@ async function publicRoomSyncMeta(
   const config = await syncConfig.getPublicConfig();
   const remoteConfigured = config.mode === "cloud-sync" && config.remote_loro.enabled;
   const status = remoteConfigured ? override?.status ?? "pending" : "disabled";
+  const admission = !remoteConfigured
+    ? deniedRoomSyncAdmission("remote-room-not-configured")
+    : config.capabilities.room === true
+      ? allowedRoomSyncAdmission()
+      : deniedRoomSyncAdmission("room-sync-capability-not-ready");
   return {
     mode: config.mode,
     remote_room: {
@@ -764,10 +771,14 @@ async function publicRoomSyncMeta(
       status,
       ...(override?.error ? { error: override.error } : {}),
     },
-    admission: remoteConfigured
-      ? allowedRoomSyncAdmission()
-      : deniedRoomSyncAdmission("remote-room-not-configured"),
+    admission,
   };
+}
+
+function roomSyncAdmissionError(reason: RoomSyncAdmissionReason | null | undefined): string {
+  return reason === "room-sync-capability-not-ready"
+    ? "room sync capability is not ready"
+    : "remote room sync is not configured";
 }
 
 async function localSyncReadState(syncConfig: LocalSyncConfigStore): Promise<LocalSyncConfigReadState> {
@@ -4550,6 +4561,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         mutation: hostMutationRejected(envelope, "not found"),
       }, 404);
     }
+    const admissionMeta = await publicRoomSyncMeta(syncConfig);
+    if (!admissionMeta.admission.allowed) {
+      const error = roomSyncAdmissionError(admissionMeta.admission.reason);
+      return c.json({
+        error,
+        admission: admissionMeta.admission,
+        sync: await publicRoomSyncMeta(syncConfig, { error }),
+        mutation: hostMutationRejected(envelope, error),
+      }, 409);
+    }
     const remoteRoom = await syncConfig.resolveRemoteRoomSync();
     if (!remoteRoom) {
       const error = "remote room sync is not configured";
@@ -4700,6 +4721,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         error: "not found",
         mutation: hostMutationRejected(envelope, "not found"),
       }, 404);
+    }
+    const admissionMeta = await publicRoomSyncMeta(syncConfig);
+    if (!admissionMeta.admission.allowed) {
+      const error = roomSyncAdmissionError(admissionMeta.admission.reason);
+      return c.json({
+        error,
+        admission: admissionMeta.admission,
+        sync: await publicRoomSyncMeta(syncConfig, { error }),
+        mutation: hostMutationRejected(envelope, error),
+      }, 409);
     }
     const remoteRoom = await syncConfig.resolveRemoteRoomSync();
     if (!remoteRoom) {

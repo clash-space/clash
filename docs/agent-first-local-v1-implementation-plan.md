@@ -662,11 +662,16 @@ Current status:
   `clash room sync --json` gives agents an auditable mirror action. Cloud
   configured reads report room sync as `pending`; explicit action results can
   report `mirrored` or `failed`.
+- Explicit room sync now has a mirror admission gate: a configured remote URL is
+  not enough; `capabilities.room=true` must be present before local-api returns
+  a remote room adapter or lets `POST /room/sync` touch the network. Without it,
+  the action returns `room-sync-capability-not-ready` with `requirements:
+  ["room"]`.
 
 Remaining gap:
 
-- Background room sync, mirror admission gates, conflict recovery UI, and live
-  room UI parity are still incomplete.
+- Background room sync, broader admission policy controls, conflict recovery UI,
+  and live room UI parity are still incomplete.
 
 Minimum tests:
 

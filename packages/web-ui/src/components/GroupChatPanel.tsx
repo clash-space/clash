@@ -95,6 +95,14 @@ function roomSyncIndicator(sync: RoomSyncMeta | null | undefined): {
       textClass: 'text-stone-500 dark:text-stone-400',
     };
   }
+  if (sync.admission?.reason === 'room-sync-capability-not-ready') {
+    return {
+      label: 'Pending',
+      title: 'Cloud room sync is configured but the room mirror capability is not ready',
+      dotClass: 'bg-amber-400 dark:bg-amber-300',
+      textClass: 'text-amber-700 dark:text-amber-300',
+    };
+  }
   if (sync.remote_room.status === 'mirrored' || sync.remote_room.status === 'imported') {
     return {
       label: 'Synced',

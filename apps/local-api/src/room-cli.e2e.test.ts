@@ -291,6 +291,14 @@ describe("local room CLI e2e", () => {
       },
       fetch: fetchMock,
     });
+    await syncConfig.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://api.example.com",
+      remote_loro_token: "token-1",
+      capabilities: {
+        room: true,
+      },
+    });
     const server = await startLocalApiServer({ syncConfig });
     try {
       const project = await postJson<{ id: string }>(

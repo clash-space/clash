@@ -8966,13 +8966,22 @@ describe("local API app", () => {
   });
 
   it("reports explicit room sync as pending in cloud-sync mode", async () => {
+    const syncConfig = createLocalSyncConfigStore({
+      dataDir,
+      env: {},
+    });
+    await syncConfig.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://api.example.com",
+      remote_loro_token: "token-1",
+      capabilities: {
+        room: true,
+      },
+    });
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
-      syncEnv: {
-        CLASH_REMOTE_LORO_URL: "https://api.example.com",
-        CLASH_REMOTE_LORO_TOKEN: "token-1",
-      },
+      syncConfig,
     });
     const created = await app.request("/api/v1/projects", {
       method: "POST",
@@ -9060,6 +9069,58 @@ describe("local API app", () => {
     });
   });
 
+  it("blocks explicit room sync until the room mirror capability is ready", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [] }), {
+      headers: { "content-type": "application/json" },
+    }));
+    const syncConfig = createLocalSyncConfigStore({
+      dataDir,
+      env: {
+        CLASH_REMOTE_LORO_URL: "https://api.example.com",
+        CLASH_REMOTE_LORO_TOKEN: "token-1",
+      },
+      fetch: fetchMock,
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Sync Pending Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(synced.status).toBe(409);
+    expect(await synced.json()).toMatchObject({
+      error: "room sync capability is not ready",
+      admission: {
+        allowed: false,
+        reason: "room-sync-capability-not-ready",
+        requirements: ["room"],
+      },
+      sync: {
+        mode: "cloud-sync",
+        remote_room: {
+          enabled: true,
+          status: "pending",
+          error: "room sync capability is not ready",
+        },
+      },
+      mutation: {
+        operation: "room_sync",
+        entity: { kind: "room", id: project.id },
+        forced: false,
+        accepted: false,
+        error: "room sync capability is not ready",
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("explicitly mirrors local and remote room messages without a blind overwrite", async () => {
     const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
       if (init?.method === "GET") {
@@ -9093,6 +9154,14 @@ describe("local API app", () => {
         CLASH_REMOTE_LORO_TOKEN: "token-1",
       },
       fetch: fetchMock,
+    });
+    await syncConfig.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://api.example.com",
+      remote_loro_token: "token-1",
+      capabilities: {
+        room: true,
+      },
     });
     const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
     const created = await app.request("/api/v1/projects", {
@@ -9203,6 +9272,14 @@ describe("local API app", () => {
         CLASH_REMOTE_LORO_TOKEN: "token-1",
       },
       fetch: fetchMock,
+    });
+    await syncConfig.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://api.example.com",
+      remote_loro_token: "token-1",
+      capabilities: {
+        room: true,
+      },
     });
     const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
     const created = await app.request("/api/v1/projects", {
