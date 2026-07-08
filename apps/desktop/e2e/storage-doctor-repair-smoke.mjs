@@ -494,6 +494,61 @@ async function main() {
       checkById(afterReport, "secondary-canvas-recovery")?.path === manifestPath,
     JSON.stringify(checkById(afterReport, "secondary-canvas-recovery")),
   );
+  const invalidRecoverySetRoot = path.join(
+    status.roots.runtime,
+    "recovery",
+    "secondary-canvas-replicas",
+    "invalid-outside-destination",
+  );
+  const invalidRecoveryManifestPath = path.join(invalidRecoverySetRoot, "manifest.json");
+  const outsideRecoveryFile = path.join(artifactRoot, "outside-recovery-snapshot.bin");
+  await mkdir(invalidRecoverySetRoot, { recursive: true });
+  await writeFile(outsideRecoveryFile, "outside recovery bytes", "utf8");
+  await writeJson(invalidRecoveryManifestPath, {
+    schemaVersion: 1,
+    projectId,
+    createdAt: now(),
+    canonicalReplica: recoveryManifest.canonicalReplica,
+    files: [
+      {
+        kind: "snapshot",
+        sourcePath: secondarySnapshotPath,
+        destinationPath: outsideRecoveryFile,
+      },
+    ],
+  });
+  const invalidRecoveryList = runCli(["doctor", "storage-recovery", "list", "--json"]);
+  recordCheck(
+    "doctor storage recovery list reports invalid manifest inventory",
+    invalidRecoveryList.status === 0,
+    invalidRecoveryList.stderr || invalidRecoveryList.stdout,
+    { command: invalidRecoveryList.command },
+  );
+  const invalidRecoveryListReport = parseStdoutJson(invalidRecoveryList);
+  recordCheck(
+    "doctor storage recovery list rejects out-of-set manifest destinations",
+    invalidRecoveryListReport.invalidEntries?.some((entry) =>
+      entry.path === invalidRecoveryManifestPath &&
+      entry.error?.includes("outside recovery set root")
+    ) === true &&
+      !invalidRecoveryListReport.sets?.some((set) => set.manifestPath === invalidRecoveryManifestPath),
+    JSON.stringify(invalidRecoveryListReport),
+  );
+  const invalidRecoveryDoctor = runCli(["doctor", "storage", "--json"]);
+  recordCheck(
+    "doctor storage reports invalid recovery inventory without blessing it",
+    invalidRecoveryDoctor.status === 0,
+    invalidRecoveryDoctor.stderr || invalidRecoveryDoctor.stdout,
+    { command: invalidRecoveryDoctor.command },
+  );
+  const invalidRecoveryDoctorReport = parseStdoutJson(invalidRecoveryDoctor);
+  recordCheck(
+    "doctor invalid recovery report points at the invalid manifest",
+    checkById(invalidRecoveryDoctorReport, "secondary-canvas-recovery")?.level === "warning" &&
+      checkById(invalidRecoveryDoctorReport, "secondary-canvas-recovery")?.path === invalidRecoveryManifestPath &&
+      checkById(invalidRecoveryDoctorReport, "secondary-canvas-recovery")?.message?.includes("invalid manifest entries") === true,
+    JSON.stringify(checkById(invalidRecoveryDoctorReport, "secondary-canvas-recovery")),
+  );
 
   const markerPath = path.join(workspace, ".clash", "project.toml");
   await writeFile(
@@ -562,6 +617,8 @@ async function main() {
       externalRecoveryCompare,
       tamperedRevisionBlobs,
       after,
+      invalidRecoveryList,
+      invalidRecoveryDoctor,
       cloudSyncStatusResult,
     ].map((result) => ({
       command: result.command,

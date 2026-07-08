@@ -497,9 +497,11 @@ Current status:
   recovery with durable manifest evidence instead of treating them as project
   truth.
 - `clash doctor storage-recovery list --json` exposes the quarantined recovery
-  manifest inventory for review, and `clash doctor storage-recovery compare
-  --manifest ... --json` compares one manifest against canonical replica paths
-  with size/hash evidence while keeping automatic import disabled; compare is
+  manifest inventory for review only after current-project recovery-root,
+  same-set destination-path, and symlink/non-regular-file checks pass, otherwise
+  returning invalid entries. `clash doctor storage-recovery compare --manifest
+  ... --json` compares one manifest against canonical replica paths with
+  size/hash evidence while keeping automatic import disabled; compare is
   constrained to the current project's protected recovery root, matching
   project/canonical replica, same-set destination paths, and non-symlinked
   regular recovery files so it cannot become an arbitrary file hash oracle.

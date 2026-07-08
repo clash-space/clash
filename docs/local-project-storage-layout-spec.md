@@ -560,15 +560,19 @@ Debug commands can inspect internals, but product workflows should not depend
 on editing internals.
 `storage-recovery list` is read-only inventory tooling: it lists quarantined
 secondary-canvas recovery manifests under the host-owned runtime recovery root
-so agents do not have to discover protected paths manually. `storage-recovery
-compare` is read-only evidence tooling for one manifest: it reports quarantined
-and canonical file existence, size, and hash. Compare is bound to the current
-project status: the manifest must be the real `manifest.json` under that
-project's protected runtime recovery root, must match the current project id and
-canonical replica paths, and each quarantined file path must stay inside the
-same recovery set without symlink indirection. This keeps the command from
-becoming a generic file hash oracle. Neither command imports or applies
-recovered Loro bytes automatically.
+so agents do not have to discover protected paths manually. List uses the same
+manifest containment checks as compare before treating a recovery set as valid:
+the manifest must be a real file under the current project's protected recovery
+root and every quarantined file path must stay inside that recovery set without
+symlink indirection. Invalid entries are reported separately instead of being
+blessed as recovery sets. `storage-recovery compare` is read-only evidence
+tooling for one manifest: it reports quarantined and canonical file existence,
+size, and hash. Compare is bound to the current project status: the manifest
+must be the real `manifest.json` under that project's protected runtime recovery
+root, must match the current project id and canonical replica paths, and each
+quarantined file path must stay inside the same recovery set without symlink
+indirection. This keeps the command from becoming a generic file hash oracle.
+Neither command imports or applies recovered Loro bytes automatically.
 
 ## Migration From Current State
 

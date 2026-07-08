@@ -681,13 +681,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T05-34-28-355Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T05-42-37-030Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 50 checks passed,
+- 54 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -708,6 +708,8 @@ Result:
   path/state and kept `safeToImportAutomatically: false`,
 - recovery compare rejected a valid-looking manifest outside the current
   project's protected recovery root,
+- recovery list and doctor storage reported invalid manifest inventory instead
+  of treating out-of-set recovery paths as valid sets,
 - doctor reported no secondary canvas replica after repair,
 - project status reported `collaboration.mode: local-only`,
   `webOpenable: false`, `multiUser: false`, and no cloud ProjectRoom

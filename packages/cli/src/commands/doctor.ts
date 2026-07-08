@@ -824,6 +824,24 @@ export async function listSecondaryCanvasRecoveries(options: {
   homeDir?: string;
 } = {}): Promise<SecondaryCanvasRecoveryListReport> {
   const status = await resolveProjectStatus(options);
+  const inventory = await collectSecondaryCanvasRecoveryInventory(status);
+
+  return {
+    schemaVersion: 1,
+    status: "listed",
+    projectId: status.projectId,
+    recoveryRoot: inventory.recoveryRoot,
+    safeToImportAutomatically: false,
+    sets: inventory.sets,
+    invalidEntries: inventory.invalidEntries,
+  };
+}
+
+async function collectSecondaryCanvasRecoveryInventory(status: ProjectStatus): Promise<{
+  recoveryRoot: string;
+  sets: SecondaryCanvasRecoveryInventorySet[];
+  invalidEntries: SecondaryCanvasRecoveryInvalidEntry[];
+}> {
   const recoveryRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas");
   const sets: SecondaryCanvasRecoveryInventorySet[] = [];
   const invalidEntries: SecondaryCanvasRecoveryInvalidEntry[] = [];
@@ -833,15 +851,7 @@ export async function listSecondaryCanvasRecoveries(options: {
     entries = await readdir(recoveryRoot, { withFileTypes: true });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {
-        schemaVersion: 1,
-        status: "listed",
-        projectId: status.projectId,
-        recoveryRoot,
-        safeToImportAutomatically: false,
-        sets,
-        invalidEntries,
-      };
+      return { recoveryRoot, sets, invalidEntries };
     }
     throw error;
   }
@@ -850,6 +860,13 @@ export async function listSecondaryCanvasRecoveries(options: {
     if (!entry.isDirectory()) continue;
     const manifestPath = join(recoveryRoot, entry.name, "manifest.json");
     try {
+      await assertRegularFile(
+        manifestPath,
+        `Secondary canvas recovery manifest must be a regular file inside current project recovery root: ${manifestPath}`,
+      );
+      if (!(await realPathIsSameOrInside(manifestPath, recoveryRoot))) {
+        throw new Error(`Secondary canvas recovery manifest is outside current project recovery root: ${manifestPath}`);
+      }
       const manifest = parseSecondaryCanvasReplicaManifest(
         JSON.parse(await readFile(manifestPath, "utf8")),
         manifestPath,
@@ -860,6 +877,20 @@ export async function listSecondaryCanvasRecoveries(options: {
           error: `Manifest project ${manifest.projectId} does not match current project ${status.projectId}`,
         });
         continue;
+      }
+      const recoverySetRoot = dirname(manifestPath);
+      for (const file of manifest.files) {
+        const destinationPath = resolve(file.destinationPath);
+        if (!isSameOrInside(destinationPath, recoverySetRoot)) {
+          throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
+        }
+        await assertRegularFileIfPresent(
+          destinationPath,
+          `Secondary canvas recovery file destination must be a regular file inside recovery set root: ${destinationPath}`,
+        );
+        if (!(await realPathIsSameOrInsideIfPresent(destinationPath, recoverySetRoot))) {
+          throw new Error(`Secondary canvas recovery file destination is outside recovery set root: ${destinationPath}`);
+        }
       }
       sets.push({
         manifestPath,
@@ -880,11 +911,7 @@ export async function listSecondaryCanvasRecoveries(options: {
   invalidEntries.sort((a, b) => a.path.localeCompare(b.path));
 
   return {
-    schemaVersion: 1,
-    status: "listed",
-    projectId: status.projectId,
     recoveryRoot,
-    safeToImportAutomatically: false,
     sets,
     invalidEntries,
   };
@@ -1054,66 +1081,34 @@ async function repairSecondaryCanvasReplicas(
 }
 
 async function inspectSecondaryCanvasRecovery(status: ProjectStatus): Promise<StorageDoctorCheck> {
-  const recoveryRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas");
-  let entries: Dirent<string>[];
-  try {
-    entries = await readdir(recoveryRoot, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return {
-        id: "secondary-canvas-recovery",
-        level: "ok",
-        message: "No secondary canvas replica recovery sets were found.",
-        path: recoveryRoot,
-      };
-    }
-    throw error;
-  }
+  const inventory = await collectSecondaryCanvasRecoveryInventory(status);
 
-  const manifests: string[] = [];
-  const invalid: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const manifestPath = join(recoveryRoot, entry.name, "manifest.json");
-    if (!(await pathExists(manifestPath, "file"))) {
-      invalid.push(join(recoveryRoot, entry.name));
-      continue;
-    }
-    try {
-      const parsed = JSON.parse(await readFile(manifestPath, "utf8")) as Partial<SecondaryCanvasReplicaManifest>;
-      if (parsed.schemaVersion !== 1 || parsed.projectId !== status.projectId || !Array.isArray(parsed.files)) {
-        invalid.push(manifestPath);
-        continue;
-      }
-      manifests.push(manifestPath);
-    } catch {
-      invalid.push(manifestPath);
-    }
-  }
-
-  if (invalid.length > 0) {
+  if (inventory.invalidEntries.length > 0) {
     return {
       id: "secondary-canvas-recovery",
       level: "warning",
-      message: `Secondary canvas recovery contains invalid manifest entries: ${invalid.slice(0, 4).join(", ")}.`,
-      path: invalid[0],
+      message: `Secondary canvas recovery contains invalid manifest entries: ${inventory.invalidEntries
+        .slice(0, 4)
+        .map((entry) => entry.path)
+        .join(", ")}.`,
+      path: inventory.invalidEntries[0].path,
     };
   }
 
-  if (manifests.length === 0) {
+  if (inventory.sets.length === 0) {
     return {
       id: "secondary-canvas-recovery",
       level: "ok",
       message: "No secondary canvas replica recovery sets were found.",
-      path: recoveryRoot,
+      path: inventory.recoveryRoot,
     };
   }
 
   return {
     id: "secondary-canvas-recovery",
     level: "warning",
-    message: `Found ${manifests.length} quarantined canvas replica recovery set(s). Review manifest before any explicit import or compare action.`,
-    path: manifests[0],
+    message: `Found ${inventory.sets.length} quarantined canvas replica recovery set(s). Review manifest before any explicit import or compare action.`,
+    path: inventory.sets[0].manifestPath,
   };
 }
 

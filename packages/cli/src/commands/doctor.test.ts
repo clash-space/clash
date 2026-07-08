@@ -6,7 +6,13 @@ import { chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
-import { compareSecondaryCanvasRecovery, doctorCommand, inspectStorageContract, runStorageDoctor } from "./doctor";
+import {
+  compareSecondaryCanvasRecovery,
+  doctorCommand,
+  inspectStorageContract,
+  listSecondaryCanvasRecoveries,
+  runStorageDoctor,
+} from "./doctor";
 import { buildProjectStatus, initProject } from "./projects";
 
 const require = createRequire(import.meta.url);
@@ -601,6 +607,123 @@ test("secondary canvas recovery list reports quarantined manifests for review", 
       { kind: "updates-log", sourcePath: updatesPath },
     ].sort((a, b) => a.kind.localeCompare(b.kind)),
   );
+});
+
+test("secondary canvas recovery list reports symlinked manifests as invalid inventory", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const externalManifest = join(await tempDir(), "manifest.json");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await writeFile(
+    externalManifest,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [],
+    }),
+    "utf8",
+  );
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await symlink(externalManifest, manifestPath);
+
+  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+
+  assert.equal(inventory.sets.length, 0);
+  assert.equal(inventory.invalidEntries.length, 1);
+  assert.equal(inventory.invalidEntries[0].path, manifestPath);
+  assert.match(inventory.invalidEntries[0].error, /regular file/);
+});
+
+test("secondary canvas recovery list reports out-of-set destinations as invalid inventory", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const leakedFile = join(await tempDir(), "outside-snapshot.bin");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await writeFile(leakedFile, "outside bytes", "utf8");
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [
+        {
+          kind: "snapshot",
+          sourcePath: join(cwd, "loro", "snapshot.bin"),
+          destinationPath: leakedFile,
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+
+  assert.equal(inventory.sets.length, 0);
+  assert.equal(inventory.invalidEntries.length, 1);
+  assert.equal(inventory.invalidEntries[0].path, manifestPath);
+  assert.match(inventory.invalidEntries[0].error, /outside recovery set root/);
+});
+
+test("storage doctor reports invalid recovery manifests instead of blessing symlinked inventory", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  const recoverySetRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas", "manual");
+  const externalManifest = join(await tempDir(), "manifest.json");
+  await mkdir(recoverySetRoot, { recursive: true });
+  await writeFile(
+    externalManifest,
+    JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      createdAt: new Date().toISOString(),
+      canonicalReplica: {
+        replicaRoot: status.loro.replicaRoot,
+        snapshotPath: status.loro.snapshotPath,
+        updatesLogPath: status.loro.updatesLogPath,
+      },
+      files: [],
+    }),
+    "utf8",
+  );
+  const manifestPath = join(recoverySetRoot, "manifest.json");
+  await symlink(externalManifest, manifestPath);
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+  const recoveryCheck = checkById(report, "secondary-canvas-recovery");
+
+  assert.equal(recoveryCheck?.level, "warning");
+  assert.equal(recoveryCheck?.path, manifestPath);
+  assert.match(recoveryCheck?.message ?? "", /invalid manifest entries/);
 });
 
 test("storage doctor validates the project status storage role contract", () => {
