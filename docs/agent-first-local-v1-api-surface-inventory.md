@@ -638,6 +638,9 @@ Rules:
   than direct SQLite writes.
 - `clash text history` reads the GET endpoint as the agent-facing history
   surface instead of opening SQLite.
+- `clash text content --revision <id> [--out <path>]` reads the content GET
+  endpoint as the agent-facing revision recovery surface; `--out` writes are
+  cwd-contained.
 
 Remaining:
 
@@ -669,6 +672,9 @@ Rules:
 - `clash timeline history` reads the GET endpoint as the agent-facing history
   surface instead of opening SQLite. Loro remains the canonical fine-grained
   document history.
+- `clash timeline content --revision <id> [--out <path>]` reads the content GET
+  endpoint as the agent-facing revision recovery surface; `--out` writes are
+  cwd-contained.
 
 Remaining:
 

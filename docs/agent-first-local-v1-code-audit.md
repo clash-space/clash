@@ -51,16 +51,19 @@ The main v1 gaps are:
 - timeline has projection CAS plus explicit first-pass COW replacement through
   `clash timeline pull/apply/replace`; successful apply/replace registers
   `clash.timeline.revision` milestones and local-api stores supplied YAML bodies
-  as immutable timeline revision blobs readable through the host API,
+  as immutable timeline revision blobs readable through the host API; `clash
+  timeline history` and `clash timeline content --revision <id> [--out <path>]`
+  expose index and body recovery without direct SQLite access,
 - text nodes now have first-pass Markdown projection CAS plus explicit COW
   replacement through `clash text pull/apply/replace`; successful apply/replace
   records `clash.text.revision` milestones with source path, content hash,
   parent revision, and actor attribution, and local-api indexes those applied
   revisions in SQLite `text_revisions` while storing supplied Markdown bodies as
   immutable text revision blobs readable through the host API; `clash text
-  history` reads that index through the host API; richer visual history UI,
-  conflict recovery, canonical file-backed text mode, and sync policy are still
-  future work,
+  history` reads that index through the host API, and `clash text content
+  --revision <id> [--out <path>]` retrieves immutable revision Markdown without
+  opening SQLite; richer visual history UI, conflict recovery, canonical
+  file-backed text mode, and sync policy are still future work,
 - shared projection path resolution now keeps text/timeline projection files
   inside the current agent/project cwd and rejects symlinked parents that
   resolve outside it, and applies the same cwd/realpath guard to generated

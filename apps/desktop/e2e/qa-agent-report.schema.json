@@ -216,7 +216,9 @@
         "directCanvasCliMutationEnvelopeRecorded",
         "directCanvasCliDeleteReadTokenRequired",
         "textHistoryReadsHostRevisionIndex",
+        "textContentRestoresHostRevisionBody",
         "timelineHistoryReadsHostRevisionIndex",
+        "timelineContentRestoresHostRevisionBody",
         "textCutExportSourceProvenanceRecorded",
         "textCutExportSymlinkActionRejected",
         "evidence"
@@ -290,7 +292,15 @@
           "type": "boolean",
           "const": true
         },
+        "textContentRestoresHostRevisionBody": {
+          "type": "boolean",
+          "const": true
+        },
         "timelineHistoryReadsHostRevisionIndex": {
+          "type": "boolean",
+          "const": true
+        },
+        "timelineContentRestoresHostRevisionBody": {
           "type": "boolean",
           "const": true
         },

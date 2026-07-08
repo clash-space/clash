@@ -9,6 +9,7 @@ import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson, printTable } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
+import { resolveAgentFilePathInsideCwd } from "../lib/projection-cas";
 import { resolveCanvasActor, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
 import {
   assertTimelineCas,
@@ -344,6 +345,46 @@ timelineCommand
     }
   });
 
+timelineCommand
+  .command("content")
+  .description("Fetch an applied timeline revision's YAML content from the host")
+  .requiredOption("--revision <id>", "Timeline revision ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--out <path>", "Write content to a cwd-contained timeline YAML file instead of stdout")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
+    try {
+      const content = await fetchTimelineRevisionContent(projectId, options.revision);
+      if (options.out) {
+        const filePath = resolveAgentFilePathInsideCwd({
+          cwd: process.cwd(),
+          filePath: options.out,
+          writeVerb: "Timeline revision content output",
+        });
+        mkdirSync(dirname(filePath), { recursive: true });
+        writeFileSync(filePath, content, "utf8");
+        const payload = {
+          projectId,
+          revisionId: options.revision,
+          filePath,
+          bytes: Buffer.byteLength(content, "utf8"),
+        };
+        if (isJsonMode(options)) printJson(payload);
+        else process.stderr.write(`wrote ${filePath}\n`);
+        return;
+      }
+      if (isJsonMode(options)) {
+        printJson({ projectId, revisionId: options.revision, content });
+      } else {
+        process.stdout.write(content);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
 function readTimelineLockFile(lockPath: string): TimelineLock {
   try {
     return parseTimelineLock(readFileSync(lockPath, "utf8"));
@@ -449,6 +490,25 @@ export async function fetchTimelineRevisionHistory(
       return parsed.data;
     }),
   };
+}
+
+export async function fetchTimelineRevisionContent(
+  projectId: string,
+  revisionId: string,
+  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+): Promise<string> {
+  const response = await request(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/timeline-revisions/${encodeURIComponent(revisionId)}/content`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("timeline revision content unavailable");
+    }
+    const body = await response.text().catch(() => "");
+    throw new Error(body ? `timeline revision content rejected: ${body}` : `timeline revision content rejected with HTTP ${response.status}`);
+  }
+  return response.text();
 }
 
 function parseTimelineRevisionLimit(value: unknown): number | undefined {

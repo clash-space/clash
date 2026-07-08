@@ -158,7 +158,9 @@ describe("desktop startup test suite", () => {
     expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliMutationEnvelopeRecorded");
     expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliDeleteReadTokenRequired");
     expect(JSON.stringify(schema.properties.cas)).toContain("textHistoryReadsHostRevisionIndex");
+    expect(JSON.stringify(schema.properties.cas)).toContain("textContentRestoresHostRevisionBody");
     expect(JSON.stringify(schema.properties.cas)).toContain("timelineHistoryReadsHostRevisionIndex");
+    expect(JSON.stringify(schema.properties.cas)).toContain("timelineContentRestoresHostRevisionBody");
 
     expect(schema.properties.paths.required).toEqual(
       expect.arrayContaining([

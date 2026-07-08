@@ -29,7 +29,7 @@ test("registers a top-level text command for agent-editable text files", () => {
   assert.match(indexSource, /import \{ textCommand \} from "\.\/commands\/text"/);
   assert.match(indexSource, /program\.addCommand\(textCommand\)/);
   assert.equal(textCommand.name(), "text");
-  assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history"]);
+  assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content"]);
   assert.match(daemonSource, /case "text_cas_update"/);
   assert.match(daemonSource, /text_cas_update requires string content/);
   assert.match(daemonSource, /case "text_cow_replace"/);
@@ -311,6 +311,23 @@ test("fetches text revision history through the host API", async () => {
   assert.deepEqual(result, { revisions: [revision] });
   assert.deepEqual(calls, [{
     path: "/api/v1/projects/project_text/text-revisions?nodeId=text_node&limit=2",
+    method: "GET",
+  }]);
+});
+
+test("fetches text revision content through the host API", async () => {
+  const module = await import("./text");
+  assert.equal(typeof module.fetchTextRevisionContent, "function");
+  const calls: Array<{ path: string; method: string | undefined }> = [];
+
+  const result = await module.fetchTextRevisionContent("project_text", "txrev-1", async (path, init) => {
+    calls.push({ path, method: init?.method });
+    return new Response("versioned markdown\n", { status: 200, headers: { "content-type": "text/markdown" } });
+  });
+
+  assert.equal(result, "versioned markdown\n");
+  assert.deepEqual(calls, [{
+    path: "/api/v1/projects/project_text/text-revisions/txrev-1/content",
     method: "GET",
   }]);
 });

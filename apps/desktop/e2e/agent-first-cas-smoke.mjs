@@ -307,6 +307,7 @@ async function startRevisionIndexHost() {
     const requestsPath = ${JSON.stringify(requestsPath)};
     const revisionsPath = ${JSON.stringify(revisionsPath)};
     const revisions = [];
+    const revisionContents = new Map();
     mkdirSync(dirname(requestsPath), { recursive: true });
     writeFileSync(requestsPath, "");
     writeFileSync(revisionsPath, "[]\\n");
@@ -331,6 +332,15 @@ async function startRevisionIndexHost() {
       response.end(payload);
     }
 
+    function sendText(response, status, body, contentType) {
+      response.writeHead(status, {
+        "content-type": contentType,
+        "content-length": Buffer.byteLength(body),
+        connection: "close",
+      });
+      response.end(body);
+    }
+
     const server = createServer(async (request, response) => {
       try {
         const url = new URL(request.url || "/", "http://127.0.0.1");
@@ -348,6 +358,9 @@ async function startRevisionIndexHost() {
           const existing = revisions.find((revision) => revision.revisionId === body.revision.revisionId);
           if (!existing) {
             revisions.push(body.revision);
+            if (typeof body.content === "string") {
+              revisionContents.set(body.revision.revisionId, body.content);
+            }
             persistRevisions();
           }
           sendJson(response, 200, {
@@ -371,6 +384,9 @@ async function startRevisionIndexHost() {
           const existing = revisions.find((revision) => revision.revisionId === body.revision.revisionId);
           if (!existing) {
             revisions.push(body.revision);
+            if (typeof body.content === "string") {
+              revisionContents.set(body.revision.revisionId, body.content);
+            }
             persistRevisions();
           }
           sendJson(response, 200, {
@@ -396,6 +412,23 @@ async function startRevisionIndexHost() {
           sendJson(response, 200, { revisions: filtered });
           return;
         }
+        const textContentMatch = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/text-revisions\\/([^/]+)\\/content$/);
+        if (request.method === "GET" && textContentMatch) {
+          const projectId = decodeURIComponent(textContentMatch[1]);
+          const revisionId = decodeURIComponent(textContentMatch[2]);
+          const revision = revisions.find((item) =>
+            item.projectId === projectId &&
+            item.revisionId === revisionId &&
+            item.kind === "clash.text.revision"
+          );
+          const content = revisionContents.get(revisionId);
+          if (!revision || typeof content !== "string") {
+            sendJson(response, 404, { error: "revision content not found" });
+            return;
+          }
+          sendText(response, 200, content, "text/markdown; charset=utf-8");
+          return;
+        }
         const timelineMatch = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/timeline-revisions$/);
         if (request.method === "GET" && timelineMatch) {
           const projectId = decodeURIComponent(timelineMatch[1]);
@@ -405,6 +438,23 @@ async function startRevisionIndexHost() {
             .filter((revision) => revision.projectId === projectId && revision.kind === "clash.timeline.revision" && (!nodeId || revision.nodeId === nodeId))
             .slice(0, Number.isFinite(limit) ? limit : 50);
           sendJson(response, 200, { revisions: filtered });
+          return;
+        }
+        const timelineContentMatch = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/timeline-revisions\\/([^/]+)\\/content$/);
+        if (request.method === "GET" && timelineContentMatch) {
+          const projectId = decodeURIComponent(timelineContentMatch[1]);
+          const revisionId = decodeURIComponent(timelineContentMatch[2]);
+          const revision = revisions.find((item) =>
+            item.projectId === projectId &&
+            item.revisionId === revisionId &&
+            item.kind === "clash.timeline.revision"
+          );
+          const content = revisionContents.get(revisionId);
+          if (!revision || typeof content !== "string") {
+            sendJson(response, 404, { error: "revision content not found" });
+            return;
+          }
+          sendText(response, 200, content, "application/yaml; charset=utf-8");
           return;
         }
         sendJson(response, 404, { error: "not found" });
@@ -1541,9 +1591,11 @@ async function runDirectCanvasCliReadTokenCas() {
     let textPullPayload = null;
     let textApplyPayload = null;
     let textHistoryPayload = null;
+    let textContentPayload = null;
     let timelinePullPayload = null;
     let timelineApplyPayload = null;
     let timelineHistoryPayload = null;
+    let timelineContentPayload = null;
     try {
       const revisionEnv = {
         ...env,
@@ -1620,6 +1672,30 @@ async function runDirectCanvasCliReadTokenCas() {
           ),
         textHistory.stderr || textHistory.stdout,
         { command: textHistory.command, revisionHostRequests: revisionHost.requests },
+      );
+      const textContent = runText([
+        "content",
+        "--project",
+        projectId,
+        "--revision",
+        textApplyPayload.textRevision.revisionId,
+        "--out",
+        "revisions/text-cli.recovered.md",
+        "--json",
+      ], revisionEnv);
+      textContentPayload = textContent.status === 0 ? parseStdoutJson(textContent) : null;
+      recordCheck(
+        "text content restores host revision body",
+        textContent.status === 0 &&
+          textContentPayload?.projectId === projectId &&
+          textContentPayload?.revisionId === textApplyPayload.textRevision.revisionId &&
+          readOptionalText(textContentPayload?.filePath) === "history-indexed copy\n" &&
+          revisionHost.requests.some((request) =>
+            request.method === "GET" &&
+            request.path === `/api/v1/projects/${projectId}/text-revisions/${textApplyPayload.textRevision.revisionId}/content`
+          ),
+        textContent.stderr || textContent.stdout,
+        { command: textContent.command, textContentPayload, revisionHostRequests: revisionHost.requests },
       );
 
       const timelinePull = runTimeline([
@@ -1711,6 +1787,30 @@ async function runDirectCanvasCliReadTokenCas() {
         timelineHistory.stderr || timelineHistory.stdout,
         { command: timelineHistory.command, revisionHostRequests: revisionHost.requests },
       );
+      const timelineContent = runTimeline([
+        "content",
+        "--project",
+        projectId,
+        "--revision",
+        timelineApplyPayload.timelineRevision.revisionId,
+        "--out",
+        "revisions/timeline-cli.recovered.timeline.yaml",
+        "--json",
+      ], revisionEnv);
+      timelineContentPayload = timelineContent.status === 0 ? parseStdoutJson(timelineContent) : null;
+      recordCheck(
+        "timeline content restores host revision body",
+        timelineContent.status === 0 &&
+          timelineContentPayload?.projectId === projectId &&
+          timelineContentPayload?.revisionId === timelineApplyPayload.timelineRevision.revisionId &&
+          readOptionalText(timelineContentPayload?.filePath)?.includes("sourceNodeId: text-cli") === true &&
+          revisionHost.requests.some((request) =>
+            request.method === "GET" &&
+            request.path === `/api/v1/projects/${projectId}/timeline-revisions/${timelineApplyPayload.timelineRevision.revisionId}/content`
+          ),
+        timelineContent.stderr || timelineContent.stdout,
+        { command: timelineContent.command, timelineContentPayload, revisionHostRequests: revisionHost.requests },
+      );
     } finally {
       await revisionHost.close();
     }
@@ -1732,11 +1832,13 @@ async function runDirectCanvasCliReadTokenCas() {
         pull: textPullPayload,
         apply: textApplyPayload,
         history: textHistoryPayload,
+        content: textContentPayload,
       },
       timelineRevisionHistory: {
         pull: timelinePullPayload,
         apply: timelineApplyPayload,
         history: timelineHistoryPayload,
+        content: timelineContentPayload,
       },
     };
   } finally {
@@ -1764,7 +1866,9 @@ async function main() {
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
     requireCheckPassed("text history reads host revision index");
+    requireCheckPassed("text content restores host revision body");
     requireCheckPassed("timeline history reads host revision index");
+    requireCheckPassed("timeline content restores host revision body");
   } catch (error) {
     status = "fail";
     summary = error instanceof Error ? error.message : String(error);
@@ -1800,7 +1904,9 @@ async function main() {
       directCanvasCliMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas CLI mutation envelope recorded" && check.status === "pass"),
       directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
       textHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "text history reads host revision index" && check.status === "pass"),
+      textContentRestoresHostRevisionBody: checks.some((check) => check.name === "text content restores host revision body" && check.status === "pass"),
       timelineHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "timeline history reads host revision index" && check.status === "pass"),
+      timelineContentRestoresHostRevisionBody: checks.some((check) => check.name === "timeline content restores host revision body" && check.status === "pass"),
       textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
       textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),
       projectionPathOutsideCwdRejected: [

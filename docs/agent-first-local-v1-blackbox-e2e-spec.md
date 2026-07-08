@@ -253,16 +253,18 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T02-35-27-095Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-08T03-35-22-470Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 44 checks passed,
+- 49 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 - `textHistoryReadsHostRevisionIndex: true`.
+- `textContentRestoresHostRevisionBody: true`.
 - `timelineHistoryReadsHostRevisionIndex: true`.
+- `timelineContentRestoresHostRevisionBody: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
 

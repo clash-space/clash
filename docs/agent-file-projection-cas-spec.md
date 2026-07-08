@@ -1,6 +1,6 @@
 # Agent File Projection CAS Spec
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Purpose
 
@@ -67,6 +67,10 @@ Existing behavior:
   editable.
 - The legacy `clash canvas timeline pull/push` path has the same CAS and
   materialized-checkpoint behavior.
+- `clash timeline history` lists host-indexed applied milestones, and `clash
+  timeline content --revision <id> [--out <path>]` fetches the immutable YAML
+  body for a selected revision without direct SQLite or snapshot access. `--out`
+  paths are checked against the current cwd, including symlink escape checks.
 
 Text nodes now have a first-pass Markdown projection too:
 
@@ -95,6 +99,9 @@ Existing text behavior:
 - `clash text history` reads the host-owned text revision index through the
   local API, so agents can inspect applied text revisions without direct DB
   access.
+- `clash text content --revision <id> [--out <path>]` fetches the immutable
+  Markdown body for a selected applied revision through the host API. `--out`
+  paths are checked against the current cwd, including symlink escape checks.
 - In-place apply is rejected by default when the text node feeds materialized
   downstream state; text feeding only unmaterialized action drafts remains
   editable. `clash text replace` creates a copy-on-write text node from the
@@ -653,6 +660,7 @@ The current local v1 implementation exposes that index explicitly:
 - `GET /api/v1/projects/:projectId/timeline-revisions`
 - `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`
 - `clash timeline history`
+- `clash timeline content --revision <id> [--out <path>]`
 
 `clash timeline apply/replace` registers the applied
 `clash.timeline.revision` after the canvas mutation succeeds. If an older host

@@ -28,7 +28,7 @@ test("registers a top-level timeline command for agent-editable timeline files",
   assert.match(indexSource, /import \{ timelineCommand \} from "\.\/commands\/timeline"/);
   assert.match(indexSource, /program\.addCommand\(timelineCommand\)/);
   assert.equal(timelineCommand.name(), "timeline");
-  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history"]);
+  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content"]);
   const timelineSource = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
   const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
   assert.match(timelineSource, /\.command\("replace"\)/);
@@ -659,6 +659,23 @@ tracks:
   assert.deepEqual(result, { revisions: [revision] });
   assert.deepEqual(calls, [{
     path: "/api/v1/projects/project-1/timeline-revisions?nodeId=editor-1&limit=2",
+    method: "GET",
+  }]);
+});
+
+test("fetches timeline revision content through the host API", async () => {
+  const module = await import("./timeline");
+  assert.equal(typeof module.fetchTimelineRevisionContent, "function");
+  const calls: Array<{ path: string; method: string | undefined }> = [];
+
+  const result = await module.fetchTimelineRevisionContent("project-1", "tlrev-1", async (path, init) => {
+    calls.push({ path, method: init?.method });
+    return new Response("tracks: []\n", { status: 200, headers: { "content-type": "application/yaml" } });
+  });
+
+  assert.equal(result, "tracks: []\n");
+  assert.deepEqual(calls, [{
+    path: "/api/v1/projects/project-1/timeline-revisions/tlrev-1/content",
     method: "GET",
   }]);
 });

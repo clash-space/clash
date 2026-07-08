@@ -132,7 +132,7 @@ Path report requirements:
 CAS report requirements:
 - cas.reportPath must be ${agentFirstCasReportPath}.
 - cas.logPath must be ${agentFirstCasLogPath}.
-- cas.missingReadProofRejected, cas.staleReadProofRejected, cas.wrongFileLockRejected, cas.copyOnWritePreservedSource, cas.directCanvasMissingReadTokenRejected, cas.directCanvasStaleReadTokenRejected, cas.directCanvasFreshReadTokenAccepted, cas.directCanvasMutationEnvelopeRecorded, cas.directCanvasDeleteReadTokenRequired, cas.directCanvasCliMissingReadTokenRejected, cas.directCanvasCliStaleReadTokenRejected, cas.directCanvasCliFreshReadTokenAccepted, cas.directCanvasCliMutationEnvelopeRecorded, cas.directCanvasCliDeleteReadTokenRequired, cas.textHistoryReadsHostRevisionIndex, cas.timelineHistoryReadsHostRevisionIndex, cas.textCutExportSourceProvenanceRecorded, and cas.textCutExportSymlinkActionRejected must all be true, based on the CAS report JSON.
+- cas.missingReadProofRejected, cas.staleReadProofRejected, cas.wrongFileLockRejected, cas.copyOnWritePreservedSource, cas.directCanvasMissingReadTokenRejected, cas.directCanvasStaleReadTokenRejected, cas.directCanvasFreshReadTokenAccepted, cas.directCanvasMutationEnvelopeRecorded, cas.directCanvasDeleteReadTokenRequired, cas.directCanvasCliMissingReadTokenRejected, cas.directCanvasCliStaleReadTokenRejected, cas.directCanvasCliFreshReadTokenAccepted, cas.directCanvasCliMutationEnvelopeRecorded, cas.directCanvasCliDeleteReadTokenRequired, cas.textHistoryReadsHostRevisionIndex, cas.textContentRestoresHostRevisionBody, cas.timelineHistoryReadsHostRevisionIndex, cas.timelineContentRestoresHostRevisionBody, cas.textCutExportSourceProvenanceRecorded, and cas.textCutExportSymlinkActionRejected must all be true, based on the CAS report JSON.
 - cas.evidence must cite the smoke report checks and the commands that failed or passed.
 
 Environment used by the primary command:
@@ -205,7 +205,9 @@ async function validateCasEvidence(report) {
     "directCanvasCliMutationEnvelopeRecorded",
     "directCanvasCliDeleteReadTokenRequired",
     "textHistoryReadsHostRevisionIndex",
+    "textContentRestoresHostRevisionBody",
     "timelineHistoryReadsHostRevisionIndex",
+    "timelineContentRestoresHostRevisionBody",
     "textCutExportSourceProvenanceRecorded",
     "textCutExportSymlinkActionRejected",
   ]) {

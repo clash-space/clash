@@ -319,6 +319,9 @@ Current status:
 - `clash text history` reads that host-owned revision index through
   `GET /api/v1/projects/:projectId/text-revisions`, giving agents a CLI
   history surface without direct SQLite access.
+- `clash text content --revision <id> [--out <path>]` reads the immutable
+  Markdown body through the host content endpoint, giving agents a first-class
+  recovery/diff surface without constructing API URLs or opening SQLite.
 - Text apply rejects materialized downstream checkpoint rewrites by default,
   allows unmaterialized action-draft references, and permits explicit
   `--force` checkpoint rewrites.
@@ -340,6 +343,9 @@ Current status:
 - `clash timeline history` reads that host-owned milestone index, giving agents
   a CLI provenance/history surface without direct SQLite access. Timeline body
   head and fine-grained collaborative history remain in the Loro canvas state.
+- `clash timeline content --revision <id> [--out <path>]` reads the immutable
+  YAML body through the host content endpoint, giving agents a first-class
+  recovery/diff surface without constructing API URLs or opening SQLite.
 - Covered by `packages/cli/src/commands/text.test.ts`,
   `packages/cli/src/commands/timeline.test.ts`, and the local-api revision
   index tests.
