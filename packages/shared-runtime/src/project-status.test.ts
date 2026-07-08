@@ -15,8 +15,12 @@ describe("project status path builder", () => {
     expect(status.runtimeRoot).toBe(status.roots.runtime);
     expect(status.localSqlitePath).toBe("/tmp/clash-home/local-api/local.sqlite");
     expect(status.loro.snapshotPath).toBe("/tmp/clash-home/local-api/projects/project%2Fone/loro/snapshot.bin");
+    expect(status.storage.canonicalReplica.contentBlobs.textRevisions.path).toBe("/tmp/clash-home/local-api/text-revision-blobs");
+    expect(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path).toBe("/tmp/clash-home/local-api/timeline-revision-blobs");
     expect(status.editablePaths).toContain(status.roots.drafts);
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
+    expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
+    expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
     expect(status.protectedPaths).toContain(status.roots.runtime);
     expect(status.collaboration).toEqual({
       schemaVersion: 1,
@@ -89,6 +93,22 @@ describe("project status path builder", () => {
           snapshotPath: status.loro.snapshotPath,
           updatesLogPath: status.loro.updatesLogPath,
           agentWritable: false,
+        },
+        contentBlobs: {
+          textRevisions: {
+            kind: "content-addressed-files",
+            path: "/tmp/clash-home/local-api/text-revision-blobs",
+            mediaType: "text/markdown",
+            immutable: true,
+            agentWritable: false,
+          },
+          timelineRevisions: {
+            kind: "content-addressed-files",
+            path: "/tmp/clash-home/local-api/timeline-revision-blobs",
+            mediaType: "application/yaml",
+            immutable: true,
+            agentWritable: false,
+          },
         },
       },
     });

@@ -315,6 +315,9 @@ Current status:
   body as an immutable app-owned text blob under `text-revision-blobs/`, and
   exposes it through
   `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`.
+  `project status.storage.canonicalReplica.contentBlobs.textRevisions` exposes
+  that protected content-addressed root and `doctor storage` verifies it is not
+  agent-writable or inside an editable projection path.
   Older targets remain compatible when the index endpoint is unavailable.
 - `clash text history` reads that host-owned revision index through
   `GET /api/v1/projects/:projectId/text-revisions`, giving agents a CLI
@@ -343,6 +346,9 @@ Current status:
   hash, stores the body as an immutable app-owned timeline revision blob under
   `timeline-revision-blobs/`, and exposes it through
   `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`.
+  `project status.storage.canonicalReplica.contentBlobs.timelineRevisions`
+  exposes that protected content-addressed root and `doctor storage` verifies it
+  is not agent-writable or inside an editable projection path.
 - `clash timeline history` reads that host-owned milestone index, giving agents
   a CLI provenance/history surface without direct SQLite access. Entries with a
   stored YAML body include a `content` descriptor (`kind:
@@ -448,7 +454,9 @@ Current status:
   - Loro replica/snapshot/update-log paths,
   - editable draft/projection/asset-link roots,
   - explicit `roots.runtime`/`runtimeRoot`,
-  - protected local DB/snapshot/runtime paths.
+  - protected local DB/snapshot/runtime paths,
+  - protected text/timeline revision content blob roots under
+    `storage.canonicalReplica.contentBlobs`.
 - The command treats a marker in the cwd as context only. If `--project`
   selects a different project, the status does not inherit the marker's sync
   mode.
@@ -459,7 +467,8 @@ Current status:
   workspace, editable draft/projection/session/asset-link roots, protected
   runtime root, Loro replica, local SQLite target, broken/invalid asset links,
   ignored legacy `db.json`, and the structured `storage` role contract that
-  keeps agent workspace paths separate from the protected canonical replica.
+  keeps agent workspace paths separate from the protected canonical replica,
+  including immutable text/timeline revision content blob roots.
 - `packages/clash-bridge/src/lib/session-cwd.ts` now creates alpha agent
   workspace directories for `drafts`, `projections/text`,
   `projections/timelines`, `projections/storyboards`, `projections/prompts`,

@@ -71,11 +71,16 @@ multiplayer.
 The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped
-SQLite metadata store and Loro canvas replica, both marked non-agent-writable.
+SQLite metadata store, Loro canvas replica, and immutable text/timeline
+revision content blob roots, all marked non-agent-writable. Text and timeline
+applied bodies therefore have Obsidian-like file recoverability through content
+descriptors, without making the protected canonical store a directly editable
+vault.
 `clash doctor storage --json` verifies this role contract and warns when local
 SQLite is missing the `asset_node_refs` / `reference_role` schema required for
-host-readable asset usage lookups. It also fails when the cwd or project
-workspace contains stray `snapshot.bin` / `updates.log` files outside
+host-readable asset usage lookups. It also fails when the revision content blob
+roots are moved into editable agent paths, or when the cwd or project workspace
+contains stray `snapshot.bin` / `updates.log` files outside
 `storage.canonicalReplica.canvas.replicaRoot`, because that would imply a
 second local canvas replica.
 
@@ -189,6 +194,11 @@ Notes:
   machine-scoped canonical local replica and `storage.workspace` as the
   agent-editable draft/projection surface. Agents should use those structured
   roles instead of inferring ownership from path names.
+- `storage.canonicalReplica.contentBlobs.textRevisions` and
+  `storage.canonicalReplica.contentBlobs.timelineRevisions` expose the
+  protected content-addressed roots for applied Markdown/YAML revision bodies.
+  They are recovery/provenance stores referenced by SQLite revision indexes and
+  API/CLI descriptors, not agent-writable projection folders.
 - A future project-export feature may materialize project rows into
   `<projectId>/local.sqlite` or an export bundle, but that is not required for
   v1 alpha.
@@ -212,6 +222,14 @@ agent-editable JSON files:
 as timeline revision rows, asset dependency summaries, export provenance, and
 searchable project metadata. Agents should inspect and mutate those through
 CLI/local-api actions, not by editing SQLite directly.
+
+Large or human-readable revision bodies that need deterministic recovery can
+live beside SQLite as immutable content-addressed blobs when they are not media
+assets. Current examples are applied text Markdown under
+`local-api/text-revision-blobs/` and applied timeline YAML under
+`local-api/timeline-revision-blobs/`. The rows in SQLite are the index; the blob
+files are the immutable payloads; cwd projection files remain the editable
+draft surface that must be applied back through CAS.
 
 JSON/YAML remains appropriate only for:
 

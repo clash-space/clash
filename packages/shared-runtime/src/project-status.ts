@@ -42,6 +42,22 @@ export interface ProjectStatusStorage {
       updatesLogPath: string;
       agentWritable: false;
     };
+    contentBlobs: {
+      textRevisions: {
+        kind: "content-addressed-files";
+        path: string;
+        mediaType: "text/markdown";
+        immutable: true;
+        agentWritable: false;
+      };
+      timelineRevisions: {
+        kind: "content-addressed-files";
+        path: string;
+        mediaType: "application/yaml";
+        immutable: true;
+        agentWritable: false;
+      };
+    };
   };
 }
 
@@ -158,6 +174,8 @@ export function buildProjectStatus(
   const collaboration = projectCollaborationStatus(mode, options.marker?.sync);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
   const legacyDbJsonPath = joinPath(localApiDataDir, "db.json");
+  const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
+  const timelineRevisionBlobRoot = joinPath(localApiDataDir, "timeline-revision-blobs");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
   const loroSnapshotPath = joinPath(loroReplicaRoot, "snapshot.bin");
   const loroUpdatesLogPath = joinPath(loroReplicaRoot, "updates.log");
@@ -174,6 +192,8 @@ export function buildProjectStatus(
     loroReplicaRoot,
     loroSnapshotPath,
     loroUpdatesLogPath,
+    textRevisionBlobRoot,
+    timelineRevisionBlobRoot,
     runtimeRoot,
   ];
 
@@ -239,6 +259,22 @@ export function buildProjectStatus(
           snapshotPath: loroSnapshotPath,
           updatesLogPath: loroUpdatesLogPath,
           agentWritable: false,
+        },
+        contentBlobs: {
+          textRevisions: {
+            kind: "content-addressed-files",
+            path: textRevisionBlobRoot,
+            mediaType: "text/markdown",
+            immutable: true,
+            agentWritable: false,
+          },
+          timelineRevisions: {
+            kind: "content-addressed-files",
+            path: timelineRevisionBlobRoot,
+            mediaType: "application/yaml",
+            immutable: true,
+            agentWritable: false,
+          },
         },
       },
     },

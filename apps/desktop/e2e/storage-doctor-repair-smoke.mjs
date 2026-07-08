@@ -310,6 +310,31 @@ async function main() {
       protectedPaths: status?.protectedPaths,
     }),
   );
+  const textRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.textRevisions;
+  const timelineRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.timelineRevisions;
+  recordCheck(
+    "revision content blob roots are protected and outside editable workspace roots",
+    textRevisionBlobs?.kind === "content-addressed-files" &&
+      textRevisionBlobs.path === path.join(clashHome, "local-api", "text-revision-blobs") &&
+      textRevisionBlobs.mediaType === "text/markdown" &&
+      textRevisionBlobs.immutable === true &&
+      textRevisionBlobs.agentWritable === false &&
+      repairReport.status.protectedPaths.includes(textRevisionBlobs.path) &&
+      !isInside(textRevisionBlobs.path, status.projectWorkspaceRoot) &&
+      timelineRevisionBlobs?.kind === "content-addressed-files" &&
+      timelineRevisionBlobs.path === path.join(clashHome, "local-api", "timeline-revision-blobs") &&
+      timelineRevisionBlobs.mediaType === "application/yaml" &&
+      timelineRevisionBlobs.immutable === true &&
+      timelineRevisionBlobs.agentWritable === false &&
+      repairReport.status.protectedPaths.includes(timelineRevisionBlobs.path) &&
+      !isInside(timelineRevisionBlobs.path, status.projectWorkspaceRoot),
+    JSON.stringify({
+      textRevisionBlobs,
+      timelineRevisionBlobs,
+      projectWorkspaceRoot: status?.projectWorkspaceRoot,
+      protectedPaths: status?.protectedPaths,
+    }),
+  );
 
   for (const targetPath of [
     status.roots.drafts,

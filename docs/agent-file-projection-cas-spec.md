@@ -101,6 +101,10 @@ Existing text behavior:
   access. History entries with stored Markdown bodies include an immutable
   `text-revision-content` descriptor, making text revision content addressable
   without treating it as a media asset row.
+- `project status.storage.canonicalReplica.contentBlobs.textRevisions` exposes
+  the protected content-addressed blob root for those bodies, and
+  `doctor storage` treats moving that root into an agent-editable path as an
+  unsafe storage contract.
 - `clash text content --revision <id> [--out <path>]` fetches the immutable
   Markdown body for a selected applied revision through the host API. `--out`
   paths are checked against the current cwd, including symlink escape checks.
@@ -674,6 +678,10 @@ timeline body itself is not written to SQLite; SQLite stores only milestone
 metadata and provenance. History entries with stored YAML bodies include an
 immutable `timeline-revision-content` descriptor, making applied timeline
 content addressable without treating it as a media asset row.
+`project status.storage.canonicalReplica.contentBlobs.timelineRevisions`
+exposes the protected content-addressed blob root for those bodies, and
+`doctor storage` treats moving that root into an agent-editable path as an
+unsafe storage contract.
 
 Do not record every keystroke or every CRDT operation as a user-visible JSON
 revision. Fine-grained history is already in Loro. Timeline revision records

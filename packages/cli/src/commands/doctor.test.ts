@@ -348,6 +348,38 @@ test("storage doctor fails when storage roles make canonical state agent-writabl
   assert.match(contract.message, /editable workspace includes canonical canvas path/);
 });
 
+test("storage doctor fails when revision content blobs are editable by agents", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      canonicalReplica: {
+        ...status.storage.canonicalReplica,
+        contentBlobs: {
+          ...status.storage.canonicalReplica.contentBlobs,
+          textRevisions: {
+            ...status.storage.canonicalReplica.contentBlobs.textRevisions,
+            path: status.roots.projections,
+            agentWritable: true,
+          },
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /text revision content blobs are agent-writable/);
+  assert.match(contract.message, /canonical path is not protected/);
+  assert.match(contract.message, /editable workspace includes canonical content path/);
+});
+
 test("storage doctor warns when legacy db.json exists", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

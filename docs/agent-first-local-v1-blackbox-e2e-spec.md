@@ -681,13 +681,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T03-40-52-222Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T04-52-14-749Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 42 checks passed,
+- 45 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -716,7 +716,10 @@ Result:
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
   sharing admission with `canvas`, `room`, and `asset-metadata` requirements,
 - canonical Loro snapshot path remained protected and outside the editable
-  workspace root.
+  workspace root,
+- text/timeline revision content blob roots were exposed through
+  `storage.canonicalReplica.contentBlobs`, marked immutable/non-agent-writable,
+  included in `protectedPaths`, and kept outside the editable workspace root.
 
 Target boundary:
 

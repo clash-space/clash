@@ -35,6 +35,8 @@ test("project status exposes agent-readable project roots and protected local fi
 
   const projectStore = join(homeDir, ".clash", "projects", "project%2Fwith%20spaces");
   const localApiDataDir = join(homeDir, ".clash", "local-api");
+  const textRevisionBlobRoot = join(localApiDataDir, "text-revision-blobs");
+  const timelineRevisionBlobRoot = join(localApiDataDir, "timeline-revision-blobs");
   const loroRoot = join(
     localApiDataDir,
     "projects",
@@ -119,6 +121,8 @@ test("project status exposes agent-readable project roots and protected local fi
     loroRoot,
     join(loroRoot, "snapshot.bin"),
     join(loroRoot, "updates.log"),
+    textRevisionBlobRoot,
+    timelineRevisionBlobRoot,
     status.roots.runtime,
   ]);
   assert.deepEqual(status.storage, {
@@ -152,6 +156,22 @@ test("project status exposes agent-readable project roots and protected local fi
         snapshotPath: join(loroRoot, "snapshot.bin"),
         updatesLogPath: join(loroRoot, "updates.log"),
         agentWritable: false,
+      },
+      contentBlobs: {
+        textRevisions: {
+          kind: "content-addressed-files",
+          path: textRevisionBlobRoot,
+          mediaType: "text/markdown",
+          immutable: true,
+          agentWritable: false,
+        },
+        timelineRevisions: {
+          kind: "content-addressed-files",
+          path: timelineRevisionBlobRoot,
+          mediaType: "application/yaml",
+          immutable: true,
+          agentWritable: false,
+        },
       },
     },
   });

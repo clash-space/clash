@@ -337,18 +337,60 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.canonicalReplica.canvas.updatesLogPath !== status.loro.updatesLogPath) {
       problems.push("canonical canvas updates log path does not match loro.updatesLogPath");
     }
-    const canonicalPaths = [
-      storage.canonicalReplica.metadata.path,
-      storage.canonicalReplica.canvas.replicaRoot,
-      storage.canonicalReplica.canvas.snapshotPath,
-      storage.canonicalReplica.canvas.updatesLogPath,
+    const contentBlobs = storage.canonicalReplica.contentBlobs;
+    const expectedContentBlobs = [
+      {
+        label: "text revision",
+        store: contentBlobs?.textRevisions,
+        path: join(status.localApiDataDir, "text-revision-blobs"),
+        mediaType: "text/markdown",
+      },
+      {
+        label: "timeline revision",
+        store: contentBlobs?.timelineRevisions,
+        path: join(status.localApiDataDir, "timeline-revision-blobs"),
+        mediaType: "application/yaml",
+      },
     ];
-    for (const canonicalPath of canonicalPaths) {
+    const canonicalPaths = [
+      { path: storage.canonicalReplica.metadata.path, role: "metadata" },
+      { path: storage.canonicalReplica.canvas.replicaRoot, role: "canvas" },
+      { path: storage.canonicalReplica.canvas.snapshotPath, role: "canvas" },
+      { path: storage.canonicalReplica.canvas.updatesLogPath, role: "canvas" },
+    ];
+    for (const expected of expectedContentBlobs) {
+      if (!expected.store) {
+        problems.push(`missing ${expected.label} content blob root`);
+        continue;
+      }
+      if (expected.store.kind !== "content-addressed-files") {
+        problems.push(`${expected.label} content blob root is not content-addressed-files`);
+      }
+      if (expected.store.path !== expected.path) {
+        problems.push(`${expected.label} content blob path does not match local-api content store`);
+      }
+      if (expected.store.mediaType !== expected.mediaType) {
+        problems.push(`${expected.label} content blob media type is wrong`);
+      }
+      if (expected.store.immutable !== true) {
+        problems.push(`${expected.label} content blobs are not immutable`);
+      }
+      if (expected.store.agentWritable !== false) {
+        problems.push(`${expected.label} content blobs are agent-writable`);
+      }
+      canonicalPaths.push({ path: expected.store.path, role: "content" });
+    }
+    for (const canonical of canonicalPaths) {
+      const canonicalPath = canonical.path;
       if (!status.protectedPaths.some((protectedPath) => isSameOrInside(canonicalPath, protectedPath))) {
         problems.push(`canonical path is not protected: ${canonicalPath}`);
       }
       if (storage.workspace.editablePaths.some((editablePath) => isSameOrInside(canonicalPath, editablePath))) {
-        problems.push(`editable workspace includes canonical canvas path: ${canonicalPath}`);
+        problems.push(
+          canonical.role === "content"
+            ? `editable workspace includes canonical content path: ${canonicalPath}`
+            : `editable workspace includes canonical canvas path: ${canonicalPath}`,
+        );
       }
     }
   }

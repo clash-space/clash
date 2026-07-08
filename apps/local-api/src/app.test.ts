@@ -8106,6 +8106,22 @@ describe("local API app", () => {
         updatesLogPath: status.loro.updatesLogPath,
         agentWritable: false,
       },
+      contentBlobs: {
+        textRevisions: {
+          kind: "content-addressed-files",
+          path: join(dataDir, "text-revision-blobs"),
+          mediaType: "text/markdown",
+          immutable: true,
+          agentWritable: false,
+        },
+        timelineRevisions: {
+          kind: "content-addressed-files",
+          path: join(dataDir, "timeline-revision-blobs"),
+          mediaType: "application/yaml",
+          immutable: true,
+          agentWritable: false,
+        },
+      },
     });
 
     const missing = await app.request("/api/v1/projects/not-found/status");
