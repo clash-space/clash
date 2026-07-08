@@ -199,7 +199,6 @@ function applySchema(db: SqliteDatabase): void {
       updated_at TEXT NOT NULL,
       deleted_at TEXT
     );
-    CREATE INDEX IF NOT EXISTS project_owner_idx ON project(owner_id, updated_at);
 
     CREATE TABLE IF NOT EXISTS project_preview_asset (
       project_id TEXT NOT NULL,
@@ -229,9 +228,6 @@ function applySchema(db: SqliteDatabase): void {
       updated_at INTEGER NOT NULL,
       project_id TEXT
     );
-    CREATE INDEX IF NOT EXISTS assets_user_idx ON assets(user_id, created_at);
-    CREATE INDEX IF NOT EXISTS assets_task_idx ON assets(source_task_id);
-    CREATE INDEX IF NOT EXISTS assets_project_idx ON assets(project_id, created_at);
 
     CREATE TABLE IF NOT EXISTS asset_refs (
       asset_id TEXT NOT NULL,
@@ -239,7 +235,6 @@ function applySchema(db: SqliteDatabase): void {
       imported_at INTEGER NOT NULL,
       PRIMARY KEY (asset_id, project_id)
     );
-    CREATE INDEX IF NOT EXISTS asset_refs_project_idx ON asset_refs(project_id, imported_at);
 
     CREATE TABLE IF NOT EXISTS asset_node_refs (
       asset_id TEXT NOT NULL,
@@ -251,8 +246,6 @@ function applySchema(db: SqliteDatabase): void {
       observed_at INTEGER NOT NULL,
       PRIMARY KEY (project_id, node_id, field_path, asset_id)
     );
-    CREATE INDEX IF NOT EXISTS asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
-    CREATE INDEX IF NOT EXISTS asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
 
     CREATE TABLE IF NOT EXISTS text_revisions (
       revision_id TEXT PRIMARY KEY NOT NULL,
@@ -267,8 +260,6 @@ function applySchema(db: SqliteDatabase): void {
       source_file_hash TEXT NOT NULL,
       actor_json TEXT
     );
-    CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS timeline_revisions (
       revision_id TEXT PRIMARY KEY NOT NULL,
@@ -286,8 +277,6 @@ function applySchema(db: SqliteDatabase): void {
       loro_version_vector_json TEXT,
       dependencies_json TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS runtime_session (
       id TEXT PRIMARY KEY NOT NULL,
@@ -303,7 +292,6 @@ function applySchema(db: SqliteDatabase): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
 
     CREATE TABLE IF NOT EXISTS agent_member (
       id TEXT PRIMARY KEY NOT NULL,
@@ -314,7 +302,6 @@ function applySchema(db: SqliteDatabase): void {
       display_name TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
 
     CREATE TABLE IF NOT EXISTS chat_message (
       session_id TEXT NOT NULL,
@@ -326,7 +313,6 @@ function applySchema(db: SqliteDatabase): void {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (session_id, id)
     );
-    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
 
     CREATE TABLE IF NOT EXISTS room_message (
       id TEXT PRIMARY KEY NOT NULL,
@@ -338,7 +324,6 @@ function applySchema(db: SqliteDatabase): void {
       text TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
 
     CREATE TABLE IF NOT EXISTS mutation_audit (
       id TEXT PRIMARY KEY NOT NULL,
@@ -354,20 +339,188 @@ function applySchema(db: SqliteDatabase): void {
       error TEXT,
       mutation_json TEXT NOT NULL
     );
+    COMMIT;
+  `);
+  ensureLocalMetadataColumns(db);
+  db.exec(`
+    BEGIN IMMEDIATE;
+    CREATE INDEX IF NOT EXISTS project_owner_idx ON project(owner_id, updated_at);
+    CREATE INDEX IF NOT EXISTS assets_user_idx ON assets(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS assets_task_idx ON assets(source_task_id);
+    CREATE INDEX IF NOT EXISTS assets_project_idx ON assets(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS asset_refs_project_idx ON asset_refs(project_id, imported_at);
+    CREATE INDEX IF NOT EXISTS asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
+    CREATE INDEX IF NOT EXISTS asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
+    CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
+    CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
     CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
     COMMIT;
   `);
-  try {
-    db.exec("ALTER TABLE project ADD COLUMN deleted_at TEXT");
-  } catch {
-    // Column already exists.
+}
+
+function ensureLocalMetadataColumns(db: SqliteDatabase): void {
+  for (const column of [
+    "completed_at INTEGER NOT NULL DEFAULT 0",
+    "source_path TEXT NOT NULL DEFAULT ''",
+    "source_sha256 TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "local_migration", column);
   }
+  for (const column of [
+    "owner_id TEXT NOT NULL DEFAULT ''",
+    "name TEXT NOT NULL DEFAULT ''",
+    "description TEXT",
+    "created_at TEXT NOT NULL DEFAULT ''",
+    "updated_at TEXT NOT NULL DEFAULT ''",
+    "deleted_at TEXT",
+  ]) {
+    ensureSqliteColumn(db, "project", column);
+  }
+  for (const column of [
+    "asset_id TEXT NOT NULL DEFAULT ''",
+    "url TEXT NOT NULL DEFAULT ''",
+    "type TEXT NOT NULL DEFAULT 'image'",
+    "storage_key TEXT NOT NULL DEFAULT ''",
+    "created_at TEXT",
+    "position INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "project_preview_asset", column);
+  }
+  for (const column of [
+    "user_id TEXT NOT NULL DEFAULT ''",
+    "kind TEXT NOT NULL DEFAULT 'image'",
+    "src_r2_key TEXT NOT NULL DEFAULT ''",
+    "cover_r2_key TEXT",
+    "metadata TEXT",
+    "source_model TEXT",
+    "source_prompt TEXT",
+    "source_task_id TEXT",
+    "sources TEXT",
+    "signed_url TEXT",
+    "signed_url_exp INTEGER",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+    "updated_at INTEGER NOT NULL DEFAULT 0",
+    "project_id TEXT",
+  ]) {
+    ensureSqliteColumn(db, "assets", column);
+  }
+  ensureSqliteColumn(db, "asset_refs", "imported_at INTEGER NOT NULL DEFAULT 0");
+  for (const column of [
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "node_id TEXT NOT NULL DEFAULT ''",
+    "node_type TEXT NOT NULL DEFAULT ''",
+    "field_path TEXT NOT NULL DEFAULT ''",
+    "reference_role TEXT NOT NULL DEFAULT 'asset'",
+    "observed_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "asset_node_refs", column);
+  }
+  for (const column of [
+    "text_id TEXT NOT NULL DEFAULT ''",
+    "parent_revision_id TEXT",
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "node_id TEXT NOT NULL DEFAULT ''",
+    "created_at TEXT NOT NULL DEFAULT ''",
+    "content_hash TEXT NOT NULL DEFAULT ''",
+    "hash_algorithm TEXT NOT NULL DEFAULT 'sha256-64'",
+    "source_file_path TEXT NOT NULL DEFAULT ''",
+    "source_file_hash TEXT NOT NULL DEFAULT ''",
+    "actor_json TEXT",
+  ]) {
+    ensureSqliteColumn(db, "text_revisions", column);
+  }
+  for (const column of [
+    "timeline_id TEXT NOT NULL DEFAULT ''",
+    "parent_revision_id TEXT",
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "node_id TEXT NOT NULL DEFAULT ''",
+    "created_at TEXT NOT NULL DEFAULT ''",
+    "timeline_hash TEXT NOT NULL DEFAULT ''",
+    "hash_algorithm TEXT NOT NULL DEFAULT 'sha256-64'",
+    "source_file_path TEXT NOT NULL DEFAULT ''",
+    "source_file_hash TEXT NOT NULL DEFAULT ''",
+    "actor_json TEXT",
+    "loro_frontiers_json TEXT",
+    "loro_version_vector_json TEXT",
+    "dependencies_json TEXT NOT NULL DEFAULT '{\"sourceNodeIds\":[],\"assetIds\":[],\"componentIds\":[],\"textNodeIds\":[]}'",
+  ]) {
+    ensureSqliteColumn(db, "timeline_revisions", column);
+  }
+  for (const column of [
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "title TEXT NOT NULL DEFAULT ''",
+    "type TEXT NOT NULL DEFAULT 'runtime'",
+    "runtime_id TEXT",
+    "agent_id TEXT",
+    "agent_template_id TEXT",
+    "permission_mode TEXT",
+    "acp_session_id TEXT",
+    "status TEXT",
+    "created_at TEXT NOT NULL DEFAULT ''",
+    "updated_at TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "runtime_session", column);
+  }
+  for (const column of [
+    "user_id TEXT NOT NULL DEFAULT ''",
+    "template_id TEXT NOT NULL DEFAULT ''",
+    "runtime_id TEXT NOT NULL DEFAULT ''",
+    "agent_id TEXT",
+    "display_name TEXT NOT NULL DEFAULT ''",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "agent_member", column);
+  }
+  for (const column of [
+    "sender_kind TEXT NOT NULL DEFAULT ''",
+    "sender_id TEXT NOT NULL DEFAULT ''",
+    "turn_id TEXT",
+    "events_json TEXT NOT NULL DEFAULT '[]'",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "chat_message", column);
+  }
+  for (const column of [
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "sender_kind TEXT NOT NULL DEFAULT ''",
+    "sender_id TEXT NOT NULL DEFAULT ''",
+    "sender_user_id TEXT NOT NULL DEFAULT ''",
+    "mentions_json TEXT NOT NULL DEFAULT '[]'",
+    "text TEXT NOT NULL DEFAULT ''",
+    "created_at INTEGER NOT NULL DEFAULT 0",
+  ]) {
+    ensureSqliteColumn(db, "room_message", column);
+  }
+  for (const column of [
+    "created_at INTEGER NOT NULL DEFAULT 0",
+    "operation TEXT NOT NULL DEFAULT ''",
+    "entity_kind TEXT NOT NULL DEFAULT ''",
+    "entity_id TEXT NOT NULL DEFAULT ''",
+    "actor_client_type TEXT",
+    "forced INTEGER NOT NULL DEFAULT 0",
+    "accepted INTEGER NOT NULL DEFAULT 0",
+    "reason TEXT",
+    "result_entity_id TEXT",
+    "error TEXT",
+    "mutation_json TEXT NOT NULL DEFAULT '{}'",
+  ]) {
+    ensureSqliteColumn(db, "mutation_audit", column);
+  }
+}
+
+function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition: string): void {
   try {
-    db.exec("ALTER TABLE asset_node_refs ADD COLUMN reference_role TEXT NOT NULL DEFAULT 'asset'");
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDefinition}`);
   } catch {
-    // Column already exists.
+    // Column already exists, or the existing table is too incompatible for safe repair.
   }
 }
 

@@ -75,7 +75,8 @@ Current status:
   runtime session, agent member, local session message, provider account, and
   provider OAuth state.
 - `apps/local-api/src/local-metadata-store.ts` owns metadata tables and no
-  longer reads `db.json`.
+  longer reads `db.json`; its schema bootstrap upgrades old or partial core
+  metadata/projection tables before route reads or writes run.
 - `apps/local-api/src/local-provider-store.ts` owns provider/OAuth tables and
   no longer reads legacy provider rows from `db.json`.
 - New local-api and local workflow processor writes no longer create broad
@@ -1010,7 +1011,8 @@ Current status:
 - Covered by `packages/cli/src/lib/destructive-guardrails.test.ts`.
 - Recoverable project deletion is covered by `apps/local-api/src/app.test.ts`
   and SQLite persistence coverage in
-  `apps/local-api/src/local-metadata-store.test.ts`.
+  `apps/local-api/src/local-metadata-store.test.ts`, including local-api
+  startup over partial SQLite metadata/projection tables.
 - Referenced-node deletion is covered by
   `packages/cli/src/lib/canvas-update-guardrails.test.ts`.
 

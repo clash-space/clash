@@ -27,6 +27,43 @@ function readSqlitePragma(dataDir: string, pragma: string): string | number | un
   }
 }
 
+function createPartialCoreMetadataSqlite(dataDir: string): void {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      exec(sql: string): void;
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    db.exec(`
+      CREATE TABLE local_migration (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE project (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE project_preview_asset (project_id TEXT NOT NULL);
+      CREATE TABLE assets (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE asset_refs (
+        asset_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        PRIMARY KEY (asset_id, project_id)
+      );
+      CREATE TABLE asset_node_refs (asset_id TEXT NOT NULL);
+      CREATE TABLE text_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE timeline_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE runtime_session (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE agent_member (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE chat_message (
+        session_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        PRIMARY KEY (session_id, id)
+      );
+      CREATE TABLE room_message (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
+    `);
+  } finally {
+    db.close();
+  }
+}
+
 describe("local metadata store", () => {
   it("initializes sqlite metadata with WAL journal mode for local multi-client safety", async () => {
     const dataDir = await tempDir();
@@ -44,6 +81,43 @@ describe("local metadata store", () => {
     });
 
     expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
+  });
+
+  it("upgrades partial sqlite metadata and projection tables before local-api metadata access", async () => {
+    const dataDir = await tempDir();
+    createPartialCoreMetadataSqlite(dataDir);
+    const store = createLocalMetadataStore(dataDir);
+
+    await expect(store.load()).resolves.toMatchObject({
+      projects: [],
+      assets: [],
+      assetRefs: [],
+      sessions: [],
+      roomMessages: [],
+    });
+    await expect(store.save({
+      projects: [
+        {
+          id: "project-upgraded",
+          ownerId: "local-user",
+          name: "Upgraded Project",
+          description: null,
+          createdAt: "2026-07-08T00:00:00.000Z",
+          updatedAt: "2026-07-08T00:01:00.000Z",
+          assets: [],
+        },
+      ],
+      assets: [],
+      assetRefs: [],
+      assetNodeRefs: [],
+      sessions: [],
+      agentMembers: [],
+      sessionMessages: [],
+      roomMessages: [],
+    })).resolves.toBeUndefined();
+    await expect(store.load()).resolves.toMatchObject({
+      projects: [{ id: "project-upgraded", ownerId: "local-user" }],
+    });
   });
 
   it("round-trips soft-deleted project metadata", async () => {
