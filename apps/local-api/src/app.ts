@@ -614,6 +614,19 @@ function publicRoomMessage(message: LocalRoomMessage) {
 
 type PublicRoomSyncStatus = "disabled" | "pending" | "imported" | "mirrored" | "failed";
 
+function publicRemoteRoomMessage(message: RemoteRoomMessage) {
+  return {
+    id: message.id,
+    project_id: message.project_id,
+    sender_kind: message.sender_kind,
+    sender_id: message.sender_id,
+    sender_user_id: message.sender_user_id,
+    mentions: message.mentions,
+    text: message.text,
+    at: message.at,
+  };
+}
+
 function localRoomMessageToRemote(message: LocalRoomMessage): RemoteRoomMessage {
   return {
     id: message.id,
@@ -662,6 +675,8 @@ function publicRoomMirrorPlan(plan: RoomMirrorPlan) {
     conflicts: plan.conflicts.map((conflict) => ({
       id: conflict.id,
       reason: conflict.reason,
+      local: publicRemoteRoomMessage(conflict.local),
+      remote: publicRemoteRoomMessage(conflict.remote),
     })),
   };
 }

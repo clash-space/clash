@@ -9241,7 +9241,31 @@ describe("local API app", () => {
         exportedIds: [],
         importedIds: [],
         matchedIds: [],
-        conflicts: [{ id: "room-conflict", reason: "content-mismatch" }],
+        conflicts: [
+          {
+            id: "room-conflict",
+            reason: "content-mismatch",
+            local: {
+              id: "room-conflict",
+              project_id: project.id,
+              sender_kind: "user",
+              sender_id: "local-user",
+              sender_user_id: "local-user",
+              mentions: [],
+              text: "local text",
+            },
+            remote: {
+              id: "room-conflict",
+              project_id: project.id,
+              sender_kind: "user",
+              sender_id: "remote-user",
+              sender_user_id: "remote-user",
+              mentions: [],
+              text: "remote text",
+              at: 1000,
+            },
+          },
+        ],
       },
       mutation: {
         operation: "room_sync",

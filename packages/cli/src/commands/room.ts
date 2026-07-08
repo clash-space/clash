@@ -55,7 +55,12 @@ interface RoomSyncPlan {
   exportedIds: string[];
   importedIds: string[];
   matchedIds: string[];
-  conflicts: Array<{ id: string; reason: string }>;
+  conflicts: Array<{
+    id: string;
+    reason: string;
+    local: RoomMessage & { project_id: string };
+    remote: RoomMessage & { project_id: string };
+  }>;
 }
 
 interface RoomSyncResult {
