@@ -43,12 +43,12 @@ function recordCheck(name, pass, evidence, extra = {}) {
   }
 }
 
-function runCli(args) {
+function runCli(args, cwd = workspace) {
   const result = spawnSync(
     process.execPath,
     ["--import", tsxLoader, cliEntry, ...args],
     {
-      cwd: workspace,
+      cwd,
       encoding: "utf8",
       env: {
         ...process.env,
@@ -58,6 +58,7 @@ function runCli(args) {
   );
   return {
     command: `clash ${args.join(" ")}`,
+    cwd,
     status: result.status,
     stdout: result.stdout,
     stderr: result.stderr,
@@ -961,6 +962,40 @@ async function main() {
     { command: sharedRecoveryRestore.command },
   );
 
+  const detachedWorkspace = path.join(artifactRoot, "detached-workspace");
+  await mkdir(detachedWorkspace, { recursive: true });
+  await rm(workspace, { recursive: true, force: true });
+  const detachedStatusResult = runCli(["project", "status", "--project", projectId, "--json"], detachedWorkspace);
+  recordCheck(
+    "project status can recover project store after marker workspace deletion",
+    detachedStatusResult.status === 0,
+    detachedStatusResult.stderr || detachedStatusResult.stdout,
+    { command: detachedStatusResult.command },
+  );
+  const detachedStatus = parseStdoutJson(detachedStatusResult);
+  const detachedStoreExists = await pathIsDirectory(detachedStatus.projectWorkspaceRoot);
+  const detachedSqliteExists = await pathIsFile(detachedStatus.localSqlitePath);
+  recordCheck(
+    "deleted marker workspace does not delete canonical project state",
+    detachedStatus.projectId === projectId &&
+      detachedStatus.source === "explicit" &&
+      detachedStatus.currentWorkspace?.currentWorkingDirectory === detachedWorkspace &&
+      detachedStatus.currentWorkspace?.markerPath === undefined &&
+      detachedStatus.currentWorkspace?.markerStore === "unknown" &&
+      detachedStatus.currentWorkspace?.projectWorkspaceRoot === status.projectWorkspaceRoot &&
+      detachedStatus.currentWorkspace?.deletionDeletesProjectState === false &&
+      detachedStatus.projectWorkspaceRoot === status.projectWorkspaceRoot &&
+      detachedStoreExists &&
+      detachedSqliteExists,
+    JSON.stringify({
+      currentWorkspace: detachedStatus.currentWorkspace,
+      projectWorkspaceRoot: detachedStatus.projectWorkspaceRoot,
+      localSqlitePath: detachedStatus.localSqlitePath,
+      detachedStoreExists,
+      detachedSqliteExists,
+    }),
+  );
+
   const report = {
     schemaVersion: 1,
     status: "pass",
@@ -994,8 +1029,10 @@ async function main() {
       cloudSyncRecoveryList,
       sharedRecoveryCompare,
       sharedRecoveryRestore,
+      detachedStatusResult,
     ].map((result) => ({
       command: result.command,
+      cwd: result.cwd,
       status: result.status,
       stdout: result.stdout.slice(0, 2000),
       stderr: result.stderr.slice(0, 2000),

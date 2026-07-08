@@ -394,6 +394,9 @@ Assertions:
   workspace, reports stable `markerWorkspaceId`,
   `deletionDeletesProjectState: false`, and keeps canonical state ownership
   false for the reference workspace,
+- after the original marker workspace is deleted, `clash project status
+  --project ... --json` from a detached cwd still resolves the same
+  `projectWorkspaceRoot` and local SQLite path,
 - canonical Loro snapshot path is protected and outside the editable project
   workspace root,
 - a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
@@ -741,6 +744,8 @@ Result:
 - project status exposed `currentWorkspace` for the actual cwd/marker root,
   marked it as a `project-reference-workspace`, surfaced `markerWorkspaceId`,
   and reported that deleting that workspace does not delete project state,
+- after deleting the original marker workspace, explicit project status from a
+  detached cwd still found the canonical project store and SQLite state,
 - a `cloud-sync` marker stayed `syncReadiness.status: pending`,
   `webOpenable: false`, and `roomAuthority: local` until the full sync
   capabilities are ready,
@@ -822,9 +827,9 @@ Current status:
   workspace, current cwd/marker reference workspace, projection root, draft
   root, explicit runtime root, local SQLite path, protected paths, and sync
   mode.
-- Black-box storage/project smokes now assert these fields against initialized
-  and restored local project paths; broader UI release gates still need to carry
-  the same evidence.
+- Black-box storage/project smokes now assert these fields against initialized,
+  restored, and deleted-marker-workspace local project paths; broader UI release
+  gates still need to carry the same evidence.
 - `clash doctor storage --json` now has first-pass read-only path checks, and
   `clash doctor storage --repair` can initialize missing workspace roots plus
   the local SQLite core metadata, provider auth table/key, and projection

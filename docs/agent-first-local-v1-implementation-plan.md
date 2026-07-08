@@ -501,6 +501,9 @@ Current status:
 - `clash init`, `clash project link`, and bridge-managed agent cwd creation now
   write `workspace_id` into `.clash/project.toml`; status surfaces it as
   `currentWorkspace.markerWorkspaceId` for stable workspace identity.
+- Storage doctor black-box smoke now deletes the original marker workspace and
+  verifies `clash project status --project ... --json` from a detached cwd still
+  resolves the same canonical project workspace and local SQLite state.
 - `clash doctor storage --repair` creates missing workspace roots, ensures the
   local SQLite core metadata tables, provider auth tables/primary keys, plus
   asset/text/timeline projection indexes, and quarantines secondary cwd /
