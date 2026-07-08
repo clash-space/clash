@@ -392,6 +392,9 @@ Assertions:
 - local project action gates deny `openInWeb`/`shareProject` with
   `project-is-local-only`, allow `enableSync`, and keep local agent execution
   tied to `owner-machine-online`,
+- local project sync policy keeps cloud admission disabled, treats
+  text/timeline revision content as non-media revision content, and keeps raw
+  agent traces plus local runtime secrets local-only by default,
 - project status identifies the current cwd/marker root as a reference
   workspace, reports stable `markerWorkspaceId`,
   `deletionDeletesProjectState: false`, and keeps canonical state ownership
@@ -404,6 +407,9 @@ Assertions:
 - a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
   `cloud-sync-not-ready` until canvas, room, asset metadata, and revision
   content mirrors are ready,
+- cloud-sync sync policy names the required mirrors and admits ready
+  `cloud-sync` projects as `ready-local-with-cloud-mirror`, not as cloud
+  sequencer authority,
 - a follow-up read-only `doctor storage --json` reports repaired prerequisites
   as ok.
 
@@ -692,13 +698,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T09-26-15-991Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T09-46-32-925Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 81 checks passed,
+- 84 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -743,6 +749,10 @@ Result:
 - local action gates reported `openInWeb.allowed: false`,
   `shareProject.allowed: false`, `enableSync.allowed: true`, and
   `runLocalAgent.allowed: true`,
+- local sync policy reported `cloudAdmission:
+  disabled-until-enable-sync`, revision content as non-media, non-agent-writable
+  `text_revisions`/`timeline_revisions`, and raw traces/runtime secrets as
+  local-only,
 - project status exposed `currentWorkspace` for the actual cwd/marker root,
   marked it as a `project-reference-workspace`, surfaced `markerWorkspaceId`,
   and reported that deleting that workspace does not delete project state,
@@ -754,11 +764,17 @@ Result:
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
   sharing admission with `canvas`, `room`, `asset-metadata`, and
   `revision-content` requirements,
+- cloud-sync pending sync policy named canvas, room, asset metadata, and
+  revision content mirrors while keeping media blob bytes outside the asset
+  metadata mirror,
 - a separate cwd marker for the same project with `[sync.capabilities]`
   declaring canvas, room, asset metadata, and revision content ready changed
   project status to `syncReadiness.status: ready`, `webOpenable: true`, and
   `roomAuthority: local-with-cloud-mirror` while keeping
   `multiUser: false` and local agent execution allowed,
+- cloud-sync ready sync policy reported `cloudAdmission:
+  ready-local-with-cloud-mirror`, so Web/share admission does not imply shared
+  cloud-sequencer authority,
 - cloud-sync recovery list exposed `recoveryPolicy` showing recovery is a local
   replica promotion, does not include or mutate cloud state, and requires cloud
   conflict review,

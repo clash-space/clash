@@ -31,6 +31,54 @@ const expectedTracePolicy = {
   },
 };
 
+const expectedSyncMirrorPolicy = {
+  canvas: {
+    requirement: "canvas",
+    source: "loro-canvas-replica",
+    conflictPolicy: "loro-crdt",
+  },
+  room: {
+    requirement: "room",
+    source: "sqlite-room-messages",
+    conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
+    rawAgentTrace: false,
+  },
+  assetMetadata: {
+    requirement: "asset-metadata",
+    source: "sqlite-asset-indexes",
+    registries: ["assets", "asset_refs", "asset_node_refs"],
+    mediaBlobsIncluded: false,
+    conflictPolicy: "host-indexed-content-addressed-assets",
+  },
+  revisionContent: {
+    requirement: "revision-content",
+    source: "sqlite-index-and-content-addressed-revision-blobs",
+    registries: ["text_revisions", "timeline_revisions"],
+    contentKinds: ["text-revision-content", "timeline-revision-content"],
+    mediaAsset: false,
+    agentWritable: false,
+    conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",
+  },
+};
+
+function expectedSyncPolicy(cloudAdmission: string) {
+  return {
+    schemaVersion: 1,
+    cloudAdmission,
+    mirror: expectedSyncMirrorPolicy,
+    excluded: {
+      rawAgentTraces: {
+        syncDefault: "local-only",
+        optInRequiredForSync: true,
+      },
+      localRuntimeSecrets: {
+        syncDefault: "local-only",
+        optInRequiredForSync: true,
+      },
+    },
+  };
+}
+
 async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "clash-project-status-"));
 }
@@ -106,6 +154,7 @@ test("project status exposes agent-readable project roots and protected local fi
         requirements: ["owner-machine-online"],
       },
     },
+    syncPolicy: expectedSyncPolicy("disabled-until-enable-sync"),
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
@@ -310,6 +359,7 @@ test("project status reads marker sync capabilities before opening cloud collabo
     reason: null,
     requirements: [],
   });
+  assert.deepEqual(status.collaboration.syncPolicy, expectedSyncPolicy("ready-local-with-cloud-mirror"));
 });
 
 test("project status keeps cloud-sync marker pending until revision content is mirrored", async () => {
@@ -356,6 +406,7 @@ test("project status keeps cloud-sync marker pending until revision content is m
     reason: "cloud-sync-not-ready",
     requirements: ["revision-content"],
   });
+  assert.deepEqual(status.collaboration.syncPolicy, expectedSyncPolicy("blocked-until-requirements-ready"));
 });
 
 test("project status identifies the current marker workspace separately from the canonical store", async () => {
@@ -445,6 +496,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
         requirements: ["owner-machine-online"],
       },
     },
+    syncPolicy: expectedSyncPolicy("blocked-until-requirements-ready"),
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
@@ -487,6 +539,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
         requirements: ["owner-machine-online"],
       },
     },
+    syncPolicy: expectedSyncPolicy("cloud-sequencer"),
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",

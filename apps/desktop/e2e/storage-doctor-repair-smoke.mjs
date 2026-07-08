@@ -593,6 +593,18 @@ async function main() {
     JSON.stringify(status?.collaboration?.actions),
   );
   recordCheck(
+    "local project sync policy keeps cloud admission disabled and private runtime data local",
+    status?.collaboration?.syncPolicy?.schemaVersion === 1 &&
+      status?.collaboration?.syncPolicy?.cloudAdmission === "disabled-until-enable-sync" &&
+      status?.collaboration?.syncPolicy?.mirror?.revisionContent?.mediaAsset === false &&
+      status?.collaboration?.syncPolicy?.mirror?.revisionContent?.agentWritable === false &&
+      status?.collaboration?.syncPolicy?.mirror?.revisionContent?.registries?.includes("text_revisions") === true &&
+      status?.collaboration?.syncPolicy?.mirror?.revisionContent?.registries?.includes("timeline_revisions") === true &&
+      status?.collaboration?.syncPolicy?.excluded?.rawAgentTraces?.syncDefault === "local-only" &&
+      status?.collaboration?.syncPolicy?.excluded?.localRuntimeSecrets?.syncDefault === "local-only",
+    JSON.stringify(status?.collaboration?.syncPolicy),
+  );
+  recordCheck(
     "canonical canvas path is protected and outside editable workspace roots",
     typeof status?.loro?.snapshotPath === "string" &&
       repairReport.status.protectedPaths.includes(status.loro.snapshotPath) &&
@@ -938,6 +950,19 @@ async function main() {
     JSON.stringify(cloudSyncStatus?.collaboration),
   );
   recordCheck(
+    "cloud-sync pending sync policy names required mirrors without treating revision content as media assets",
+    cloudSyncStatus?.collaboration?.syncPolicy?.cloudAdmission === "blocked-until-requirements-ready" &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.canvas?.requirement === "canvas" &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.room?.requirement === "room" &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.assetMetadata?.requirement === "asset-metadata" &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.assetMetadata?.mediaBlobsIncluded === false &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.requirement === "revision-content" &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.mediaAsset === false &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.contentKinds?.includes("text-revision-content") === true &&
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.contentKinds?.includes("timeline-revision-content") === true,
+    JSON.stringify(cloudSyncStatus?.collaboration?.syncPolicy),
+  );
+  recordCheck(
     "cloud-sync pending action gates block web and sharing until required mirrors are ready",
     cloudSyncStatus?.collaboration?.actions?.openInWeb?.allowed === false &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.reason === "cloud-sync-not-ready" &&
@@ -1000,6 +1025,13 @@ async function main() {
       collaboration: readyCloudSyncStatus?.collaboration,
       currentWorkspace: readyCloudSyncStatus?.currentWorkspace,
     }),
+  );
+  recordCheck(
+    "cloud-sync ready sync policy admits local mirror instead of cloud sequencer authority",
+    readyCloudSyncStatus?.collaboration?.syncPolicy?.cloudAdmission === "ready-local-with-cloud-mirror" &&
+      readyCloudSyncStatus?.collaboration?.syncPolicy?.mirror?.room?.rawAgentTrace === false &&
+      readyCloudSyncStatus?.collaboration?.syncPolicy?.excluded?.rawAgentTraces?.optInRequiredForSync === true,
+    JSON.stringify(readyCloudSyncStatus?.collaboration?.syncPolicy),
   );
   const cloudSyncRecoveryList = runCli(["doctor", "storage-recovery", "list", "--json"]);
   recordCheck(

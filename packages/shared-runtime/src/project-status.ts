@@ -164,6 +164,57 @@ export interface ProjectStatusTracePolicy {
   };
 }
 
+export type ProjectStatusSyncCloudAdmission =
+  | "disabled-until-enable-sync"
+  | "blocked-until-requirements-ready"
+  | "ready-local-with-cloud-mirror"
+  | "cloud-sequencer"
+  | "unknown-until-sync-mode-known";
+
+export interface ProjectStatusSyncPolicy {
+  schemaVersion: 1;
+  cloudAdmission: ProjectStatusSyncCloudAdmission;
+  mirror: {
+    canvas: {
+      requirement: "canvas";
+      source: "loro-canvas-replica";
+      conflictPolicy: "loro-crdt";
+    };
+    room: {
+      requirement: "room";
+      source: "sqlite-room-messages";
+      conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise";
+      rawAgentTrace: false;
+    };
+    assetMetadata: {
+      requirement: "asset-metadata";
+      source: "sqlite-asset-indexes";
+      registries: ["assets", "asset_refs", "asset_node_refs"];
+      mediaBlobsIncluded: false;
+      conflictPolicy: "host-indexed-content-addressed-assets";
+    };
+    revisionContent: {
+      requirement: "revision-content";
+      source: "sqlite-index-and-content-addressed-revision-blobs";
+      registries: ["text_revisions", "timeline_revisions"];
+      contentKinds: ["text-revision-content", "timeline-revision-content"];
+      mediaAsset: false;
+      agentWritable: false;
+      conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise";
+    };
+  };
+  excluded: {
+    rawAgentTraces: {
+      syncDefault: "local-only";
+      optInRequiredForSync: true;
+    };
+    localRuntimeSecrets: {
+      syncDefault: "local-only";
+      optInRequiredForSync: true;
+    };
+  };
+}
+
 export interface ProjectStatusCollaboration {
   schemaVersion: 1;
   mode: ProjectCollaborationMode;
@@ -174,6 +225,7 @@ export interface ProjectStatusCollaboration {
   cloudProjectRoom: ProjectCloudRoomMode;
   syncReadiness: ProjectSyncReadiness;
   actions: ProjectStatusActionGates;
+  syncPolicy: ProjectStatusSyncPolicy;
   localAgentRuntime: {
     requiredForLocalActions: true;
     availability: "owner-machine-online";
@@ -449,12 +501,76 @@ export function projectCollaborationStatus(
     cloudProjectRoom: normalized === "shared" ? "sequencer" : "disabled",
     syncReadiness,
     actions,
+    syncPolicy: projectSyncPolicy(normalized, syncReadiness),
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
     tracePolicy: projectTracePolicy(),
   };
+}
+
+function projectSyncPolicy(
+  mode: ProjectCollaborationMode,
+  syncReadiness: ProjectSyncReadiness,
+): ProjectStatusSyncPolicy {
+  return {
+    schemaVersion: 1,
+    cloudAdmission: projectSyncCloudAdmission(mode, syncReadiness),
+    mirror: {
+      canvas: {
+        requirement: "canvas",
+        source: "loro-canvas-replica",
+        conflictPolicy: "loro-crdt",
+      },
+      room: {
+        requirement: "room",
+        source: "sqlite-room-messages",
+        conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
+        rawAgentTrace: false,
+      },
+      assetMetadata: {
+        requirement: "asset-metadata",
+        source: "sqlite-asset-indexes",
+        registries: ["assets", "asset_refs", "asset_node_refs"],
+        mediaBlobsIncluded: false,
+        conflictPolicy: "host-indexed-content-addressed-assets",
+      },
+      revisionContent: {
+        requirement: "revision-content",
+        source: "sqlite-index-and-content-addressed-revision-blobs",
+        registries: ["text_revisions", "timeline_revisions"],
+        contentKinds: ["text-revision-content", "timeline-revision-content"],
+        mediaAsset: false,
+        agentWritable: false,
+        conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",
+      },
+    },
+    excluded: {
+      rawAgentTraces: {
+        syncDefault: "local-only",
+        optInRequiredForSync: true,
+      },
+      localRuntimeSecrets: {
+        syncDefault: "local-only",
+        optInRequiredForSync: true,
+      },
+    },
+  };
+}
+
+function projectSyncCloudAdmission(
+  mode: ProjectCollaborationMode,
+  syncReadiness: ProjectSyncReadiness,
+): ProjectStatusSyncCloudAdmission {
+  if (mode === "shared") return "cloud-sequencer";
+  if (mode === "synced") {
+    return syncReadiness.ready
+      ? "ready-local-with-cloud-mirror"
+      : "blocked-until-requirements-ready";
+  }
+  if (mode === "local-only") return "disabled-until-enable-sync";
+  return "unknown-until-sync-mode-known";
 }
 
 const CLOUD_SYNC_REQUIREMENTS = ["canvas", "room", "asset-metadata", "revision-content"];

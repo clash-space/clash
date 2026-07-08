@@ -74,6 +74,13 @@ web-openable, `cloud-sync` projects remain pending and not web-openable until
 `syncReadiness` proves canvas, room, asset-metadata, and revision-content sync
 capabilities are ready, and shared projects are the only mode that uses a cloud
 sequencer for multiplayer.
+The companion `collaboration.syncPolicy` object names what those capabilities
+mean: canvas mirrors the Loro replica, room mirrors project chat but not raw
+agent traces, asset metadata mirrors SQLite asset indexes without media blob
+bytes, and revision-content mirrors `text_revisions`/`timeline_revisions` plus
+immutable content-addressed revision blobs without treating those bodies as
+media assets. Raw agent traces and local runtime secrets stay local-only unless
+an explicit future opt-in policy says otherwise.
 The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped
@@ -496,10 +503,15 @@ Local-only:
 Synced:
 
 - project status reports `syncReadiness.ready: true`,
+- project status reports `syncPolicy.cloudAdmission:
+  ready-local-with-cloud-mirror`,
 - readiness comes from explicit local sync capability flags, not merely from a
   configured remote URL,
 - canvas updates have a remote persistence path,
-- asset metadata and required blobs are uploaded or lazily fetchable,
+- asset metadata is mirrored through SQLite indexes while media blob transport
+  remains a separate content-addressed asset storage concern,
+- text/timeline revision content is mirrored as non-media immutable revision
+  content, not as editable asset rows,
 - room messages sync,
 - local-only runtime traces remain local unless opted in.
 

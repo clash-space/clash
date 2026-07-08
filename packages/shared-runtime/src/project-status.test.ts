@@ -22,6 +22,54 @@ const expectedTracePolicy = {
   },
 } as const;
 
+const expectedSyncMirrorPolicy = {
+  canvas: {
+    requirement: "canvas",
+    source: "loro-canvas-replica",
+    conflictPolicy: "loro-crdt",
+  },
+  room: {
+    requirement: "room",
+    source: "sqlite-room-messages",
+    conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
+    rawAgentTrace: false,
+  },
+  assetMetadata: {
+    requirement: "asset-metadata",
+    source: "sqlite-asset-indexes",
+    registries: ["assets", "asset_refs", "asset_node_refs"],
+    mediaBlobsIncluded: false,
+    conflictPolicy: "host-indexed-content-addressed-assets",
+  },
+  revisionContent: {
+    requirement: "revision-content",
+    source: "sqlite-index-and-content-addressed-revision-blobs",
+    registries: ["text_revisions", "timeline_revisions"],
+    contentKinds: ["text-revision-content", "timeline-revision-content"],
+    mediaAsset: false,
+    agentWritable: false,
+    conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",
+  },
+} as const;
+
+function expectedSyncPolicy(cloudAdmission: string) {
+  return {
+    schemaVersion: 1,
+    cloudAdmission,
+    mirror: expectedSyncMirrorPolicy,
+    excluded: {
+      rawAgentTraces: {
+        syncDefault: "local-only",
+        optInRequiredForSync: true,
+      },
+      localRuntimeSecrets: {
+        syncDefault: "local-only",
+        optInRequiredForSync: true,
+      },
+    },
+  };
+}
+
 describe("project status path builder", () => {
   it("builds agent-editable roots and protected local store paths", () => {
     const status = buildProjectStatus(
@@ -93,6 +141,7 @@ describe("project status path builder", () => {
           requirements: ["owner-machine-online"],
         },
       },
+      syncPolicy: expectedSyncPolicy("unknown-until-sync-mode-known"),
       localAgentRuntime: {
         requiredForLocalActions: true,
         availability: "owner-machine-online",
@@ -277,6 +326,9 @@ describe("project status path builder", () => {
       multiUser: false,
       roomAuthority: "local",
       cloudProjectRoom: "disabled",
+      syncPolicy: {
+        cloudAdmission: "disabled-until-enable-sync",
+      },
       syncReadiness: {
         status: "disabled",
         ready: false,
@@ -312,6 +364,9 @@ describe("project status path builder", () => {
       multiUser: false,
       roomAuthority: "local",
       cloudProjectRoom: "disabled",
+      syncPolicy: {
+        cloudAdmission: "blocked-until-requirements-ready",
+      },
       syncReadiness: {
         status: "pending",
         ready: false,
@@ -347,6 +402,9 @@ describe("project status path builder", () => {
       multiUser: true,
       roomAuthority: "cloud-sequencer",
       cloudProjectRoom: "sequencer",
+      syncPolicy: {
+        cloudAdmission: "cloud-sequencer",
+      },
       syncReadiness: {
         status: "ready",
         ready: true,
@@ -511,6 +569,52 @@ describe("project status path builder", () => {
         status: "ready",
         ready: true,
         missing: [],
+      },
+    });
+  });
+
+  it("publishes the cloud mirror policy for revision content separately from media assets", () => {
+    const status = buildProjectStatus(
+      { projectId: "project-synced", source: "explicit" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: {
+          sync: {
+            mode: "cloud-sync",
+            capabilities: {
+              canvas: true,
+              room: true,
+              assetMetadata: true,
+              revisionContent: true,
+            },
+          },
+        },
+      },
+    );
+
+    expect(status.collaboration.syncPolicy).toMatchObject({
+      schemaVersion: 1,
+      cloudAdmission: "ready-local-with-cloud-mirror",
+      mirror: {
+        revisionContent: {
+          requirement: "revision-content",
+          source: "sqlite-index-and-content-addressed-revision-blobs",
+          registries: ["text_revisions", "timeline_revisions"],
+          contentKinds: ["text-revision-content", "timeline-revision-content"],
+          mediaAsset: false,
+          agentWritable: false,
+          conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",
+        },
+      },
+      excluded: {
+        rawAgentTraces: {
+          syncDefault: "local-only",
+          optInRequiredForSync: true,
+        },
+        localRuntimeSecrets: {
+          syncDefault: "local-only",
+          optInRequiredForSync: true,
+        },
       },
     });
   });

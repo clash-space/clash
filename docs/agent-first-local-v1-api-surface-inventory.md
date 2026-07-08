@@ -491,6 +491,49 @@ Agents need a stable inspection payload:
       "required": ["canvas", "room", "asset-metadata", "revision-content"],
       "missing": ["canvas", "room", "asset-metadata", "revision-content"]
     },
+    "syncPolicy": {
+      "schemaVersion": 1,
+      "cloudAdmission": "disabled-until-enable-sync",
+      "mirror": {
+        "canvas": {
+          "requirement": "canvas",
+          "source": "loro-canvas-replica",
+          "conflictPolicy": "loro-crdt"
+        },
+        "room": {
+          "requirement": "room",
+          "source": "sqlite-room-messages",
+          "conflictPolicy": "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
+          "rawAgentTrace": false
+        },
+        "assetMetadata": {
+          "requirement": "asset-metadata",
+          "source": "sqlite-asset-indexes",
+          "registries": ["assets", "asset_refs", "asset_node_refs"],
+          "mediaBlobsIncluded": false,
+          "conflictPolicy": "host-indexed-content-addressed-assets"
+        },
+        "revisionContent": {
+          "requirement": "revision-content",
+          "source": "sqlite-index-and-content-addressed-revision-blobs",
+          "registries": ["text_revisions", "timeline_revisions"],
+          "contentKinds": ["text-revision-content", "timeline-revision-content"],
+          "mediaAsset": false,
+          "agentWritable": false,
+          "conflictPolicy": "same-revision-id-same-hash-idempotent-conflict-otherwise"
+        }
+      },
+      "excluded": {
+        "rawAgentTraces": {
+          "syncDefault": "local-only",
+          "optInRequiredForSync": true
+        },
+        "localRuntimeSecrets": {
+          "syncDefault": "local-only",
+          "optInRequiredForSync": true
+        }
+      }
+    },
     "tracePolicy": {
       "schemaVersion": 1,
       "roomMessages": {
@@ -657,6 +700,13 @@ and passed through the status builder; only ready synced projects may use
 share an accidental sync surface. Only `shared` enables
 `cloudProjectRoom: "sequencer"` and `multiUser: true`. Local actions still
 require the owner's machine-local agent runtime in every mode.
+`syncPolicy` is the machine-readable mirror contract behind those gates:
+canvas means the Loro canvas replica, room means SQLite-backed project chat
+without raw agent traces, asset metadata means SQLite asset indexes without
+media blob bytes, and revision content means immutable text/timeline revision
+indexes plus content-addressed revision blobs. It also records that raw agent
+traces and local runtime secrets are local-only by default and require explicit
+opt-in before any future sync path may include them.
 The `storage` object is the machine-readable role contract: the workspace is
 for drafts/projections and does not own canonical snapshot/metadata; the
 canonical replica is protected SQLite + Loro state plus immutable
