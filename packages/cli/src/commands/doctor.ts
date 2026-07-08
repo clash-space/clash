@@ -623,6 +623,7 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
       }
     }
     validateLocalSecretsContract(problems, status, storage.localSecrets as ProjectStatus["storage"]["localSecrets"] | undefined);
+    validateContentModelContract(problems, status, storage);
   }
 
   return [
@@ -693,6 +694,114 @@ function validateLocalSecretsContract(
     if (status.editablePaths.some((editablePath) => isSameOrInside(expected.path, editablePath))) {
       problems.push(`${expected.label} secret path is inside an agent-editable path: ${expected.path}`);
     }
+  }
+}
+
+function validateContentModelContract(
+  problems: string[],
+  status: ProjectStatus,
+  storage: ProjectStatus["storage"],
+): void {
+  const contentModel = storage.contentModel as ProjectStatus["storage"]["contentModel"] | undefined;
+  if (!contentModel) {
+    problems.push("missing content model contract");
+    return;
+  }
+  if (contentModel.role !== "agent-projections-with-host-indexed-revision-content") {
+    problems.push("content model role is not agent-projections-with-host-indexed-revision-content");
+  }
+
+  validateContentModelEntry(problems, status, {
+    label: "text",
+    entry: contentModel.textNodes,
+    liveState: "loro-canvas-text-node-data",
+    editableProjection: "storage.workspace.viewFiles.texts",
+    projectionPath: storage.workspace.viewFiles?.texts?.path,
+    applyCommand: "clash text apply",
+    replaceCommand: "clash text replace",
+    revisionRegistry: "text_revisions",
+    revisionBlobPath: storage.canonicalReplica.contentBlobs?.textRevisions?.path,
+    mediaBlobPath: storage.canonicalReplica.mediaAssets?.path,
+  });
+  validateContentModelEntry(problems, status, {
+    label: "timeline",
+    entry: contentModel.timelines,
+    liveState: "loro-canvas-video-editor-node-data",
+    editableProjection: "storage.workspace.viewFiles.timelines",
+    projectionPath: storage.workspace.viewFiles?.timelines?.path,
+    applyCommand: "clash timeline apply",
+    replaceCommand: "clash timeline replace",
+    revisionRegistry: "timeline_revisions",
+    revisionBlobPath: storage.canonicalReplica.contentBlobs?.timelineRevisions?.path,
+    mediaBlobPath: storage.canonicalReplica.mediaAssets?.path,
+  });
+}
+
+function validateContentModelEntry(
+  problems: string[],
+  status: ProjectStatus,
+  expected: {
+    label: "text" | "timeline";
+    entry: ProjectStatus["storage"]["contentModel"]["textNodes"] | ProjectStatus["storage"]["contentModel"]["timelines"] | undefined;
+    liveState: string;
+    editableProjection: string;
+    projectionPath?: string;
+    applyCommand: string;
+    replaceCommand: string;
+    revisionRegistry: string;
+    revisionBlobPath?: string;
+    mediaBlobPath?: string;
+  },
+): void {
+  if (!expected.entry) {
+    problems.push(`missing ${expected.label} content model`);
+    return;
+  }
+  if (expected.entry.liveState !== expected.liveState) {
+    problems.push(`${expected.label} content model live state is wrong`);
+  }
+  if (expected.entry.editableProjection !== expected.editableProjection) {
+    problems.push(`${expected.label} content model editable projection is wrong`);
+  }
+  if (!expected.projectionPath) {
+    problems.push(`${expected.label} content model expected projection path is unavailable`);
+  } else if (expected.entry.projectionPath !== expected.projectionPath) {
+    problems.push(`${expected.label} content model projection path is wrong`);
+  }
+  if (expected.entry.applyCommand !== expected.applyCommand) {
+    problems.push(`${expected.label} content model apply command is wrong`);
+  }
+  if (expected.entry.replaceCommand !== expected.replaceCommand) {
+    problems.push(`${expected.label} content model replace command is wrong`);
+  }
+  if (expected.entry.casRequired !== true) {
+    problems.push(`${expected.label} content model does not require CAS`);
+  }
+  if (expected.entry.copyOnWriteWhenReferenced !== true) {
+    problems.push(`${expected.label} content model does not require copy-on-write for references`);
+  }
+  if (expected.entry.revisionRegistry !== expected.revisionRegistry) {
+    problems.push(`${expected.label} content model revision registry is wrong`);
+  }
+  if (!expected.revisionBlobPath) {
+    problems.push(`${expected.label} content model expected revision blob path is unavailable`);
+  } else if (expected.entry.revisionBlobPath !== expected.revisionBlobPath) {
+    problems.push(`${expected.label} content model revision blob path is wrong`);
+  }
+  if ((expected.mediaBlobPath && expected.entry.revisionBlobPath === expected.mediaBlobPath) || expected.entry.mediaAsset !== false) {
+    problems.push(`${expected.label} content model incorrectly uses media assets`);
+  }
+  if (expected.entry.agentWritableCanonicalState !== false) {
+    problems.push(`${expected.label} content model marks canonical state agent-writable`);
+  }
+  if (!status.editablePaths.some((editablePath) => isSameOrInside(expected.entry!.projectionPath, editablePath))) {
+    problems.push(`${expected.label} content model projection path is not agent-editable: ${expected.entry.projectionPath}`);
+  }
+  if (!status.protectedPaths.some((protectedPath) => isSameOrInside(expected.entry!.revisionBlobPath, protectedPath))) {
+    problems.push(`${expected.label} content model revision blob path is not protected: ${expected.entry.revisionBlobPath}`);
+  }
+  if (status.editablePaths.some((editablePath) => isSameOrInside(expected.entry!.revisionBlobPath, editablePath))) {
+    problems.push(`${expected.label} content model revision blob path is inside an agent-editable path: ${expected.entry.revisionBlobPath}`);
   }
 }
 

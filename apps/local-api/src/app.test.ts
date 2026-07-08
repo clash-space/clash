@@ -8213,6 +8213,35 @@ describe("local API app", () => {
         },
       },
     });
+    expect(status.storage.contentModel).toMatchObject({
+      role: "agent-projections-with-host-indexed-revision-content",
+      textNodes: {
+        liveState: "loro-canvas-text-node-data",
+        editableProjection: "storage.workspace.viewFiles.texts",
+        projectionPath: join(status.roots.projections, "text"),
+        applyCommand: "clash text apply",
+        replaceCommand: "clash text replace",
+        casRequired: true,
+        copyOnWriteWhenReferenced: true,
+        revisionRegistry: "text_revisions",
+        revisionBlobPath: join(dataDir, "text-revision-blobs"),
+        mediaAsset: false,
+        agentWritableCanonicalState: false,
+      },
+      timelines: {
+        liveState: "loro-canvas-video-editor-node-data",
+        editableProjection: "storage.workspace.viewFiles.timelines",
+        projectionPath: status.roots.timelines,
+        applyCommand: "clash timeline apply",
+        replaceCommand: "clash timeline replace",
+        casRequired: true,
+        copyOnWriteWhenReferenced: true,
+        revisionRegistry: "timeline_revisions",
+        revisionBlobPath: join(dataDir, "timeline-revision-blobs"),
+        mediaAsset: false,
+        agentWritableCanonicalState: false,
+      },
+    });
 
     const missing = await app.request("/api/v1/projects/not-found/status");
     expect(missing.status).toBe(404);

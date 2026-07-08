@@ -114,6 +114,12 @@ describe("project status path builder", () => {
     expect(status.storage.canonicalReplica.mediaAssets.path).toBe("/tmp/clash-home/assets/blobs");
     expect(status.storage.canonicalReplica.contentBlobs.textRevisions.path).toBe("/tmp/clash-home/local-api/text-revision-blobs");
     expect(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path).toBe("/tmp/clash-home/local-api/timeline-revision-blobs");
+    expect(status.storage.contentModel.textNodes.revisionRegistry).toBe("text_revisions");
+    expect(status.storage.contentModel.textNodes.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
+    expect(status.storage.contentModel.textNodes.mediaAsset).toBe(false);
+    expect(status.storage.contentModel.timelines.revisionRegistry).toBe("timeline_revisions");
+    expect(status.storage.contentModel.timelines.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
+    expect(status.storage.contentModel.timelines.mediaAsset).toBe(false);
     expect(status.editablePaths).toContain(status.roots.drafts);
     expect(status.editablePaths).toContain(status.roots.timelines);
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
@@ -263,6 +269,35 @@ describe("project status path builder", () => {
             path: "/tmp/clash-home/credentials.json",
             agentWritable: false,
           },
+        },
+      },
+      contentModel: {
+        role: "agent-projections-with-host-indexed-revision-content",
+        textNodes: {
+          liveState: "loro-canvas-text-node-data",
+          editableProjection: "storage.workspace.viewFiles.texts",
+          projectionPath: "/tmp/clash-home/projects/project%2Fone/projections/text",
+          applyCommand: "clash text apply",
+          replaceCommand: "clash text replace",
+          casRequired: true,
+          copyOnWriteWhenReferenced: true,
+          revisionRegistry: "text_revisions",
+          revisionBlobPath: "/tmp/clash-home/local-api/text-revision-blobs",
+          mediaAsset: false,
+          agentWritableCanonicalState: false,
+        },
+        timelines: {
+          liveState: "loro-canvas-video-editor-node-data",
+          editableProjection: "storage.workspace.viewFiles.timelines",
+          projectionPath: "/tmp/clash-home/projects/project%2Fone/timelines",
+          applyCommand: "clash timeline apply",
+          replaceCommand: "clash timeline replace",
+          casRequired: true,
+          copyOnWriteWhenReferenced: true,
+          revisionRegistry: "timeline_revisions",
+          revisionBlobPath: "/tmp/clash-home/local-api/timeline-revision-blobs",
+          mediaAsset: false,
+          agentWritableCanonicalState: false,
         },
       },
     });

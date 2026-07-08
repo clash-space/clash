@@ -276,6 +276,10 @@ files are the immutable payloads; cwd projection files remain the editable
 draft surface that must be applied back through CAS. Doctor treats existing
 blob files as unsafe if they have writable permission bits or if their path hash
 does not match the text content hash / semantic timeline hash.
+`project status.storage.contentModel` makes this split machine-readable:
+live text/timeline view state is in the Loro canvas replica, agent-editable
+files are projections, and applied text/timeline bodies are indexed by
+`text_revisions` / `timeline_revisions` with non-media revision blob storage.
 
 JSON/YAML remains appropriate only for:
 
@@ -462,9 +466,9 @@ depend on them.
 Rules:
 
 - Editing an image/video/audio file creates a new asset.
-- Editing text feeding materialized downstream state creates a new text asset
-  or copied text node; text feeding only unmaterialized action drafts can still
-  update in place.
+- Editing text feeding materialized downstream state creates a copied text node
+  and a new text revision; text feeding only unmaterialized action drafts can
+  still update in place.
 - Editing a timeline with downstream render outputs should create a new
   timeline version or require explicit force/replace.
 - Old assets remain until no `asset_refs` or downstream node refs point to

@@ -112,6 +112,35 @@ export interface ProjectStatusStorage {
       };
     };
   };
+  contentModel: {
+    role: "agent-projections-with-host-indexed-revision-content";
+    textNodes: {
+      liveState: "loro-canvas-text-node-data";
+      editableProjection: "storage.workspace.viewFiles.texts";
+      projectionPath: string;
+      applyCommand: "clash text apply";
+      replaceCommand: "clash text replace";
+      casRequired: true;
+      copyOnWriteWhenReferenced: true;
+      revisionRegistry: "text_revisions";
+      revisionBlobPath: string;
+      mediaAsset: false;
+      agentWritableCanonicalState: false;
+    };
+    timelines: {
+      liveState: "loro-canvas-video-editor-node-data";
+      editableProjection: "storage.workspace.viewFiles.timelines";
+      projectionPath: string;
+      applyCommand: "clash timeline apply";
+      replaceCommand: "clash timeline replace";
+      casRequired: true;
+      copyOnWriteWhenReferenced: true;
+      revisionRegistry: "timeline_revisions";
+      revisionBlobPath: string;
+      mediaAsset: false;
+      agentWritableCanonicalState: false;
+    };
+  };
   localSecrets: {
     role: "machine-local-secret-files";
     syncDefault: "local-only";
@@ -556,6 +585,35 @@ export function buildProjectStatus(
             path: bridgeCredentialsPath,
             agentWritable: false,
           },
+        },
+      },
+      contentModel: {
+        role: "agent-projections-with-host-indexed-revision-content",
+        textNodes: {
+          liveState: "loro-canvas-text-node-data",
+          editableProjection: "storage.workspace.viewFiles.texts",
+          projectionPath: textProjections,
+          applyCommand: "clash text apply",
+          replaceCommand: "clash text replace",
+          casRequired: true,
+          copyOnWriteWhenReferenced: true,
+          revisionRegistry: "text_revisions",
+          revisionBlobPath: textRevisionBlobRoot,
+          mediaAsset: false,
+          agentWritableCanonicalState: false,
+        },
+        timelines: {
+          liveState: "loro-canvas-video-editor-node-data",
+          editableProjection: "storage.workspace.viewFiles.timelines",
+          projectionPath: timelines,
+          applyCommand: "clash timeline apply",
+          replaceCommand: "clash timeline replace",
+          casRequired: true,
+          copyOnWriteWhenReferenced: true,
+          revisionRegistry: "timeline_revisions",
+          revisionBlobPath: timelineRevisionBlobRoot,
+          mediaAsset: false,
+          agentWritableCanonicalState: false,
         },
       },
     },

@@ -1283,6 +1283,43 @@ test("storage doctor fails when local secret files are agent-writable or unprote
   assert.match(contract.message, /bridge credentials secret is agent-writable/);
 });
 
+test("storage doctor fails when text or timeline content is modeled as media assets or agent-writable canonical state", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      contentModel: {
+        ...status.storage.contentModel,
+        textNodes: {
+          ...status.storage.contentModel.textNodes,
+          revisionBlobPath: status.storage.canonicalReplica.mediaAssets.path,
+          mediaAsset: true,
+          agentWritableCanonicalState: true,
+        },
+        timelines: {
+          ...status.storage.contentModel.timelines,
+          projectionPath: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
+          mediaAsset: true,
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /text content model revision blob path is wrong/);
+  assert.match(contract.message, /text content model incorrectly uses media assets/);
+  assert.match(contract.message, /text content model marks canonical state agent-writable/);
+  assert.match(contract.message, /timeline content model projection path is wrong/);
+  assert.match(contract.message, /timeline content model incorrectly uses media assets/);
+});
+
 test("storage doctor fails when workspace editable paths omit a declared agent root", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },

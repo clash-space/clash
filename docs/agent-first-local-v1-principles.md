@@ -630,7 +630,7 @@ Do not silently run them as cloud workers.
 | Agent cwd | `${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>` is agent cwd with materialized editable roots and protected `runtime`; marker stores canonical id | Either canonical root with protected dirs, or separate draft workspace | Agents should not mutate internal dirs directly | Decide root vs draft model; add migration/repair and stronger enforcement |
 | Local metadata | `local.sqlite`; legacy `db.json` ignored | `local.sqlite` matching cloud D1 schema | JSON is not app DB | Keep ignored-legacy tests and add doctor/schema checks |
 | Assets | Local files + SQLite asset rows plus first-pass `clash asset link`; `clash asset get` / `GET /api/v1/assets/:id` returns receipt-bearing asset read tokens; `clash asset ref get` / `GET /api/v1/assets/:id/ref?projectId=...` returns receipt-bearing relation read tokens; `clash assets gc --dry-run --json` / `/api/v1/assets/gc` returns receipt-bearing `asset-gc` plan tokens; `/api/v1/assets/import` is idempotent for the same immutable blob identity and rejects reusing an asset id for different content; asset create/cover writes reject storage keys that escape local asset storage; blob upload, asset reads, workflow generated asset writes, local blob import reads, and GC deletion share real filesystem containment so symlinked storage roots or parents cannot escape local asset storage; agent cover metadata updates, ref deletes, and destructive GC deletes require the matching receipt | SQLite asset rows + canonical content-addressed blobs/links | No in-place overwrite of referenced blobs; content changes require new asset id plus explicit COW replacement; metadata fill/update, relation delete, and GC delete paths need CAS/read receipt | Define content id, import/replace COW, and remaining metadata guards |
-| Text nodes | Canvas `data.content` with `clash text pull/apply/replace/history/content` Markdown CAS/COW projection plus `clash.text.revision` applied milestones, local SQLite `text_revisions` index/API, and immutable text revision content blobs | File-backed projection or text/content revision asset with CAS and COW | Text feeding materialized downstream state is copy-on-write; text feeding only action drafts remains editable | Add optional file-backed canonical mode, richer version UI/history, and sync mirror policy |
+| Text nodes | Canvas `data.content` live state with `clash text pull/apply/replace/history/content` Markdown CAS/COW projection plus `clash.text.revision` applied milestones, local SQLite `text_revisions` index/API, immutable text revision content blobs, and `project status.storage.contentModel` marking text as non-media revision content | File-backed projection with host-indexed text revisions, not media asset rows | Text feeding materialized downstream state is copy-on-write; text feeding only action drafts remains editable | Add richer version UI/history and optional canonical file-backed mode only if it preserves the content-model contract |
 | Timeline | YAML projection with `clash timeline pull/apply/replace/history/content` CAS/COW workflow plus `clash.timeline.revision` applied milestones, local SQLite `timeline_revisions` index/API, and immutable timeline revision content blobs | Shared projection framework | No blind apply; materialized renders keep old timeline input unless explicitly replaced | Add richer version UI/history and export/render views pinned to revision ids |
 | Room | CLI command + cloud schema + local SQLite endpoints; local and cloud same-project/id replays are idempotent only for identical normalized content; mirror planner classifies import/export/conflict without overwriting; `clash room resolve-conflict` records hash-checked accepted divergence receipts | Project chat in local SQLite and cloud D1 | Room is not raw agent trace; client ids cannot become blind overwrite handles | Wire broader admission controls, conflict recovery UI, and live parity |
 | Agent session | SQLite session/chat rows; agent attach to an existing runtime session requires the session read receipt | SQLite session/chat rows, raw traces local by default | Do not sync raw traces by default; existing-session attach is not a blind write | Split public metadata from private raw event history |
@@ -695,12 +695,14 @@ Timeline and text are the first implementations. Next targets:
 
 Implementation spec: `agent-file-projection-cas-spec.md`.
 
-### P0: Text nodes as file-backed assets/projections
+### P0: Text nodes as file-backed projections/revisions
 
 Define text-node storage:
 
-- canvas node holds stable node id, label, content asset id, and display state;
-- text content exists as a readable Markdown file projection;
+- canvas node holds stable node id, label, live text state, and display state;
+- text content exists as a readable Markdown file projection for agent edits;
+- applied text content is indexed in `text_revisions` with immutable non-media
+  revision blobs, not media asset rows;
 - apply writes through CAS;
 - downstream references trigger copy-on-write.
 

@@ -302,6 +302,35 @@ test("project status exposes agent-readable project roots and protected local fi
         },
       },
     },
+    contentModel: {
+      role: "agent-projections-with-host-indexed-revision-content",
+      textNodes: {
+        liveState: "loro-canvas-text-node-data",
+        editableProjection: "storage.workspace.viewFiles.texts",
+        projectionPath: join(projectStore, "projections", "text"),
+        applyCommand: "clash text apply",
+        replaceCommand: "clash text replace",
+        casRequired: true,
+        copyOnWriteWhenReferenced: true,
+        revisionRegistry: "text_revisions",
+        revisionBlobPath: join(localApiDataDir, "text-revision-blobs"),
+        mediaAsset: false,
+        agentWritableCanonicalState: false,
+      },
+      timelines: {
+        liveState: "loro-canvas-video-editor-node-data",
+        editableProjection: "storage.workspace.viewFiles.timelines",
+        projectionPath: join(projectStore, "timelines"),
+        applyCommand: "clash timeline apply",
+        replaceCommand: "clash timeline replace",
+        casRequired: true,
+        copyOnWriteWhenReferenced: true,
+        revisionRegistry: "timeline_revisions",
+        revisionBlobPath: join(localApiDataDir, "timeline-revision-blobs"),
+        mediaAsset: false,
+        agentWritableCanonicalState: false,
+      },
+    },
   });
 });
 

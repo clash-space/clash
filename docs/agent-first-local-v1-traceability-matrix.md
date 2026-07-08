@@ -17,6 +17,12 @@ Companion evidence inventories:
 - `agent-first-local-v1-api-surface-inventory.md`
 - `agent-first-local-v1-remote-compatibility-boundary.md`
 
+Recent storage evidence: `project status.storage.contentModel` makes text and
+timeline live state, agent projection files, host revision registries, and
+non-media immutable revision blobs explicit; `clash doctor storage` validates
+that this model does not point text/timeline content at media asset storage or
+agent-writable canonical state.
+
 ## Status Legend
 
 - `Aligned in code`: current implementation already satisfies the requirement.

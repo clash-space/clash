@@ -51,6 +51,9 @@ Treat the status payload as your filesystem contract:
 - Treat `storage.localSecrets` paths such as `config.json` and
   `credentials.json` as local-only secret files; use auth or runtime setup
   commands instead of reading or editing them.
+- Use `storage.contentModel` to distinguish text/timeline projection files
+  from host-indexed non-media revision content; do not treat text/timeline
+  revision bodies as media assets.
 - Use explicit `clash` commands to inspect or apply project changes.
 
 If a workspace is missing its marker, repair it with the standard setup
