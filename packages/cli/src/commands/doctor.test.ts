@@ -1200,6 +1200,65 @@ test("storage doctor fails when canonical media asset blobs are editable by agen
   assert.match(contract.message, /editable workspace includes canonical media asset path/);
 });
 
+test("storage doctor fails when workspace editable paths omit a declared agent root", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      workspace: {
+        ...status.storage.workspace,
+        editablePaths: status.storage.workspace.editablePaths.filter(
+          (path) => path !== status.roots.timelines,
+        ),
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /workspace editable paths missing declared agent path/);
+  assert.match(contract.message, /timelines/);
+});
+
+test("storage doctor fails when workspace paths expose non-workspace locations to agents", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const externalDraftRoot = "/tmp/external-drafts";
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      workspace: {
+        ...status.storage.workspace,
+        editablePaths: [
+          ...status.storage.workspace.editablePaths,
+          externalDraftRoot,
+        ],
+        protectedPaths: [
+          ...status.storage.workspace.protectedPaths,
+          status.localApiDataDir,
+        ],
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /workspace editable paths include undeclared agent path/);
+  assert.match(contract.message, /workspace editable path is outside project workspace/);
+  assert.match(contract.message, /workspace protected path is outside project workspace/);
+});
+
 test("storage doctor fails when text view files point at canonical revision content", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },

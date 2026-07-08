@@ -420,6 +420,7 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.workspace.ownsCanonicalMetadata !== false) {
       problems.push("workspace owns canonical metadata");
     }
+    validateWorkspacePathDeclarations(problems, status, storage.workspace);
     validateViewFilesContract(problems, status, {
       label: "text view files",
       contract: storage.workspace.viewFiles?.texts,
@@ -573,6 +574,47 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
           message: "Project storage contract separates agent workspace from protected canonical replica.",
         },
   ];
+}
+
+function validateWorkspacePathDeclarations(
+  problems: string[],
+  status: ProjectStatus,
+  workspace: ProjectStatus["storage"]["workspace"],
+): void {
+  const workspaceEditablePaths = workspace.editablePaths;
+  const expectedEditablePaths = status.editablePaths;
+  const workspaceProtectedPaths = workspace.protectedPaths;
+  const expectedWorkspaceProtectedPaths = status.protectedPaths.filter((path) =>
+    isSameOrInside(path, status.projectWorkspaceRoot),
+  );
+
+  for (const expected of expectedEditablePaths) {
+    if (!workspaceEditablePaths.includes(expected)) {
+      problems.push(`workspace editable paths missing declared agent path: ${expected}`);
+    }
+  }
+  for (const editable of workspaceEditablePaths) {
+    if (!expectedEditablePaths.includes(editable)) {
+      problems.push(`workspace editable paths include undeclared agent path: ${editable}`);
+    }
+    if (!isSameOrInside(editable, status.projectWorkspaceRoot)) {
+      problems.push(`workspace editable path is outside project workspace: ${editable}`);
+    }
+  }
+
+  for (const expected of expectedWorkspaceProtectedPaths) {
+    if (!workspaceProtectedPaths.includes(expected)) {
+      problems.push(`workspace protected paths missing declared workspace path: ${expected}`);
+    }
+  }
+  for (const protectedPath of workspaceProtectedPaths) {
+    if (!expectedWorkspaceProtectedPaths.includes(protectedPath)) {
+      problems.push(`workspace protected paths include undeclared workspace path: ${protectedPath}`);
+    }
+    if (!isSameOrInside(protectedPath, status.projectWorkspaceRoot)) {
+      problems.push(`workspace protected path is outside project workspace: ${protectedPath}`);
+    }
+  }
 }
 
 function validateViewFilesContract(
