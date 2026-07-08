@@ -192,6 +192,16 @@ async function startCliDaemonSocket(options) {
       token: "test",
     });
     client.createNode("text-cli", "text", { label: "CLI Text", content: "before" });
+    client.createNode("timeline-cli", "video-editor", {
+      label: "CLI Timeline",
+      timelineDsl: {
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        fps: 30,
+        durationInFrames: 60,
+        tracks: [{ id: "main", items: [] }],
+      },
+    });
     client.createNode("delete-cli", "text", { label: "Delete CLI", content: "before" });
 
     const server = createServer((conn) => {
@@ -285,8 +295,8 @@ async function startCliDaemonSocket(options) {
   };
 }
 
-async function startTextRevisionIndexHost() {
-  const hostDir = path.join(artifactRoot, "text-revision-index-host");
+async function startRevisionIndexHost() {
+  const hostDir = path.join(artifactRoot, "revision-index-host");
   const requestsPath = path.join(hostDir, "requests.jsonl");
   const revisionsPath = path.join(hostDir, "revisions.json");
   const source = `
@@ -352,6 +362,29 @@ async function startTextRevisionIndexHost() {
           });
           return;
         }
+        if (request.method === "POST" && url.pathname === "/api/v1/timeline-revisions") {
+          const body = await readRequestJson(request);
+          if (!body.revision?.revisionId) {
+            sendJson(response, 400, { error: "missing revision" });
+            return;
+          }
+          const existing = revisions.find((revision) => revision.revisionId === body.revision.revisionId);
+          if (!existing) {
+            revisions.push(body.revision);
+            persistRevisions();
+          }
+          sendJson(response, 200, {
+            revision: body.revision,
+            mutation: {
+              operation: "timeline_revision_index",
+              entity: { kind: "timeline", id: \`\${body.revision.projectId}:\${body.revision.nodeId}\` },
+              resultEntityId: body.revision.revisionId,
+              accepted: true,
+              forced: false,
+            },
+          });
+          return;
+        }
         const match = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/text-revisions$/);
         if (request.method === "GET" && match) {
           const projectId = decodeURIComponent(match[1]);
@@ -359,6 +392,17 @@ async function startTextRevisionIndexHost() {
           const limit = Number(url.searchParams.get("limit") || "50");
           const filtered = revisions
             .filter((revision) => revision.projectId === projectId && (!nodeId || revision.nodeId === nodeId))
+            .slice(0, Number.isFinite(limit) ? limit : 50);
+          sendJson(response, 200, { revisions: filtered });
+          return;
+        }
+        const timelineMatch = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/timeline-revisions$/);
+        if (request.method === "GET" && timelineMatch) {
+          const projectId = decodeURIComponent(timelineMatch[1]);
+          const nodeId = url.searchParams.get("nodeId");
+          const limit = Number(url.searchParams.get("limit") || "50");
+          const filtered = revisions
+            .filter((revision) => revision.projectId === projectId && revision.kind === "clash.timeline.revision" && (!nodeId || revision.nodeId === nodeId))
             .slice(0, Number.isFinite(limit) ? limit : 50);
           sendJson(response, 200, { revisions: filtered });
           return;
@@ -1378,12 +1422,15 @@ async function runDirectCanvasCliReadTokenCas() {
       { command: missingDelete.command },
     );
 
-    const revisionHost = await startTextRevisionIndexHost();
+    const revisionHost = await startRevisionIndexHost();
     let textPullPayload = null;
     let textApplyPayload = null;
     let textHistoryPayload = null;
+    let timelinePullPayload = null;
+    let timelineApplyPayload = null;
+    let timelineHistoryPayload = null;
     try {
-      const textRevisionEnv = {
+      const revisionEnv = {
         ...env,
         CLASH_API_URL: revisionHost.url,
         CLASH_API_KEY: "agent-first-cas-key",
@@ -1395,7 +1442,7 @@ async function runDirectCanvasCliReadTokenCas() {
         "--node",
         "text-cli",
         "--json",
-      ], textRevisionEnv);
+      ], revisionEnv);
       textPullPayload = textPull.status === 0 ? parseStdoutJson(textPull) : null;
       recordCheck(
         "text history read step produced lock",
@@ -1414,7 +1461,7 @@ async function runDirectCanvasCliReadTokenCas() {
         "--node",
         "text-cli",
         "--json",
-      ], textRevisionEnv);
+      ], revisionEnv);
       textApplyPayload = textApply.status === 0 ? parseStdoutJson(textApply) : null;
       recordCheck(
         "text apply registered host text revision index",
@@ -1439,7 +1486,7 @@ async function runDirectCanvasCliReadTokenCas() {
         "--limit",
         "1",
         "--json",
-      ], textRevisionEnv);
+      ], revisionEnv);
       textHistoryPayload = textHistory.status === 0 ? parseStdoutJson(textHistory) : null;
       recordCheck(
         "text history reads host revision index",
@@ -1458,6 +1505,96 @@ async function runDirectCanvasCliReadTokenCas() {
           ),
         textHistory.stderr || textHistory.stdout,
         { command: textHistory.command, revisionHostRequests: revisionHost.requests },
+      );
+
+      const timelinePull = runTimeline([
+        "pull",
+        "--project",
+        projectId,
+        "--node",
+        "timeline-cli",
+        "--timeline",
+        "history-indexed",
+        "--json",
+      ], revisionEnv);
+      timelinePullPayload = timelinePull.status === 0 ? parseStdoutJson(timelinePull) : null;
+      recordCheck(
+        "timeline history read step produced lock",
+        timelinePull.status === 0 &&
+          typeof timelinePullPayload?.readToken === "string" &&
+          typeof timelinePullPayload?.filePath === "string" &&
+          typeof timelinePullPayload?.lockPath === "string",
+        timelinePull.stderr || timelinePull.stdout,
+        { command: timelinePull.command },
+      );
+      await writeFile(timelinePullPayload.filePath, [
+        "compositionWidth: 1080",
+        "compositionHeight: 1920",
+        "fps: 30",
+        "durationInFrames: 60",
+        "tracks:",
+        "  - id: main",
+        "    items:",
+        "      - id: cli-shot",
+        "        type: video",
+        "        from: start",
+        "        durationInFrames: 60",
+        "        sourceNodeId: text-cli",
+        "",
+      ].join("\n"), "utf8");
+      const timelineApply = runTimeline([
+        "apply",
+        "--project",
+        projectId,
+        "--node",
+        "timeline-cli",
+        "--timeline",
+        "history-indexed",
+        "--json",
+      ], revisionEnv);
+      timelineApplyPayload = timelineApply.status === 0 ? parseStdoutJson(timelineApply) : null;
+      recordCheck(
+        "timeline apply registered host timeline revision index",
+        timelineApply.status === 0 &&
+          timelineApplyPayload?.timelineRevisionIndex?.indexed === true &&
+          typeof timelineApplyPayload?.timelineRevision?.revisionId === "string" &&
+          revisionHost.revisions.some((revision) => revision.revisionId === timelineApplyPayload.timelineRevision.revisionId),
+        timelineApply.stderr || timelineApply.stdout || timelineApply.error,
+        {
+          command: timelineApply.command,
+          revisionHostUrl: revisionHost.url,
+          revisionHostRequests: revisionHost.requests,
+          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
+        },
+      );
+      const timelineHistory = runTimeline([
+        "history",
+        "--project",
+        projectId,
+        "--node",
+        "timeline-cli",
+        "--limit",
+        "1",
+        "--json",
+      ], revisionEnv);
+      timelineHistoryPayload = timelineHistory.status === 0 ? parseStdoutJson(timelineHistory) : null;
+      recordCheck(
+        "timeline history reads host revision index",
+        timelineHistory.status === 0 &&
+          timelineHistoryPayload?.projectId === projectId &&
+          timelineHistoryPayload?.nodeId === "timeline-cli" &&
+          timelineHistoryPayload?.revisions?.[0]?.revisionId === timelineApplyPayload.timelineRevision.revisionId &&
+          timelineHistoryPayload?.revisions?.[0]?.sourceFileHash === timelineApplyPayload.timelineRevision.sourceFileHash &&
+          revisionHost.requests.some((request) =>
+            request.method === "POST" && request.path === "/api/v1/timeline-revisions"
+          ) &&
+          revisionHost.requests.some((request) =>
+            request.method === "GET" &&
+            request.path === `/api/v1/projects/${projectId}/timeline-revisions` &&
+            request.search.includes("nodeId=timeline-cli")
+          ),
+        timelineHistory.stderr || timelineHistory.stdout,
+        { command: timelineHistory.command, revisionHostRequests: revisionHost.requests },
       );
     } finally {
       await revisionHost.close();
@@ -1480,6 +1617,11 @@ async function runDirectCanvasCliReadTokenCas() {
         pull: textPullPayload,
         apply: textApplyPayload,
         history: textHistoryPayload,
+      },
+      timelineRevisionHistory: {
+        pull: timelinePullPayload,
+        apply: timelineApplyPayload,
+        history: timelineHistoryPayload,
       },
     };
   } finally {
@@ -1505,6 +1647,7 @@ async function main() {
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
     requireCheckPassed("text history reads host revision index");
+    requireCheckPassed("timeline history reads host revision index");
   } catch (error) {
     status = "fail";
     summary = error instanceof Error ? error.message : String(error);
@@ -1540,6 +1683,7 @@ async function main() {
       directCanvasCliMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas CLI mutation envelope recorded" && check.status === "pass"),
       directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
       textHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "text history reads host revision index" && check.status === "pass"),
+      timelineHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "timeline history reads host revision index" && check.status === "pass"),
       projectionPathOutsideCwdRejected: [
           "text pull rejects projection path outside cwd",
           "text forced apply rejects projection path outside cwd",

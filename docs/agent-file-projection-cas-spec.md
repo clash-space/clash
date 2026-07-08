@@ -636,6 +636,18 @@ The product may keep a queryable revision index in SQLite for milestones only:
 - actor/source metadata
 - dependency summaries for assets, text nodes, and composition components
 
+The current local v1 implementation exposes that index explicitly:
+
+- `POST /api/v1/timeline-revisions`
+- `GET /api/v1/projects/:projectId/timeline-revisions`
+- `clash timeline history`
+
+`clash timeline apply/replace` registers the applied
+`clash.timeline.revision` after the canvas mutation succeeds. If an older host
+does not expose the index endpoint, the CLI keeps the canvas mutation result and
+reports the index miss as a compatibility warning. The timeline body itself is
+not written to SQLite; SQLite stores only milestone metadata and provenance.
+
 Do not record every keystroke or every CRDT operation as a user-visible JSON
 revision. Fine-grained history is already in Loro. Timeline revision records
 should be created for explicit milestones such as `apply`, review approval,

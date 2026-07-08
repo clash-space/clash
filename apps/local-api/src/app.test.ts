@@ -1220,6 +1220,60 @@ describe("local API app", () => {
     }
   });
 
+  it("indexes applied timeline revisions without creating media asset rows", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const revision = {
+      schemaVersion: 1,
+      kind: "clash.timeline.revision",
+      timelineId: "timeline:project-timeline:editor",
+      revisionId: "tlrev-1234567890abcdef-feedfacecafe",
+      parentRevisionId: "tlrev-parent",
+      projectId: "project-timeline",
+      nodeId: "editor",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      timelineHash: "1234567890abcdef",
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "timelines/main.timeline.yaml",
+      sourceFileHash: "1234567890abcdef",
+      actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
+      loroFrontiers: [{ peer: "1", counter: 4 }],
+      loroVersionVector: { "1": 4 },
+      dependencies: {
+        sourceNodeIds: ["scene-001"],
+        assetIds: ["asset-001"],
+        componentIds: ["lower-third"],
+        textNodeIds: ["script-001"],
+      },
+    };
+
+    const registered = await app.request("/api/v1/timeline-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision }),
+    });
+    expect(registered.status).toBe(200);
+    expect(await registered.json()).toMatchObject({
+      revision,
+      mutation: {
+        operation: "timeline_revision_index",
+        entity: { kind: "timeline", id: "project-timeline:editor" },
+        resultEntityId: revision.revisionId,
+        accepted: true,
+      },
+    });
+
+    const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
+    expect(await listed.json()).toEqual({ revisions: [revision] });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select count(*) as count from timeline_revisions").get()).toEqual({ count: 1 });
+      expect(sqlite.prepare("select count(*) as count from assets").get()).toEqual({ count: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("rejects asset create paths that escape local asset storage", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
     const invalidSource = await app.request("/api/v1/assets", {

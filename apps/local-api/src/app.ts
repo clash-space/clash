@@ -33,6 +33,7 @@ import {
   ProviderOAuthIdSchema,
   sessionReadToken,
   TextAppliedRevisionSchema,
+  TimelineAppliedRevisionSchema,
   validateCanvasEdgeAdd,
   validateCanvasEdgeDelete,
   validateCanvasEdgePatch,
@@ -51,6 +52,7 @@ import {
   type ModelKind,
   type HostMutationRecord,
   type TextAppliedRevision,
+  type TimelineAppliedRevision,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import {
@@ -101,6 +103,7 @@ import {
   type LocalMetadataDb,
   type LocalMutationAuditFilter,
   type LocalMutationAuditRecord,
+  type LocalTimelineRevisionFilter,
   type LocalTextRevisionFilter,
   type LocalMetadataProject as LocalProject,
   type LocalMetadataProjectAsset as LocalProjectAsset,
@@ -677,7 +680,27 @@ function createDb(dataDir: string) {
     return metadataStore.listTextRevisions(filter);
   }
 
-  return { load, update, appendMutationAudit, listMutationAudit, upsertTextRevision, listTextRevisions };
+  async function upsertTimelineRevision(revision: TimelineAppliedRevision): Promise<TimelineAppliedRevision> {
+    const task = writeQueue.catch(() => undefined).then(() => metadataStore.upsertTimelineRevision(revision));
+    writeQueue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  async function listTimelineRevisions(filter: LocalTimelineRevisionFilter): Promise<TimelineAppliedRevision[]> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.listTimelineRevisions(filter);
+  }
+
+  return {
+    load,
+    update,
+    appendMutationAudit,
+    listMutationAudit,
+    upsertTextRevision,
+    listTextRevisions,
+    upsertTimelineRevision,
+    listTimelineRevisions,
+  };
 }
 
 function sanitizeMutationForAudit(mutation: HostMutationRecord): Record<string, unknown> {
@@ -894,6 +917,22 @@ function parseTextRevisionForIndex(value: unknown): { ok: true; revision: TextAp
   }
   if (!isSafeProjectRelativePath(revision.sourceFilePath)) {
     return { ok: false, error: "Text revision source file path must be project-relative" };
+  }
+  return { ok: true, revision };
+}
+
+function parseTimelineRevisionForIndex(value: unknown): { ok: true; revision: TimelineAppliedRevision } | { ok: false; error: string } {
+  const parsed = TimelineAppliedRevisionSchema.safeParse(value);
+  if (!parsed.success) return { ok: false, error: "Invalid timeline revision" };
+  const revision = parsed.data;
+  if (!/^[a-f0-9]{16}$/.test(revision.timelineHash) || !/^[a-f0-9]{16}$/.test(revision.sourceFileHash)) {
+    return { ok: false, error: "Timeline revision hashes must be sha256-64 hex strings" };
+  }
+  if (revision.sourceFileHash !== revision.timelineHash) {
+    return { ok: false, error: "Timeline revision source file hash must match timeline hash" };
+  }
+  if (!isSafeProjectRelativePath(revision.sourceFilePath)) {
+    return { ok: false, error: "Timeline revision source file path must be project-relative" };
   }
   return { ok: true, revision };
 }
@@ -4274,6 +4313,48 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/projects/:projectId/text-revisions", async (c) => {
     const limit = Number(c.req.query("limit"));
     const revisions = await db.listTextRevisions({
+      projectId: c.req.param("projectId"),
+      nodeId: normalizeString(c.req.query("nodeId")),
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    return c.json({ revisions });
+  });
+
+  app.post("/api/v1/timeline-revisions", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown };
+    const parsed = parseTimelineRevisionForIndex(body.revision);
+    const envelope = {
+      operation: "timeline_revision_index",
+      entity: { kind: "timeline", id: parsed.ok ? `${parsed.revision.projectId}:${parsed.revision.nodeId}` : "" },
+      forced: false,
+    };
+    if (!parsed.ok) {
+      return c.json({
+        error: parsed.error,
+        mutation: hostMutationRejected(envelope, parsed.error),
+      }, 400);
+    }
+
+    try {
+      const revision = await db.upsertTimelineRevision(parsed.revision);
+      const mutation = hostMutationSucceeded(envelope, { resultEntityId: revision.revisionId });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        reason: "timeline revision indexed",
+      }));
+      return c.json({ revision, mutation });
+    } catch (error) {
+      const message = errorMessage(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected(envelope, message),
+      }, message.includes("already exists with different metadata") ? 409 : 500);
+    }
+  });
+
+  app.get("/api/v1/projects/:projectId/timeline-revisions", async (c) => {
+    const limit = Number(c.req.query("limit"));
+    const revisions = await db.listTimelineRevisions({
       projectId: c.req.param("projectId"),
       nodeId: normalizeString(c.req.query("nodeId")),
       limit: Number.isFinite(limit) ? limit : undefined,

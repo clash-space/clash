@@ -322,7 +322,19 @@ Current status:
 - Text replace creates a copy-on-write text node from the edited Markdown file,
   refreshes the lock to point at the new node, and leaves existing materialized
   downstream outputs attached to the old text node.
-- Covered by `packages/cli/src/commands/text.test.ts`.
+- `clash timeline apply/replace` now registers applied `clash.timeline.revision`
+  milestones with local-api after successful canvas mutations, while retaining
+  compatibility with older hosts that do not expose the index endpoint.
+- Local-api persists timeline milestones in host-owned SQLite
+  `timeline_revisions` rows via `POST /api/v1/timeline-revisions`, exposes
+  project/node lookup via `GET /api/v1/projects/:projectId/timeline-revisions`,
+  and keeps those rows out of the media `assets` table.
+- `clash timeline history` reads that host-owned milestone index, giving agents
+  a CLI provenance/history surface without direct SQLite access. Timeline body
+  and fine-grained collaborative history remain in the Loro canvas state.
+- Covered by `packages/cli/src/commands/text.test.ts`,
+  `packages/cli/src/commands/timeline.test.ts`, and the local-api revision
+  index tests.
 
 Remaining gap:
 

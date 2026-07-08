@@ -11,8 +11,10 @@ import {
   createTimelineAppliedRevision,
   createTimelineLock,
   createTimelineSourceProvenance,
+  fetchTimelineRevisionHistory,
   parseTimelineFileForApply,
   parseTimelineLock,
+  registerTimelineRevisionIndex,
   resolveTimelineFilePath,
   resolveTimelineLockPath,
   timelineHash,
@@ -26,7 +28,7 @@ test("registers a top-level timeline command for agent-editable timeline files",
   assert.match(indexSource, /import \{ timelineCommand \} from "\.\/commands\/timeline"/);
   assert.match(indexSource, /program\.addCommand\(timelineCommand\)/);
   assert.equal(timelineCommand.name(), "timeline");
-  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), ["pull", "apply", "replace"]);
+  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history"]);
   const timelineSource = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
   const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
   assert.match(timelineSource, /\.command\("replace"\)/);
@@ -552,6 +554,107 @@ tracks:
     appliedRevision: revision,
   });
   assert.deepEqual(parseTimelineLock(JSON.stringify(lock)).appliedRevision?.actor, revision.actor);
+});
+
+test("registers timeline revisions through the host index API when available", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-timeline-index-"));
+  const filePath = join(cwd, "timelines", "main.timeline.yaml");
+  const parsed = parseTimelineFileForApply(`
+tracks:
+  - id: main
+    items:
+      - id: scene-001-video
+        type: video
+        from: start
+        durationInFrames: 30
+        sourceNodeId: scene-001
+`);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const revision = createTimelineAppliedRevision({
+    projectId: "project-1",
+    nodeId: "editor-1",
+    cwd,
+    filePath,
+    dsl: parsed.dsl,
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+  const calls: Array<{ path: string; contentType: string | null; body: unknown }> = [];
+
+  const result = await registerTimelineRevisionIndex(revision, async (path, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      path,
+      contentType: headers.get("content-type"),
+      body: JSON.parse(String(init?.body ?? "{}")),
+    });
+    return new Response(JSON.stringify({ revision }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  assert.deepEqual(result, { indexed: true });
+  assert.deepEqual(calls, [{ path: "/api/v1/timeline-revisions", contentType: "application/json", body: { revision } }]);
+});
+
+test("keeps timeline apply compatible when the host timeline revision index is unavailable", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-timeline-index-missing-"));
+  const filePath = join(cwd, "timelines", "main.timeline.yaml");
+  const parsed = parseTimelineFileForApply(`
+tracks:
+  - id: main
+    items: []
+`);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const revision = createTimelineAppliedRevision({
+    projectId: "project-1",
+    nodeId: "editor-1",
+    cwd,
+    filePath,
+    dsl: parsed.dsl,
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+
+  const result = await registerTimelineRevisionIndex(revision, async () =>
+    new Response("missing", { status: 404 }),
+  );
+
+  assert.deepEqual(result, {
+    indexed: false,
+    status: 404,
+    error: "timeline revision index API unavailable",
+  });
+});
+
+test("fetches timeline revision history through the host API", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-timeline-history-"));
+  const filePath = join(cwd, "timelines", "main.timeline.yaml");
+  const parsed = parseTimelineFileForApply(`
+tracks:
+  - id: main
+    items: []
+`);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const revision = createTimelineAppliedRevision({
+    projectId: "project-1",
+    nodeId: "editor-1",
+    cwd,
+    filePath,
+    dsl: parsed.dsl,
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+  const calls: Array<{ path: string; method: string | undefined }> = [];
+
+  const result = await fetchTimelineRevisionHistory("project-1", { nodeId: "editor-1", limit: 2 }, async (path, init) => {
+    calls.push({ path, method: init?.method });
+    return new Response(JSON.stringify({ revisions: [revision] }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  assert.deepEqual(result, { revisions: [revision] });
+  assert.deepEqual(calls, [{
+    path: "/api/v1/projects/project-1/timeline-revisions?nodeId=editor-1&limit=2",
+    method: "GET",
+  }]);
 });
 
 test("uses the shared timeline hash semantics for CAS locks", async () => {

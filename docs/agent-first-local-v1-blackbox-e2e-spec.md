@@ -228,6 +228,9 @@ Assertions:
 - public `clash text apply` registers an applied revision with the host text
   revision index, and `clash text history` reads that same host index without
   direct SQLite access,
+- public `clash timeline apply` registers an applied revision with the host
+  timeline revision index, and `clash timeline history` reads that same host
+  index without direct SQLite access,
 - public storyboard prompt-pack production projection rejects symlinked lock
   sidecars that resolve outside the current cwd,
 - public review gate planning rejects symlinked lock sidecars that resolve
@@ -250,14 +253,16 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T02-18-23-178Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-08T02-35-27-095Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 41 checks passed,
+- 44 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
+- `textHistoryReadsHostRevisionIndex: true`.
+- `timelineHistoryReadsHostRevisionIndex: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke
 

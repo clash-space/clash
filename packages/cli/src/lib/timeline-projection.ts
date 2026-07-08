@@ -2,10 +2,14 @@ import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   agentReadToken,
+  TimelineAppliedRevisionSchema,
   timelineDslFromYaml,
   timelineDslToYaml,
   validateCanvasTimelineApply,
   type ResolvedTimelineDsl,
+  type TimelineAppliedRevision,
+  type TimelineRevisionActor,
+  type TimelineRevisionDependencies,
 } from "@clash/shared-types";
 import {
   assertProjectionLockFilePath,
@@ -17,6 +21,12 @@ import {
   resolveProjectionLockPathInsideCwd,
   resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
+
+export type {
+  TimelineAppliedRevision,
+  TimelineRevisionActor,
+  TimelineRevisionDependencies,
+};
 
 export type TimelineNodeLike = {
   id?: string;
@@ -67,38 +77,6 @@ export type TimelineSourceProvenance = {
   sourceTimelineRevisionStatus: TimelineRevisionStatus;
   sourceTimelineFrontiers?: unknown[];
   sourceTimelineVersionVector?: Record<string, number>;
-};
-
-export type TimelineRevisionDependencies = {
-  sourceNodeIds: string[];
-  assetIds: string[];
-  componentIds: string[];
-  textNodeIds: string[];
-};
-
-export type TimelineRevisionActor = {
-  actorType: "user" | "agent";
-  actorUserId: string;
-  actorAgentId?: string;
-};
-
-export type TimelineAppliedRevision = {
-  schemaVersion: 1;
-  kind: "clash.timeline.revision";
-  timelineId: string;
-  revisionId: string;
-  parentRevisionId?: string;
-  projectId: string;
-  nodeId: string;
-  createdAt: string;
-  timelineHash: string;
-  hashAlgorithm: "sha256-64";
-  sourceFilePath: string;
-  sourceFileHash: string;
-  actor?: TimelineRevisionActor;
-  loroFrontiers?: unknown[];
-  loroVersionVector?: Record<string, number>;
-  dependencies: TimelineRevisionDependencies;
 };
 
 export type LoroRevisionMetadata = {
@@ -540,42 +518,11 @@ export function sourceNodeIdsFromResolved(dsl: ResolvedTimelineDsl): string[] {
 }
 
 function parseTimelineAppliedRevision(value: unknown): TimelineAppliedRevision {
-  const revision = value as Partial<TimelineAppliedRevision>;
-  if (
-    !revision ||
-    typeof revision !== "object" ||
-    revision.schemaVersion !== 1 ||
-    revision.kind !== "clash.timeline.revision" ||
-    typeof revision.timelineId !== "string" ||
-    typeof revision.revisionId !== "string" ||
-    (revision.parentRevisionId !== undefined && typeof revision.parentRevisionId !== "string") ||
-    typeof revision.projectId !== "string" ||
-    typeof revision.nodeId !== "string" ||
-    typeof revision.createdAt !== "string" ||
-    typeof revision.timelineHash !== "string" ||
-    revision.hashAlgorithm !== "sha256-64" ||
-    typeof revision.sourceFilePath !== "string" ||
-    typeof revision.sourceFileHash !== "string" ||
-    (revision.actor !== undefined && !isTimelineRevisionActor(revision.actor)) ||
-    !revision.dependencies ||
-    !Array.isArray(revision.dependencies.sourceNodeIds) ||
-    !Array.isArray(revision.dependencies.assetIds) ||
-    !Array.isArray(revision.dependencies.componentIds) ||
-    !Array.isArray(revision.dependencies.textNodeIds)
-  ) {
+  const parsed = TimelineAppliedRevisionSchema.safeParse(value);
+  if (!parsed.success) {
     throw new Error("Invalid timeline applied revision");
   }
-  return revision as TimelineAppliedRevision;
-}
-
-function isTimelineRevisionActor(value: unknown): value is TimelineRevisionActor {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const actor = value as Partial<TimelineRevisionActor>;
-  return (
-    (actor.actorType === "user" || actor.actorType === "agent") &&
-    typeof actor.actorUserId === "string" &&
-    (actor.actorAgentId === undefined || typeof actor.actorAgentId === "string")
-  );
+  return parsed.data;
 }
 
 function collectTimelineRevisionDependencies(dsl: ResolvedTimelineDsl): TimelineRevisionDependencies {

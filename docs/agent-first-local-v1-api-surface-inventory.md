@@ -638,6 +638,33 @@ Remaining:
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 
+### Local timeline revision endpoints
+
+Implemented locally in SQLite:
+
+- `POST /api/v1/timeline-revisions`
+- `GET /api/v1/projects/:projectId/timeline-revisions`
+
+Rules:
+
+- stores applied timeline revision milestone metadata in host-owned SQLite
+  `timeline_revisions`,
+- does not create media `assets` rows for timeline revisions,
+- validates project-relative source paths and hash consistency before indexing,
+- rejects same revision id with different payloads,
+- returns an accepted host mutation record for successful index writes,
+- keeps timeline body editing behind `clash timeline pull/apply/replace` CAS
+  rather than direct SQLite writes.
+- `clash timeline history` reads the GET endpoint as the agent-facing history
+  surface instead of opening SQLite. Loro remains the canonical fine-grained
+  document history.
+
+Remaining:
+
+- richer visual timeline revision UI/history,
+- local-to-cloud timeline revision mirror policy,
+- export/render UI that pins output artifacts to timeline revision ids.
+
 ### Projection apply endpoints/commands
 
 Every projection apply must carry:

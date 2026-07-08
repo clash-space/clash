@@ -494,6 +494,15 @@ export {
   type TextRevisionActor,
 } from './text-revisions';
 
+export {
+  TimelineAppliedRevisionSchema,
+  TimelineRevisionActorSchema,
+  TimelineRevisionDependenciesSchema,
+  type TimelineAppliedRevision,
+  type TimelineRevisionActor,
+  type TimelineRevisionDependencies,
+} from './timeline-revisions';
+
 // Pipeline types
 export {
   AssetStatusSchema,

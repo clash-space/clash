@@ -3,9 +3,10 @@ import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { LoroSyncClient, type ResolvedTimelineDsl } from "@clash/shared-types";
+import { LoroSyncClient, TimelineAppliedRevisionSchema, type ResolvedTimelineDsl } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
-import { isJsonMode, printJson } from "../lib/output";
+import { apiFetch } from "../lib/api";
+import { isJsonMode, printJson, printTable } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
 import { resolveCanvasActor, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
@@ -201,10 +202,14 @@ timelineCommand
       readToken: result.readToken,
     });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision);
 
-    const payload = { ...result, timelineRevision, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
+    const payload = { ...result, timelineRevision, timelineRevisionIndex, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
     if (isJsonMode(options)) printJson(payload);
     else {
+      if (!timelineRevisionIndex.indexed) {
+        process.stderr.write(`warning: ${timelineRevisionIndex.error}\n`);
+      }
       process.stderr.write(
         `applied ${filePath} to ${options.node} (${parsed.sources.length} source${parsed.sources.length === 1 ? "" : "s"}, +${result.edgesAdded} edge${result.edgesAdded === 1 ? "" : "s"})${result.forced ? " (forced)" : ""}\n`,
       );
@@ -278,14 +283,62 @@ timelineCommand
       readToken: result.readToken,
     });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision);
 
-    const payload = { ...result, timelineRevision, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
+    const payload = { ...result, timelineRevision, timelineRevisionIndex, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
     if (isJsonMode(options)) printJson(payload);
     else {
+      if (!timelineRevisionIndex.indexed) {
+        process.stderr.write(`warning: ${timelineRevisionIndex.error}\n`);
+      }
       process.stderr.write(
         `created copy-on-write timeline ${result.newNodeId} from ${options.node} (${parsed.sources.length} source${parsed.sources.length === 1 ? "" : "s"}, +${result.edgesAdded} edge${result.edgesAdded === 1 ? "" : "s"})${result.forced ? " (forced)" : ""}\n` +
         `wrote ${lockPath}\n`,
       );
+    }
+  });
+
+timelineCommand
+  .command("history")
+  .description("List applied timeline revisions indexed by the host")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--node <id>", "Filter by video-editor node ID")
+  .option("--limit <n>", "Maximum revisions to return")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
+    let limit: number | undefined;
+    try {
+      limit = parseTimelineRevisionLimit(options.limit);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+
+    try {
+      const result = await fetchTimelineRevisionHistory(projectId, { nodeId: options.node, limit });
+      const payload = { projectId, nodeId: options.node, ...result };
+      if (isJsonMode(options)) {
+        printJson(payload);
+      } else {
+        printTable(result.revisions.map((revision) => ({
+          revisionId: revision.revisionId,
+          nodeId: revision.nodeId,
+          parent: revision.parentRevisionId ?? "",
+          hash: revision.timelineHash,
+          createdAt: revision.createdAt,
+          source: revision.sourceFilePath,
+        })), [
+          { key: "revisionId", label: "Revision", width: 32 },
+          { key: "nodeId", label: "Node", width: 20 },
+          { key: "hash", label: "Hash", width: 16 },
+          { key: "createdAt", label: "Created", width: 24 },
+          { key: "source", label: "Source", width: 36 },
+        ]);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
     }
   });
 
@@ -315,6 +368,86 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
 async function runCommand(projectId: string, cmd: object): Promise<any> {
   if (!isDaemonRunning(projectId)) return null;
   return sendCommand(projectId, cmd);
+}
+
+export type TimelineRevisionIndexResult =
+  | { indexed: true }
+  | { indexed: false; status?: number; error: string };
+
+export async function registerTimelineRevisionIndex(
+  revision: TimelineAppliedRevision,
+  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+): Promise<TimelineRevisionIndexResult> {
+  try {
+    const response = await request("/api/v1/timeline-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision }),
+    });
+    if (response.ok) return { indexed: true };
+    if (response.status === 404) {
+      return { indexed: false, status: 404, error: "timeline revision index API unavailable" };
+    }
+    const body = await response.text().catch(() => "");
+    return {
+      indexed: false,
+      status: response.status,
+      error: body ? `timeline revision index rejected: ${body}` : `timeline revision index rejected with HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      indexed: false,
+      error: `timeline revision index unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+export type TimelineRevisionHistoryResult = {
+  revisions: TimelineAppliedRevision[];
+};
+
+export async function fetchTimelineRevisionHistory(
+  projectId: string,
+  options: { nodeId?: string; limit?: number } = {},
+  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+): Promise<TimelineRevisionHistoryResult> {
+  const params = new URLSearchParams();
+  if (options.nodeId) params.set("nodeId", options.nodeId);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  const query = params.toString();
+  const response = await request(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/timeline-revisions${query ? `?${query}` : ""}`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("timeline revision history API unavailable");
+    }
+    const body = await response.text().catch(() => "");
+    throw new Error(body ? `timeline revision history rejected: ${body}` : `timeline revision history rejected with HTTP ${response.status}`);
+  }
+  const body = await response.json().catch(() => null) as { revisions?: unknown[] } | null;
+  if (!body || !Array.isArray(body.revisions)) {
+    throw new Error("Invalid timeline revision history response");
+  }
+  return {
+    revisions: body.revisions.map((revision) => {
+      const parsed = TimelineAppliedRevisionSchema.safeParse(revision);
+      if (!parsed.success) {
+        throw new Error("Invalid timeline revision history response");
+      }
+      return parsed.data;
+    }),
+  };
+}
+
+function parseTimelineRevisionLimit(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error("Timeline revision history limit must be a positive integer");
+  }
+  return limit;
 }
 
 type TimelineNodeReadResult = TimelineNodeLike & {

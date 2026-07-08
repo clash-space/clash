@@ -631,7 +631,7 @@ Do not silently run them as cloud workers.
 | Local metadata | `local.sqlite`; legacy `db.json` ignored | `local.sqlite` matching cloud D1 schema | JSON is not app DB | Keep ignored-legacy tests and add doctor/schema checks |
 | Assets | Local files + SQLite asset rows plus first-pass `clash asset link`; `clash asset get` / `GET /api/v1/assets/:id` returns receipt-bearing asset read tokens; `clash asset ref get` / `GET /api/v1/assets/:id/ref?projectId=...` returns receipt-bearing relation read tokens; `clash assets gc --dry-run --json` / `/api/v1/assets/gc` returns receipt-bearing `asset-gc` plan tokens; `/api/v1/assets/import` is idempotent for the same immutable blob identity and rejects reusing an asset id for different content; asset create/cover writes reject storage keys that escape local asset storage; blob upload, asset reads, workflow generated asset writes, local blob import reads, and GC deletion share real filesystem containment so symlinked storage roots or parents cannot escape local asset storage; agent cover metadata updates, ref deletes, and destructive GC deletes require the matching receipt | SQLite asset rows + canonical content-addressed blobs/links | No in-place overwrite of referenced blobs; content changes require new asset id plus explicit COW replacement; metadata fill/update, relation delete, and GC delete paths need CAS/read receipt | Define content id, import/replace COW, and remaining metadata guards |
 | Text nodes | Canvas `data.content` with `clash text pull/apply/replace` Markdown CAS/COW projection plus `clash.text.revision` applied milestones and local SQLite `text_revisions` index/API | File-backed projection or text/content revision asset with CAS and COW | Text feeding materialized downstream state is copy-on-write; text feeding only action drafts remains editable | Add optional file-backed canonical mode, richer version UI/history, and sync mirror policy |
-| Timeline | YAML projection with `clash timeline pull/apply/replace` CAS/COW workflow | Shared projection framework | No blind apply; materialized renders keep old timeline input unless explicitly replaced | Extract generic projection lock/hash helpers and richer version UI/history |
+| Timeline | YAML projection with `clash timeline pull/apply/replace/history` CAS/COW workflow plus `clash.timeline.revision` applied milestones and local SQLite `timeline_revisions` index/API | Shared projection framework | No blind apply; materialized renders keep old timeline input unless explicitly replaced | Add richer version UI/history and export/render views pinned to revision ids |
 | Room | CLI command + cloud schema + local SQLite endpoints; local and cloud same-project/id replays are idempotent only for identical normalized content; mirror planner classifies import/export/conflict without overwriting | Project chat in local SQLite and cloud D1 | Room is not raw agent trace; client ids cannot become blind overwrite handles | Wire admission-controlled sync loop and conflict recovery UI |
 | Agent session | SQLite session/chat rows; agent attach to an existing runtime session requires the session read receipt | SQLite session/chat rows, raw traces local by default | Do not sync raw traces by default; existing-session attach is not a blind write | Split public metadata from private raw event history |
 | Provider auth | Provider accounts/OAuth in SQLite with encrypted sensitive values; agent OAuth restart/complete/delete over an existing row requires a receipt-bearing `GET /api/v1/provider-oauth` token before the OAuth driver or delete path is invoked | SQLite encrypted credential/OAuth rows | No secrets in projections/canvas; no agent reset of existing local auth state without read receipt | Keep key-source and migration tests |
@@ -725,6 +725,28 @@ Current first pass:
 - Text is still stored in canvas `data.content`; optional file-backed canonical
   text mode, richer visual history UI, and local-to-cloud revision sync policy
   remain future work.
+
+### P0: Timeline milestones as host-indexed revisions
+
+Current first pass:
+
+- `clash timeline pull/apply/replace` keeps the YAML projection and CAS lock
+  as the agent-editable surface.
+- Successful timeline apply/replace records a `clash.timeline.revision`
+  milestone in refreshed locks and COW replacement node data, including source
+  file path, timeline hash, parent revision, actor, Loro frontier/version
+  metadata when available, and summarized dependencies.
+- Local-api persists applied timeline revision metadata in SQLite
+  `timeline_revisions` through `POST /api/v1/timeline-revisions`, and exposes
+  project/node lookup through
+  `GET /api/v1/projects/:projectId/timeline-revisions`.
+- `clash timeline apply/replace` registers the revision with that host API
+  after a successful canvas mutation, while keeping older hosts compatible when
+  the index endpoint is unavailable.
+- `clash timeline history` exposes the host-owned milestone index to agents
+  without making SQLite an editable or directly readable product surface.
+- Timeline body/history remains canonical in the Loro canvas state; the SQLite
+  index is only for query/provenance milestones, not a per-keystroke log.
 
 ### P1: Project directory layout policy
 
