@@ -745,6 +745,28 @@ export function createLocalMetadataStore(dataDir: string) {
     }
   }
 
+  function insertMutationAudit(db: SqliteDatabase, record: LocalMutationAuditRecord): void {
+    db.prepare(`
+      INSERT INTO mutation_audit (
+        id, created_at, operation, entity_kind, entity_id, actor_client_type,
+        forced, accepted, reason, result_entity_id, error, mutation_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      record.id,
+      record.createdAt,
+      record.operation,
+      record.entity.kind,
+      record.entity.id,
+      record.actorClientType ?? null,
+      record.forced ? 1 : 0,
+      record.accepted ? 1 : 0,
+      record.reason ?? null,
+      record.resultEntityId ?? null,
+      record.error ?? null,
+      JSON.stringify(record.mutation),
+    );
+  }
+
   async function load(): Promise<LocalMetadataDb> {
     if (!(await exists())) return structuredClone(EMPTY_METADATA_DB);
     const loaded = await withDb<LocalMetadataDb | null>((db) => {
@@ -1082,7 +1104,11 @@ export function createLocalMetadataStore(dataDir: string) {
     });
   }
 
-  async function upsertAsset(asset: Asset & { projectId?: string }, ref: AssetRefRow): Promise<void> {
+  async function upsertAsset(
+    asset: Asset & { projectId?: string },
+    ref: AssetRefRow,
+    auditRecord?: LocalMutationAuditRecord,
+  ): Promise<void> {
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -1113,6 +1139,7 @@ export function createLocalMetadataStore(dataDir: string) {
           INSERT OR REPLACE INTO asset_refs (asset_id, project_id, imported_at)
           VALUES (?, ?, ?)
         `).run(ref.assetId, ref.projectId, ref.importedAt);
+        if (auditRecord) insertMutationAudit(db, auditRecord);
         markMigration(db, dataDir, "");
         db.exec("COMMIT");
       } catch (error) {
@@ -1144,25 +1171,7 @@ export function createLocalMetadataStore(dataDir: string) {
 
   async function appendMutationAudit(record: LocalMutationAuditRecord): Promise<void> {
     await withDb((db) => {
-      db.prepare(`
-        INSERT INTO mutation_audit (
-          id, created_at, operation, entity_kind, entity_id, actor_client_type,
-          forced, accepted, reason, result_entity_id, error, mutation_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        record.id,
-        record.createdAt,
-        record.operation,
-        record.entity.kind,
-        record.entity.id,
-        record.actorClientType ?? null,
-        record.forced ? 1 : 0,
-        record.accepted ? 1 : 0,
-        record.reason ?? null,
-        record.resultEntityId ?? null,
-        record.error ?? null,
-        JSON.stringify(record.mutation),
-      );
+      insertMutationAudit(db, record);
     });
   }
 

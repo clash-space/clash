@@ -245,8 +245,9 @@ Assertions:
   outputs that resolve outside the current cwd,
 - local-api asset blob upload and `/assets/*` reads reject symlinked storage
   roots or parents that resolve outside local asset storage,
-- local workflow generated asset writes reject symlinked `generated/` parents
-  that resolve outside local asset storage,
+- local workflow generated asset writes accept agent generation with sanitized
+  audit evidence and reject symlinked `generated/` parents that resolve outside
+  local asset storage,
 - storyboard prompt-pack COW replacement writes a versioned projection while
   the managed projection remains unchanged.
 
@@ -666,18 +667,18 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T14-55-52-509Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T15-03-10-607Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 182 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 184 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
   upload/read symlinked-root/parent rejection plus workflow-generated asset
-  symlinked-parent rejection,
+  acceptance, sanitized audit evidence, and symlinked-parent rejection,
   metadata/ref/GC, project delete/restore/purge, and session delete agent writes
   rejected missing or bare read proofs; asset create/cover rejected invalid
   storage keys before metadata persistence; accepted sync config updates, audio

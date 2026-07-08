@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import type { LoroDoc } from "loro-crdt";
+import { hostMutationSucceeded } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
@@ -195,10 +197,27 @@ async function saveAsset(
     projectId: options.projectId,
   };
 
+  const mutation = hostMutationSucceeded({
+    operation: "asset_generate",
+    entity: { kind: "asset", id: asset.id },
+    forced: false,
+  }, { resultEntityId: asset.id });
   await createLocalMetadataStore(options.dataDir).upsertAsset(asset, {
     assetId: asset.id,
     projectId: options.projectId,
     importedAt: now,
+  }, {
+    id: randomUUID(),
+    createdAt: Date.now(),
+    operation: mutation.operation,
+    entity: mutation.entity,
+    actorClientType: options.nodeData.actorType === "agent" ? "agent" : null,
+    forced: mutation.forced,
+    accepted: mutation.accepted,
+    reason: "workflow generated asset",
+    resultEntityId: mutation.resultEntityId ?? null,
+    error: mutation.error ?? null,
+    mutation,
   });
   return asset;
 }

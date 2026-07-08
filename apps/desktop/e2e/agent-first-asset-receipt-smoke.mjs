@@ -1930,6 +1930,69 @@ async function main() {
     await rm(escapedGeneratedTarget, { recursive: true, force: true });
   }
 
+  const workflowAuditProjectId = "project-workflow-generated-audit";
+  const workflowAuditRoom = await LocalLoroRoom.open({ dataDir, projectId: workflowAuditProjectId });
+  const workflowAuditPeer = workflowAuditRoom.addPeer(() => {});
+  const workflowAuditDoc = new LoroDoc();
+  workflowAuditDoc.getMap("nodes").set("workflow-audit-image", {
+    id: "workflow-audit-image",
+    type: "image",
+    position: { x: 0, y: 0 },
+    data: {
+      status: "pending",
+      actionType: "image-gen",
+      prompt: "agent workflow generated asset audit",
+      modelId: "gemini-3.1-flash-image",
+      actorType: "agent",
+      actorAgentId: "asset-receipt-agent",
+    },
+  });
+  await workflowAuditRoom.receive(workflowAuditPeer, workflowAuditDoc.export({ mode: "snapshot" }));
+  const workflowAuditFinal = new LoroDoc();
+  workflowAuditFinal.import(workflowAuditRoom.snapshot());
+  const workflowAuditNode = workflowAuditFinal.getMap("nodes").get("workflow-audit-image");
+  const workflowAuditData = workflowAuditNode?.data ?? {};
+  const workflowGeneratedAssetId = workflowAuditData.assetId;
+  const workflowGeneratedAssetResponse = typeof workflowGeneratedAssetId === "string"
+    ? await request(`/api/v1/assets/${workflowGeneratedAssetId}`)
+    : null;
+  const workflowGeneratedAsset = workflowGeneratedAssetResponse
+    ? await parseJsonResponse(workflowGeneratedAssetResponse)
+    : {};
+  recordCheck(
+    "workflow generated asset accepts agent local generation",
+    workflowAuditData.status === "completed" &&
+      typeof workflowGeneratedAssetId === "string" &&
+      workflowGeneratedAssetResponse?.status === 200 &&
+      workflowGeneratedAsset.id === workflowGeneratedAssetId &&
+      workflowGeneratedAsset.projectId === workflowAuditProjectId,
+    JSON.stringify({ workflowAuditData, workflowGeneratedAsset }),
+  );
+
+  const workflowGeneratedAuditResponse = typeof workflowGeneratedAssetId === "string"
+    ? await request(`/api/v1/mutation-audit?operation=asset_generate&entityId=${encodeURIComponent(workflowGeneratedAssetId)}`)
+    : null;
+  const workflowGeneratedAudit = workflowGeneratedAuditResponse
+    ? await parseJsonResponse(workflowGeneratedAuditResponse)
+    : { records: [] };
+  const workflowGeneratedAuditRecord = workflowGeneratedAudit.records?.[0];
+  recordCheck(
+    "workflow generated asset writes sanitized local mutation audit evidence",
+    workflowGeneratedAuditResponse?.status === 200 &&
+      workflowGeneratedAudit.records?.length === 1 &&
+      workflowGeneratedAuditRecord.operation === "asset_generate" &&
+      workflowGeneratedAuditRecord.entity?.kind === "asset" &&
+      workflowGeneratedAuditRecord.entity?.id === workflowGeneratedAssetId &&
+      workflowGeneratedAuditRecord.accepted === true &&
+      workflowGeneratedAuditRecord.actorClientType === "agent" &&
+      workflowGeneratedAuditRecord.reason === "workflow generated asset" &&
+      !JSON.stringify(workflowGeneratedAuditRecord.mutation ?? {}).includes("receipt") &&
+      workflowGeneratedAuditRecord.mutation?.expectedReadToken == null &&
+      workflowGeneratedAuditRecord.mutation?.beforeReadToken == null &&
+      workflowGeneratedAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(workflowGeneratedAudit),
+  );
+
   const assetRowsBeforeInvalidCreate = sqliteCount("select count(*) as count from assets");
   const invalidAssetCreateResponse = await request("/api/v1/assets", {
     method: "POST",
@@ -3716,6 +3779,8 @@ async function main() {
       assetReadSymlinkParentRejected: checks.some((check) => check.name === "asset reads reject symlinked parent outside local asset storage" && check.status === "pass"),
       assetReadSymlinkRootRejected: checks.some((check) => check.name === "asset reads reject symlinked root outside local asset storage" && check.status === "pass"),
       workflowGeneratedAssetSymlinkParentRejected: checks.some((check) => check.name === "workflow generated asset writes reject symlinked parent outside local asset storage" && check.status === "pass"),
+      workflowGeneratedAssetAccepted: checks.some((check) => check.name === "workflow generated asset accepts agent local generation" && check.status === "pass"),
+      workflowGeneratedAssetAuditRecorded: checks.some((check) => check.name === "workflow generated asset writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
       assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),
       sessionListReceiptReturned: checks.some((check) => check.name === "session list returns receipt read token" && check.status === "pass"),

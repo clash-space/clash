@@ -209,6 +209,31 @@ describe("LocalLoroRoom", () => {
         asset_id: imageNode.data.assetId,
         project_id: "project/local-gen",
       });
+      const audit = sqlite.prepare("select operation, entity_kind, entity_id, actor_client_type, forced, accepted, reason, result_entity_id, mutation_json from mutation_audit where operation = ? and entity_id = ?").get(
+        "asset_generate",
+        imageNode.data.assetId,
+      );
+      expect(audit).toMatchObject({
+        operation: "asset_generate",
+        entity_kind: "asset",
+        entity_id: imageNode.data.assetId,
+        actor_client_type: null,
+        forced: 0,
+        accepted: 1,
+        reason: "workflow generated asset",
+        result_entity_id: imageNode.data.assetId,
+      });
+      const mutation = JSON.parse(String(audit?.mutation_json));
+      expect(mutation).toMatchObject({
+        operation: "asset_generate",
+        entity: { kind: "asset", id: imageNode.data.assetId },
+        forced: false,
+        accepted: true,
+        resultEntityId: imageNode.data.assetId,
+      });
+      expect(mutation.expectedReadToken).toBeUndefined();
+      expect(mutation.beforeReadToken).toBeUndefined();
+      expect(mutation.afterReadToken).toBeUndefined();
       srcR2Key = String(asset?.src_r2_key);
     } finally {
       sqlite.close();

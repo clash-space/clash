@@ -596,7 +596,7 @@ Conclusion:
   asset import: same-id different content is rejected and must use a new asset id
   plus COW replacement. Asset blob uploads write sanitized audit evidence;
   asset blob upload/read reject symlinked roots and parents, and
-  workflow-generated asset writes reject symlinked parents outside local asset
+  workflow-generated asset writes record sanitized audit evidence and reject symlinked parents outside local asset
   storage. Custom action
   binary checkpoint outputs now reject same
   task/output reruns with different content before overwriting the checkpoint
