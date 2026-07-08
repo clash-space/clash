@@ -587,7 +587,13 @@ after compare. A successful restore writes a durable local
 `restore-receipt.json` under the recovery set's `canonical-before-restore/`
 directory with the project id, manifest path, expected/before/after read
 tokens, restored file evidence, and post-restore canonical hashes. Automatic
-import remains disabled.
+import remains disabled. All `storage-recovery` JSON reports include a
+`recoveryPolicy` object that binds the operation to the local canonical
+replica, records the current collaboration mode/room authority, states that no
+cloud state is included or mutated, and marks `cloud-sync` restores as requiring
+cloud conflict review. `shared` projects use `cloud-sequencer` authority, so
+their manifests can be listed/compared for evidence but local restore is
+rejected; shared recovery must use a cloud/shared conflict path instead.
 
 ## Migration From Current State
 

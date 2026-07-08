@@ -516,6 +516,11 @@ Current status:
   before overwriting the protected canonical replica. Successful restore writes
   `restore-receipt.json` under the recovery set's `canonical-before-restore/`
   directory with the CAS tokens and canonical-after hashes.
+- Storage recovery reports include `recoveryPolicy` in list/compare/restore JSON:
+  recovery is scoped to the local canonical replica, cloud state is not imported
+  or mutated, `cloud-sync` restores are marked as requiring cloud conflict
+  review, and `shared` projects with `cloud-sequencer` authority can be compared
+  for evidence but are rejected before local restore.
 - `clash asset link --asset <id>` now creates an agent-readable file under
   `assets/links/` via the immutable global asset cache.
 - Desktop real Codex startup/resume scripts build `@clash-space/bridge` before

@@ -65,6 +65,24 @@ export interface SecondaryCanvasRecoveryCompareFile {
   sameBytes: boolean;
 }
 
+export interface SecondaryCanvasRecoveryPolicy {
+  scope: "local-canonical-replica";
+  collaborationMode: ProjectStatus["collaboration"]["mode"];
+  rawSyncMode: string;
+  roomAuthority: ProjectStatus["collaboration"]["roomAuthority"];
+  cloudProjectRoom: ProjectStatus["collaboration"]["cloudProjectRoom"];
+  syncReadinessStatus: ProjectStatus["collaboration"]["syncReadiness"]["status"];
+  localRestoreAllowed: boolean;
+  cloudStateIncluded: false;
+  cloudStateMutated: false;
+  requiresCloudConflictReview: boolean;
+  reason:
+    | "local-only-manual-review-required"
+    | "cloud-sync-local-replica-review-required"
+    | "shared-cloud-sequencer-restore-blocked"
+    | "sync-mode-unknown-local-replica-review-required";
+}
+
 export interface SecondaryCanvasRecoveryCompareReport {
   schemaVersion: 1;
   status: "compared";
@@ -72,6 +90,7 @@ export interface SecondaryCanvasRecoveryCompareReport {
   manifestPath: string;
   canonicalReplica: SecondaryCanvasReplicaManifest["canonicalReplica"];
   safeToImportAutomatically: false;
+  recoveryPolicy: SecondaryCanvasRecoveryPolicy;
   readToken: string;
   files: SecondaryCanvasRecoveryCompareFile[];
 }
@@ -96,6 +115,7 @@ export interface SecondaryCanvasRecoveryRestoreReport {
   manifestPath: string;
   canonicalReplica: SecondaryCanvasReplicaManifest["canonicalReplica"];
   safeToImportAutomatically: false;
+  recoveryPolicy: SecondaryCanvasRecoveryPolicy;
   expectedReadToken: string;
   beforeReadToken: string;
   afterReadToken: string;
@@ -136,6 +156,7 @@ export interface SecondaryCanvasRecoveryListReport {
   projectId: string;
   recoveryRoot: string;
   safeToImportAutomatically: false;
+  recoveryPolicy: SecondaryCanvasRecoveryPolicy;
   sets: SecondaryCanvasRecoveryInventorySet[];
   invalidEntries: SecondaryCanvasRecoveryInvalidEntry[];
 }
@@ -855,6 +876,7 @@ export async function compareSecondaryCanvasRecovery(options: {
     manifestPath,
     canonicalReplica,
     safeToImportAutomatically: false,
+    recoveryPolicy: secondaryCanvasRecoveryPolicy(status),
     files,
   } satisfies Omit<SecondaryCanvasRecoveryCompareReport, "readToken">;
 
@@ -883,6 +905,11 @@ export async function restoreSecondaryCanvasRecovery(options: {
   const before = await compareSecondaryCanvasRecovery(options);
   if (before.readToken !== options.expectedReadToken) {
     throw new Error("Secondary canvas recovery read token is stale or does not match current quarantine/canonical state.");
+  }
+  if (!before.recoveryPolicy.localRestoreAllowed) {
+    throw new Error(
+      "Secondary canvas recovery restore is disabled for shared projects with cloud sequencer authority. Use cloud/shared conflict recovery instead.",
+    );
   }
   if (before.files.length === 0) {
     throw new Error(`Secondary canvas recovery manifest has no files to restore: ${before.manifestPath}`);
@@ -932,6 +959,7 @@ export async function restoreSecondaryCanvasRecovery(options: {
     manifestPath: before.manifestPath,
     canonicalReplica: before.canonicalReplica,
     safeToImportAutomatically: false,
+    recoveryPolicy: before.recoveryPolicy,
     expectedReadToken: options.expectedReadToken,
     beforeReadToken: before.readToken,
     afterReadToken: after.readToken,
@@ -959,8 +987,71 @@ export async function listSecondaryCanvasRecoveries(options: {
     projectId: status.projectId,
     recoveryRoot: inventory.recoveryRoot,
     safeToImportAutomatically: false,
+    recoveryPolicy: secondaryCanvasRecoveryPolicy(status),
     sets: inventory.sets,
     invalidEntries: inventory.invalidEntries,
+  };
+}
+
+function secondaryCanvasRecoveryPolicy(status: ProjectStatus): SecondaryCanvasRecoveryPolicy {
+  const collaboration = status.collaboration;
+  if (collaboration.mode === "shared") {
+    return {
+      scope: "local-canonical-replica",
+      collaborationMode: collaboration.mode,
+      rawSyncMode: collaboration.rawMode,
+      roomAuthority: collaboration.roomAuthority,
+      cloudProjectRoom: collaboration.cloudProjectRoom,
+      syncReadinessStatus: collaboration.syncReadiness.status,
+      localRestoreAllowed: false,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: true,
+      reason: "shared-cloud-sequencer-restore-blocked",
+    };
+  }
+  if (collaboration.mode === "synced") {
+    return {
+      scope: "local-canonical-replica",
+      collaborationMode: collaboration.mode,
+      rawSyncMode: collaboration.rawMode,
+      roomAuthority: collaboration.roomAuthority,
+      cloudProjectRoom: collaboration.cloudProjectRoom,
+      syncReadinessStatus: collaboration.syncReadiness.status,
+      localRestoreAllowed: true,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: true,
+      reason: "cloud-sync-local-replica-review-required",
+    };
+  }
+  if (collaboration.mode === "unknown") {
+    return {
+      scope: "local-canonical-replica",
+      collaborationMode: collaboration.mode,
+      rawSyncMode: collaboration.rawMode,
+      roomAuthority: collaboration.roomAuthority,
+      cloudProjectRoom: collaboration.cloudProjectRoom,
+      syncReadinessStatus: collaboration.syncReadiness.status,
+      localRestoreAllowed: false,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: true,
+      reason: "sync-mode-unknown-local-replica-review-required",
+    };
+  }
+  return {
+    scope: "local-canonical-replica",
+    collaborationMode: collaboration.mode,
+    rawSyncMode: collaboration.rawMode,
+    roomAuthority: collaboration.roomAuthority,
+    cloudProjectRoom: collaboration.cloudProjectRoom,
+    syncReadinessStatus: collaboration.syncReadiness.status,
+    localRestoreAllowed: true,
+    cloudStateIncluded: false,
+    cloudStateMutated: false,
+    requiresCloudConflictReview: false,
+    reason: "local-only-manual-review-required",
   };
 }
 
@@ -1304,6 +1395,7 @@ function secondaryCanvasRecoveryReadToken(
       snapshotPath: resolve(report.canonicalReplica.snapshotPath),
       updatesLogPath: resolve(report.canonicalReplica.updatesLogPath),
     },
+    recoveryPolicy: report.recoveryPolicy,
     files: [...report.files]
       .sort((a, b) => a.kind.localeCompare(b.kind) || a.destinationPath.localeCompare(b.destinationPath))
       .map((file) => ({
@@ -2483,6 +2575,7 @@ storageRecoveryCommand
     console.log(`Storage recovery inventory: ${report.projectId}`);
     console.log(`Recovery root: ${report.recoveryRoot}`);
     console.log("Automatic import: disabled");
+    console.log(`Recovery policy: ${report.recoveryPolicy.reason}`);
     if (report.sets.length === 0) {
       console.log("No quarantined recovery sets found.");
     }
@@ -2511,6 +2604,7 @@ storageRecoveryCommand
     console.log(`Storage recovery compare: ${report.projectId}`);
     console.log(`Manifest: ${report.manifestPath}`);
     console.log("Automatic import: disabled");
+    console.log(`Recovery policy: ${report.recoveryPolicy.reason}`);
     for (const file of report.files) {
       console.log(`${file.kind}: ${file.sameBytes ? "same" : "different"}`);
       console.log(`  quarantined: ${file.quarantined.path}`);
@@ -2540,6 +2634,7 @@ storageRecoveryCommand
 
     console.log(`Storage recovery restore: ${report.projectId}`);
     console.log(`Manifest: ${report.manifestPath}`);
+    console.log(`Recovery policy: ${report.recoveryPolicy.reason}`);
     console.log(`Backups: ${report.backupsRoot}`);
     console.log(`Before read token: ${report.beforeReadToken}`);
     console.log(`After read token: ${report.afterReadToken}`);

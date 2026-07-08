@@ -683,13 +683,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T07-14-38-457Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T07-25-47-196Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 66 checks passed,
+- 71 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -736,6 +736,12 @@ Result:
   capabilities are ready,
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
   sharing admission with `canvas`, `room`, and `asset-metadata` requirements,
+- cloud-sync recovery list exposed `recoveryPolicy` showing recovery is a local
+  replica promotion, does not include or mutate cloud state, and requires cloud
+  conflict review,
+- shared recovery compare remained available for evidence, but reported
+  `cloud-sequencer` authority and `localRestoreAllowed: false`; public CLI
+  restore with the shared compare read token was rejected before overwrite,
 - canonical Loro snapshot path remained protected and outside the editable
   workspace root,
 - text/timeline revision content blob roots were exposed through
@@ -851,5 +857,5 @@ Current status:
   Suite E still needs a fuller canvas/asset/provider fixture beyond timeline
   JSON creation/restore.
 - Need broader storage doctor coverage for richer migration/recovery UX,
-  stronger path assertions across old layouts, cloud/shared recovery policy, and
-  destructive repair boundaries.
+  stronger path assertions across old layouts, and destructive repair
+  boundaries.

@@ -859,6 +859,78 @@ async function main() {
       cloudSyncStatus?.collaboration?.actions?.shareProject?.reason === "cloud-sync-not-ready",
     JSON.stringify(cloudSyncStatus?.collaboration?.actions),
   );
+  const cloudSyncRecoveryList = runCli(["doctor", "storage-recovery", "list", "--json"]);
+  recordCheck(
+    "cloud-sync storage recovery list command succeeds",
+    cloudSyncRecoveryList.status === 0,
+    cloudSyncRecoveryList.stderr || cloudSyncRecoveryList.stdout,
+    { command: cloudSyncRecoveryList.command },
+  );
+  const cloudSyncRecoveryListReport = parseStdoutJson(cloudSyncRecoveryList);
+  recordCheck(
+    "cloud-sync storage recovery reports local replica recovery policy",
+    cloudSyncRecoveryListReport?.recoveryPolicy?.collaborationMode === "synced" &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.rawSyncMode === "cloud-sync" &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.roomAuthority === "local" &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.localRestoreAllowed === true &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.cloudStateIncluded === false &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.cloudStateMutated === false &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.requiresCloudConflictReview === true &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.reason === "cloud-sync-local-replica-review-required",
+    JSON.stringify(cloudSyncRecoveryListReport?.recoveryPolicy),
+  );
+  await writeFile(
+    markerPath,
+    [
+      "schema_version = 1",
+      `project_id = ${JSON.stringify(projectId)}`,
+      'store = "managed"',
+      "",
+      "[sync]",
+      'mode = "shared"',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const sharedRecoveryCompare = runCli(["doctor", "storage-recovery", "compare", "--manifest", manifestPath, "--json"]);
+  recordCheck(
+    "shared storage recovery compare command succeeds for review",
+    sharedRecoveryCompare.status === 0,
+    sharedRecoveryCompare.stderr || sharedRecoveryCompare.stdout,
+    { command: sharedRecoveryCompare.command },
+  );
+  const sharedRecoveryCompareReport = parseStdoutJson(sharedRecoveryCompare);
+  recordCheck(
+    "shared storage recovery compare reports cloud sequencer restore block",
+    sharedRecoveryCompareReport?.recoveryPolicy?.collaborationMode === "shared" &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.roomAuthority === "cloud-sequencer" &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.cloudProjectRoom === "sequencer" &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.localRestoreAllowed === false &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.cloudStateIncluded === false &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.cloudStateMutated === false &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.requiresCloudConflictReview === true &&
+      sharedRecoveryCompareReport?.recoveryPolicy?.reason === "shared-cloud-sequencer-restore-blocked" &&
+      typeof sharedRecoveryCompareReport?.readToken === "string",
+    JSON.stringify(sharedRecoveryCompareReport?.recoveryPolicy),
+  );
+  const sharedRecoveryRestore = runCli([
+    "doctor",
+    "storage-recovery",
+    "restore",
+    "--manifest",
+    manifestPath,
+    "--if-match",
+    sharedRecoveryCompareReport.readToken,
+    "--yes",
+    "--json",
+  ]);
+  recordCheck(
+    "shared storage recovery restore is rejected by public CLI",
+    sharedRecoveryRestore.status !== 0 &&
+      `${sharedRecoveryRestore.stdout}\n${sharedRecoveryRestore.stderr}`.includes("cloud sequencer"),
+    sharedRecoveryRestore.stderr || sharedRecoveryRestore.stdout,
+    { command: sharedRecoveryRestore.command },
+  );
 
   const report = {
     schemaVersion: 1,
@@ -890,6 +962,9 @@ async function main() {
       invalidRecoveryList,
       invalidRecoveryDoctor,
       cloudSyncStatusResult,
+      cloudSyncRecoveryList,
+      sharedRecoveryCompare,
+      sharedRecoveryRestore,
     ].map((result) => ({
       command: result.command,
       status: result.status,
