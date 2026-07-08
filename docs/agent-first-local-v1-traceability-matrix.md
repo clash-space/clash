@@ -25,6 +25,11 @@ agent-writable canonical state. `storage.localSecrets` exposes machine-local
 secret paths as protected local-only state. The latest storage doctor repair
 black-box E2E verifies both contracts through the public CLI.
 
+Recent room/trace evidence: local-api room sync tests now seed private
+`chat_message` runtime events containing tool-log/local-path data for the same
+project and verify that the explicit room mirror exports only `room_message`
+rows, keeping raw agent traces out of the room sync payload.
+
 ## Status Legend
 
 - `Aligned in code`: current implementation already satisfies the requirement.

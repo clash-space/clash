@@ -9288,6 +9288,63 @@ describe("local API app", () => {
     });
     expect(posted.status).toBe(200);
 
+    const rawTraceEvents = JSON.stringify([
+      {
+        type: "tool_log",
+        path: "/Users/local/private-project/secret-script.md",
+        output: "raw agent trace must stay out of room sync",
+      },
+    ]);
+    const sqlite = openSqlite();
+    try {
+      sqlite.prepare(`
+        INSERT INTO runtime_session (
+          id,
+          project_id,
+          title,
+          type,
+          runtime_id,
+          agent_id,
+          agent_template_id,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "local-session-room-sync-private-trace",
+        project.id,
+        "Private runtime trace",
+        "runtime",
+        "desktop-local",
+        "codex-acp",
+        "master-clash",
+        "2026-07-08T00:00:00.000Z",
+        "2026-07-08T00:00:00.000Z",
+      );
+      sqlite.prepare(`
+        INSERT INTO chat_message (
+          session_id,
+          id,
+          sender_kind,
+          sender_id,
+          turn_id,
+          events_json,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "local-session-room-sync-private-trace",
+        "private-trace-message",
+        "agent",
+        "local-master-clash",
+        "turn-private",
+        rawTraceEvents,
+        1_700_000_000,
+      );
+    } finally {
+      sqlite.close();
+    }
+
     const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -9330,6 +9387,10 @@ describe("local API app", () => {
       text: "local only",
       mentions: [{ user_id: "remote-user" }],
     });
+    const remotePostBody = String(remotePost?.[1]?.body);
+    expect(remotePostBody).not.toContain("raw agent trace must stay out of room sync");
+    expect(remotePostBody).not.toContain("/Users/local/private-project/secret-script.md");
+    expect(remotePostBody).not.toContain("private-trace-message");
     const remotePostHeaders = remotePost?.[1]?.headers as Headers;
     expect(remotePostHeaders.get("authorization")).toBe("Bearer token-1");
 
