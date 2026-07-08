@@ -21,6 +21,12 @@ export const TimelineRevisionContentDescriptorSchema = z.object({
   mediaType: z.literal('application/yaml'),
   url: z.string(),
   immutable: z.literal(true),
+  storage: z.object({
+    kind: z.literal('content-addressed-revision-blob'),
+    registry: z.literal('timeline_revisions'),
+    mediaAsset: z.literal(false),
+    agentWritable: z.literal(false),
+  }),
 });
 export type TimelineRevisionContentDescriptor = z.infer<typeof TimelineRevisionContentDescriptorSchema>;
 

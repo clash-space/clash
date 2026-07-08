@@ -309,6 +309,12 @@ test("fetches text revision history through the host API", async () => {
       mediaType: "text/markdown",
       url: `/api/v1/projects/project_text/text-revisions/${revision.revisionId}/content`,
       immutable: true,
+      storage: {
+        kind: "content-addressed-revision-blob",
+        registry: "text_revisions",
+        mediaAsset: false,
+        agentWritable: false,
+      },
     },
   };
   const calls: Array<{ path: string; method: string | undefined }> = [];

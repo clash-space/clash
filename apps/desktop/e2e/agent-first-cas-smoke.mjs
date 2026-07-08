@@ -341,6 +341,47 @@ async function startRevisionIndexHost() {
       response.end(body);
     }
 
+    function revisionWithContentDescriptor(revision) {
+      if (!revisionContents.has(revision.revisionId)) return revision;
+      if (revision.kind === "clash.text.revision") {
+        return {
+          ...revision,
+          content: {
+            kind: "text-revision-content",
+            contentHash: revision.contentHash,
+            mediaType: "text/markdown",
+            url: "/api/v1/projects/" + encodeURIComponent(revision.projectId) + "/text-revisions/" + encodeURIComponent(revision.revisionId) + "/content",
+            immutable: true,
+            storage: {
+              kind: "content-addressed-revision-blob",
+              registry: "text_revisions",
+              mediaAsset: false,
+              agentWritable: false,
+            },
+          },
+        };
+      }
+      if (revision.kind === "clash.timeline.revision") {
+        return {
+          ...revision,
+          content: {
+            kind: "timeline-revision-content",
+            timelineHash: revision.timelineHash,
+            mediaType: "application/yaml",
+            url: "/api/v1/projects/" + encodeURIComponent(revision.projectId) + "/timeline-revisions/" + encodeURIComponent(revision.revisionId) + "/content",
+            immutable: true,
+            storage: {
+              kind: "content-addressed-revision-blob",
+              registry: "timeline_revisions",
+              mediaAsset: false,
+              agentWritable: false,
+            },
+          },
+        };
+      }
+      return revision;
+    }
+
     const server = createServer(async (request, response) => {
       try {
         const url = new URL(request.url || "/", "http://127.0.0.1");
@@ -365,6 +406,7 @@ async function startRevisionIndexHost() {
           }
           sendJson(response, 200, {
             revision: body.revision,
+            ...(typeof body.content === "string" ? { content: revisionWithContentDescriptor(body.revision).content } : {}),
             mutation: {
               operation: "text_revision_index",
               entity: { kind: "text", id: \`\${body.revision.projectId}:\${body.revision.nodeId}\` },
@@ -391,6 +433,7 @@ async function startRevisionIndexHost() {
           }
           sendJson(response, 200, {
             revision: body.revision,
+            ...(typeof body.content === "string" ? { content: revisionWithContentDescriptor(body.revision).content } : {}),
             mutation: {
               operation: "timeline_revision_index",
               entity: { kind: "timeline", id: \`\${body.revision.projectId}:\${body.revision.nodeId}\` },
@@ -408,7 +451,8 @@ async function startRevisionIndexHost() {
           const limit = Number(url.searchParams.get("limit") || "50");
           const filtered = revisions
             .filter((revision) => revision.projectId === projectId && (!nodeId || revision.nodeId === nodeId))
-            .slice(0, Number.isFinite(limit) ? limit : 50);
+            .slice(0, Number.isFinite(limit) ? limit : 50)
+            .map(revisionWithContentDescriptor);
           sendJson(response, 200, { revisions: filtered });
           return;
         }
@@ -436,7 +480,8 @@ async function startRevisionIndexHost() {
           const limit = Number(url.searchParams.get("limit") || "50");
           const filtered = revisions
             .filter((revision) => revision.projectId === projectId && revision.kind === "clash.timeline.revision" && (!nodeId || revision.nodeId === nodeId))
-            .slice(0, Number.isFinite(limit) ? limit : 50);
+            .slice(0, Number.isFinite(limit) ? limit : 50)
+            .map(revisionWithContentDescriptor);
           sendJson(response, 200, { revisions: filtered });
           return;
         }
@@ -1673,6 +1718,16 @@ async function runDirectCanvasCliReadTokenCas() {
         textHistory.stderr || textHistory.stdout,
         { command: textHistory.command, revisionHostRequests: revisionHost.requests },
       );
+      recordCheck(
+        "text revision history exposes non-media revision content storage",
+        textHistoryPayload?.revisions?.[0]?.content?.kind === "text-revision-content" &&
+          textHistoryPayload?.revisions?.[0]?.content?.storage?.kind === "content-addressed-revision-blob" &&
+          textHistoryPayload?.revisions?.[0]?.content?.storage?.registry === "text_revisions" &&
+          textHistoryPayload?.revisions?.[0]?.content?.storage?.mediaAsset === false &&
+          textHistoryPayload?.revisions?.[0]?.content?.storage?.agentWritable === false,
+        JSON.stringify(textHistoryPayload?.revisions?.[0]?.content),
+        { command: textHistory.command },
+      );
       const textContent = runText([
         "content",
         "--project",
@@ -1787,6 +1842,16 @@ async function runDirectCanvasCliReadTokenCas() {
         timelineHistory.stderr || timelineHistory.stdout,
         { command: timelineHistory.command, revisionHostRequests: revisionHost.requests },
       );
+      recordCheck(
+        "timeline revision history exposes non-media revision content storage",
+        timelineHistoryPayload?.revisions?.[0]?.content?.kind === "timeline-revision-content" &&
+          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.kind === "content-addressed-revision-blob" &&
+          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.registry === "timeline_revisions" &&
+          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.mediaAsset === false &&
+          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.agentWritable === false,
+        JSON.stringify(timelineHistoryPayload?.revisions?.[0]?.content),
+        { command: timelineHistory.command },
+      );
       const timelineContent = runTimeline([
         "content",
         "--project",
@@ -1866,8 +1931,10 @@ async function main() {
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
     requireCheckPassed("text history reads host revision index");
+    requireCheckPassed("text revision history exposes non-media revision content storage");
     requireCheckPassed("text content restores host revision body");
     requireCheckPassed("timeline history reads host revision index");
+    requireCheckPassed("timeline revision history exposes non-media revision content storage");
     requireCheckPassed("timeline content restores host revision body");
   } catch (error) {
     status = "fail";
@@ -1904,8 +1971,14 @@ async function main() {
       directCanvasCliMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas CLI mutation envelope recorded" && check.status === "pass"),
       directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
       textHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "text history reads host revision index" && check.status === "pass"),
+      textRevisionContentStorageContract: checks.some((check) =>
+        check.name === "text revision history exposes non-media revision content storage" && check.status === "pass"
+      ),
       textContentRestoresHostRevisionBody: checks.some((check) => check.name === "text content restores host revision body" && check.status === "pass"),
       timelineHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "timeline history reads host revision index" && check.status === "pass"),
+      timelineRevisionContentStorageContract: checks.some((check) =>
+        check.name === "timeline revision history exposes non-media revision content storage" && check.status === "pass"
+      ),
       timelineContentRestoresHostRevisionBody: checks.some((check) => check.name === "timeline content restores host revision body" && check.status === "pass"),
       textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
       textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),

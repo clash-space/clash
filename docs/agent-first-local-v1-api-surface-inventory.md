@@ -758,8 +758,11 @@ Rules:
   app-owned content-addressed text blob and serves it through the content GET
   endpoint,
 - text revision history entries with stored bodies expose a `content` descriptor
-  (`kind: "text-revision-content"`, hash, media type, URL, immutable flag), so
-  agents can discover recovery content without direct DB/filesystem access,
+  (`kind: "text-revision-content"`, hash, media type, URL, immutable flag, and
+  `storage: { kind: "content-addressed-revision-blob", registry:
+  "text_revisions", mediaAsset: false, agentWritable: false }`), so agents can
+  discover recovery content without direct DB/filesystem access or treating it
+  as a media asset row,
 - rejects same revision id with different payloads,
 - returns an accepted host mutation record for successful index writes,
 - keeps text body editing behind `clash text pull/apply/replace` CAS rather
@@ -795,8 +798,10 @@ Rules:
   revision blob, and serves it through the content GET endpoint,
 - timeline revision history entries with stored bodies expose a `content`
   descriptor (`kind: "timeline-revision-content"`, hash, media type, URL,
-  immutable flag), so agents can discover recovery/provenance YAML without
-  direct DB/filesystem access,
+  immutable flag, and `storage: { kind: "content-addressed-revision-blob",
+  registry: "timeline_revisions", mediaAsset: false, agentWritable: false }`),
+  so agents can discover recovery/provenance YAML without direct DB/filesystem
+  access or treating it as a media asset row,
 - rejects same revision id with different payloads,
 - returns an accepted host mutation record for successful index writes,
 - keeps timeline body editing behind `clash timeline pull/apply/replace` CAS

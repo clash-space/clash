@@ -100,7 +100,10 @@ Existing text behavior:
   local API, so agents can inspect applied text revisions without direct DB
   access. History entries with stored Markdown bodies include an immutable
   `text-revision-content` descriptor, making text revision content addressable
-  without treating it as a media asset row.
+  without treating it as a media asset row. The descriptor includes
+  `storage.registry: "text_revisions"`, `storage.mediaAsset: false`, and
+  `storage.agentWritable: false` so agents know to use text revision recovery
+  APIs instead of asset import/replace/GC commands.
 - `project status.storage.canonicalReplica.contentBlobs.textRevisions` exposes
   the protected content-addressed blob root for those bodies, and
   `doctor storage` treats moving that root into an agent-editable path as an
@@ -677,7 +680,10 @@ stores that body as an immutable content-addressed timeline revision blob. The
 timeline body itself is not written to SQLite; SQLite stores only milestone
 metadata and provenance. History entries with stored YAML bodies include an
 immutable `timeline-revision-content` descriptor, making applied timeline
-content addressable without treating it as a media asset row.
+content addressable without treating it as a media asset row. The descriptor
+includes `storage.registry: "timeline_revisions"`,
+`storage.mediaAsset: false`, and `storage.agentWritable: false` so agents use
+timeline revision recovery APIs instead of asset import/replace/GC commands.
 `project status.storage.canonicalReplica.contentBlobs.timelineRevisions`
 exposes the protected content-addressed blob root for those bodies, and
 `doctor storage` treats moving that root into an agent-editable path as an

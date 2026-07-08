@@ -1224,6 +1224,12 @@ describe("local API app", () => {
         mediaType: "text/markdown",
         url: `/api/v1/projects/project-text/text-revisions/${revision.revisionId}/content`,
         immutable: true,
+        storage: {
+          kind: "content-addressed-revision-blob",
+          registry: "text_revisions",
+          mediaAsset: false,
+          agentWritable: false,
+        },
       },
       mutation: {
         operation: "text_revision_index",
@@ -1243,6 +1249,12 @@ describe("local API app", () => {
           mediaType: "text/markdown",
           url: `/api/v1/projects/project-text/text-revisions/${revision.revisionId}/content`,
           immutable: true,
+          storage: {
+            kind: "content-addressed-revision-blob",
+            registry: "text_revisions",
+            mediaAsset: false,
+            agentWritable: false,
+          },
         },
       }],
     });
@@ -1361,6 +1373,12 @@ describe("local API app", () => {
         mediaType: "application/yaml",
         url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
         immutable: true,
+        storage: {
+          kind: "content-addressed-revision-blob",
+          registry: "timeline_revisions",
+          mediaAsset: false,
+          agentWritable: false,
+        },
       },
       mutation: {
         operation: "timeline_revision_index",
@@ -1380,6 +1398,12 @@ describe("local API app", () => {
           mediaType: "application/yaml",
           url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
           immutable: true,
+          storage: {
+            kind: "content-addressed-revision-blob",
+            registry: "timeline_revisions",
+            mediaAsset: false,
+            agentWritable: false,
+          },
         },
       }],
     });

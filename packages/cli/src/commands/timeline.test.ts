@@ -657,6 +657,12 @@ tracks:
       mediaType: "application/yaml",
       url: `/api/v1/projects/project-1/timeline-revisions/${revision.revisionId}/content`,
       immutable: true,
+      storage: {
+        kind: "content-addressed-revision-blob",
+        registry: "timeline_revisions",
+        mediaAsset: false,
+        agentWritable: false,
+      },
     },
   };
   const calls: Array<{ path: string; method: string | undefined }> = [];

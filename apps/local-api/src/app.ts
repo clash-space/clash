@@ -360,6 +360,12 @@ function textRevisionContentDescriptor(
     mediaType: "text/markdown",
     url: textRevisionContentUrl(revision),
     immutable: true,
+    storage: {
+      kind: "content-addressed-revision-blob",
+      registry: "text_revisions",
+      mediaAsset: false,
+      agentWritable: false,
+    },
   };
 }
 
@@ -406,6 +412,12 @@ function timelineRevisionContentDescriptor(
     mediaType: "application/yaml",
     url: timelineRevisionContentUrl(revision),
     immutable: true,
+    storage: {
+      kind: "content-addressed-revision-blob",
+      registry: "timeline_revisions",
+      mediaAsset: false,
+      agentWritable: false,
+    },
   };
 }
 

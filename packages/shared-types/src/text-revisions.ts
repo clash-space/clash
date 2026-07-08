@@ -13,6 +13,12 @@ export const TextRevisionContentDescriptorSchema = z.object({
   mediaType: z.literal('text/markdown'),
   url: z.string(),
   immutable: z.literal(true),
+  storage: z.object({
+    kind: z.literal('content-addressed-revision-blob'),
+    registry: z.literal('text_revisions'),
+    mediaAsset: z.literal(false),
+    agentWritable: z.literal(false),
+  }),
 });
 export type TextRevisionContentDescriptor = z.infer<typeof TextRevisionContentDescriptorSchema>;
 
