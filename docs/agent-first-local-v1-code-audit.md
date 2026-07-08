@@ -53,7 +53,9 @@ The main v1 gaps are:
   `clash.timeline.revision` milestones and local-api stores supplied YAML bodies
   as immutable timeline revision blobs readable through the host API; `clash
   timeline history` and `clash timeline content --revision <id> [--out <path>]`
-  expose index and body recovery without direct SQLite access,
+  expose index and body recovery without direct SQLite access; caption-burn
+  export pins derived package, ffmpeg plan, and asset metadata to the applied
+  timeline revision id when the source timeline lock carries one,
 - text nodes now have first-pass Markdown projection CAS plus explicit COW
   replacement through `clash text pull/apply/replace`; successful apply/replace
   records `clash.text.revision` milestones with source path, content hash,

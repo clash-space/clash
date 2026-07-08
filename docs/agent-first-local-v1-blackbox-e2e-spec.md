@@ -254,13 +254,13 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T12-33-43-476Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-08T15-27-22-195Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 51 checks passed,
+- 52 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 - `textHistoryReadsHostRevisionIndex: true`.
 - `textRevisionContentStorageContract: true` with `content.stored: true`.
@@ -268,6 +268,8 @@ Result:
 - `timelineHistoryReadsHostRevisionIndex: true`.
 - `timelineRevisionContentStorageContract: true` with `content.stored: true`.
 - `timelineContentRestoresHostRevisionBody: true`.
+- `captionBurnExportTimelineRevisionPinned: true`, proving caption-burn package,
+  ffmpeg plan, and derived asset metadata point at the applied timeline revision id.
 
 ### Suite C3: Local API Receipt CAS Smoke
 

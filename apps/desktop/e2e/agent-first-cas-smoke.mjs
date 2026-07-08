@@ -1472,6 +1472,111 @@ async function runTextCutExportProvenance() {
   };
 }
 
+async function createAppliedTimelineLockFixture({
+  projectId,
+  nodeId,
+  timelinePath,
+}) {
+  const timelineModule = pathToFileURL(path.join(repoRoot, "packages", "cli", "src", "lib", "timeline-projection.ts")).href;
+  const sharedTypesModule = pathToFileURL(path.join(repoRoot, "packages", "shared-types", "src", "index.ts")).href;
+  return runTsxEval(`
+    import { readFileSync } from "node:fs";
+    import { timelineDslFromYaml } from ${JSON.stringify(sharedTypesModule)};
+    import timelineProjection from ${JSON.stringify(timelineModule)};
+
+    const { createTimelineAppliedRevision, createTimelineLock } = timelineProjection;
+
+    const cwd = ${JSON.stringify(workspace)};
+    const filePath = ${JSON.stringify(timelinePath)};
+    const parsed = timelineDslFromYaml(readFileSync(filePath, "utf8"));
+    if (!parsed.ok) throw new Error(parsed.error);
+    const appliedRevision = createTimelineAppliedRevision({
+      projectId: ${JSON.stringify(projectId)},
+      nodeId: ${JSON.stringify(nodeId)},
+      cwd,
+      filePath,
+      dsl: parsed.dsl,
+      createdAt: "2026-07-08T00:00:00.000Z",
+      loroFrontiers: [{ peer: "agent-first-cas", counter: 7 }],
+    });
+    const lock = createTimelineLock({
+      projectId: ${JSON.stringify(projectId)},
+      nodeId: ${JSON.stringify(nodeId)},
+      filePath,
+      dsl: parsed.dsl,
+      pulledAt: "2026-07-08T00:00:00.000Z",
+      appliedRevision,
+    });
+    console.log(JSON.stringify({ appliedRevision, lock }));
+  `);
+}
+
+async function runCaptionBurnTimelineRevisionPinning() {
+  const timelinePath = path.join(workspace, "projections", "timelines", "captions.timeline.yaml");
+  const lockPath = path.join(workspace, "projections", "timelines", "captions.timeline.lock.json");
+  const projectId = "project-agent-first-cas";
+  const nodeId = "captions-timeline";
+  const { appliedRevision, lock } = await createAppliedTimelineLockFixture({
+    projectId,
+    nodeId,
+    timelinePath,
+  });
+  await writeJson(lockPath, lock);
+  mkdirSync(path.join(workspace, "assets", "source"), { recursive: true });
+  writeFileSync(path.join(workspace, "assets", "source", "talk.mp4"), "fixture-video", "utf8");
+  await writeJson(path.join(workspace, "assets", "manifest.json"), {
+    assets: [{ id: "asset-talk", type: "video", path: "assets/source/talk.mp4", metadata: {} }],
+  });
+
+  const exported = runProduction([
+    "export-caption-burn",
+    "--timeline",
+    "projections/timelines/captions.timeline.yaml",
+    "--source-asset",
+    "asset-talk",
+    "--output-asset",
+    "asset-talk-caption-burn",
+    "--out",
+    "assets/video/asset-talk-caption-burn.mp4",
+    "--json",
+  ]);
+  const exportedPayload = exported.status === 0 ? parseStdoutJson(exported) : null;
+  const burnPackage = exportedPayload ? JSON.parse(readFileSync(exportedPayload.packagePath, "utf8")) : null;
+  const ffmpegPlan = exportedPayload ? JSON.parse(readFileSync(exportedPayload.ffmpegPlanPath, "utf8")) : null;
+  const assets = JSON.parse(readFileSync(path.join(workspace, "assets", "manifest.json"), "utf8"));
+  const outputAsset = assets.assets.find((asset) => asset.id === "asset-talk-caption-burn");
+  const outputMetadata = outputAsset?.metadata?.["caption.burn-in-export"];
+  recordCheck(
+    "caption-burn export pins derived asset to applied timeline revision",
+    exported.status === 0 &&
+      burnPackage?.sourceTimelineId === appliedRevision.timelineId &&
+      burnPackage?.sourceTimelineHash === appliedRevision.timelineHash &&
+      burnPackage?.sourceTimelineRevisionId === appliedRevision.revisionId &&
+      burnPackage?.sourceTimelineRevisionStatus === "applied" &&
+      ffmpegPlan?.sourceTimelineRevisionId === appliedRevision.revisionId &&
+      outputMetadata?.sourceTimelineRevisionId === appliedRevision.revisionId &&
+      outputMetadata?.sourceTimelineRevisionStatus === "applied" &&
+      outputMetadata?.copyOnWrite === true,
+    exported.stderr || exported.stdout,
+    {
+      command: exported.command,
+      appliedRevision,
+      packagePath: exportedPayload?.packagePath,
+      ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
+      outputMetadata,
+    },
+  );
+
+  return {
+    export: {
+      outputAssetId: exportedPayload?.outputAssetId,
+      packagePath: exportedPayload?.packagePath,
+      ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
+      sourceTimelineRevisionId: appliedRevision.revisionId,
+    },
+  };
+}
+
 async function runDirectCanvasCliReadTokenCas() {
   const publicCliCanvasUpdateCommand = "clash canvas update";
   const projectId = "project-agent-first-cas-cli";
@@ -1924,6 +2029,7 @@ async function main() {
   let reviewGate = null;
   let projectionPathGuards = null;
   let textCutExport = null;
+  let captionBurnExport = null;
   let directCanvas = null;
   let directCanvasCli = null;
   try {
@@ -1932,6 +2038,7 @@ async function main() {
     reviewGate = await runReviewGateCas();
     projectionPathGuards = runProjectionPathGuards();
     textCutExport = await runTextCutExportProvenance();
+    captionBurnExport = await runCaptionBurnTimelineRevisionPinning();
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
     requireCheckPassed("text history reads host revision index");
@@ -1940,6 +2047,7 @@ async function main() {
     requireCheckPassed("timeline history reads host revision index");
     requireCheckPassed("timeline revision history exposes non-media revision content storage");
     requireCheckPassed("timeline content restores host revision body");
+    requireCheckPassed("caption-burn export pins derived asset to applied timeline revision");
   } catch (error) {
     status = "fail";
     summary = error instanceof Error ? error.message : String(error);
@@ -1986,6 +2094,9 @@ async function main() {
       timelineContentRestoresHostRevisionBody: checks.some((check) => check.name === "timeline content restores host revision body" && check.status === "pass"),
       textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
       textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),
+      captionBurnExportTimelineRevisionPinned: checks.some((check) =>
+        check.name === "caption-burn export pins derived asset to applied timeline revision" && check.status === "pass"
+      ),
       projectionPathOutsideCwdRejected: [
           "text pull rejects projection path outside cwd",
           "text forced apply rejects projection path outside cwd",
@@ -2011,6 +2122,7 @@ async function main() {
       reviewGate,
       projectionPathGuards,
       textCutExport,
+      captionBurnExport,
       directCanvas,
       directCanvasCli,
     },
