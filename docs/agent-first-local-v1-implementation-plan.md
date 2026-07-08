@@ -474,7 +474,9 @@ Current status:
   keeps agent workspace paths separate from the protected canonical replica,
   including immutable text/timeline revision content blob roots. Existing
   revision blob files are checked for content-addressed filename consistency and
-  no writable permission bits.
+  no writable permission bits; explicit storage repair can restore read-only
+  permissions for hash-valid writable revision blobs without auto-fixing
+  hash-mismatched or symlinked blob files.
 - `packages/clash-bridge/src/lib/session-cwd.ts` now creates alpha agent
   workspace directories for `drafts`, `projections/text`,
   `projections/timelines`, `projections/storyboards`, `projections/prompts`,

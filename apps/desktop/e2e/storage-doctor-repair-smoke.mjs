@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -96,6 +97,11 @@ function isInside(childPath, parentPath) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+function textRevisionBlobPath(content) {
+  const hash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+  return path.join(clashHome, "local-api", "text-revision-blobs", hash.slice(0, 2), `${hash}.md`);
+}
+
 function sqliteObjectsExist(sqlitePath, objects) {
   const { DatabaseSync } = require("node:sqlite");
   const db = new DatabaseSync(sqlitePath);
@@ -171,6 +177,12 @@ async function main() {
     JSON.stringify(checkById(duplicateReport, "secondary-canvas-replica")),
   );
 
+  const repairableTextBlobContent = "repairable smoke text revision\n";
+  const repairableTextBlob = textRevisionBlobPath(repairableTextBlobContent);
+  await mkdir(path.dirname(repairableTextBlob), { recursive: true });
+  await writeFile(repairableTextBlob, repairableTextBlobContent, { encoding: "utf8", mode: 0o644 });
+  await chmod(repairableTextBlob, 0o644);
+
   const repair = runCli(["doctor", "storage", "--repair", "--json"]);
   recordCheck(
     "doctor storage repair command succeeds",
@@ -186,6 +198,16 @@ async function main() {
       repairReport.repairs?.some((item) => item.id === "project-workspace") &&
       repairReport.repairs?.some((item) => item.id === "local-sqlite-schema"),
     JSON.stringify({ repaired: repairReport.repaired, repairs: repairReport.repairs }),
+  );
+  recordCheck(
+    "doctor repair makes valid writable revision blobs read-only",
+    repairReport.repairs?.some((item) => item.id === "revision-blob-permissions" && item.path === repairableTextBlob) === true &&
+      checkById(repairReport, "text-revision-blob-integrity")?.level === "ok" &&
+      ((await stat(repairableTextBlob)).mode & 0o222) === 0,
+    JSON.stringify({
+      repair: repairReport.repairs?.find((item) => item.path === repairableTextBlob),
+      integrity: checkById(repairReport, "text-revision-blob-integrity"),
+    }),
   );
   const quarantinedSnapshot = repairReport.repairs?.find((item) =>
     item.id === "secondary-canvas-replica-quarantine" &&

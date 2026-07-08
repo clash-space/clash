@@ -599,7 +599,8 @@ and the files have no writable permission bits. It warns when local SQLite is
 initialized without the local metadata index schema needed for agent-readable
 reference and revision lookups. `clash doctor storage --repair` creates the standard workspace roots,
 repairs the local SQLite `asset_node_refs`, `text_revisions`, and
-`timeline_revisions` tables/indexes, and moves secondary canvas replica files into
+`timeline_revisions` tables/indexes, restores read-only permissions on
+hash-valid writable revision blobs, and moves secondary canvas replica files into
 `runtime/recovery/secondary-canvas-replicas/` with durable manifest evidence
 that records source paths, destination paths, and the canonical replica paths.
 It does not apply those bytes to canonical state. Follow-up doctor runs report

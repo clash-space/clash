@@ -85,6 +85,9 @@ are writable or no longer match their content-addressed filenames, or when the
 cwd or project workspace contains stray `snapshot.bin` / `updates.log` files outside
 `storage.canonicalReplica.canvas.replicaRoot`, because that would imply a
 second local canvas replica.
+When `--repair` is explicit, doctor may make hash-valid writable revision blob
+files read-only again; it still refuses to auto-repair hash-mismatched,
+symlinked, or structurally invalid revision blob files.
 
 ## v1 Product Decision
 
@@ -590,6 +593,8 @@ recovered Loro bytes automatically.
      `sessions/`, `assets/links/`, and protected `runtime/`),
    - ensure the local SQLite `asset_node_refs`, `text_revisions`, and
      `timeline_revisions` tables plus their lookup indexes exist,
+   - restore read-only permissions on hash-valid text/timeline revision blob
+     files that drifted writable,
    - quarantine secondary `snapshot.bin` / `updates.log` files under
      `runtime/recovery/secondary-canvas-replicas/` with durable `manifest.json`
      source-path and destination-path evidence, without applying them to

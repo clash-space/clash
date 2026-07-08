@@ -681,13 +681,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T05-10-27-125Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T05-18-26-658Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 48 checks passed,
+- 49 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -696,6 +696,8 @@ Result:
   read-only doctor commands produced the expected exit codes,
 - workspace roots and local SQLite metadata index schema for asset references
   and text/timeline revisions were repaired through public CLI commands,
+- a hash-valid writable text revision blob was repaired back to read-only
+  permissions through the public `doctor storage --repair --json` path,
 - doctor detected a cwd secondary canvas replica before repair, then
   quarantined it under host-owned runtime recovery while preserving bytes,
 - repair wrote a durable recovery manifest and follow-up doctor reported that

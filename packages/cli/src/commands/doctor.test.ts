@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { compareSecondaryCanvasRecovery, doctorCommand, inspectStorageContract, runStorageDoctor } from "./doctor";
 import { buildProjectStatus, initProject } from "./projects";
 
@@ -80,6 +82,24 @@ function createRevisionIndexSchema(sqlite: ReturnType<typeof openSqlite>): void 
     CREATE INDEX timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
     CREATE INDEX timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
   `);
+}
+
+function textRevisionBlobPath(homeDir: string, content: string): string {
+  const hash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+  return join(homeDir, ".clash", "local-api", "text-revision-blobs", hash.slice(0, 2), `${hash}.md`);
+}
+
+async function timelineRevisionBlobPath(homeDir: string, content: string): Promise<string> {
+  const parsed = timelineDslFromYaml(content);
+  assert.equal(parsed.ok, true);
+  const hash = await timelineDslHash(parsed.dsl);
+  return join(homeDir, ".clash", "local-api", "timeline-revision-blobs", hash.slice(0, 2), `${hash}.timeline.yaml`);
+}
+
+async function writeWritableFile(filePath: string, content: string): Promise<void> {
+  await mkdir(join(filePath, ".."), { recursive: true });
+  await writeFile(filePath, content, { encoding: "utf8", mode: 0o644 });
+  await chmod(filePath, 0o644);
 }
 
 function checkById(report: Awaited<ReturnType<typeof runStorageDoctor>>, id: string) {
@@ -499,6 +519,46 @@ test("storage doctor fails when timeline revision content blobs are writable or 
   assert.equal(check.path, blobPath);
   assert.match(check.message, /hash mismatch/);
   assert.match(check.message, /writable/);
+});
+
+test("storage doctor repair makes valid text revision content blobs read-only", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const content = "repairable text revision\n";
+  const blobPath = textRevisionBlobPath(homeDir, content);
+  await writeWritableFile(blobPath, content);
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
+  assert.equal(repaired.ok, true);
+  assert.ok(repaired.repairs?.some((repair) => repair.id === "revision-blob-permissions" && repair.path === blobPath));
+  assert.equal(checkById(repaired, "text-revision-blob-integrity").level, "ok");
+  assert.equal((await stat(blobPath)).mode & 0o222, 0);
+});
+
+test("storage doctor repair makes valid timeline revision content blobs read-only", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const content = [
+    "fps: 30",
+    "durationInFrames: 30",
+    "tracks:",
+    "  - id: v1",
+    "    name: Video",
+    "    items: []",
+    "",
+  ].join("\n");
+  const blobPath = await timelineRevisionBlobPath(homeDir, content);
+  await writeWritableFile(blobPath, content);
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
+  assert.equal(repaired.ok, true);
+  assert.ok(repaired.repairs?.some((repair) => repair.id === "revision-blob-permissions" && repair.path === blobPath));
+  assert.equal(checkById(repaired, "timeline-revision-blob-integrity").level, "ok");
+  assert.equal((await stat(blobPath)).mode & 0o222, 0);
 });
 
 test("storage doctor warns when legacy db.json exists", async () => {

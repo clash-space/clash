@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
-import { lstat, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { isJsonMode, printJson } from "../lib/output";
@@ -172,13 +172,12 @@ export async function runStorageDoctor(options: {
         message: "Current working directory is not inside a protected Clash storage path.",
       });
   checks.push(...inspectStorageContract(status));
-  checks.push(await inspectTextRevisionBlobIntegrity(status));
-  checks.push(await inspectTimelineRevisionBlobIntegrity(status));
 
   if (options.repair === true) {
     repairs.push(...await repairProjectWorkspace(status));
     repairs.push(...await repairSecondaryCanvasReplicas(status, cwd));
     repairs.push(...await repairLocalSqliteSchema(status.localSqlitePath));
+    repairs.push(...await repairRevisionBlobPermissions(status));
     checks.push({
       id: "storage-repair",
       level: "ok",
@@ -187,6 +186,8 @@ export async function runStorageDoctor(options: {
         : "No repairable storage issues were found.",
     });
   }
+  checks.push(await inspectTextRevisionBlobIntegrity(status));
+  checks.push(await inspectTimelineRevisionBlobIntegrity(status));
   checks.push(await inspectSecondaryCanvasReplica(status, cwd));
   checks.push(await inspectSecondaryCanvasRecovery(status));
 
@@ -485,8 +486,17 @@ async function findSecondaryCanvasReplicaPaths(status: ProjectStatus, cwd: strin
   return Array.from(found);
 }
 
-async function inspectTextRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
-  return inspectRevisionBlobIntegrity({
+type RevisionBlobIntegrityOptions = {
+  id: string;
+  label: string;
+  root: string;
+  extension: string;
+  expectedHashFromName(fileName: string): string | null;
+  contentHash(content: string): Promise<string>;
+};
+
+function textRevisionBlobIntegrityOptions(status: ProjectStatus): RevisionBlobIntegrityOptions {
+  return {
     id: "text-revision-blob-integrity",
     label: "Text revision content blobs",
     root: status.storage.canonicalReplica.contentBlobs.textRevisions.path,
@@ -498,11 +508,11 @@ async function inspectTextRevisionBlobIntegrity(status: ProjectStatus): Promise<
     async contentHash(content) {
       return createHash("sha256").update(content).digest("hex").slice(0, 16);
     },
-  });
+  };
 }
 
-async function inspectTimelineRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
-  return inspectRevisionBlobIntegrity({
+function timelineRevisionBlobIntegrityOptions(status: ProjectStatus): RevisionBlobIntegrityOptions {
+  return {
     id: "timeline-revision-blob-integrity",
     label: "Timeline revision content blobs",
     root: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
@@ -518,17 +528,61 @@ async function inspectTimelineRevisionBlobIntegrity(status: ProjectStatus): Prom
       }
       return timelineDslHash(parsed.dsl);
     },
-  });
+  };
 }
 
-async function inspectRevisionBlobIntegrity(options: {
-  id: string;
-  label: string;
-  root: string;
-  extension: string;
-  expectedHashFromName(fileName: string): string | null;
-  contentHash(content: string): Promise<string>;
-}): Promise<StorageDoctorCheck> {
+async function inspectTextRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
+  return inspectRevisionBlobIntegrity(textRevisionBlobIntegrityOptions(status));
+}
+
+async function inspectTimelineRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
+  return inspectRevisionBlobIntegrity(timelineRevisionBlobIntegrityOptions(status));
+}
+
+async function repairRevisionBlobPermissions(status: ProjectStatus): Promise<StorageDoctorRepair[]> {
+  const repairs: StorageDoctorRepair[] = [];
+  for (const options of [
+    textRevisionBlobIntegrityOptions(status),
+    timelineRevisionBlobIntegrityOptions(status),
+  ]) {
+    repairs.push(...await repairRevisionBlobPermissionsFor(options));
+  }
+  return repairs;
+}
+
+async function repairRevisionBlobPermissionsFor(options: RevisionBlobIntegrityOptions): Promise<StorageDoctorRepair[]> {
+  const entries = await collectRevisionBlobFiles(options.root, options.extension);
+  if (entries === null) return [];
+
+  const repairs: StorageDoctorRepair[] = [];
+  for (const filePath of entries) {
+    const fileName = basename(filePath);
+    const expectedHash = options.expectedHashFromName(fileName);
+    if (!expectedHash) continue;
+
+    const info = await lstat(filePath);
+    if (info.isSymbolicLink() || !info.isFile() || (info.mode & 0o222) === 0) continue;
+
+    let actualHash: string;
+    try {
+      actualHash = await options.contentHash(await readFile(filePath, "utf8"));
+    } catch {
+      continue;
+    }
+    if (actualHash !== expectedHash) continue;
+
+    const readOnlyMode = (info.mode & 0o777) & ~0o222;
+    await chmod(filePath, readOnlyMode);
+    repairs.push({
+      id: "revision-blob-permissions",
+      message: `Made ${options.label.toLowerCase()} file read-only after validating its content hash.`,
+      path: filePath,
+    });
+  }
+  return repairs;
+}
+
+async function inspectRevisionBlobIntegrity(options: RevisionBlobIntegrityOptions): Promise<StorageDoctorCheck> {
   const entries = await collectRevisionBlobFiles(options.root, options.extension);
   if (entries === null) {
     return {
