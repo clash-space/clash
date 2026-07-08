@@ -9227,7 +9227,16 @@ describe("local API app", () => {
       headers: { "content-type": "application/json" },
     });
     expect(synced.status).toBe(409);
-    expect(await synced.json()).toMatchObject({
+    const conflictBody = await synced.json() as {
+      plan: {
+        conflicts: Array<{
+          id: string;
+          local: { contentHash: string };
+          remote: { contentHash: string };
+        }>;
+      };
+    };
+    expect(conflictBody).toMatchObject({
       error: "room sync conflict",
       sync: {
         mode: "cloud-sync",
@@ -9253,6 +9262,7 @@ describe("local API app", () => {
               sender_user_id: "local-user",
               mentions: [],
               text: "local text",
+              contentHash: expect.any(String),
             },
             remote: {
               id: "room-conflict",
@@ -9263,6 +9273,7 @@ describe("local API app", () => {
               mentions: [],
               text: "remote text",
               at: 1000,
+              contentHash: expect.any(String),
             },
           },
         ],
@@ -9276,6 +9287,87 @@ describe("local API app", () => {
       },
     });
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+
+    const staleResolution = await app.request(`/api/v1/projects/${project.id}/room/sync/conflicts/room-conflict/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        resolution: "accept-divergence",
+        localContentHash: "stale-local",
+        remoteContentHash: conflictBody.plan.conflicts[0]?.remote.contentHash,
+      }),
+    });
+    expect(staleResolution.status).toBe(409);
+    expect(await staleResolution.json()).toMatchObject({
+      error: "stale room sync conflict resolution",
+      mutation: {
+        operation: "room_sync_conflict_resolve",
+        entity: { kind: "room-message-conflict", id: `${project.id}:room-conflict` },
+        accepted: false,
+      },
+    });
+
+    const resolution = await app.request(`/api/v1/projects/${project.id}/room/sync/conflicts/room-conflict/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        resolution: "accept-divergence",
+        localContentHash: conflictBody.plan.conflicts[0]?.local.contentHash,
+        remoteContentHash: conflictBody.plan.conflicts[0]?.remote.contentHash,
+      }),
+    });
+    expect(resolution.status).toBe(200);
+    expect(await resolution.json()).toMatchObject({
+      resolution: {
+        strategy: "accept-divergence",
+        project_id: project.id,
+        message_id: "room-conflict",
+        localContentHash: conflictBody.plan.conflicts[0]?.local.contentHash,
+        remoteContentHash: conflictBody.plan.conflicts[0]?.remote.contentHash,
+      },
+      mutation: {
+        operation: "room_sync_conflict_resolve",
+        entity: { kind: "room-message-conflict", id: `${project.id}:room-conflict` },
+        accepted: true,
+        resultEntityId: "room-conflict",
+      },
+    });
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare(`
+        select project_id, message_id, strategy, local_content_hash, remote_content_hash
+          from room_sync_conflict_resolution
+         where project_id = ? and message_id = ?
+      `).get(project.id, "room-conflict")).toEqual({
+        project_id: project.id,
+        message_id: "room-conflict",
+        strategy: "accept-divergence",
+        local_content_hash: conflictBody.plan.conflicts[0]?.local.contentHash,
+        remote_content_hash: conflictBody.plan.conflicts[0]?.remote.contentHash,
+      });
+    } finally {
+      sqlite.close();
+    }
+
+    const resumed = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    expect(resumed.status).toBe(200);
+    expect(await resumed.json()).toMatchObject({
+      sync: { remote_room: { status: "mirrored" } },
+      plan: {
+        exportedIds: [],
+        importedIds: [],
+        matchedIds: [],
+        conflicts: [],
+        resolvedConflictIds: ["room-conflict"],
+      },
+      mutation: {
+        operation: "room_sync",
+        accepted: true,
+      },
+    });
 
     const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
     expect(await listed.json()).toMatchObject({

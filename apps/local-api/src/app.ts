@@ -103,8 +103,10 @@ import {
 import { createLocalProviderStore } from "./local-provider-store.js";
 import {
   planRoomMirror,
+  roomMessageContentKey,
   type RemoteRoomMessage,
   type RemoteRoomMessageInput,
+  type RoomMirrorConflict,
   type RoomMirrorPlan,
 } from "./room-sync.js";
 import {
@@ -120,6 +122,7 @@ import {
   type LocalMetadataProjectAsset as LocalProjectAsset,
   type LocalMetadataRoomMention as LocalRoomMention,
   type LocalMetadataRoomMessage as LocalRoomMessage,
+  type LocalRoomSyncConflictResolution,
   type LocalMetadataSession as LocalSession,
   type LocalMetadataSessionMessage as PersistedLocalAcpSessionMessage,
 } from "./local-metadata-store.js";
@@ -614,6 +617,10 @@ function publicRoomMessage(message: LocalRoomMessage) {
 
 type PublicRoomSyncStatus = "disabled" | "pending" | "imported" | "mirrored" | "failed";
 
+function roomMessageContentHash(message: RemoteRoomMessage): string {
+  return createHash("sha256").update(roomMessageContentKey(message)).digest("hex").slice(0, 16);
+}
+
 function publicRemoteRoomMessage(message: RemoteRoomMessage) {
   return {
     id: message.id,
@@ -624,6 +631,7 @@ function publicRemoteRoomMessage(message: RemoteRoomMessage) {
     mentions: message.mentions,
     text: message.text,
     at: message.at,
+    contentHash: roomMessageContentHash(message),
   };
 }
 
@@ -667,7 +675,7 @@ function remoteRoomMessageToLocal(projectId: string, message: RemoteRoomMessage)
   };
 }
 
-function publicRoomMirrorPlan(plan: RoomMirrorPlan) {
+function publicRoomMirrorPlan(plan: RoomMirrorPlan, resolvedConflictIds: string[] = []) {
   return {
     exportedIds: plan.exportToRemote.map((message) => message.id),
     importedIds: plan.importToLocal.map((message) => message.id),
@@ -678,6 +686,51 @@ function publicRoomMirrorPlan(plan: RoomMirrorPlan) {
       local: publicRemoteRoomMessage(conflict.local),
       remote: publicRemoteRoomMessage(conflict.remote),
     })),
+    resolvedConflictIds,
+  };
+}
+
+function roomConflictEntityId(projectId: string, messageId: string): string {
+  return `${projectId}:${messageId}`;
+}
+
+function roomConflictPairHash(localContentHash: string, remoteContentHash: string): string {
+  return `${localContentHash}:${remoteContentHash}`;
+}
+
+function roomConflictMatchesResolution(
+  conflict: RoomMirrorConflict,
+  resolution: LocalRoomSyncConflictResolution,
+): boolean {
+  return resolution.messageId === conflict.id &&
+    resolution.localContentHash === roomMessageContentHash(conflict.local) &&
+    resolution.remoteContentHash === roomMessageContentHash(conflict.remote);
+}
+
+async function acceptedRoomConflictResolutions(
+  db: ReturnType<typeof createDb>,
+  projectId: string,
+): Promise<LocalRoomSyncConflictResolution[]> {
+  return db.listRoomSyncConflictResolutions({ projectId });
+}
+
+function splitRoomConflicts(
+  conflicts: RoomMirrorConflict[],
+  resolutions: LocalRoomSyncConflictResolution[],
+) {
+  const active: RoomMirrorConflict[] = [];
+  const resolvedConflictIds: string[] = [];
+  for (const conflict of conflicts) {
+    const resolved = resolutions.some((resolution) => roomConflictMatchesResolution(conflict, resolution));
+    if (resolved) {
+      resolvedConflictIds.push(conflict.id);
+    } else {
+      active.push(conflict);
+    }
+  }
+  return {
+    active,
+    resolvedConflictIds: resolvedConflictIds.sort(),
   };
 }
 
@@ -953,6 +1006,22 @@ function createDb(dataDir: string) {
     return metadataStore.listMutationAudit(filter);
   }
 
+  async function upsertRoomSyncConflictResolution(
+    resolution: LocalRoomSyncConflictResolution,
+  ): Promise<LocalRoomSyncConflictResolution> {
+    const task = writeQueue.catch(() => undefined)
+      .then(() => metadataStore.upsertRoomSyncConflictResolution(resolution));
+    writeQueue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  async function listRoomSyncConflictResolutions(
+    filter: { projectId: string },
+  ): Promise<LocalRoomSyncConflictResolution[]> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.listRoomSyncConflictResolutions(filter);
+  }
+
   async function upsertTextRevision(revision: TextAppliedRevision): Promise<TextAppliedRevision> {
     const task = writeQueue.catch(() => undefined).then(() => metadataStore.upsertTextRevision(revision));
     writeQueue = task.then(() => undefined, () => undefined);
@@ -990,6 +1059,8 @@ function createDb(dataDir: string) {
     update,
     appendMutationAudit,
     listMutationAudit,
+    upsertRoomSyncConflictResolution,
+    listRoomSyncConflictResolutions,
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
@@ -4508,8 +4579,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     const plan = planRoomMirror({ localMessages, remoteMessages });
-    const publicPlan = publicRoomMirrorPlan(plan);
-    if (plan.conflicts.length > 0) {
+    const resolutions = await acceptedRoomConflictResolutions(db, projectId);
+    const { active: activeConflicts, resolvedConflictIds } = splitRoomConflicts(plan.conflicts, resolutions);
+    const effectivePlan = { ...plan, conflicts: activeConflicts };
+    const publicPlan = publicRoomMirrorPlan(effectivePlan, resolvedConflictIds);
+    if (activeConflicts.length > 0) {
       const error = "room sync conflict";
       return c.json({
         error,
@@ -4520,7 +4594,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     try {
-      for (const message of plan.exportToRemote) {
+      for (const message of effectivePlan.exportToRemote) {
         await remoteRoom.postMessage(projectId, remoteRoomMessageInput(message));
       }
     } catch (error) {
@@ -4537,7 +4611,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       const activeProject = findActiveProject(current, projectId, userId);
       if (!activeProject) return null;
       const importedRows: LocalRoomMessage[] = [];
-      for (const remoteMessage of plan.importToLocal) {
+      for (const remoteMessage of effectivePlan.importToLocal) {
         const existing = current.roomMessages.find((candidate) => candidate.id === remoteMessage.id);
         if (existing) {
           if (existing.project_id === projectId && roomMessageCreateMatchesExisting(existing, {
@@ -4579,6 +4653,137 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       sync: await publicRoomSyncMeta(syncConfig, { status: "mirrored" }),
       plan: publicPlan,
       mutation: hostMutationSucceeded(envelope, { resultEntityId: projectId }),
+    });
+  });
+
+  app.post("/api/v1/projects/:id/room/sync/conflicts/:messageId/resolve", async (c) => {
+    const projectId = c.req.param("id");
+    const messageId = c.req.param("messageId");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      resolution?: unknown;
+      localContentHash?: unknown;
+      remoteContentHash?: unknown;
+    };
+    const strategy = body.resolution === "accept-divergence" ? "accept-divergence" as const : null;
+    const localContentHash = typeof body.localContentHash === "string" ? body.localContentHash.trim() : "";
+    const remoteContentHash = typeof body.remoteContentHash === "string" ? body.remoteContentHash.trim() : "";
+    const pairHash = roomConflictPairHash(localContentHash, remoteContentHash);
+    const envelope = {
+      ...localMutationEnvelope(
+        "room_sync_conflict_resolve",
+        "room-message-conflict",
+        roomConflictEntityId(projectId, messageId),
+      ),
+      actor: {
+        strategy: strategy ?? body.resolution,
+        project_id: projectId,
+        message_id: messageId,
+        localContentHash,
+        remoteContentHash,
+      },
+      expectedHash: pairHash,
+    };
+
+    if (!strategy) {
+      const error = "unsupported room sync conflict resolution";
+      return c.json({ error, mutation: hostMutationRejected(envelope, error) }, 400);
+    }
+    if (!localContentHash || !remoteContentHash) {
+      const error = "localContentHash and remoteContentHash required";
+      return c.json({ error, mutation: hostMutationRejected(envelope, error) }, 400);
+    }
+
+    const state = await db.load();
+    const project = findActiveProject(state, projectId, userId);
+    if (!project) {
+      return c.json({
+        error: "not found",
+        mutation: hostMutationRejected(envelope, "not found"),
+      }, 404);
+    }
+    const remoteRoom = await syncConfig.resolveRemoteRoomSync();
+    if (!remoteRoom) {
+      const error = "remote room sync is not configured";
+      return c.json({
+        error,
+        admission: deniedRoomSyncAdmission("remote-room-not-configured"),
+        sync: await publicRoomSyncMeta(syncConfig, { error }),
+        mutation: hostMutationRejected(envelope, error),
+      }, 409);
+    }
+
+    const localMessages = state.roomMessages
+      .filter((message) => message.project_id === projectId)
+      .map(localRoomMessageToRemote);
+    let remoteMessages: RemoteRoomMessage[];
+    try {
+      remoteMessages = (await remoteRoom.listMessages(projectId))
+        .map((message) => ({ ...message, project_id: projectId }));
+    } catch (error) {
+      const message = `room sync failed: ${errorMessage(error)}`;
+      return c.json({
+        error: message,
+        sync: await publicRoomSyncMeta(syncConfig, { status: "failed", error: message }),
+        mutation: hostMutationRejected(envelope, message),
+      }, 502);
+    }
+
+    const plan = planRoomMirror({ localMessages, remoteMessages });
+    const conflict = plan.conflicts.find((candidate) => candidate.id === messageId);
+    if (!conflict) {
+      const error = "room sync conflict not found";
+      return c.json({
+        error,
+        sync: await publicRoomSyncMeta(syncConfig),
+        mutation: hostMutationRejected(envelope, error),
+      }, 404);
+    }
+
+    const currentLocalHash = roomMessageContentHash(conflict.local);
+    const currentRemoteHash = roomMessageContentHash(conflict.remote);
+    if (currentLocalHash !== localContentHash || currentRemoteHash !== remoteContentHash) {
+      const error = "stale room sync conflict resolution";
+      return c.json({
+        error,
+        conflict: {
+          id: conflict.id,
+          reason: conflict.reason,
+          local: publicRemoteRoomMessage(conflict.local),
+          remote: publicRemoteRoomMessage(conflict.remote),
+        },
+        mutation: hostMutationRejected({ ...envelope, beforeHash: roomConflictPairHash(currentLocalHash, currentRemoteHash) }, error),
+      }, 409);
+    }
+
+    const mutation = hostMutationSucceeded(
+      { ...envelope, beforeHash: pairHash },
+      { resultEntityId: messageId, afterHash: pairHash },
+    );
+    const auditRecord = mutationAuditRecord({
+      mutation,
+      reason: "room sync conflict accepted as divergence",
+    });
+    await db.upsertRoomSyncConflictResolution({
+      projectId,
+      messageId,
+      strategy,
+      localContentHash,
+      remoteContentHash,
+      resolvedAt: Date.now(),
+      mutationId: auditRecord.id,
+    });
+    await db.appendMutationAudit(auditRecord);
+
+    return c.json({
+      resolution: {
+        strategy,
+        project_id: projectId,
+        message_id: messageId,
+        localContentHash,
+        remoteContentHash,
+      },
+      sync: await publicRoomSyncMeta(syncConfig, { status: "pending" }),
+      mutation,
     });
   });
 

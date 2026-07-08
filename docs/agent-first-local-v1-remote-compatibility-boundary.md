@@ -255,7 +255,12 @@ Current evidence:
 - local-api app tests cover explicit room sync metadata, remote-only import,
   local-only export, accepted `room_sync` mutation records, and same-id conflict
   rejection without local overwrite; same-id conflict plans expose local/remote
-  room-message snapshots for manual or agent review.
+  room-message snapshots plus content hashes for manual or agent review.
+- local-api and CLI now expose explicit hash-checked `accept-divergence`
+  conflict recovery. The recovery action writes local SQLite
+  `room_sync_conflict_resolution`, records an auditable local mutation receipt,
+  and later sync reports the message id in `resolvedConflictIds` instead of
+  overwriting either local or remote content.
 - room message read/send responses carry `sync.admission`, so local-only clients
   can see `remote-room-not-configured`/`enable-sync` before attempting explicit
   room sync, while cloud-configured reads expose allowed admission.
@@ -276,8 +281,8 @@ v1 decision:
   `remote_room.enabled=true` with `status=pending`; only explicit sync action
   results can report `mirrored` or `failed`.
 - Do not introduce background room sync until admission controls beyond the
-  first local-only gate, conflict recovery, and live room parity are designed
-  and tested.
+  first local-only gate, richer conflict recovery UI, and live room parity are
+  designed and tested.
 
 Reason:
 

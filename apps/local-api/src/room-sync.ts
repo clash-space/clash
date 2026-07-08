@@ -69,7 +69,7 @@ function roomMentionsContentKey(mentions: RemoteRoomMention[]): string {
   return JSON.stringify(mentions.map(roomMentionKey).sort());
 }
 
-function roomMessageContentKey(message: RemoteRoomMessage): string {
+export function roomMessageContentKey(message: RemoteRoomMessage): string {
   return JSON.stringify({
     project_id: message.project_id,
     sender_kind: message.sender_kind,

@@ -29,12 +29,18 @@ export const roomCommand = new Command("room")
 
 interface RoomMessage {
   id: string;
+  project_id?: string;
   sender_kind: "user" | "agent";
   sender_id: string;
   sender_user_id: string;
   text: string;
   at: number;
   mentions?: Array<{ user_id?: string; agent_member_id?: string; agent_template_id?: string }>;
+}
+
+interface RoomConflictMessage extends RoomMessage {
+  project_id: string;
+  contentHash: string;
 }
 
 interface RoomSyncMeta {
@@ -58,9 +64,10 @@ interface RoomSyncPlan {
   conflicts: Array<{
     id: string;
     reason: string;
-    local: RoomMessage & { project_id: string };
-    remote: RoomMessage & { project_id: string };
+    local: RoomConflictMessage;
+    remote: RoomConflictMessage;
   }>;
+  resolvedConflictIds?: string[];
 }
 
 interface RoomSyncResult {
@@ -68,6 +75,23 @@ interface RoomSyncResult {
   plan: RoomSyncPlan;
   mutation?: {
     operation: "room_sync";
+    accepted: boolean;
+    resultEntityId?: string;
+    error?: string;
+  };
+}
+
+interface RoomConflictResolutionResult {
+  resolution: {
+    strategy: "accept-divergence";
+    project_id: string;
+    message_id: string;
+    localContentHash: string;
+    remoteContentHash: string;
+  };
+  sync: RoomSyncMeta;
+  mutation?: {
+    operation: "room_sync_conflict_resolve";
     accepted: boolean;
     resultEntityId?: string;
     error?: string;
@@ -208,4 +232,36 @@ roomCommand
       `synced room: exported=${data.plan.exportedIds.length} ` +
       `imported=${data.plan.importedIds.length} matched=${data.plan.matchedIds.length}`,
     );
+  });
+
+roomCommand
+  .command("resolve-conflict")
+  .description("Acknowledge an inspected room sync conflict without overwriting either side")
+  .argument("<messageId>", "Conflicting room message id")
+  .requiredOption("--local-hash <hash>", "Local content hash from clash room sync --json")
+  .requiredOption("--remote-hash <hash>", "Remote content hash from clash room sync --json")
+  .option("--json", "Output the conflict resolution result as JSON")
+  .action(async (
+    messageId: string,
+    options: { localHash: string; remoteHash: string; json?: boolean },
+  ) => {
+    const pid = projectId();
+    const data = await apiJson<RoomConflictResolutionResult>(
+      `/api/v1/projects/${pid}/room/sync/conflicts/${encodeURIComponent(messageId)}/resolve`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          resolution: "accept-divergence",
+          localContentHash: options.localHash,
+          remoteContentHash: options.remoteHash,
+        }),
+      },
+    ).catch((error) => failRoomCommandForMode(error, pid, options));
+
+    if (isJsonMode(options)) {
+      printJson(data);
+      return;
+    }
+
+    console.log(`resolved room sync conflict ${messageId} as accept-divergence`);
   });

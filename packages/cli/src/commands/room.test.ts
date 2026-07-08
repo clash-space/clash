@@ -46,3 +46,14 @@ test("room sync exposes explicit project room mirror action", () => {
   assert.match(syncSource, /method: "POST"/);
   assert.match(syncSource, /printJson\(data\)/);
 });
+
+test("room resolve-conflict exposes explicit sync conflict recovery action", () => {
+  const resolveSource = commandBlock(roomSource, "resolve-conflict");
+
+  assert.match(resolveSource, /apiJson<RoomConflictResolutionResult>/);
+  assert.match(resolveSource, /room\/sync\/conflicts\/\$\{encodeURIComponent\(messageId\)\}\/resolve/);
+  assert.match(resolveSource, /localContentHash/);
+  assert.match(resolveSource, /remoteContentHash/);
+  assert.match(resolveSource, /method: "POST"/);
+  assert.match(resolveSource, /printJson\(data\)/);
+});

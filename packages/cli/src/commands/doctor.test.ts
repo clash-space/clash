@@ -1520,6 +1520,7 @@ test("storage doctor warns when local SQLite lacks core metadata tables", async 
   assert.match(schemaCheck.message, /project/);
   assert.match(schemaCheck.message, /runtime_session/);
   assert.match(schemaCheck.message, /room_message/);
+  assert.match(schemaCheck.message, /room_sync_conflict_resolution/);
   assert.match(schemaCheck.message, /mutation_audit/);
 });
 
@@ -1665,6 +1666,7 @@ test("storage doctor repair creates core local SQLite metadata tables", async ()
       "agent_member",
       "chat_message",
       "room_message",
+      "room_sync_conflict_resolution",
       "mutation_audit",
     ]) {
       assert.equal(
@@ -1682,6 +1684,7 @@ test("storage doctor repair creates core local SQLite metadata tables", async ()
       "agent_member_user_idx",
       "chat_message_session_idx",
       "room_message_project_idx",
+      "room_sync_conflict_resolution_project_idx",
       "mutation_audit_created_idx",
       "mutation_audit_operation_idx",
       "mutation_audit_entity_idx",
@@ -1806,6 +1809,7 @@ test("storage doctor repair upgrades partial core local SQLite metadata tables",
         PRIMARY KEY (session_id, id)
       );
       CREATE TABLE room_message (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE room_sync_conflict_resolution (project_id TEXT NOT NULL);
       CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
     `);
     createAssetReferenceIndexSchema(sqlite);

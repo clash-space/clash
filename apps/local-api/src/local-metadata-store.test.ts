@@ -251,4 +251,42 @@ describe("local metadata store", () => {
       },
     ]);
   });
+
+  it("persists room sync conflict resolutions outside metadata rewrites", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.upsertRoomSyncConflictResolution({
+      projectId: "project-room",
+      messageId: "room-conflict",
+      strategy: "accept-divergence",
+      localContentHash: "local-hash",
+      remoteContentHash: "remote-hash",
+      resolvedAt: 1783428000000,
+      mutationId: "audit-room-conflict",
+    });
+
+    await store.save({
+      projects: [],
+      assets: [],
+      assetRefs: [],
+      assetNodeRefs: [],
+      sessions: [],
+      agentMembers: [],
+      sessionMessages: [],
+      roomMessages: [],
+    });
+
+    await expect(store.listRoomSyncConflictResolutions({ projectId: "project-room" })).resolves.toEqual([
+      {
+        projectId: "project-room",
+        messageId: "room-conflict",
+        strategy: "accept-divergence",
+        localContentHash: "local-hash",
+        remoteContentHash: "remote-hash",
+        resolvedAt: 1783428000000,
+        mutationId: "audit-room-conflict",
+      },
+    ]);
+  });
 });

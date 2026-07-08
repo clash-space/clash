@@ -316,6 +316,7 @@ Current routes:
 Current schema:
 
 - `room_message`
+- `room_sync_conflict_resolution`
 
 v1 local/cloud decision:
 
@@ -457,7 +458,7 @@ Registered commands:
 | Surface | Current mismatch | Product risk | Required fix |
 | --- | --- | --- | --- |
 | Local metadata | `db.json` is ignored if present | stale docs/tools may treat legacy DB as editable truth | keep ignored-legacy tests and doctor cleanup warnings |
-| Local room | SQLite-backed local room POST/GET exists; POST carries accepted/rejected mutation records and POST/GET `sync.admission`; local-only room message responses expose `remote-room-not-configured` with `enable-sync`, same project/id with different content is rejected; cloud room route matches the idempotency rule; cloud-configured local reads mark explicit room sync `pending` with allowed admission; `POST /api/v1/projects/:id/room/sync` and `clash room sync` run the mirror planner, export local-only rows, import remote-only rows, and reject same-id conflicts without overwriting; conflict plans include local/remote message snapshots for review | conflict recovery UI, admission controls, and live parity are not wired yet | conflict recovery UI, live room parity, admission policy |
+| Local room | SQLite-backed local room POST/GET exists; POST carries accepted/rejected mutation records and POST/GET `sync.admission`; local-only room message responses expose `remote-room-not-configured` with `enable-sync`, same project/id with different content is rejected; cloud room route matches the idempotency rule; cloud-configured local reads mark explicit room sync `pending` with allowed admission; `POST /api/v1/projects/:id/room/sync` and `clash room sync` run the mirror planner, export local-only rows, import remote-only rows, and reject same-id conflicts without overwriting; conflict plans include local/remote message snapshots plus content hashes for review; `POST /api/v1/projects/:id/room/sync/conflicts/:messageId/resolve` and `clash room resolve-conflict` record hash-checked `accept-divergence` receipts so later sync can continue without overwriting either side | conflict recovery UI, broader admission controls, and live parity are not wired yet | conflict recovery UI, live room parity, admission policy |
 | Vars | CLI exposes remote worker vars; local-api 404; cloud supports vars | future copy/API changes may blur local auth boundary | keep mode-aware CLI copy and local 404 tests |
 | Provider auth | local rows in SQLite but credentials/tokens are not keychain-encrypted yet | local compromise risk for secrets | encrypted SQLite/keychain |
 | Project status | CLI and local-api return roots/protected paths; CLI status also exposes `currentWorkspace` so the active cwd/marker root is visible as a reference workspace separate from the canonical project workspace/store, including the marker's stable `workspace_id` as `markerWorkspaceId` when present; `storage.canonicalReplica` includes SQLite metadata, Loro canvas replica, protected immutable media asset blob root, and protected content-addressed text/timeline revision blob roots; `doctor storage` validates path boundaries, broken asset links, legacy `.clash/project.json` markers as ignored old-layout evidence, stray secondary canvas replica files, protected media/revision content roots, existing text/timeline revision blob hash/permission integrity, existing recovery manifests, and local SQLite core metadata tables, provider auth tables/primary keys, plus asset/text/timeline projection indexes; `doctor storage --repair` creates missing workspace roots, repairs the local SQLite core metadata tables, provider auth tables/primary keys, plus asset/text/timeline projection indexes, and quarantines secondary canvas replica files into protected runtime recovery with manifest evidence; `doctor storage-recovery list --json` exposes quarantined recovery manifest inventory plus prior restore receipt summaries only after current-project recovery-root, destination containment, and symlink/non-regular-file checks pass, otherwise reporting invalid entries; `doctor storage-recovery list/compare/restore --json` include `recoveryPolicy` so agents can see that recovery is scoped to the local canonical replica, cloud state is neither imported nor mutated, `cloud-sync` needs cloud conflict review, and `shared`/`cloud-sequencer` projects can be compared but cannot be locally restored; `doctor storage-recovery compare --manifest ... --json` reports quarantined-vs-canonical file evidence plus a restore read token without import only after current-project recovery-root, project/canonical-replica, destination containment, and symlink/non-regular-file checks pass; `doctor storage-recovery restore --manifest ... --if-match <readToken> --yes --json` is the explicit promotion path and rejects stale compare tokens plus shared/cloud-sequencer recovery before overwriting canonical bytes | agents can inspect paths and host-owned repair can initialize safe workspace/schema prerequisites without blessing legacy JSON markers, cwd snapshots, cloud sequencer state, media blobs, or revision blobs as agent-writable truth | broader migration/recovery UX and old-layout checks |
@@ -776,8 +777,17 @@ Rules:
 - Local-api exposes explicit `POST /api/v1/projects/:projectId/room/sync`;
   the CLI exposes `clash room sync --json` so agents can mirror only through
   an auditable action result.
-- Same-id room sync conflicts expose local/remote message snapshots in the
-  public plan, so failed sync output is inspectable without mutating either side.
+- Same-id room sync conflicts expose local/remote message snapshots and content
+  hashes in the public plan, so failed sync output is inspectable without
+  mutating either side.
+- Local-api exposes explicit
+  `POST /api/v1/projects/:projectId/room/sync/conflicts/:messageId/resolve`,
+  and the CLI exposes `clash room resolve-conflict --local-hash --remote-hash`.
+  The only first-pass strategy is `accept-divergence`; it writes the resolution
+  to SQLite `room_sync_conflict_resolution` and records a mutation audit receipt
+  only when the supplied local/remote hashes still match the current conflict.
+  Later sync reports that id in `resolvedConflictIds` instead of overwriting
+  either message.
 - Room sync now checks active project existence before remote admission, so a
   missing project returns 404 instead of being hidden by cloud configuration.
 - Local-only room sync rejection includes a machine-readable `admission` gate
@@ -793,7 +803,7 @@ Rules:
 Remaining:
 
 - conflict recovery UI and broader admission policy,
-- conflict recovery UX across local and remote,
+- richer conflict recovery UX across local and remote,
 - live room UI parity in local desktop.
 
 ### Local text revision endpoints

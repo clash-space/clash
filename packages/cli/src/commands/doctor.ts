@@ -1992,6 +1992,17 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS room_sync_conflict_resolution (
+      project_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      strategy TEXT NOT NULL,
+      local_content_hash TEXT NOT NULL,
+      remote_content_hash TEXT NOT NULL,
+      resolved_at INTEGER NOT NULL,
+      mutation_id TEXT,
+      PRIMARY KEY (project_id, message_id, local_content_hash, remote_content_hash)
+    );
+
     CREATE TABLE IF NOT EXISTS mutation_audit (
       id TEXT PRIMARY KEY NOT NULL,
       created_at INTEGER NOT NULL,
@@ -2103,6 +2114,17 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
     ensureSqliteColumn(db, "room_message", column);
   }
   for (const column of [
+    "project_id TEXT NOT NULL DEFAULT ''",
+    "message_id TEXT NOT NULL DEFAULT ''",
+    "strategy TEXT NOT NULL DEFAULT 'accept-divergence'",
+    "local_content_hash TEXT NOT NULL DEFAULT ''",
+    "remote_content_hash TEXT NOT NULL DEFAULT ''",
+    "resolved_at INTEGER NOT NULL DEFAULT 0",
+    "mutation_id TEXT",
+  ]) {
+    ensureSqliteColumn(db, "room_sync_conflict_resolution", column);
+  }
+  for (const column of [
     "created_at INTEGER NOT NULL DEFAULT 0",
     "operation TEXT NOT NULL DEFAULT ''",
     "entity_kind TEXT NOT NULL DEFAULT ''",
@@ -2127,6 +2149,8 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
     CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
     CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS room_sync_conflict_resolution_project_idx
+      ON room_sync_conflict_resolution(project_id, resolved_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
@@ -2574,6 +2598,19 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
         "created_at",
       ],
       indexes: ["room_message_project_idx"],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "room_sync_conflict_resolution",
+      columns: [
+        "project_id",
+        "message_id",
+        "strategy",
+        "local_content_hash",
+        "remote_content_hash",
+        "resolved_at",
+        "mutation_id",
+      ],
+      indexes: ["room_sync_conflict_resolution_project_idx"],
     });
     inspectSqliteTableSchema(db, problems, {
       table: "mutation_audit",
