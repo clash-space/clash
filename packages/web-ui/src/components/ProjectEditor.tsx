@@ -82,6 +82,7 @@ import {
 } from '@clash/web-ui/lib/layout';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useLoroSync } from '@clash/web-ui/hooks/useLoroSync';
+import { useProjectStatus } from '@clash/web-ui/hooks/useProjectStatus';
 import { actionIsCheckpointLocked } from '@clash/web-ui/lib/actionCheckpoint';
 import { LoroSyncProvider } from './LoroSyncContext';
 import type { PresenceClient } from '@clash/shared-types';
@@ -206,6 +207,21 @@ const sanitizeNodes = (nodes: AppNode[]): AppNode[] => {
         },
     });
 };
+
+function projectShareGateTooltip(
+    reason: string | null | undefined,
+    requirements: string[] | undefined,
+): string {
+    if (reason === 'project-is-local-only') return 'Enable sync before sharing this project';
+    if (reason === 'cloud-sync-not-ready') {
+        const missing = requirements && requirements.length > 0
+            ? `: ${requirements.join(', ')}`
+            : '';
+        return `Finish cloud sync setup before sharing${missing}`;
+    }
+    if (reason === 'sync-mode-unknown') return 'Resolve project sync mode before sharing';
+    return 'Copy project link';
+}
 
 /**
  * Floating "Group" pill that appears above the bounding box of the current
@@ -364,7 +380,15 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
     const [shareCopied, setShareCopied] = useState(false);
-    const canShareProject = getRuntimeCapabilities().loro.persistence !== 'local';
+    const projectStatus = useProjectStatus(project.id);
+    const projectShareGate = projectStatus.actions?.shareProject;
+    const runtimeCapabilities = getRuntimeCapabilities();
+    const runtimeCanShareProject = runtimeCapabilities.loro.persistence !== 'local';
+    const canShareProject = projectShareGate?.allowed ?? runtimeCanShareProject;
+    const shouldShowShareProjectAction = projectShareGate !== undefined || runtimeCanShareProject;
+    const shareProjectTooltip = projectShareGate && !projectShareGate.allowed
+        ? projectShareGateTooltip(projectShareGate.reason, projectShareGate.requirements)
+        : 'Copy project link';
     const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
     const handleProjectNameSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -963,14 +987,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         });
     }, [loroSync, nodes, project.id]);
 
-	    const onNodeDragStop = useCallback((_event: React.MouseEvent, node: Node, _allNodes: Node[]) => {
+	    const onNodeDragStop = useCallback((_event: MouseEvent | TouchEvent, node: AppNode, _allNodes: AppNode[]) => {
 	        let patchesToSync: Array<{ id: string; patch: any }> = [];
 	        let draggedNodePatch: any | null = null;
 
 	        flushSync(() => {
 	            setNodes((nds) => {
 	                const currentNode = nds.find((n) => n.id === node.id) ?? node;
-	                const draggedNode: Node = {
+	                const draggedNode: AppNode = {
 	                    ...currentNode,
 	                    position: node.position,
 	                    width: node.width ?? currentNode.width,
@@ -2401,17 +2425,22 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
                                 <PresenceBar clients={otherClients} />
-                                {canShareProject && (
-                                    <Button
-                                        onClick={handleShareProject}
-                                        leftIcon={<ShareFat className="h-4 w-4" weight="bold" />}
-                                        size="sm"
-                                        shape="rounded"
-                                        aria-label="Copy project link"
-                                        className="clash-project-top-action h-10 min-h-10 rounded-xl px-3 text-sm font-display font-semibold focus-visible:ring-offset-warm-page"
-                                    >
-                                        <span>{shareCopied ? 'Copied' : 'Share'}</span>
-                                    </Button>
+                                {shouldShowShareProjectAction && (
+                                    <Tooltip label={shareProjectTooltip}>
+                                        <span className="inline-flex">
+                                            <Button
+                                                onClick={handleShareProject}
+                                                disabled={!canShareProject}
+                                                leftIcon={<ShareFat className="h-4 w-4" weight="bold" />}
+                                                size="sm"
+                                                shape="rounded"
+                                                aria-label="Copy project link"
+                                                className="clash-project-top-action h-10 min-h-10 rounded-xl px-3 text-sm font-display font-semibold focus-visible:ring-offset-warm-page"
+                                            >
+                                                <span>{shareCopied ? 'Copied' : 'Share'}</span>
+                                            </Button>
+                                        </span>
+                                    </Tooltip>
                                 )}
                                 <UserControls projectChrome />
                             </motion.div>

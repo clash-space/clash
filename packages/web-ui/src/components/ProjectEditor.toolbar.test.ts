@@ -61,4 +61,10 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).not.toContain("onKeyDown={(e) => {\n                                        if (e.key === 'Enter')");
     expect(projectEditorSource).not.toContain("querySelector<HTMLInputElement>('input')");
   });
+
+  it("gates project sharing through project status action gates", () => {
+    expect(projectEditorSource).toContain("useProjectStatus(project.id)");
+    expect(projectEditorSource).toContain("projectStatus.actions?.shareProject");
+    expect(projectEditorSource).not.toContain("getRuntimeCapabilities().loro.persistence !== 'local'");
+  });
 });

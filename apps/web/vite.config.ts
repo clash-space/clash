@@ -65,7 +65,7 @@ export default defineConfig(async ({ command, isPreview }) => {
           // as `undefined` from cross-chunk named imports → React #130.
           // Keeping the whole package in one chunk preserves top-level
           // const exports so cross-chunk imports resolve correctly.
-          manualChunks(id) {
+          manualChunks(id: string) {
             if (id.includes("@phosphor-icons")) return "phosphor";
           },
         },
