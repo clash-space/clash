@@ -1761,6 +1761,24 @@ describe("local API app", () => {
       accepted: true,
     });
 
+    const audit = await app.request(`/api/v1/mutation-audit?operation=asset_cover_update&entityId=${encodeURIComponent(assetId)}`);
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<{ actorClientType?: string; mutation?: any }> };
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(agentAuditRecord).toMatchObject({
+      operation: "asset_cover_update",
+      entity: { kind: "asset", id: assetId },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "asset cover update",
+      resultEntityId: assetId,
+    });
+    expect(JSON.stringify(agentAuditRecord?.mutation ?? {})).not.toContain("receipt");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("expectedReadToken");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("beforeReadToken");
+    expect(agentAuditRecord?.mutation).not.toHaveProperty("afterReadToken");
+
     const missingCover = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/cover`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },

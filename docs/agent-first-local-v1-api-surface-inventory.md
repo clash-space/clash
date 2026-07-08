@@ -1017,6 +1017,8 @@ local API contract.
 - `clash audit mutations --operation project_restore --entity <projectId>
   --json`, `clash audit mutations --operation project_purge --entity <projectId>
   --json`, `clash audit mutations --operation asset_gc --entity local --json`,
+  `clash audit mutations --operation asset_cover_update --entity <assetId>
+  --json`,
   and `clash audit mutations --operation session_delete --entity <threadId>
   --json`; `clash audit mutations --operation canvas_delete_edge --entity
   <edgeId> --json` reads sanitized local host mutation audit evidence without
@@ -1024,7 +1026,8 @@ local API contract.
 - `clash asset get -> clash asset cover set --if-match` and
   `clash asset ref get -> clash asset ref delete --if-match` reject missing or
   bare agent read proofs, accept host-issued receipts, and record mutation
-  envelopes. `clash assets gc --dry-run --json -> clash assets gc --delete
+  envelopes plus sanitized mutation audit evidence for accepted cover updates.
+  `clash assets gc --dry-run --json -> clash assets gc --delete
   --if-match` applies the same missing/bare/stale receipt checks to destructive
   local asset GC; deterministic coverage lives in
   `apps/desktop/e2e/agent-first-asset-receipt-smoke.mjs`.

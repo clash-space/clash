@@ -7445,6 +7445,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
+    if (result.status === 200) {
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "asset cover update",
+        }));
+      }
+    }
     return c.json(result.body, result.status);
   });
 

@@ -297,8 +297,8 @@ Assertions:
 - `clash asset cover set`/`PATCH /api/v1/assets/:id/cover` rejects missing
   read proof for agent writes,
 - cover update rejects a bare CAS token even when the hash matches,
-- cover update accepts a host-issued receipt token and records a mutation
-  envelope,
+- cover update accepts a host-issued receipt token, records a mutation envelope,
+  and writes sanitized local mutation audit evidence,
 - cover update rejects a stale receipt after a concurrent host-state change,
 - asset create and cover update reject storage keys that escape local asset
   storage before those keys can persist in SQLite,
@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T12-26-35-388Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T12-44-57-126Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 151 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 152 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -680,7 +680,8 @@ Result:
   symlinked-parent rejection,
   metadata/ref/GC, project delete/restore/purge, and session delete agent writes
   rejected missing or bare read proofs; asset create/cover rejected invalid
-  storage keys before metadata persistence; the same run also proved the restore
+  storage keys before metadata persistence; accepted asset cover updates write
+  sanitized local mutation audit evidence; the same run also proved the restore
   path's sanitized audit evidence, legacy project delete audit evidence,
   project purge's default delayed purge window,
   explicit force override, deleted recovery point removal,
@@ -902,8 +903,8 @@ Current status:
   plus local-api canvas node read/update/delete receipt enforcement,
   downstream text content patch rejection, local-api canvas batch delete
   plan/apply receipt enforcement, external orphan rejection, local-api canvas edge list/delete
-  receipt enforcement, and sanitized audit evidence for accepted asset GC,
-  session deletion, node update/delete, batch deletion, and edge deletion;
+  receipt enforcement, and sanitized audit evidence for accepted asset cover
+  updates, asset GC, session deletion, node update/delete, batch deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
 - `clash text pull/apply/replace` exists; Suite D still needs real project

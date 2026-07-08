@@ -365,7 +365,7 @@ Required behavior:
 - Add admin/debug commands for explicit low-level patching.
 - Extend first-pass local mutation audit beyond project delete/restore/purge,
   session delete, provider account delete, provider OAuth delete, asset-ref
-  delete, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
+  delete, asset cover update, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
   force/destructive mutation surfaces.
 - Broaden direct canvas read-token fixtures beyond the live local-api node/batch/edge
   project fixture into fuller desktop UI/product editing flows.

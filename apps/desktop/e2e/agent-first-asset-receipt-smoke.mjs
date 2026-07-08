@@ -1608,6 +1608,25 @@ async function main() {
     { readToken: currentAsset.readToken },
   );
 
+  const assetCoverAuditResponse = await request(`/api/v1/mutation-audit?operation=asset_cover_update&entityId=${encodeURIComponent(assetId)}`);
+  const assetCoverAudit = await parseJsonResponse(assetCoverAuditResponse);
+  const assetCoverAuditRecord = assetCoverAudit.records?.[0];
+  recordCheck(
+    "asset cover update writes sanitized local mutation audit evidence",
+    assetCoverAuditResponse.status === 200 &&
+      assetCoverAudit.records?.length === 1 &&
+      assetCoverAuditRecord.operation === "asset_cover_update" &&
+      assetCoverAuditRecord.entity?.id === assetId &&
+      assetCoverAuditRecord.accepted === true &&
+      assetCoverAuditRecord.actorClientType === "agent" &&
+      assetCoverAuditRecord.reason === "asset cover update" &&
+      !JSON.stringify(assetCoverAuditRecord.mutation ?? {}).includes("receipt") &&
+      assetCoverAuditRecord.mutation?.expectedReadToken == null &&
+      assetCoverAuditRecord.mutation?.beforeReadToken == null &&
+      assetCoverAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(assetCoverAudit),
+  );
+
   const initialRef = await fetchAssetProjectRef({ assetId, projectId, request });
   recordCheck(
     "asset ref get returns receipt read token",
@@ -2829,6 +2848,7 @@ async function main() {
       coverBareCasRejected: checks.some((check) => check.name === "asset cover update with bare CAS token is rejected" && check.status === "pass"),
       coverReceiptAccepted: checks.some((check) => check.name === "asset cover update with receipt read token is accepted" && check.status === "pass"),
       coverStaleReceiptRejected: checks.some((check) => check.name === "asset cover update with stale receipt is rejected" && check.status === "pass"),
+      assetCoverAuditRecorded: checks.some((check) => check.name === "asset cover update writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetRefGetReceiptReturned: checks.some((check) => check.name === "asset ref get returns receipt read token" && check.status === "pass"),
 	      assetRefMissingReadRejected: checks.some((check) => check.name === "asset ref delete without prior read is rejected" && check.status === "pass"),
 	      assetRefBareCasRejected: checks.some((check) => check.name === "asset ref delete with bare CAS token is rejected" && check.status === "pass"),
