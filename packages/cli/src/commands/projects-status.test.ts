@@ -220,6 +220,7 @@ test("project status identifies the current marker workspace separately from the
     markerPath: initialized.markerPath,
     markerRoot: cwd,
     markerStore: "managed",
+    markerWorkspaceId: initialized.workspaceId,
     projectWorkspaceRoot: join(homeDir, ".clash", "projects", "workspace_status_project"),
     locatedInProjectWorkspace: false,
     ownsCanonicalSnapshot: false,

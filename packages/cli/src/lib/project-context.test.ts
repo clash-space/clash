@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
 import { initProject, linkProject } from "../commands/projects";
 import {
+  readProjectMarker,
   resolveProjectContext,
   writeProjectMarker,
 } from "./project-context";
@@ -100,9 +101,12 @@ it("project link writes a v1 marker in the current directory", async () => {
   expect(markerPath).toBe(join(root, ".clash", "project.toml"));
   expect(marker).toContain("schema_version = 1");
   expect(marker).toContain('project_id = "proj_linked"');
+  expect(marker).toMatch(/workspace_id = "external:[a-f0-9]{16}"/);
   expect(marker).toContain('store = "external"');
   expect(marker).toContain("[sync]");
   expect(marker).toContain('mode = "local"');
+  const parsed = await readProjectMarker(markerPath);
+  expect(parsed.workspaceId).toMatch(/^external:[a-f0-9]{16}$/);
 });
 
 it("init writes a local managed v1 marker without cloud dependency", async () => {
@@ -113,8 +117,10 @@ it("init writes a local managed v1 marker without cloud dependency", async () =>
 
   expect(result.projectId).toMatch(/^local_/);
   expect(result.markerPath).toBe(join(root, ".clash", "project.toml"));
+  expect(result.workspaceId).toMatch(/^managed:[a-f0-9]{16}$/);
   expect(marker).toContain("schema_version = 1");
   expect(marker).toContain(`project_id = "${result.projectId}"`);
+  expect(marker).toContain(`workspace_id = "${result.workspaceId}"`);
   expect(marker).toContain('store = "managed"');
   expect(marker).toContain("[sync]");
   expect(marker).toContain('mode = "local"');

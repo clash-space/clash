@@ -462,6 +462,7 @@ Current status:
   - protected local DB/snapshot/runtime paths,
   - `currentWorkspace` for CLI calls, identifying the actual cwd/marker root as
     a reference workspace that does not own canonical snapshot or metadata,
+    including marker `workspace_id` as `markerWorkspaceId` when present,
   - protected text/timeline revision content blob roots under
     `storage.canonicalReplica.contentBlobs`.
 - The command treats a marker in the cwd as context only. If `--project`
@@ -497,6 +498,9 @@ Current status:
 - CLI project status also exposes `currentWorkspace`, separating the cwd and
   project marker root from the canonical project workspace/store so agents can
   tell when a user workspace is only a reference/draft surface.
+- `clash init`, `clash project link`, and bridge-managed agent cwd creation now
+  write `workspace_id` into `.clash/project.toml`; status surfaces it as
+  `currentWorkspace.markerWorkspaceId` for stable workspace identity.
 - `clash doctor storage --repair` creates missing workspace roots, ensures the
   local SQLite core metadata tables, provider auth tables/primary keys, plus
   asset/text/timeline projection indexes, and quarantines secondary cwd /

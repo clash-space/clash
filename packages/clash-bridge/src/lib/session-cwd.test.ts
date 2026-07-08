@@ -18,6 +18,7 @@ it("ensureAgentCwd writes a v1 project marker for managed project cwd", async ()
 
     expect(marker).toContain("schema_version = 1");
     expect(marker).toContain('project_id = "proj_managed"');
+    expect(marker).toContain('workspace_id = "managed:proj_managed"');
     expect(marker).toContain('store = "managed"');
     expect(marker).toContain("[sync]");
     expect(marker).toContain('mode = "local"');
@@ -47,6 +48,7 @@ it("ensureAgentCwd keeps the canonical project id in the marker when the cwd pat
 
     expect(cwd).toBe(join(home, ".clash", "projects", "project%2Fwith%20spaces"));
     expect(marker).toContain(`project_id = ${JSON.stringify(projectId)}`);
+    expect(marker).toContain('workspace_id = "managed:project%2Fwith%20spaces"');
     expect(marker).not.toContain('project_id = "project_with_spaces"');
   } finally {
     if (originalHome === undefined) {

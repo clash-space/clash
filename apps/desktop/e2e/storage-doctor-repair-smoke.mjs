@@ -552,6 +552,8 @@ async function main() {
       status?.currentWorkspace?.markerPath === initialized.markerPath &&
       status?.currentWorkspace?.markerRoot === workspace &&
       status?.currentWorkspace?.markerStore === "managed" &&
+      status?.currentWorkspace?.markerWorkspaceId === initialized.workspaceId &&
+      /^managed:[a-f0-9]{16}$/.test(status?.currentWorkspace?.markerWorkspaceId ?? "") &&
       status?.currentWorkspace?.projectWorkspaceRoot === status?.projectWorkspaceRoot &&
       status?.currentWorkspace?.locatedInProjectWorkspace === false &&
       status?.currentWorkspace?.ownsCanonicalSnapshot === false &&

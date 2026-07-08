@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -41,9 +41,12 @@ export async function linkProject(
   projectId: string,
   options: { cwd?: string } = {},
 ): Promise<string> {
-  return writeProjectMarker(options.cwd ?? process.cwd(), {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const canonicalProjectId = projectId.trim();
+  return writeProjectMarker(cwd, {
     schemaVersion: 1,
-    projectId,
+    projectId: canonicalProjectId,
+    workspaceId: projectWorkspaceId("external", canonicalProjectId, cwd),
     store: "external",
     sync: { mode: "local" },
   });
@@ -52,15 +55,30 @@ export async function linkProject(
 export async function initProject(options: {
   cwd?: string;
   projectId?: string;
-} = {}): Promise<{ projectId: string; markerPath: string }> {
+} = {}): Promise<{ projectId: string; markerPath: string; workspaceId: string }> {
   const projectId = options.projectId?.trim() || `local_${randomUUID()}`;
-  const markerPath = await writeProjectMarker(options.cwd ?? process.cwd(), {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const workspaceId = projectWorkspaceId("managed", projectId, cwd);
+  const markerPath = await writeProjectMarker(cwd, {
     schemaVersion: 1,
     projectId,
+    workspaceId,
     store: "managed",
     sync: { mode: "local" },
   });
-  return { projectId, markerPath };
+  return { projectId, markerPath, workspaceId };
+}
+
+function projectWorkspaceId(kind: "managed" | "external", projectId: string, cwd: string): string {
+  const hash = createHash("sha256")
+    .update(kind)
+    .update("\0")
+    .update(projectId)
+    .update("\0")
+    .update(resolve(cwd))
+    .digest("hex")
+    .slice(0, 16);
+  return `${kind}:${hash}`;
 }
 
 export async function resolveProjectStatus(options: {

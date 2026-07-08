@@ -153,6 +153,7 @@ async function writeProjectMarker(cwd: string, projectId: string): Promise<void>
     [
       "schema_version = 1",
       `project_id = ${JSON.stringify(projectId)}`,
+      `workspace_id = ${JSON.stringify(`managed:${projectIdPathSegment(projectId)}`)}`,
       'store = "managed"',
       "",
       "[sync]",

@@ -63,9 +63,11 @@ for these current paths. It exposes the bridge workspace root
 (`loro.replicaRoot`). Agents must not infer that `snapshot.bin` or runtime state
 lives under an editable workspace root unless the status payload says so.
 For CLI calls, `currentWorkspace` records the actual cwd and `.clash/project.toml`
-marker root as a `project-reference-workspace`. This is deliberately separate
-from `projectWorkspaceRoot`: deleting or moving the cwd/marker workspace must
-not imply deleting the machine's canonical SQLite/Loro project state.
+marker root as a `project-reference-workspace`; when the marker has
+`workspace_id`, status exposes it as `markerWorkspaceId`. This is deliberately
+separate from `projectWorkspaceRoot`: deleting or moving the cwd/marker
+workspace must not imply deleting the machine's canonical SQLite/Loro project
+state.
 The `collaboration` object in the same payload is the mode gate agents and UI
 should use before offering cloud/web/shared affordances: local projects are not
 web-openable, `cloud-sync` projects remain pending and not web-openable until
