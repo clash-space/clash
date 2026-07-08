@@ -1248,38 +1248,49 @@ export function createLocalMetadataStore(dataDir: string) {
     `).all(filter.projectId).map(roomSyncConflictResolutionFromRow));
   }
 
-  async function upsertTextRevision(revision: TextAppliedRevision): Promise<TextAppliedRevision> {
+  async function upsertTextRevision(
+    revision: TextAppliedRevision,
+    auditRecord?: LocalMutationAuditRecord,
+  ): Promise<TextAppliedRevision> {
     await withDb((db) => {
-      const existing = db.prepare(`
-        SELECT revision_id, text_id, parent_revision_id, project_id, node_id,
-               created_at, content_hash, hash_algorithm, source_file_path,
-               source_file_hash, actor_json
-          FROM text_revisions
-         WHERE revision_id = ?
-      `).get(revision.revisionId);
-      if (existing && !sameTextRevision(textRevisionFromRow(existing), revision)) {
-        throw new Error(`Text revision ${revision.revisionId} already exists with different metadata`);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const existing = db.prepare(`
+          SELECT revision_id, text_id, parent_revision_id, project_id, node_id,
+                 created_at, content_hash, hash_algorithm, source_file_path,
+                 source_file_hash, actor_json
+            FROM text_revisions
+           WHERE revision_id = ?
+        `).get(revision.revisionId);
+        if (existing && !sameTextRevision(textRevisionFromRow(existing), revision)) {
+          throw new Error(`Text revision ${revision.revisionId} already exists with different metadata`);
+        }
+        db.prepare(`
+          INSERT OR REPLACE INTO text_revisions (
+            revision_id, text_id, parent_revision_id, project_id, node_id,
+            created_at, content_hash, hash_algorithm, source_file_path,
+            source_file_hash, actor_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          revision.revisionId,
+          revision.textId,
+          revision.parentRevisionId ?? null,
+          revision.projectId,
+          revision.nodeId,
+          revision.createdAt,
+          revision.contentHash,
+          revision.hashAlgorithm,
+          revision.sourceFilePath,
+          revision.sourceFileHash,
+          jsonOrNull(revision.actor),
+        );
+        if (auditRecord) insertMutationAudit(db, auditRecord);
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
       }
-      db.prepare(`
-        INSERT OR REPLACE INTO text_revisions (
-          revision_id, text_id, parent_revision_id, project_id, node_id,
-          created_at, content_hash, hash_algorithm, source_file_path,
-          source_file_hash, actor_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        revision.revisionId,
-        revision.textId,
-        revision.parentRevisionId ?? null,
-        revision.projectId,
-        revision.nodeId,
-        revision.createdAt,
-        revision.contentHash,
-        revision.hashAlgorithm,
-        revision.sourceFilePath,
-        revision.sourceFileHash,
-        jsonOrNull(revision.actor),
-      );
-      markMigration(db, dataDir, "");
     });
     return revision;
   }

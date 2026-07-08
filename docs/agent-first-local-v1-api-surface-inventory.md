@@ -868,7 +868,7 @@ Implemented locally in SQLite:
 
 Rules:
 
-- stores applied text revision metadata in host-owned SQLite `text_revisions`,
+- stores applied and workflow-generated text revision metadata in host-owned SQLite `text_revisions`,
 - does not create media `assets` rows for text revisions,
 - validates project-relative source paths and hash consistency before indexing,
 - when content is supplied, stores the applied Markdown body as an immutable

@@ -13,6 +13,7 @@ import {
   LocalLoroRoom,
 } from "./sync";
 import { createLocalWorkflowProcessor } from "./local-processor";
+import { createLocalMetadataStore } from "./local-metadata-store";
 
 let dataDir = "";
 
@@ -394,6 +395,49 @@ describe("LocalLoroRoom", () => {
     expect(textNode.data.content).toContain("Write three title options");
     expect(textNode.data.assetId).toBeUndefined();
     expect(textNode.data.pendingTask).toBeUndefined();
+
+    const metadataStore = createLocalMetadataStore(dataDir);
+    const loaded = await metadataStore.load();
+    expect(loaded.assets).toHaveLength(0);
+    const revisions = await metadataStore.listTextRevisions({
+      projectId: "project/local-text-gen",
+      nodeId: "text-node-1",
+    });
+    expect(revisions).toHaveLength(1);
+    const revision = revisions[0]!;
+    expect(revision).toMatchObject({
+      textId: "text:project/local-text-gen:text-node-1",
+      projectId: "project/local-text-gen",
+      nodeId: "text-node-1",
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "workflow/text-node-1.md",
+    });
+    expect(revision.revisionId).toEqual(expect.stringMatching(/^txrev-[a-f0-9]{16}-/));
+    expect(revision.contentHash).toBe(revision.sourceFileHash);
+    const audits = await metadataStore.listMutationAudit({
+      operation: "text_generate",
+      entityId: revision.revisionId,
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      operation: "text_generate",
+      entity: { kind: "text-revision", id: revision.revisionId },
+      actorClientType: null,
+      forced: false,
+      accepted: true,
+      reason: "workflow generated text",
+      resultEntityId: revision.revisionId,
+    });
+    expect(audits[0]?.mutation).toMatchObject({
+      operation: "text_generate",
+      entity: { kind: "text-revision", id: revision.revisionId },
+      forced: false,
+      accepted: true,
+      resultEntityId: revision.revisionId,
+    });
+    expect(audits[0]?.mutation.expectedReadToken).toBeUndefined();
+    expect(audits[0]?.mutation.beforeReadToken).toBeUndefined();
+    expect(audits[0]?.mutation.afterReadToken).toBeUndefined();
   });
 
   it("processes pending local-agent text generation nodes through a local text agent", async () => {

@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import type { LoroDoc } from "loro-crdt";
 import { hostMutationSucceeded } from "@clash/shared-types";
+import type { TextAppliedRevision } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
@@ -89,6 +90,92 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
     : [];
+}
+
+function textHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+function textRevisionActor(
+  nodeData: Record<string, unknown>,
+  userId: string,
+): TextAppliedRevision["actor"] | undefined {
+  if (nodeData.actorType !== "user" && nodeData.actorType !== "agent") return undefined;
+  return {
+    actorType: nodeData.actorType,
+    actorUserId: typeof nodeData.actorUserId === "string" && nodeData.actorUserId
+      ? nodeData.actorUserId
+      : userId,
+    ...(typeof nodeData.actorAgentId === "string" && nodeData.actorAgentId
+      ? { actorAgentId: nodeData.actorAgentId }
+      : {}),
+  };
+}
+
+function generatedTextRevision(options: {
+  projectId: string;
+  nodeId: string;
+  content: string;
+  nodeData: Record<string, unknown>;
+  userId: string;
+  createdAt?: string;
+}): TextAppliedRevision {
+  const contentHash = textHash(options.content);
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const actor = textRevisionActor(options.nodeData, options.userId);
+  const textId = `text:${options.projectId}:${options.nodeId}`;
+  const sourceFilePath = `workflow/${sanitizeStorageSegment(options.nodeId)}.md`;
+  const seed = JSON.stringify({
+    textId,
+    contentHash,
+    createdAt,
+    actor: actor ?? null,
+  });
+  const suffix = createHash("sha256").update(seed).digest("hex").slice(0, 12);
+  return {
+    schemaVersion: 1,
+    kind: "clash.text.revision",
+    textId,
+    revisionId: `txrev-${contentHash}-${suffix}`,
+    projectId: options.projectId,
+    nodeId: options.nodeId,
+    createdAt,
+    contentHash,
+    hashAlgorithm: "sha256-64",
+    sourceFilePath,
+    sourceFileHash: contentHash,
+    ...(actor ? { actor } : {}),
+  };
+}
+
+async function recordGeneratedTextRevision(options: {
+  dataDir: string;
+  userId: string;
+  projectId: string;
+  nodeId: string;
+  nodeData: Record<string, unknown>;
+  content: string;
+}): Promise<TextAppliedRevision> {
+  const revision = generatedTextRevision(options);
+  const mutation = hostMutationSucceeded({
+    operation: "text_generate",
+    entity: { kind: "text-revision", id: revision.revisionId },
+    forced: false,
+  }, { resultEntityId: revision.revisionId });
+  await createLocalMetadataStore(options.dataDir).upsertTextRevision(revision, {
+    id: randomUUID(),
+    createdAt: Date.now(),
+    operation: mutation.operation,
+    entity: mutation.entity,
+    actorClientType: options.nodeData.actorType === "agent" ? "agent" : null,
+    forced: mutation.forced,
+    accepted: mutation.accepted,
+    reason: "workflow generated text",
+    resultEntityId: mutation.resultEntityId ?? null,
+    error: mutation.error ?? null,
+    mutation,
+  });
+  return revision;
 }
 
 function pendingCustomNode(node: Record<string, any>): {
@@ -335,6 +422,14 @@ export function createLocalWorkflowProcessor(
             } catch {
               generated = await aigc.generateText(common);
             }
+            await recordGeneratedTextRevision({
+              dataDir: options.dataDir,
+              userId,
+              projectId,
+              nodeId,
+              nodeData: data,
+              content: generated.text,
+            });
             const nextData = {
               ...data,
               status: "completed",

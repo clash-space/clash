@@ -1993,6 +1993,76 @@ async function main() {
     JSON.stringify(workflowGeneratedAudit),
   );
 
+  const workflowTextProjectId = "project-workflow-generated-text";
+  const workflowTextRoom = await LocalLoroRoom.open({ dataDir, projectId: workflowTextProjectId });
+  const workflowTextPeer = workflowTextRoom.addPeer(() => {});
+  const workflowTextDoc = new LoroDoc();
+  workflowTextDoc.getMap("nodes").set("workflow-text-node", {
+    id: "workflow-text-node",
+    type: "text",
+    position: { x: 0, y: 0 },
+    data: {
+      status: "pending",
+      actionType: "text-gen",
+      prompt: "agent workflow generated text revision",
+      modelId: "gpt-5.4",
+      actorType: "agent",
+      actorUserId: "asset-receipt-user",
+      actorAgentId: "asset-receipt-agent",
+    },
+  });
+  await workflowTextRoom.receive(workflowTextPeer, workflowTextDoc.export({ mode: "snapshot" }));
+  const workflowTextFinal = new LoroDoc();
+  workflowTextFinal.import(workflowTextRoom.snapshot());
+  const workflowTextNode = workflowTextFinal.getMap("nodes").get("workflow-text-node");
+  const workflowTextData = workflowTextNode?.data ?? {};
+  const workflowTextRevisionResponse = await request(
+    `/api/v1/projects/${encodeURIComponent(workflowTextProjectId)}/text-revisions?nodeId=workflow-text-node`,
+  );
+  const workflowTextRevisions = await parseJsonResponse(workflowTextRevisionResponse);
+  const workflowTextRevision = workflowTextRevisions.revisions?.[0];
+  recordCheck(
+    "workflow generated text indexes host text revision",
+    workflowTextData.status === "completed" &&
+      typeof workflowTextData.content === "string" &&
+      workflowTextData.content.includes("agent workflow generated text revision") &&
+      workflowTextData.assetId == null &&
+      workflowTextRevisionResponse.status === 200 &&
+      workflowTextRevisions.revisions?.length === 1 &&
+      workflowTextRevision.kind === "clash.text.revision" &&
+      workflowTextRevision.projectId === workflowTextProjectId &&
+      workflowTextRevision.nodeId === "workflow-text-node" &&
+      workflowTextRevision.sourceFilePath === "workflow/workflow-text-node.md" &&
+      workflowTextRevision.actor?.actorType === "agent" &&
+      workflowTextRevision.actor?.actorAgentId === "asset-receipt-agent" &&
+      sqliteCount("select count(*) as count from assets where project_id = ?", [workflowTextProjectId]) === 0,
+    JSON.stringify({ workflowTextData, workflowTextRevisions }),
+  );
+
+  const workflowTextAuditResponse = workflowTextRevision?.revisionId
+    ? await request(`/api/v1/mutation-audit?operation=text_generate&entityId=${encodeURIComponent(workflowTextRevision.revisionId)}`)
+    : null;
+  const workflowTextAudit = workflowTextAuditResponse
+    ? await parseJsonResponse(workflowTextAuditResponse)
+    : { records: [] };
+  const workflowTextAuditRecord = workflowTextAudit.records?.[0];
+  recordCheck(
+    "workflow generated text writes sanitized local mutation audit evidence",
+    workflowTextAuditResponse?.status === 200 &&
+      workflowTextAudit.records?.length === 1 &&
+      workflowTextAuditRecord.operation === "text_generate" &&
+      workflowTextAuditRecord.entity?.kind === "text-revision" &&
+      workflowTextAuditRecord.entity?.id === workflowTextRevision?.revisionId &&
+      workflowTextAuditRecord.accepted === true &&
+      workflowTextAuditRecord.actorClientType === "agent" &&
+      workflowTextAuditRecord.reason === "workflow generated text" &&
+      !JSON.stringify(workflowTextAuditRecord.mutation ?? {}).includes("receipt") &&
+      workflowTextAuditRecord.mutation?.expectedReadToken == null &&
+      workflowTextAuditRecord.mutation?.beforeReadToken == null &&
+      workflowTextAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(workflowTextAudit),
+  );
+
   const assetRowsBeforeInvalidCreate = sqliteCount("select count(*) as count from assets");
   const invalidAssetCreateResponse = await request("/api/v1/assets", {
     method: "POST",
@@ -3781,6 +3851,8 @@ async function main() {
       workflowGeneratedAssetSymlinkParentRejected: checks.some((check) => check.name === "workflow generated asset writes reject symlinked parent outside local asset storage" && check.status === "pass"),
       workflowGeneratedAssetAccepted: checks.some((check) => check.name === "workflow generated asset accepts agent local generation" && check.status === "pass"),
       workflowGeneratedAssetAuditRecorded: checks.some((check) => check.name === "workflow generated asset writes sanitized local mutation audit evidence" && check.status === "pass"),
+      workflowGeneratedTextRevisionIndexed: checks.some((check) => check.name === "workflow generated text indexes host text revision" && check.status === "pass"),
+      workflowGeneratedTextAuditRecorded: checks.some((check) => check.name === "workflow generated text writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetCreateInvalidStorageKeyRejected: checks.some((check) => check.name === "asset create rejects storage keys outside local asset storage" && check.status === "pass"),
       assetCoverInvalidStorageKeyRejected: checks.some((check) => check.name === "asset cover update rejects storage keys outside local asset storage" && check.status === "pass"),
       sessionListReceiptReturned: checks.some((check) => check.name === "session list returns receipt read token" && check.status === "pass"),

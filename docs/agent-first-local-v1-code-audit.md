@@ -57,9 +57,11 @@ The main v1 gaps are:
 - text nodes now have first-pass Markdown projection CAS plus explicit COW
   replacement through `clash text pull/apply/replace`; successful apply/replace
   records `clash.text.revision` milestones with source path, content hash,
-  parent revision, and actor attribution, and local-api indexes those applied
-  revisions in SQLite `text_revisions` while storing supplied Markdown bodies as
-  immutable text revision blobs readable through the host API; `clash text
+  parent revision, and actor attribution, and local-api indexes those revisions
+  in SQLite `text_revisions`; workflow text generation now records host text
+  revision metadata and sanitized audit evidence, while explicit apply stores
+  supplied Markdown bodies as immutable text revision blobs readable through the
+  host API; `clash text
   history` reads that index through the host API, and `clash text content
   --revision <id> [--out <path>]` retrieves immutable revision Markdown without
   opening SQLite; richer visual history UI, conflict recovery, canonical
