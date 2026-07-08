@@ -864,10 +864,13 @@ Current status:
   warnings.
 - Local room endpoints now exist as a SQLite local-only baseline, and
   `apps/local-api/src/room-cli.e2e.test.ts` starts a real local-api HTTP server
-  while driving `clash room say/read/sync --json` through a spawned CLI process,
-  including denied local-only sync with parseable stdout admission evidence.
-  Remaining work is admission-controlled remote sync loop wiring, conflict
-  recovery UI, and broader live UI parity.
+  while driving `clash room say/read/sync/resolve-conflict --json` through a
+  spawned CLI process, including denied local-only sync with parseable stdout
+  admission evidence, remote/local conflict hash inspection, stale-hash
+  rejection, explicit divergence recovery persistence, and later sync
+  continuation without overwriting local text. Remaining work is
+  admission-controlled remote sync loop wiring, conflict recovery UI, and
+  broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
   outside-cwd and symlink-outside-cwd projection path rejection including
