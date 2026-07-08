@@ -217,6 +217,8 @@
         "directCanvasCliDeleteReadTokenRequired",
         "textHistoryReadsHostRevisionIndex",
         "timelineHistoryReadsHostRevisionIndex",
+        "textCutExportSourceProvenanceRecorded",
+        "textCutExportSymlinkActionRejected",
         "evidence"
       ],
       "properties": {
@@ -289,6 +291,14 @@
           "const": true
         },
         "timelineHistoryReadsHostRevisionIndex": {
+          "type": "boolean",
+          "const": true
+        },
+        "textCutExportSourceProvenanceRecorded": {
+          "type": "boolean",
+          "const": true
+        },
+        "textCutExportSymlinkActionRejected": {
           "type": "boolean",
           "const": true
         },

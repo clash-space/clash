@@ -1260,6 +1260,121 @@ function runProjectionPathGuards() {
   };
 }
 
+async function runTextCutExportProvenance() {
+  await writeJson(path.join(workspace, "analysis", "transcripts", "talking-head.json"), {
+    fps: 30,
+    backendId: "local-agent-first-asr",
+    modelId: "local-agent-first-model",
+    language: "zh-CN",
+    averageConfidence: 0.94,
+    words: [
+      { id: "w1", text: "大家", startFrame: 0, endFrame: 12 },
+      { id: "w2", text: "嗯", startFrame: 12, endFrame: 18 },
+      { id: "w3", text: "今天", startFrame: 30, endFrame: 42 },
+      { id: "w4", text: "开始", startFrame: 42, endFrame: 72 },
+    ],
+  });
+  await writeJson(path.join(workspace, "assets", "manifest.json"), {
+    assets: [{ id: "asset-talk", type: "video", path: "assets/source/talk.mp4", metadata: {} }],
+  });
+
+  const plan = runProduction([
+    "plan-text-cut",
+    "--transcript",
+    "analysis/transcripts/talking-head.json",
+    "--target-asset",
+    "asset-talk",
+    "--out",
+    "actions/talking-head-text-cut.json",
+    "--min-silence-frames",
+    "10",
+    "--json",
+  ]);
+  recordCheck(
+    "text-cut action planning produced local action",
+    plan.status === 0 && parseStdoutJson(plan).actionPath.endsWith(path.join("actions", "talking-head-text-cut.json")),
+    plan.stderr || plan.stdout,
+    { command: plan.command },
+  );
+
+  const exported = runProduction([
+    "export-text-cut-media",
+    "--action",
+    "actions/talking-head-text-cut.json",
+    "--source-asset",
+    "asset-talk",
+    "--output-asset",
+    "asset-talk-clean",
+    "--assets",
+    "assets/manifest.json",
+    "--json",
+  ]);
+  const exportedPayload = exported.status === 0 ? parseStdoutJson(exported) : null;
+  const cutPackage = exportedPayload ? JSON.parse(readFileSync(exportedPayload.packagePath, "utf8")) : null;
+  const ffmpegPlan = exportedPayload ? JSON.parse(readFileSync(exportedPayload.ffmpegPlanPath, "utf8")) : null;
+  const assets = JSON.parse(readFileSync(path.join(workspace, "assets", "manifest.json"), "utf8"));
+  const outputAsset = assets.assets.find((asset) => asset.id === "asset-talk-clean");
+  const outputMetadata = outputAsset?.metadata?.["talking-head.media-cut-export"];
+  recordCheck(
+    "text-cut export records source action provenance",
+    exported.status === 0 &&
+      exportedPayload?.sourceActionPath === "actions/talking-head-text-cut.json" &&
+      /^[a-f0-9]{16}$/.test(exportedPayload?.sourceActionHash ?? "") &&
+      cutPackage?.sourceActionPath === exportedPayload.sourceActionPath &&
+      cutPackage?.sourceActionHash === exportedPayload.sourceActionHash &&
+      ffmpegPlan?.sourceActionPath === exportedPayload.sourceActionPath &&
+      ffmpegPlan?.sourceActionHash === exportedPayload.sourceActionHash &&
+      outputMetadata?.sourceActionPath === exportedPayload.sourceActionPath &&
+      outputMetadata?.sourceActionHash === exportedPayload.sourceActionHash,
+    exported.stderr || exported.stdout,
+    {
+      command: exported.command,
+      packagePath: exportedPayload?.packagePath,
+      ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
+      sourceActionHash: exportedPayload?.sourceActionHash,
+    },
+  );
+
+  const outsideActionDir = path.join(artifactRoot, "outside-text-cut-action");
+  mkdirSync(outsideActionDir, { recursive: true });
+  const outsideActionPath = path.join(outsideActionDir, "talking-head-text-cut.json");
+  writeFileSync(outsideActionPath, readFileSync(path.join(workspace, "actions", "talking-head-text-cut.json")));
+  symlinkSync(outsideActionPath, path.join(workspace, "actions", "linked-talking-head-text-cut.json"));
+  const symlinkedActionExport = runProduction([
+    "export-text-cut-media",
+    "--action",
+    "actions/linked-talking-head-text-cut.json",
+    "--source-asset",
+    "asset-talk",
+    "--output-asset",
+    "asset-talk-linked",
+    "--assets",
+    "assets/manifest.json",
+    "--json",
+  ]);
+  recordCheck(
+    "text-cut export rejects symlinked source action outside cwd",
+    symlinkedActionExport.status === 1 &&
+      /action path must stay inside the project/i.test(symlinkedActionExport.stderr),
+    symlinkedActionExport.stderr || symlinkedActionExport.stdout,
+    { command: symlinkedActionExport.command },
+  );
+
+  return {
+    export: {
+      outputAssetId: exportedPayload?.outputAssetId,
+      packagePath: exportedPayload?.packagePath,
+      ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
+      sourceActionPath: exportedPayload?.sourceActionPath,
+      sourceActionHash: exportedPayload?.sourceActionHash,
+    },
+    symlinkedActionExport: {
+      status: symlinkedActionExport.status,
+      stderr: symlinkedActionExport.stderr,
+    },
+  };
+}
+
 async function runDirectCanvasCliReadTokenCas() {
   const publicCliCanvasUpdateCommand = "clash canvas update";
   const projectId = "project-agent-first-cas-cli";
@@ -1637,6 +1752,7 @@ async function main() {
   let promptPack = null;
   let reviewGate = null;
   let projectionPathGuards = null;
+  let textCutExport = null;
   let directCanvas = null;
   let directCanvasCli = null;
   try {
@@ -1644,6 +1760,7 @@ async function main() {
     promptPack = await runStoryboardPromptPackCas();
     reviewGate = await runReviewGateCas();
     projectionPathGuards = runProjectionPathGuards();
+    textCutExport = await runTextCutExportProvenance();
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
     requireCheckPassed("text history reads host revision index");
@@ -1684,6 +1801,8 @@ async function main() {
       directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
       textHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "text history reads host revision index" && check.status === "pass"),
       timelineHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "timeline history reads host revision index" && check.status === "pass"),
+      textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
+      textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),
       projectionPathOutsideCwdRejected: [
           "text pull rejects projection path outside cwd",
           "text forced apply rejects projection path outside cwd",
@@ -1708,6 +1827,7 @@ async function main() {
       promptPack,
       reviewGate,
       projectionPathGuards,
+      textCutExport,
       directCanvas,
       directCanvasCli,
     },

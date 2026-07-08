@@ -780,7 +780,9 @@ Current status:
   forced apply, text/timeline/storyboard prompt-pack/review-gate symlinked
   lock-sidecar rejection, pipeline validation symlinked QA report rejection,
   reference-role symlinked action-plan rejection, caption sidecar export
-  symlinked output rejection,
+  symlinked output rejection, text-cut media export source-action provenance
+  in the CLI result/ffmpeg plan/package/asset metadata, and text-cut media
+  export rejection for symlinked source actions outside cwd,
   daemon direct canvas read-token
   rejection/acceptance, public
   `clash canvas get/update/delete` read-token and mutation-envelope enforcement
