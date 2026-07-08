@@ -313,6 +313,9 @@ Current status:
 - `clash text apply/replace` registers the applied revision with that local API
   after a successful canvas mutation, while keeping older targets compatible
   when the index endpoint is unavailable.
+- `clash text history` reads that host-owned revision index through
+  `GET /api/v1/projects/:projectId/text-revisions`, giving agents a CLI
+  history surface without direct SQLite access.
 - Text apply rejects materialized downstream checkpoint rewrites by default,
   allows unmaterialized action-draft references, and permits explicit
   `--force` checkpoint rewrites.
@@ -325,8 +328,8 @@ Remaining gap:
 
 - Text nodes are still canvas `data.content`; the durable SQLite row is a
   revision/provenance index, not a canonical text asset body.
-- Richer text revision UI/history, conflict recovery, canonical file-backed
-  text mode, and sync mirror policy are still open.
+- Richer visual history UI, conflict recovery, canonical file-backed text mode,
+  and sync mirror policy are still open.
 - No text frontmatter metadata is projected yet.
 
 ### P0-05: Copy-on-write for referenced text/content

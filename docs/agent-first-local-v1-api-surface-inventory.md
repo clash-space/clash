@@ -629,10 +629,12 @@ Rules:
 - returns an accepted host mutation record for successful index writes,
 - keeps text body editing behind `clash text pull/apply/replace` CAS rather
   than direct SQLite writes.
+- `clash text history` reads the GET endpoint as the agent-facing history
+  surface instead of opening SQLite.
 
 Remaining:
 
-- richer text revision UI/history,
+- richer visual text revision UI/history,
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 

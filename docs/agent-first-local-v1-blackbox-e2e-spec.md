@@ -247,7 +247,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T01-52-29-143Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-08T01-58-27-165Z/agent-first-cas-report.json
 ```
 
 Result:

@@ -197,6 +197,7 @@ clash canvas timeline push
 clash text pull
 clash text apply
 clash text replace
+clash text history
 clash production project-storyboard-prompt-pack
 clash production apply-storyboard-prompt-pack
 clash production replace-storyboard-prompt-pack
@@ -719,9 +720,11 @@ Current first pass:
   through `POST /api/v1/text-revisions`, and exposes project/node lookup through
   `GET /api/v1/projects/:projectId/text-revisions`. `clash text apply/replace`
   registers the revision with that host API after a successful canvas apply.
+- `clash text history` exposes the host-owned revision index to agents without
+  making SQLite an editable or directly readable product surface.
 - Text is still stored in canvas `data.content`; optional file-backed canonical
-  text mode, richer history UI, and local-to-cloud revision sync policy remain
-  future work.
+  text mode, richer visual history UI, and local-to-cloud revision sync policy
+  remain future work.
 
 ### P1: Project directory layout policy
 

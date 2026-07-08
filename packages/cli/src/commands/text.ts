@@ -3,10 +3,10 @@ import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { LoroSyncClient } from "@clash/shared-types";
+import { LoroSyncClient, TextAppliedRevisionSchema } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { apiFetch } from "../lib/api";
-import { isJsonMode, printJson } from "../lib/output";
+import { isJsonMode, printJson, printTable } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
 import { resolveCanvasActor, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
@@ -280,6 +280,50 @@ textCommand
     }
   });
 
+textCommand
+  .command("history")
+  .description("List applied text revisions indexed by the host")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--node <id>", "Filter by text node ID")
+  .option("--limit <n>", "Maximum revisions to return")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
+    let limit: number | undefined;
+    try {
+      limit = parseTextRevisionLimit(options.limit);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+
+    try {
+      const result = await fetchTextRevisionHistory(projectId, { nodeId: options.node, limit });
+      const payload = { projectId, nodeId: options.node, ...result };
+      if (isJsonMode(options)) {
+        printJson(payload);
+      } else {
+        printTable(result.revisions.map((revision) => ({
+          revisionId: revision.revisionId,
+          nodeId: revision.nodeId,
+          parent: revision.parentRevisionId ?? "",
+          hash: revision.contentHash,
+          createdAt: revision.createdAt,
+          source: revision.sourceFilePath,
+        })), [
+          { key: "revisionId", label: "Revision", width: 32 },
+          { key: "nodeId", label: "Node", width: 20 },
+          { key: "hash", label: "Hash", width: 16 },
+          { key: "createdAt", label: "Created", width: 24 },
+          { key: "source", label: "Source", width: 36 },
+        ]);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
 function readTextLockFile(lockPath: string): TextLock {
   try {
     return parseTextLock(readFileSync(lockPath, "utf8"));
@@ -338,6 +382,54 @@ export async function registerTextRevisionIndex(
       error: `text revision index unavailable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+export type TextRevisionHistoryResult = {
+  revisions: TextAppliedRevision[];
+};
+
+export async function fetchTextRevisionHistory(
+  projectId: string,
+  options: { nodeId?: string; limit?: number } = {},
+  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+): Promise<TextRevisionHistoryResult> {
+  const params = new URLSearchParams();
+  if (options.nodeId) params.set("nodeId", options.nodeId);
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  const query = params.toString();
+  const response = await request(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/text-revisions${query ? `?${query}` : ""}`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("text revision history API unavailable");
+    }
+    const body = await response.text().catch(() => "");
+    throw new Error(body ? `text revision history rejected: ${body}` : `text revision history rejected with HTTP ${response.status}`);
+  }
+  const body = await response.json().catch(() => null) as { revisions?: unknown[] } | null;
+  if (!body || !Array.isArray(body.revisions)) {
+    throw new Error("Invalid text revision history response");
+  }
+  return {
+    revisions: body.revisions.map((revision) => {
+      const parsed = TextAppliedRevisionSchema.safeParse(revision);
+      if (!parsed.success) {
+        throw new Error("Invalid text revision history response");
+      }
+      return parsed.data;
+    }),
+  };
+}
+
+function parseTextRevisionLimit(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error("Text revision history limit must be a positive integer");
+  }
+  return limit;
 }
 
 type TextNodeReadResult = TextNodeLike & {

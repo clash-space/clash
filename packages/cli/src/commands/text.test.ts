@@ -9,6 +9,7 @@ import {
   assertTextNotReferenced,
   createTextAppliedRevision,
   createTextLock,
+  fetchTextRevisionHistory,
   parseTextLock,
   registerTextRevisionIndex,
   resolveTextFilePath,
@@ -28,7 +29,7 @@ test("registers a top-level text command for agent-editable text files", () => {
   assert.match(indexSource, /import \{ textCommand \} from "\.\/commands\/text"/);
   assert.match(indexSource, /program\.addCommand\(textCommand\)/);
   assert.equal(textCommand.name(), "text");
-  assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace"]);
+  assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history"]);
   assert.match(daemonSource, /case "text_cas_update"/);
   assert.match(daemonSource, /text_cas_update requires string content/);
   assert.match(daemonSource, /case "text_cow_replace"/);
@@ -285,6 +286,29 @@ test("keeps text apply compatible when the host text revision index is unavailab
     status: 404,
     error: "text revision index API unavailable",
   });
+});
+
+test("fetches text revision history through the host API", async () => {
+  const revision = createTextAppliedRevision({
+    projectId: "project_text",
+    nodeId: "text_node",
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    content: "indexed copy",
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+  const calls: Array<{ path: string; method: string | undefined }> = [];
+
+  const result = await fetchTextRevisionHistory("project_text", { nodeId: "text_node", limit: 2 }, async (path, init) => {
+    calls.push({ path, method: init?.method });
+    return new Response(JSON.stringify({ revisions: [revision] }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  assert.deepEqual(result, { revisions: [revision] });
+  assert.deepEqual(calls, [{
+    path: "/api/v1/projects/project_text/text-revisions?nodeId=text_node&limit=2",
+    method: "GET",
+  }]);
 });
 
 test("parses legacy text CAS locks into the generic projection envelope", () => {

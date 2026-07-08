@@ -92,6 +92,9 @@ Existing text behavior:
   refreshed lock sidecars store the applied revision so the next apply has a
   stable parent. Copy-on-write replacement nodes also store the same text
   revision in node data.
+- `clash text history` reads the host-owned text revision index through the
+  local API, so agents can inspect applied text revisions without direct DB
+  access.
 - In-place apply is rejected by default when the text node feeds materialized
   downstream state; text feeding only unmaterialized action drafts remains
   editable. `clash text replace` creates a copy-on-write text node from the

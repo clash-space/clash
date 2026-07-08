@@ -54,8 +54,9 @@ The main v1 gaps are:
   replacement through `clash text pull/apply/replace`; successful apply/replace
   records `clash.text.revision` milestones with source path, content hash,
   parent revision, and actor attribution, and local-api indexes those applied
-  revisions in SQLite `text_revisions`; richer history UI, conflict recovery,
-  canonical file-backed text mode, and sync policy are still future work,
+  revisions in SQLite `text_revisions`; `clash text history` reads that index
+  through the host API; richer visual history UI, conflict recovery, canonical
+  file-backed text mode, and sync policy are still future work,
 - shared projection path resolution now keeps text/timeline projection files
   inside the current agent/project cwd and rejects symlinked parents that
   resolve outside it, and applies the same cwd/realpath guard to generated
