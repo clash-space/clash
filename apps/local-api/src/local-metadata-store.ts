@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import type { TextAppliedRevision } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 
 type SqlitePrimitive = string | number | null;
@@ -118,6 +119,12 @@ export interface LocalMutationAuditRecord {
 export interface LocalMutationAuditFilter {
   operation?: string;
   entityId?: string;
+  limit?: number;
+}
+
+export interface LocalTextRevisionFilter {
+  projectId: string;
+  nodeId?: string;
   limit?: number;
 }
 
@@ -240,6 +247,22 @@ function applySchema(db: SqliteDatabase): void {
     );
     CREATE INDEX IF NOT EXISTS asset_node_refs_asset_idx ON asset_node_refs(asset_id, project_id);
     CREATE INDEX IF NOT EXISTS asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
+
+    CREATE TABLE IF NOT EXISTS text_revisions (
+      revision_id TEXT PRIMARY KEY NOT NULL,
+      text_id TEXT NOT NULL,
+      parent_revision_id TEXT,
+      project_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      hash_algorithm TEXT NOT NULL,
+      source_file_path TEXT NOT NULL,
+      source_file_hash TEXT NOT NULL,
+      actor_json TEXT
+    );
+    CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS runtime_session (
       id TEXT PRIMARY KEY NOT NULL,
@@ -372,6 +395,35 @@ function mutationAuditLimit(limit: number | undefined): number {
   return Math.max(1, Math.min(200, Math.floor(limit ?? 50)));
 }
 
+function textRevisionLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) return 50;
+  return Math.max(1, Math.min(200, Math.floor(limit ?? 50)));
+}
+
+function textRevisionFromRow(row: Record<string, unknown>): TextAppliedRevision {
+  return {
+    schemaVersion: 1,
+    kind: "clash.text.revision",
+    textId: rowString(row, "text_id"),
+    revisionId: rowString(row, "revision_id"),
+    ...(rowOptionalString(row, "parent_revision_id") ? { parentRevisionId: rowOptionalString(row, "parent_revision_id") } : {}),
+    projectId: rowString(row, "project_id"),
+    nodeId: rowString(row, "node_id"),
+    createdAt: rowString(row, "created_at"),
+    contentHash: rowString(row, "content_hash"),
+    hashAlgorithm: "sha256-64",
+    sourceFilePath: rowString(row, "source_file_path"),
+    sourceFileHash: rowString(row, "source_file_hash"),
+    ...(rowOptionalString(row, "actor_json")
+      ? { actor: parseJson<TextAppliedRevision["actor"]>(row.actor_json, undefined) }
+      : {}),
+  };
+}
+
+function sameTextRevision(left: TextAppliedRevision, right: TextAppliedRevision): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function hasRows(db: SqliteDatabase): boolean {
   const row = db.prepare(`
     SELECT
@@ -379,6 +431,7 @@ function hasRows(db: SqliteDatabase): boolean {
       (SELECT COUNT(*) FROM assets) +
       (SELECT COUNT(*) FROM asset_refs) +
       (SELECT COUNT(*) FROM asset_node_refs) +
+      (SELECT COUNT(*) FROM text_revisions) +
       (SELECT COUNT(*) FROM runtime_session) +
       (SELECT COUNT(*) FROM agent_member) +
       (SELECT COUNT(*) FROM chat_message) +
@@ -881,6 +934,61 @@ export function createLocalMetadataStore(dataDir: string) {
     })));
   }
 
+  async function upsertTextRevision(revision: TextAppliedRevision): Promise<TextAppliedRevision> {
+    await withDb((db) => {
+      const existing = db.prepare(`
+        SELECT revision_id, text_id, parent_revision_id, project_id, node_id,
+               created_at, content_hash, hash_algorithm, source_file_path,
+               source_file_hash, actor_json
+          FROM text_revisions
+         WHERE revision_id = ?
+      `).get(revision.revisionId);
+      if (existing && !sameTextRevision(textRevisionFromRow(existing), revision)) {
+        throw new Error(`Text revision ${revision.revisionId} already exists with different metadata`);
+      }
+      db.prepare(`
+        INSERT OR REPLACE INTO text_revisions (
+          revision_id, text_id, parent_revision_id, project_id, node_id,
+          created_at, content_hash, hash_algorithm, source_file_path,
+          source_file_hash, actor_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        revision.revisionId,
+        revision.textId,
+        revision.parentRevisionId ?? null,
+        revision.projectId,
+        revision.nodeId,
+        revision.createdAt,
+        revision.contentHash,
+        revision.hashAlgorithm,
+        revision.sourceFilePath,
+        revision.sourceFileHash,
+        jsonOrNull(revision.actor),
+      );
+      markMigration(db, dataDir, "");
+    });
+    return revision;
+  }
+
+  async function listTextRevisions(filter: LocalTextRevisionFilter): Promise<TextAppliedRevision[]> {
+    const clauses = ["project_id = ?"];
+    const params: SqlitePrimitive[] = [filter.projectId];
+    if (filter.nodeId?.trim()) {
+      clauses.push("node_id = ?");
+      params.push(filter.nodeId.trim());
+    }
+    params.push(textRevisionLimit(filter.limit));
+    return withDb((db) => db.prepare(`
+      SELECT revision_id, text_id, parent_revision_id, project_id, node_id,
+             created_at, content_hash, hash_algorithm, source_file_path,
+             source_file_hash, actor_json
+        FROM text_revisions
+       WHERE ${clauses.join(" AND ")}
+       ORDER BY created_at DESC, revision_id DESC
+       LIMIT ?
+    `).all(...params).map(textRevisionFromRow));
+  }
+
   return {
     path,
     load,
@@ -889,5 +997,7 @@ export function createLocalMetadataStore(dataDir: string) {
     resolveStorageKeys,
     appendMutationAudit,
     listMutationAudit,
+    upsertTextRevision,
+    listTextRevisions,
   };
 }

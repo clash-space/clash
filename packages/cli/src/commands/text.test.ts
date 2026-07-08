@@ -10,6 +10,7 @@ import {
   createTextAppliedRevision,
   createTextLock,
   parseTextLock,
+  registerTextRevisionIndex,
   resolveTextFilePath,
   resolveTextLockPath,
   textHash,
@@ -238,6 +239,52 @@ test("creates text applied revision milestones for file-backed text edits", () =
     pulledAt: "2026-07-07T00:00:00.000Z",
   });
   assert.deepEqual(parseTextLock(JSON.stringify(lock)).appliedRevision, revision);
+});
+
+test("registers text revisions through the host index API when available", async () => {
+  const revision = createTextAppliedRevision({
+    projectId: "project_text",
+    nodeId: "text_node",
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    content: "indexed copy",
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+  const calls: Array<{ path: string; contentType: string | null; body: unknown }> = [];
+
+  const result = await registerTextRevisionIndex(revision, async (path, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      path,
+      contentType: headers.get("content-type"),
+      body: JSON.parse(String(init?.body ?? "{}")),
+    });
+    return new Response(JSON.stringify({ revision }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  assert.deepEqual(result, { indexed: true });
+  assert.deepEqual(calls, [{ path: "/api/v1/text-revisions", contentType: "application/json", body: { revision } }]);
+});
+
+test("keeps text apply compatible when the host text revision index is unavailable", async () => {
+  const revision = createTextAppliedRevision({
+    projectId: "project_text",
+    nodeId: "text_node",
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/projections/text/text-node.md",
+    content: "remote copy",
+    createdAt: "2026-07-07T00:00:00.000Z",
+  });
+
+  const result = await registerTextRevisionIndex(revision, async () =>
+    new Response("missing", { status: 404 }),
+  );
+
+  assert.deepEqual(result, {
+    indexed: false,
+    status: 404,
+    error: "text revision index API unavailable",
+  });
 });
 
 test("parses legacy text CAS locks into the generic projection envelope", () => {

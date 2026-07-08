@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { agentReadToken } from "@clash/shared-types";
+import {
+  agentReadToken,
+  TextAppliedRevisionSchema,
+  TextRevisionActorSchema,
+  type TextAppliedRevision,
+  type TextRevisionActor,
+} from "@clash/shared-types";
 import {
   validateCanvasContentPatch,
   type CanvasUpdateNodeWithIdLike,
@@ -15,6 +21,8 @@ import {
   resolveProjectionLockPathInsideCwd,
   resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
+
+export type { TextAppliedRevision, TextRevisionActor };
 
 export type TextNodeLike = {
   type: string;
@@ -37,28 +45,6 @@ export type TextLock = {
 };
 
 export type TextCasResult = { ok: true } | { ok: false; error: string };
-
-export type TextRevisionActor = {
-  actorType: "user" | "agent";
-  actorUserId: string;
-  actorAgentId?: string;
-};
-
-export type TextAppliedRevision = {
-  schemaVersion: 1;
-  kind: "clash.text.revision";
-  textId: string;
-  revisionId: string;
-  parentRevisionId?: string;
-  projectId: string;
-  nodeId: string;
-  createdAt: string;
-  contentHash: string;
-  hashAlgorithm: "sha256-64";
-  sourceFilePath: string;
-  sourceFileHash: string;
-  actor?: TextRevisionActor;
-};
 
 export type TextReferenceEdge = {
   source: string;
@@ -271,37 +257,15 @@ export function parseTextLock(raw: string): TextLock {
 }
 
 function parseTextAppliedRevision(value: unknown): TextAppliedRevision {
-  const revision = value as Partial<TextAppliedRevision>;
-  if (
-    !revision ||
-    typeof revision !== "object" ||
-    revision.schemaVersion !== 1 ||
-    revision.kind !== "clash.text.revision" ||
-    typeof revision.textId !== "string" ||
-    typeof revision.revisionId !== "string" ||
-    (revision.parentRevisionId !== undefined && typeof revision.parentRevisionId !== "string") ||
-    typeof revision.projectId !== "string" ||
-    typeof revision.nodeId !== "string" ||
-    typeof revision.createdAt !== "string" ||
-    typeof revision.contentHash !== "string" ||
-    revision.hashAlgorithm !== "sha256-64" ||
-    typeof revision.sourceFilePath !== "string" ||
-    typeof revision.sourceFileHash !== "string" ||
-    (revision.actor !== undefined && !isTextRevisionActor(revision.actor))
-  ) {
+  const result = TextAppliedRevisionSchema.safeParse(value);
+  if (!result.success) {
     throw new Error("Invalid text applied revision");
   }
-  return revision as TextAppliedRevision;
+  return result.data;
 }
 
 export function isTextRevisionActor(value: unknown): value is TextRevisionActor {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const actor = value as Partial<TextRevisionActor>;
-  return (
-    (actor.actorType === "user" || actor.actorType === "agent") &&
-    typeof actor.actorUserId === "string" &&
-    (actor.actorAgentId === undefined || typeof actor.actorAgentId === "string")
-  );
+  return TextRevisionActorSchema.safeParse(value).success;
 }
 
 export function assertTextCas(options: {

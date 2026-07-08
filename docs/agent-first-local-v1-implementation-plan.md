@@ -306,6 +306,13 @@ Current status:
   source file path, content hash, parent revision, and actor attribution;
   refreshed locks carry the applied revision, and COW replacement nodes keep the
   same revision in node data.
+- Local-api persists applied text revision metadata in host-owned SQLite
+  `text_revisions` rows via `POST /api/v1/text-revisions`, exposes project/node
+  lookup via `GET /api/v1/projects/:projectId/text-revisions`, and keeps those
+  rows out of the media `assets` table.
+- `clash text apply/replace` registers the applied revision with that local API
+  after a successful canvas mutation, while keeping older targets compatible
+  when the index endpoint is unavailable.
 - Text apply rejects materialized downstream checkpoint rewrites by default,
   allows unmaterialized action-draft references, and permits explicit
   `--force` checkpoint rewrites.
@@ -316,8 +323,10 @@ Current status:
 
 Remaining gap:
 
-- Text nodes are still canvas `data.content`; they are not yet durable text
-  asset/content revision rows in SQLite.
+- Text nodes are still canvas `data.content`; the durable SQLite row is a
+  revision/provenance index, not a canonical text asset body.
+- Richer text revision UI/history, conflict recovery, canonical file-backed
+  text mode, and sync mirror policy are still open.
 - No text frontmatter metadata is projected yet.
 
 ### P0-05: Copy-on-write for referenced text/content
@@ -856,8 +865,9 @@ Remaining gap:
   still rejects in-place mutation by default; unmaterialized action-draft
   references can still be edited in place, and explicit `--force` can rewrite a
   checkpoint. Successful apply/replace now also creates an applied text revision
-  milestone; the remaining gap is durable SQLite indexing/UI history, not basic
-  revision evidence.
+  milestone and registers it in the local SQLite `text_revisions` index; the
+  remaining gap is richer UI/history, conflict recovery, canonical file-backed
+  text mode, and sync policy, not basic revision evidence.
 - Timeline COW/versioned replacement has a first-pass explicit
   `clash timeline replace` implementation. Current `apply` still detects
   materialized downstream render/checkpoint references and rejects the in-place

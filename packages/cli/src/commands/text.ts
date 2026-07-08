@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { LoroSyncClient } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
+import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
@@ -173,17 +174,24 @@ textCommand
     });
     mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+    const textRevisionIndex = await registerTextRevisionIndex(textRevision);
     const payload = {
       ...result,
       projectId,
       filePath,
       lockPath,
       textRevision,
+      textRevisionIndex,
       contentHash: refreshedLock.contentHash,
       readToken: refreshedLock.readToken,
     };
     if (isJsonMode(options)) printJson(payload);
-    else process.stderr.write(`applied ${filePath} to ${options.node}${result.forced ? " (forced)" : ""}\n`);
+    else {
+      if (!textRevisionIndex.indexed) {
+        process.stderr.write(`warning: ${textRevisionIndex.error}\n`);
+      }
+      process.stderr.write(`applied ${filePath} to ${options.node}${result.forced ? " (forced)" : ""}\n`);
+    }
   });
 
 textCommand
@@ -249,17 +257,22 @@ textCommand
     });
     mkdirSync(dirname(lockPath), { recursive: true });
     writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+    const textRevisionIndex = await registerTextRevisionIndex(textRevision);
     const payload = {
       ...result,
       projectId,
       filePath,
       lockPath,
       textRevision,
+      textRevisionIndex,
       contentHash: refreshedLock.contentHash,
       readToken: refreshedLock.readToken,
     };
     if (isJsonMode(options)) printJson(payload);
     else {
+      if (!textRevisionIndex.indexed) {
+        process.stderr.write(`warning: ${textRevisionIndex.error}\n`);
+      }
       process.stderr.write(
         `created copy-on-write text ${result.newNodeId} from ${options.node}\n` +
         `wrote ${lockPath}\n`,
@@ -293,6 +306,38 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
 async function runCommand(projectId: string, cmd: object): Promise<any> {
   if (!isDaemonRunning(projectId)) return null;
   return sendCommand(projectId, cmd);
+}
+
+export type TextRevisionIndexResult =
+  | { indexed: true }
+  | { indexed: false; status?: number; error: string };
+
+export async function registerTextRevisionIndex(
+  revision: TextAppliedRevision,
+  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
+): Promise<TextRevisionIndexResult> {
+  try {
+    const response = await request("/api/v1/text-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision }),
+    });
+    if (response.ok) return { indexed: true };
+    if (response.status === 404) {
+      return { indexed: false, status: 404, error: "text revision index API unavailable" };
+    }
+    const body = await response.text().catch(() => "");
+    return {
+      indexed: false,
+      status: response.status,
+      error: body ? `text revision index rejected: ${body}` : `text revision index rejected with HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      indexed: false,
+      error: `text revision index unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 type TextNodeReadResult = TextNodeLike & {

@@ -32,6 +32,7 @@ import {
   providerOAuthReadToken,
   ProviderOAuthIdSchema,
   sessionReadToken,
+  TextAppliedRevisionSchema,
   validateCanvasEdgeAdd,
   validateCanvasEdgeDelete,
   validateCanvasEdgePatch,
@@ -49,6 +50,7 @@ import {
   type ModelUpstreamRoute,
   type ModelKind,
   type HostMutationRecord,
+  type TextAppliedRevision,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import {
@@ -99,6 +101,7 @@ import {
   type LocalMetadataDb,
   type LocalMutationAuditFilter,
   type LocalMutationAuditRecord,
+  type LocalTextRevisionFilter,
   type LocalMetadataProject as LocalProject,
   type LocalMetadataProjectAsset as LocalProjectAsset,
   type LocalMetadataRoomMention as LocalRoomMention,
@@ -663,7 +666,18 @@ function createDb(dataDir: string) {
     return metadataStore.listMutationAudit(filter);
   }
 
-  return { load, update, appendMutationAudit, listMutationAudit };
+  async function upsertTextRevision(revision: TextAppliedRevision): Promise<TextAppliedRevision> {
+    const task = writeQueue.catch(() => undefined).then(() => metadataStore.upsertTextRevision(revision));
+    writeQueue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
+  async function listTextRevisions(filter: LocalTextRevisionFilter): Promise<TextAppliedRevision[]> {
+    await writeQueue.catch(() => undefined);
+    return metadataStore.listTextRevisions(filter);
+  }
+
+  return { load, update, appendMutationAudit, listMutationAudit, upsertTextRevision, listTextRevisions };
 }
 
 function sanitizeMutationForAudit(mutation: HostMutationRecord): Record<string, unknown> {
@@ -860,6 +874,28 @@ function isAssetKind(value: unknown): value is AssetKind {
 
 function optionalBodyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isSafeProjectRelativePath(value: string): boolean {
+  if (!value || value.startsWith("/") || /^[A-Za-z]:/.test(value) || value.includes("\\")) return false;
+  const parts = value.split("/");
+  return parts.every((part) => part.length > 0 && part !== "." && part !== "..");
+}
+
+function parseTextRevisionForIndex(value: unknown): { ok: true; revision: TextAppliedRevision } | { ok: false; error: string } {
+  const parsed = TextAppliedRevisionSchema.safeParse(value);
+  if (!parsed.success) return { ok: false, error: "Invalid text revision" };
+  const revision = parsed.data;
+  if (!/^[a-f0-9]{16}$/.test(revision.contentHash) || !/^[a-f0-9]{16}$/.test(revision.sourceFileHash)) {
+    return { ok: false, error: "Text revision hashes must be sha256-64 hex strings" };
+  }
+  if (revision.sourceFileHash !== revision.contentHash) {
+    return { ok: false, error: "Text revision source file hash must match content hash" };
+  }
+  if (!isSafeProjectRelativePath(revision.sourceFilePath)) {
+    return { ok: false, error: "Text revision source file path must be project-relative" };
+  }
+  return { ok: true, revision };
 }
 
 function stringArray(value: unknown): string[] {
@@ -4201,6 +4237,48 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       sync: await publicRoomSyncMeta(syncConfig),
       mutation: hostMutationSucceeded(envelope, { resultEntityId: payload.id }),
     });
+  });
+
+  app.post("/api/v1/text-revisions", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown };
+    const parsed = parseTextRevisionForIndex(body.revision);
+    const envelope = {
+      operation: "text_revision_index",
+      entity: { kind: "text", id: parsed.ok ? `${parsed.revision.projectId}:${parsed.revision.nodeId}` : "" },
+      forced: false,
+    };
+    if (!parsed.ok) {
+      return c.json({
+        error: parsed.error,
+        mutation: hostMutationRejected(envelope, parsed.error),
+      }, 400);
+    }
+
+    try {
+      const revision = await db.upsertTextRevision(parsed.revision);
+      const mutation = hostMutationSucceeded(envelope, { resultEntityId: revision.revisionId });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        reason: "text revision indexed",
+      }));
+      return c.json({ revision, mutation });
+    } catch (error) {
+      const message = errorMessage(error);
+      return c.json({
+        error: message,
+        mutation: hostMutationRejected(envelope, message),
+      }, message.includes("already exists with different metadata") ? 409 : 500);
+    }
+  });
+
+  app.get("/api/v1/projects/:projectId/text-revisions", async (c) => {
+    const limit = Number(c.req.query("limit"));
+    const revisions = await db.listTextRevisions({
+      projectId: c.req.param("projectId"),
+      nodeId: normalizeString(c.req.query("nodeId")),
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    return c.json({ revisions });
   });
 
   app.get("/api/v1/projects/:id", async (c) => {

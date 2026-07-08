@@ -1174,6 +1174,52 @@ describe("local API app", () => {
     expect(body.assets.map((asset) => asset.srcR2Key).sort()).toEqual([...keys].sort());
   });
 
+  it("indexes applied text revisions without creating media asset rows", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const revision = {
+      schemaVersion: 1,
+      kind: "clash.text.revision",
+      textId: "text:project-text:script",
+      revisionId: "txrev-1234567890abcdef-feedfacecafe",
+      parentRevisionId: "txrev-parent",
+      projectId: "project-text",
+      nodeId: "script",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      contentHash: "1234567890abcdef",
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "projections/text/script.md",
+      sourceFileHash: "1234567890abcdef",
+      actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
+    };
+
+    const registered = await app.request("/api/v1/text-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision }),
+    });
+    expect(registered.status).toBe(200);
+    expect(await registered.json()).toMatchObject({
+      revision,
+      mutation: {
+        operation: "text_revision_index",
+        entity: { kind: "text", id: "project-text:script" },
+        resultEntityId: revision.revisionId,
+        accepted: true,
+      },
+    });
+
+    const listed = await app.request("/api/v1/projects/project-text/text-revisions?nodeId=script");
+    expect(await listed.json()).toEqual({ revisions: [revision] });
+
+    const sqlite = openSqlite();
+    try {
+      expect(sqlite.prepare("select count(*) as count from text_revisions").get()).toEqual({ count: 1 });
+      expect(sqlite.prepare("select count(*) as count from assets").get()).toEqual({ count: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("rejects asset create paths that escape local asset storage", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
     const invalidSource = await app.request("/api/v1/assets", {

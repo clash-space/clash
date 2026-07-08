@@ -487,6 +487,13 @@ export {
   isMediaNodeType,
 } from './media-asset-replacement';
 
+export {
+  TextAppliedRevisionSchema,
+  TextRevisionActorSchema,
+  type TextAppliedRevision,
+  type TextRevisionActor,
+} from './text-revisions';
+
 // Pipeline types
 export {
   AssetStatusSchema,

@@ -553,8 +553,11 @@ Non-editable fields:
 
 Text content should be versioned like other assets, but it should not be
 forced into the existing image/video/audio `assets` row shape. The v1 path is a
-text/content revision milestone created by apply/replace; a future SQLite index
-can query those milestones without making SQLite or JSON logs agent-editable.
+text/content revision milestone created by apply/replace plus a host-owned
+SQLite `text_revisions` index exposed through explicit local-api endpoints.
+That index is a query surface for the host and UI; it is not an agent-editable
+database or JSON log, and it does not make canvas `data.content` a canonical
+file-backed text asset yet.
 
 If a text node has no downstream references:
 

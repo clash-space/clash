@@ -613,6 +613,29 @@ Remaining:
 - conflict recovery UX across local and remote,
 - live room UI parity in local desktop.
 
+### Local text revision endpoints
+
+Implemented locally in SQLite:
+
+- `POST /api/v1/text-revisions`
+- `GET /api/v1/projects/:projectId/text-revisions`
+
+Rules:
+
+- stores applied text revision metadata in host-owned SQLite `text_revisions`,
+- does not create media `assets` rows for text revisions,
+- validates project-relative source paths and hash consistency before indexing,
+- rejects same revision id with different payloads,
+- returns an accepted host mutation record for successful index writes,
+- keeps text body editing behind `clash text pull/apply/replace` CAS rather
+  than direct SQLite writes.
+
+Remaining:
+
+- richer text revision UI/history,
+- canonical file-backed text asset mode,
+- local-to-cloud text revision mirror policy.
+
 ### Projection apply endpoints/commands
 
 Every projection apply must carry:
