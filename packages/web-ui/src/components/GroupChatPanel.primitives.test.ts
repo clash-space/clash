@@ -2,13 +2,17 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const readSource = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+const repoRoot = process.cwd().endsWith(join("packages", "web-ui"))
+  ? join(process.cwd(), "..", "..")
+  : process.cwd();
+const repoPath = (path: string) => join(repoRoot, path);
+const readSource = (path: string) => readFileSync(repoPath(path), "utf8");
 
 describe("GroupChatPanel primitives", () => {
   it("uses the shared tab primitive instead of direct Ariakit or handwritten tab semantics", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
     const pillSource = readSource("packages/web-ui/src/_group-chat/TabPill.tsx");
-    const tabsPath = join(process.cwd(), "packages/web-ui/src/components/ui/tabs.tsx");
+    const tabsPath = repoPath("packages/web-ui/src/components/ui/tabs.tsx");
     const tabsSource = existsSync(tabsPath) ? readFileSync(tabsPath, "utf8") : "";
 
     expect(existsSync(tabsPath)).toBe(true);
@@ -89,8 +93,8 @@ describe("GroupChatPanel primitives", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
     expect(panelSource).not.toContain("useMentionAutocomplete");
-    expect(existsSync(join(process.cwd(), "packages/web-ui/src/hooks/useMentionAutocomplete.ts"))).toBe(false);
-    expect(existsSync(join(process.cwd(), "packages/web-ui/src/_group-chat/MentionAutocomplete.tsx"))).toBe(false);
+    expect(existsSync(repoPath("packages/web-ui/src/hooks/useMentionAutocomplete.ts"))).toBe(false);
+    expect(existsSync(repoPath("packages/web-ui/src/_group-chat/MentionAutocomplete.tsx"))).toBe(false);
   });
 
   it("uses the shared tooltip primitive for rail icon controls instead of browser title attributes", () => {
@@ -113,6 +117,13 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).toContain("../components/ui/tooltip");
     expect(pillSource).toContain("<Tooltip label=");
     expect(pillSource).not.toContain("title=");
+  });
+
+  it("surfaces the local-only room sync admission requirement in the room indicator", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(panelSource).toContain("remote-room-not-configured");
+    expect(panelSource).toContain("Enable sync to mirror this room to cloud");
   });
 
   it("uses a mature gesture primitive for panel resizing instead of document mouse listeners", () => {

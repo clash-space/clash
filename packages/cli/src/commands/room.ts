@@ -44,6 +44,11 @@ interface RoomSyncMeta {
     status: "disabled" | "pending" | "imported" | "mirrored" | "failed";
     error?: string;
   };
+  admission?: {
+    allowed: boolean;
+    reason: "remote-room-not-configured" | null;
+    requirements: string[];
+  };
 }
 
 interface RoomSyncPlan {

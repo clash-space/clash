@@ -39,6 +39,11 @@ export interface RoomSyncMeta {
     status: RoomSyncStatus;
     error?: string;
   };
+  admission?: {
+    allowed: boolean;
+    reason: 'remote-room-not-configured' | null;
+    requirements: string[];
+  };
 }
 
 export interface UseProjectRoomReturn {

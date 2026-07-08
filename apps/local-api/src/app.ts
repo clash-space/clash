@@ -674,6 +674,14 @@ function deniedRoomSyncAdmission(reason: "remote-room-not-configured") {
   };
 }
 
+function allowedRoomSyncAdmission() {
+  return {
+    allowed: true,
+    reason: null,
+    requirements: [],
+  };
+}
+
 async function publicRoomSyncMeta(
   syncConfig: LocalSyncConfigStore,
   override?: { status?: PublicRoomSyncStatus; error?: string },
@@ -688,6 +696,9 @@ async function publicRoomSyncMeta(
       status,
       ...(override?.error ? { error: override.error } : {}),
     },
+    admission: remoteConfigured
+      ? allowedRoomSyncAdmission()
+      : deniedRoomSyncAdmission("remote-room-not-configured"),
   };
 }
 

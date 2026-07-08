@@ -255,6 +255,9 @@ Current evidence:
 - local-api app tests cover explicit room sync metadata, remote-only import,
   local-only export, accepted `room_sync` mutation records, and same-id conflict
   rejection without local overwrite.
+- room message read/send responses carry `sync.admission`, so local-only clients
+  can see `remote-room-not-configured`/`enable-sync` before attempting explicit
+  room sync, while cloud-configured reads expose allowed admission.
 - local-api room sync now checks active project existence before remote
   admission, and local-only sync rejection returns a machine-readable admission
   gate (`remote-room-not-configured`, requiring `enable-sync`).

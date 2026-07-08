@@ -85,9 +85,12 @@ function roomSyncIndicator(sync: RoomSyncMeta | null | undefined): {
     };
   }
   if (!sync?.remote_room.enabled) {
+    const title = sync?.admission?.reason === 'remote-room-not-configured'
+      ? 'Room messages are local to this desktop. Enable sync to mirror this room to cloud'
+      : 'Room messages are local to this desktop';
     return {
       label: 'Local',
-      title: 'Room messages are local to this desktop',
+      title,
       dotClass: 'bg-stone-300 dark:bg-stone-500',
       textClass: 'text-stone-500 dark:text-stone-400',
     };

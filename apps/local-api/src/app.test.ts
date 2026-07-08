@@ -8909,6 +8909,11 @@ describe("local API app", () => {
       sync: {
         mode: "local-only",
         remote_room: { enabled: false, status: "disabled" },
+        admission: {
+          allowed: false,
+          reason: "remote-room-not-configured",
+          requirements: ["enable-sync"],
+        },
       },
       mutation: {
         operation: "room_message_create",
@@ -8924,6 +8929,11 @@ describe("local API app", () => {
       sync: {
         mode: "local-only",
         remote_room: { enabled: false, status: "disabled" },
+        admission: {
+          allowed: false,
+          reason: "remote-room-not-configured",
+          requirements: ["enable-sync"],
+        },
       },
       messages: [
         {
@@ -8978,6 +8988,11 @@ describe("local API app", () => {
         remote_room: {
           enabled: true,
           status: "pending",
+        },
+        admission: {
+          allowed: true,
+          reason: null,
+          requirements: [],
         },
       },
       messages: [],
