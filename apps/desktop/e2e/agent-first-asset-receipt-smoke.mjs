@@ -366,6 +366,34 @@ async function main() {
     JSON.stringify(acceptedSyncUpdateJson),
     { mutation: acceptedSyncUpdateJson.mutation },
   );
+  const syncConfigAuditResponse = await request("/api/v1/mutation-audit?operation=local_sync_config_update&entityId=sync");
+  const syncConfigAudit = await parseJsonResponse(syncConfigAuditResponse);
+  const syncConfigAuditAgentRecord = syncConfigAudit.records?.find((record) => record.actorClientType === "agent");
+  recordCheck(
+    "sync config update writes sanitized local mutation audit evidence",
+    syncConfigAuditResponse.status === 200 &&
+      syncConfigAudit.records?.length === 2 &&
+      syncConfigAuditAgentRecord?.operation === "local_sync_config_update" &&
+      syncConfigAuditAgentRecord.entity?.id === "sync" &&
+      syncConfigAuditAgentRecord.accepted === true &&
+      syncConfigAuditAgentRecord.actorClientType === "agent" &&
+      syncConfigAuditAgentRecord.reason === "local sync config update" &&
+      !JSON.stringify(syncConfigAudit.records ?? []).includes("receipt") &&
+      syncConfigAudit.records.every((record) =>
+        record.mutation?.expectedReadToken == null &&
+        record.mutation?.beforeReadToken == null &&
+        record.mutation?.afterReadToken == null
+      ),
+    JSON.stringify({
+      syncConfigAudit,
+      acceptedMutation: {
+        operation: acceptedSyncUpdateJson.mutation?.operation,
+        accepted: acceptedSyncUpdateJson.mutation?.accepted,
+        resultEntityId: acceptedSyncUpdateJson.mutation?.resultEntityId,
+      },
+    }),
+    { mutation: acceptedSyncUpdateJson.mutation },
+  );
 
   const initialAudioResponse = await request("/api/v1/local/audio");
   const initialAudio = await parseJsonResponse(initialAudioResponse);
@@ -3081,6 +3109,7 @@ async function main() {
       syncConfigBareCasRejected: checks.some((check) => check.name === "sync config update with bare CAS token is rejected" && check.status === "pass"),
       syncConfigStaleReceiptRejected: checks.some((check) => check.name === "sync config update with stale receipt is rejected" && check.status === "pass"),
       syncConfigReceiptAccepted: checks.some((check) => check.name === "sync config update with receipt read token is accepted" && check.status === "pass"),
+      syncConfigAuditRecorded: checks.some((check) => check.name === "sync config update writes sanitized local mutation audit evidence" && check.status === "pass"),
       audioConfigGetReceiptReturned: checks.some((check) => check.name === "audio config get returns receipt read token" && check.status === "pass"),
       audioConfigMissingReadRejected: checks.some((check) => check.name === "audio config update without prior read is rejected" && check.status === "pass"),
       audioConfigBareCasRejected: checks.some((check) => check.name === "audio config update with bare CAS token is rejected" && check.status === "pass"),

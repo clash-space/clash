@@ -316,7 +316,8 @@ describe("local API app", () => {
       }),
     });
     expect(accepted.status).toBe(200);
-    expect(await accepted.json()).toMatchObject({
+    const acceptedJson = await accepted.json() as any;
+    expect(acceptedJson).toMatchObject({
       mode: "cloud-sync",
       remote_loro: {
         enabled: true,
@@ -334,6 +335,36 @@ describe("local API app", () => {
         afterReadToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
       },
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_sync_config_update&entityId=sync");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(2);
+    const humanAuditRecord = auditJson.records.find((record) => record.actorClientType == null);
+    const agentAuditRecord = auditJson.records.find((record) => record.actorClientType === "agent");
+    expect(humanAuditRecord).toMatchObject({
+      operation: "local_sync_config_update",
+      entity: { kind: "local-config", id: "sync" },
+      actorClientType: null,
+      accepted: true,
+      forced: false,
+      reason: "local sync config update",
+      resultEntityId: "sync",
+    });
+    expect(agentAuditRecord).toMatchObject({
+      operation: "local_sync_config_update",
+      entity: { kind: "local-config", id: "sync" },
+      actorClientType: "agent",
+      accepted: true,
+      forced: false,
+      reason: "local sync config update",
+      resultEntityId: "sync",
+    });
+    for (const record of auditJson.records) {
+      expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
+      expect(record.mutation.expectedReadToken).toBeUndefined();
+      expect(record.mutation.beforeReadToken).toBeUndefined();
+      expect(record.mutation.afterReadToken).toBeUndefined();
+    }
   });
 
   it("persists built-in local audio ASR configuration without requiring an endpoint", async () => {

@@ -3694,20 +3694,26 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     try {
       await syncConfig.updateFromRequest(body);
       const readState = await localSyncReadState(syncConfig);
+      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
+        resultEntityId: "sync",
+        ...(hostMutation
+          ? {
+              afterReadToken: localConfigReceiptReadToken({
+                id: "sync",
+                config: localSyncConfigReadProjection(readState),
+                updatedAt: readState.updated_at,
+              }),
+            }
+          : {}),
+      });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "local sync config update",
+      }));
       return c.json({
         ...publicLocalSyncConfig(readState),
-        mutation: hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-          resultEntityId: "sync",
-          ...(hostMutation
-            ? {
-                afterReadToken: localConfigReceiptReadToken({
-                  id: "sync",
-                  config: localSyncConfigReadProjection(readState),
-                  updatedAt: readState.updated_at,
-                }),
-              }
-            : {}),
-        }),
+        mutation,
       });
     } catch (error) {
       if (error instanceof LocalSyncConfigError) {
