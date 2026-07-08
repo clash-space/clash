@@ -871,8 +871,8 @@ Rules:
   app-owned content-addressed text blob and serves it through the content GET
   endpoint,
 - text revision history entries with stored bodies expose a `content` descriptor
-  (`kind: "text-revision-content"`, hash, media type, URL, immutable flag, and
-  `storage: { kind: "content-addressed-revision-blob", registry:
+  (`kind: "text-revision-content"`, `stored: true`, hash, media type, URL,
+  immutable flag, and `storage: { kind: "content-addressed-revision-blob", registry:
   "text_revisions", mediaAsset: false, agentWritable: false }`), so agents can
   discover recovery content without direct DB/filesystem access or treating it
   as a media asset row,
@@ -910,8 +910,8 @@ Rules:
   timeline hash, stores it as an immutable app-owned content-addressed timeline
   revision blob, and serves it through the content GET endpoint,
 - timeline revision history entries with stored bodies expose a `content`
-  descriptor (`kind: "timeline-revision-content"`, hash, media type, URL,
-  immutable flag, and `storage: { kind: "content-addressed-revision-blob",
+  descriptor (`kind: "timeline-revision-content"`, `stored: true`, hash, media
+  type, URL, immutable flag, and `storage: { kind: "content-addressed-revision-blob",
   registry: "timeline_revisions", mediaAsset: false, agentWritable: false }`),
   so agents can discover recovery/provenance YAML without direct DB/filesystem
   access or treating it as a media asset row,

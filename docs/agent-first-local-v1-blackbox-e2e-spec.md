@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T09-12-18-875Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-08T12-33-43-476Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -262,10 +262,10 @@ Result:
 - 51 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 - `textHistoryReadsHostRevisionIndex: true`.
-- `textRevisionContentStorageContract: true`.
+- `textRevisionContentStorageContract: true` with `content.stored: true`.
 - `textContentRestoresHostRevisionBody: true`.
 - `timelineHistoryReadsHostRevisionIndex: true`.
-- `timelineRevisionContentStorageContract: true`.
+- `timelineRevisionContentStorageContract: true` with `content.stored: true`.
 - `timelineContentRestoresHostRevisionBody: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke

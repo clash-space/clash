@@ -1248,6 +1248,7 @@ describe("local API app", () => {
         ...revision,
         content: {
           kind: "text-revision-content",
+          stored: true,
           contentHash,
           mediaType: "text/markdown",
           url: `/api/v1/projects/project-text/text-revisions/${revision.revisionId}/content`,
@@ -1397,6 +1398,7 @@ describe("local API app", () => {
         ...revision,
         content: {
           kind: "timeline-revision-content",
+          stored: true,
           timelineHash,
           mediaType: "application/yaml",
           url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,

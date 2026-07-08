@@ -725,7 +725,9 @@ Current first pass:
   registers the revision plus applied Markdown body with that host API after a
   successful canvas apply. The host stores the body as an immutable
   content-addressed text revision blob and exposes it through
-  `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`.
+  `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`. History
+  entries with stored bodies include `content.stored: true` so agents can tell
+  the body is host-persisted without opening SQLite or protected blob paths.
 - `clash text history` exposes the host-owned revision index to agents without
   making SQLite an editable or directly readable product surface.
 - `clash text content --revision <id> [--out <path>]` exposes the immutable
@@ -754,7 +756,8 @@ Current first pass:
   YAML, validates the semantic timeline hash, stores the body as an immutable
   timeline revision blob, and exposes it through
   `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`.
-  Older hosts remain compatible when the index endpoint is unavailable.
+  History entries with stored bodies include `content.stored: true`; older hosts
+  remain compatible when the index endpoint is unavailable.
 - `clash timeline history` exposes the host-owned milestone index to agents
   without making SQLite an editable or directly readable product surface.
 - `clash timeline content --revision <id> [--out <path>]` exposes the immutable

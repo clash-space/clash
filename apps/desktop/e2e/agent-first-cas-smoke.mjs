@@ -348,6 +348,7 @@ async function startRevisionIndexHost() {
           ...revision,
           content: {
             kind: "text-revision-content",
+            stored: true,
             contentHash: revision.contentHash,
             mediaType: "text/markdown",
             url: "/api/v1/projects/" + encodeURIComponent(revision.projectId) + "/text-revisions/" + encodeURIComponent(revision.revisionId) + "/content",
@@ -366,6 +367,7 @@ async function startRevisionIndexHost() {
           ...revision,
           content: {
             kind: "timeline-revision-content",
+            stored: true,
             timelineHash: revision.timelineHash,
             mediaType: "application/yaml",
             url: "/api/v1/projects/" + encodeURIComponent(revision.projectId) + "/timeline-revisions/" + encodeURIComponent(revision.revisionId) + "/content",
@@ -1721,6 +1723,7 @@ async function runDirectCanvasCliReadTokenCas() {
       recordCheck(
         "text revision history exposes non-media revision content storage",
         textHistoryPayload?.revisions?.[0]?.content?.kind === "text-revision-content" &&
+          textHistoryPayload?.revisions?.[0]?.content?.stored === true &&
           textHistoryPayload?.revisions?.[0]?.content?.storage?.kind === "content-addressed-revision-blob" &&
           textHistoryPayload?.revisions?.[0]?.content?.storage?.registry === "text_revisions" &&
           textHistoryPayload?.revisions?.[0]?.content?.storage?.mediaAsset === false &&
@@ -1845,6 +1848,7 @@ async function runDirectCanvasCliReadTokenCas() {
       recordCheck(
         "timeline revision history exposes non-media revision content storage",
         timelineHistoryPayload?.revisions?.[0]?.content?.kind === "timeline-revision-content" &&
+          timelineHistoryPayload?.revisions?.[0]?.content?.stored === true &&
           timelineHistoryPayload?.revisions?.[0]?.content?.storage?.kind === "content-addressed-revision-blob" &&
           timelineHistoryPayload?.revisions?.[0]?.content?.storage?.registry === "timeline_revisions" &&
           timelineHistoryPayload?.revisions?.[0]?.content?.storage?.mediaAsset === false &&

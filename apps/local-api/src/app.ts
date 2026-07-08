@@ -474,7 +474,7 @@ async function withTextRevisionContentDescriptor(
   if (!fileStat?.isFile()) return revision;
   return {
     ...revision,
-    content: textRevisionContentDescriptor(revision),
+    content: textRevisionContentDescriptor(revision, { stored: true }),
   };
 }
 
@@ -517,7 +517,7 @@ async function withTimelineRevisionContentDescriptor(
   if (!fileStat?.isFile()) return revision;
   return {
     ...revision,
-    content: timelineRevisionContentDescriptor(revision),
+    content: timelineRevisionContentDescriptor(revision, { stored: true }),
   };
 }
 
