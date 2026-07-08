@@ -8789,6 +8789,67 @@ describe("local API app", () => {
     });
   });
 
+  it("checks project existence before room sync remote admission", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const synced = await app.request("/api/v1/projects/missing-project/room/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(synced.status).toBe(404);
+    expect(await synced.json()).toMatchObject({
+      error: "not found",
+      mutation: {
+        operation: "room_sync",
+        entity: { kind: "room", id: "missing-project" },
+        forced: false,
+        accepted: false,
+        error: "not found",
+      },
+    });
+  });
+
+  it("returns explicit room sync admission when cloud sync is not configured", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Local Room Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(synced.status).toBe(409);
+    expect(await synced.json()).toMatchObject({
+      error: "remote room sync is not configured",
+      admission: {
+        allowed: false,
+        reason: "remote-room-not-configured",
+        requirements: ["enable-sync"],
+      },
+      sync: {
+        mode: "local-only",
+        remote_room: {
+          enabled: false,
+          status: "disabled",
+          error: "remote room sync is not configured",
+        },
+      },
+      mutation: {
+        operation: "room_sync",
+        entity: { kind: "room", id: project.id },
+        forced: false,
+        accepted: false,
+        error: "remote room sync is not configured",
+      },
+    });
+  });
+
   it("explicitly mirrors local and remote room messages without a blind overwrite", async () => {
     const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
       if (init?.method === "GET") {

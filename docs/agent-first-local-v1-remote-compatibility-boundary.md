@@ -255,6 +255,9 @@ Current evidence:
 - local-api app tests cover explicit room sync metadata, remote-only import,
   local-only export, accepted `room_sync` mutation records, and same-id conflict
   rejection without local overwrite.
+- local-api room sync now checks active project existence before remote
+  admission, and local-only sync rejection returns a machine-readable admission
+  gate (`remote-room-not-configured`, requiring `enable-sync`).
 - `clash room sync --json` exposes the mirror action to agents with
   exported/imported/matched/conflict ids and accepted/rejected mutation
   evidence.
@@ -267,8 +270,9 @@ v1 decision:
   mirror-sequencing tests. Cloud-configured local room reads report
   `remote_room.enabled=true` with `status=pending`; only explicit sync action
   results can report `mirrored` or `failed`.
-- Do not introduce background room sync until admission controls, conflict
-  recovery, and live room parity are designed and tested.
+- Do not introduce background room sync until admission controls beyond the
+  first local-only gate, conflict recovery, and live room parity are designed
+  and tested.
 
 Reason:
 

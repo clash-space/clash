@@ -2407,10 +2407,54 @@ async function main() {
 	    JSON.stringify(roomMessages),
 	  );
 
+	  const missingProjectRoomSyncResponse = await request("/api/v1/projects/missing-project/room/sync", {
+	    method: "POST",
+	  });
+	  const missingProjectRoomSync = await parseJsonResponse(missingProjectRoomSyncResponse);
+	  recordCheck(
+	    "room sync checks project existence before remote admission",
+	    missingProjectRoomSyncResponse.status === 404 &&
+	      missingProjectRoomSync.error === "not found" &&
+	      missingProjectRoomSync.mutation?.accepted === false &&
+	      missingProjectRoomSync.mutation?.error === "not found",
+	    JSON.stringify(missingProjectRoomSync),
+	    { mutation: missingProjectRoomSync.mutation },
+	  );
+
+	  const localOnlyRoomDataDir = path.join(artifactRoot, "local-only-room-data");
+	  await mkdir(localOnlyRoomDataDir, { recursive: true });
+	  const localOnlyRoomApp = createLocalApiApp({
+	    dataDir: localOnlyRoomDataDir,
+	    userId: "asset-receipt-smoke-user",
+	  });
+	  const localOnlyRoomRequest = appRequest(localOnlyRoomApp);
+	  const localOnlyRoomProjectResponse = await localOnlyRoomRequest("/api/v1/projects", {
+	    method: "POST",
+	    body: JSON.stringify({ name: "Local-only room admission smoke" }),
+	  });
+	  const localOnlyRoomProject = await parseJsonResponse(localOnlyRoomProjectResponse);
+	  const localOnlyRoomSyncResponse = await localOnlyRoomRequest(`/api/v1/projects/${encodeURIComponent(localOnlyRoomProject.id)}/room/sync`, {
+	    method: "POST",
+	  });
+	  const localOnlyRoomSync = await parseJsonResponse(localOnlyRoomSyncResponse);
+	  recordCheck(
+	    "local-only room sync returns explicit admission gate",
+	    localOnlyRoomSyncResponse.status === 409 &&
+	      localOnlyRoomSync.error === "remote room sync is not configured" &&
+	      localOnlyRoomSync.admission?.allowed === false &&
+	      localOnlyRoomSync.admission?.reason === "remote-room-not-configured" &&
+	      localOnlyRoomSync.admission?.requirements?.includes("enable-sync") === true &&
+	      localOnlyRoomSync.sync?.mode === "local-only" &&
+	      localOnlyRoomSync.sync?.remote_room?.status === "disabled" &&
+	      localOnlyRoomSync.mutation?.accepted === false,
+	    JSON.stringify(localOnlyRoomSync),
+	    { mutation: localOnlyRoomSync.mutation },
+	  );
+
 	  const report = {
 	    schemaVersion: 1,
 	    status: "pass",
-	    summary: "Local sync/audio/runtime/provider config, derived agent read views, provider model test actions, local audio transcription actions, asset metadata/ref/GC, asset reference metadata refresh, project delete/restore/purge, local session agent writes/attach, and local room id replays require host-side read/idempotency proofs, read-only metadata views, or host mutation records.",
+	    summary: "Local sync/audio/runtime/provider config, derived agent read views, provider model test actions, local audio transcription actions, asset metadata/ref/GC, asset reference metadata refresh, project delete/restore/purge, local session agent writes/attach, and local room id replays/admission require host-side read/idempotency proofs, read-only metadata views, explicit gates, or host mutation records.",
     run: {
       artifactRoot,
       dataDir,
@@ -2469,6 +2513,8 @@ async function main() {
 	    room: {
 	      projectId: sessionProject.id,
 	      messageId: firstRoomMessage.id,
+	      localOnlyProjectId: localOnlyRoomProject.id,
+	      localOnlyAdmissionReason: localOnlyRoomSync.admission?.reason,
 	    },
     projectRestore: {
       legacyDeletedProjectId: legacyDeleteProject.id,
@@ -2605,6 +2651,8 @@ async function main() {
 	      localRoomMessageCreateAccepted: checks.some((check) => check.name === "local room message create accepts first client id" && check.status === "pass"),
 	      localRoomMessageConflictRejected: checks.some((check) => check.name === "local room message id replay with different content is rejected" && check.status === "pass"),
 	      localRoomMessageOriginalPreserved: checks.some((check) => check.name === "local room message conflict preserves original content" && check.status === "pass"),
+	      roomSyncMissingProjectFirst: checks.some((check) => check.name === "room sync checks project existence before remote admission" && check.status === "pass"),
+	      roomSyncLocalOnlyAdmissionReturned: checks.some((check) => check.name === "local-only room sync returns explicit admission gate" && check.status === "pass"),
 	    },
 	  };
 

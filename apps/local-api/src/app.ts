@@ -604,6 +604,14 @@ function publicRoomMirrorPlan(plan: RoomMirrorPlan) {
   };
 }
 
+function deniedRoomSyncAdmission(reason: "remote-room-not-configured") {
+  return {
+    allowed: false,
+    reason,
+    requirements: ["enable-sync"],
+  };
+}
+
 async function publicRoomSyncMeta(
   syncConfig: LocalSyncConfigStore,
   override?: { status?: PublicRoomSyncStatus; error?: string },
@@ -4369,16 +4377,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.post("/api/v1/projects/:id/room/sync", async (c) => {
     const projectId = c.req.param("id");
     const envelope = localMutationEnvelope("room_sync", "room", projectId);
-    const remoteRoom = await syncConfig.resolveRemoteRoomSync();
-    if (!remoteRoom) {
-      const error = "remote room sync is not configured";
-      return c.json({
-        error,
-        sync: await publicRoomSyncMeta(syncConfig, { error }),
-        mutation: hostMutationRejected(envelope, error),
-      }, 409);
-    }
-
     const state = await db.load();
     const project = findActiveProject(state, projectId, userId);
     if (!project) {
@@ -4386,6 +4384,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         error: "not found",
         mutation: hostMutationRejected(envelope, "not found"),
       }, 404);
+    }
+    const remoteRoom = await syncConfig.resolveRemoteRoomSync();
+    if (!remoteRoom) {
+      const error = "remote room sync is not configured";
+      return c.json({
+        error,
+        admission: deniedRoomSyncAdmission("remote-room-not-configured"),
+        sync: await publicRoomSyncMeta(syncConfig, { error }),
+        mutation: hostMutationRejected(envelope, error),
+      }, 409);
     }
 
     const localMessages = state.roomMessages

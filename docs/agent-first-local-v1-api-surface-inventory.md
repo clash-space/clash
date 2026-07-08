@@ -611,10 +611,15 @@ Rules:
 - Local-api exposes explicit `POST /api/v1/projects/:projectId/room/sync`;
   the CLI exposes `clash room sync --json` so agents can mirror only through
   an auditable action result.
+- Room sync now checks active project existence before remote admission, so a
+  missing project returns 404 instead of being hidden by cloud configuration.
+- Local-only room sync rejection includes a machine-readable `admission` gate
+  with `allowed: false`, `reason: "remote-room-not-configured"`, and
+  `requirements: ["enable-sync"]`.
 
 Remaining:
 
-- conflict recovery UI and admission policy,
+- conflict recovery UI and broader admission policy,
 - conflict recovery UX across local and remote,
 - live room UI parity in local desktop.
 
