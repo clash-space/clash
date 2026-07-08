@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
-import { chmod, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { isJsonMode, printJson } from "../lib/output";
@@ -72,7 +72,35 @@ export interface SecondaryCanvasRecoveryCompareReport {
   manifestPath: string;
   canonicalReplica: SecondaryCanvasReplicaManifest["canonicalReplica"];
   safeToImportAutomatically: false;
+  readToken: string;
   files: SecondaryCanvasRecoveryCompareFile[];
+}
+
+export interface SecondaryCanvasRecoveryRestoreFile {
+  kind: "snapshot" | "updates-log";
+  sourcePath: string;
+  destinationPath: string;
+  canonicalPath: string;
+  quarantined: FileCompareEvidence;
+  canonicalBefore: FileCompareEvidence;
+  canonicalAfter: FileCompareEvidence;
+  sameBytesBefore: boolean;
+  restored: boolean;
+  backupPath?: string;
+}
+
+export interface SecondaryCanvasRecoveryRestoreReport {
+  schemaVersion: 1;
+  status: "restored";
+  projectId: string;
+  manifestPath: string;
+  canonicalReplica: SecondaryCanvasReplicaManifest["canonicalReplica"];
+  safeToImportAutomatically: false;
+  expectedReadToken: string;
+  beforeReadToken: string;
+  afterReadToken: string;
+  backupsRoot: string;
+  files: SecondaryCanvasRecoveryRestoreFile[];
 }
 
 export interface SecondaryCanvasRecoveryInventorySet {
@@ -806,13 +834,93 @@ export async function compareSecondaryCanvasRecovery(options: {
     });
   }
 
-  return {
+  const reportWithoutToken = {
     schemaVersion: 1,
     status: "compared",
     projectId: status.projectId,
     manifestPath,
     canonicalReplica,
     safeToImportAutomatically: false,
+    files,
+  } satisfies Omit<SecondaryCanvasRecoveryCompareReport, "readToken">;
+
+  return {
+    ...reportWithoutToken,
+    readToken: secondaryCanvasRecoveryReadToken(reportWithoutToken),
+  };
+}
+
+export async function restoreSecondaryCanvasRecovery(options: {
+  manifestPath: string;
+  project?: string;
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  homeDir?: string;
+  expectedReadToken?: string;
+  confirm?: boolean;
+}): Promise<SecondaryCanvasRecoveryRestoreReport> {
+  if (options.confirm !== true) {
+    throw new Error("Secondary canvas recovery restore requires explicit --yes confirmation.");
+  }
+  if (!options.expectedReadToken) {
+    throw new Error("Secondary canvas recovery restore requires --if-match with the readToken from compare.");
+  }
+
+  const before = await compareSecondaryCanvasRecovery(options);
+  if (before.readToken !== options.expectedReadToken) {
+    throw new Error("Secondary canvas recovery read token is stale or does not match current quarantine/canonical state.");
+  }
+  if (before.files.length === 0) {
+    throw new Error(`Secondary canvas recovery manifest has no files to restore: ${before.manifestPath}`);
+  }
+
+  const recoverySetRoot = dirname(resolve(options.manifestPath));
+  const backupsRoot = join(recoverySetRoot, "canonical-before-restore", new Date().toISOString().replace(/[:.]/g, "-"));
+  const files: SecondaryCanvasRecoveryRestoreFile[] = [];
+  for (const file of before.files) {
+    if (!file.quarantined.exists) {
+      throw new Error(`Secondary canvas recovery file is missing and cannot be restored: ${file.destinationPath}`);
+    }
+    const canonicalPath = file.kind === "snapshot"
+      ? before.canonicalReplica.snapshotPath
+      : before.canonicalReplica.updatesLogPath;
+    const backupPath = file.canonical.exists
+      ? join(backupsRoot, file.kind === "snapshot" ? "snapshot.bin" : "updates.log")
+      : undefined;
+
+    await mkdir(dirname(canonicalPath), { recursive: true });
+    if (backupPath) {
+      await mkdir(dirname(backupPath), { recursive: true });
+      await copyFile(canonicalPath, backupPath);
+    }
+    await copyFile(file.destinationPath, canonicalPath);
+
+    files.push({
+      kind: file.kind,
+      sourcePath: file.sourcePath,
+      destinationPath: file.destinationPath,
+      canonicalPath,
+      quarantined: file.quarantined,
+      canonicalBefore: file.canonical,
+      canonicalAfter: await readFileCompareEvidence(canonicalPath),
+      sameBytesBefore: file.sameBytes,
+      restored: true,
+      ...(backupPath ? { backupPath } : {}),
+    });
+  }
+
+  const after = await compareSecondaryCanvasRecovery(options);
+  return {
+    schemaVersion: 1,
+    status: "restored",
+    projectId: before.projectId,
+    manifestPath: before.manifestPath,
+    canonicalReplica: before.canonicalReplica,
+    safeToImportAutomatically: false,
+    expectedReadToken: options.expectedReadToken,
+    beforeReadToken: before.readToken,
+    afterReadToken: after.readToken,
+    backupsRoot,
     files,
   };
 }
@@ -1027,6 +1135,41 @@ async function readFileCompareEvidence(filePath: string): Promise<FileCompareEvi
   }
 }
 
+function secondaryCanvasRecoveryReadToken(
+  report: Omit<SecondaryCanvasRecoveryCompareReport, "readToken">,
+): string {
+  const payload = {
+    schemaVersion: report.schemaVersion,
+    projectId: report.projectId,
+    manifestPath: resolve(report.manifestPath),
+    canonicalReplica: {
+      replicaRoot: resolve(report.canonicalReplica.replicaRoot),
+      snapshotPath: resolve(report.canonicalReplica.snapshotPath),
+      updatesLogPath: resolve(report.canonicalReplica.updatesLogPath),
+    },
+    files: [...report.files]
+      .sort((a, b) => a.kind.localeCompare(b.kind) || a.destinationPath.localeCompare(b.destinationPath))
+      .map((file) => ({
+        kind: file.kind,
+        sourcePath: file.sourcePath,
+        destinationPath: resolve(file.destinationPath),
+        quarantined: {
+          exists: file.quarantined.exists,
+          size: file.quarantined.size ?? null,
+          sha256: file.quarantined.sha256 ?? null,
+        },
+        canonical: {
+          path: resolve(file.canonical.path),
+          exists: file.canonical.exists,
+          size: file.canonical.size ?? null,
+          sha256: file.canonical.sha256 ?? null,
+        },
+      })),
+  };
+  const hash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return `secondary-canvas-recovery:${hash}`;
+}
+
 async function repairSecondaryCanvasReplicas(
   status: ProjectStatus,
   cwd: string,
@@ -1107,7 +1250,7 @@ async function inspectSecondaryCanvasRecovery(status: ProjectStatus): Promise<St
   return {
     id: "secondary-canvas-recovery",
     level: "warning",
-    message: `Found ${inventory.sets.length} quarantined canvas replica recovery set(s). Review manifest before any explicit import or compare action.`,
+    message: `Found ${inventory.sets.length} quarantined canvas replica recovery set(s). Review manifest before any explicit compare or restore action.`,
     path: inventory.sets[0].manifestPath,
   };
 }
@@ -2215,5 +2358,38 @@ storageRecoveryCommand
       console.log(`${file.kind}: ${file.sameBytes ? "same" : "different"}`);
       console.log(`  quarantined: ${file.quarantined.path}`);
       console.log(`  canonical: ${file.canonical.path}`);
+    }
+  });
+
+storageRecoveryCommand
+  .command("restore")
+  .description("Explicitly restore a quarantined secondary canvas replica after compare/read-token review")
+  .requiredOption("--manifest <path>", "Path to a secondary canvas replica recovery manifest.json")
+  .requiredOption("--if-match <readToken>", "Read token returned by doctor storage-recovery compare")
+  .option("--project <id>", "Project ID")
+  .option("--yes", "Confirm overwriting canonical canvas replica files after backup")
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    const report = await restoreSecondaryCanvasRecovery({
+      manifestPath: options.manifest,
+      project: options.project,
+      expectedReadToken: options.ifMatch,
+      confirm: options.yes === true,
+    });
+    if (isJsonMode(options)) {
+      printJson(report);
+      return;
+    }
+
+    console.log(`Storage recovery restore: ${report.projectId}`);
+    console.log(`Manifest: ${report.manifestPath}`);
+    console.log(`Backups: ${report.backupsRoot}`);
+    console.log(`Before read token: ${report.beforeReadToken}`);
+    console.log(`After read token: ${report.afterReadToken}`);
+    for (const file of report.files) {
+      console.log(`${file.kind}: restored`);
+      console.log(`  quarantined: ${file.destinationPath}`);
+      console.log(`  canonical: ${file.canonicalPath}`);
+      if (file.backupPath) console.log(`  backup: ${file.backupPath}`);
     }
   });

@@ -346,12 +346,97 @@ async function main() {
   recordCheck(
     "doctor storage recovery compare reports quarantined hash and canonical state without import",
     recoveryCompareReport.safeToImportAutomatically === false &&
+      typeof recoveryCompareReport.readToken === "string" &&
+      recoveryCompareReport.readToken.startsWith("secondary-canvas-recovery:") &&
       comparedSnapshot?.quarantined?.exists === true &&
       comparedSnapshot?.canonical?.path === repairReport.status?.loro?.snapshotPath &&
       typeof comparedSnapshot?.quarantined?.sha256 === "string" &&
       comparedSnapshot?.canonical?.exists === false &&
       comparedSnapshot.sameBytes === false,
     JSON.stringify(recoveryCompareReport),
+  );
+  const unconfirmedRecoveryRestore = runCli([
+    "doctor",
+    "storage-recovery",
+    "restore",
+    "--manifest",
+    manifestPath,
+    "--if-match",
+    recoveryCompareReport.readToken,
+    "--json",
+  ]);
+  recordCheck(
+    "doctor storage recovery restore requires explicit confirmation",
+    unconfirmedRecoveryRestore.status !== 0 &&
+      `${unconfirmedRecoveryRestore.stdout}\n${unconfirmedRecoveryRestore.stderr}`.includes("requires explicit --yes"),
+    unconfirmedRecoveryRestore.stderr || unconfirmedRecoveryRestore.stdout,
+    { command: unconfirmedRecoveryRestore.command },
+  );
+  const mismatchedRecoveryRestore = runCli([
+    "doctor",
+    "storage-recovery",
+    "restore",
+    "--manifest",
+    manifestPath,
+    "--if-match",
+    "secondary-canvas-recovery:stale",
+    "--yes",
+    "--json",
+  ]);
+  recordCheck(
+    "doctor storage recovery restore rejects stale read tokens before restore",
+    mismatchedRecoveryRestore.status !== 0 &&
+      `${mismatchedRecoveryRestore.stdout}\n${mismatchedRecoveryRestore.stderr}`.includes("read token is stale"),
+    mismatchedRecoveryRestore.stderr || mismatchedRecoveryRestore.stdout,
+    { command: mismatchedRecoveryRestore.command },
+  );
+  const recoveryRestore = runCli([
+    "doctor",
+    "storage-recovery",
+    "restore",
+    "--manifest",
+    manifestPath,
+    "--if-match",
+    recoveryCompareReport.readToken,
+    "--yes",
+    "--json",
+  ]);
+  recordCheck(
+    "doctor storage recovery restore command succeeds",
+    recoveryRestore.status === 0,
+    recoveryRestore.stderr || recoveryRestore.stdout,
+    { command: recoveryRestore.command },
+  );
+  const recoveryRestoreReport = parseStdoutJson(recoveryRestore);
+  recordCheck(
+    "doctor storage recovery restore promotes quarantined replica through CAS",
+    recoveryRestoreReport.status === "restored" &&
+      recoveryRestoreReport.safeToImportAutomatically === false &&
+      recoveryRestoreReport.beforeReadToken === recoveryCompareReport.readToken &&
+      recoveryRestoreReport.afterReadToken !== recoveryCompareReport.readToken &&
+      recoveryRestoreReport.files?.some((file) => file.kind === "snapshot" && file.restored === true) &&
+      recoveryRestoreReport.files?.some((file) => file.kind === "updates-log" && file.restored === true) &&
+      await readFile(repairReport.status?.loro?.snapshotPath ?? "", "utf8") === "secondary snapshot" &&
+      await readFile(repairReport.status?.loro?.updatesLogPath ?? "", "utf8") === "secondary updates",
+    JSON.stringify(recoveryRestoreReport),
+  );
+  const staleAfterRestore = runCli([
+    "doctor",
+    "storage-recovery",
+    "restore",
+    "--manifest",
+    manifestPath,
+    "--if-match",
+    recoveryCompareReport.readToken,
+    "--yes",
+    "--json",
+  ]);
+  recordCheck(
+    "doctor storage recovery restore rejects old read token after canonical changes",
+    staleAfterRestore.status !== 0 &&
+      `${staleAfterRestore.stdout}\n${staleAfterRestore.stderr}`.includes("read token is stale"),
+    staleAfterRestore.stderr || staleAfterRestore.stdout,
+    { command: staleAfterRestore.command },
   );
   const externalManifestPath = path.join(artifactRoot, "external-recovery-manifest.json");
   await writeJson(externalManifestPath, {
@@ -743,6 +828,10 @@ async function main() {
       legacyProviderPkRepair,
       recoveryList,
       recoveryCompare,
+      unconfirmedRecoveryRestore,
+      mismatchedRecoveryRestore,
+      recoveryRestore,
+      staleAfterRestore,
       externalRecoveryCompare,
       tamperedRevisionBlobs,
       after,

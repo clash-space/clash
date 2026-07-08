@@ -683,13 +683,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T06-35-43-246Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T06-55-27-562Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 58 checks passed,
+- 63 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -708,7 +708,12 @@ Result:
   recovery inventory,
 - recovery list exposed quarantined manifest inventory without import,
 - recovery compare reported quarantined file evidence against the canonical
-  path/state and kept `safeToImportAutomatically: false`,
+  path/state, emitted a restore read token, and kept
+  `safeToImportAutomatically: false`,
+- recovery restore required explicit `--yes` confirmation plus
+  `--if-match <readToken>`, promoted quarantined snapshot/update-log bytes into
+  the protected canonical replica through public CLI, and rejected stale tokens
+  before overwriting canonical bytes,
 - recovery compare rejected a valid-looking manifest outside the current
   project's protected recovery root,
 - recovery list and doctor storage reported invalid manifest inventory instead
@@ -794,15 +799,17 @@ Current status:
 - `clash project status --json` now has first-pass stable fields for project
   workspace, projection root, draft root, explicit runtime root, local SQLite
   path, protected paths, and sync mode.
-- Need the black-box runner to assert those fields against real initialized and
-  restored project paths.
+- Black-box storage/project smokes now assert these fields against initialized
+  and restored local project paths; broader UI release gates still need to carry
+  the same evidence.
 - `clash doctor storage --json` now has first-pass read-only path checks, and
   `clash doctor storage --repair` can initialize missing workspace roots plus
   the local SQLite core metadata, provider auth table/key, and projection
   schema.
-- Direct real Codex E2E now asserts the happy-path workspace roots; the broader
-  black-box runner still needs to assert doctor warnings/errors for protected
-  cwd, missing replica, and legacy `db.json`.
+- Direct real Codex E2E now asserts the happy-path workspace roots. Storage
+  doctor smoke asserts secondary replica/recovery behavior through public CLI,
+  while focused CLI tests cover protected cwd plus legacy `db.json`/schema
+  warnings.
 - Local room endpoints now exist as a SQLite local-only baseline, and
   `apps/local-api/src/room-cli.e2e.test.ts` starts a real local-api HTTP server
   while driving `clash room say/read/sync --json` through a spawned CLI process,
@@ -837,6 +844,6 @@ Current status:
 - Short-drama/storyboard prompt-pack and timeline projection commands exist;
   Suite E still needs a fuller canvas/asset/provider fixture beyond timeline
   JSON creation/restore.
-- Need broader storage doctor coverage for stronger path assertions, recovery
-  behavior, explicit import/review tooling for quarantined replicas, and
+- Need broader storage doctor coverage for richer migration/recovery UX,
+  stronger path assertions across old layouts, cloud/shared recovery policy, and
   destructive repair boundaries.

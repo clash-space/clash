@@ -554,6 +554,7 @@ clash doctor storage
 clash doctor storage --repair
 clash doctor storage-recovery list --json
 clash doctor storage-recovery compare --manifest <path> --json
+clash doctor storage-recovery restore --manifest <path> --if-match <readToken> --yes --json
 clash project export <projectId>
 clash project repair <projectId>
 ```
@@ -574,7 +575,11 @@ must be the real `manifest.json` under that project's protected runtime recovery
 root, must match the current project id and canonical replica paths, and each
 quarantined file path must stay inside the same recovery set without symlink
 indirection. This keeps the command from becoming a generic file hash oracle.
-Neither command imports or applies recovered Loro bytes automatically.
+`storage-recovery restore` is the only promotion path for quarantined Loro
+bytes: it requires a prior compare `readToken`, explicit `--yes`, re-runs the
+same manifest/path checks, backs up existing canonical files when present, and
+rejects stale tokens if either the quarantined bytes or canonical bytes changed
+after compare. Automatic import remains disabled.
 
 ## Migration From Current State
 

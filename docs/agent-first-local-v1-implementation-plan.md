@@ -506,6 +506,11 @@ Current status:
   constrained to the current project's protected recovery root, matching
   project/canonical replica, same-set destination paths, and non-symlinked
   regular recovery files so it cannot become an arbitrary file hash oracle.
+- `clash doctor storage-recovery restore --manifest ... --if-match <readToken>
+  --yes --json` is the explicit quarantined-replica promotion path. It reuses
+  compare's manifest/path checks, requires the compare read token as CAS,
+  backs up existing canonical files when present, and rejects stale tokens
+  before overwriting the protected canonical replica.
 - `clash asset link --asset <id>` now creates an agent-readable file under
   `assets/links/` via the immutable global asset cache.
 - Desktop real Codex startup/resume scripts build `@clash-space/bridge` before

@@ -11,6 +11,7 @@ import {
   doctorCommand,
   inspectStorageContract,
   listSecondaryCanvasRecoveries,
+  restoreSecondaryCanvasRecovery,
   runStorageDoctor,
 } from "./doctor";
 import { buildProjectStatus, initProject } from "./projects";
@@ -384,6 +385,88 @@ test("secondary canvas recovery compare reports canonical and quarantined file h
   assert.equal(snapshot.canonical.size, "canonical snapshot".length);
   assert.notEqual(snapshot.quarantined.sha256, snapshot.canonical.sha256);
   assert.equal(snapshot.sameBytes, false);
+  assert.match(compared.readToken, /^secondary-canvas-recovery:/);
+});
+
+test("secondary canvas recovery restore copies quarantined bytes into canonical replica only with compare read token", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  await mkdir(status.loro.replicaRoot, { recursive: true });
+  await writeFile(status.loro.snapshotPath, "canonical snapshot", "utf8");
+  await writeFile(status.loro.updatesLogPath, "canonical updates", "utf8");
+  const snapshotPath = join(cwd, "loro", "snapshot.bin");
+  const updatesPath = join(cwd, "loro", "updates.log");
+  await mkdir(join(cwd, "loro"), { recursive: true });
+  await writeFile(snapshotPath, "draft snapshot", "utf8");
+  await writeFile(updatesPath, "draft updates", "utf8");
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
+  const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
+
+  const restored = await restoreSecondaryCanvasRecovery({
+    manifestPath,
+    cwd,
+    env: {},
+    homeDir,
+    expectedReadToken: compared.readToken,
+    confirm: true,
+  });
+
+  assert.equal(restored.schemaVersion, 1);
+  assert.equal(restored.status, "restored");
+  assert.equal(restored.projectId, "doctor_project");
+  assert.equal(restored.expectedReadToken, compared.readToken);
+  assert.equal(restored.safeToImportAutomatically, false);
+  assert.equal(await readFile(status.loro.snapshotPath, "utf8"), "draft snapshot");
+  assert.equal(await readFile(status.loro.updatesLogPath, "utf8"), "draft updates");
+  const restoredSnapshot = restored.files.find((file) => file.kind === "snapshot");
+  const restoredUpdates = restored.files.find((file) => file.kind === "updates-log");
+  assert.ok(restoredSnapshot?.backupPath);
+  assert.ok(restoredUpdates?.backupPath);
+  assert.equal(await readFile(restoredSnapshot.backupPath, "utf8"), "canonical snapshot");
+  assert.equal(await readFile(restoredUpdates.backupPath, "utf8"), "canonical updates");
+  assert.notEqual(restored.beforeReadToken, restored.afterReadToken);
+});
+
+test("secondary canvas recovery restore rejects stale compare read tokens before overwriting canonical bytes", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
+    { homeDir },
+  );
+  await mkdir(status.loro.replicaRoot, { recursive: true });
+  await writeFile(status.loro.snapshotPath, "canonical snapshot", "utf8");
+  const snapshotPath = join(cwd, "loro", "snapshot.bin");
+  await mkdir(join(cwd, "loro"), { recursive: true });
+  await writeFile(snapshotPath, "draft snapshot", "utf8");
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
+  const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
+  await writeFile(status.loro.snapshotPath, "newer canonical snapshot", "utf8");
+
+  await assert.rejects(
+    restoreSecondaryCanvasRecovery({
+      manifestPath,
+      cwd,
+      env: {},
+      homeDir,
+      expectedReadToken: compared.readToken,
+      confirm: true,
+    }),
+    /read token is stale/,
+  );
+  assert.equal(await readFile(status.loro.snapshotPath, "utf8"), "newer canonical snapshot");
 });
 
 test("secondary canvas recovery compare rejects manifests outside the current project recovery root", async () => {
@@ -1378,7 +1461,7 @@ test("doctor command is registered with storage subcommand", async () => {
   assert.deepEqual(doctorCommand.commands.map((command) => command.name()), ["storage", "storage-recovery"]);
   assert.deepEqual(
     doctorCommand.commands.find((command) => command.name() === "storage-recovery")?.commands.map((command) => command.name()),
-    ["list", "compare"],
+    ["list", "compare", "restore"],
   );
 
   const indexSource = await readFile(new URL("../index.ts", import.meta.url), "utf8");
