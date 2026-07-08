@@ -210,6 +210,27 @@ async function main() {
       recoveryManifest?.files?.some((file) => file.sourcePath === secondaryUpdatesPath && file.kind === "updates-log"),
     JSON.stringify(recoveryManifest),
   );
+  const recoveryList = runCli(["doctor", "storage-recovery", "list", "--json"]);
+  recordCheck(
+    "doctor storage recovery list command succeeds",
+    recoveryList.status === 0,
+    recoveryList.stderr || recoveryList.stdout,
+    { command: recoveryList.command },
+  );
+  const recoveryListReport = parseStdoutJson(recoveryList);
+  recordCheck(
+    "doctor storage recovery list exposes quarantined manifest inventory",
+    recoveryListReport.projectId === projectId &&
+      recoveryListReport.safeToImportAutomatically === false &&
+      recoveryListReport.invalidEntries?.length === 0 &&
+      recoveryListReport.sets?.some((set) =>
+        set.manifestPath === manifestPath &&
+        set.fileCount === 2 &&
+        set.files?.some((file) => file.sourcePath === secondarySnapshotPath && file.kind === "snapshot") &&
+        set.files?.some((file) => file.sourcePath === secondaryUpdatesPath && file.kind === "updates-log")
+      ),
+    JSON.stringify(recoveryListReport),
+  );
   const recoveryCompare = runCli(["doctor", "storage-recovery", "compare", "--manifest", manifestPath, "--json"]);
   recordCheck(
     "doctor storage recovery compare command succeeds",

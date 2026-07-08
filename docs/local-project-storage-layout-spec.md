@@ -525,6 +525,7 @@ Storage/debug:
 ```text
 clash doctor storage
 clash doctor storage --repair
+clash doctor storage-recovery list --json
 clash doctor storage-recovery compare --manifest <path> --json
 clash project export <projectId>
 clash project repair <projectId>
@@ -532,9 +533,12 @@ clash project repair <projectId>
 
 Debug commands can inspect internals, but product workflows should not depend
 on editing internals.
-`storage-recovery compare` is read-only evidence tooling: it reports
-quarantined and canonical file existence, size, and hash, and it must not import
-or apply recovered Loro bytes automatically.
+`storage-recovery list` is read-only inventory tooling: it lists quarantined
+secondary-canvas recovery manifests under the host-owned runtime recovery root
+so agents do not have to discover protected paths manually. `storage-recovery
+compare` is read-only evidence tooling for one manifest: it reports quarantined
+and canonical file existence, size, and hash. Neither command imports or applies
+recovered Loro bytes automatically.
 
 ## Migration From Current State
 

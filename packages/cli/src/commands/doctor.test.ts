@@ -258,6 +258,43 @@ test("secondary canvas recovery compare reports canonical and quarantined file h
   assert.equal(snapshot.sameBytes, false);
 });
 
+test("secondary canvas recovery list reports quarantined manifests for review", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "doctor_project" });
+  const snapshotPath = join(cwd, "loro", "snapshot.bin");
+  const updatesPath = join(cwd, "loro", "updates.log");
+  await mkdir(join(cwd, "loro"), { recursive: true });
+  await writeFile(snapshotPath, "draft snapshot", "utf8");
+  await writeFile(updatesPath, "draft updates", "utf8");
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
+  const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
+  const module = await import("./doctor");
+  assert.equal(typeof module.listSecondaryCanvasRecoveries, "function");
+
+  const inventory = await module.listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+
+  assert.equal(inventory.schemaVersion, 1);
+  assert.equal(inventory.status, "listed");
+  assert.equal(inventory.projectId, "doctor_project");
+  assert.equal(inventory.invalidEntries.length, 0);
+  assert.equal(inventory.sets.length, 1);
+  assert.equal(inventory.sets[0].manifestPath, manifestPath);
+  assert.equal(inventory.sets[0].fileCount, 2);
+  assert.deepEqual(
+    inventory.sets[0].files.map((file: { kind: string; sourcePath: string }) => ({
+      kind: file.kind,
+      sourcePath: file.sourcePath,
+    })).sort((a, b) => a.kind.localeCompare(b.kind)),
+    [
+      { kind: "snapshot", sourcePath: snapshotPath },
+      { kind: "updates-log", sourcePath: updatesPath },
+    ].sort((a, b) => a.kind.localeCompare(b.kind)),
+  );
+});
+
 test("storage doctor validates the project status storage role contract", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },
@@ -439,7 +476,7 @@ test("doctor command is registered with storage subcommand", async () => {
   assert.deepEqual(doctorCommand.commands.map((command) => command.name()), ["storage", "storage-recovery"]);
   assert.deepEqual(
     doctorCommand.commands.find((command) => command.name() === "storage-recovery")?.commands.map((command) => command.name()),
-    ["compare"],
+    ["list", "compare"],
   );
 
   const indexSource = await readFile(new URL("../index.ts", import.meta.url), "utf8");

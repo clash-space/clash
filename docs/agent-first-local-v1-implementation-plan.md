@@ -466,6 +466,15 @@ Current status:
   surface and explicitly owns no canonical snapshot/metadata, while
   `storage.canonicalReplica` identifies the protected machine-scoped SQLite
   metadata store and Loro canvas replica.
+- `clash doctor storage --repair` creates missing workspace roots, ensures the
+  local SQLite asset reference index schema, and quarantines secondary cwd /
+  workspace `snapshot.bin` or `updates.log` files into protected runtime
+  recovery with durable manifest evidence instead of treating them as project
+  truth.
+- `clash doctor storage-recovery list --json` exposes the quarantined recovery
+  manifest inventory for review, and `clash doctor storage-recovery compare
+  --manifest ... --json` compares one manifest against canonical replica paths
+  with size/hash evidence while keeping automatic import disabled.
 - `clash asset link --asset <id>` now creates an agent-readable file under
   `assets/links/` via the immutable global asset cache.
 - Desktop real Codex startup/resume scripts build `@clash-space/bridge` before
@@ -481,10 +490,11 @@ Current status:
 
 Remaining gap:
 
-- `clash doctor storage` does not create/migrate directories and does not yet
-  validate downstream refs, canonical store initialization, or recoverability.
+- Broader workspace migration and explicit recovery import tooling are still
+  open; quarantined Loro bytes remain review-only until a future command defines
+  a safe import policy.
 - `clash doctor storage` reports an ignored legacy `db.json` path only as a
-  cleanup/secrets warning; it does not inspect SQLite schema deeply yet.
+  cleanup/secrets warning; it does not migrate legacy JSON state.
 
 ### P0-07: Local/remote variables boundary
 

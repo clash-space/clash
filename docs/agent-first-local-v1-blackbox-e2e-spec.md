@@ -673,16 +673,17 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-07T14-04-04-724Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T03-40-52-222Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 40 checks passed,
+- 42 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
+  `clash doctor storage-recovery list --json`,
   `clash doctor storage-recovery compare --manifest ... --json`, and follow-up
   read-only doctor commands produced the expected exit codes,
 - workspace roots and local SQLite asset reference schema were repaired through
@@ -691,6 +692,7 @@ Result:
   quarantined it under host-owned runtime recovery while preserving bytes,
 - repair wrote a durable recovery manifest and follow-up doctor reported that
   recovery inventory,
+- recovery list exposed quarantined manifest inventory without import,
 - recovery compare reported quarantined file evidence against the canonical
   path/state and kept `safeToImportAutomatically: false`,
 - doctor reported no secondary canvas replica after repair,

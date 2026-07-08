@@ -74,6 +74,29 @@ export interface SecondaryCanvasRecoveryCompareReport {
   files: SecondaryCanvasRecoveryCompareFile[];
 }
 
+export interface SecondaryCanvasRecoveryInventorySet {
+  manifestPath: string;
+  createdAt: string;
+  canonicalReplica: SecondaryCanvasReplicaManifest["canonicalReplica"];
+  fileCount: number;
+  files: SecondaryCanvasReplicaManifest["files"];
+}
+
+export interface SecondaryCanvasRecoveryInvalidEntry {
+  path: string;
+  error: string;
+}
+
+export interface SecondaryCanvasRecoveryListReport {
+  schemaVersion: 1;
+  status: "listed";
+  projectId: string;
+  recoveryRoot: string;
+  safeToImportAutomatically: false;
+  sets: SecondaryCanvasRecoveryInventorySet[];
+  invalidEntries: SecondaryCanvasRecoveryInvalidEntry[];
+}
+
 export async function runStorageDoctor(options: {
   project?: string;
   cwd?: string;
@@ -500,6 +523,79 @@ export async function compareSecondaryCanvasRecovery(options: {
     canonicalReplica: manifest.canonicalReplica,
     safeToImportAutomatically: false,
     files,
+  };
+}
+
+export async function listSecondaryCanvasRecoveries(options: {
+  project?: string;
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  homeDir?: string;
+} = {}): Promise<SecondaryCanvasRecoveryListReport> {
+  const status = await resolveProjectStatus(options);
+  const recoveryRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas");
+  const sets: SecondaryCanvasRecoveryInventorySet[] = [];
+  const invalidEntries: SecondaryCanvasRecoveryInvalidEntry[] = [];
+
+  let entries: Dirent<string>[];
+  try {
+    entries = await readdir(recoveryRoot, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        schemaVersion: 1,
+        status: "listed",
+        projectId: status.projectId,
+        recoveryRoot,
+        safeToImportAutomatically: false,
+        sets,
+        invalidEntries,
+      };
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = join(recoveryRoot, entry.name, "manifest.json");
+    try {
+      const manifest = parseSecondaryCanvasReplicaManifest(
+        JSON.parse(await readFile(manifestPath, "utf8")),
+        manifestPath,
+      );
+      if (manifest.projectId !== status.projectId) {
+        invalidEntries.push({
+          path: manifestPath,
+          error: `Manifest project ${manifest.projectId} does not match current project ${status.projectId}`,
+        });
+        continue;
+      }
+      sets.push({
+        manifestPath,
+        createdAt: manifest.createdAt,
+        canonicalReplica: manifest.canonicalReplica,
+        fileCount: manifest.files.length,
+        files: manifest.files,
+      });
+    } catch (error) {
+      invalidEntries.push({
+        path: manifestPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  sets.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.manifestPath.localeCompare(b.manifestPath));
+  invalidEntries.sort((a, b) => a.path.localeCompare(b.path));
+
+  return {
+    schemaVersion: 1,
+    status: "listed",
+    projectId: status.projectId,
+    recoveryRoot,
+    safeToImportAutomatically: false,
+    sets,
+    invalidEntries,
   };
 }
 
@@ -945,6 +1041,33 @@ doctorCommand
 const storageRecoveryCommand = doctorCommand
   .command("storage-recovery")
   .description("Inspect quarantined local storage recovery artifacts");
+
+storageRecoveryCommand
+  .command("list")
+  .description("List quarantined secondary canvas replica recovery manifests for review")
+  .option("--project <id>", "Project ID")
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    const report = await listSecondaryCanvasRecoveries({ project: options.project });
+    if (isJsonMode(options)) {
+      printJson(report);
+      return;
+    }
+
+    console.log(`Storage recovery inventory: ${report.projectId}`);
+    console.log(`Recovery root: ${report.recoveryRoot}`);
+    console.log("Automatic import: disabled");
+    if (report.sets.length === 0) {
+      console.log("No quarantined recovery sets found.");
+    }
+    for (const set of report.sets) {
+      console.log(`${set.createdAt} ${set.fileCount} file(s)`);
+      console.log(`  ${set.manifestPath}`);
+    }
+    for (const invalid of report.invalidEntries) {
+      console.log(`INVALID ${invalid.path}: ${invalid.error}`);
+    }
+  });
 
 storageRecoveryCommand
   .command("compare")
