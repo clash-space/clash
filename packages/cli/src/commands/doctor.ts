@@ -10,6 +10,11 @@ import {
   resolveProjectStatus,
   type ProjectStatus,
 } from "./projects";
+import {
+  projectMarkerPath,
+  writeProjectMarker,
+  type ProjectMarker,
+} from "../lib/project-context";
 
 const require = createRequire(process.execPath);
 
@@ -181,16 +186,48 @@ export async function runStorageDoctor(options: {
       message: `Resolved project ${status.projectId} from ${status.source}.`,
     });
   } catch (error) {
-    checks.push({
-      id: "project-context",
-      level: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
     const legacyMarkerPath = await findLegacyProjectJsonMarker(cwd);
-    if (legacyMarkerPath) {
-      checks.push(legacyProjectMarkerCheck(legacyMarkerPath));
+    if (options.repair === true && legacyMarkerPath) {
+      try {
+        const repair = await repairLegacyProjectMarker(legacyMarkerPath);
+        repairs.push(repair);
+        status = await resolveProjectStatus(options);
+        checks.push({
+          id: "project-context",
+          level: "ok",
+          message: `Resolved project ${status.projectId} from ${status.source}.`,
+        });
+      } catch (repairError) {
+        checks.push({
+          id: "project-context",
+          level: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+        checks.push(legacyProjectMarkerCheck(legacyMarkerPath));
+        checks.push({
+          id: "legacy-project-marker-repair",
+          level: "error",
+          message: repairError instanceof Error ? repairError.message : String(repairError),
+          path: legacyMarkerPath,
+        });
+        return {
+          ok: false,
+          checks,
+          repaired: repairs.length > 0,
+          repairs,
+        };
+      }
+    } else {
+      checks.push({
+        id: "project-context",
+        level: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      if (legacyMarkerPath) {
+        checks.push(legacyProjectMarkerCheck(legacyMarkerPath));
+      }
+      return { ok: false, checks };
     }
-    return { ok: false, checks };
   }
 
   if (status.markerPath) {
@@ -375,6 +412,44 @@ function legacyProjectMarkerCheck(markerPath: string): StorageDoctorCheck {
     level: "warning",
     message: "Legacy .clash/project.json marker exists but is ignored by v1 local tooling; write .clash/project.toml with `clash init` or `clash project link`.",
     path: markerPath,
+  };
+}
+
+async function repairLegacyProjectMarker(markerPath: string): Promise<StorageDoctorRepair> {
+  const workspaceRoot = dirname(dirname(markerPath));
+  const targetPath = projectMarkerPath(workspaceRoot);
+  if (await pathExists(targetPath, "file")) {
+    throw new Error(`Refusing to overwrite existing v1 project marker at ${targetPath}`);
+  }
+  const marker = await readLegacyProjectJsonMarker(markerPath);
+  await writeProjectMarker(workspaceRoot, marker);
+  return {
+    id: "legacy-project-marker-migration",
+    message: "Migrated legacy .clash/project.json marker to v1 .clash/project.toml reference.",
+    path: targetPath,
+    sourcePath: markerPath,
+  };
+}
+
+async function readLegacyProjectJsonMarker(markerPath: string): Promise<ProjectMarker> {
+  const raw = JSON.parse(await readFile(markerPath, "utf8")) as Record<string, unknown>;
+  const projectId = typeof raw.projectId === "string" ? raw.projectId.trim() : "";
+  if (!projectId) {
+    throw new Error(`Legacy project marker at ${markerPath} is missing projectId`);
+  }
+  const workspaceId = typeof (raw.workspaceId ?? raw.workspace_id) === "string"
+    ? String(raw.workspaceId ?? raw.workspace_id).trim()
+    : "";
+  const store = typeof raw.store === "string" ? raw.store.trim() : "";
+  const sync = raw.sync && typeof raw.sync === "object" && !Array.isArray(raw.sync)
+    ? raw.sync as Record<string, unknown>
+    : undefined;
+  return {
+    schemaVersion: 1,
+    projectId,
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(store ? { store } : {}),
+    ...(sync ? { sync } : {}),
   };
 }
 

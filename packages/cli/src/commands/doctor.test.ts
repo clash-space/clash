@@ -202,6 +202,54 @@ test("storage doctor reports legacy JSON project markers as ignored old layout",
   assert.match(legacyMarker.message, /project\.toml/);
 });
 
+test("storage doctor repair migrates legacy JSON project markers to v1 TOML references", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  const legacyMarkerPath = join(cwd, ".clash", "project.json");
+  const v1MarkerPath = join(cwd, ".clash", "project.toml");
+  await mkdir(join(cwd, ".clash"), { recursive: true });
+  await writeFile(
+    legacyMarkerPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      workspaceId: "legacy-workspace",
+      store: "managed",
+      sync: {
+        mode: "cloud-sync",
+        capabilities: {
+          canvas: true,
+          room: false,
+        },
+      },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+
+  assert.equal(repaired.projectId, "doctor_project");
+  assert.equal(repaired.repaired, true);
+  assert.equal(checkById(repaired, "project-context").level, "ok");
+  const repair = repaired.repairs?.find((item) => item.id === "legacy-project-marker-migration");
+  assert.ok(repair);
+  assert.equal(repair.path, v1MarkerPath);
+  assert.equal(repair.sourcePath, legacyMarkerPath);
+  const marker = await readFile(v1MarkerPath, "utf8");
+  assert.match(marker, /project_id = "doctor_project"/);
+  assert.match(marker, /workspace_id = "legacy-workspace"/);
+  assert.match(marker, /store = "managed"/);
+  assert.match(marker, /\[sync\]/);
+  assert.match(marker, /mode = "cloud-sync"/);
+  assert.match(marker, /\[sync\.capabilities\]/);
+  assert.match(marker, /canvas = true/);
+  assert.match(marker, /room = false/);
+
+  const verified = await runStorageDoctor({ cwd, env: {}, homeDir });
+  assert.equal(verified.projectId, "doctor_project");
+  assert.equal(checkById(verified, "project-marker").level, "ok");
+});
+
 test("storage doctor reports marker project with non-fatal missing-store warnings", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

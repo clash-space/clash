@@ -127,8 +127,10 @@ Conclusion:
   `timelines/` view files, and `projections/timelines/` generated action
   projections, while avoiding `protectedPaths`, `runtimeRoot`, `snapshot.bin`,
   `updates.log`, SQLite, and legacy `db.json` as direct state surfaces.
-- Missing: automatic repair/migration for older layouts and broader store
-  recovery validation.
+- `clash doctor storage --repair` can migrate a legacy `.clash/project.json`
+  marker into the v1 `.clash/project.toml` reference format without deleting
+  the old JSON file or touching canonical state.
+- Missing: broader old-layout migration and store recovery validation.
 
 ### Loro snapshot/update log
 
