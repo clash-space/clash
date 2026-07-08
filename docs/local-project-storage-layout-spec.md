@@ -688,6 +688,10 @@ rejected; shared recovery must use a cloud/shared conflict path instead.
      7-day delay unless `--force` is explicit, removes project-scoped SQLite
      rows and the canonical Loro replica, clears project ownership from retained
      immutable asset rows, and leaves retained asset blobs/rows for asset GC.
+     Project delete/restore/purge responses include a `recoveryPolicy` object:
+     local-only projects are local replica recovery, `cloud-sync` projects report
+     `cloudStateMutated: false` and require cloud conflict review, and shared
+     cloud-sequencer projects must not treat local restore as remote recovery.
 10. Move default agent session cwd to workspace/session draft dirs after alpha,
    if protected-root incidents become common.
 

@@ -81,6 +81,7 @@ import {
 import {
   createLocalSyncConfigStore,
   LocalSyncConfigError,
+  type PublicLocalSyncConfig,
   type LocalSyncConfigReadState,
   type LocalSyncConfigStore,
 } from "./sync-config.js";
@@ -779,6 +780,71 @@ function roomSyncAdmissionError(reason: RoomSyncAdmissionReason | null | undefin
   return reason === "room-sync-capability-not-ready"
     ? "room sync capability is not ready"
     : "remote room sync is not configured";
+}
+
+interface ProjectRecoveryPolicy {
+  scope: "local-canonical-replica";
+  collaborationMode: "local-only" | "synced" | "shared" | "unknown";
+  rawSyncMode: string;
+  roomAuthority: "local" | "local-with-cloud-mirror" | "cloud-sequencer";
+  cloudProjectRoom: "disabled" | "sequencer";
+  syncReadinessStatus: "disabled" | "pending" | "ready";
+  localRestoreAllowed: boolean;
+  cloudStateIncluded: false;
+  cloudStateMutated: false;
+  requiresCloudConflictReview: boolean;
+  reason:
+    | "local-only-manual-review-required"
+    | "cloud-sync-local-replica-review-required"
+    | "shared-cloud-sequencer-restore-blocked"
+    | "sync-mode-unknown-local-replica-review-required";
+}
+
+function projectRecoveryPolicyFromSync(
+  sync: PublicLocalSyncConfig,
+  options: { localRestoreAllowed?: boolean } = {},
+): ProjectRecoveryPolicy {
+  const status = buildProjectStatus(
+    { projectId: "_project_recovery_policy", source: "explicit" },
+    {
+      clashRoot: "/clash",
+      localApiDataDir: "/clash/local-api",
+      marker: { sync: { mode: sync.mode, capabilities: sync.capabilities } },
+    },
+  );
+  const collaboration = status.collaboration;
+  const defaultLocalRestoreAllowed =
+    collaboration.mode !== "shared" && collaboration.mode !== "unknown";
+  const reason = collaboration.mode === "shared"
+    ? "shared-cloud-sequencer-restore-blocked"
+    : collaboration.mode === "synced"
+      ? "cloud-sync-local-replica-review-required"
+      : collaboration.mode === "unknown"
+        ? "sync-mode-unknown-local-replica-review-required"
+        : "local-only-manual-review-required";
+  return {
+    scope: "local-canonical-replica",
+    collaborationMode: collaboration.mode,
+    rawSyncMode: collaboration.rawMode,
+    roomAuthority: collaboration.roomAuthority,
+    cloudProjectRoom: collaboration.cloudProjectRoom,
+    syncReadinessStatus: collaboration.syncReadiness.status,
+    localRestoreAllowed: options.localRestoreAllowed ?? defaultLocalRestoreAllowed,
+    cloudStateIncluded: false,
+    cloudStateMutated: false,
+    requiresCloudConflictReview: collaboration.mode !== "local-only",
+    reason,
+  };
+}
+
+async function projectRecoveryPolicy(
+  syncConfig: LocalSyncConfigStore,
+  options: { localRestoreAllowed?: boolean } = {},
+): Promise<ProjectRecoveryPolicy> {
+  return projectRecoveryPolicyFromSync(
+    await syncConfig.getPublicConfig(),
+    options,
+  );
 }
 
 async function localSyncReadState(syncConfig: LocalSyncConfigStore): Promise<LocalSyncConfigReadState> {
@@ -5432,6 +5498,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId = c.req.param("id");
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
+    const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
     const result = await db.update((state) => {
       const project = findActiveProject(state, projectId);
       if (!project) {
@@ -5478,6 +5545,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           id: deleted.id,
           deletedAt: deleted.deletedAt,
           readToken,
+          recoveryPolicy,
           mutation: hostMutationSucceeded(hostMutation.envelope, {
             resultEntityId: deleted.id,
             afterReadToken: readToken,
@@ -5502,6 +5570,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId = c.req.param("id");
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
+    const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
     const result = await db.update((state) => {
       const project = state.projects.find((candidate) => candidate.id === projectId && isDeletedProject(candidate));
       if (!project) {
@@ -5546,6 +5615,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           restored: true,
           id: restored.id,
           readToken,
+          recoveryPolicy,
           mutation: hostMutationSucceeded(hostMutation.envelope, {
             resultEntityId: restored.id,
             afterReadToken: readToken,
@@ -5570,6 +5640,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId = c.req.param("id");
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody & { confirm?: unknown };
     const preconditions = requestProjectWritePreconditions(c, body);
+    const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
+    const purgedRecoveryPolicy = { ...recoveryPolicy, localRestoreAllowed: false };
     if (body.confirm !== "purge") {
       return c.json({
         error: "confirm must be \"purge\"",
@@ -5632,6 +5704,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             error: message,
             recoverable: true,
             purgeAfter,
+            recoveryPolicy,
             mutation: hostMutationRejected(hostMutation.envelope, message),
           },
         };
@@ -5655,6 +5728,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           deletedAt: purged.project.deletedAt,
           purgeAfter,
           removed: purged.counts,
+          recoveryPolicy: purgedRecoveryPolicy,
           mutation: hostMutationSucceeded(hostMutation.envelope, {
             resultEntityId: purged.project.id,
           }),
@@ -5810,6 +5884,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId = c.req.param("id");
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
+    const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
     const result = await db.update((state) => {
       const project = findActiveProject(state, projectId);
       if (!project) {
@@ -5856,6 +5931,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           id: deleted.id,
           deletedAt: deleted.deletedAt,
           readToken,
+          recoveryPolicy,
           mutation: hostMutationSucceeded(hostMutation.envelope, {
             resultEntityId: deleted.id,
             afterReadToken: readToken,

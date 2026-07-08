@@ -20,6 +20,11 @@ import {
 
 export type ProjectStatus = SharedProjectStatus;
 
+interface ProjectRecoveryPolicy {
+  cloudStateMutated?: boolean;
+  requiresCloudConflictReview?: boolean;
+}
+
 function projectWriteHeaders(options: {
   ifMatch?: string;
   force?: boolean;
@@ -35,6 +40,16 @@ function projectWriteHeaders(options: {
     headers["x-clash-force"] = "true";
   }
   return headers;
+}
+
+function projectRecoveryPolicyHint(policy?: ProjectRecoveryPolicy): string {
+  if (!policy?.requiresCloudConflictReview) {
+    return "";
+  }
+  if (policy.cloudStateMutated === false) {
+    return " (local replica only; cloud conflict review required)";
+  }
+  return " (cloud conflict review required)";
 }
 
 export async function linkProject(
@@ -286,6 +301,7 @@ projectsCommand
       deleted: boolean;
       recoverable?: boolean;
       id?: string;
+      recoveryPolicy?: ProjectRecoveryPolicy;
     }>(`/api/v1/projects/${encodeURIComponent(options.id)}`, {
       method: "DELETE",
       headers: projectWriteHeaders({
@@ -297,10 +313,11 @@ projectsCommand
     const recoveryHint = deleted.recoverable
       ? ` (recoverable; run clash project restore ${deletedId} to undo)`
       : "";
+    const policyHint = projectRecoveryPolicyHint(deleted.recoveryPolicy);
     if (isJsonMode(options)) {
       printJson(deleted);
     } else {
-      console.log(`Deleted project: ${deletedId}${recoveryHint}`);
+      console.log(`Deleted project: ${deletedId}${recoveryHint}${policyHint}`);
     }
   });
 
@@ -312,7 +329,11 @@ projectsCommand
   .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (projectId, options) => {
-    const restored = await apiJson<{ restored: boolean; id: string }>(
+    const restored = await apiJson<{
+      restored: boolean;
+      id: string;
+      recoveryPolicy?: ProjectRecoveryPolicy;
+    }>(
       `/api/v1/projects/${encodeURIComponent(projectId)}/restore`,
       {
         method: "POST",
@@ -326,7 +347,9 @@ projectsCommand
     if (isJsonMode(options)) {
       printJson(restored);
     } else {
-      console.log(`Restored project: ${restored.id}`);
+      console.log(
+        `Restored project: ${restored.id}${projectRecoveryPolicyHint(restored.recoveryPolicy)}`,
+      );
     }
   });
 
@@ -354,6 +377,7 @@ projectsCommand
       recoverable?: boolean;
       purgeAfter?: string;
       removed?: Record<string, number>;
+      recoveryPolicy?: ProjectRecoveryPolicy;
     }>(`/api/v1/projects/${encodeURIComponent(projectId)}/purge`, {
       method: "DELETE",
       headers: projectWriteHeaders({
@@ -372,6 +396,7 @@ projectsCommand
           .map(([key, count]) => `${key}: ${count}`)
           .join(", ")})`
         : "";
-      console.log(`Purged project recovery point: ${purged.id}${removed}`);
+      const policyHint = projectRecoveryPolicyHint(purged.recoveryPolicy);
+      console.log(`Purged project recovery point: ${purged.id}${removed}${policyHint}`);
     }
   });

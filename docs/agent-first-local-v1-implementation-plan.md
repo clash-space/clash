@@ -1038,6 +1038,11 @@ Current status:
   `POST /api/v1/projects/:id/restore` restores visibility.
 - local-api v1 project create/delete/restore responses include accepted or
   rejected project mutation records while preserving existing response fields.
+- local-api project delete/restore/purge responses include `recoveryPolicy`:
+  local-only operations are explicitly local replica recovery, `cloud-sync`
+  operations report `cloudStateMutated: false` and require cloud conflict
+  review, and shared/cloud-sequencer modes are blocked from claiming local
+  restore as cloud recovery.
 - CLI `clash project get --include-deleted --json` exposes the deleted-project
   restore receipt, and `clash project restore --if-match <readToken>` passes it
   for agent read-before-write CAS.
@@ -1049,8 +1054,8 @@ Current status:
   replica, clears project ownership from retained immutable asset rows, and
   leaves retained asset blobs/rows for asset GC.
 - CLI `clash project purge <projectId> --yes --if-match <readToken>` exposes the
-  same deleted-project receipt flow; `--force` is the explicit delayed-purge
-  override.
+  same deleted-project receipt flow, surfaces cloud conflict review hints in
+  human output, and uses `--force` as the explicit delayed-purge override.
 - Covered by `packages/cli/src/lib/destructive-guardrails.test.ts`.
 - Recoverable project deletion is covered by `apps/local-api/src/app.test.ts`
   and SQLite persistence coverage in
@@ -1061,8 +1066,9 @@ Current status:
 
 Remaining gap:
 
-- Cloud/shared-project delete recovery semantics are not specified.
-- Cloud/shared-project purge parity and conflict recovery remain unspecified.
+- Cloud/shared-project delete/purge parity and cross-device conflict recovery
+  are still not implemented; current local-api semantics intentionally cover
+  only the local canonical replica and cloud-sync mirror review boundary.
 
 ### P1-05: Agent workspace migration
 

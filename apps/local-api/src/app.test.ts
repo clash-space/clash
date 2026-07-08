@@ -8608,6 +8608,83 @@ describe("local API app", () => {
     expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
   });
 
+  it("marks cloud-sync project delete restore and purge as local replica recovery only", async () => {
+    const syncConfig = createLocalSyncConfigStore({
+      dataDir,
+      env: {},
+    });
+    await syncConfig.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://api.example.com",
+      remote_loro_token: "token-1",
+      capabilities: {
+        canvas: true,
+        room: true,
+        asset_metadata: true,
+        revision_content: true,
+      },
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Cloud Sync Local Recovery Project" }),
+    });
+    const project = await created.json() as { id: string; readToken: string };
+    const expectedPolicy = {
+      scope: "local-canonical-replica",
+      collaborationMode: "synced",
+      rawSyncMode: "cloud-sync",
+      roomAuthority: "local-with-cloud-mirror",
+      cloudProjectRoom: "disabled",
+      syncReadinessStatus: "ready",
+      localRestoreAllowed: true,
+      cloudStateIncluded: false,
+      cloudStateMutated: false,
+      requiresCloudConflictReview: true,
+      reason: "cloud-sync-local-replica-review-required",
+    };
+
+    const deleted = await app.request(`/api/v1/projects/${project.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    const deletedJson = await deleted.json() as { readToken: string };
+    expect(deletedJson).toMatchObject({
+      deleted: true,
+      recoverable: true,
+      recoveryPolicy: expectedPolicy,
+    });
+
+    const restored = await app.request(`/api/v1/projects/${project.id}/restore`, { method: "POST" });
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({
+      restored: true,
+      recoveryPolicy: expectedPolicy,
+    });
+
+    const deletedAgain = await app.request(`/api/v1/projects/${project.id}`, { method: "DELETE" });
+    expect(deletedAgain.status).toBe(200);
+    const deletedAgainJson = await deletedAgain.json() as { readToken: string };
+    const purged = await app.request(`/api/v1/projects/${project.id}/purge`, {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": deletedAgainJson.readToken,
+        "x-clash-force": "true",
+      },
+      body: JSON.stringify({ confirm: "purge" }),
+    });
+    expect(purged.status).toBe(200);
+    expect(await purged.json()).toMatchObject({
+      purged: true,
+      recoverable: false,
+      recoveryPolicy: {
+        ...expectedPolicy,
+        localRestoreAllowed: false,
+      },
+    });
+  });
+
   it("purges deleted project recovery points only after explicit confirmation", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

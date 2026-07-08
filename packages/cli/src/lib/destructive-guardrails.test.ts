@@ -92,6 +92,19 @@ test("project get and delete expose read-token CAS for agent writes", () => {
   assert.match(projectsSource, /"x-clash-if-match"\] = options\.ifMatch\.trim\(\)/);
 });
 
+test("project destructive commands surface cloud recovery policy hints", () => {
+  const projectsSource = commandSource("projects.ts");
+  const projectDeleteSource = commandBlock(projectsSource, "delete", "restore");
+  const projectRestoreSource = commandBlock(projectsSource, "restore", "purge");
+  const projectPurgeSource = commandBlock(projectsSource, "purge");
+
+  assert.match(projectsSource, /recoveryPolicy/);
+  assert.match(projectsSource, /cloud conflict review/);
+  assert.match(projectDeleteSource, /projectRecoveryPolicyHint/);
+  assert.match(projectRestoreSource, /projectRecoveryPolicyHint/);
+  assert.match(projectPurgeSource, /projectRecoveryPolicyHint/);
+});
+
 test("canvas delete exposes explicit --force for downstream references", () => {
   const canvasSource = commandSource("canvas.ts");
 
