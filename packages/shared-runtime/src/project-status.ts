@@ -12,6 +12,8 @@ export interface ProjectStatusMarker {
   sync?: Record<string, unknown>;
 }
 
+export type ProjectWorkspaceIdKind = "managed" | "external";
+
 export interface ProjectStatusCurrentWorkspace {
   schemaVersion: 1;
   role: "project-reference-workspace";
@@ -527,6 +529,14 @@ export function projectIdPathSegment(id: string): string {
   return encoded || "_default";
 }
 
+export function projectWorkspaceId(
+  kind: ProjectWorkspaceIdKind,
+  projectId: string,
+  cwd: string,
+): string {
+  return `${kind}:${stableWorkspaceHash(`${kind}\0${projectId}\0${normalizePath(cwd)}`)}`;
+}
+
 export function projectCollaborationStatus(
   rawMode: unknown,
   sync: Record<string, unknown> | undefined = undefined,
@@ -808,6 +818,17 @@ function isSameOrInsidePath(candidate: string, root: string): boolean {
 
 function markerString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stableWorkspaceHash(input: string): string {
+  let hash = 0xcbf29ce484222325n;
+  for (let index = 0; index < input.length; index += 1) {
+    const codePoint = input.codePointAt(index) ?? 0;
+    hash ^= BigInt(codePoint);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+    if (codePoint > 0xffff) index += 1;
+  }
+  return hash.toString(16).padStart(16, "0");
 }
 
 function normalizeCollaborationMode(raw: string): ProjectCollaborationMode {

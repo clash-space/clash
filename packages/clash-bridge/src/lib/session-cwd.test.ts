@@ -18,7 +18,8 @@ it("ensureAgentCwd writes a v1 project marker for managed project cwd", async ()
 
     expect(marker).toContain("schema_version = 1");
     expect(marker).toContain('project_id = "proj_managed"');
-    expect(marker).toContain('workspace_id = "managed:proj_managed"');
+    expect(marker).toMatch(/workspace_id = "managed:[a-f0-9]{16}"/);
+    expect(marker).not.toContain('workspace_id = "managed:proj_managed"');
     expect(marker).toContain('store = "managed"');
     expect(marker).toContain("[sync]");
     expect(marker).toContain('mode = "local"');
@@ -49,8 +50,32 @@ it("ensureAgentCwd keeps the canonical project id in the marker when the cwd pat
 
     expect(cwd).toBe(join(home, ".clash", "projects", "project%2Fwith%20spaces"));
     expect(marker).toContain(`project_id = ${JSON.stringify(projectId)}`);
-    expect(marker).toContain('workspace_id = "managed:project%2Fwith%20spaces"');
+    expect(marker).toMatch(/workspace_id = "managed:[a-f0-9]{16}"/);
+    expect(marker).not.toContain("managed:project%2Fwith%20spaces");
     expect(marker).not.toContain('project_id = "project_with_spaces"');
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
+});
+
+it("ensureAgentCwd keeps the managed workspace id stable for the same project cwd", async () => {
+  const originalHome = process.env.HOME;
+  const home = await mkdtemp(join(tmpdir(), "clash-session-cwd-"));
+  process.env.HOME = home;
+  try {
+    const cwd = await ensureAgentCwd("master-clash", "proj_stable_workspace");
+    const firstMarker = await readFile(join(cwd, ".clash", "project.toml"), "utf-8");
+    await ensureAgentCwd("master-clash", "proj_stable_workspace");
+    const secondMarker = await readFile(join(cwd, ".clash", "project.toml"), "utf-8");
+
+    const firstWorkspaceId = /workspace_id = "(managed:[a-f0-9]{16})"/.exec(firstMarker)?.[1];
+    const secondWorkspaceId = /workspace_id = "(managed:[a-f0-9]{16})"/.exec(secondMarker)?.[1];
+    expect(firstWorkspaceId).toBeDefined();
+    expect(secondWorkspaceId).toBe(firstWorkspaceId);
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;

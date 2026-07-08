@@ -38,16 +38,17 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup && node scripts/bundle-agents.mjs",
+    "build": "npm --prefix ../shared-runtime run build && tsup && node scripts/bundle-agents.mjs",
     "bundle:agents": "node scripts/bundle-agents.mjs",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm --prefix ../shared-runtime run build && tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.47.0",
     "@agentclientprotocol/sdk": "^0.28.1",
     "@zed-industries/codex-acp": "^0.16.0",
+    "@clash/shared-runtime": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

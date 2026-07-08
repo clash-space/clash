@@ -293,6 +293,9 @@ mode = "local"
 Rules:
 
 - Marker can exist in user cwd, project cwd, or generated workspaces.
+- `project_id` is the canonical project identity; `workspace_id` is a stable
+  opaque marker/workspace identity and must not be parsed as a project id or
+  storage path.
 - Marker does not create a project replica.
 - Marker does not lock the project.
 - Marker does not decide whether cloud sync is active by itself.

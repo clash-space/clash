@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProjectRecoveryPolicy, buildProjectStatus } from "./project-status";
+import { buildProjectRecoveryPolicy, buildProjectStatus, projectWorkspaceId } from "./project-status";
 
 const expectedTracePolicy = {
   schemaVersion: 1,
@@ -71,6 +71,20 @@ function expectedSyncPolicy(cloudAdmission: string) {
 }
 
 describe("project status path builder", () => {
+  it("derives stable workspace ids without embedding project ids", () => {
+    const first = projectWorkspaceId("managed", "project/with spaces", "/tmp/workspace");
+    const second = projectWorkspaceId("managed", "project/with spaces", "/tmp/workspace");
+    const differentWorkspace = projectWorkspaceId("managed", "project/with spaces", "/tmp/other-workspace");
+    const external = projectWorkspaceId("external", "project/with spaces", "/tmp/workspace");
+
+    expect(first).toMatch(/^managed:[a-f0-9]{16}$/);
+    expect(first).toBe(second);
+    expect(first).not.toContain("project");
+    expect(first).not.toBe(differentWorkspace);
+    expect(first).not.toBe(external);
+    expect(external).toMatch(/^external:[a-f0-9]{16}$/);
+  });
+
   it("builds agent-editable roots and protected local store paths", () => {
     const status = buildProjectStatus(
       { projectId: "project/one", source: "explicit" },

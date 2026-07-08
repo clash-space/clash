@@ -23,6 +23,7 @@ import { mkdir, readFile, cp, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { projectIdPathSegment, projectWorkspaceId } from "@clash/shared-runtime";
 import { paths } from "./platform.js";
 
 /** Used when the caller doesn't supply a project id (e.g. Quick connect). */
@@ -117,14 +118,9 @@ async function ensureProjectWorkspaceLayout(cwd: string): Promise<void> {
   ]);
 }
 
-/** Filesystem-safe form of an arbitrary id (no slashes, no leading dots). */
+/** Filesystem-safe form of an agent template id (no slashes, no leading dots). */
 function sanitize(id: string): string {
   return id.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^\.+/, "");
-}
-
-function projectIdPathSegment(id: string): string {
-  const encoded = encodeURIComponent(id).replace(/\./g, "%2E");
-  return encoded || DEFAULT_PROJECT;
 }
 
 /**
@@ -154,7 +150,7 @@ async function writeProjectMarker(cwd: string, projectId: string): Promise<void>
     [
       "schema_version = 1",
       `project_id = ${JSON.stringify(projectId)}`,
-      `workspace_id = ${JSON.stringify(`managed:${projectIdPathSegment(projectId)}`)}`,
+      `workspace_id = ${JSON.stringify(projectWorkspaceId("managed", projectId, cwd))}`,
       'store = "managed"',
       "",
       "[sync]",

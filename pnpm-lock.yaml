@@ -482,6 +482,9 @@ importers:
       '@agentclientprotocol/sdk':
         specifier: ^0.28.1
         version: 0.28.1(zod@4.4.3)
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../shared-runtime
       '@zed-industries/codex-acp':
         specifier: ^0.16.0
         version: 0.16.0

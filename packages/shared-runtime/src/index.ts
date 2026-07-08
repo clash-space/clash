@@ -13,6 +13,7 @@ export {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
   projectIdPathSegment,
+  projectWorkspaceId,
   type ProjectRecoveryPolicy,
   type ProjectRecoveryPolicyReason,
   type ProjectStatusActionGate,
@@ -24,6 +25,7 @@ export {
   type ProjectStatusMarker,
   type ProjectStatusStorage,
   type ProjectStatusSource,
+  type ProjectWorkspaceIdKind,
 } from "./project-status.js";
 
 export const LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;

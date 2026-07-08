@@ -509,8 +509,9 @@ Current status:
   project marker root from the canonical project workspace/store so agents can
   tell when a user workspace is only a reference/draft surface.
 - `clash init`, `clash project link`, and bridge-managed agent cwd creation now
-  write `workspace_id` into `.clash/project.toml`; status surfaces it as
-  `currentWorkspace.markerWorkspaceId` for stable workspace identity.
+  write a stable opaque `workspace_id` into `.clash/project.toml`; status
+  surfaces it as `currentWorkspace.markerWorkspaceId` for workspace identity
+  without treating the workspace id as a project id alias.
 - Storage doctor black-box smoke now deletes the original marker workspace and
   verifies `clash project status --project ... --json` from a detached cwd still
   resolves the same canonical project workspace and local SQLite state.

@@ -1,9 +1,10 @@
 import { Command } from "commander";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   buildProjectStatus as buildSharedProjectStatus,
+  projectWorkspaceId,
   type ProjectStatus as SharedProjectStatus,
 } from "@clash/shared-runtime";
 import { apiJson } from "../lib/api";
@@ -82,18 +83,6 @@ export async function initProject(options: {
     sync: { mode: "local" },
   });
   return { projectId, markerPath, workspaceId };
-}
-
-function projectWorkspaceId(kind: "managed" | "external", projectId: string, cwd: string): string {
-  const hash = createHash("sha256")
-    .update(kind)
-    .update("\0")
-    .update(projectId)
-    .update("\0")
-    .update(resolve(cwd))
-    .digest("hex")
-    .slice(0, 16);
-  return `${kind}:${hash}`;
 }
 
 export async function resolveProjectStatus(options: {
