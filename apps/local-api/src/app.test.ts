@@ -10384,6 +10384,12 @@ describe("local API app", () => {
         resultEntityId: project.id,
       },
     });
+    await expectSingleMutationAudit(app, {
+      operation: "room_sync",
+      entityId: project.id,
+      entityKind: "room",
+      reason: "room sync",
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       `https://api.example.com/api/v1/projects/${encodeURIComponent(project.id)}/room/messages`,

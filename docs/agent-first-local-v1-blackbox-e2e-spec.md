@@ -666,13 +666,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T14-41-14-286Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-08T14-47-35-424Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 178 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 180 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -695,7 +695,9 @@ Result:
   now requires receipt-bearing node reads, rejects downstream text content patch,
   local-api canvas batch delete now requires a graph-aware delete-plan receipt,
   rejects orphaning external references and bare CAS tokens, and writes sanitized
-  audit evidence; session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/upgrade/authenticate/uninstall, local agent-server config update, provider account
+  audit evidence; accepted room sync mirrors local/remote room messages through
+  the explicit action and writes sanitized local mutation audit evidence;
+  session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/upgrade/authenticate/uninstall, local agent-server config update, provider account
   update/delete, provider OAuth start/complete/delete, asset-ref delete, asset GC delete, and local-api canvas edge delete also write sanitized local mutation audit
   evidence after accepted agent writes,
 - stale provider, OAuth, asset GC, project restore, and session receipts were

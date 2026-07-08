@@ -253,8 +253,9 @@ Current evidence:
   export, remote-only import, already-mirrored same-id rows, and same-id content
   conflicts.
 - local-api app tests cover explicit room sync metadata, remote-only import,
-  local-only export, accepted `room_sync` mutation records, and same-id conflict
-  rejection without local overwrite; same-id conflict plans expose local/remote
+  local-only export, accepted `room_sync` mutation records plus sanitized audit
+  evidence, and same-id conflict rejection without local overwrite; same-id
+  conflict plans expose local/remote
   room-message snapshots plus content hashes for manual or agent review.
 - local-api and CLI now expose explicit hash-checked `accept-divergence`
   conflict recovery. The recovery action writes local SQLite

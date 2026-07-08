@@ -837,7 +837,8 @@ Cloud-configured local rooms expose sync as an explicit action, not an implicit
 background write. Reads can report `remote_room.status=pending`; only
 `clash room sync` / `POST /api/v1/projects/:projectId/room/sync` may import
 remote-only rows, export local-only rows, or report `mirrored`/`failed` with a
-host mutation envelope.
+host mutation envelope. Accepted mirror actions write sanitized mutation audit
+evidence without persisting reusable read receipts.
 
 Same-id room conflicts remain append-only. A user or agent may explicitly
 acknowledge an inspected conflict with `accept-divergence` only by presenting the

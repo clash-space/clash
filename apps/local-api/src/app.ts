@@ -4780,6 +4780,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.post("/api/v1/projects/:id/room/sync", async (c) => {
     const projectId = c.req.param("id");
     const envelope = localMutationEnvelope("room_sync", "room", projectId);
+    const preconditions = requestProjectWritePreconditions(c);
     const state = await db.load();
     const project = findActiveProject(state, projectId, userId);
     if (!project) {
@@ -4897,10 +4898,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 409);
     }
 
+    const mutation = hostMutationSucceeded(envelope, { resultEntityId: projectId });
+    await db.appendMutationAudit(mutationAuditRecord({
+      mutation,
+      actorClientType: preconditions.actorClientType,
+      reason: "room sync",
+    }));
     return c.json({
       sync: await publicRoomSyncMeta(syncConfig, { status: "mirrored" }),
       plan: publicPlan,
-      mutation: hostMutationSucceeded(envelope, { resultEntityId: projectId }),
+      mutation,
     });
   });
 

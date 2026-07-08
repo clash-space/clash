@@ -123,6 +123,7 @@ async function main() {
   const startedAt = now();
   const { createLocalApiApp } = await import("../../local-api/src/app.ts");
   const { createLocalAudioConfigStore } = await import("../../local-api/src/audio-config.ts");
+  const { createLocalSyncConfigStore } = await import("../../local-api/src/sync-config.ts");
   const { FileReplicaStore } = await import("../../local-api/src/loro/file-replica-store.ts");
   const { LocalLoroRoom } = await import("../../local-api/src/sync.ts");
   const localApiRequire = createRequire(path.join(repoRoot, "apps/local-api/package.json"));
@@ -3338,6 +3339,109 @@ async function main() {
 	    { mutation: localOnlyRoomSync.mutation },
 	  );
 
+	  const acceptedRoomSyncDataDir = path.join(artifactRoot, "accepted-room-sync-data");
+	  await mkdir(acceptedRoomSyncDataDir, { recursive: true });
+	  const remoteRoomRequests = [];
+	  const acceptedRoomSyncConfig = createLocalSyncConfigStore({
+	    dataDir: acceptedRoomSyncDataDir,
+	    env: {},
+	    fetch: async (input, init = {}) => {
+	      const headers = new Headers(init.headers);
+	      remoteRoomRequests.push({
+	        input,
+	        method: init.method ?? "GET",
+	        authorization: headers.get("authorization"),
+	        body: init.body ? String(init.body) : "",
+	      });
+	      if (!init.method || init.method === "GET") {
+	        return new Response(JSON.stringify({
+	          messages: [
+	            {
+	              id: "remote-room-sync-smoke",
+	              project_id: "ignored-by-local-api",
+	              sender_kind: "user",
+	              sender_id: "remote-user",
+	              sender_user_id: "remote-user",
+	              mentions: [],
+	              text: "remote room sync smoke",
+	              at: 1_700_000_100,
+	            },
+	          ],
+	        }), { headers: { "content-type": "application/json" } });
+	      }
+	      if (init.method === "POST") {
+	        return new Response(JSON.stringify({ ok: true }), {
+	          status: 201,
+	          headers: { "content-type": "application/json" },
+	        });
+	      }
+	      return new Response("unexpected room sync method", { status: 500 });
+	    },
+	  });
+	  await acceptedRoomSyncConfig.updateFromRequest({
+	    mode: "cloud-sync",
+	    remote_loro_url: "https://room-sync.example",
+	    remote_loro_token: "room-token",
+	    capabilities: { room: true },
+	  });
+	  const acceptedRoomSyncApp = createLocalApiApp({
+	    dataDir: acceptedRoomSyncDataDir,
+	    userId: "asset-receipt-smoke-user",
+	    syncConfig: acceptedRoomSyncConfig,
+	  });
+	  const acceptedRoomRequest = appRequest(acceptedRoomSyncApp);
+	  const acceptedRoomProjectResponse = await acceptedRoomRequest("/api/v1/projects", {
+	    method: "POST",
+	    body: JSON.stringify({ name: "Accepted Room Sync Smoke" }),
+	  });
+	  const acceptedRoomProject = await parseJsonResponse(acceptedRoomProjectResponse);
+	  const acceptedLocalRoomMessageResponse = await acceptedRoomRequest(`/api/v1/projects/${encodeURIComponent(acceptedRoomProject.id)}/room/messages`, {
+	    method: "POST",
+	    body: JSON.stringify({
+	      id: "local-room-sync-smoke",
+	      text: "local room sync smoke",
+	    }),
+	  });
+	  const acceptedLocalRoomMessage = await parseJsonResponse(acceptedLocalRoomMessageResponse);
+	  const acceptedRoomSyncResponse = await acceptedRoomRequest(`/api/v1/projects/${encodeURIComponent(acceptedRoomProject.id)}/room/sync`, {
+	    method: "POST",
+	  });
+	  const acceptedRoomSync = await parseJsonResponse(acceptedRoomSyncResponse);
+	  recordCheck(
+	    "room sync mirrors local and remote messages through explicit action",
+	    acceptedRoomProjectResponse.status === 201 &&
+	      acceptedLocalRoomMessageResponse.status === 200 &&
+	      acceptedLocalRoomMessage.mutation?.accepted === true &&
+	      acceptedRoomSyncResponse.status === 200 &&
+	      acceptedRoomSync.mutation?.operation === "room_sync" &&
+	      acceptedRoomSync.mutation?.accepted === true &&
+	      acceptedRoomSync.plan?.exportedIds?.includes("local-room-sync-smoke") === true &&
+	      acceptedRoomSync.plan?.importedIds?.includes("remote-room-sync-smoke") === true &&
+	      remoteRoomRequests.some((request) =>
+	        request.method === "POST" &&
+	        request.authorization === "Bearer room-token" &&
+	        request.body.includes("local room sync smoke")
+	      ),
+	    JSON.stringify({ acceptedRoomSync, remoteRoomRequests }),
+	    { mutation: acceptedRoomSync.mutation },
+	  );
+	  const acceptedRoomSyncAuditResponse = await acceptedRoomRequest(`/api/v1/mutation-audit?operation=room_sync&entityId=${encodeURIComponent(acceptedRoomProject.id)}`);
+	  const acceptedRoomSyncAudit = await parseJsonResponse(acceptedRoomSyncAuditResponse);
+	  const acceptedRoomSyncAuditRecord = acceptedRoomSyncAudit.records?.[0];
+	  recordCheck(
+	    "room sync writes sanitized local mutation audit evidence",
+	    acceptedRoomSyncAuditResponse.status === 200 &&
+	      acceptedRoomSyncAudit.records?.length === 1 &&
+	      acceptedRoomSyncAuditRecord.operation === "room_sync" &&
+	      acceptedRoomSyncAuditRecord.entity?.id === acceptedRoomProject.id &&
+	      acceptedRoomSyncAuditRecord.entity?.kind === "room" &&
+	      acceptedRoomSyncAuditRecord.accepted === true &&
+	      acceptedRoomSyncAuditRecord.reason === "room sync" &&
+	      mutationAuditRecordsHaveNoReadTokens(acceptedRoomSyncAudit.records),
+	    JSON.stringify(acceptedRoomSyncAudit),
+	    { mutation: acceptedRoomSync.mutation },
+	  );
+
 	  const report = {
 	    schemaVersion: 1,
 	    status: "pass",
@@ -3580,6 +3684,8 @@ async function main() {
 	      localRoomMessageOriginalPreserved: checks.some((check) => check.name === "local room message conflict preserves original content" && check.status === "pass"),
 	      roomSyncMissingProjectFirst: checks.some((check) => check.name === "room sync checks project existence before remote admission" && check.status === "pass"),
 	      roomSyncLocalOnlyAdmissionReturned: checks.some((check) => check.name === "local-only room sync returns explicit admission gate" && check.status === "pass"),
+	      roomSyncExplicitMirrorAccepted: checks.some((check) => check.name === "room sync mirrors local and remote messages through explicit action" && check.status === "pass"),
+	      roomSyncAuditRecorded: checks.some((check) => check.name === "room sync writes sanitized local mutation audit evidence" && check.status === "pass"),
 	    },
 	  };
 
