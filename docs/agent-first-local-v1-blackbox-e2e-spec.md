@@ -898,9 +898,10 @@ Current status:
   spawned CLI process, including denied local-only sync with parseable stdout
   admission evidence, remote/local conflict hash inspection, stale-hash
   rejection, explicit divergence recovery persistence, and later sync
-  continuation without overwriting local text. Remaining work is
-  admission-controlled remote sync loop wiring, richer conflict recovery
-  affordances, and broader live UI parity.
+  continuation without overwriting local text. `GroupChatPanel` also exposes
+  first-pass conflict id/hash/CLI recovery details from that sync plan.
+  Remaining work is admission-controlled remote sync loop wiring, fuller
+  local/remote recovery workflow, and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
   outside-cwd and symlink-outside-cwd projection path rejection including

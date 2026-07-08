@@ -135,6 +135,11 @@ describe("GroupChatPanel primitives", () => {
     expect(panelSource).toContain("Room sync conflict");
     expect(panelSource).toContain("clash room sync --json");
     expect(panelSource).toContain("clash room resolve-conflict");
+    expect(panelSource).toContain("roomSyncConflicts.slice");
+    expect(panelSource).toContain("conflict.local.contentHash");
+    expect(panelSource).toContain("conflict.remote.contentHash");
+    expect(panelSource).toContain("--local-hash");
+    expect(panelSource).toContain("--remote-hash");
   });
 
   it("uses a mature gesture primitive for panel resizing instead of document mouse listeners", () => {

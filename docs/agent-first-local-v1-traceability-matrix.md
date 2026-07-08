@@ -370,6 +370,11 @@ Evidence:
   it preserves failed sync metadata plus conflict plans for the visible
   `GroupChatPanel` conflict banner, while ordinary history refresh remains a
   read-only room fetch.
+- `GroupChatPanel` now surfaces the first three room sync conflicts with
+  message id, reason, local/remote content hashes, and the explicit
+  `clash room resolve-conflict --local-hash --remote-hash --json` command;
+  `packages/web-ui/src/components/GroupChatPanel.primitives.test.ts` protects
+  those visible recovery details.
 - CLI reports a generic missing-room-API message on 404 for older targets.
 - Local ACP can dispatch room mentions into sessions.
 
@@ -377,8 +382,8 @@ Conclusion:
 
 - Do not remove room.
 - Local room persistence/routing baseline is implemented; cloud sync policy is
-  narrowed to admission-controlled sync loop wiring, richer conflict recovery
-  affordances, and live UI parity.
+  narrowed to admission-controlled sync loop wiring, fuller local/remote
+  recovery UX, and live UI parity.
 
 ## Restriction Matrix
 
@@ -423,8 +428,9 @@ Current status:
   link to the v1 docs and this traceability matrix.
 - Item 12 is checked with `git diff --check`, JSON parse for schema, desktop
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
-- Code implementation remains incomplete for automatic SQLite repair, richer
-  local room conflict recovery/admission UI, copy-on-write UI/history,
+- Code implementation remains incomplete for automatic SQLite repair, broader
+  local room admission/live UI, fuller conflict recovery workflow,
+  copy-on-write UI/history,
   remaining storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume
   layout QA paths passed. The real runs recorded session cwd under

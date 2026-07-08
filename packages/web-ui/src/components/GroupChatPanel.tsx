@@ -418,6 +418,8 @@ export function GroupChatPanel({
   const syncIndicator = roomSyncIndicator(room.sync);
   const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
   const roomSyncConflictCount = roomSyncConflicts.length;
+  const visibleRoomSyncConflicts = roomSyncConflicts.slice(0, 3);
+  const hiddenRoomSyncConflictCount = Math.max(0, roomSyncConflictCount - visibleRoomSyncConflicts.length);
   const roomSyncConflictRecoveryHint =
     roomSyncConflictCount > 0
       ? `${roomSyncConflictCount} room conflict${roomSyncConflictCount === 1 ? '' : 's'} needs review. Hashes come from clash room sync --json; apply an explicit recovery with clash room resolve-conflict after comparing both sides.`
@@ -658,6 +660,46 @@ export function GroupChatPanel({
                 {roomSyncConflictCount} conflict{roomSyncConflictCount === 1 ? '' : 's'}
               </span>
             </div>
+            <p className="mt-1 leading-snug text-red-700 dark:text-red-200/90">
+              Compare the local and remote hashes from <code className="font-mono">clash room sync --json</code>,
+              then acknowledge the inspected conflict explicitly.
+            </p>
+            <ul className="mt-2 space-y-2" aria-label="Room sync conflict recovery commands">
+              {visibleRoomSyncConflicts.map((conflict) => (
+                <li
+                  key={conflict.id}
+                  className="border-t border-red-200/80 pt-2 first:border-t-0 first:pt-0 dark:border-red-900/70"
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono text-[11px] font-semibold">{conflict.id}</span>
+                    <span className="text-[11px] text-red-700 dark:text-red-200/80">{conflict.reason}</span>
+                  </div>
+                  <dl className="mt-1 grid gap-1 text-[11px] sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <dt className="font-medium">Local</dt>
+                      <dd className="break-all font-mono text-red-700 dark:text-red-200/80">
+                        {conflict.local.contentHash}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="font-medium">Remote</dt>
+                      <dd className="break-all font-mono text-red-700 dark:text-red-200/80">
+                        {conflict.remote.contentHash}
+                      </dd>
+                    </div>
+                  </dl>
+                  <code className="mt-1 block break-all rounded-matrix bg-red-100/70 px-2 py-1 font-mono text-[10px] leading-snug text-red-900 dark:bg-red-950/60 dark:text-red-100">
+                    {`clash room resolve-conflict ${conflict.id} --local-hash ${conflict.local.contentHash} --remote-hash ${conflict.remote.contentHash} --json`}
+                  </code>
+                </li>
+              ))}
+            </ul>
+            {hiddenRoomSyncConflictCount > 0 && (
+              <p className="mt-2 text-[11px] text-red-700 dark:text-red-200/80">
+                {hiddenRoomSyncConflictCount} more conflict{hiddenRoomSyncConflictCount === 1 ? '' : 's'} in the
+                sync plan.
+              </p>
+            )}
           </div>
         )}
 
