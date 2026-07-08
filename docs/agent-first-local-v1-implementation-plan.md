@@ -1,6 +1,6 @@
 # Agent-First Local v1 Implementation Plan
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Purpose
 
@@ -510,7 +510,9 @@ Current status:
   --yes --json` is the explicit quarantined-replica promotion path. It reuses
   compare's manifest/path checks, requires the compare read token as CAS,
   backs up existing canonical files when present, and rejects stale tokens
-  before overwriting the protected canonical replica.
+  before overwriting the protected canonical replica. Successful restore writes
+  `restore-receipt.json` under the recovery set's `canonical-before-restore/`
+  directory with the CAS tokens and canonical-after hashes.
 - `clash asset link --asset <id>` now creates an agent-readable file under
   `assets/links/` via the immutable global asset cache.
 - Desktop real Codex startup/resume scripts build `@clash-space/bridge` before

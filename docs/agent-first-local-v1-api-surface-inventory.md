@@ -1,6 +1,6 @@
 # Agent-First Local v1 API Surface Inventory
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Purpose
 
@@ -617,8 +617,11 @@ replica, and does not point at out-of-set or symlinked recovery files. Compare
 also returns the read token required by `clash doctor storage-recovery restore
 --manifest ... --if-match <readToken> --yes --json`, which re-checks the same
 paths, backs up existing canonical files when present, and rejects stale tokens
-before promotion. Broader recovery UX, old-layout migration checks, and
-cloud/shared recovery policy are still needed.
+before promotion. Successful restore writes a local `restore-receipt.json`
+under the recovery set's `canonical-before-restore/` directory so the explicit
+promotion can be audited without adding a broad append-only product log.
+Broader recovery UX, old-layout migration checks, and cloud/shared recovery
+policy are still needed.
 
 ### Local room endpoints
 

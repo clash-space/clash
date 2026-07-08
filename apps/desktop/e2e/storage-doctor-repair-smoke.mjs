@@ -408,6 +408,11 @@ async function main() {
     { command: recoveryRestore.command },
   );
   const recoveryRestoreReport = parseStdoutJson(recoveryRestore);
+  const recoveryRestoreReceiptPath = recoveryRestoreReport.receiptPath;
+  const recoveryRestoreReceipt = typeof recoveryRestoreReceiptPath === "string" &&
+    await pathIsFile(recoveryRestoreReceiptPath)
+    ? JSON.parse(await readFile(recoveryRestoreReceiptPath, "utf8"))
+    : null;
   recordCheck(
     "doctor storage recovery restore promotes quarantined replica through CAS",
     recoveryRestoreReport.status === "restored" &&
@@ -419,6 +424,29 @@ async function main() {
       await readFile(repairReport.status?.loro?.snapshotPath ?? "", "utf8") === "secondary snapshot" &&
       await readFile(repairReport.status?.loro?.updatesLogPath ?? "", "utf8") === "secondary updates",
     JSON.stringify(recoveryRestoreReport),
+  );
+  const receiptSnapshot = recoveryRestoreReceipt?.files?.find((file) => file.kind === "snapshot");
+  const receiptUpdates = recoveryRestoreReceipt?.files?.find((file) => file.kind === "updates-log");
+  recordCheck(
+    "doctor storage recovery restore writes durable receipt under recovery set",
+    typeof recoveryRestoreReceiptPath === "string" &&
+      recoveryRestoreReceiptPath.endsWith("restore-receipt.json") &&
+      isInside(recoveryRestoreReceiptPath, path.dirname(manifestPath)) &&
+      recoveryRestoreReceipt?.schemaVersion === 1 &&
+      recoveryRestoreReceipt?.status === "restored" &&
+      recoveryRestoreReceipt?.projectId === projectId &&
+      recoveryRestoreReceipt?.manifestPath === manifestPath &&
+      recoveryRestoreReceipt?.expectedReadToken === recoveryCompareReport.readToken &&
+      recoveryRestoreReceipt?.beforeReadToken === recoveryRestoreReport.beforeReadToken &&
+      recoveryRestoreReceipt?.afterReadToken === recoveryRestoreReport.afterReadToken &&
+      receiptSnapshot?.restored === true &&
+      typeof receiptSnapshot?.canonicalAfter?.sha256 === "string" &&
+      receiptUpdates?.restored === true &&
+      typeof receiptUpdates?.canonicalAfter?.sha256 === "string",
+    JSON.stringify({
+      receiptPath: recoveryRestoreReceiptPath,
+      receipt: recoveryRestoreReceipt,
+    }),
   );
   const staleAfterRestore = runCli([
     "doctor",

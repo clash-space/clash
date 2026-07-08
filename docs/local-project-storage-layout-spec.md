@@ -1,6 +1,6 @@
 # Local Project Storage Layout Spec
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Purpose
 
@@ -579,7 +579,11 @@ indirection. This keeps the command from becoming a generic file hash oracle.
 bytes: it requires a prior compare `readToken`, explicit `--yes`, re-runs the
 same manifest/path checks, backs up existing canonical files when present, and
 rejects stale tokens if either the quarantined bytes or canonical bytes changed
-after compare. Automatic import remains disabled.
+after compare. A successful restore writes a durable local
+`restore-receipt.json` under the recovery set's `canonical-before-restore/`
+directory with the project id, manifest path, expected/before/after read
+tokens, restored file evidence, and post-restore canonical hashes. Automatic
+import remains disabled.
 
 ## Migration From Current State
 

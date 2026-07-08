@@ -1,6 +1,6 @@
 # Agent-First Local v1 Black-Box E2E Spec
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 ## Purpose
 
@@ -683,13 +683,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T06-55-27-562Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T07-04-32-378Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 63 checks passed,
+- 64 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -714,6 +714,10 @@ Result:
   `--if-match <readToken>`, promoted quarantined snapshot/update-log bytes into
   the protected canonical replica through public CLI, and rejected stale tokens
   before overwriting canonical bytes,
+- recovery restore wrote a durable local `restore-receipt.json` under the
+  recovery set's `canonical-before-restore/` directory with project id,
+  manifest path, expected/before/after read tokens, restored file evidence, and
+  post-restore canonical hashes,
 - recovery compare rejected a valid-looking manifest outside the current
   project's protected recovery root,
 - recovery list and doctor storage reported invalid manifest inventory instead

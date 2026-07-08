@@ -433,6 +433,25 @@ test("secondary canvas recovery restore copies quarantined bytes into canonical 
   assert.equal(await readFile(restoredSnapshot.backupPath, "utf8"), "canonical snapshot");
   assert.equal(await readFile(restoredUpdates.backupPath, "utf8"), "canonical updates");
   assert.notEqual(restored.beforeReadToken, restored.afterReadToken);
+  const receiptPath = restored.receiptPath;
+  assert.match(receiptPath, /restore-receipt\.json$/);
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  assert.equal(receipt.schemaVersion, 1);
+  assert.equal(receipt.status, "restored");
+  assert.equal(receipt.projectId, "doctor_project");
+  assert.equal(receipt.expectedReadToken, compared.readToken);
+  assert.equal(receipt.beforeReadToken, restored.beforeReadToken);
+  assert.equal(receipt.afterReadToken, restored.afterReadToken);
+  assert.deepEqual(
+    receipt.files.map((file: { kind: string; canonicalAfter: { sha256?: string } }) => [
+      file.kind,
+      typeof file.canonicalAfter?.sha256,
+    ]).sort(),
+    [
+      ["snapshot", "string"],
+      ["updates-log", "string"],
+    ].sort(),
+  );
 });
 
 test("secondary canvas recovery restore rejects stale compare read tokens before overwriting canonical bytes", async () => {

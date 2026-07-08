@@ -100,6 +100,7 @@ export interface SecondaryCanvasRecoveryRestoreReport {
   beforeReadToken: string;
   afterReadToken: string;
   backupsRoot: string;
+  receiptPath: string;
   files: SecondaryCanvasRecoveryRestoreFile[];
 }
 
@@ -910,7 +911,8 @@ export async function restoreSecondaryCanvasRecovery(options: {
   }
 
   const after = await compareSecondaryCanvasRecovery(options);
-  return {
+  const receiptPath = join(backupsRoot, "restore-receipt.json");
+  const report = {
     schemaVersion: 1,
     status: "restored",
     projectId: before.projectId,
@@ -921,8 +923,12 @@ export async function restoreSecondaryCanvasRecovery(options: {
     beforeReadToken: before.readToken,
     afterReadToken: after.readToken,
     backupsRoot,
+    receiptPath,
     files,
-  };
+  } satisfies SecondaryCanvasRecoveryRestoreReport;
+  await mkdir(dirname(receiptPath), { recursive: true });
+  await writeFile(receiptPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  return report;
 }
 
 export async function listSecondaryCanvasRecoveries(options: {
