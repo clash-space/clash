@@ -186,6 +186,10 @@ export async function runStorageDoctor(options: {
       level: "error",
       message: error instanceof Error ? error.message : String(error),
     });
+    const legacyMarkerPath = await findLegacyProjectJsonMarker(cwd);
+    if (legacyMarkerPath) {
+      checks.push(legacyProjectMarkerCheck(legacyMarkerPath));
+    }
     return { ok: false, checks };
   }
 
@@ -205,6 +209,10 @@ export async function runStorageDoctor(options: {
       level: "warning",
       message: "No project marker was used; project was selected explicitly or from CLASH_PROJECT_ID.",
     });
+  }
+  const legacyMarkerPath = await findLegacyProjectJsonMarker(cwd);
+  if (legacyMarkerPath) {
+    checks.push(legacyProjectMarkerCheck(legacyMarkerPath));
   }
 
   const overlap = firstEditableProtectedOverlap(status);
@@ -350,6 +358,32 @@ export async function runStorageDoctor(options: {
         }
       : {}),
   };
+}
+
+function legacyProjectMarkerCheck(markerPath: string): StorageDoctorCheck {
+  return {
+    id: "legacy-project-marker",
+    level: "warning",
+    message: "Legacy .clash/project.json marker exists but is ignored by v1 local tooling; write .clash/project.toml with `clash init` or `clash project link`.",
+    path: markerPath,
+  };
+}
+
+async function findLegacyProjectJsonMarker(startCwd: string): Promise<string | undefined> {
+  let current = resolve(startCwd);
+  while (true) {
+    const candidate = join(current, ".clash", "project.json");
+    try {
+      const info = await stat(candidate);
+      if (info.isFile()) return candidate;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
 }
 
 export function inspectStorageContract(status: ProjectStatus): StorageDoctorCheck[] {

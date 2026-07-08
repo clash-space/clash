@@ -471,8 +471,9 @@ Current status:
   marker existence, editable/protected path separation, protected cwd, project
   workspace, editable draft/projection/session/asset-link roots, protected
   runtime root, Loro replica, local SQLite target, broken/invalid asset links,
-  ignored legacy `db.json`, and the structured `storage` role contract that
-  keeps agent workspace paths separate from the protected canonical replica,
+  ignored legacy `db.json`, ignored legacy `.clash/project.json` project
+  markers, and the structured `storage` role contract that keeps agent
+  workspace paths separate from the protected canonical replica,
   including immutable text/timeline revision content blob roots. Existing
   revision blob files are checked for content-addressed filename consistency and
   no writable permission bits; explicit storage repair can restore read-only

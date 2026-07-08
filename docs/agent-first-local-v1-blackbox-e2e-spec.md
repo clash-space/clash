@@ -683,13 +683,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T07-25-47-196Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T07-31-19-173Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 71 checks passed,
+- 72 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -700,6 +700,9 @@ Result:
 - workspace roots and local SQLite core metadata tables, provider auth
   tables/primary keys, plus asset/text/timeline projection indexes were
   repaired through public CLI commands,
+- legacy `.clash/project.json` was reported as ignored old-layout evidence
+  while the v1 `.clash/project.toml` marker remained the actual project
+  context,
 - a hash-valid writable text revision blob was repaired back to read-only
   permissions through the public `doctor storage --repair --json` path,
 - doctor detected a cwd secondary canvas replica before repair, then

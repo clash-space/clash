@@ -610,6 +610,8 @@ rejected; shared recovery must use a cloud/shared conflict path instead.
    asset metadata model.
 7. Generate project asset links only as inspection/projection convenience.
 8. Add storage doctor checks for:
+   - legacy `.clash/project.json` markers, reported as ignored old-layout
+     cleanup/migration evidence rather than project context,
    - multiple snapshots for one project (`secondary-canvas-replica` first pass),
    - broken asset links,
    - missing local SQLite core metadata tables, provider auth tables/primary keys, and

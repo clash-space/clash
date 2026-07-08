@@ -203,6 +203,13 @@ async function main() {
     JSON.stringify(initialized),
     { command: init.command },
   );
+  const legacyProjectMarkerPath = path.join(workspace, ".clash", "project.json");
+  await writeJson(legacyProjectMarkerPath, {
+    schemaVersion: 1,
+    projectId,
+    store: "managed",
+    sync: { mode: "local" },
+  });
 
   const before = runCli(["doctor", "storage", "--json"]);
   recordCheck(
@@ -220,6 +227,13 @@ async function main() {
       drafts: checkById(beforeReport, "editable-drafts-root"),
       sqliteSchema: checkById(beforeReport, "local-sqlite-schema"),
     }),
+  );
+  recordCheck(
+    "doctor before repair reports legacy JSON marker as ignored old layout",
+    checkById(beforeReport, "legacy-project-marker")?.level === "warning" &&
+      checkById(beforeReport, "legacy-project-marker")?.path === legacyProjectMarkerPath &&
+      checkById(beforeReport, "legacy-project-marker")?.message?.includes("project.toml") === true,
+    JSON.stringify(checkById(beforeReport, "legacy-project-marker")),
   );
 
   const secondaryReplicaRoot = path.join(workspace, "loro");

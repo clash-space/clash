@@ -174,6 +174,34 @@ function checkById(report: Awaited<ReturnType<typeof runStorageDoctor>>, id: str
   return check;
 }
 
+test("storage doctor reports legacy JSON project markers as ignored old layout", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  const legacyMarkerPath = join(cwd, ".clash", "project.json");
+  await mkdir(join(cwd, ".clash"), { recursive: true });
+  await writeFile(
+    legacyMarkerPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      projectId: "doctor_project",
+      store: "managed",
+      sync: { mode: "local" },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
+
+  assert.equal(report.ok, false);
+  assert.equal(checkById(report, "project-context").level, "error");
+  const legacyMarker = checkById(report, "legacy-project-marker");
+  assert.equal(legacyMarker.level, "warning");
+  assert.equal(legacyMarker.path, legacyMarkerPath);
+  assert.match(legacyMarker.message, /Legacy \.clash\/project\.json/);
+  assert.match(legacyMarker.message, /ignored/);
+  assert.match(legacyMarker.message, /project\.toml/);
+});
+
 test("storage doctor reports marker project with non-fatal missing-store warnings", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
