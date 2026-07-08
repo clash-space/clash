@@ -57,6 +57,25 @@ export interface ProjectSyncReadiness {
   missing: string[];
 }
 
+export type ProjectStatusActionGateReason =
+  | "project-is-local-only"
+  | "cloud-sync-not-ready"
+  | "sync-mode-unknown"
+  | "already-cloud-connected";
+
+export interface ProjectStatusActionGate {
+  allowed: boolean;
+  reason: ProjectStatusActionGateReason | null;
+  requirements: string[];
+}
+
+export interface ProjectStatusActionGates {
+  openInWeb: ProjectStatusActionGate;
+  enableSync: ProjectStatusActionGate;
+  shareProject: ProjectStatusActionGate;
+  runLocalAgent: ProjectStatusActionGate;
+}
+
 export interface ProjectStatusCollaboration {
   schemaVersion: 1;
   mode: ProjectCollaborationMode;
@@ -66,6 +85,7 @@ export interface ProjectStatusCollaboration {
   roomAuthority: ProjectRoomAuthority;
   cloudProjectRoom: ProjectCloudRoomMode;
   syncReadiness: ProjectSyncReadiness;
+  actions: ProjectStatusActionGates;
   localAgentRuntime: {
     requiredForLocalActions: true;
     availability: "owner-machine-online";
@@ -238,6 +258,7 @@ export function projectCollaborationStatus(
   const normalized = normalizeCollaborationMode(raw);
   const syncReadiness = projectSyncReadiness(normalized, sync);
   const webOpenable = normalized === "shared" || (normalized === "synced" && syncReadiness.ready);
+  const actions = projectActionGates(normalized, syncReadiness, webOpenable);
   return {
     schemaVersion: 1,
     mode: normalized,
@@ -252,6 +273,7 @@ export function projectCollaborationStatus(
           : "local",
     cloudProjectRoom: normalized === "shared" ? "sequencer" : "disabled",
     syncReadiness,
+    actions,
     localAgentRuntime: {
       requiredForLocalActions: true,
       availability: "owner-machine-online",
@@ -302,6 +324,69 @@ function syncCapabilityReady(capabilities: Record<string, unknown>, requirement:
     return capabilities.assetMetadata === true || capabilities.asset_metadata === true;
   }
   return false;
+}
+
+function projectActionGates(
+  mode: ProjectCollaborationMode,
+  syncReadiness: ProjectSyncReadiness,
+  webOpenable: boolean,
+): ProjectStatusActionGates {
+  const localAgent = allowedGate(["owner-machine-online"]);
+  if (mode === "shared") {
+    return {
+      openInWeb: allowedGate(),
+      enableSync: deniedGate("already-cloud-connected"),
+      shareProject: allowedGate(),
+      runLocalAgent: localAgent,
+    };
+  }
+  if (mode === "synced") {
+    const syncRequirements = syncReadiness.ready ? [] : syncReadiness.missing;
+    const cloudReadyGate = webOpenable
+      ? allowedGate()
+      : deniedGate("cloud-sync-not-ready", syncRequirements);
+    return {
+      openInWeb: cloudReadyGate,
+      enableSync: deniedGate("already-cloud-connected"),
+      shareProject: syncReadiness.ready
+        ? allowedGate()
+        : deniedGate("cloud-sync-not-ready", syncRequirements),
+      runLocalAgent: localAgent,
+    };
+  }
+  if (mode === "local-only") {
+    return {
+      openInWeb: deniedGate("project-is-local-only", ["enable-sync"]),
+      enableSync: allowedGate(),
+      shareProject: deniedGate("project-is-local-only", ["enable-sync"]),
+      runLocalAgent: localAgent,
+    };
+  }
+  return {
+    openInWeb: deniedGate("sync-mode-unknown", ["sync-mode"]),
+    enableSync: allowedGate(),
+    shareProject: deniedGate("sync-mode-unknown", ["sync-mode"]),
+    runLocalAgent: localAgent,
+  };
+}
+
+function allowedGate(requirements: string[] = []): ProjectStatusActionGate {
+  return {
+    allowed: true,
+    reason: null,
+    requirements,
+  };
+}
+
+function deniedGate(
+  reason: ProjectStatusActionGateReason,
+  requirements: string[] = [],
+): ProjectStatusActionGate {
+  return {
+    allowed: false,
+    reason,
+    requirements,
+  };
 }
 
 function joinPath(...segments: string[]): string {

@@ -12,6 +12,9 @@ export {
 export {
   buildProjectStatus,
   projectIdPathSegment,
+  type ProjectStatusActionGate,
+  type ProjectStatusActionGateReason,
+  type ProjectStatusActionGates,
   type ProjectStatus,
   type ProjectStatusContext,
   type ProjectStatusMarker,

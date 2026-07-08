@@ -386,8 +386,14 @@ Assertions:
 - local SQLite exists and reports the asset reference index schema as ready,
 - project status collaboration mode is `local-only`, not web-openable, not
   multi-user, and does not claim cloud ProjectRoom sequencing,
+- local project action gates deny `openInWeb`/`shareProject` with
+  `project-is-local-only`, allow `enableSync`, and keep local agent execution
+  tied to `owner-machine-online`,
 - canonical Loro snapshot path is protected and outside the editable project
   workspace root,
+- a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
+  `cloud-sync-not-ready` until canvas, room, and asset metadata mirrors are
+  ready,
 - a follow-up read-only `doctor storage --json` reports repaired prerequisites
   as ok.
 
@@ -699,9 +705,14 @@ Result:
 - project status reported `collaboration.mode: local-only`,
   `webOpenable: false`, `multiUser: false`, and no cloud ProjectRoom
   sequencing,
+- local action gates reported `openInWeb.allowed: false`,
+  `shareProject.allowed: false`, `enableSync.allowed: true`, and
+  `runLocalAgent.allowed: true`,
 - a `cloud-sync` marker stayed `syncReadiness.status: pending`,
   `webOpenable: false`, and `roomAuthority: local` until the full sync
   capabilities are ready,
+- cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
+  sharing admission with `canvas`, `room`, and `asset-metadata` requirements,
 - canonical Loro snapshot path remained protected and outside the editable
   workspace root.
 

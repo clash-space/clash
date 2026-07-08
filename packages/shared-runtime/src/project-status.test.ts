@@ -32,6 +32,28 @@ describe("project status path builder", () => {
         required: ["canvas", "room", "asset-metadata"],
         missing: ["canvas", "room", "asset-metadata"],
       },
+      actions: {
+        openInWeb: {
+          allowed: false,
+          reason: "sync-mode-unknown",
+          requirements: ["sync-mode"],
+        },
+        enableSync: {
+          allowed: true,
+          reason: null,
+          requirements: [],
+        },
+        shareProject: {
+          allowed: false,
+          reason: "sync-mode-unknown",
+          requirements: ["sync-mode"],
+        },
+        runLocalAgent: {
+          allowed: true,
+          reason: null,
+          requirements: ["owner-machine-online"],
+        },
+      },
       localAgentRuntime: {
         requiredForLocalActions: true,
         availability: "owner-machine-online",
@@ -111,6 +133,28 @@ describe("project status path builder", () => {
         ready: false,
         missing: ["canvas", "room", "asset-metadata"],
       },
+      actions: {
+        openInWeb: {
+          allowed: false,
+          reason: "project-is-local-only",
+          requirements: ["enable-sync"],
+        },
+        enableSync: {
+          allowed: true,
+          reason: null,
+          requirements: [],
+        },
+        shareProject: {
+          allowed: false,
+          reason: "project-is-local-only",
+          requirements: ["enable-sync"],
+        },
+        runLocalAgent: {
+          allowed: true,
+          reason: null,
+          requirements: ["owner-machine-online"],
+        },
+      },
     });
     expect(cloudSync.collaboration).toMatchObject({
       mode: "synced",
@@ -124,6 +168,28 @@ describe("project status path builder", () => {
         ready: false,
         missing: ["canvas", "room", "asset-metadata"],
       },
+      actions: {
+        openInWeb: {
+          allowed: false,
+          reason: "cloud-sync-not-ready",
+          requirements: ["canvas", "room", "asset-metadata"],
+        },
+        enableSync: {
+          allowed: false,
+          reason: "already-cloud-connected",
+          requirements: [],
+        },
+        shareProject: {
+          allowed: false,
+          reason: "cloud-sync-not-ready",
+          requirements: ["canvas", "room", "asset-metadata"],
+        },
+        runLocalAgent: {
+          allowed: true,
+          reason: null,
+          requirements: ["owner-machine-online"],
+        },
+      },
     });
     expect(shared.collaboration).toMatchObject({
       mode: "shared",
@@ -136,6 +202,28 @@ describe("project status path builder", () => {
         status: "ready",
         ready: true,
         missing: [],
+      },
+      actions: {
+        openInWeb: {
+          allowed: true,
+          reason: null,
+          requirements: [],
+        },
+        enableSync: {
+          allowed: false,
+          reason: "already-cloud-connected",
+          requirements: [],
+        },
+        shareProject: {
+          allowed: true,
+          reason: null,
+          requirements: [],
+        },
+        runLocalAgent: {
+          allowed: true,
+          reason: null,
+          requirements: ["owner-machine-online"],
+        },
       },
     });
   });
@@ -171,6 +259,18 @@ describe("project status path builder", () => {
         ready: false,
         missing: ["canvas", "room", "asset-metadata"],
       },
+      actions: {
+        openInWeb: {
+          allowed: false,
+          reason: "cloud-sync-not-ready",
+          requirements: ["canvas", "room", "asset-metadata"],
+        },
+        shareProject: {
+          allowed: false,
+          reason: "cloud-sync-not-ready",
+          requirements: ["canvas", "room", "asset-metadata"],
+        },
+      },
     });
     expect(ready.collaboration).toMatchObject({
       mode: "synced",
@@ -180,6 +280,18 @@ describe("project status path builder", () => {
         status: "ready",
         ready: true,
         missing: [],
+      },
+      actions: {
+        openInWeb: {
+          allowed: true,
+          reason: null,
+          requirements: [],
+        },
+        shareProject: {
+          allowed: true,
+          reason: null,
+          requirements: [],
+        },
       },
     });
   });

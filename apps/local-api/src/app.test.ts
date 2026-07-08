@@ -8013,6 +8013,28 @@ describe("local API app", () => {
           required: ["canvas", "room", "asset-metadata"],
           missing: ["canvas", "room", "asset-metadata"],
         },
+        actions: {
+          openInWeb: {
+            allowed: false,
+            reason: "project-is-local-only",
+            requirements: ["enable-sync"],
+          },
+          enableSync: {
+            allowed: true,
+            reason: null,
+            requirements: [],
+          },
+          shareProject: {
+            allowed: false,
+            reason: "project-is-local-only",
+            requirements: ["enable-sync"],
+          },
+          runLocalAgent: {
+            allowed: true,
+            reason: null,
+            requirements: ["owner-machine-online"],
+          },
+        },
         localAgentRuntime: {
           requiredForLocalActions: true,
           availability: "owner-machine-online",
@@ -8099,6 +8121,28 @@ describe("local API app", () => {
           ready: false,
           required: ["canvas", "room", "asset-metadata"],
           missing: ["canvas", "room", "asset-metadata"],
+        },
+        actions: {
+          openInWeb: {
+            allowed: false,
+            reason: "cloud-sync-not-ready",
+            requirements: ["canvas", "room", "asset-metadata"],
+          },
+          enableSync: {
+            allowed: false,
+            reason: "already-cloud-connected",
+            requirements: [],
+          },
+          shareProject: {
+            allowed: false,
+            reason: "cloud-sync-not-ready",
+            requirements: ["canvas", "room", "asset-metadata"],
+          },
+          runLocalAgent: {
+            allowed: true,
+            reason: null,
+            requirements: ["owner-machine-online"],
+          },
         },
         localAgentRuntime: {
           requiredForLocalActions: true,

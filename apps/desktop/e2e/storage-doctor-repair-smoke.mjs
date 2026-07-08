@@ -290,6 +290,16 @@ async function main() {
     JSON.stringify(status?.collaboration),
   );
   recordCheck(
+    "local project action gates require sync before web or sharing",
+    status?.collaboration?.actions?.openInWeb?.allowed === false &&
+      status?.collaboration?.actions?.openInWeb?.reason === "project-is-local-only" &&
+      status?.collaboration?.actions?.enableSync?.allowed === true &&
+      status?.collaboration?.actions?.shareProject?.allowed === false &&
+      status?.collaboration?.actions?.shareProject?.requirements?.includes("enable-sync") === true &&
+      status?.collaboration?.actions?.runLocalAgent?.allowed === true,
+    JSON.stringify(status?.collaboration?.actions),
+  );
+  recordCheck(
     "canonical canvas path is protected and outside editable workspace roots",
     typeof status?.loro?.snapshotPath === "string" &&
       repairReport.status.protectedPaths.includes(status.loro.snapshotPath) &&
@@ -379,11 +389,23 @@ async function main() {
       cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("asset-metadata") === true,
     JSON.stringify(cloudSyncStatus?.collaboration),
   );
+  recordCheck(
+    "cloud-sync pending action gates block web and sharing until required mirrors are ready",
+    cloudSyncStatus?.collaboration?.actions?.openInWeb?.allowed === false &&
+      cloudSyncStatus?.collaboration?.actions?.openInWeb?.reason === "cloud-sync-not-ready" &&
+      cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("canvas") === true &&
+      cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("room") === true &&
+      cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("asset-metadata") === true &&
+      cloudSyncStatus?.collaboration?.actions?.enableSync?.allowed === false &&
+      cloudSyncStatus?.collaboration?.actions?.shareProject?.allowed === false &&
+      cloudSyncStatus?.collaboration?.actions?.shareProject?.reason === "cloud-sync-not-ready",
+    JSON.stringify(cloudSyncStatus?.collaboration?.actions),
+  );
 
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots and local SQLite asset reference schema through public CLI commands, and project status keeps partial cloud-sync pending.",
+    summary: "Storage doctor repair initializes agent workspace roots and local SQLite asset reference schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
     run: {
       artifactRoot,
       workspace,
