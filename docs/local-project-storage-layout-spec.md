@@ -85,10 +85,12 @@ The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped
 SQLite metadata store, Loro canvas replica, and immutable text/timeline
-revision content blob roots, all marked non-agent-writable. Text and timeline
-applied bodies therefore have Obsidian-like file recoverability through content
-descriptors, without making the protected canonical store a directly editable
-vault.
+revision content blob roots, all marked non-agent-writable; and
+`storage.localSecrets` points at machine-local secret files such as
+`config.json` and `credentials.json`, also marked non-agent-writable and
+local-only. Text and timeline applied bodies therefore have Obsidian-like file
+recoverability through content descriptors, without making the protected
+canonical store or local secret files a directly editable vault.
 `clash doctor storage --json` verifies this role contract and warns when local
 SQLite is missing core metadata tables, provider auth tables/primary keys, or the
 `asset_refs`, `asset_node_refs` / `reference_role`, `text_revisions`, or
@@ -217,6 +219,10 @@ Notes:
   machine-scoped canonical local replica and `storage.workspace` as the
   agent-editable draft/projection surface. Agents should use those structured
   roles instead of inferring ownership from path names.
+- `storage.localSecrets` exposes machine-local secret file paths such as
+  `${CLASH_HOME:-~/.clash}/config.json` and `credentials.json`; these paths are
+  local-only, non-agent-writable, and should be managed through explicit auth or
+  runtime setup commands rather than file edits.
 - `storage.canonicalReplica.mediaAssets` points at the protected
   content-addressed media blob store under `assets/blobs/`. Media bytes are
   immutable, deduplicated by SHA-256, referenced by SQLite asset rows and

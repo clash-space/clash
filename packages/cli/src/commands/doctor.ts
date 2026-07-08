@@ -622,6 +622,7 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
         );
       }
     }
+    validateLocalSecretsContract(problems, status, storage.localSecrets as ProjectStatus["storage"]["localSecrets"] | undefined);
   }
 
   return [
@@ -634,9 +635,65 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
       : {
           id: "storage-role-contract",
           level: "ok",
-          message: "Project storage contract separates agent workspace from protected canonical replica.",
+          message: "Project storage contract separates agent workspace from protected canonical replica and local secrets.",
         },
   ];
+}
+
+function validateLocalSecretsContract(
+  problems: string[],
+  status: ProjectStatus,
+  localSecrets: ProjectStatus["storage"]["localSecrets"] | undefined,
+): void {
+  if (!localSecrets) {
+    problems.push("missing local secret file contract");
+    return;
+  }
+  if (localSecrets.role !== "machine-local-secret-files") {
+    problems.push("local secrets role is not machine-local-secret-files");
+  }
+  if (localSecrets.syncDefault !== "local-only") {
+    problems.push("local secrets are not local-only by default");
+  }
+  if (localSecrets.agentWritable !== false) {
+    problems.push("local secrets are agent-writable");
+  }
+
+  const expectedFiles = [
+    {
+      label: "CLI config",
+      file: localSecrets.files?.cliConfig,
+      kind: "cli-api-key-config",
+      path: join(status.clashHome, "config.json"),
+    },
+    {
+      label: "bridge credentials",
+      file: localSecrets.files?.bridgeCredentials,
+      kind: "local-runtime-credentials",
+      path: join(status.clashHome, "credentials.json"),
+    },
+  ];
+  for (const expected of expectedFiles) {
+    if (!expected.file) {
+      problems.push(`missing ${expected.label} secret path`);
+      continue;
+    }
+    if (expected.file.kind !== expected.kind) {
+      problems.push(`${expected.label} secret kind is wrong`);
+    }
+    if (expected.file.path !== expected.path) {
+      problems.push(`${expected.label} secret path is wrong`);
+    }
+    if (expected.file.agentWritable !== false) {
+      problems.push(`${expected.label} secret is agent-writable`);
+    }
+    if (!status.protectedPaths.some((protectedPath) => isSameOrInside(expected.path, protectedPath))) {
+      problems.push(`${expected.label} secret path is not protected: ${expected.path}`);
+    }
+    if (status.editablePaths.some((editablePath) => isSameOrInside(expected.path, editablePath))) {
+      problems.push(`${expected.label} secret path is inside an agent-editable path: ${expected.path}`);
+    }
+  }
 }
 
 function validateWorkspacePathDeclarations(

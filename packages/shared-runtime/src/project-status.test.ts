@@ -108,6 +108,8 @@ describe("project status path builder", () => {
     expect(status.roots.runtime).toBe("/tmp/clash-home/projects/project%2Fone/runtime");
     expect(status.runtimeRoot).toBe(status.roots.runtime);
     expect(status.localSqlitePath).toBe("/tmp/clash-home/local-api/local.sqlite");
+    expect(status.storage.localSecrets.files.cliConfig.path).toBe("/tmp/clash-home/config.json");
+    expect(status.storage.localSecrets.files.bridgeCredentials.path).toBe("/tmp/clash-home/credentials.json");
     expect(status.loro.snapshotPath).toBe("/tmp/clash-home/local-api/projects/project%2Fone/loro/snapshot.bin");
     expect(status.storage.canonicalReplica.mediaAssets.path).toBe("/tmp/clash-home/assets/blobs");
     expect(status.storage.canonicalReplica.contentBlobs.textRevisions.path).toBe("/tmp/clash-home/local-api/text-revision-blobs");
@@ -118,6 +120,8 @@ describe("project status path builder", () => {
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.mediaAssets.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
+    expect(status.protectedPaths).toContain(status.storage.localSecrets.files.cliConfig.path);
+    expect(status.protectedPaths).toContain(status.storage.localSecrets.files.bridgeCredentials.path);
     expect(status.protectedPaths).toContain(status.roots.runtime);
     expect(status.collaboration).toEqual({
       schemaVersion: 1,
@@ -240,6 +244,23 @@ describe("project status path builder", () => {
             path: "/tmp/clash-home/local-api/timeline-revision-blobs",
             mediaType: "application/yaml",
             immutable: true,
+            agentWritable: false,
+          },
+        },
+      },
+      localSecrets: {
+        role: "machine-local-secret-files",
+        syncDefault: "local-only",
+        agentWritable: false,
+        files: {
+          cliConfig: {
+            kind: "cli-api-key-config",
+            path: "/tmp/clash-home/config.json",
+            agentWritable: false,
+          },
+          bridgeCredentials: {
+            kind: "local-runtime-credentials",
+            path: "/tmp/clash-home/credentials.json",
             agentWritable: false,
           },
         },

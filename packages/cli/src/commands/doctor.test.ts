@@ -1141,7 +1141,7 @@ test("storage doctor validates the project status storage role contract", () => 
     {
       id: "storage-role-contract",
       level: "ok",
-      message: "Project storage contract separates agent workspace from protected canonical replica.",
+      message: "Project storage contract separates agent workspace from protected canonical replica and local secrets.",
     },
   ]);
 });
@@ -1246,6 +1246,41 @@ test("storage doctor fails when canonical media asset blobs are editable by agen
   assert.equal(contract.level, "error");
   assert.match(contract.message, /canonical media asset blobs are agent-writable/);
   assert.match(contract.message, /editable workspace includes canonical media asset path/);
+});
+
+test("storage doctor fails when local secret files are agent-writable or unprotected", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    protectedPaths: status.protectedPaths.filter(
+      (path) => path !== status.storage.localSecrets.files.cliConfig.path,
+    ),
+    storage: {
+      ...status.storage,
+      localSecrets: {
+        ...status.storage.localSecrets,
+        agentWritable: true,
+        files: {
+          ...status.storage.localSecrets.files,
+          bridgeCredentials: {
+            ...status.storage.localSecrets.files.bridgeCredentials,
+            agentWritable: true,
+          },
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /local secrets are agent-writable/);
+  assert.match(contract.message, /CLI config secret path is not protected/);
+  assert.match(contract.message, /bridge credentials secret is agent-writable/);
 });
 
 test("storage doctor fails when workspace editable paths omit a declared agent root", () => {

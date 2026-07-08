@@ -192,6 +192,8 @@ test("project status exposes agent-readable project roots and protected local fi
     localApiDataDir,
     join(localApiDataDir, "local.sqlite"),
     join(localApiDataDir, "db.json"),
+    join(homeDir, ".clash", "config.json"),
+    join(homeDir, ".clash", "credentials.json"),
     loroRoot,
     join(loroRoot, "snapshot.bin"),
     join(loroRoot, "updates.log"),
@@ -279,6 +281,23 @@ test("project status exposes agent-readable project roots and protected local fi
           path: timelineRevisionBlobRoot,
           mediaType: "application/yaml",
           immutable: true,
+          agentWritable: false,
+        },
+      },
+    },
+    localSecrets: {
+      role: "machine-local-secret-files",
+      syncDefault: "local-only",
+      agentWritable: false,
+      files: {
+        cliConfig: {
+          kind: "cli-api-key-config",
+          path: join(homeDir, ".clash", "config.json"),
+          agentWritable: false,
+        },
+        bridgeCredentials: {
+          kind: "local-runtime-credentials",
+          path: join(homeDir, ".clash", "credentials.json"),
           agentWritable: false,
         },
       },

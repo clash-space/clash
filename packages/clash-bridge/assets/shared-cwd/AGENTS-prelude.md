@@ -47,8 +47,11 @@ Treat the status payload as your filesystem contract:
 - Treat every path listed in `protectedPaths` as internal Clash state.
 - `runtimeRoot` is a protected runtime/cache directory, not scratch space.
 - Do not read or edit `snapshot.bin`, `updates.log`, `local.sqlite`, or
-  legacy `db.json` directly. Use explicit `clash` commands to inspect or
-  apply project changes.
+  legacy `db.json` directly.
+- Treat `storage.localSecrets` paths such as `config.json` and
+  `credentials.json` as local-only secret files; use auth or runtime setup
+  commands instead of reading or editing them.
+- Use explicit `clash` commands to inspect or apply project changes.
 
 If a workspace is missing its marker, repair it with the standard setup
 command instead of guessing:

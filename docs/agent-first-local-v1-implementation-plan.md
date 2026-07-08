@@ -1200,6 +1200,9 @@ Current status:
 - CLI `config.json` is still file-backed when `clash auth login` is used, but
   `saveConfig` writes it with owner-only permissions and `clash auth status`
   prints only a redacted token preview.
+- `clash project status --json` exposes CLI config and bridge credentials under
+  `storage.localSecrets`, marks them local-only/non-agent-writable, and includes
+  them in `protectedPaths`; `clash doctor storage` validates that contract.
 - Local provider credentials and OAuth access/refresh/user/device codes are
   encrypted before SQLite persistence; public provider/OAuth DTOs expose
   configured credential names, status, receipt-bearing read tokens, and public

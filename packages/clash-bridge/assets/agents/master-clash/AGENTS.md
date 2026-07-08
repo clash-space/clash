@@ -39,8 +39,10 @@ projections that still require explicit CAS apply. Treat `assets/links` as
 inspection links, not the media blob owner; do not write directly into
 `storage.canonicalReplica.mediaAssets.path`. Treat `protectedPaths`,
 `runtimeRoot`, Loro files, and SQLite as internal state. Do not read or edit
-`snapshot.bin` directly. Apply canvas, text, timeline, and asset changes
-through explicit `clash` commands.
+`snapshot.bin` directly. Treat `storage.localSecrets` paths such as
+`config.json` and `credentials.json` as local-only secret files; use auth or
+runtime setup commands instead of reading or editing them. Apply canvas, text,
+timeline, and asset changes through explicit `clash` commands.
 
 If the marker is missing, repair the workspace with the standard setup:
 

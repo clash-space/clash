@@ -112,6 +112,23 @@ export interface ProjectStatusStorage {
       };
     };
   };
+  localSecrets: {
+    role: "machine-local-secret-files";
+    syncDefault: "local-only";
+    agentWritable: false;
+    files: {
+      cliConfig: {
+        kind: "cli-api-key-config";
+        path: string;
+        agentWritable: false;
+      };
+      bridgeCredentials: {
+        kind: "local-runtime-credentials";
+        path: string;
+        agentWritable: false;
+      };
+    };
+  };
 }
 
 export type ProjectCollaborationMode = "local-only" | "synced" | "shared" | "unknown";
@@ -357,6 +374,8 @@ export function buildProjectStatus(
   const collaboration = projectCollaborationStatus(mode, options.marker?.sync);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
   const legacyDbJsonPath = joinPath(localApiDataDir, "db.json");
+  const cliConfigPath = joinPath(clashRoot, "config.json");
+  const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
   const timelineRevisionBlobRoot = joinPath(localApiDataDir, "timeline-revision-blobs");
@@ -374,6 +393,8 @@ export function buildProjectStatus(
     localApiDataDir,
     localSqlitePath,
     legacyDbJsonPath,
+    cliConfigPath,
+    bridgeCredentialsPath,
     loroReplicaRoot,
     loroSnapshotPath,
     loroUpdatesLogPath,
@@ -516,6 +537,23 @@ export function buildProjectStatus(
             path: timelineRevisionBlobRoot,
             mediaType: "application/yaml",
             immutable: true,
+            agentWritable: false,
+          },
+        },
+      },
+      localSecrets: {
+        role: "machine-local-secret-files",
+        syncDefault: "local-only",
+        agentWritable: false,
+        files: {
+          cliConfig: {
+            kind: "cli-api-key-config",
+            path: cliConfigPath,
+            agentWritable: false,
+          },
+          bridgeCredentials: {
+            kind: "local-runtime-credentials",
+            path: bridgeCredentialsPath,
             agentWritable: false,
           },
         },
