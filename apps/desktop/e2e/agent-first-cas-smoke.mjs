@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,6 +19,7 @@ const reportPath = path.join(artifactRoot, "agent-first-cas-report.json");
 const cliEntry = path.join(repoRoot, "packages", "cli", "src", "index.ts");
 const require = createRequire(path.join(repoRoot, "packages", "cli", "package.json"));
 const tsxLoader = require.resolve("tsx");
+const CLI_TIMEOUT_MS = 20_000;
 
 const checks = [];
 
@@ -35,11 +36,12 @@ function runProduction(args) {
   const result = spawnSync(
     process.execPath,
     ["--import", tsxLoader, cliEntry, "production", ...args],
-    { cwd: workspace, encoding: "utf8" },
+    { cwd: workspace, encoding: "utf8", timeout: CLI_TIMEOUT_MS },
   );
   return {
     command: `clash production ${args.join(" ")}`,
     status: result.status,
+    error: result.error ? String(result.error.message || result.error) : "",
     stdout: result.stdout,
     stderr: result.stderr,
   };
@@ -52,12 +54,14 @@ function runCanvas(args, env = {}) {
     {
       cwd: workspace,
       encoding: "utf8",
+      timeout: CLI_TIMEOUT_MS,
       env: { ...process.env, ...env },
     },
   );
   return {
     command: `clash canvas ${args.join(" ")}`,
     status: result.status,
+    error: result.error ? String(result.error.message || result.error) : "",
     stdout: result.stdout,
     stderr: result.stderr,
   };
@@ -70,12 +74,14 @@ function runText(args, env = {}) {
     {
       cwd: workspace,
       encoding: "utf8",
+      timeout: CLI_TIMEOUT_MS,
       env: { ...process.env, ...env },
     },
   );
   return {
     command: `clash text ${args.join(" ")}`,
     status: result.status,
+    error: result.error ? String(result.error.message || result.error) : "",
     stdout: result.stdout,
     stderr: result.stderr,
   };
@@ -88,12 +94,14 @@ function runTimeline(args, env = {}) {
     {
       cwd: workspace,
       encoding: "utf8",
+      timeout: CLI_TIMEOUT_MS,
       env: { ...process.env, ...env },
     },
   );
   return {
     command: `clash timeline ${args.join(" ")}`,
     status: result.status,
+    error: result.error ? String(result.error.message || result.error) : "",
     stdout: result.stdout,
     stderr: result.stderr,
   };
@@ -112,12 +120,33 @@ function recordCheck(name, pass, evidence, extra = {}) {
   }
 }
 
+function requireCheckPassed(name) {
+  if (!checks.some((check) => check.name === name && check.status === "pass")) {
+    throw new Error(`required check missing: ${name}`);
+  }
+}
+
 function parseStdoutJson(result) {
   return JSON.parse(result.stdout);
 }
 
 function baseReadToken(readToken) {
   return typeof readToken === "string" ? readToken.split(":receipt:")[0] : readToken;
+}
+
+function readOptionalText(filePath) {
+  try {
+    return readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function readJsonLines(filePath) {
+  return readOptionalText(filePath)
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line));
 }
 
 function runTsxEval(source) {
@@ -137,7 +166,7 @@ async function startCliDaemonSocket(options) {
   const sharedTypesModule = pathToFileURL(path.join(repoRoot, "packages", "shared-types", "src", "index.ts")).href;
   const source = `
     import { createServer } from "node:net";
-    import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+    import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
     import { join } from "node:path";
     import { LoroSyncClient } from ${JSON.stringify(sharedTypesModule)};
     import daemon from ${JSON.stringify(daemonModule)};
@@ -150,6 +179,7 @@ async function startCliDaemonSocket(options) {
     }
 
     const socketDir = join(clashHome, "sockets");
+    const commandLogPath = join(clashHome, "daemon-command-log.jsonl");
     mkdirSync(socketDir, { recursive: true });
     const sockPath = join(socketDir, projectId + ".sock");
     const pidPath = join(socketDir, projectId + ".pid");
@@ -173,6 +203,7 @@ async function startCliDaemonSocket(options) {
         const line = buf.slice(0, newline);
         try {
           const cmd = JSON.parse(line);
+          appendFileSync(commandLogPath, JSON.stringify({ action: cmd.action, nodeId: cmd.nodeId, actorClientType: cmd.actorClientType }) + "\\n");
           const result = handleCommandForTest(client, cmd);
           conn.end(JSON.stringify(result) + "\\n");
         } catch (error) {
@@ -189,7 +220,7 @@ async function startCliDaemonSocket(options) {
     process.on("SIGTERM", () => { cleanup(); process.exit(0); });
     process.on("SIGINT", () => { cleanup(); process.exit(0); });
     server.listen(sockPath, () => {
-      process.stdout.write(JSON.stringify({ ready: true, projectId, sockPath }) + "\\n");
+      process.stdout.write(JSON.stringify({ ready: true, projectId, sockPath, commandLogPath }) + "\\n");
     });
     setInterval(() => {}, 30_000);
   `;
@@ -248,6 +279,168 @@ async function startCliDaemonSocket(options) {
         child.once("exit", () => {
           clearTimeout(timeout);
           resolveStop();
+        });
+      });
+    },
+  };
+}
+
+async function startTextRevisionIndexHost() {
+  const hostDir = path.join(artifactRoot, "text-revision-index-host");
+  const requestsPath = path.join(hostDir, "requests.jsonl");
+  const revisionsPath = path.join(hostDir, "revisions.json");
+  const source = `
+    import { createServer } from "node:http";
+    import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
+    import { dirname } from "node:path";
+
+    const requestsPath = ${JSON.stringify(requestsPath)};
+    const revisionsPath = ${JSON.stringify(revisionsPath)};
+    const revisions = [];
+    mkdirSync(dirname(requestsPath), { recursive: true });
+    writeFileSync(requestsPath, "");
+    writeFileSync(revisionsPath, "[]\\n");
+
+    function persistRevisions() {
+      writeFileSync(revisionsPath, JSON.stringify(revisions, null, 2) + "\\n");
+    }
+
+    async function readRequestJson(request) {
+      let raw = "";
+      for await (const chunk of request) raw += chunk.toString();
+      return raw ? JSON.parse(raw) : {};
+    }
+
+    function sendJson(response, status, body) {
+      const payload = JSON.stringify(body);
+      response.writeHead(status, {
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(payload),
+        connection: "close",
+      });
+      response.end(payload);
+    }
+
+    const server = createServer(async (request, response) => {
+      try {
+        const url = new URL(request.url || "/", "http://127.0.0.1");
+        appendFileSync(requestsPath, JSON.stringify({ method: request.method, path: url.pathname, search: url.search }) + "\\n");
+        if (request.method === "GET" && url.pathname === "/api/v1/me") {
+          sendJson(response, 200, { id: "agent-first-cas-user" });
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/api/v1/text-revisions") {
+          const body = await readRequestJson(request);
+          if (!body.revision?.revisionId) {
+            sendJson(response, 400, { error: "missing revision" });
+            return;
+          }
+          const existing = revisions.find((revision) => revision.revisionId === body.revision.revisionId);
+          if (!existing) {
+            revisions.push(body.revision);
+            persistRevisions();
+          }
+          sendJson(response, 200, {
+            revision: body.revision,
+            mutation: {
+              operation: "text_revision_index",
+              entity: { kind: "text", id: \`\${body.revision.projectId}:\${body.revision.nodeId}\` },
+              resultEntityId: body.revision.revisionId,
+              accepted: true,
+              forced: false,
+            },
+          });
+          return;
+        }
+        const match = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/text-revisions$/);
+        if (request.method === "GET" && match) {
+          const projectId = decodeURIComponent(match[1]);
+          const nodeId = url.searchParams.get("nodeId");
+          const limit = Number(url.searchParams.get("limit") || "50");
+          const filtered = revisions
+            .filter((revision) => revision.projectId === projectId && (!nodeId || revision.nodeId === nodeId))
+            .slice(0, Number.isFinite(limit) ? limit : 50);
+          sendJson(response, 200, { revisions: filtered });
+          return;
+        }
+        sendJson(response, 404, { error: "not found" });
+      } catch (error) {
+        sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
+    function cleanup() {
+      try { server.close(); } catch {}
+    }
+    process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+    process.on("SIGINT", () => { cleanup(); process.exit(0); });
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      process.stdout.write(JSON.stringify({
+        ready: true,
+        url: \`http://127.0.0.1:\${address.port}\`,
+        requestsPath,
+        revisionsPath,
+      }) + "\\n");
+    });
+    setInterval(() => {}, 30_000);
+  `;
+
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "-e", source],
+    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const logs = { stdout: "", stderr: "" };
+  const ready = await new Promise((resolveReady, rejectReady) => {
+    const timeout = setTimeout(() => {
+      rejectReady(new Error(`text revision index host did not become ready. stdout=${logs.stdout} stderr=${logs.stderr}`));
+    }, 10_000);
+    child.stdout.on("data", (chunk) => {
+      logs.stdout += chunk.toString();
+      for (const line of logs.stdout.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.ready) {
+            clearTimeout(timeout);
+            resolveReady(parsed);
+            return;
+          }
+        } catch {}
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      logs.stderr += chunk.toString();
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      rejectReady(error);
+    });
+    child.on("exit", (code, signal) => {
+      clearTimeout(timeout);
+      rejectReady(new Error(`text revision index host exited before ready: code=${code} signal=${signal} stdout=${logs.stdout} stderr=${logs.stderr}`));
+    });
+  });
+
+  return {
+    url: ready.url,
+    logs,
+    get requests() {
+      return readJsonLines(requestsPath);
+    },
+    get revisions() {
+      const raw = readOptionalText(revisionsPath);
+      return raw ? JSON.parse(raw) : [];
+    },
+    close: async () => {
+      if (child.exitCode !== null) return;
+      child.kill("SIGTERM");
+      await new Promise((resolveClose) => {
+        const timeout = setTimeout(resolveClose, 2_000);
+        child.once("exit", () => {
+          clearTimeout(timeout);
+          resolveClose();
         });
       });
     },
@@ -1185,6 +1378,91 @@ async function runDirectCanvasCliReadTokenCas() {
       { command: missingDelete.command },
     );
 
+    const revisionHost = await startTextRevisionIndexHost();
+    let textPullPayload = null;
+    let textApplyPayload = null;
+    let textHistoryPayload = null;
+    try {
+      const textRevisionEnv = {
+        ...env,
+        CLASH_API_URL: revisionHost.url,
+        CLASH_API_KEY: "agent-first-cas-key",
+      };
+      const textPull = runText([
+        "pull",
+        "--project",
+        projectId,
+        "--node",
+        "text-cli",
+        "--json",
+      ], textRevisionEnv);
+      textPullPayload = textPull.status === 0 ? parseStdoutJson(textPull) : null;
+      recordCheck(
+        "text history read step produced lock",
+        textPull.status === 0 &&
+          typeof textPullPayload?.readToken === "string" &&
+          typeof textPullPayload?.filePath === "string" &&
+          typeof textPullPayload?.lockPath === "string",
+        textPull.stderr || textPull.stdout,
+        { command: textPull.command },
+      );
+      await writeFile(textPullPayload.filePath, "history-indexed copy\n", "utf8");
+      const textApply = runText([
+        "apply",
+        "--project",
+        projectId,
+        "--node",
+        "text-cli",
+        "--json",
+      ], textRevisionEnv);
+      textApplyPayload = textApply.status === 0 ? parseStdoutJson(textApply) : null;
+      recordCheck(
+        "text apply registered host text revision index",
+        textApply.status === 0 &&
+          textApplyPayload?.textRevisionIndex?.indexed === true &&
+          typeof textApplyPayload?.textRevision?.revisionId === "string" &&
+          revisionHost.revisions.some((revision) => revision.revisionId === textApplyPayload.textRevision.revisionId),
+        textApply.stderr || textApply.stdout || textApply.error,
+        {
+          command: textApply.command,
+          revisionHostUrl: revisionHost.url,
+          revisionHostRequests: revisionHost.requests,
+          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
+        },
+      );
+      const textHistory = runText([
+        "history",
+        "--project",
+        projectId,
+        "--node",
+        "text-cli",
+        "--limit",
+        "1",
+        "--json",
+      ], textRevisionEnv);
+      textHistoryPayload = textHistory.status === 0 ? parseStdoutJson(textHistory) : null;
+      recordCheck(
+        "text history reads host revision index",
+        textHistory.status === 0 &&
+          textHistoryPayload?.projectId === projectId &&
+          textHistoryPayload?.nodeId === "text-cli" &&
+          textHistoryPayload?.revisions?.[0]?.revisionId === textApplyPayload.textRevision.revisionId &&
+          textHistoryPayload?.revisions?.[0]?.sourceFileHash === textApplyPayload.textRevision.sourceFileHash &&
+          revisionHost.requests.some((request) =>
+            request.method === "POST" && request.path === "/api/v1/text-revisions"
+          ) &&
+          revisionHost.requests.some((request) =>
+            request.method === "GET" &&
+            request.path === `/api/v1/projects/${projectId}/text-revisions` &&
+            request.search.includes("nodeId=text-cli")
+          ),
+        textHistory.stderr || textHistory.stdout,
+        { command: textHistory.command, revisionHostRequests: revisionHost.requests },
+      );
+    } finally {
+      await revisionHost.close();
+    }
+
     return {
       projectId,
       clashHome,
@@ -1198,6 +1476,11 @@ async function runDirectCanvasCliReadTokenCas() {
       finalRead: finalReadPayload,
       missingDelete: { status: missingDelete.status, stderr: missingDelete.stderr },
       deleteStillExists: deleteRead.status === 0,
+      textRevisionHistory: {
+        pull: textPullPayload,
+        apply: textApplyPayload,
+        history: textHistoryPayload,
+      },
     };
   } finally {
     await daemon.stop();
@@ -1221,6 +1504,7 @@ async function main() {
     projectionPathGuards = runProjectionPathGuards();
     directCanvas = runDirectCanvasReadTokenCas();
     directCanvasCli = await runDirectCanvasCliReadTokenCas();
+    requireCheckPassed("text history reads host revision index");
   } catch (error) {
     status = "fail";
     summary = error instanceof Error ? error.message : String(error);
@@ -1255,6 +1539,7 @@ async function main() {
       directCanvasCliFreshReadTokenAccepted: checks.some((check) => check.name === "direct canvas CLI fresh read token accepted" && check.status === "pass"),
       directCanvasCliMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas CLI mutation envelope recorded" && check.status === "pass"),
       directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
+      textHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "text history reads host revision index" && check.status === "pass"),
       projectionPathOutsideCwdRejected: [
           "text pull rejects projection path outside cwd",
           "text forced apply rejects projection path outside cwd",

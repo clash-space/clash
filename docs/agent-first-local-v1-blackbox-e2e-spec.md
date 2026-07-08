@@ -225,6 +225,9 @@ Assertions:
   that resolve outside the current cwd,
 - public text/timeline projection commands reject symlinked lock sidecars that
   resolve outside the current cwd,
+- public `clash text apply` registers an applied revision with the host text
+  revision index, and `clash text history` reads that same host index without
+  direct SQLite access,
 - public storyboard prompt-pack production projection rejects symlinked lock
   sidecars that resolve outside the current cwd,
 - public review gate planning rejects symlinked lock sidecars that resolve
@@ -247,13 +250,13 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T01-58-27-165Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-08T02-18-23-178Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 38 checks passed,
+- 41 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 
 ### Suite C3: Local API Receipt CAS Smoke

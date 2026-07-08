@@ -215,6 +215,7 @@
         "directCanvasCliFreshReadTokenAccepted",
         "directCanvasCliMutationEnvelopeRecorded",
         "directCanvasCliDeleteReadTokenRequired",
+        "textHistoryReadsHostRevisionIndex",
         "evidence"
       ],
       "properties": {
@@ -279,6 +280,10 @@
           "const": true
         },
         "directCanvasCliDeleteReadTokenRequired": {
+          "type": "boolean",
+          "const": true
+        },
+        "textHistoryReadsHostRevisionIndex": {
           "type": "boolean",
           "const": true
         },
