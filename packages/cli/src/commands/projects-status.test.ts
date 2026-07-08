@@ -81,8 +81,8 @@ test("project status exposes agent-readable project roots and protected local fi
     syncReadiness: {
       status: "disabled",
       ready: false,
-      required: ["canvas", "room", "asset-metadata"],
-      missing: ["canvas", "room", "asset-metadata"],
+      required: ["canvas", "room", "asset-metadata", "revision-content"],
+      missing: ["canvas", "room", "asset-metadata", "revision-content"],
     },
     actions: {
       openInWeb: {
@@ -282,6 +282,7 @@ test("project status reads marker sync capabilities before opening cloud collabo
       "canvas = true",
       "room = true",
       "asset_metadata = true",
+      "revision_content = true",
       "",
     ].join("\n"),
     "utf8",
@@ -296,7 +297,7 @@ test("project status reads marker sync capabilities before opening cloud collabo
   assert.deepEqual(status.collaboration.syncReadiness, {
     status: "ready",
     ready: true,
-    required: ["canvas", "room", "asset-metadata"],
+    required: ["canvas", "room", "asset-metadata", "revision-content"],
     missing: [],
   });
   assert.deepEqual(status.collaboration.actions.openInWeb, {
@@ -308,6 +309,52 @@ test("project status reads marker sync capabilities before opening cloud collabo
     allowed: true,
     reason: null,
     requirements: [],
+  });
+});
+
+test("project status keeps cloud-sync marker pending until revision content is mirrored", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await mkdir(join(cwd, ".clash"), { recursive: true });
+  await writeFile(
+    join(cwd, ".clash", "project.toml"),
+    [
+      "schema_version = 1",
+      'project_id = "missing_revision_content_project"',
+      'store = "managed"',
+      "",
+      "[sync]",
+      'mode = "cloud-sync"',
+      "",
+      "[sync.capabilities]",
+      "canvas = true",
+      "room = true",
+      "asset_metadata = true",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const status = await resolveProjectStatus({ cwd, env: {}, homeDir });
+
+  assert.equal(status.projectId, "missing_revision_content_project");
+  assert.equal(status.collaboration.webOpenable, false);
+  assert.equal(status.collaboration.roomAuthority, "local");
+  assert.deepEqual(status.collaboration.syncReadiness, {
+    status: "pending",
+    ready: false,
+    required: ["canvas", "room", "asset-metadata", "revision-content"],
+    missing: ["revision-content"],
+  });
+  assert.deepEqual(status.collaboration.actions.openInWeb, {
+    allowed: false,
+    reason: "cloud-sync-not-ready",
+    requirements: ["revision-content"],
+  });
+  assert.deepEqual(status.collaboration.actions.shareProject, {
+    allowed: false,
+    reason: "cloud-sync-not-ready",
+    requirements: ["revision-content"],
   });
 });
 
@@ -373,14 +420,14 @@ test("project status exposes explicit collaboration gates for synced and shared 
     syncReadiness: {
       status: "pending",
       ready: false,
-      required: ["canvas", "room", "asset-metadata"],
-      missing: ["canvas", "room", "asset-metadata"],
+      required: ["canvas", "room", "asset-metadata", "revision-content"],
+      missing: ["canvas", "room", "asset-metadata", "revision-content"],
     },
     actions: {
       openInWeb: {
         allowed: false,
         reason: "cloud-sync-not-ready",
-        requirements: ["canvas", "room", "asset-metadata"],
+        requirements: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       enableSync: {
         allowed: false,
@@ -390,7 +437,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
       shareProject: {
         allowed: false,
         reason: "cloud-sync-not-ready",
-        requirements: ["canvas", "room", "asset-metadata"],
+        requirements: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       runLocalAgent: {
         allowed: true,
@@ -415,7 +462,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
     syncReadiness: {
       status: "ready",
       ready: true,
-      required: ["canvas", "room", "asset-metadata"],
+      required: ["canvas", "room", "asset-metadata", "revision-content"],
       missing: [],
     },
     actions: {

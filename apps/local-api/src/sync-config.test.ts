@@ -44,6 +44,7 @@ describe("local sync config", () => {
         canvas: true,
         room: true,
         asset_metadata: true,
+        revision_content: true,
       },
     });
 
@@ -53,6 +54,7 @@ describe("local sync config", () => {
         canvas: true,
         room: true,
         asset_metadata: true,
+        revision_content: true,
       },
     });
   });

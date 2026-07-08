@@ -14,6 +14,7 @@ export interface LocalSyncCapabilities {
   canvas: boolean;
   room: boolean;
   asset_metadata: boolean;
+  revision_content: boolean;
 }
 
 export interface PublicLocalSyncConfig {
@@ -103,6 +104,7 @@ function defaultSyncCapabilities(): LocalSyncCapabilities {
     canvas: false,
     room: false,
     asset_metadata: false,
+    revision_content: false,
   };
 }
 
@@ -121,6 +123,9 @@ function normalizeCapabilities(
     asset_metadata: record.asset_metadata === undefined
       ? fallback.asset_metadata
       : record.asset_metadata === true,
+    revision_content: record.revision_content === undefined
+      ? fallback.revision_content
+      : record.revision_content === true,
   };
 }
 

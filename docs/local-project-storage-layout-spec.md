@@ -71,9 +71,9 @@ state.
 The `collaboration` object in the same payload is the mode gate agents and UI
 should use before offering cloud/web/shared affordances: local projects are not
 web-openable, `cloud-sync` projects remain pending and not web-openable until
-`syncReadiness` proves canvas, room, and asset-metadata sync capabilities are
-ready, and shared projects are the only mode that uses a cloud sequencer for
-multiplayer.
+`syncReadiness` proves canvas, room, asset-metadata, and revision-content sync
+capabilities are ready, and shared projects are the only mode that uses a cloud
+sequencer for multiplayer.
 The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped

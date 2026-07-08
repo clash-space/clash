@@ -402,8 +402,8 @@ Assertions:
 - canonical Loro snapshot path is protected and outside the editable project
   workspace root,
 - a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
-  `cloud-sync-not-ready` until canvas, room, and asset metadata mirrors are
-  ready,
+  `cloud-sync-not-ready` until canvas, room, asset metadata, and revision
+  content mirrors are ready,
 - a follow-up read-only `doctor storage --json` reports repaired prerequisites
   as ok.
 
@@ -692,7 +692,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T09-03-19-739Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-08T09-26-15-991Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -752,10 +752,11 @@ Result:
   `webOpenable: false`, and `roomAuthority: local` until the full sync
   capabilities are ready,
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
-  sharing admission with `canvas`, `room`, and `asset-metadata` requirements,
+  sharing admission with `canvas`, `room`, `asset-metadata`, and
+  `revision-content` requirements,
 - a separate cwd marker for the same project with `[sync.capabilities]`
-  declaring canvas, room, and asset metadata ready changed project status to
-  `syncReadiness.status: ready`, `webOpenable: true`, and
+  declaring canvas, room, asset metadata, and revision content ready changed
+  project status to `syncReadiness.status: ready`, `webOpenable: true`, and
   `roomAuthority: local-with-cloud-mirror` while keeping
   `multiUser: false` and local agent execution allowed,
 - cloud-sync recovery list exposed `recoveryPolicy` showing recovery is a local

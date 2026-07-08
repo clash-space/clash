@@ -68,8 +68,8 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "disabled",
         ready: false,
-        required: ["canvas", "room", "asset-metadata"],
-        missing: ["canvas", "room", "asset-metadata"],
+        required: ["canvas", "room", "asset-metadata", "revision-content"],
+        missing: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
@@ -280,7 +280,7 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "disabled",
         ready: false,
-        missing: ["canvas", "room", "asset-metadata"],
+        missing: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
@@ -315,13 +315,13 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "pending",
         ready: false,
-        missing: ["canvas", "room", "asset-metadata"],
+        missing: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata"],
+          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
         },
         enableSync: {
           allowed: false,
@@ -331,7 +331,7 @@ describe("project status path builder", () => {
         shareProject: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata"],
+          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
         },
         runLocalAgent: {
           allowed: true,
@@ -393,6 +393,7 @@ describe("project status path builder", () => {
               canvas: true,
               room: true,
               assetMetadata: true,
+              revisionContent: true,
             },
           },
         },
@@ -406,18 +407,18 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "pending",
         ready: false,
-        missing: ["canvas", "room", "asset-metadata"],
+        missing: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata"],
+          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
         },
         shareProject: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata"],
+          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
         },
       },
     });
@@ -441,6 +442,75 @@ describe("project status path builder", () => {
           reason: null,
           requirements: [],
         },
+      },
+    });
+  });
+
+  it("keeps cloud-sync pending until revision content sync is ready", () => {
+    const missingRevisionContent = buildProjectStatus(
+      { projectId: "project-synced", source: "explicit" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: {
+          sync: {
+            mode: "cloud-sync",
+            capabilities: {
+              canvas: true,
+              room: true,
+              assetMetadata: true,
+            },
+          },
+        },
+      },
+    );
+    const ready = buildProjectStatus(
+      { projectId: "project-synced", source: "explicit" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: {
+          sync: {
+            mode: "cloud-sync",
+            capabilities: {
+              canvas: true,
+              room: true,
+              assetMetadata: true,
+              revisionContent: true,
+            },
+          },
+        },
+      },
+    );
+
+    expect(missingRevisionContent.collaboration).toMatchObject({
+      mode: "synced",
+      webOpenable: false,
+      roomAuthority: "local",
+      syncReadiness: {
+        status: "pending",
+        ready: false,
+        missing: ["revision-content"],
+      },
+      actions: {
+        openInWeb: {
+          allowed: false,
+          reason: "cloud-sync-not-ready",
+          requirements: ["revision-content"],
+        },
+        shareProject: {
+          allowed: false,
+          reason: "cloud-sync-not-ready",
+          requirements: ["revision-content"],
+        },
+      },
+    });
+    expect(ready.collaboration).toMatchObject({
+      mode: "synced",
+      webOpenable: true,
+      roomAuthority: "local-with-cloud-mirror",
+      syncReadiness: {
+        status: "ready",
+        ready: true,
+        missing: [],
       },
     });
   });

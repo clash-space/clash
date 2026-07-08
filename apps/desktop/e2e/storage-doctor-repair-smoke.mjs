@@ -933,7 +933,8 @@ async function main() {
       cloudSyncStatus?.collaboration?.syncReadiness?.status === "pending" &&
       cloudSyncStatus?.collaboration?.syncReadiness?.ready === false &&
       cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("room") === true &&
-      cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("asset-metadata") === true,
+      cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("asset-metadata") === true &&
+      cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("revision-content") === true,
     JSON.stringify(cloudSyncStatus?.collaboration),
   );
   recordCheck(
@@ -943,6 +944,7 @@ async function main() {
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("canvas") === true &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("room") === true &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("asset-metadata") === true &&
+      cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("revision-content") === true &&
       cloudSyncStatus?.collaboration?.actions?.enableSync?.allowed === false &&
       cloudSyncStatus?.collaboration?.actions?.shareProject?.allowed === false &&
       cloudSyncStatus?.collaboration?.actions?.shareProject?.reason === "cloud-sync-not-ready",
@@ -964,6 +966,7 @@ async function main() {
       "canvas = true",
       "room = true",
       "asset_metadata = true",
+      "revision_content = true",
       "",
     ].join("\n"),
     "utf8",

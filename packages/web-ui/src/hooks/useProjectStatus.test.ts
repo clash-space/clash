@@ -30,8 +30,8 @@ describe("useProjectStatus", () => {
           syncReadiness: {
             status: "disabled",
             ready: false,
-            required: ["canvas", "room", "asset-metadata"],
-            missing: ["canvas", "room", "asset-metadata"],
+            required: ["canvas", "room", "asset-metadata", "revision-content"],
+            missing: ["canvas", "room", "asset-metadata", "revision-content"],
           },
           actions: {
             openInWeb: {

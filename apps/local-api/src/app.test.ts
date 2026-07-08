@@ -71,6 +71,7 @@ const DEFAULT_SYNC_CAPABILITIES = {
   canvas: false,
   room: false,
   asset_metadata: false,
+  revision_content: false,
 };
 
 beforeEach(async () => {
@@ -8070,8 +8071,8 @@ describe("local API app", () => {
         syncReadiness: {
           status: "disabled",
           ready: false,
-          required: ["canvas", "room", "asset-metadata"],
-          missing: ["canvas", "room", "asset-metadata"],
+          required: ["canvas", "room", "asset-metadata", "revision-content"],
+          missing: ["canvas", "room", "asset-metadata", "revision-content"],
         },
         actions: {
           openInWeb: {
@@ -8252,14 +8253,14 @@ describe("local API app", () => {
         syncReadiness: {
           status: "pending",
           ready: false,
-          required: ["canvas", "room", "asset-metadata"],
-          missing: ["canvas", "room", "asset-metadata"],
+          required: ["canvas", "room", "asset-metadata", "revision-content"],
+          missing: ["canvas", "room", "asset-metadata", "revision-content"],
         },
         actions: {
           openInWeb: {
             allowed: false,
             reason: "cloud-sync-not-ready",
-            requirements: ["canvas", "room", "asset-metadata"],
+            requirements: ["canvas", "room", "asset-metadata", "revision-content"],
           },
           enableSync: {
             allowed: false,
@@ -8269,7 +8270,7 @@ describe("local API app", () => {
           shareProject: {
             allowed: false,
             reason: "cloud-sync-not-ready",
-            requirements: ["canvas", "room", "asset-metadata"],
+            requirements: ["canvas", "room", "asset-metadata", "revision-content"],
           },
           runLocalAgent: {
             allowed: true,
@@ -8297,6 +8298,7 @@ describe("local API app", () => {
           canvas: true,
           room: true,
           asset_metadata: true,
+          revision_content: true,
         },
       }),
     });
@@ -8326,7 +8328,7 @@ describe("local API app", () => {
         syncReadiness: {
           status: "ready",
           ready: true,
-          required: ["canvas", "room", "asset-metadata"],
+          required: ["canvas", "room", "asset-metadata", "revision-content"],
           missing: [],
         },
         actions: {

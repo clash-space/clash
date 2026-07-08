@@ -488,8 +488,8 @@ Agents need a stable inspection payload:
     "syncReadiness": {
       "status": "disabled",
       "ready": false,
-      "required": ["canvas", "room", "asset-metadata"],
-      "missing": ["canvas", "room", "asset-metadata"]
+      "required": ["canvas", "room", "asset-metadata", "revision-content"],
+      "missing": ["canvas", "room", "asset-metadata", "revision-content"]
     },
     "tracePolicy": {
       "schemaVersion": 1,
@@ -649,9 +649,9 @@ not need to infer the protected runtime directory by scanning `protectedPaths`.
 The `collaboration` object is the machine-readable local/cloud mode gate:
 `local`/`local-only` normalize to `local-only` and are not web-openable;
 `cloud-sync`/`synced` normalize to `synced` but remain `webOpenable: false`
-with `syncReadiness.status: "pending"` until canvas, room, and asset-metadata
-sync capabilities are explicitly ready in local sync config and passed through
-the status builder; only ready synced projects may use
+with `syncReadiness.status: "pending"` until canvas, room, asset-metadata, and
+revision-content sync capabilities are explicitly ready in local sync config
+and passed through the status builder; only ready synced projects may use
 `roomAuthority: "local-with-cloud-mirror"`. The same payload exposes
 `tracePolicy` so room chat/public session metadata and raw agent traces do not
 share an accidental sync surface. Only `shared` enables

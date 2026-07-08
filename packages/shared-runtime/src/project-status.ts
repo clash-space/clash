@@ -457,7 +457,7 @@ export function projectCollaborationStatus(
   };
 }
 
-const CLOUD_SYNC_REQUIREMENTS = ["canvas", "room", "asset-metadata"];
+const CLOUD_SYNC_REQUIREMENTS = ["canvas", "room", "asset-metadata", "revision-content"];
 
 function projectSyncReadiness(
   mode: ProjectCollaborationMode,
@@ -498,6 +498,9 @@ function syncCapabilityReady(capabilities: Record<string, unknown>, requirement:
   if (capabilities[requirement] === true) return true;
   if (requirement === "asset-metadata") {
     return capabilities.assetMetadata === true || capabilities.asset_metadata === true;
+  }
+  if (requirement === "revision-content") {
+    return capabilities.revisionContent === true || capabilities.revision_content === true;
   }
   return false;
 }
