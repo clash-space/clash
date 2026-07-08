@@ -34,10 +34,12 @@ Use the status payload as the local filesystem boundary: write only under
 `editablePaths`; read `storage.workspace.viewFiles` before choosing timeline
 paths. `timelines/` is the primary timeline view file area for `clash timeline
 pull/apply`; `projections/timelines/` is for generated action projections that
-still require explicit CAS apply. Treat `protectedPaths`, `runtimeRoot`, Loro
-files, and SQLite as internal state. Do not read or edit `snapshot.bin`
-directly. Apply canvas, text, timeline, and asset changes through explicit
-`clash` commands.
+still require explicit CAS apply. Treat `assets/links` as inspection links, not
+the media blob owner; do not write directly into
+`storage.canonicalReplica.mediaAssets.path`. Treat `protectedPaths`,
+`runtimeRoot`, Loro files, and SQLite as internal state. Do not read or edit
+`snapshot.bin` directly. Apply canvas, text, timeline, and asset changes
+through explicit `clash` commands.
 
 If the marker is missing, repair the workspace with the standard setup:
 

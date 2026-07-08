@@ -1166,6 +1166,40 @@ test("storage doctor fails when revision content blobs are editable by agents", 
   assert.match(contract.message, /editable workspace includes canonical content path/);
 });
 
+test("storage doctor fails when canonical media asset blobs are editable by agents", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      workspace: {
+        ...status.storage.workspace,
+        editablePaths: [
+          ...status.storage.workspace.editablePaths,
+          status.storage.canonicalReplica.mediaAssets.path,
+        ],
+      },
+      canonicalReplica: {
+        ...status.storage.canonicalReplica,
+        mediaAssets: {
+          ...status.storage.canonicalReplica.mediaAssets,
+          agentWritable: true,
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /canonical media asset blobs are agent-writable/);
+  assert.match(contract.message, /editable workspace includes canonical media asset path/);
+});
+
 test("storage doctor fails when text revision content blobs are writable or hash-mismatched", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

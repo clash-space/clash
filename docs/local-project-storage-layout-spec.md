@@ -210,6 +210,10 @@ Notes:
   machine-scoped canonical local replica and `storage.workspace` as the
   agent-editable draft/projection surface. Agents should use those structured
   roles instead of inferring ownership from path names.
+- `storage.canonicalReplica.mediaAssets` points at the protected
+  content-addressed media blob store under `assets/blobs/`. Media bytes are
+  immutable, deduplicated by SHA-256, referenced by SQLite asset rows and
+  project `assets/links`, and not an agent-writable cwd surface.
 - `storage.canonicalReplica.contentBlobs.textRevisions` and
   `storage.canonicalReplica.contentBlobs.timelineRevisions` expose the
   protected content-addressed roots for applied Markdown/YAML revision bodies.
@@ -368,6 +372,10 @@ SQLite owns the metadata:
 - sanitized mutation JSON without receipt-bearing read tokens.
 
 This avoids copying the same blob for every project or session.
+`clash project status --json` exposes this same boundary as
+`storage.canonicalReplica.mediaAssets`; agents should inspect blobs through
+`clash asset get`, `/assets/local-blobs/...`, or project `assets/links`, and
+create/replace media only through explicit import/COW commands.
 
 Alpha CLI behavior:
 

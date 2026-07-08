@@ -40,6 +40,9 @@ Treat the status payload as your filesystem contract:
   (`timelines/`, for `clash timeline pull/apply`) from generated timeline
   projections (`projections/timelines/`, for action outputs that still require
   explicit CAS apply).
+- Treat project `assets/links` as inspection links only. Do not write directly
+  into `storage.canonicalReplica.mediaAssets.path`; import or replace media
+  through explicit `clash asset` / canvas COW commands.
 - Treat every path listed in `protectedPaths` as internal Clash state.
 - `runtimeRoot` is a protected runtime/cache directory, not scratch space.
 - Do not read or edit `snapshot.bin`, `updates.log`, `local.sqlite`, or

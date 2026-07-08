@@ -76,6 +76,15 @@ export interface ProjectStatusStorage {
       updatesLogPath: string;
       agentWritable: false;
     };
+    mediaAssets: {
+      kind: "content-addressed-files";
+      path: string;
+      storageKeyPrefix: "local-blobs/";
+      immutable: true;
+      deduplicatedBy: "sha256";
+      agentWritable: false;
+      referencedBy: "sqlite-asset-rows-and-project-asset-links";
+    };
     contentBlobs: {
       textRevisions: {
         kind: "content-addressed-files";
@@ -213,6 +222,7 @@ export function buildProjectStatus(
   const collaboration = projectCollaborationStatus(mode, options.marker?.sync);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
   const legacyDbJsonPath = joinPath(localApiDataDir, "db.json");
+  const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
   const timelineRevisionBlobRoot = joinPath(localApiDataDir, "timeline-revision-blobs");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
@@ -232,6 +242,7 @@ export function buildProjectStatus(
     loroReplicaRoot,
     loroSnapshotPath,
     loroUpdatesLogPath,
+    mediaAssetBlobRoot,
     textRevisionBlobRoot,
     timelineRevisionBlobRoot,
     runtimeRoot,
@@ -339,6 +350,15 @@ export function buildProjectStatus(
           snapshotPath: loroSnapshotPath,
           updatesLogPath: loroUpdatesLogPath,
           agentWritable: false,
+        },
+        mediaAssets: {
+          kind: "content-addressed-files",
+          path: mediaAssetBlobRoot,
+          storageKeyPrefix: "local-blobs/",
+          immutable: true,
+          deduplicatedBy: "sha256",
+          agentWritable: false,
+          referencedBy: "sqlite-asset-rows-and-project-asset-links",
         },
         contentBlobs: {
           textRevisions: {

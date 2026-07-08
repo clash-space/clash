@@ -8086,6 +8086,7 @@ describe("local API app", () => {
     expect(status.editablePaths).toContain(status.roots.projections);
     expect(status.editablePaths).toContain(status.roots.timelines);
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
+    expect(status.protectedPaths).toContain(join(clashRoot, "assets", "blobs"));
     expect(status.protectedPaths).toContain(status.roots.runtime);
     expect(status.storage.workspace).toMatchObject({
       role: "agent-draft-and-projection-workspace",
@@ -8124,6 +8125,15 @@ describe("local API app", () => {
         snapshotPath: status.loro.snapshotPath,
         updatesLogPath: status.loro.updatesLogPath,
         agentWritable: false,
+      },
+      mediaAssets: {
+        kind: "content-addressed-files",
+        path: join(clashRoot, "assets", "blobs"),
+        storageKeyPrefix: "local-blobs/",
+        immutable: true,
+        deduplicatedBy: "sha256",
+        agentWritable: false,
+        referencedBy: "sqlite-asset-rows-and-project-asset-links",
       },
       contentBlobs: {
         textRevisions: {

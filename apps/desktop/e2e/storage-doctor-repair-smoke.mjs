@@ -603,6 +603,24 @@ async function main() {
       protectedPaths: status?.protectedPaths,
     }),
   );
+  const mediaAssets = status?.storage?.canonicalReplica?.mediaAssets;
+  recordCheck(
+    "canonical media asset blob root is protected and not workspace-owned",
+    mediaAssets?.kind === "content-addressed-files" &&
+      mediaAssets.path === path.join(clashHome, "assets", "blobs") &&
+      mediaAssets.storageKeyPrefix === "local-blobs/" &&
+      mediaAssets.immutable === true &&
+      mediaAssets.deduplicatedBy === "sha256" &&
+      mediaAssets.agentWritable === false &&
+      mediaAssets.referencedBy === "sqlite-asset-rows-and-project-asset-links" &&
+      repairReport.status.protectedPaths.includes(mediaAssets.path) &&
+      !isInside(mediaAssets.path, status.projectWorkspaceRoot),
+    JSON.stringify({
+      mediaAssets,
+      projectWorkspaceRoot: status?.projectWorkspaceRoot,
+      protectedPaths: status?.protectedPaths,
+    }),
+  );
   const textRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.textRevisions;
   const timelineRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.timelineRevisions;
   recordCheck(

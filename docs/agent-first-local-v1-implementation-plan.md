@@ -467,6 +467,10 @@ Current status:
     primary agent-editable timeline view files in `timelines/` from generated
     action timeline projections in `projections/timelines/`; both require
     explicit CAS apply and neither owns the canonical Loro timeline head,
+  - protected immutable media asset blob root under
+    `storage.canonicalReplica.mediaAssets`, making `assets/blobs` visible as
+    the single machine-scoped content-addressed store while project
+    `assets/links` remain inspection/projection convenience paths,
   - protected text/timeline revision content blob roots under
     `storage.canonicalReplica.contentBlobs`.
 - The command treats a marker in the cwd as context only. If `--project`
@@ -481,7 +485,8 @@ Current status:
   ignored legacy `db.json`, ignored legacy `.clash/project.json` project
   markers, and the structured `storage` role contract that keeps agent
   workspace paths separate from the protected canonical replica,
-  including immutable text/timeline revision content blob roots. Existing
+  including immutable media asset and text/timeline revision content blob roots.
+  Existing
   revision blob files are checked for content-addressed filename consistency and
   no writable permission bits; explicit storage repair can restore read-only
   permissions for hash-valid writable revision blobs without auto-fixing

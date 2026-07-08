@@ -35,6 +35,7 @@ test("project status exposes agent-readable project roots and protected local fi
 
   const projectStore = join(homeDir, ".clash", "projects", "project%2Fwith%20spaces");
   const localApiDataDir = join(homeDir, ".clash", "local-api");
+  const assetBlobRoot = join(homeDir, ".clash", "assets", "blobs");
   const textRevisionBlobRoot = join(localApiDataDir, "text-revision-blobs");
   const timelineRevisionBlobRoot = join(localApiDataDir, "timeline-revision-blobs");
   const loroRoot = join(
@@ -123,6 +124,7 @@ test("project status exposes agent-readable project roots and protected local fi
     loroRoot,
     join(loroRoot, "snapshot.bin"),
     join(loroRoot, "updates.log"),
+    assetBlobRoot,
     textRevisionBlobRoot,
     timelineRevisionBlobRoot,
     status.roots.runtime,
@@ -175,6 +177,15 @@ test("project status exposes agent-readable project roots and protected local fi
         snapshotPath: join(loroRoot, "snapshot.bin"),
         updatesLogPath: join(loroRoot, "updates.log"),
         agentWritable: false,
+      },
+      mediaAssets: {
+        kind: "content-addressed-files",
+        path: assetBlobRoot,
+        storageKeyPrefix: "local-blobs/",
+        immutable: true,
+        deduplicatedBy: "sha256",
+        agentWritable: false,
+        referencedBy: "sqlite-asset-rows-and-project-asset-links",
       },
       contentBlobs: {
         textRevisions: {

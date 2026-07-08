@@ -129,6 +129,8 @@ it("ensureAgentCwd installs standard Clash setup/init guidance", async () => {
     expect(agents).toContain("viewFiles");
     expect(agents).toContain("timelines/");
     expect(agents).toContain("projections/timelines/");
+    expect(agents).toContain("mediaAssets");
+    expect(agents).toContain("assets/links");
     expect(agents).toContain("protectedPaths");
     expect(agents).toContain("currentWorkspace");
     expect(agents).toContain("deletionDeletesProjectState");

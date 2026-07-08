@@ -447,6 +447,32 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.canonicalReplica.canvas.updatesLogPath !== status.loro.updatesLogPath) {
       problems.push("canonical canvas updates log path does not match loro.updatesLogPath");
     }
+    const mediaAssets = storage.canonicalReplica.mediaAssets;
+    if (!mediaAssets) {
+      problems.push("missing canonical media asset blob root");
+    } else {
+      if (mediaAssets.kind !== "content-addressed-files") {
+        problems.push("canonical media asset blob root is not content-addressed-files");
+      }
+      if (mediaAssets.path !== join(status.clashHome, "assets", "blobs")) {
+        problems.push("canonical media asset blob path does not match Clash asset blob store");
+      }
+      if (mediaAssets.storageKeyPrefix !== "local-blobs/") {
+        problems.push("canonical media asset blob storage key prefix is wrong");
+      }
+      if (mediaAssets.immutable !== true) {
+        problems.push("canonical media asset blobs are not immutable");
+      }
+      if (mediaAssets.deduplicatedBy !== "sha256") {
+        problems.push("canonical media asset blobs are not sha256-deduplicated");
+      }
+      if (mediaAssets.agentWritable !== false) {
+        problems.push("canonical media asset blobs are agent-writable");
+      }
+      if (mediaAssets.referencedBy !== "sqlite-asset-rows-and-project-asset-links") {
+        problems.push("canonical media asset reference model is wrong");
+      }
+    }
     const contentBlobs = storage.canonicalReplica.contentBlobs;
     const expectedContentBlobs = [
       {
@@ -467,6 +493,7 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
       { path: storage.canonicalReplica.canvas.replicaRoot, role: "canvas" },
       { path: storage.canonicalReplica.canvas.snapshotPath, role: "canvas" },
       { path: storage.canonicalReplica.canvas.updatesLogPath, role: "canvas" },
+      ...(mediaAssets ? [{ path: mediaAssets.path, role: "media" }] : []),
     ];
     for (const expected of expectedContentBlobs) {
       if (!expected.store) {
@@ -499,6 +526,8 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
         problems.push(
           canonical.role === "content"
             ? `editable workspace includes canonical content path: ${canonicalPath}`
+            : canonical.role === "media"
+              ? `editable workspace includes canonical media asset path: ${canonicalPath}`
             : `editable workspace includes canonical canvas path: ${canonicalPath}`,
         );
       }
