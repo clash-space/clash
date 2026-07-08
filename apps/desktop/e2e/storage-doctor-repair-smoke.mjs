@@ -605,6 +605,8 @@ async function main() {
   );
   const mediaAssets = status?.storage?.canonicalReplica?.mediaAssets;
   const textViewFiles = status?.storage?.workspace?.viewFiles?.texts;
+  const timelineViewFiles = status?.storage?.workspace?.viewFiles?.timelines;
+  const timelineProjectionFiles = status?.storage?.workspace?.viewFiles?.timelineProjections;
   recordCheck(
     "text projection view files are editable but not canonical text revision content",
     textViewFiles?.kind === "agent-editable-projection-files" &&
@@ -616,6 +618,28 @@ async function main() {
       !repairReport.status.protectedPaths.includes(textViewFiles.path),
     JSON.stringify({
       textViewFiles,
+      protectedPaths: status?.protectedPaths,
+      projectWorkspaceRoot: status?.projectWorkspaceRoot,
+    }),
+  );
+  recordCheck(
+    "timeline view files are editable views but not canonical timeline state",
+    timelineViewFiles?.kind === "agent-editable-view-files" &&
+      timelineViewFiles.path === path.join(status.projectWorkspaceRoot, "timelines") &&
+      timelineViewFiles.defaultFile === "main.timeline.yaml" &&
+      timelineViewFiles.applyCommand === "clash timeline apply" &&
+      timelineViewFiles.casRequired === true &&
+      timelineViewFiles.ownsCanonicalState === false &&
+      !repairReport.status.protectedPaths.includes(timelineViewFiles.path) &&
+      timelineProjectionFiles?.kind === "agent-editable-projection-files" &&
+      timelineProjectionFiles.path === path.join(status.projectWorkspaceRoot, "projections", "timelines") &&
+      timelineProjectionFiles.applyCommand === "clash timeline apply" &&
+      timelineProjectionFiles.casRequired === true &&
+      timelineProjectionFiles.ownsCanonicalState === false &&
+      !repairReport.status.protectedPaths.includes(timelineProjectionFiles.path),
+    JSON.stringify({
+      timelineViewFiles,
+      timelineProjectionFiles,
       protectedPaths: status?.protectedPaths,
       projectWorkspaceRoot: status?.projectWorkspaceRoot,
     }),

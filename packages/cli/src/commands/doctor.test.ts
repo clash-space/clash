@@ -1230,6 +1230,42 @@ test("storage doctor fails when text view files point at canonical revision cont
   assert.match(contract.message, /text view files point at protected canonical state/);
 });
 
+test("storage doctor fails when timeline view files point at canonical state", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      workspace: {
+        ...status.storage.workspace,
+        viewFiles: {
+          ...status.storage.workspace.viewFiles,
+          timelines: {
+            ...status.storage.workspace.viewFiles.timelines,
+            path: status.loro.replicaRoot,
+          },
+          timelineProjections: {
+            ...status.storage.workspace.viewFiles.timelineProjections,
+            path: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
+          },
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /timeline view files path does not match timelines/);
+  assert.match(contract.message, /timeline projection files path does not match projections\/timelines/);
+  assert.match(contract.message, /timeline view files point at protected canonical state/);
+  assert.match(contract.message, /timeline projection files point at protected canonical state/);
+});
+
 test("storage doctor fails when text revision content blobs are writable or hash-mismatched", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

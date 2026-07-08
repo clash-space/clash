@@ -420,33 +420,32 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.workspace.ownsCanonicalMetadata !== false) {
       problems.push("workspace owns canonical metadata");
     }
-    const textViewFiles = storage.workspace.viewFiles?.texts;
-    const expectedTextViewPath = join(status.roots.projections, "text");
-    if (!textViewFiles) {
-      problems.push("missing text view files contract");
-    } else {
-      if (textViewFiles.kind !== "agent-editable-projection-files") {
-        problems.push("text view files are not agent-editable-projection-files");
-      }
-      if (textViewFiles.path !== expectedTextViewPath) {
-        problems.push("text view files path does not match projections/text");
-      }
-      if (textViewFiles.defaultFilePattern !== "<node-id>.md") {
-        problems.push("text view files default pattern is wrong");
-      }
-      if (textViewFiles.applyCommand !== "clash text apply") {
-        problems.push("text view files apply command is wrong");
-      }
-      if (textViewFiles.casRequired !== true) {
-        problems.push("text view files do not require CAS");
-      }
-      if (textViewFiles.ownsCanonicalState !== false) {
-        problems.push("text view files claim to own canonical state");
-      }
-      if (status.protectedPaths.some((protectedPath) => isSameOrInside(textViewFiles.path, protectedPath))) {
-        problems.push("text view files point at protected canonical state");
-      }
-    }
+    validateViewFilesContract(problems, status, {
+      label: "text view files",
+      contract: storage.workspace.viewFiles?.texts,
+      expectedKind: "agent-editable-projection-files",
+      expectedPath: join(status.roots.projections, "text"),
+      expectedPathDescription: "projections/text",
+      defaultFilePattern: "<node-id>.md",
+      applyCommand: "clash text apply",
+    });
+    validateViewFilesContract(problems, status, {
+      label: "timeline view files",
+      contract: storage.workspace.viewFiles?.timelines,
+      expectedKind: "agent-editable-view-files",
+      expectedPath: status.roots.timelines,
+      expectedPathDescription: "timelines",
+      defaultFile: "main.timeline.yaml",
+      applyCommand: "clash timeline apply",
+    });
+    validateViewFilesContract(problems, status, {
+      label: "timeline projection files",
+      contract: storage.workspace.viewFiles?.timelineProjections,
+      expectedKind: "agent-editable-projection-files",
+      expectedPath: join(status.roots.projections, "timelines"),
+      expectedPathDescription: "projections/timelines",
+      applyCommand: "clash timeline apply",
+    });
     if (storage.canonicalReplica.role !== "single-machine-project-replica") {
       problems.push("canonical replica role is not single-machine-project-replica");
     }
@@ -574,6 +573,62 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
           message: "Project storage contract separates agent workspace from protected canonical replica.",
         },
   ];
+}
+
+function validateViewFilesContract(
+  problems: string[],
+  status: ProjectStatus,
+  options: {
+    label: string;
+    contract: {
+      kind?: unknown;
+      path?: unknown;
+      defaultFile?: unknown;
+      defaultFilePattern?: unknown;
+      applyCommand?: unknown;
+      casRequired?: unknown;
+      ownsCanonicalState?: unknown;
+    } | undefined;
+    expectedKind: string;
+    expectedPath: string;
+    expectedPathDescription: string;
+    defaultFile?: string;
+    defaultFilePattern?: string;
+    applyCommand: string;
+  },
+): void {
+  const contract = options.contract;
+  if (!contract) {
+    problems.push(`missing ${options.label} contract`);
+    return;
+  }
+  if (contract.kind !== options.expectedKind) {
+    problems.push(`${options.label} are not ${options.expectedKind}`);
+  }
+  if (contract.path !== options.expectedPath) {
+    problems.push(`${options.label} path does not match ${options.expectedPathDescription}`);
+  }
+  if (options.defaultFile !== undefined && contract.defaultFile !== options.defaultFile) {
+    problems.push(`${options.label} default file is wrong`);
+  }
+  if (options.defaultFilePattern !== undefined && contract.defaultFilePattern !== options.defaultFilePattern) {
+    problems.push(`${options.label} default pattern is wrong`);
+  }
+  if (contract.applyCommand !== options.applyCommand) {
+    problems.push(`${options.label} apply command is wrong`);
+  }
+  if (contract.casRequired !== true) {
+    problems.push(`${options.label} do not require CAS`);
+  }
+  if (contract.ownsCanonicalState !== false) {
+    problems.push(`${options.label} claim to own canonical state`);
+  }
+  if (
+    typeof contract.path === "string" &&
+    status.protectedPaths.some((protectedPath) => isSameOrInside(contract.path as string, protectedPath))
+  ) {
+    problems.push(`${options.label} point at protected canonical state`);
+  }
 }
 
 function firstEditableProtectedOverlap(status: ProjectStatus): {
