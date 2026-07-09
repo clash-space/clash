@@ -502,6 +502,10 @@ asset blobs must stay behind commands or APIs.
 
 - Local-api product metadata uses `local.sqlite` only; no broad JSON state store
   remains a documented or active state surface.
+- `project status` exposes machine-local config under
+  `storage.canonicalReplica.metadata.localConfig`; doctor validates the table,
+  local-only sync default, host API/CLI mutation surface, and removed JSON
+  sidecar policy.
 - Provider credential/OAuth payloads are now encrypted before SQLite write;
   direct SQL writes must not bypass `local-provider-store`.
 - Room messages exist in cloud schema, but local-first v1 removes local room

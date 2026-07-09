@@ -90,6 +90,10 @@ Current status:
   SQLite table. Host discovery files, credential JSON, provider test recordings,
   and projection lock sidecars remain narrow runtime/artifact/projection files,
   not local metadata stores.
+- `project status --json` now exposes
+  `storage.canonicalReplica.metadata.localConfig` as machine-local SQLite
+  state with `jsonSidecars: "removed"`, and `doctor storage` fails if that
+  contract drifts toward agent-writable or direct-file-edit configuration.
 
 ### P0-02: Create shared projection CAS library
 

@@ -256,6 +256,15 @@ test("project status exposes agent-readable project roots and protected local fi
         kind: "sqlite",
         path: join(localApiDataDir, "local.sqlite"),
         agentWritable: false,
+        localConfig: {
+          role: "machine-local-config",
+          table: "local_config",
+          keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+          syncDefault: "local-only",
+          agentWritable: false,
+          mutationSurface: "host-api-or-cli",
+          jsonSidecars: "removed",
+        },
       },
       canvas: {
         kind: "loro",

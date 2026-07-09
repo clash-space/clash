@@ -84,13 +84,15 @@ otherwise.
 The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped
-SQLite metadata store, Loro canvas replica, and immutable text/timeline
-revision content blob roots, all marked non-agent-writable; and
+SQLite metadata store, its `metadata.localConfig` table contract, the Loro
+canvas replica, and immutable text/timeline revision content blob roots, all
+marked non-agent-writable; and
 `storage.localSecrets` points at machine-local secret files such as
 `config.json` and `credentials.json`, also marked non-agent-writable and
 local-only. Text and timeline applied bodies therefore have Obsidian-like file
 recoverability through content descriptors, without making the protected
-canonical store or local secret files a directly editable vault.
+canonical store, machine-local config, or local secret files a directly editable
+vault.
 `clash doctor storage --json` verifies this role contract and warns when local
 SQLite is missing core metadata/config tables, provider auth tables/primary keys, or the
 `asset_refs`, `asset_node_refs` / `reference_role`, `text_revisions`, or
@@ -101,7 +103,8 @@ roots are moved into editable agent paths, when existing revision blob files
 are writable or no longer match their content-addressed filenames, or when the
 cwd or project workspace contains stray `snapshot.bin` / `updates.log` files outside
 `storage.canonicalReplica.canvas.replicaRoot`, because that would imply a
-second local canvas replica.
+second local canvas replica. It also fails if machine-local config stops being
+modeled as protected SQLite state with host API/CLI mutation only.
 When `--repair` is explicit, doctor may make hash-valid writable revision blob
 files read-only again; it still refuses to auto-repair hash-mismatched,
 symlinked, or structurally invalid revision blob files.

@@ -115,6 +115,15 @@ describe("project status path builder", () => {
     expect(status.roots.runtime).toBe("/tmp/clash-home/projects/project%2Fone/runtime");
     expect(status.runtimeRoot).toBe(status.roots.runtime);
     expect(status.localSqlitePath).toBe("/tmp/clash-home/local-api/local.sqlite");
+    expect(status.storage.canonicalReplica.metadata.localConfig).toEqual({
+      role: "machine-local-config",
+      table: "local_config",
+      keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+      syncDefault: "local-only",
+      agentWritable: false,
+      mutationSurface: "host-api-or-cli",
+      jsonSidecars: "removed",
+    });
     expect(status.storage.localSecrets.files.cliConfig.path).toBe("/tmp/clash-home/config.json");
     expect(status.storage.localSecrets.files.bridgeCredentials.path).toBe("/tmp/clash-home/credentials.json");
     expect(status.loro.snapshotPath).toBe("/tmp/clash-home/local-api/projects/project%2Fone/loro/snapshot.bin");
@@ -243,6 +252,15 @@ describe("project status path builder", () => {
           kind: "sqlite",
           path: status.localSqlitePath,
           agentWritable: false,
+          localConfig: {
+            role: "machine-local-config",
+            table: "local_config",
+            keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+            syncDefault: "local-only",
+            agentWritable: false,
+            mutationSurface: "host-api-or-cli",
+            jsonSidecars: "removed",
+          },
         },
         canvas: {
           kind: "loro",

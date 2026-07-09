@@ -405,6 +405,10 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.canonicalReplica.metadata.path !== status.localSqlitePath) {
       problems.push("canonical metadata path does not match localSqlitePath");
     }
+    validateMachineLocalConfigContract(
+      problems,
+      storage.canonicalReplica.metadata.localConfig,
+    );
     if (storage.canonicalReplica.canvas.agentWritable !== false) {
       problems.push("canonical canvas replica is agent-writable");
     }
@@ -519,6 +523,40 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
           message: "Project storage contract separates agent workspace from protected canonical replica and local secrets.",
         },
   ];
+}
+
+function validateMachineLocalConfigContract(
+  problems: string[],
+  localConfig: ProjectStatus["storage"]["canonicalReplica"]["metadata"]["localConfig"] | undefined,
+): void {
+  if (!localConfig) {
+    problems.push("missing machine-local config contract");
+    return;
+  }
+  if (localConfig.role !== "machine-local-config") {
+    problems.push("machine-local config role is wrong");
+  }
+  if (localConfig.table !== "local_config") {
+    problems.push("machine-local config table is wrong");
+  }
+  const expectedKeys = ["local-sync-config", "local-audio-config", "local-harness-config"];
+  for (const key of expectedKeys) {
+    if (!localConfig.keys.includes(key)) {
+      problems.push(`machine-local config missing ${key} key`);
+    }
+  }
+  if (localConfig.syncDefault !== "local-only") {
+    problems.push("machine-local config is not local-only by default");
+  }
+  if (localConfig.agentWritable !== false) {
+    problems.push("machine-local config is agent-writable");
+  }
+  if (localConfig.mutationSurface !== "host-api-or-cli") {
+    problems.push("machine-local config mutation surface is wrong");
+  }
+  if (localConfig.jsonSidecars !== "removed") {
+    problems.push("machine-local config JSON sidecars are not removed");
+  }
 }
 
 function validateLocalSecretsContract(

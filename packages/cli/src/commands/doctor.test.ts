@@ -1206,6 +1206,41 @@ test("storage doctor fails when local secret files are agent-writable or unprote
   assert.match(contract.message, /bridge credentials secret is agent-writable/);
 });
 
+test("storage doctor fails when machine-local config is not modeled as protected SQLite state", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      canonicalReplica: {
+        ...status.storage.canonicalReplica,
+        metadata: {
+          ...status.storage.canonicalReplica.metadata,
+          localConfig: {
+            ...status.storage.canonicalReplica.metadata.localConfig,
+            table: "user_variables",
+            agentWritable: true,
+            mutationSurface: "direct-file-edit",
+            jsonSidecars: "available",
+          },
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /machine-local config table is wrong/);
+  assert.match(contract.message, /machine-local config is agent-writable/);
+  assert.match(contract.message, /machine-local config mutation surface is wrong/);
+  assert.match(contract.message, /machine-local config JSON sidecars are not removed/);
+});
+
 test("storage doctor fails when text or timeline content is modeled as media assets or agent-writable canonical state", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },

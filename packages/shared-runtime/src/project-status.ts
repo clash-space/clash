@@ -78,6 +78,15 @@ export interface ProjectStatusStorage {
       kind: "sqlite";
       path: string;
       agentWritable: false;
+      localConfig: {
+        role: "machine-local-config";
+        table: "local_config";
+        keys: ["local-sync-config", "local-audio-config", "local-harness-config"];
+        syncDefault: "local-only";
+        agentWritable: false;
+        mutationSurface: "host-api-or-cli";
+        jsonSidecars: "removed";
+      };
     };
     canvas: {
       kind: "loro";
@@ -557,6 +566,15 @@ export function buildProjectStatus(
           kind: "sqlite",
           path: localSqlitePath,
           agentWritable: false,
+          localConfig: {
+            role: "machine-local-config",
+            table: "local_config",
+            keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+            syncDefault: "local-only",
+            agentWritable: false,
+            mutationSurface: "host-api-or-cli",
+            jsonSidecars: "removed",
+          },
         },
         canvas: {
           kind: "loro",

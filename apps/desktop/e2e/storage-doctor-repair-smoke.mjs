@@ -607,10 +607,31 @@ async function main() {
     }),
   );
   const mediaAssets = status?.storage?.canonicalReplica?.mediaAssets;
+  const localConfig = status?.storage?.canonicalReplica?.metadata?.localConfig;
   const textViewFiles = status?.storage?.workspace?.viewFiles?.texts;
   const timelineViewFiles = status?.storage?.workspace?.viewFiles?.timelines;
   const timelineProjectionFiles = status?.storage?.workspace?.viewFiles?.timelineProjections;
   const localSecrets = status?.storage?.localSecrets;
+  recordCheck(
+    "machine-local config is a SQLite table, not agent-editable JSON sidecars",
+    localConfig?.role === "machine-local-config" &&
+      localConfig?.table === "local_config" &&
+      localConfig?.keys?.includes("local-sync-config") === true &&
+      localConfig?.keys?.includes("local-audio-config") === true &&
+      localConfig?.keys?.includes("local-harness-config") === true &&
+      localConfig?.syncDefault === "local-only" &&
+      localConfig?.agentWritable === false &&
+      localConfig?.mutationSurface === "host-api-or-cli" &&
+      localConfig?.jsonSidecars === "removed" &&
+      repairReport.status.protectedPaths.includes(status.localSqlitePath) &&
+      !isInside(status.localSqlitePath, status.projectWorkspaceRoot),
+    JSON.stringify({
+      localConfig,
+      localSqlitePath: status?.localSqlitePath,
+      projectWorkspaceRoot: status?.projectWorkspaceRoot,
+      protectedPaths: status?.protectedPaths,
+    }),
+  );
   recordCheck(
     "local secret files are protected local-only storage, not agent-editable projections",
     localSecrets?.role === "machine-local-secret-files" &&
