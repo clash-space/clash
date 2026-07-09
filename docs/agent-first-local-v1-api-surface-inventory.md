@@ -421,7 +421,8 @@ Registered commands:
   - now rejects content patches to text nodes feeding materialized downstream
     state;
   - now rejects semantic patches to materialized downstream action checkpoints,
-    including prompt/model/action/output/status/asset fields;
+    including prompt/model/action/output/status/metadata and asset
+    dependency/provenance fields;
   - downstream `draft`/`idle` placeholders keep the action editable until the
     output is materialized;
   - Web UI local node deletion uses the shared referenced-delete guard;

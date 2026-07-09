@@ -149,6 +149,51 @@ describe("canvas update guardrails", () => {
     }
   });
 
+  it("rejects storyboard metadata patches on downstream-referenced action checkpoints", () => {
+    const result = validateCanvasNodePatch({
+      nodeId: "storyboard-review",
+      node: {
+        type: "action-badge",
+        data: {
+          actionType: "storyboard.review",
+          metadata: {
+            kind: "image.storyboard-consistency",
+            panels: [{ id: "panel-1", assetId: "asset-panel-1" }],
+          },
+        },
+      },
+      nodes: [
+        {
+          id: "storyboard-review",
+          type: "action-badge",
+          data: {
+            actionType: "storyboard.review",
+            metadata: {
+              kind: "image.storyboard-consistency",
+              panels: [{ id: "panel-1", assetId: "asset-panel-1" }],
+            },
+          },
+        },
+        { id: "prompt-pack", type: "text", data: { status: "completed", content: "generated prompt pack" } },
+      ],
+      edges: [{ source: "storyboard-review", target: "prompt-pack" }],
+      patch: {
+        data: {
+          metadata: {
+            kind: "image.storyboard-consistency",
+            panels: [{ id: "panel-1", assetId: "asset-panel-replaced" }],
+          },
+        },
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("metadata");
+      expect(result.error).toContain("copy-on-write");
+    }
+  });
+
   it("allows nested Web UI label patches on downstream-referenced action checkpoints", () => {
     expect(validateCanvasNodePatch({
       nodeId: "image-gen-1",

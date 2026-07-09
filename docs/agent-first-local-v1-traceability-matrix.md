@@ -329,7 +329,7 @@ Conclusion:
 - Agent local harness install/install-adapter/upgrade/uninstall/authenticate now
   validates the receipt-bearing `GET /api/v1/local/harnesses` read token before
   invoking the local ACP adapter; stale install-state tokens are rejected.
-- Still needs storyboard recovery/rewire guards, force/recovery UX, remaining
+- Still needs storyboard recovery/rewire UX, force/recovery UX, remaining
   local-api endpoint parity, and direct admin operation parity.
 
 ### Variables and secrets
