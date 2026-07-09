@@ -167,6 +167,9 @@ The local product metadata contract is SQLite-only:
 - immutable text/timeline revision ids are checked and inserted inside
   `BEGIN IMMEDIATE` SQLite write transactions, so same-id metadata conflicts
   cannot degrade into last-writer-wins replacement,
+- accepted and rejected text/timeline revision index attempts write sanitized
+  `mutation_audit` rows, so failed agent apply attempts stay inspectable without
+  making revision blobs or SQLite directly agent-editable,
 - conformance scripts auto-detect desktop local-api state only by
   `local.sqlite`.
 

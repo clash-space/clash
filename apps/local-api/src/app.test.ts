@@ -1494,6 +1494,30 @@ describe("local API app", () => {
     expect(await listed.json()).toEqual({ revisions: [] });
     await expect(stat(join(dataDir, "text-revision-blobs", "12", "1234567890abcdef.md")))
       .rejects.toMatchObject({ code: "ENOENT" });
+
+    const sqlite = openSqlite();
+    try {
+      const audit = sqlite.prepare(`
+        select operation, entity_kind, entity_id, accepted, reason, error, mutation_json
+          from mutation_audit
+         where operation = ?
+      `).get("text_revision_index");
+      expect(audit).toMatchObject({
+        operation: "text_revision_index",
+        entity_kind: "text",
+        entity_id: "project-text:script",
+        accepted: 0,
+        reason: "text revision rejected",
+        error: "text revision contentHash does not match content",
+      });
+      expect(JSON.parse(String(audit?.mutation_json))).toMatchObject({
+        operation: "text_revision_index",
+        accepted: false,
+        error: "text revision contentHash does not match content",
+      });
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("does not leave a text content blob when revision metadata conflicts", async () => {
@@ -1702,6 +1726,30 @@ describe("local API app", () => {
     expect(await listed.json()).toEqual({ revisions: [] });
     await expect(stat(join(dataDir, "timeline-revision-blobs", "12", "1234567890abcdef.timeline.yaml")))
       .rejects.toMatchObject({ code: "ENOENT" });
+
+    const sqlite = openSqlite();
+    try {
+      const audit = sqlite.prepare(`
+        select operation, entity_kind, entity_id, accepted, reason, error, mutation_json
+          from mutation_audit
+         where operation = ?
+      `).get("timeline_revision_index");
+      expect(audit).toMatchObject({
+        operation: "timeline_revision_index",
+        entity_kind: "timeline",
+        entity_id: "project-timeline:editor",
+        accepted: 0,
+        reason: "timeline revision rejected",
+        error: "timeline revision timelineHash does not match content",
+      });
+      expect(JSON.parse(String(audit?.mutation_json))).toMatchObject({
+        operation: "timeline_revision_index",
+        accepted: false,
+        error: "timeline revision timelineHash does not match content",
+      });
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("does not leave a timeline content blob when revision metadata conflicts", async () => {

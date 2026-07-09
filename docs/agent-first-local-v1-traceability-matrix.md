@@ -104,6 +104,9 @@ Evidence:
   `BEGIN IMMEDIATE` write/schema transactions; text/timeline revision
   immutable-id checks and inserts are covered by the same write-transaction
   contract.
+- Rejected text/timeline revision index attempts, including content hash
+  preflight failures, write sanitized `mutation_audit` rows while leaving no
+  orphan revision blob.
 - No broad JSON product DB is exposed by local-api, status, doctor, or conformance scripts.
 
 Conclusion:

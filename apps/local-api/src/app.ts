@@ -5135,11 +5135,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       entity: { kind: "text", id: parsed.ok ? `${parsed.revision.projectId}:${parsed.revision.nodeId}` : "" },
       forced: false,
     };
+    const rejectTextRevision = async (message: string, status: 400 | 409 | 500) => {
+      const mutation = hostMutationRejected(envelope, message);
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        reason: "text revision rejected",
+      }));
+      return c.json({ error: message, mutation }, status);
+    };
     if (!parsed.ok) {
-      return c.json({
-        error: parsed.error,
-        mutation: hostMutationRejected(envelope, parsed.error),
-      }, 400);
+      return rejectTextRevision(parsed.error, 400);
     }
     const content = typeof body.content === "string" ? body.content : undefined;
     if (content !== undefined) {
@@ -5147,10 +5152,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         await preflightTextRevisionContentBlob(options.dataDir, parsed.revision, content);
       } catch (error) {
         const message = errorMessage(error);
-        return c.json({
-          error: message,
-          mutation: hostMutationRejected(envelope, message),
-        }, message.includes("already exists with different content") ? 409 : 400);
+        return rejectTextRevision(message, message.includes("already exists with different content") ? 409 : 400);
       }
     }
 
@@ -5171,10 +5173,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, message.includes("already exists with different metadata") ? 409 : 500);
+      return rejectTextRevision(message, message.includes("already exists with different metadata") ? 409 : 500);
     }
   });
 
@@ -5220,11 +5219,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       entity: { kind: "timeline", id: parsed.ok ? `${parsed.revision.projectId}:${parsed.revision.nodeId}` : "" },
       forced: false,
     };
+    const rejectTimelineRevision = async (message: string, status: 400 | 409 | 500) => {
+      const mutation = hostMutationRejected(envelope, message);
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        reason: "timeline revision rejected",
+      }));
+      return c.json({ error: message, mutation }, status);
+    };
     if (!parsed.ok) {
-      return c.json({
-        error: parsed.error,
-        mutation: hostMutationRejected(envelope, parsed.error),
-      }, 400);
+      return rejectTimelineRevision(parsed.error, 400);
     }
     const content = typeof body.content === "string" ? body.content : undefined;
     if (content !== undefined) {
@@ -5232,10 +5236,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         await preflightTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
       } catch (error) {
         const message = errorMessage(error);
-        return c.json({
-          error: message,
-          mutation: hostMutationRejected(envelope, message),
-        }, message.includes("already exists with different content") ? 409 : 400);
+        return rejectTimelineRevision(message, message.includes("already exists with different content") ? 409 : 400);
       }
     }
 
@@ -5256,10 +5257,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, message.includes("already exists with different metadata") ? 409 : 500);
+      return rejectTimelineRevision(message, message.includes("already exists with different metadata") ? 409 : 500);
     }
   });
 

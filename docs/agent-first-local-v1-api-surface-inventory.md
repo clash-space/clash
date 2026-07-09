@@ -938,6 +938,9 @@ Rules:
   content-addressed text blob and serves it through the content GET endpoint,
 - content blobs are written only after revision metadata is accepted; rejected
   same-revision-id metadata conflicts do not leave orphan immutable blobs,
+- accepted and rejected index attempts write sanitized local `mutation_audit`
+  rows, including preflight hash failures, so agents can inspect failed apply
+  attempts without direct SQLite or blob writes,
 - text revision history entries with stored bodies expose a `content` descriptor
   (`kind: "text-revision-content"`, `stored: true`, hash, media type, URL,
   immutable flag, and `storage: { kind: "content-addressed-revision-blob", registry:
@@ -991,6 +994,9 @@ Rules:
   revision blob, and serves it through the content GET endpoint,
 - content blobs are written only after revision metadata is accepted; rejected
   same-revision-id metadata conflicts do not leave orphan immutable blobs,
+- accepted and rejected index attempts write sanitized local `mutation_audit`
+  rows, including preflight hash failures, so agents can inspect failed apply
+  attempts without direct SQLite or blob writes,
 - timeline revision history entries with stored bodies expose a `content`
   descriptor (`kind: "timeline-revision-content"`, `stored: true`, hash, media
   type, URL, immutable flag, and `storage: { kind: "content-addressed-revision-blob",
