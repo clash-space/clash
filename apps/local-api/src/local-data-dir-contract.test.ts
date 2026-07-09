@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function findRepoRoot(startDirectory: string): string {
@@ -48,6 +48,32 @@ function sourceFilesUnder(path: string): string[] {
   return files;
 }
 
+function filesUnder(path: string): string[] {
+  const root = join(repoRoot, path);
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (
+        entry.name === "node_modules" ||
+        entry.name === ".next" ||
+        entry.name === "dist" ||
+        entry.name === "build" ||
+        entry.name === "release"
+      ) {
+        continue;
+      }
+      const fullPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+      } else {
+        files.push(fullPath);
+      }
+    }
+  };
+  visit(root);
+  return files;
+}
+
 describe("local data dir contract", () => {
   it("selects active local-api data stores by SQLite presence in conformance scripts", () => {
     const providerConformance = readScript("provider-conformance.ts");
@@ -81,6 +107,24 @@ describe("local data dir contract", () => {
           .filter((name) => content.includes(name))
           .map(() => `${file.slice(repoRoot.length + 1)} contains a forbidden app metadata spelling`),
       );
+
+    expect(matches).toEqual([]);
+  });
+
+  it("keeps broad app metadata file names out of the repository tree", () => {
+    const forbiddenBroadStoreFilename = String.fromCharCode(100, 98, 46, 106, 115, 111, 110);
+    const scannedFiles = [
+      ...filesUnder(".github"),
+      ...filesUnder("apps"),
+      ...filesUnder("docs"),
+      ...filesUnder("packages"),
+      ...filesUnder("scripts"),
+      ...filesUnder("skills"),
+    ];
+
+    const matches = scannedFiles
+      .filter((file) => basename(file) === forbiddenBroadStoreFilename)
+      .map((file) => `${file.slice(repoRoot.length + 1)} uses a forbidden broad app metadata filename`);
 
     expect(matches).toEqual([]);
   });
