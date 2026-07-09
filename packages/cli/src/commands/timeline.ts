@@ -2,7 +2,7 @@ import { Command } from "commander";
 import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   LoroSyncClient,
   TimelineRevisionHistoryEntrySchema,
@@ -46,6 +46,7 @@ export {
   createTimelineAppliedRevision,
   createTimelineLock,
   createTimelineSourceProvenance,
+  normalizeTimelineDslForYaml,
   parseTimelineFileForApply,
   parseTimelineLock,
   readLoroRevisionMetadata,
@@ -56,7 +57,7 @@ export {
   timelineYamlFromNode,
 };
 
-type ApplyTimelineDslResult = {
+export type ApplyTimelineDslResult = {
   updated: true;
   nodeId: string;
   edgesAdded: number;
@@ -65,7 +66,7 @@ type ApplyTimelineDslResult = {
   forced?: true;
 };
 
-type ReplaceTimelineDslResult = {
+export type ReplaceTimelineDslResult = {
   replaced: true;
   copyOnWrite: true;
   sourceNodeId: string;
@@ -390,6 +391,53 @@ timelineCommand
     }
   });
 
+timelineCommand
+  .command("restore")
+  .description("Restore an applied timeline revision through an explicit CAS/COW canvas action")
+  .requiredOption("--node <id>", "Target VideoEditorNode ID")
+  .requiredOption("--revision <id>", "Timeline revision ID to restore")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--mode <mode>", "Restore mode: replace or apply (default: replace)", "replace")
+  .option("--file <path>", "Where to materialize the revision YAML (default: revisions/<revision>.timeline.yaml)")
+  .option("--lock <path>", "CAS lock path (default: timeline YAML sidecar)")
+  .option("--label <label>", "Label for the replacement timeline node in replace mode")
+  .option("--new-node <id>", "Replacement node ID in replace mode")
+  .option("--force", "Bypass CAS/reference guards and intentionally overwrite or fork from current canvas timeline")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const projectId = await resolveCanvasProjectId(options);
+    const actor = await resolveCanvasActor();
+    try {
+      const result = await restoreTimelineRevisionContent({
+        projectId,
+        nodeId: options.node,
+        revisionId: options.revision,
+        cwd: process.cwd(),
+        file: options.file,
+        lock: options.lock,
+        mode: parseTimelineRevisionRestoreMode(options.mode),
+        force: options.force === true,
+        actor,
+        label: options.label,
+        newNodeId: options.newNode,
+      });
+      if (isJsonMode(options)) {
+        printJson(result);
+      } else {
+        if (!result.timelineRevisionIndex.indexed) {
+          process.stderr.write(`warning: ${result.timelineRevisionIndex.error}\n`);
+        }
+        const action = result.mode === "replace"
+          ? `created copy-on-write timeline ${result.newNodeId} from ${options.node}`
+          : `restored ${options.revision} to ${options.node}`;
+        process.stderr.write(`${action}\nwrote ${result.filePath}\nwrote ${result.lockPath}\n`);
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
 function readTimelineLockFile(lockPath: string): TimelineLock {
   try {
     return parseTimelineLock(readFileSync(lockPath, "utf8"));
@@ -516,6 +564,150 @@ export async function fetchTimelineRevisionContent(
   return response.text();
 }
 
+export type TimelineRevisionRestoreMode = "apply" | "replace";
+
+export type TimelineRevisionRestoreOptions = {
+  projectId: string;
+  nodeId: string;
+  revisionId: string;
+  cwd: string;
+  file?: string;
+  lock?: string;
+  mode?: TimelineRevisionRestoreMode;
+  force?: boolean;
+  actor?: TimelineRevisionActor;
+  label?: string;
+  newNodeId?: string;
+};
+
+export type TimelineRevisionRestoreDeps = {
+  fetchContent?: typeof fetchTimelineRevisionContent;
+  readNode?: typeof readNode;
+  apply?: typeof applyTimelineDsl;
+  replace?: typeof replaceTimelineDsl;
+  register?: typeof registerTimelineRevisionIndex;
+  mkdir?: typeof mkdirSync;
+  writeFile?: typeof writeFileSync;
+};
+
+export type TimelineRevisionRestoreResult = (
+  | (ApplyTimelineDslResult & { mode: "apply" })
+  | (ReplaceTimelineDslResult & { mode: "replace" })
+) & {
+  revisionId: string;
+  filePath: string;
+  lockPath: string;
+  timelineRevision: TimelineAppliedRevision;
+  timelineRevisionIndex: TimelineRevisionIndexResult;
+  readToken?: string;
+};
+
+export async function restoreTimelineRevisionContent(
+  options: TimelineRevisionRestoreOptions,
+  deps: TimelineRevisionRestoreDeps = {},
+): Promise<TimelineRevisionRestoreResult> {
+  const mode = parseTimelineRevisionRestoreMode(options.mode);
+  const fetchContent = deps.fetchContent ?? fetchTimelineRevisionContent;
+  const readCurrentNode = deps.readNode ?? readNode;
+  const apply = deps.apply ?? applyTimelineDsl;
+  const replace = deps.replace ?? replaceTimelineDsl;
+  const register = deps.register ?? registerTimelineRevisionIndex;
+  const mkdir = deps.mkdir ?? mkdirSync;
+  const writeFile = deps.writeFile ?? writeFileSync;
+  const filePath = resolveTimelineFilePath({
+    cwd: options.cwd,
+    file: options.file ?? join(options.cwd, "revisions", `${revisionFileStem(options.revisionId)}.timeline.yaml`),
+  });
+  const lockPath = resolveTimelineLockPath({
+    cwd: options.cwd,
+    file: filePath,
+    lock: options.lock,
+  });
+  const content = await fetchContent(options.projectId, options.revisionId);
+  const parsed = parseTimelineFileForApply(content);
+  if (!parsed.ok) {
+    throw new Error(`Invalid timeline revision content: ${parsed.error}`);
+  }
+  const currentNode = await readCurrentNode(options.projectId, options.nodeId);
+  if (!currentNode) throw new Error(`Node not found: ${options.nodeId}`);
+  if (currentNode.type !== "video-editor") {
+    throw new Error(`Node ${options.nodeId} has type "${currentNode.type}", expected "video-editor"`);
+  }
+  const currentDsl = normalizeTimelineDslForYaml(currentNode.data?.timelineDsl);
+  const currentLock = createTimelineLock({
+    projectId: options.projectId,
+    nodeId: options.nodeId,
+    filePath,
+    dsl: currentDsl,
+    readToken: currentNode.readToken,
+  });
+  mkdir(dirname(filePath), { recursive: true });
+  mkdir(dirname(lockPath), { recursive: true });
+  writeFile(filePath, content, "utf8");
+  writeFile(lockPath, JSON.stringify(currentLock, null, 2) + "\n", "utf8");
+
+  const sharedCas = {
+    lock: currentLock,
+    force: options.force === true,
+    filePath,
+    cwd: options.cwd,
+    actor: options.actor,
+    parentRevisionId: options.revisionId,
+  };
+  let result: ApplyTimelineDslResult | ReplaceTimelineDslResult;
+  let targetNodeId: string;
+  if (mode === "apply") {
+    result = await apply(options.projectId, options.nodeId, parsed.dsl, parsed.sources, sharedCas);
+    targetNodeId = result.nodeId;
+  } else {
+    result = await replace(options.projectId, options.nodeId, parsed.dsl, parsed.sources, {
+      ...sharedCas,
+      label: options.label,
+      newNodeId: options.newNodeId,
+    });
+    targetNodeId = result.newNodeId;
+  }
+  const timelineRevision = result.timelineRevision ?? createTimelineAppliedRevision({
+    projectId: options.projectId,
+    nodeId: targetNodeId,
+    cwd: options.cwd,
+    filePath,
+    dsl: parsed.dsl,
+    parentRevisionId: options.revisionId,
+    actor: options.actor,
+  });
+  const refreshedLock = createTimelineLock({
+    projectId: options.projectId,
+    nodeId: targetNodeId,
+    filePath,
+    dsl: parsed.dsl,
+    readToken: result.readToken,
+    appliedRevision: timelineRevision,
+  });
+  writeFile(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+  const timelineRevisionIndex = await register(timelineRevision, content);
+  return {
+    ...result,
+    mode,
+    revisionId: options.revisionId,
+    filePath,
+    lockPath,
+    timelineRevision,
+    timelineRevisionIndex,
+    readToken: refreshedLock.readToken,
+  } as TimelineRevisionRestoreResult;
+}
+
+export function parseTimelineRevisionRestoreMode(value: unknown): TimelineRevisionRestoreMode {
+  if (value === undefined || value === null || value === "" || value === "replace") return "replace";
+  if (value === "apply") return "apply";
+  throw new Error("Timeline revision restore mode must be either apply or replace");
+}
+
+function revisionFileStem(revisionId: string): string {
+  return revisionId.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "revision";
+}
+
 function parseTimelineRevisionLimit(value: unknown): number | undefined {
   if (value === undefined) return undefined;
   const limit = Number(value);
@@ -525,7 +717,7 @@ function parseTimelineRevisionLimit(value: unknown): number | undefined {
   return limit;
 }
 
-type TimelineNodeReadResult = TimelineNodeLike & {
+export type TimelineNodeReadResult = TimelineNodeLike & {
   readToken?: string;
 };
 
@@ -556,7 +748,14 @@ async function applyTimelineDsl(
   nodeId: string,
   dsl: ResolvedTimelineDsl,
   sources: string[],
-  cas: { lock: TimelineLock | null; force: boolean; cwd: string; filePath: string; actor?: TimelineRevisionActor },
+  cas: {
+    lock: TimelineLock | null;
+    force: boolean;
+    cwd: string;
+    filePath: string;
+    actor?: TimelineRevisionActor;
+    parentRevisionId?: string | null;
+  },
 ): Promise<ApplyTimelineDslResult> {
   const filePathCas = assertTimelineLockFilePath({
     lock: cas.lock,
@@ -574,7 +773,7 @@ async function applyTimelineDsl(
     expectedTimelineHash: cas.lock?.timelineHash,
     expectedReadToken: cas.lock?.readToken,
     expectedTimelineFilePath: cas.lock?.filePath,
-    parentRevisionId: cas.lock?.appliedRevision?.revisionId,
+    parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
     cwd: cas.cwd,
     filePath: cas.filePath,
     actor: cas.actor,
@@ -644,7 +843,7 @@ async function applyTimelineDsl(
       cwd: cas.cwd,
       filePath: cas.filePath,
       dsl,
-      parentRevisionId: cas.lock?.appliedRevision?.revisionId,
+      parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
       actor: cas.actor,
       ...revisionMetadata,
     });
@@ -672,6 +871,7 @@ async function replaceTimelineDsl(
     cwd: string;
     filePath: string;
     actor?: TimelineRevisionActor;
+    parentRevisionId?: string | null;
     label?: string;
     newNodeId?: string;
   },
@@ -692,7 +892,7 @@ async function replaceTimelineDsl(
     expectedTimelineHash: cas.lock?.timelineHash,
     expectedReadToken: cas.lock?.readToken,
     expectedTimelineFilePath: cas.lock?.filePath,
-    parentRevisionId: cas.lock?.appliedRevision?.revisionId,
+    parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
     cwd: cas.cwd,
     filePath: cas.filePath,
     actor: cas.actor,
@@ -755,7 +955,7 @@ async function replaceTimelineDsl(
       cwd: cas.cwd,
       filePath: cas.filePath,
       dsl,
-      parentRevisionId: cas.lock?.appliedRevision?.revisionId,
+      parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
       actor: cas.actor,
       ...revisionMetadata,
     });

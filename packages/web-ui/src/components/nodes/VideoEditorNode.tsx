@@ -509,6 +509,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                 </div>
                 <RevisionHistoryBadge
                     kind="timeline"
+                    nodeId={id}
                     history={revisionHistory}
                     className="absolute right-3 top-3 z-10"
                 />

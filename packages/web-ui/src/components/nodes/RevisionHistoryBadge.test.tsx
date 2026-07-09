@@ -9,10 +9,11 @@ describe("RevisionHistoryBadge", () => {
     cleanup();
   });
 
-  it("shows recent text revisions and an explicit CLI content recovery command", () => {
+  it("shows recent text revisions and explicit CLI recovery and restore commands", () => {
     render(
       <RevisionHistoryBadge
         kind="text"
+        nodeId="text-1"
         history={{
           count: 2,
           latest: {
@@ -48,12 +49,14 @@ describe("RevisionHistoryBadge", () => {
     expect(screen.getByText("agent")).toBeTruthy();
     expect(screen.getAllByText("texts/script.md")).toHaveLength(2);
     expect(screen.getByText("clash text content --revision txrev-2 --out revisions/txrev-2.md")).toBeTruthy();
+    expect(screen.getByText("clash text restore --node text-1 --revision txrev-2 --mode replace")).toBeTruthy();
   });
 
-  it("uses the timeline content recovery command for timeline revisions", () => {
+  it("uses timeline recovery and restore commands for timeline revisions", () => {
     render(
       <RevisionHistoryBadge
         kind="timeline"
+        nodeId="editor-1"
         history={{
           count: 1,
           latest: { revisionId: "tlrev-1", timelineHash: "timeline-hash" },
@@ -68,12 +71,14 @@ describe("RevisionHistoryBadge", () => {
 
     expect(screen.getByText("timeline-hash")).toBeTruthy();
     expect(screen.getByText("clash timeline content --revision tlrev-1 --out revisions/tlrev-1.timeline.yaml")).toBeTruthy();
+    expect(screen.getByText("clash timeline restore --node editor-1 --revision tlrev-1 --mode replace")).toBeTruthy();
   });
 
   it("stays hidden when no revisions are indexed", () => {
     const { container } = render(
       <RevisionHistoryBadge
         kind="text"
+        nodeId="text-1"
         history={{
           count: 0,
           latest: null,

@@ -14,6 +14,7 @@ import {
   registerTextRevisionIndex,
   resolveTextFilePath,
   resolveTextLockPath,
+  restoreTextRevisionContent,
   textHash,
   textCommand,
   textContentFromNode,
@@ -29,7 +30,7 @@ test("registers a top-level text command for agent-editable text files", () => {
   assert.match(indexSource, /import \{ textCommand \} from "\.\/commands\/text"/);
   assert.match(indexSource, /program\.addCommand\(textCommand\)/);
   assert.equal(textCommand.name(), "text");
-  assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content"]);
+  assert.deepEqual(textCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content", "restore"]);
   assert.match(daemonSource, /case "text_cas_update"/);
   assert.match(daemonSource, /text_cas_update requires string content/);
   assert.match(daemonSource, /case "text_cow_replace"/);
@@ -346,6 +347,70 @@ test("fetches text revision content through the host API", async () => {
     path: "/api/v1/projects/project_text/text-revisions/txrev-1/content",
     method: "GET",
   }]);
+});
+
+test("restores text revision content through a read-before-write copy-on-write replace by default", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "clash-text-restore-"));
+  const revisionId = "txrev-source";
+  const replaceCalls: Array<{
+    projectId: string;
+    nodeId: string;
+    content: string;
+    cas: any;
+  }> = [];
+
+  const result = await restoreTextRevisionContent({
+    projectId: "project_text",
+    nodeId: "text_node",
+    revisionId,
+    cwd,
+  }, {
+    fetchContent: async () => "restored body\n",
+    readNode: async () => ({
+      type: "text",
+      data: { content: "current body\n" },
+      readToken: "text-read-token",
+    }),
+    replace: async (projectId, nodeId, content, cas) => {
+      replaceCalls.push({ projectId, nodeId, content, cas });
+      const textRevision = createTextAppliedRevision({
+        projectId,
+        nodeId: "text_node_copy",
+        cwd,
+        filePath: cas.filePath,
+        content,
+        parentRevisionId: cas.parentRevisionId,
+        createdAt: "2026-07-09T00:00:00.000Z",
+      });
+      return {
+        replaced: true,
+        copyOnWrite: true,
+        sourceNodeId: nodeId,
+        newNodeId: "text_node_copy",
+        contentHash: textHash(content),
+        textRevision,
+        readToken: "restored-read-token",
+      };
+    },
+    register: async () => ({ indexed: true }),
+  });
+
+  assert.equal(result.mode, "replace");
+  assert.equal(result.revisionId, revisionId);
+  assert.equal(result.copyOnWrite, true);
+  assert.equal(result.newNodeId, "text_node_copy");
+  assert.equal(readFileSync(join(cwd, "revisions", "txrev-source.md"), "utf8"), "restored body\n");
+  const replaceCall = replaceCalls[0];
+  assert.ok(replaceCall);
+  assert.equal(replaceCall.projectId, "project_text");
+  assert.equal(replaceCall.nodeId, "text_node");
+  assert.equal(replaceCall.content, "restored body\n");
+  assert.equal(replaceCall.cas.lock.contentHash, textHash("current body\n"));
+  assert.equal(replaceCall.cas.lock.readToken, "text-read-token");
+  assert.equal(replaceCall.cas.parentRevisionId, revisionId);
+  const refreshedLock = parseTextLock(readFileSync(result.lockPath, "utf8"));
+  assert.equal(refreshedLock.contentHash, textHash("restored body\n"));
+  assert.equal(refreshedLock.appliedRevision?.parentRevisionId, revisionId);
 });
 
 test("parses legacy text CAS locks into the generic projection envelope", () => {

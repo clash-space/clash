@@ -11,6 +11,7 @@ interface RevisionHistorySnapshot {
 
 export interface RevisionHistoryBadgeProps {
   kind: RevisionHistoryKind;
+  nodeId: string;
   history: RevisionHistorySnapshot;
   className?: string;
 }
@@ -24,11 +25,15 @@ function recoveryCommand(kind: RevisionHistoryKind, revisionId: string): string 
   return `clash ${kind} content --revision ${revisionId} --out revisions/${revisionId}.${extension}`;
 }
 
+function restoreCommand(kind: RevisionHistoryKind, nodeId: string, revisionId: string): string {
+  return `clash ${kind} restore --node ${nodeId} --revision ${revisionId} --mode replace`;
+}
+
 function revisionHash(revision: RevisionHistoryEntry): string | null {
   return revision.textHash ?? revision.timelineHash ?? revision.content?.hash ?? null;
 }
 
-export function RevisionHistoryBadge({ kind, history, className = "" }: RevisionHistoryBadgeProps) {
+export function RevisionHistoryBadge({ kind, nodeId, history, className = "" }: RevisionHistoryBadgeProps) {
   const [open, setOpen] = useState(false);
 
   if (history.count === 0) return null;
@@ -91,6 +96,9 @@ export function RevisionHistoryBadge({ kind, history, className = "" }: Revision
                   )}
                   <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
                     {recoveryCommand(kind, revision.revisionId)}
+                  </code>
+                  <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
+                    {restoreCommand(kind, nodeId, revision.revisionId)}
                   </code>
                 </li>
               );

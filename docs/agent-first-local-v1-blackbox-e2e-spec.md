@@ -933,9 +933,10 @@ Current status:
   coverage.
 - `clash text pull/apply/replace` exists, and web canvas text/timeline nodes now
   show first-pass read-only revision history panels through `useRevisionHistory`,
-  including explicit CLI content recovery commands. Suite D still needs real
-  project fixture coverage and direct visual restore/apply interactions beyond
-  the deterministic command smoke and read-only panel.
+  including explicit CLI content recovery commands and `clash text/timeline
+  restore --mode replace` COW commands. Suite D still needs real project
+  fixture coverage and optional direct visual restore affordances beyond the
+  deterministic command smoke and read-only panel.
 - Short-drama/storyboard prompt-pack and timeline projection commands exist;
   Suite E still needs a fuller canvas/asset/provider fixture beyond timeline
   JSON creation/restore.

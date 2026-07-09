@@ -12,11 +12,13 @@ import {
   createTimelineLock,
   createTimelineSourceProvenance,
   fetchTimelineRevisionHistory,
+  normalizeTimelineDslForYaml,
   parseTimelineFileForApply,
   parseTimelineLock,
   registerTimelineRevisionIndex,
   resolveTimelineFilePath,
   resolveTimelineLockPath,
+  restoreTimelineRevisionContent,
   timelineHash,
   timelineCommand,
   timelineYamlFromNode,
@@ -28,7 +30,7 @@ test("registers a top-level timeline command for agent-editable timeline files",
   assert.match(indexSource, /import \{ timelineCommand \} from "\.\/commands\/timeline"/);
   assert.match(indexSource, /program\.addCommand\(timelineCommand\)/);
   assert.equal(timelineCommand.name(), "timeline");
-  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content"]);
+  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), ["pull", "apply", "replace", "history", "content", "restore"]);
   const timelineSource = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
   const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
   assert.match(timelineSource, /\.command\("replace"\)/);
@@ -694,6 +696,86 @@ test("fetches timeline revision content through the host API", async () => {
     path: "/api/v1/projects/project-1/timeline-revisions/tlrev-1/content",
     method: "GET",
   }]);
+});
+
+test("restores timeline revision content through a read-before-write copy-on-write replace by default", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-timeline-restore-"));
+  const revisionId = "tlrev-source";
+  const current = parseTimelineFileForApply("tracks:\n  - id: main\n    items: []\n");
+  const restored = parseTimelineFileForApply(`
+tracks:
+  - id: main
+    items:
+      - id: scene-001-video
+        type: video
+        from: start
+        durationInFrames: 30
+        sourceNodeId: scene-001
+`);
+  assert.equal(current.ok, true);
+  assert.equal(restored.ok, true);
+  if (!current.ok || !restored.ok) return;
+  const restoredYaml = timelineDslToYaml(restored.dsl);
+  const replaceCalls: Array<{
+    projectId: string;
+    nodeId: string;
+    cas: any;
+    sources: string[];
+  }> = [];
+
+  const result = await restoreTimelineRevisionContent({
+    projectId: "project-1",
+    nodeId: "editor-1",
+    revisionId,
+    cwd,
+  }, {
+    fetchContent: async () => restoredYaml,
+    readNode: async () => ({
+      type: "video-editor",
+      data: { timelineDsl: current.dsl },
+      readToken: "timeline-read-token",
+    }),
+    replace: async (projectId, nodeId, dsl, sources, cas) => {
+      replaceCalls.push({ projectId, nodeId, cas, sources });
+      const timelineRevision = createTimelineAppliedRevision({
+        projectId,
+        nodeId: "editor-copy",
+        cwd,
+        filePath: cas.filePath,
+        dsl,
+        parentRevisionId: cas.parentRevisionId,
+        createdAt: "2026-07-09T00:00:00.000Z",
+      });
+      return {
+        replaced: true,
+        copyOnWrite: true,
+        sourceNodeId: nodeId,
+        newNodeId: "editor-copy",
+        edgesAdded: sources.length,
+        timelineHash: timelineHash(dsl),
+        timelineRevision,
+        readToken: "restored-timeline-read-token",
+      };
+    },
+    register: async () => ({ indexed: true }),
+  });
+
+  assert.equal(result.mode, "replace");
+  assert.equal(result.revisionId, revisionId);
+  assert.equal(result.copyOnWrite, true);
+  assert.equal(result.newNodeId, "editor-copy");
+  assert.equal(readFileSync(join(cwd, "revisions", "tlrev-source.timeline.yaml"), "utf8"), restoredYaml);
+  const replaceCall = replaceCalls[0];
+  assert.ok(replaceCall);
+  assert.equal(replaceCall.projectId, "project-1");
+  assert.equal(replaceCall.nodeId, "editor-1");
+  assert.deepEqual(replaceCall.sources, ["scene-001"]);
+  assert.equal(replaceCall.cas.lock.timelineHash, timelineHash(normalizeTimelineDslForYaml(current.dsl)));
+  assert.equal(replaceCall.cas.lock.readToken, "timeline-read-token");
+  assert.equal(replaceCall.cas.parentRevisionId, revisionId);
+  const refreshedLock = parseTimelineLock(readFileSync(result.lockPath, "utf8"));
+  assert.equal(refreshedLock.timelineHash, timelineHash(restored.dsl));
+  assert.equal(refreshedLock.appliedRevision?.parentRevisionId, revisionId);
 });
 
 test("uses the shared timeline hash semantics for CAS locks", async () => {

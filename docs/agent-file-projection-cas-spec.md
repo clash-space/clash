@@ -111,6 +111,10 @@ Existing text behavior:
 - `clash text content --revision <id> [--out <path>]` fetches the immutable
   Markdown body for a selected applied revision through the host API. `--out`
   paths are checked against the current cwd, including symlink escape checks.
+- `clash text restore --node <text-node-id> --revision <id> [--mode
+  replace|apply]` materializes the selected body under `revisions/`, reads the
+  current target node to create a CAS lock, and defaults to copy-on-write
+  `replace`.
 - In-place apply is rejected by default when the text node feeds materialized
   downstream state; text feeding only unmaterialized action drafts remains
   editable. `clash text replace` creates a copy-on-write text node from the
@@ -670,6 +674,8 @@ The current local v1 implementation exposes that index explicitly:
 - `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`
 - `clash timeline history`
 - `clash timeline content --revision <id> [--out <path>]`
+- `clash timeline restore --node <video-editor-node-id> --revision <id>
+  [--mode replace|apply]`
 
 `clash timeline apply/replace` registers the applied
 `clash.timeline.revision` after the canvas mutation succeeds. If an older host

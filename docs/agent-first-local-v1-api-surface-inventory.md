@@ -904,14 +904,19 @@ Rules:
 - `clash text content --revision <id> [--out <path>]` reads the content GET
   endpoint as the agent-facing revision recovery surface; `--out` writes are
   cwd-contained.
+- `clash text restore --node <id> --revision <id> [--mode replace|apply]`
+  materializes the selected revision body under cwd, reads the current target
+  node to create a CAS lock, and defaults to copy-on-write `replace` before
+  registering the restored revision.
 - `useRevisionHistory` reads the same host-owned text revision endpoint for
   the web canvas. `TextNode` shows a first-pass read-only history panel with
-  recent revisions and `clash text content --revision ... --out ...` recovery
-  commands, without opening SQLite or mutable revision blob paths.
+  recent revisions, `clash text content --revision ... --out ...` recovery
+  commands, and explicit `clash text restore --mode replace` commands, without
+  opening SQLite or mutable revision blob paths.
 
 Remaining:
 
-- full visual text revision restore/apply workflow beyond the read-only panel,
+- optional direct visual text revision restore affordance beyond the CLI action,
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 
@@ -951,17 +956,22 @@ Rules:
 - `clash timeline content --revision <id> [--out <path>]` reads the content GET
   endpoint as the agent-facing revision recovery surface; `--out` writes are
   cwd-contained.
+- `clash timeline restore --node <id> --revision <id> [--mode replace|apply]`
+  materializes the selected revision YAML under cwd, parses it, reads the
+  current target timeline to create a CAS lock, and defaults to copy-on-write
+  `replace` before registering the restored timeline revision.
 - caption export, timeline handoff export, and caption-burn export read the
   source timeline lock and pin manifests, packages, ffmpeg plans, and derived
   asset metadata to the applied timeline revision id when one is present.
 - `useRevisionHistory` reads the same host-owned timeline revision endpoint for
   the web canvas. `VideoEditorNode` shows a first-pass read-only history panel
-  with recent revisions and `clash timeline content --revision ... --out ...`
-  recovery commands, without opening SQLite or mutable revision blob paths.
+  with recent revisions, `clash timeline content --revision ... --out ...`
+  recovery commands, and explicit `clash timeline restore --mode replace`
+  commands, without opening SQLite or mutable revision blob paths.
 
 Remaining:
 
-- full visual timeline revision restore/apply workflow beyond the read-only panel,
+- optional direct visual timeline revision restore affordance beyond the CLI action,
 - local-to-cloud timeline revision mirror policy,
 - remaining render/export UI surfaces that still need revision pinning.
 

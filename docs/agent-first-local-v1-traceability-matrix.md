@@ -189,8 +189,9 @@ Evidence:
 - `packages/web-ui/src/hooks/useRevisionHistory.ts` is the read-only web
   consumer for host-indexed text/timeline revisions. Text and timeline canvas
   nodes display first-pass history panels from that hook, including recent
-  revisions and explicit `clash text/timeline content --revision ... --out ...`
-  recovery commands. `useRevisionHistory.test.ts`,
+  revisions plus explicit `clash text/timeline content --revision ... --out ...`
+  recovery commands and `clash text/timeline restore --mode replace` COW
+  commands. `useRevisionHistory.test.ts`,
   `RevisionHistoryBadge.test.tsx`, and `nodeModalPrimitives.test.ts` protect
   the endpoint selection, command surface, and node integration.
 
@@ -198,12 +199,12 @@ Conclusion:
 
 - Timeline is the reference implementation for projection CAS plus first-pass
   materialized-checkpoint protection. Text and timeline now both have explicit
-  first-pass COW replacement commands, and text/timeline/storyboard prompt-pack
-  plus `apply-metadata` asset metadata locks share the generic projection
-  envelope, and edited metadata JSON has an explicit CAS apply command. The
-  remaining gap is visual restore/apply workflow beyond the first-pass
-  read-only history panels plus adoption by future non-JSON/storyboard/editor
-  projections.
+  first-pass COW replacement and revision-restore commands, and
+  text/timeline/storyboard prompt-pack plus `apply-metadata` asset metadata
+  locks share the generic projection envelope, and edited metadata JSON has an
+  explicit CAS apply command. The remaining gap is an optional direct visual
+  restore affordance beyond the CLI action plus adoption by future
+  non-JSON/storyboard/editor projections.
 
 ### Storyboard prompt-pack CAS
 
@@ -442,7 +443,7 @@ Current status:
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
 - Code implementation remains incomplete for automatic SQLite repair, fuller
   room admission policy/live UI beyond the Sync room gate, fuller conflict recovery workflow,
-  visual copy-on-write revision restore/apply workflow beyond the read-only history panel,
+  optional direct visual revision restore affordances beyond the explicit CLI action,
   remaining storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume
   layout QA paths passed. The real runs recorded session cwd under

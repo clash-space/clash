@@ -331,6 +331,10 @@ Current status:
 - `clash text content --revision <id> [--out <path>]` reads the immutable
   Markdown body through the host content endpoint, giving agents a first-class
   recovery/diff surface without constructing API URLs or opening SQLite.
+- `clash text restore --node <id> --revision <id> [--mode replace|apply]`
+  fetches a stored text revision body, materializes it under cwd, reads the
+  current target node to create a CAS lock, and defaults to copy-on-write
+  replacement before registering the restored revision.
 - Text apply rejects materialized downstream checkpoint rewrites by default,
   allows unmaterialized action-draft references, and permits explicit
   `--force` checkpoint rewrites.
@@ -364,6 +368,10 @@ Current status:
 - `clash timeline content --revision <id> [--out <path>]` reads the immutable
   YAML body through the host content endpoint, giving agents a first-class
   recovery/diff surface without constructing API URLs or opening SQLite.
+- `clash timeline restore --node <id> --revision <id> [--mode replace|apply]`
+  fetches a stored timeline revision body, materializes it under cwd, parses
+  it, reads the current target timeline to create a CAS lock, and defaults to
+  copy-on-write replacement before registering the restored revision.
 - Covered by `packages/cli/src/commands/text.test.ts`,
   `packages/cli/src/commands/timeline.test.ts`, and the local-api revision
   index tests.
