@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -447,6 +447,22 @@ describe("local API app", () => {
     const deleted = await app.request(`/api/projects/${id}`, { method: "DELETE" });
     expect(deleted.status).toBe(204);
     expect(await (await app.request("/api/projects")).json()).toEqual([]);
+  });
+
+  it("stores local project state in SQLite without the legacy JSON database file", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "SQLite only local state" }),
+      headers: { "content-type": "application/json" },
+    });
+    expect(created.status).toBe(200);
+
+    const legacyJsonDbPath = join(dataDir, "db" + ".json");
+    await expect(stat(legacyJsonDbPath)).rejects.toMatchObject({ code: "ENOENT" });
+    const sqlite = await stat(join(dataDir, "local.sqlite"));
+    expect(sqlite.isFile()).toBe(true);
   });
 
   it("persists local project room messages", async () => {

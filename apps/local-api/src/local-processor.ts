@@ -1,22 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { LoroDoc } from "loro-crdt";
-import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
+import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
-
-interface LocalDb {
-  projects: unknown[];
-  assets: Array<Asset & { projectId?: string }>;
-  assetRefs: AssetRefRow[];
-  sessions: unknown[];
-}
-
-const DEFAULT_DB: LocalDb = {
-  projects: [],
-  assets: [],
-  assetRefs: [],
-  sessions: [],
-};
+import { createLocalMetadataStore, type LocalDb } from "./local-metadata-store.js";
 
 export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
@@ -35,19 +22,6 @@ export interface LocalWorkflowProcessorOptions {
 }
 
 type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
-
-async function readJson<T>(path: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
-  } catch {
-    return structuredClone(fallback);
-  }
-}
-
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(value, null, 2), "utf8");
-}
 
 function sanitizeStorageSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^-+|-+$/g, "") || "item";
@@ -184,8 +158,8 @@ async function saveAsset(
   await mkdir(dirname(assetPath), { recursive: true });
   await writeFile(assetPath, options.bytes);
 
-  const dbPath = join(options.dataDir, "db.json");
-  const db = await readJson<LocalDb>(dbPath, DEFAULT_DB);
+  const store = createLocalMetadataStore(options.dataDir);
+  const db = await store.load();
   const now = Math.floor(Date.now() / 1000);
   const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = modelFromData(options.nodeData, `mock-${options.kind}`);
@@ -237,9 +211,7 @@ async function saveAsset(
       (ref) => !(ref.assetId === asset.id && ref.projectId === options.projectId),
     ),
   ];
-  db.projects = db.projects ?? [];
-  db.sessions = db.sessions ?? [];
-  await writeJson(dbPath, db);
+  await store.save(db);
   return asset;
 }
 
@@ -275,7 +247,7 @@ export function createLocalWorkflowProcessor(
             continue;
           }
 
-          const db = await readJson<LocalDb>(join(options.dataDir, "db.json"), DEFAULT_DB);
+          const db = await createLocalMetadataStore(options.dataDir).load();
           const referenceImageR2Keys = [
             ...stringList(data.referenceImageR2Keys),
             ...resolveStorageKeys(db, projectId, stringList(data.referenceImageAssetIds)),

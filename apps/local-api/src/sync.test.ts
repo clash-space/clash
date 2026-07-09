@@ -11,6 +11,7 @@ import {
   createRemoteLoroPersistenceFromEnv,
   LocalLoroRoom,
 } from "./sync";
+import { createLocalMetadataStore } from "./local-metadata-store";
 
 let dataDir = "";
 
@@ -159,7 +160,7 @@ describe("LocalLoroRoom", () => {
     expect(imageNode.data.assetId).toMatch(/^local-asset-/);
     expect(imageNode.data.pendingTask).toBeUndefined();
 
-    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8"));
+    const db = await createLocalMetadataStore(dataDir).load();
     expect(db.assets).toHaveLength(1);
     expect(db.assets[0]).toMatchObject({
       id: imageNode.data.assetId,
@@ -229,9 +230,11 @@ describe("LocalLoroRoom", () => {
     expect(videoNode.data.assetId).toMatch(/^local-asset-/);
     expect(audioNode.data.assetId).toMatch(/^local-asset-/);
 
-    const db = JSON.parse(await readFile(join(dataDir, "db.json"), "utf8"));
-    const videoAsset = db.assets.find((asset: any) => asset.id === videoNode.data.assetId);
-    const audioAsset = db.assets.find((asset: any) => asset.id === audioNode.data.assetId);
+    const db = await createLocalMetadataStore(dataDir).load();
+    const videoAsset = db.assets.find((asset) => asset.id === videoNode.data.assetId);
+    const audioAsset = db.assets.find((asset) => asset.id === audioNode.data.assetId);
+    expect(videoAsset).toBeDefined();
+    expect(audioAsset).toBeDefined();
     expect(videoAsset).toMatchObject({
       kind: "video",
       sourcePrompt: "竖屏小狗视频",
@@ -257,9 +260,9 @@ describe("LocalLoroRoom", () => {
         transcript: "这是一段三秒 mock 音频",
       }),
     });
-    expect(audioAsset.metadata.waveform).toHaveLength(128);
+    expect((audioAsset!.metadata as { waveform?: unknown[] }).waveform).toHaveLength(128);
 
-    const audioBytes = await readFile(join(dataDir, "assets", audioAsset.srcR2Key), "utf8");
+    const audioBytes = await readFile(join(dataDir, "assets", audioAsset!.srcR2Key), "utf8");
     expect(audioBytes).toContain("这是一段三秒 mock 音频");
   });
 

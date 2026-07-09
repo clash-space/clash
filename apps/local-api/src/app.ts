@@ -3,7 +3,7 @@ import { extname, join, normalize, relative } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { defaultRuntimeCapabilities } from "@clash/shared-runtime";
-import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
+import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import {
   createMockFalQueueService,
   handleFalMockHttpRequest,
@@ -17,6 +17,17 @@ import {
 } from "./sync-config.js";
 import type { RemoteRoomMessage } from "./room-sync.js";
 import type { RemoteLoroPersistenceEnv } from "./sync.js";
+import {
+  createLocalMetadataStore,
+  type LocalCrewMember,
+  type LocalDb,
+  type LocalProject,
+  type LocalProjectAsset,
+  type LocalRoomMention,
+  type LocalRoomMessage,
+  type LocalSession,
+  type LocalUserVariable,
+} from "./local-metadata-store.js";
 
 export interface LocalApiOptions {
   dataDir: string;
@@ -92,68 +103,6 @@ function formatLocalAcpSessionError(error: unknown): string {
   return message || "Failed to create local ACP session";
 }
 
-interface LocalProjectAsset {
-  id: string;
-  url: string;
-  type: "image" | "video";
-  storageKey: string;
-  createdAt: string | null;
-}
-
-interface LocalProject {
-  id: string;
-  ownerId: string;
-  name: string;
-  description: string | null;
-  createdAt: string;
-  updatedAt: string;
-  assets: LocalProjectAsset[];
-}
-
-interface LocalSession {
-  id: string;
-  projectId: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LocalCrewMember {
-  id: string;
-  user_id: string;
-  template_id: string;
-  runtime_id: string;
-  agent_id: string | null;
-  display_name: string;
-  created_at: number;
-}
-
-interface LocalRoomMention {
-  user_id: string;
-  crew_member_id?: string;
-  crew_id?: string;
-}
-
-interface LocalRoomMessage {
-  id: string;
-  project_id: string;
-  sender_kind: "user" | "crew";
-  sender_id: string;
-  sender_user_id: string;
-  mentions: LocalRoomMention[];
-  text: string;
-  at: number;
-}
-
-interface LocalUserVariable {
-  id: string;
-  userId: string;
-  key: string;
-  value: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 type RemoteRoomStatus = "disabled" | "imported" | "mirrored" | "failed";
 
 interface RoomSyncMeta {
@@ -164,26 +113,6 @@ interface RoomSyncMeta {
     error?: string;
   };
 }
-
-interface LocalDb {
-  projects: LocalProject[];
-  assets: Array<Asset & { projectId?: string }>;
-  assetRefs: AssetRefRow[];
-  sessions: LocalSession[];
-  crewMembers: LocalCrewMember[];
-  roomMessages: LocalRoomMessage[];
-  variables: LocalUserVariable[];
-}
-
-const DEFAULT_DB: LocalDb = {
-  projects: [],
-  assets: [],
-  assetRefs: [],
-  sessions: [],
-  crewMembers: [],
-  roomMessages: [],
-  variables: [],
-};
 
 const LOCAL_RUNTIME_ID = "desktop-local";
 
@@ -224,42 +153,6 @@ function nowIso(): string {
 function epochSecondsToIso(value: number | null | undefined): string | null {
   if (!value) return null;
   return new Date(value * 1000).toISOString();
-}
-
-async function readJson<T>(path: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
-  } catch {
-    return structuredClone(fallback);
-  }
-}
-
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, JSON.stringify(value, null, 2), "utf8");
-}
-
-function createDb(dataDir: string) {
-  const dbPath = join(dataDir, "db.json");
-
-  async function load(): Promise<LocalDb> {
-    const db = await readJson<LocalDb>(dbPath, DEFAULT_DB);
-    return {
-      projects: db.projects ?? [],
-      assets: db.assets ?? [],
-      assetRefs: db.assetRefs ?? [],
-      sessions: db.sessions ?? [],
-      crewMembers: db.crewMembers ?? [],
-      roomMessages: db.roomMessages ?? [],
-      variables: db.variables ?? [],
-    };
-  }
-
-  async function save(db: LocalDb): Promise<void> {
-    await writeJson(dbPath, db);
-  }
-
-  return { load, save };
 }
 
 function assetRoot(dataDir: string): string {
@@ -460,7 +353,7 @@ async function localRuntimeSummary(options: LocalApiOptions): Promise<{
 
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
-  const db = createDb(options.dataDir);
+  const db = createLocalMetadataStore(options.dataDir);
   const falMock = options.falMock ?? createMockFalQueueService();
   const syncConfig = options.syncConfig ?? createLocalSyncConfigStore({
     dataDir: options.dataDir,
