@@ -14,8 +14,8 @@ export async function loader(_: LoaderFunctionArgs) {
     if (!data?.user?.id) return { authed: false as const };
 
     const res = await fetch(runtimeApiUrl("/api/v1/projects"), { credentials: "include" });
-    const data = res.ok ? ((await res.json()) as { projects?: unknown[] }) : {};
-    const projects = data.projects ?? [];
+    const projectsData = res.ok ? ((await res.json()) as { projects?: unknown[] }) : {};
+    const projects = projectsData.projects ?? [];
     return { authed: true as const, projects };
   } catch {
     return { authed: false as const };

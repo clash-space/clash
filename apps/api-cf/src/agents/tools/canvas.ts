@@ -530,7 +530,7 @@ export function createCanvasTools(
           "Canvas node ids of upstream image/video/audio assets to wire as inputs. Each becomes an incoming edge to the new action-badge. Required for actions whose promptModalities include 'image'/'video'/'audio'.",
         ),
       params: z
-        .record(z.union([z.string(), z.number(), z.boolean()]))
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
         .optional()
         .describe(
           "Custom action parameters (data.customActionParams). Schema is per-action — read it from list_custom_actions.parameters before populating.",

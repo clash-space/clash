@@ -51,7 +51,7 @@ export const SETTINGS_NAV_ITEMS: NavItem[] = [
   { id: 'cli', label: 'CLI', icon: Terminal },
 ];
 
-const HOSTED_ONLY_SETTINGS_SECTIONS = new Set<SettingsSection>(['tokens', 'variables']);
+const HOSTED_ONLY_SETTINGS_SECTIONS = new Set<SettingsSection>(['tokens', 'variables', 'actions', 'skills']);
 
 type LoadState =
   | { status: 'idle' }
@@ -173,8 +173,12 @@ export function SettingsSurface({
       remoteWorkerVariablesAvailable
         ? listVariables().catch(() => [] as VariableInfo[])
         : Promise.resolve([] as VariableInfo[]),
-      listInstalledActions().catch(() => [] as InstalledActionInfo[]),
-      listInstalledSkills().catch(() => [] as InstalledSkillInfo[]),
+      hostedSettingsAvailable
+        ? listInstalledActions().catch(() => [] as InstalledActionInfo[])
+        : Promise.resolve([] as InstalledActionInfo[]),
+      hostedSettingsAvailable
+        ? listInstalledSkills().catch(() => [] as InstalledSkillInfo[])
+        : Promise.resolve([] as InstalledSkillInfo[]),
       listModelProviders().catch(() => [] as ModelProviderAccountInfo[]),
       listModelCatalog().catch(() => [] as ModelCatalogEntryInfo[]),
     ])

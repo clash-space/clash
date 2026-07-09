@@ -92,7 +92,7 @@ const delegationSchema = z.object({
   instruction: z.string().describe("Clear, specific task description. Include all relevant context."),
   workspace_group_id: z.string().optional()
     .describe("Group node ID to scope the agent's work. Create a group first if needed."),
-  context: z.record(z.unknown()).optional()
+  context: z.record(z.string(), z.unknown()).optional()
     .describe("Structured context data: existing node IDs, script content, upstream references, etc."),
 });
 

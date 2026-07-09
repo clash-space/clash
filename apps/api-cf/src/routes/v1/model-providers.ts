@@ -7,6 +7,7 @@ import {
   normalizeModelId,
   ProviderOAuthIdSchema,
   type ProviderOAuthId,
+  type ProviderAccountAvailability,
   type ModelUpstreamRoute,
 } from "@clash/shared-types";
 import { Hono } from "hono";
@@ -16,6 +17,7 @@ import {
   normalizeProviderAccountInput,
   deleteProviderAccount,
   upsertProviderAccounts,
+  type PublicProviderAccount,
   type ProviderAccountInput,
 } from "../../services/provider-accounts";
 import {
@@ -111,6 +113,11 @@ async function listProviderAccountsWithOAuth(env: Env, userId: string) {
     listProviderOAuthRecords(env.DB, userId),
   ]);
   return applyProviderOAuth(accounts, oauthRecords);
+}
+
+function providerAccountAvailability(account: PublicProviderAccount): ProviderAccountAvailability {
+  const { createdAt: _createdAt, updatedAt: _updatedAt, ...availability } = account;
+  return availability;
 }
 
 modelProviderRoutes.get("/model-providers", async (c) => {
@@ -273,7 +280,9 @@ modelProviderRoutes.get("/models/catalog", async (c) => {
   const providers = await listProviderAccountsWithOAuth(c.env, userId);
   return c.json({
     models: listModelCatalogEntries({
-      configuredProviders: providers.filter((provider) => provider.providerId !== "mock"),
+      configuredProviders: providers
+        .filter((provider) => provider.providerId !== "mock")
+        .map(providerAccountAvailability),
     }),
   });
 });

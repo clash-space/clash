@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-09T04-38-43-171Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T04-59-38-745Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -672,7 +672,7 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T04-39-02-261Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T04-59-57-506Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
@@ -723,7 +723,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T04-38-56-018Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T04-59-51-347Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -838,7 +838,7 @@ The gate runs and validates these black-box report artifacts:
 Latest verified gate report:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T04-38-43-031Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T04-59-38-644Z/agent-first-local-v1-gate-report.json
 ```
 
 Result:
@@ -846,10 +846,10 @@ Result:
 - `status: pass`,
 - 4 suites passed,
 - nested report contracts validated:
-  - `.tmp/short-drama-timeline/2026-07-09T04-38-43-108Z/short-drama-timeline-report.json` with 4 checks,
-  - `.tmp/agent-first-cas/2026-07-09T04-38-43-171Z/agent-first-cas-report.json` with 56 checks,
-  - `.tmp/storage-doctor-repair/2026-07-09T04-38-56-018Z/storage-doctor-repair-report.json` with 86 checks,
-  - `.tmp/agent-first-asset-receipts/2026-07-09T04-39-02-261Z/agent-first-asset-receipt-report.json` with 190 checks.
+  - `.tmp/short-drama-timeline/2026-07-09T04-59-38-692Z/short-drama-timeline-report.json` with 4 checks,
+  - `.tmp/agent-first-cas/2026-07-09T04-59-38-745Z/agent-first-cas-report.json` with 56 checks,
+  - `.tmp/storage-doctor-repair/2026-07-09T04-59-51-347Z/storage-doctor-repair-report.json` with 86 checks,
+  - `.tmp/agent-first-asset-receipts/2026-07-09T04-59-57-506Z/agent-first-asset-receipt-report.json` with 190 checks.
 
 Target boundary:
 

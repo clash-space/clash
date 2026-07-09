@@ -988,6 +988,30 @@ describe("local API app", () => {
     }
   });
 
+  it("does not expose hosted action or skill install mutations locally", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    for (const path of ["/api/settings/actions", "/api/settings/skills"] as const) {
+      const list = await app.request(path);
+      expect(list.status).toBe(200);
+      expect(await list.json()).toEqual([]);
+    }
+
+    for (const [method, path, body] of [
+      ["POST", "/api/settings/actions", { manifest: { id: "worker-action", name: "Worker action", runtime: "worker" } }],
+      ["DELETE", "/api/settings/actions/worker-action", undefined],
+      ["POST", "/api/settings/skills", { skill: { id: "remote-skill", name: "Remote Skill" } }],
+      ["DELETE", "/api/settings/skills/remote-skill", undefined],
+    ] as const) {
+      const res = await app.request(path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      expect(res.status).toBe(404);
+    }
+  });
+
   it("persists local project metadata in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

@@ -23,6 +23,7 @@ import {
   ImageEditParamsSchema,
   VideoClipParamsSchema,
   EDIT_KIND,
+  type AssetKind,
   type EditKind,
 } from "@clash/shared-types";
 import { createAsset, getAssetById } from "../../services/assets";
@@ -53,13 +54,15 @@ async function assertProjectOwner(env: Env, projectId: string, userId: string): 
  * editParams arrives as a JSON-encoded string in the multipart form so we
  * don't need a separate JSON channel. Different shape per editKind.
  */
-const EditParamsByKind: Record<EditKind, z.ZodTypeAny> = {
+type Parser<T = unknown> = { parse: (input: unknown) => T };
+
+const EditParamsByKind: Record<EditKind, Parser> = {
   [EDIT_KIND.ImageEditor]: ImageEditParamsSchema,
   [EDIT_KIND.VideoClipper]: VideoClipParamsSchema,
 };
 
 /** Output kind we expect the client-rendered blob to be. */
-const OutputKindSchema = AssetKindSchema; // 'image' | 'video' | 'audio'
+const OutputKindSchema: Parser<AssetKind> = AssetKindSchema; // 'image' | 'video' | 'audio'
 
 // ─── Routes ─────────────────────────────────────────────────
 

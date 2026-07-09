@@ -23,7 +23,7 @@ export interface ProviderAccountInput {
   credentials?: Record<string, string>;
 }
 
-export interface PublicProviderAccount extends ProviderAccountAvailability {
+export interface PublicProviderAccount extends Omit<ProviderAccountAvailability, "createdAt" | "updatedAt"> {
   id: string;
   label?: string;
   createdAt?: number | null;

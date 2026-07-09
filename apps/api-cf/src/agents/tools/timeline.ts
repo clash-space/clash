@@ -76,7 +76,7 @@ export function createTimelineTools(
       "Automated video editor tool. Provide an action (e.g., add_clip, set_duration, render) and params.",
     inputSchema: z.object({
       action: z.string().describe("Timeline action, e.g. add_clip, set_duration, render"),
-      params: z.record(z.unknown()).describe("Action parameters"),
+      params: z.record(z.string(), z.unknown()).describe("Action parameters"),
     }),
     execute: async (args) => {
       const { action, params } = args;

@@ -8,7 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import SettingsClient from "./SettingsClient";
 import { AppFeedbackProvider } from "./AppFeedback";
-import { listApiTokens, listVariables } from "@clash/web-ui/lib/clientActions";
+import {
+  listApiTokens,
+  listInstalledActions,
+  listInstalledSkills,
+  listVariables,
+} from "@clash/web-ui/lib/clientActions";
 import {
   SettingsSurface,
   readLastSettingsSection,
@@ -195,6 +200,67 @@ describe("SettingsSurface tab state", () => {
     await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
     expect(listApiTokensMock).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("tab", { name: "API Tokens" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("does not load or expose hosted installed actions in desktop local settings", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+    const listInstalledActionsMock = vi.mocked(listInstalledActions);
+    listInstalledActionsMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"actions" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listInstalledActionsMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tab", { name: "Actions" })).toBeNull();
+    expect(screen.queryByText("Installed Actions")).toBeNull();
+  });
+
+  it("does not load or expose hosted installed skills in desktop local settings", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+    const listInstalledSkillsMock = vi.mocked(listInstalledSkills);
+    listInstalledSkillsMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"skills" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listInstalledSkillsMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tab", { name: "Skills" })).toBeNull();
+    expect(screen.queryByText("Installed Skills")).toBeNull();
+  });
+
+  it("keeps hosted installed actions and skills available", async () => {
+    const listInstalledActionsMock = vi.mocked(listInstalledActions);
+    const listInstalledSkillsMock = vi.mocked(listInstalledSkills);
+    listInstalledActionsMock.mockClear();
+    listInstalledSkillsMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"actions" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listInstalledActionsMock).toHaveBeenCalledTimes(1);
+    expect(listInstalledSkillsMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("tab", { name: "Actions" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Skills" })).toBeTruthy();
   });
 
   it("uses Agents as the local agent settings tab instead of Runtimes", () => {

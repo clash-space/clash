@@ -47,6 +47,6 @@ export const TaskSubmitRequestSchema = z.object({
   task_type: z.enum(["image_gen", "video_gen", "audio_gen", "text_gen", "image_desc", "video_desc", "video_thumbnail", "video_render"]),
   project_id: z.string(),
   node_id: z.string(),
-  params: z.record(z.any()),
+  params: z.record(z.string(), z.any()),
 });
 export type TaskSubmitRequest = z.infer<typeof TaskSubmitRequestSchema>;

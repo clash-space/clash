@@ -54,7 +54,7 @@ projectRoutes.get("/:id", async (c) => {
 projectRoutes.patch("/:id", async (c) => {
   const userId = getUserId(c);
   const projectId = c.req.param("id");
-  const body = await c.req.json<{ name?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ name?: string }>().catch((): { name?: string } => ({}));
   const name = body.name?.trim();
   if (!name) return c.json({ error: "name is required" }, 400);
 

@@ -277,6 +277,10 @@ Regression tests assert these are 404 locally:
 
 - `POST /api/settings/tokens`
 - `DELETE /api/settings/tokens/:id`
+- `POST /api/settings/actions`
+- `DELETE /api/settings/actions/:id`
+- `POST /api/settings/skills`
+- `DELETE /api/settings/skills/:id`
 - `/api/settings/variables`
 - `/api/settings/action-secrets`
 - `/api/v1/vars`
@@ -286,8 +290,12 @@ v1 decision:
 
 - keep local variables/action-secret endpoints unavailable,
 - keep hosted API token mutations unavailable locally,
+- keep hosted action/skill install mutations unavailable locally,
 - keep the shared settings UI from loading or rendering API Tokens in
   desktop/local runtime,
+- keep the shared settings UI from loading or rendering Actions/Skills in
+  desktop/local runtime; local custom actions/skills are separate
+  runtime/cwd/repo capabilities,
 - keep the shared settings UI from loading or rendering variables in
   desktop/local runtime; variables remain hosted-only remote worker
   compatibility,
@@ -1067,6 +1075,9 @@ local API contract.
 - Local vars/action-secret endpoints remain 404.
 - Local hosted-token mutation endpoints remain 404, and desktop/local settings
   do not request `/api/settings/tokens` or render the API Tokens section.
+- Local hosted action/skill mutation endpoints remain 404, and desktop/local
+  settings do not request `/api/settings/actions` or `/api/settings/skills` or
+  render the Actions/Skills sections.
 - Desktop/local settings do not request `/api/settings/variables` and do not
   render the hidden variables section.
 - Local room endpoint persistence tests replace the old 404 expectation.

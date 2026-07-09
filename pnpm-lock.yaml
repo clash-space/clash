@@ -38,16 +38,16 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.69
-        version: 3.0.93(zod@3.24.4)
+        version: 3.0.93(zod@4.4.3)
       '@ai-sdk/google':
         specifier: ^3.0.0
-        version: 3.0.88(zod@3.24.4)
+        version: 3.0.88(zod@4.4.3)
       '@ai-sdk/google-vertex':
         specifier: ^4.0.98
-        version: 4.0.156(zod@3.24.4)
+        version: 4.0.156(zod@4.4.3)
       '@ai-sdk/openai':
         specifier: ^3.0.48
-        version: 3.0.80(zod@3.24.4)
+        version: 3.0.80(zod@4.4.3)
       '@clash/shared-layout':
         specifier: workspace:^
         version: link:../../packages/shared-layout
@@ -59,7 +59,7 @@ importers:
         version: link:../../packages/shared-types
       '@cloudflare/ai-chat':
         specifier: ^0.2.5
-        version: 0.2.6(@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4))(agents@0.8.7)(ai@6.0.219(zod@3.24.4))(react@19.2.7)(zod@3.24.4)
+        version: 0.2.6(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(agents@0.8.7)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(zod@4.4.3)
       '@cloudflare/containers':
         specifier: ^0.2.0
         version: 0.2.4
@@ -74,16 +74,16 @@ importers:
         version: link:../../packages/remotion-core
       agents:
         specifier: ^0.8.6
-        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@3.24.4))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@3.24.4))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@3.24.4)
+        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
       ai:
         specifier: ^6.0.0
-        version: 6.0.219(zod@3.24.4)
+        version: 6.0.219(zod@4.4.3)
       better-auth:
         specifier: ^1.6.9
         version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
-        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
+        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
       consola:
         specifier: ^3.4.2
         version: 3.4.2
@@ -100,8 +100,8 @@ importers:
         specifier: ^1.10.3
         version: 1.13.6
       zod:
-        specifier: ^3.24.4
-        version: 3.24.4
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ~0.14.7
@@ -109,6 +109,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20250525.0
         version: 4.20260702.1
+      '@types/ws':
+        specifier: ^8.5.0
+        version: 8.18.1
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -118,6 +121,9 @@ importers:
       wrangler:
         specifier: ^4.18.0
         version: 4.107.0(@cloudflare/workers-types@4.20260702.1)
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.0
 
   apps/desktop:
     dependencies:
@@ -354,7 +360,7 @@ importers:
         version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
-        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
+        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7)
@@ -578,6 +584,9 @@ importers:
       '@types/react':
         specifier: ^19.2.2
         version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.2
+        version: 19.2.3(@types/react@19.2.17)
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.49.0
         version: 8.62.1(@typescript-eslint/parser@8.62.1(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0)(typescript@5.9.3)
@@ -593,6 +602,9 @@ importers:
       react:
         specifier: ^19.2.5
         version: 19.2.7
+      react-dom:
+        specifier: ^19.2.5
+        version: 19.2.7(react@19.2.7)
       remotion:
         specifier: 4.0.370
         version: 4.0.370(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -862,16 +874,16 @@ importers:
         version: 12.11.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       agents:
         specifier: ^0.8.6
-        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
+        version: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
       ai:
         specifier: ^6.0.138
         version: 6.0.219(zod@4.4.3)
       better-auth:
         specifier: ^1.6.9
-        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+        version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       better-auth-cloudflare:
         specifier: ^0.2.9
-        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
+        version: 0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -10084,18 +10096,11 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@ai-sdk/anthropic@3.0.93(zod@3.24.4)':
+  '@ai-sdk/anthropic@3.0.93(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      zod: 3.24.4
-
-  '@ai-sdk/gateway@3.0.143(zod@3.24.4)':
-    dependencies:
-      '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      '@vercel/oidc': 3.2.0
-      zod: 3.24.4
+      '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
+      zod: 4.4.3
 
   '@ai-sdk/gateway@3.0.143(zod@4.4.3)':
     dependencies:
@@ -10104,15 +10109,15 @@ snapshots:
       '@vercel/oidc': 3.2.0
       zod: 4.4.3
 
-  '@ai-sdk/google-vertex@4.0.156(zod@3.24.4)':
+  '@ai-sdk/google-vertex@4.0.156(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/anthropic': 3.0.93(zod@3.24.4)
-      '@ai-sdk/google': 3.0.88(zod@3.24.4)
-      '@ai-sdk/openai-compatible': 2.0.56(zod@3.24.4)
+      '@ai-sdk/anthropic': 3.0.93(zod@4.4.3)
+      '@ai-sdk/google': 3.0.88(zod@4.4.3)
+      '@ai-sdk/openai-compatible': 2.0.56(zod@4.4.3)
       '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
+      '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
       google-auth-library: 10.9.0
-      zod: 3.24.4
+      zod: 4.4.3
     transitivePeerDependencies:
       - supports-color
 
@@ -10122,30 +10127,23 @@ snapshots:
       '@ai-sdk/provider-utils': 3.0.28(zod@4.4.3)
       zod: 4.4.3
 
-  '@ai-sdk/google@3.0.88(zod@3.24.4)':
+  '@ai-sdk/google@3.0.88(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      zod: 3.24.4
+      '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
+      zod: 4.4.3
 
-  '@ai-sdk/openai-compatible@2.0.56(zod@3.24.4)':
+  '@ai-sdk/openai-compatible@2.0.56(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      zod: 3.24.4
-
-  '@ai-sdk/openai@3.0.80(zod@3.24.4)':
-    dependencies:
-      '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      zod: 3.24.4
+      '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
+      zod: 4.4.3
 
   '@ai-sdk/openai@3.0.80(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.13
       '@ai-sdk/provider-utils': 4.0.35(zod@4.4.3)
       zod: 4.4.3
-    optional: true
 
   '@ai-sdk/provider-utils@3.0.28(zod@4.4.3)':
     dependencies:
@@ -10153,13 +10151,6 @@ snapshots:
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.0
       zod: 4.4.3
-
-  '@ai-sdk/provider-utils@4.0.35(zod@3.24.4)':
-    dependencies:
-      '@ai-sdk/provider': 3.0.13
-      '@standard-schema/spec': 1.1.0
-      eventsource-parser: 3.1.0
-      zod: 3.24.4
 
   '@ai-sdk/provider-utils@4.0.35(zod@4.4.3)':
     dependencies:
@@ -10175,16 +10166,6 @@ snapshots:
   '@ai-sdk/provider@3.0.13':
     dependencies:
       json-schema: 0.4.0
-
-  '@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4)':
-    dependencies:
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      ai: 6.0.219(zod@3.24.4)
-      react: 19.2.7
-      swr: 2.4.2(react@19.2.7)
-      throttleit: 2.1.0
-    transitivePeerDependencies:
-      - zod
 
   '@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3)':
     dependencies:
@@ -10863,18 +10844,10 @@ snapshots:
 
   '@chevrotain/types@11.1.2': {}
 
-  '@cloudflare/ai-chat@0.2.6(@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4))(agents@0.8.7)(ai@6.0.219(zod@3.24.4))(react@19.2.7)(zod@3.24.4)':
-    dependencies:
-      '@ai-sdk/react': 3.0.221(react@19.2.7)(zod@3.24.4)
-      agents: 0.8.7(@ai-sdk/openai@3.0.80(zod@3.24.4))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@3.24.4))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@3.24.4)
-      ai: 6.0.219(zod@3.24.4)
-      react: 19.2.7
-      zod: 3.24.4
-
   '@cloudflare/ai-chat@0.2.6(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(agents@0.8.7)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(zod@4.4.3)':
     dependencies:
       '@ai-sdk/react': 3.0.221(react@19.2.7)(zod@4.4.3)
-      agents: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
+      agents: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
       ai: 6.0.219(zod@4.4.3)
       react: 19.2.7
       zod: 4.4.3
@@ -12692,30 +12665,6 @@ snapshots:
       '@milkdown/prose': 7.21.2
       '@milkdown/transformer': 7.21.2
       nanoid: 5.1.16
-    transitivePeerDependencies:
-      - supports-color
-
-  '@modelcontextprotocol/sdk@1.28.0(@cfworker/json-schema@4.1.1)(zod@3.24.4)':
-    dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.27)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.1.0
-      express: 5.2.1
-      express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.12.27
-      jose: 6.2.3
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.0
-      raw-body: 3.0.2
-      zod: 3.24.4
-      zod-to-json-schema: 3.25.2(zod@3.24.4)
-    optionalDependencies:
-      '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
       - supports-color
 
@@ -14882,37 +14831,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  agents@0.8.7(@ai-sdk/openai@3.0.80(zod@3.24.4))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@3.24.4))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@3.24.4):
-    dependencies:
-      '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
-      '@cfworker/json-schema': 4.1.1
-      '@modelcontextprotocol/sdk': 1.28.0(@cfworker/json-schema@4.1.1)(zod@3.24.4)
-      '@rolldown/plugin-babel': 0.2.3(@babel/core@7.29.7)(@babel/runtime@7.29.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
-      ai: 6.0.219(zod@3.24.4)
-      cron-schedule: 6.0.0
-      json-schema: 0.4.0
-      json-schema-to-typescript: 15.0.4
-      mimetext: 3.0.28
-      nanoid: 5.1.16
-      partyserver: 0.4.1(@cloudflare/workers-types@4.20260702.1)
-      partysocket: 1.1.16(react@19.2.7)
-      picomatch: 4.0.5
-      react: 19.2.7
-      yargs: 18.0.0
-      zod: 3.24.4
-    optionalDependencies:
-      '@ai-sdk/openai': 3.0.80(zod@3.24.4)
-      '@ai-sdk/react': 3.0.221(react@19.2.7)(zod@3.24.4)
-      '@cloudflare/ai-chat': 0.2.6(@ai-sdk/react@3.0.221(react@19.2.7)(zod@3.24.4))(agents@0.8.7)(ai@6.0.219(zod@3.24.4))(react@19.2.7)(zod@3.24.4)
-      vite: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)
-    transitivePeerDependencies:
-      - '@babel/core'
-      - '@babel/plugin-transform-runtime'
-      - '@babel/runtime'
-      - '@cloudflare/workers-types'
-      - rolldown
-      - supports-color
-
   agents@0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.7)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.7)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3):
     dependencies:
       '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
@@ -14974,14 +14892,6 @@ snapshots:
       - '@cloudflare/workers-types'
       - rolldown
       - supports-color
-
-  ai@6.0.219(zod@3.24.4):
-    dependencies:
-      '@ai-sdk/gateway': 3.0.143(zod@3.24.4)
-      '@ai-sdk/provider': 3.0.13
-      '@ai-sdk/provider-utils': 4.0.35(zod@3.24.4)
-      '@opentelemetry/api': 1.9.1
-      zod: 3.24.4
 
   ai@6.0.219(zod@4.4.3):
     dependencies:
@@ -15144,7 +15054,7 @@ snapshots:
 
   bcp-47-match@2.0.3: {}
 
-  better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
+  better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
     dependencies:
       better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-kit@0.28.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       drizzle-orm: 0.44.5(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(kysely@0.29.3)
@@ -15181,46 +15091,9 @@ snapshots:
       - sql.js
       - sqlite3
 
-  better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
-    dependencies:
-      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
-      drizzle-orm: 0.44.5(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(kysely@0.29.3)
-      mime: 4.1.0
-      zod: 4.4.3
-    transitivePeerDependencies:
-      - '@aws-sdk/client-rds-data'
-      - '@cloudflare/workers-types'
-      - '@electric-sql/pglite'
-      - '@libsql/client'
-      - '@libsql/client-wasm'
-      - '@neondatabase/serverless'
-      - '@op-engineering/op-sqlite'
-      - '@opentelemetry/api'
-      - '@planetscale/database'
-      - '@prisma/client'
-      - '@tidbcloud/serverless'
-      - '@types/better-sqlite3'
-      - '@types/pg'
-      - '@types/sql.js'
-      - '@upstash/redis'
-      - '@vercel/postgres'
-      - '@xata.io/client'
-      - better-sqlite3
-      - bun-types
-      - expo-sqlite
-      - gel
-      - knex
-      - kysely
-      - mysql2
-      - pg
-      - postgres
-      - prisma
-      - sql.js
-      - sqlite3
-
   better-auth-cloudflare@0.2.9(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)))(kysely@0.29.3):
     dependencies:
-      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
+      better-auth: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3))
       drizzle-orm: 0.44.5(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(kysely@0.29.3)
       mime: 4.1.0
       zod: 4.4.3
@@ -15306,34 +15179,6 @@ snapshots:
       zod: 4.4.3
     optionalDependencies:
       drizzle-orm: 0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7)
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
-      vue: 3.5.39(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@cloudflare/workers-types'
-      - '@opentelemetry/api'
-
-  better-auth@1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0)))(vue@3.5.39(typescript@5.9.3)):
-    dependencies:
-      '@better-auth/core': 1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0)
-      '@better-auth/drizzle-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.36.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(kysely@0.29.3)(react@19.2.7))
-      '@better-auth/kysely-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(kysely@0.29.3)
-      '@better-auth/memory-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/mongo-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/prisma-adapter': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)
-      '@better-auth/telemetry': 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.4.3))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.4.0))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
-      '@better-auth/utils': 0.4.2
-      '@better-fetch/fetch': 1.3.1
-      '@noble/ciphers': 2.2.0
-      '@noble/hashes': 2.2.0
-      better-call: 1.3.7(zod@4.4.3)
-      defu: 6.1.7
-      jose: 6.2.3
-      kysely: 0.29.3
-      nanostores: 1.4.0
-      zod: 4.4.3
-    optionalDependencies:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))

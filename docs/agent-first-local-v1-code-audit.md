@@ -370,6 +370,14 @@ Local-api also keeps hosted API token mutations unavailable locally:
 - `POST /api/settings/tokens`
 - `DELETE /api/settings/tokens/:id`
 
+Local-api also keeps hosted installed action/skill mutations unavailable
+locally:
+
+- `POST /api/settings/actions`
+- `DELETE /api/settings/actions/:id`
+- `POST /api/settings/skills`
+- `DELETE /api/settings/skills/:id`
+
 Cloud still has:
 
 - `user_variable` table,
@@ -387,6 +395,8 @@ Conclusion:
 - Do not delete remote variables while remote worker actions still use them.
 - Do not reintroduce local variables/action secrets as the local v1 auth model.
 - Do not present hosted API token issuance as the local desktop auth path.
+- Do not present hosted installed action/skill rows as local custom action or
+  local skill management.
 - Keep CLI/help mode-aware:
   - local mode: provider accounts/OAuth/local runtime setup,
   - remote worker mode: vars compatibility,
@@ -571,7 +581,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T04-39-02-261Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T04-59-57-506Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:

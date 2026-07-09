@@ -13,7 +13,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Env } from "../../config";
-import { AssetKindSchema } from "@clash/shared-types/assets";
+import type { AssetKind } from "@clash/shared-types/assets";
 import { createAsset, getAssetById, getAssetsByIds, removeAssetRef, updateAssetCover } from "../../services/assets";
 import { probeAsset } from "../../services/asset-probe";
 import { SIGNED_URL_TTL, computeSignature, getSigningKey } from "../../services/asset-signing";
@@ -66,6 +66,8 @@ async function attachSignedUrls(env: Env, asset: AssetRecord) {
 }
 
 // ─── Schemas ────────────────────────────────────────────────
+
+const AssetKindSchema = z.enum(["image", "video", "audio"]) satisfies z.ZodType<AssetKind>;
 
 const CreateAssetSchema = z.object({
   projectId: z.string().min(1),

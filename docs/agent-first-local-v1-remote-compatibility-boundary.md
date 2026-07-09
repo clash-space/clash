@@ -217,6 +217,27 @@ Reason:
 - Local CLI/agent auth should use the local runtime and provider/OAuth setup,
   not cloud API token issuance.
 
+### Local installed action/skill mutations
+
+Keep unavailable locally:
+
+- `POST /api/settings/actions`
+- `DELETE /api/settings/actions/:id`
+- `POST /api/settings/skills`
+- `DELETE /api/settings/skills/:id`
+
+Current evidence:
+
+- local-api returns empty action/skill lists for read compatibility, but hosted
+  D1 install/uninstall mutations stay 404.
+- `SettingsSurface` skips hosted installed action/skill loading and hides the
+  Actions/Skills settings sections in desktop/local runtime.
+
+Reason:
+
+- Local custom actions and local skills are runtime/cwd/repo capabilities, not
+  cloud D1 installed-action rows.
+
 ### Local action-secret endpoints
 
 Keep unavailable locally:
