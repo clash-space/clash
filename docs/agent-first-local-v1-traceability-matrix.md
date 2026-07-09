@@ -194,6 +194,15 @@ Evidence:
   explicit force allowed.
 - Web timeline editor save uses `useLoroSync.applyTimelineDsl`, not generic
   `updateNode`, and shares the same materialized-checkpoint guard.
+- Web render/export exits through `VideoEditorNode` and `VideoEditorContext`
+  now build pending rendered video nodes with
+  `buildPendingRenderVideoNodePayload` plus
+  `readPendingRenderAppliedTimelineRevision`; when the editor node carries an
+  applied timeline revision, the materialized video node records
+  `sourceTimelineNodeId`, `sourceTimelineId`, `sourceTimelineRevisionId`,
+  `sourceTimelineHash`, `sourceTimelineRevisionStatus`, and Loro frontier/vector
+  provenance. Draft canvas renders keep `sourceTimelineNodeId` but do not
+  invent a revision id.
 - `packages/web-ui/src/hooks/useRevisionHistory.ts` is the read-only web
   consumer for host-indexed text/timeline revisions. Text and timeline canvas
   nodes display first-pass history panels from that hook, including recent

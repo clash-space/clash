@@ -7,7 +7,11 @@ import type { Node, Edge } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from './LoroSyncContext';
 import { EditorModalDialog } from './EditorModalDialog';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
-import { buildPendingRenderVideoNodePayload, getTimelineDurationInFrames } from '@clash/web-ui/lib/pendingRenderVideo';
+import {
+    buildPendingRenderVideoNodePayload,
+    getTimelineDurationInFrames,
+    readPendingRenderAppliedTimelineRevision,
+} from '@clash/web-ui/lib/pendingRenderVideo';
 import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
 
 // ─── Timeline item persistence contract ─────────────────────────────────────
@@ -215,7 +219,13 @@ export function VideoEditorProvider({
 
         // Create a new video node with the rendered content
         const newVideoNodeId = `video-${Date.now()}`;
-        const pendingVideoNode = buildPendingRenderVideoNodePayload(finalDsl);
+        const currentNodes = nodes || [];
+        const currentEdges = edges || [];
+        const editorNode = currentNodes.find(n => n.id === editorNodeId);
+        const pendingVideoNode = buildPendingRenderVideoNodePayload(finalDsl, {
+            sourceTimelineNodeId: editorNodeId,
+            appliedRevision: readPendingRenderAppliedTimelineRevision(editorNode?.data),
+        });
 
         // Use autoInsertNode for precise client-side layout
         // Create temporary edge and node objects for calculation
@@ -225,10 +235,7 @@ export function VideoEditorProvider({
             target: newVideoNodeId,
             type: 'default'
         };
-        const currentNodes = nodes || [];
-        const currentEdges = edges || [];
 
-        const editorNode = currentNodes.find(n => n.id === editorNodeId);
         const tempNode = {
             id: newVideoNodeId,
             type: 'video',

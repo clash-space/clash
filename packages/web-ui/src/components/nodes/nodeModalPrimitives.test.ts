@@ -71,4 +71,12 @@ describe("node modal primitives", () => {
     expect(badgeSource).toContain("clash ${kind} restore --node");
     expect(badgeSource).toContain("timeline.yaml");
   });
+
+  it("pins rendered video nodes to the source timeline revision when available", () => {
+    const timelineSource = readNodeSource("VideoEditorNode.tsx");
+
+    expect(timelineSource).toContain("readPendingRenderAppliedTimelineRevision");
+    expect(timelineSource).toContain("sourceTimelineNodeId: id");
+    expect(timelineSource).toContain("appliedRevision: readPendingRenderAppliedTimelineRevision");
+  });
 });

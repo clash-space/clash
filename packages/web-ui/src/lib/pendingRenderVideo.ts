@@ -9,6 +9,19 @@ export type PendingRenderTimelineDsl = Pick<
 
 export const DEFAULT_RENDER_DURATION_IN_FRAMES = 150;
 
+export interface PendingRenderAppliedTimelineRevision {
+  timelineId: string;
+  revisionId: string;
+  timelineHash: string;
+  loroFrontiers?: unknown;
+  loroVersionVector?: unknown;
+}
+
+export interface PendingRenderTimelineProvenance {
+  sourceTimelineNodeId?: string;
+  appliedRevision?: PendingRenderAppliedTimelineRevision | null;
+}
+
 export function getTimelineDurationInFrames(
   tracks: PendingRenderTimelineDsl["tracks"],
   fallback = DEFAULT_RENDER_DURATION_IN_FRAMES,
@@ -26,7 +39,61 @@ export function getTimelineDurationInFrames(
   return maxEndFrame > 0 ? maxEndFrame : fallback;
 }
 
-export function buildPendingRenderVideoNodePayload(timelineDsl: PendingRenderTimelineDsl) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function readPendingRenderAppliedTimelineRevision(
+  nodeData: unknown,
+): PendingRenderAppliedTimelineRevision | null {
+  if (!isRecord(nodeData)) return null;
+  const candidate = isRecord(nodeData.appliedRevision)
+    ? nodeData.appliedRevision
+    : isRecord(nodeData.timelineRevision)
+      ? nodeData.timelineRevision
+      : null;
+  if (!candidate) return null;
+  if (
+    typeof candidate.timelineId !== "string" ||
+    typeof candidate.revisionId !== "string" ||
+    typeof candidate.timelineHash !== "string"
+  ) {
+    return null;
+  }
+  return {
+    timelineId: candidate.timelineId,
+    revisionId: candidate.revisionId,
+    timelineHash: candidate.timelineHash,
+    ...(candidate.loroFrontiers !== undefined ? { loroFrontiers: candidate.loroFrontiers } : {}),
+    ...(candidate.loroVersionVector !== undefined ? { loroVersionVector: candidate.loroVersionVector } : {}),
+  };
+}
+
+function timelineProvenanceData(options?: PendingRenderTimelineProvenance) {
+  const appliedRevision = options?.appliedRevision;
+  return {
+    ...(options?.sourceTimelineNodeId ? { sourceTimelineNodeId: options.sourceTimelineNodeId } : {}),
+    ...(appliedRevision
+      ? {
+          sourceTimelineId: appliedRevision.timelineId,
+          sourceTimelineRevisionId: appliedRevision.revisionId,
+          sourceTimelineHash: appliedRevision.timelineHash,
+          sourceTimelineRevisionStatus: "applied",
+          ...(appliedRevision.loroFrontiers !== undefined
+            ? { sourceTimelineFrontiers: appliedRevision.loroFrontiers }
+            : {}),
+          ...(appliedRevision.loroVersionVector !== undefined
+            ? { sourceTimelineVersionVector: appliedRevision.loroVersionVector }
+            : {}),
+        }
+      : {}),
+  };
+}
+
+export function buildPendingRenderVideoNodePayload(
+  timelineDsl: PendingRenderTimelineDsl,
+  provenance?: PendingRenderTimelineProvenance,
+) {
   const naturalWidth =
     typeof timelineDsl.compositionWidth === "number" && timelineDsl.compositionWidth > 0
       ? timelineDsl.compositionWidth
@@ -52,6 +119,7 @@ export function buildPendingRenderVideoNodePayload(timelineDsl: PendingRenderTim
       naturalWidth,
       naturalHeight,
       aspectRatio: `${naturalWidth}:${naturalHeight}`,
+      ...timelineProvenanceData(provenance),
     },
   };
 }

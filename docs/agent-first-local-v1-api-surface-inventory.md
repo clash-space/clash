@@ -1013,12 +1013,18 @@ Rules:
   with recent revisions, `clash timeline content --revision ... --out ...`
   recovery commands, and explicit `clash timeline restore --mode replace`
   commands, without opening SQLite or mutable revision blob paths.
+- `VideoEditorNode` Render and `VideoEditorContext` Export both build pending
+  rendered video nodes through `buildPendingRenderVideoNodePayload`; when the
+  source editor node has an applied timeline revision, the output node records
+  `sourceTimelineNodeId`, `sourceTimelineId`, `sourceTimelineRevisionId`,
+  `sourceTimelineHash`, `sourceTimelineRevisionStatus`, and available Loro
+  frontier/version-vector provenance. Draft canvas renders keep the source
+  node id but do not invent a revision id/hash.
 
 Remaining:
 
 - optional direct visual timeline revision restore affordance beyond the CLI action,
-- local-to-cloud timeline revision mirror policy,
-- remaining render/export UI surfaces that still need revision pinning.
+- local-to-cloud timeline revision mirror policy.
 
 ### Projection apply endpoints/commands
 

@@ -153,6 +153,50 @@ describe("VideoEditorProvider", () => {
     expect(createdNode.height).toBe(281);
   });
 
+  it("pins exported render nodes to the applied timeline revision on the editor node", async () => {
+    render(
+      <VideoEditorProvider
+        nodes={[
+          {
+            id: "editor-node-1",
+            type: "video-editor",
+            position: { x: 0, y: 0 },
+            data: {
+              appliedRevision: {
+                timelineId: "timeline:timelines/main.timeline.yaml",
+                revisionId: "tlrev-web-export",
+                timelineHash: "timeline-hash-web",
+                loroFrontiers: [{ peer: "local", counter: 12 }],
+                loroVersionVector: { local: 12 },
+              },
+            },
+          } as any,
+        ]}
+        edges={[]}
+      >
+        <Harness />
+      </VideoEditorProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Open"));
+    await waitFor(() => expect(screen.getByTestId("mock-editor")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Export"));
+
+    await waitFor(() => expect(mockLoroSync.addNode).toHaveBeenCalledTimes(1));
+
+    const [, createdNode] = mockLoroSync.addNode.mock.calls[0];
+    expect(createdNode.data).toMatchObject({
+      sourceTimelineNodeId: "editor-node-1",
+      sourceTimelineId: "timeline:timelines/main.timeline.yaml",
+      sourceTimelineRevisionId: "tlrev-web-export",
+      sourceTimelineHash: "timeline-hash-web",
+      sourceTimelineRevisionStatus: "applied",
+      sourceTimelineFrontiers: [{ peer: "local", counter: 12 }],
+      sourceTimelineVersionVector: { local: 12 },
+    });
+  });
+
   it("saves timeline edits through explicit timeline apply instead of generic node patch", async () => {
     render(
       <VideoEditorProvider>

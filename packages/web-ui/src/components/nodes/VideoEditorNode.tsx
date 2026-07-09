@@ -9,7 +9,11 @@ import { SignedImg } from '../SignedMedia';
 import { useSignedUrl, getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { normalizeStatus, isActiveStatus } from '@clash/web-ui/lib/assetStatus';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
-import { buildPendingRenderVideoNodePayload, getTimelineDurationInFrames } from '@clash/web-ui/lib/pendingRenderVideo';
+import {
+    buildPendingRenderVideoNodePayload,
+    getTimelineDurationInFrames,
+    readPendingRenderAppliedTimelineRevision,
+} from '@clash/web-ui/lib/pendingRenderVideo';
 import { hydrateAssetIdsFromNodes } from '@clash/web-ui/lib/timelineDsl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getItemSourceNodeId } from '@master-clash/remotion-core';
@@ -381,8 +385,10 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         try {
             // Get current timeline DSL from node or data
             let timelineDsl = data.timelineDsl;
+            let sourceTimelineData: unknown = data;
             if (loroSync?.doc) {
                 const loroNode = loroSync.doc.getMap('nodes').get(id) as any;
+                sourceTimelineData = loroNode?.data ?? sourceTimelineData;
                 const loroDsl = loroNode?.data?.timelineDsl;
                 if (loroDsl) {
                     // Ensure we have a plain JS object, not a Loro proxy
@@ -409,7 +415,10 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                     timelineDsl.durationInFrames,
                 ),
             };
-            const pendingVideoNode = buildPendingRenderVideoNodePayload(updatedTimelineDsl);
+            const pendingVideoNode = buildPendingRenderVideoNodePayload(updatedTimelineDsl, {
+                sourceTimelineNodeId: id,
+                appliedRevision: readPendingRenderAppliedTimelineRevision(sourceTimelineData),
+            });
 
             // Calculate auto-layout position locally to ensure immediate correct placement
             const newVideoNodeId = `video-${Date.now()}`;
