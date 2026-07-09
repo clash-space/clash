@@ -598,11 +598,25 @@ Latest local-api receipt smoke:
 .tmp/agent-first-asset-receipts/2026-07-09T07-06-01-350Z/agent-first-asset-receipt-report.json
 ```
 
+Latest full agent-first local v1 gate:
+
+```text
+.tmp/agent-first-local-v1-gate/2026-07-09T09-11-37-099Z/agent-first-local-v1-gate-report.json
+```
+
+Latest storage doctor repair smoke:
+
+```text
+.tmp/storage-doctor-repair/2026-07-09T09-11-47-618Z/storage-doctor-repair-report.json
+```
+
 Conclusion:
 
 - Stub ACP black-box paths are passing.
 - Real Codex ACP desktop path is passing and records spawned agent cwd under
   `~/.clash/projects/<encodedProjectId>`.
+- Storage doctor now detects and removes old broad app-state files through the
+  public repair path while keeping SQLite as the only local metadata store.
 - The latest real Codex ACP QA report records project
   `55647743-1c58-4a8e-af4a-52fcdd69bfbf`, persisted runtime session
   `58286658-8c52-417d-8c39-c5794bb3664a`, direct ACP runtime session
