@@ -416,8 +416,18 @@ export function GroupChatPanel({
     ? invitedAgent.find((c) => c.id === activeTab)?.display_name ?? 'Agent'
     : 'Room';
   const syncIndicator = roomSyncIndicator(room.sync);
+  const roomSyncAdmission = room.sync?.admission;
+  const roomSyncBlockedReason = room.sync?.admission?.allowed === false
+    ? roomSyncAdmission?.reason === 'remote-room-not-configured'
+      ? 'Enable project sync before syncing the room'
+      : roomSyncAdmission?.reason === 'room-sync-capability-not-ready'
+        ? 'Room sync is waiting for the cloud room capability'
+        : 'Room sync is not available for this project'
+    : null;
   const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
   const roomSyncConflictCount = roomSyncConflicts.length;
+  const roomSyncButtonTooltip = roomSyncBlockedReason
+    ?? (roomSyncConflictCount > 0 ? 'Refresh room sync conflict plan' : 'Sync room');
   const visibleRoomSyncConflicts = roomSyncConflicts.slice(0, 3);
   const hiddenRoomSyncConflictCount = Math.max(0, roomSyncConflictCount - visibleRoomSyncConflicts.length);
   const roomSyncConflictRecoveryHint =
@@ -519,12 +529,16 @@ export function GroupChatPanel({
               className="rounded-matrix bg-warm-muted text-stone-700 hover:bg-warm-hover hover:text-brand dark:text-stone-300 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
             />
           </Tooltip>
-          <Tooltip label="Sync room">
+          <Tooltip label={roomSyncButtonTooltip}>
             <IconButton
-              label="Sync room"
+              label={roomSyncButtonTooltip}
               icon={<CloudArrowUp className="w-4 h-4" weight="bold" />}
               size="lg"
-              onClick={() => void room.syncRoom()}
+              disabled={roomSyncBlockedReason !== null}
+              onClick={() => {
+                if (roomSyncBlockedReason) return;
+                void room.syncRoom();
+              }}
               className="rounded-matrix bg-warm-muted text-stone-700 hover:bg-warm-hover hover:text-brand dark:text-stone-300 focus-visible:ring-brand/60 focus-visible:ring-offset-1"
             />
           </Tooltip>

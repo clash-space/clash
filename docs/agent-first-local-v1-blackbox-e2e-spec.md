@@ -899,8 +899,9 @@ Current status:
   admission evidence, remote/local conflict hash inspection, stale-hash
   rejection, explicit divergence recovery persistence, and later sync
   continuation without overwriting local text. `GroupChatPanel` also exposes
-  first-pass conflict id/hash/CLI recovery details from that sync plan.
-  Remaining work is admission-controlled remote sync loop wiring, fuller
+  first-pass conflict id/hash/CLI recovery details from that sync plan and
+  gates its Sync room action when `sync.admission.allowed=false`. Remaining
+  work is remote sync loop wiring beyond the UI admission gate, fuller
   local/remote recovery workflow, and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline

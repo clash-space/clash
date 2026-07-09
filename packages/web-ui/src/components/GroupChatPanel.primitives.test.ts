@@ -128,6 +128,19 @@ describe("GroupChatPanel primitives", () => {
     expect(panelSource).toContain("room mirror capability is not ready");
   });
 
+  it("gates the room sync action when admission says cloud mirroring is not allowed", () => {
+    const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
+
+    expect(panelSource).toContain("roomSyncAdmission");
+    expect(panelSource).toContain("roomSyncBlockedReason");
+    expect(panelSource).toContain("room.sync?.admission?.allowed === false");
+    expect(panelSource).toContain("Enable project sync before syncing the room");
+    expect(panelSource).toContain("Room sync is waiting for the cloud room capability");
+    expect(panelSource).toContain("roomSyncButtonTooltip");
+    expect(panelSource).toContain("disabled={roomSyncBlockedReason !== null}");
+    expect(panelSource).toContain("if (roomSyncBlockedReason) return");
+  });
+
   it("surfaces room sync conflict recovery hints instead of a generic failed indicator only", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
