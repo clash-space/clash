@@ -382,6 +382,8 @@ Evidence:
   room mirror concept.
 - Web `useProjectRoom` treats local 404 room responses as hosted/cloud room
   unavailable and stops send/sync POSTs instead of emulating a local room log.
+- Group chat disables the room composer when hosted/cloud room admission is
+  unavailable so local-only projects do not present room as a writable surface.
 - Raw ACP traces remain session/runtime state rather than project chat.
 
 Conclusion:

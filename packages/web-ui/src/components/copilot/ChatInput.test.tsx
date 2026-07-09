@@ -13,13 +13,17 @@ const root = resolve(__dirname, "../../../../..");
 const globalCss = readFileSync(resolve(root, "apps/web/app/globals.css"), "utf8");
 
 vi.mock("../MilkdownEditor", () => ({
-  default: forwardRef((_props, ref) => {
+  default: forwardRef((props: { onSubmit?: () => void }, ref) => {
     useImperativeHandle(ref, () => ({
       clear: vi.fn(),
       focus: milkdownFocus,
       insertAtCursor: vi.fn(),
     }));
-    return <div data-testid="milkdown-editor" />;
+    return (
+      <div data-testid="milkdown-editor">
+        <button type="button" data-testid="milkdown-submit" onClick={() => props.onSubmit?.()} />
+      </div>
+    );
   }),
 }));
 
@@ -131,6 +135,28 @@ describe("ChatInput", () => {
 
     expect(screen.queryByLabelText("copilot.status.connected")).toBeNull();
     expect(screen.queryByLabelText("copilot.status.disconnected")).toBeNull();
+  });
+
+  it("does not submit when disabled even if the editor emits submit", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input="blocked room message"
+          onInputChange={() => undefined}
+          onSubmit={onSubmit}
+          disabled
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    fireEvent.click(screen.getByTestId("milkdown-submit"));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "copilot.chatInput.send" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("milkdown-editor").closest(".clash-chat-input-editor")?.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("milkdown-editor").closest(".clash-chat-input-editor")?.className).toContain("pointer-events-none");
   });
 
   it("exposes focus through an explicit handle instead of requiring DOM queries", async () => {

@@ -354,17 +354,23 @@ function ChatInputInner({
         });
     }, [projectId, t]);
 
+    const actionLocked = isCreatingSession || disabled;
+    const submitLocked = actionLocked || (isProcessing && !allowSubmitWhileProcessing);
+    const canSend = input.trim() && !submitLocked && uploading === 0;
+    const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
+    const isHero = variant === 'hero';
+
     // ─── Submit ──────────────────────────────────────────────
     const handleFormSubmit = useCallback(() => {
         const raw = input.trim();
-        if (!raw || uploading > 0) return;
+        if (!raw || uploading > 0 || submitLocked) return;
         const text = restoreMentions(raw);
         const attachments = extractAssetKeys(text);
         onInputChange('');
         editorRef.current?.clear();
         onCaretTargetChange?.(null);
         onSubmit(text, attachments);
-    }, [input, uploading, onInputChange, onSubmit, onCaretTargetChange]);
+    }, [input, uploading, submitLocked, onInputChange, onSubmit, onCaretTargetChange]);
 
     const updateCaretTarget = useCallback(() => {
         if (!onCaretTargetChange) return;
@@ -532,7 +538,6 @@ function ChatInputInner({
 
     useEffect(() => () => cleanup(), [cleanup]);
 
-    const actionLocked = isCreatingSession || disabled;
     const handleDropAccepted = useCallback((files: File[]) => {
         if (files.length > 0) handleFiles(files);
     }, [handleFiles]);
@@ -544,10 +549,6 @@ function ChatInputInner({
         noKeyboard: true,
         onDropAccepted: handleDropAccepted,
     });
-    const submitLocked = actionLocked || (isProcessing && !allowSubmitWhileProcessing);
-    const canSend = input.trim() && !submitLocked && uploading === 0;
-    const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
-    const isHero = variant === 'hero';
     // placeholder prop is currently unused by MilkdownEditor; reference it
     // so TS/lint doesn't flag it as unused while keeping the public API.
     void placeholder;
@@ -648,7 +649,8 @@ function ChatInputInner({
                     <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
                         <div
                             ref={editorHostRef}
-                            className={`clash-chat-input-editor ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto`}
+                            aria-disabled={actionLocked || undefined}
+                            className={`clash-chat-input-editor ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto ${actionLocked ? 'pointer-events-none opacity-60' : ''}`}
                             onFocusCapture={() => window.requestAnimationFrame(updateCaretTarget)}
                             onBlurCapture={(event) => {
                                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {

@@ -414,6 +414,8 @@ export function GroupChatPanel({
       ? 'Cloud room is not configured for this project'
       : 'Cloud room is unavailable in this local project'
     : null;
+  const roomComposerDisabled = room.sync?.admission?.allowed === false;
+  const roomComposerError = room.error ?? (roomComposerDisabled ? roomSyncBlockedReason : null);
   const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
   const roomSyncConflictCount = roomSyncConflicts.length;
   const roomSyncButtonTooltip = roomSyncBlockedReason
@@ -745,14 +747,17 @@ export function GroupChatPanel({
           onInputChange={setDraft}
           onSubmit={onChatSubmit}
           placeholder={
-            invitedAgent.length === 0
+            roomComposerDisabled
+              ? roomSyncBlockedReason ?? 'Cloud room is unavailable in this local project'
+              : invitedAgent.length === 0
               ? 'Invite a agent member with + to start chatting'
               : `Chat the room, or @${firstInvitedHandle} a agent member`
           }
           mentionableNodes={mentionableNodes}
           projectId={projectId}
-          error={room.error}
+          error={roomComposerError}
           connected
+          disabled={roomComposerDisabled}
           isProcessing={false}
         />)}
       </div>
