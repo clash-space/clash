@@ -12,6 +12,8 @@ import {
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
+  timelineDslFromYaml,
+  timelineDslHash,
   type Asset,
 } from "@clash/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,6 +46,12 @@ function baseReadToken(readToken: string): string {
 
 function projectionContentHash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+async function timelineContentHash(content: string): Promise<string> {
+  const parsed = timelineDslFromYaml(content);
+  if (!parsed.ok) throw new Error(parsed.error);
+  return timelineDslHash(parsed.dsl);
 }
 
 function providerModelTestMutation(providerId: string, modelId: string) {
@@ -1488,6 +1496,58 @@ describe("local API app", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("does not leave a text content blob when revision metadata conflicts", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const initialContent = "Initial script\n";
+    const initialHash = projectionContentHash(initialContent);
+    const revision = {
+      schemaVersion: 1,
+      kind: "clash.text.revision",
+      textId: "text:project-text:script",
+      revisionId: "txrev-conflict-1234567890abcdef",
+      projectId: "project-text",
+      nodeId: "script",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      contentHash: initialHash,
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "projections/text/script.md",
+      sourceFileHash: initialHash,
+    };
+    const created = await app.request("/api/v1/text-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision, content: initialContent }),
+    });
+    expect(created.status).toBe(200);
+
+    const conflictingContent = "Rejected script body\n";
+    const conflictingHash = projectionContentHash(conflictingContent);
+    const rejected = await app.request("/api/v1/text-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        revision: {
+          ...revision,
+          nodeId: "other-script",
+          contentHash: conflictingHash,
+          sourceFileHash: conflictingHash,
+        },
+        content: conflictingContent,
+      }),
+    });
+
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toMatchObject({
+      error: expect.stringContaining("already exists with different metadata"),
+      mutation: {
+        operation: "text_revision_index",
+        accepted: false,
+      },
+    });
+    await expect(stat(join(dataDir, "text-revision-blobs", conflictingHash.slice(0, 2), `${conflictingHash}.md`)))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("indexes applied timeline revisions with immutable content blobs without creating media asset rows", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
     const content = [
@@ -1641,6 +1701,90 @@ describe("local API app", () => {
     const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
     expect(await listed.json()).toEqual({ revisions: [] });
     await expect(stat(join(dataDir, "timeline-revision-blobs", "12", "1234567890abcdef.timeline.yaml")))
+      .rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not leave a timeline content blob when revision metadata conflicts", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const initialContent = [
+      "tracks:",
+      "  - id: main",
+      "    items:",
+      "      - id: scene-001-video",
+      "        type: video",
+      "        from: start",
+      "        durationInFrames: 30",
+      "        sourceNodeId: scene-001",
+      "",
+    ].join("\n");
+    const initialHash = await timelineContentHash(initialContent);
+    const revision = {
+      schemaVersion: 1,
+      kind: "clash.timeline.revision",
+      timelineId: "timeline:project-timeline:editor",
+      revisionId: "tlrev-conflict-1234567890abcdef",
+      projectId: "project-timeline",
+      nodeId: "editor",
+      createdAt: "2026-07-07T00:00:00.000Z",
+      timelineHash: initialHash,
+      hashAlgorithm: "sha256-64",
+      sourceFilePath: "timelines/main.timeline.yaml",
+      sourceFileHash: initialHash,
+      dependencies: {
+        sourceNodeIds: ["scene-001"],
+        assetIds: [],
+        componentIds: [],
+        textNodeIds: [],
+      },
+    };
+    const created = await app.request("/api/v1/timeline-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ revision, content: initialContent }),
+    });
+    expect(created.status).toBe(200);
+
+    const conflictingContent = [
+      "tracks:",
+      "  - id: main",
+      "    items:",
+      "      - id: scene-002-video",
+      "        type: video",
+      "        from: start",
+      "        durationInFrames: 45",
+      "        sourceNodeId: scene-002",
+      "",
+    ].join("\n");
+    const conflictingHash = await timelineContentHash(conflictingContent);
+    const rejected = await app.request("/api/v1/timeline-revisions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        revision: {
+          ...revision,
+          nodeId: "other-editor",
+          timelineHash: conflictingHash,
+          sourceFileHash: conflictingHash,
+          dependencies: {
+            sourceNodeIds: ["scene-002"],
+            assetIds: [],
+            componentIds: [],
+            textNodeIds: [],
+          },
+        },
+        content: conflictingContent,
+      }),
+    });
+
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toMatchObject({
+      error: expect.stringContaining("already exists with different metadata"),
+      mutation: {
+        operation: "timeline_revision_index",
+        accepted: false,
+      },
+    });
+    await expect(stat(join(dataDir, "timeline-revision-blobs", conflictingHash.slice(0, 2), `${conflictingHash}.timeline.yaml`)))
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 

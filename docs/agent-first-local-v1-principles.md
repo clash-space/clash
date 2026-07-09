@@ -727,6 +727,8 @@ Current first pass:
   `GET /api/v1/projects/:projectId/text-revisions/:revisionId/content`. History
   entries with stored bodies include `content.stored: true` so agents can tell
   the body is host-persisted without opening SQLite or protected blob paths.
+  Rejected same-revision-id metadata conflicts do not write new immutable
+  blobs; the content blob is created only after the revision row is accepted.
 - `clash text history` exposes the host-owned revision index to agents without
   making SQLite an editable or directly readable product surface.
 - `clash text content --revision <id> [--out <path>]` exposes the immutable
@@ -763,7 +765,9 @@ Current first pass:
   timeline revision blob, and exposes it through
   `GET /api/v1/projects/:projectId/timeline-revisions/:revisionId/content`.
   History entries with stored bodies include `content.stored: true`; older hosts
-  remain compatible when the index endpoint is unavailable.
+  remain compatible when the index endpoint is unavailable. Rejected
+  same-revision-id metadata conflicts do not write new immutable blobs; the
+  content blob is created only after the revision row is accepted.
 - `clash timeline history` exposes the host-owned milestone index to agents
   without making SQLite an editable or directly readable product surface.
 - `clash timeline content --revision <id> [--out <path>]` exposes the immutable

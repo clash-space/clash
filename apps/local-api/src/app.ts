@@ -448,6 +448,42 @@ async function withTimelineRevisionContentDescriptor(
   };
 }
 
+async function preflightTextRevisionContentBlob(
+  dataDir: string,
+  revision: TextAppliedRevision,
+  content: string,
+): Promise<void> {
+  if (textRevisionContentHash(content) !== revision.contentHash) {
+    throw new Error("text revision contentHash does not match content");
+  }
+  const path = textRevisionContentBlobPath(dataDir, revision.contentHash);
+  const existing = await readFile(path, "utf8").catch((error: unknown) => {
+    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
+    throw error;
+  });
+  if (existing !== null && existing !== content) {
+    throw new Error("text revision content blob already exists with different content");
+  }
+}
+
+async function preflightTimelineRevisionContentBlob(
+  dataDir: string,
+  revision: TimelineAppliedRevision,
+  content: string,
+): Promise<void> {
+  if (timelineRevisionSemanticHash(content) !== revision.timelineHash) {
+    throw new Error("timeline revision timelineHash does not match content");
+  }
+  const path = timelineRevisionContentBlobPath(dataDir, revision.timelineHash);
+  const existing = await readFile(path, "utf8").catch((error: unknown) => {
+    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
+    throw error;
+  });
+  if (existing !== null && existing !== content) {
+    throw new Error("timeline revision content blob already exists with different content");
+  }
+}
+
 function localMutationEnvelope(operation: string, kind: string, id: string) {
   return {
     operation,
@@ -5106,10 +5142,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 400);
     }
     const content = typeof body.content === "string" ? body.content : undefined;
-    let contentRecord: Awaited<ReturnType<typeof storeTextRevisionContentBlob>> | undefined;
     if (content !== undefined) {
       try {
-        contentRecord = await storeTextRevisionContentBlob(options.dataDir, parsed.revision, content);
+        await preflightTextRevisionContentBlob(options.dataDir, parsed.revision, content);
       } catch (error) {
         const message = errorMessage(error);
         return c.json({
@@ -5121,6 +5156,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
     try {
       const revision = await db.upsertTextRevision(parsed.revision);
+      const contentRecord = content === undefined
+        ? undefined
+        : await storeTextRevisionContentBlob(options.dataDir, parsed.revision, content);
       const mutation = hostMutationSucceeded(envelope, { resultEntityId: revision.revisionId });
       await db.appendMutationAudit(mutationAuditRecord({
         mutation,
@@ -5189,10 +5227,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 400);
     }
     const content = typeof body.content === "string" ? body.content : undefined;
-    let contentRecord: Awaited<ReturnType<typeof storeTimelineRevisionContentBlob>> | undefined;
     if (content !== undefined) {
       try {
-        contentRecord = await storeTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
+        await preflightTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
       } catch (error) {
         const message = errorMessage(error);
         return c.json({
@@ -5204,6 +5241,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
     try {
       const revision = await db.upsertTimelineRevision(parsed.revision);
+      const contentRecord = content === undefined
+        ? undefined
+        : await storeTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
       const mutation = hostMutationSucceeded(envelope, { resultEntityId: revision.revisionId });
       await db.appendMutationAudit(mutationAuditRecord({
         mutation,

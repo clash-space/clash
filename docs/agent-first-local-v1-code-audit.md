@@ -63,8 +63,10 @@ The main v1 gaps are:
   in SQLite `text_revisions`; workflow text generation now records host text
   revision metadata, stores the generated Markdown body as an immutable text
   revision blob, and writes sanitized audit evidence, while explicit apply
-  stores supplied Markdown bodies through the same protected content path
-  readable through the host API; `clash text
+  stores supplied Markdown bodies through the same protected content path only
+  after revision metadata is accepted, so rejected same-id metadata conflicts
+  do not leave orphan immutable blobs; accepted bodies remain readable through
+  the host API; `clash text
   history` reads that index through the host API, and `clash text content
   --revision <id> [--out <path>]` retrieves immutable revision Markdown without
   opening SQLite; richer visual history UI, conflict recovery, canonical
