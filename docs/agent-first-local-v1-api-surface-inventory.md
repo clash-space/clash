@@ -964,11 +964,15 @@ Rules:
   the web canvas. `TextNode` shows a first-pass read-only history panel with
   recent revisions, `clash text content --revision ... --out ...` recovery
   commands, and explicit `clash text restore --mode replace` commands, without
-  opening SQLite or mutable revision blob paths.
+  opening SQLite or mutable revision blob paths. Each revision row also exposes
+  a restore affordance that copies the standard restore command and emits
+  `clash:revision-restore-request`; when an upper layer injects an execution
+  handler, the same control becomes a direct Restore action through the
+  explicit CLI/action path.
 
 Remaining:
 
-- optional direct visual text revision restore affordance beyond the CLI action,
+- desktop/local execution wiring for `clash:revision-restore-request`,
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 
@@ -1024,7 +1028,11 @@ Rules:
   the web canvas. `VideoEditorNode` shows a first-pass read-only history panel
   with recent revisions, `clash timeline content --revision ... --out ...`
   recovery commands, and explicit `clash timeline restore --mode replace`
-  commands, without opening SQLite or mutable revision blob paths.
+  commands, without opening SQLite or mutable revision blob paths. Each
+  revision row also exposes a restore affordance that copies the standard
+  restore command and emits `clash:revision-restore-request`; when an upper
+  layer injects an execution handler, the same control becomes a direct
+  Restore action through the explicit CLI/action path.
 - `VideoEditorNode` Render and `VideoEditorContext` Export both build pending
   rendered video nodes through `buildPendingRenderVideoNodePayload`; when the
   source editor node has an applied timeline revision, the output node records
@@ -1036,7 +1044,7 @@ Rules:
 
 Remaining:
 
-- optional direct visual timeline revision restore affordance beyond the CLI action,
+- desktop/local execution wiring for `clash:revision-restore-request`,
 - local-to-cloud timeline revision mirror policy.
 
 ### Projection apply endpoints/commands

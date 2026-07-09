@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RevisionHistoryBadge } from "./RevisionHistoryBadge";
 
@@ -72,6 +72,72 @@ describe("RevisionHistoryBadge", () => {
     expect(screen.getByText("timeline-hash")).toBeTruthy();
     expect(screen.getByText("clash timeline content --revision tlrev-1 --out revisions/tlrev-1.timeline.yaml")).toBeTruthy();
     expect(screen.getByText("clash timeline restore --node editor-1 --revision tlrev-1 --mode replace")).toBeTruthy();
+  });
+
+  it("emits an explicit restore action without touching canvas state directly", () => {
+    const onRestoreRevision = vi.fn();
+    render(
+      <RevisionHistoryBadge
+        kind="text"
+        nodeId="text-1"
+        onRestoreRevision={onRestoreRevision}
+        history={{
+          count: 1,
+          latest: { revisionId: "txrev-2" },
+          revisions: [{ revisionId: "txrev-2" }],
+          loading: false,
+          error: null,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore text revision txrev-2" }));
+
+    expect(onRestoreRevision).toHaveBeenCalledWith({
+      kind: "text",
+      nodeId: "text-1",
+      revisionId: "txrev-2",
+      mode: "replace",
+      command: "clash text restore --node text-1 --revision txrev-2 --mode replace",
+    });
+  });
+
+  it("dispatches a browser restore request when no callback is provided", () => {
+    const listener = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    window.addEventListener("clash:revision-restore-request", listener);
+    render(
+      <RevisionHistoryBadge
+        kind="timeline"
+        nodeId="editor-1"
+        history={{
+          count: 1,
+          latest: { revisionId: "tlrev-1" },
+          revisions: [{ revisionId: "tlrev-1" }],
+          loading: false,
+          error: null,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Timeline revision history/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy restore command for timeline revision tlrev-1" }));
+
+    expect(writeText).toHaveBeenCalledWith("clash timeline restore --node editor-1 --revision tlrev-1 --mode replace");
+    const event = listener.mock.calls[0]?.[0] as CustomEvent;
+    expect(event.detail).toEqual({
+      kind: "timeline",
+      nodeId: "editor-1",
+      revisionId: "tlrev-1",
+      mode: "replace",
+      command: "clash timeline restore --node editor-1 --revision tlrev-1 --mode replace",
+    });
+    window.removeEventListener("clash:revision-restore-request", listener);
   });
 
   it("quotes unsafe shell arguments in CLI restore commands", () => {

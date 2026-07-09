@@ -69,8 +69,13 @@ The main v1 gaps are:
   the host API; `clash text
   history` reads that index through the host API, and `clash text content
   --revision <id> [--out <path>]` retrieves immutable revision Markdown without
-  opening SQLite; richer visual history UI, conflict recovery, canonical
-  file-backed text mode, and sync policy are still future work,
+  opening SQLite; `RevisionHistoryBadge` now gives text/timeline revisions a
+  visual restore affordance that copies the standard `clash ... restore --mode
+  replace` command, emits a `clash:revision-restore-request` payload, and only
+  labels the control as direct Restore when an upper layer injects an execution
+  handler; it does not directly mutate canvas state. Conflict recovery,
+  visual restore-request execution wiring, canonical file-backed text mode, and
+  sync policy are still future work,
 - shared projection path resolution now keeps text/timeline projection files
   inside the current agent/project cwd and rejects symlinked parents that
   resolve outside it, and applies the same cwd/realpath guard to generated

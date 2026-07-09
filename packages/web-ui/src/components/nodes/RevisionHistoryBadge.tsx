@@ -13,8 +13,19 @@ export interface RevisionHistoryBadgeProps {
   kind: RevisionHistoryKind;
   nodeId: string;
   history: RevisionHistorySnapshot;
+  onRestoreRevision?: (request: RevisionRestoreRequest) => void;
   className?: string;
 }
+
+export interface RevisionRestoreRequest {
+  kind: RevisionHistoryKind;
+  nodeId: string;
+  revisionId: string;
+  mode: "replace";
+  command: string;
+}
+
+export const REVISION_RESTORE_REQUEST_EVENT = "clash:revision-restore-request";
 
 function labelFor(kind: RevisionHistoryKind): string {
   return kind === "text" ? "Text revision history" : "Timeline revision history";
@@ -39,7 +50,7 @@ function shellArg(value: string): string {
     : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-export function RevisionHistoryBadge({ kind, nodeId, history, className = "" }: RevisionHistoryBadgeProps) {
+export function RevisionHistoryBadge({ kind, nodeId, history, onRestoreRevision, className = "" }: RevisionHistoryBadgeProps) {
   const [open, setOpen] = useState(false);
 
   if (history.count === 0) return null;
@@ -47,6 +58,18 @@ export function RevisionHistoryBadge({ kind, nodeId, history, className = "" }: 
   const label = labelFor(kind);
   const stopNodeGesture = (event: MouseEvent) => {
     event.stopPropagation();
+  };
+  const requestRestore = (request: RevisionRestoreRequest) => {
+    if (onRestoreRevision) {
+      onRestoreRevision(request);
+      return;
+    }
+    if (typeof navigator !== "undefined") {
+      void navigator.clipboard?.writeText(request.command).catch(() => undefined);
+    }
+    if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+      window.dispatchEvent(new CustomEvent<RevisionRestoreRequest>(REVISION_RESTORE_REQUEST_EVENT, { detail: request }));
+    }
   };
 
   return (
@@ -83,6 +106,8 @@ export function RevisionHistoryBadge({ kind, nodeId, history, className = "" }: 
           <ul className="mt-2 space-y-2">
             {history.revisions.map((revision) => {
               const hash = revisionHash(revision);
+              const restore = restoreCommand(kind, nodeId, revision.revisionId);
+              const directRestore = Boolean(onRestoreRevision);
               return (
                 <li key={revision.revisionId} className="border-t border-warm-border pt-2 first:border-t-0 first:pt-0">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -104,8 +129,26 @@ export function RevisionHistoryBadge({ kind, nodeId, history, className = "" }: 
                     {recoveryCommand(kind, revision.revisionId)}
                   </code>
                   <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
-                    {restoreCommand(kind, nodeId, revision.revisionId)}
+                    {restore}
                   </code>
+                  <button
+                    type="button"
+                    className="mt-1 inline-flex h-6 items-center rounded-md border border-warm-border bg-warm-surface px-2 text-[10px] font-semibold text-stone-700 transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
+                    aria-label={directRestore
+                      ? `Restore ${kind} revision ${revision.revisionId}`
+                      : `Copy restore command for ${kind} revision ${revision.revisionId}`}
+                    onClick={() =>
+                      requestRestore({
+                        kind,
+                        nodeId,
+                        revisionId: revision.revisionId,
+                        mode: "replace",
+                        command: restore,
+                      })
+                    }
+                  >
+                    {directRestore ? "Restore" : "Copy restore"}
+                  </button>
                 </li>
               );
             })}
