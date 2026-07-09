@@ -64,7 +64,7 @@ const suiteDefinitions = [
     id: "agent-first-asset-receipts",
     command: [pnpmBin, "exec", "tsx", "e2e/agent-first-asset-receipt-smoke.mjs"],
     schemaVersion: 1,
-    minChecks: 184,
+    minChecks: 190,
     requiredBooleans: [
       "syncConfigAuditRecorded",
       "localObsoleteProjectEndpointsRejected",
@@ -82,6 +82,8 @@ const suiteDefinitions = [
       "canvasEdgeAddAuditRecorded",
       "canvasEdgeUpdateReceiptAccepted",
       "canvasEdgeUpdateAuditRecorded",
+      "projectUpdateAuditRecorded",
+      "projectDeleteAuditRecorded",
       "projectRestoreStatusPathStable",
       "routeLevelSqliteMigrationRecovered",
       "runtimeSessionAttachReceiptAccepted",

@@ -212,8 +212,13 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("directCanvasCliFreshReadTokenAccepted");
     expect(source).toContain("textRestoreCreatesCopyOnWriteRevisionFromHostContent");
     expect(source).toContain("timelineRestoreCreatesCopyOnWriteRevisionFromHostContent");
-    expect(source).toContain("roomSyncConflictResolutionAuditRecorded");
     expect(source).toContain("localObsoleteProjectEndpointsRejected");
+    expect(source).toContain("projectUpdateAuditRecorded");
+    expect(source).toContain("projectDeleteAuditRecorded");
+    expect(source).toContain("legacyLocalRoomReadRemoved");
+    expect(source).toContain("legacyLocalRoomWriteRemoved");
+    expect(source).toContain("legacyLocalRoomSyncRemoved");
+    expect(source).not.toContain("roomSyncConflictResolutionAuditRecorded");
     expect(source).toContain("doctor before repair does not expose obsolete marker compatibility");
     expect(source).toContain("cloud-sync pending action gates block web and sharing until required mirrors are ready");
     expect(source).toContain("CLASH_AGENT_FIRST_LOCAL_V1_SUITES");

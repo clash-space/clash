@@ -3174,17 +3174,88 @@ async function main() {
     { mutation: restoreProject.mutation },
   );
 
+  const updateProjectResponse = await request(`/api/v1/projects/${encodeURIComponent(restoreProject.id)}`, {
+    method: "PATCH",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": restoreProject.readToken,
+    },
+    body: JSON.stringify({ name: "Project Restore Receipt Smoke Updated" }),
+  });
+  const updatedProject = await parseJsonResponse(updateProjectResponse);
+  recordCheck(
+    "project update with project receipt is accepted",
+    updateProjectResponse.status === 200 &&
+      updatedProject.id === restoreProject.id &&
+      updatedProject.name === "Project Restore Receipt Smoke Updated" &&
+      hasReceipt(updatedProject.readToken, "project") &&
+      updatedProject.mutation?.operation === "project_update" &&
+      updatedProject.mutation?.accepted === true &&
+      updatedProject.mutation?.expectedReadToken === restoreProject.readToken &&
+      updatedProject.mutation?.beforeReadToken === baseReadToken(restoreProject.readToken) &&
+      updatedProject.mutation?.afterReadToken === updatedProject.readToken,
+    JSON.stringify(updatedProject),
+    { mutation: updatedProject.mutation },
+  );
+
+  const projectUpdateAuditResponse = await request(`/api/v1/mutation-audit?operation=project_update&entityId=${encodeURIComponent(restoreProject.id)}`);
+  const projectUpdateAudit = await parseJsonResponse(projectUpdateAuditResponse);
+  const projectUpdateAuditRecord = projectUpdateAudit.records?.[0];
+  recordCheck(
+    "project update writes sanitized local mutation audit evidence",
+    projectUpdateAuditResponse.status === 200 &&
+      projectUpdateAudit.records?.length === 1 &&
+      projectUpdateAuditRecord.operation === "project_update" &&
+      projectUpdateAuditRecord.entity?.id === restoreProject.id &&
+      projectUpdateAuditRecord.accepted === true &&
+      projectUpdateAuditRecord.actorClientType === "agent" &&
+      projectUpdateAuditRecord.reason === "project update" &&
+      !JSON.stringify(projectUpdateAuditRecord.mutation ?? {}).includes("receipt") &&
+      projectUpdateAuditRecord.mutation?.expectedReadToken == null &&
+      projectUpdateAuditRecord.mutation?.beforeReadToken == null &&
+      projectUpdateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(projectUpdateAudit),
+  );
+
   const deleteProjectResponse = await request(`/api/v1/projects/${encodeURIComponent(restoreProject.id)}`, {
     method: "DELETE",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": updatedProject.readToken,
+    },
   });
   const deletedProject = await parseJsonResponse(deleteProjectResponse);
   recordCheck(
     "project delete returns deleted-project receipt",
     deleteProjectResponse.status === 200 &&
       deletedProject.deleted === true &&
-      hasReceipt(deletedProject.readToken, "project"),
+      hasReceipt(deletedProject.readToken, "project") &&
+      deletedProject.mutation?.operation === "project_delete" &&
+      deletedProject.mutation?.accepted === true &&
+      deletedProject.mutation?.expectedReadToken === updatedProject.readToken &&
+      deletedProject.mutation?.beforeReadToken === baseReadToken(updatedProject.readToken) &&
+      deletedProject.mutation?.afterReadToken === deletedProject.readToken,
     JSON.stringify(deletedProject),
     { mutation: deletedProject.mutation },
+  );
+
+  const projectDeleteAuditResponse = await request(`/api/v1/mutation-audit?operation=project_delete&entityId=${encodeURIComponent(restoreProject.id)}`);
+  const projectDeleteAudit = await parseJsonResponse(projectDeleteAuditResponse);
+  const projectDeleteAuditRecord = projectDeleteAudit.records?.[0];
+  recordCheck(
+    "project delete writes sanitized local mutation audit evidence",
+    projectDeleteAuditResponse.status === 200 &&
+      projectDeleteAudit.records?.length === 1 &&
+      projectDeleteAuditRecord.operation === "project_delete" &&
+      projectDeleteAuditRecord.entity?.id === restoreProject.id &&
+      projectDeleteAuditRecord.accepted === true &&
+      projectDeleteAuditRecord.actorClientType === "agent" &&
+      projectDeleteAuditRecord.reason === "project soft delete" &&
+      !JSON.stringify(projectDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
+      projectDeleteAuditRecord.mutation?.expectedReadToken == null &&
+      projectDeleteAuditRecord.mutation?.beforeReadToken == null &&
+      projectDeleteAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(projectDeleteAudit),
   );
 
   const hiddenDeletedProject = await request(`/api/v1/projects/${encodeURIComponent(restoreProject.id)}`);
@@ -3842,6 +3913,8 @@ async function main() {
       canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       localObsoleteProjectEndpointsRejected: checks.some((check) => check.name === "obsolete local project endpoints are not exposed" && check.status === "pass"),
       projectCreateAuditRecorded: checks.some((check) => check.name === "v1 project create writes sanitized local mutation audit evidence" && check.status === "pass"),
+      projectUpdateAuditRecorded: checks.some((check) => check.name === "project update writes sanitized local mutation audit evidence" && check.status === "pass"),
+      projectDeleteAuditRecorded: checks.some((check) => check.name === "project delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectRestoreDeletedGetHidden: checks.some((check) => check.name === "deleted project is hidden from normal project get" && check.status === "pass"),
       projectRestoreGetReceiptReturned: checks.some((check) => check.name === "deleted project get returns restore receipt" && check.status === "pass"),
       projectRestoreMissingReadRejected: checks.some((check) => check.name === "project restore without prior deleted read is rejected" && check.status === "pass"),
