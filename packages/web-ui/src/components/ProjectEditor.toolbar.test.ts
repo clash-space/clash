@@ -67,4 +67,13 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).toContain("projectStatus.actions?.shareProject");
     expect(projectEditorSource).not.toContain("getRuntimeCapabilities().loro.persistence !== 'local'");
   });
+
+  it("surfaces the project status open-in-web gate without inventing a web URL", () => {
+    expect(projectEditorSource).toContain("projectStatus.actions?.openInWeb");
+    expect(projectEditorSource).toContain("resolveProjectWebAdmission");
+    expect(projectEditorSource).toContain("projectWebAdmission.visible");
+    expect(projectEditorSource).toContain("disabled={!projectWebAdmission.allowed}");
+    expect(projectEditorSource).not.toContain("window.open(window.location.href");
+    expect(projectEditorSource).not.toContain("window.location.href = window.location.href");
+  });
 });

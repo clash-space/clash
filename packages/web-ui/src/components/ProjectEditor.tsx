@@ -38,6 +38,7 @@ import {
     CursorClick,
     HandGrabbing,
     ShareFat,
+    ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { useLocation, useNavigate } from 'react-router';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -102,7 +103,7 @@ import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getRuntimeCapabilities, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
-import { resolveProjectShareAdmission } from '@clash/web-ui/lib/projectShareGate';
+import { resolveProjectShareAdmission, resolveProjectWebAdmission } from '@clash/web-ui/lib/projectShareGate';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { dispatchHostMutationEvent } from '@clash/web-ui/lib/hostMutationEvents';
 import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
@@ -368,10 +369,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [shareCopied, setShareCopied] = useState(false);
     const projectStatus = useProjectStatus(project.id);
     const projectShareGate = projectStatus.actions?.shareProject;
+    const projectOpenInWebGate = projectStatus.actions?.openInWeb;
     const runtimeCapabilities = getRuntimeCapabilities();
     const projectShareAdmission = resolveProjectShareAdmission({
         shareGate: projectShareGate,
         runtimePersistence: runtimeCapabilities.loro.persistence,
+    });
+    const projectWebAdmission = resolveProjectWebAdmission({
+        openInWebGate: projectOpenInWebGate,
     });
     const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
     const handleProjectNameSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -692,6 +697,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             setShareCopied(false);
         }
     }, [projectShareAdmission.allowed]);
+
+    const handleOpenProjectInWeb = useCallback(() => {
+        if (!projectWebAdmission.allowed || !projectWebAdmission.url) return;
+        if (typeof window === 'undefined') return;
+        window.open(projectWebAdmission.url, '_blank', 'noopener,noreferrer');
+    }, [projectWebAdmission.allowed, projectWebAdmission.url]);
 
     const handleCreateSession = useCallback(async (initialMessage?: string): Promise<{ threadId: string; title: string } | null> => {
         try {
@@ -2409,6 +2420,23 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
                                 <PresenceBar clients={otherClients} />
+                                {projectWebAdmission.visible && (
+                                    <Tooltip label={projectWebAdmission.tooltip}>
+                                        <span className="inline-flex">
+                                            <Button
+                                                onClick={handleOpenProjectInWeb}
+                                                disabled={!projectWebAdmission.allowed}
+                                                leftIcon={<ArrowSquareOut className="h-4 w-4" weight="bold" />}
+                                                size="sm"
+                                                shape="rounded"
+                                                aria-label="Open project in web"
+                                                className="clash-project-top-action h-10 min-h-10 rounded-xl px-3 text-sm font-display font-semibold focus-visible:ring-offset-warm-page"
+                                            >
+                                                <span>Web</span>
+                                            </Button>
+                                        </span>
+                                    </Tooltip>
+                                )}
                                 {projectShareAdmission.visible && (
                                     <Tooltip label={projectShareAdmission.tooltip}>
                                         <span className="inline-flex">

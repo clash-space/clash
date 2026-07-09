@@ -12,6 +12,19 @@ export interface ProjectShareAdmission {
   source: "project-status" | "runtime-capability-fallback";
 }
 
+export interface ProjectWebAdmissionInput {
+  openInWebGate: ProjectStatusActionGate | null | undefined;
+  webUrl?: string | null;
+}
+
+export interface ProjectWebAdmission {
+  visible: boolean;
+  allowed: boolean;
+  tooltip: string;
+  url: string | null;
+  source: "project-status";
+}
+
 export function resolveProjectShareAdmission(input: ProjectShareAdmissionInput): ProjectShareAdmission {
   const shareGate = input.shareGate;
   if (shareGate) {
@@ -32,6 +45,27 @@ export function resolveProjectShareAdmission(input: ProjectShareAdmissionInput):
   };
 }
 
+export function resolveProjectWebAdmission(input: ProjectWebAdmissionInput): ProjectWebAdmission {
+  const gate = input.openInWebGate;
+  const webUrl = input.webUrl?.trim() || null;
+  if (gate && !gate.allowed) {
+    return {
+      visible: true,
+      allowed: false,
+      tooltip: projectWebGateTooltip(gate.reason, gate.requirements),
+      url: null,
+      source: "project-status",
+    };
+  }
+  return {
+    visible: !!webUrl,
+    allowed: !!webUrl,
+    tooltip: "Open project in web",
+    url: webUrl,
+    source: "project-status",
+  };
+}
+
 function projectShareGateTooltip(
   reason: ProjectStatusActionGate["reason"],
   requirements: ProjectStatusActionGate["requirements"],
@@ -45,6 +79,21 @@ function projectShareGateTooltip(
   }
   if (reason === "sync-mode-unknown") return "Resolve project sync mode before sharing";
   return "Copy project link";
+}
+
+function projectWebGateTooltip(
+  reason: ProjectStatusActionGate["reason"],
+  requirements: ProjectStatusActionGate["requirements"],
+): string {
+  if (reason === "project-is-local-only") return "Enable sync before opening this project on the web";
+  if (reason === "cloud-sync-not-ready") {
+    const missing = requirements.length > 0
+      ? `: ${requirements.map(projectShareRequirementLabel).join(", ")}`
+      : "";
+    return `Finish cloud sync setup before opening in web${missing}`;
+  }
+  if (reason === "sync-mode-unknown") return "Resolve project sync mode before opening in web";
+  return "Open project in web";
 }
 
 function projectShareRequirementLabel(requirement: string): string {
