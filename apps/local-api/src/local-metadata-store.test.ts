@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -118,6 +118,15 @@ describe("local metadata store", () => {
     await expect(store.load()).resolves.toMatchObject({
       projects: [{ id: "project-upgraded", ownerId: "local-user" }],
     });
+  });
+
+  it("keeps timeline revision immutable-id checks inside a write transaction", async () => {
+    const source = await readFile(new URL("./local-metadata-store.ts", import.meta.url), "utf8");
+    const match = source.match(/async function upsertTimelineRevision[\s\S]*?async function listTimelineRevisions/);
+
+    expect(match?.[0]).toContain('db.exec("BEGIN IMMEDIATE")');
+    expect(match?.[0]).toContain('db.exec("COMMIT")');
+    expect(match?.[0]).toContain('db.exec("ROLLBACK")');
   });
 
   it("round-trips soft-deleted project metadata", async () => {

@@ -101,7 +101,9 @@ Evidence:
   `local-provider-store` startup upgrades old partial provider/OAuth tables
   before provider reads, writes, or secret migration marker writes.
 - Metadata/provider SQLite stores use WAL, a 5s busy timeout, foreign keys, and
-  `BEGIN IMMEDIATE` write/schema transactions.
+  `BEGIN IMMEDIATE` write/schema transactions; text/timeline revision
+  immutable-id checks and inserts are covered by the same write-transaction
+  contract.
 - No broad JSON product DB is exposed by local-api, status, doctor, or conformance scripts.
 
 Conclusion:

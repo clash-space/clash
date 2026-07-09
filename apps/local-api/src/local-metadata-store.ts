@@ -1327,41 +1327,48 @@ export function createLocalMetadataStore(dataDir: string) {
 
   async function upsertTimelineRevision(revision: TimelineAppliedRevision): Promise<TimelineAppliedRevision> {
     await withDb((db) => {
-      const existing = db.prepare(`
-        SELECT revision_id, timeline_id, parent_revision_id, project_id, node_id,
-               created_at, timeline_hash, hash_algorithm, source_file_path,
-               source_file_hash, actor_json, loro_frontiers_json,
-               loro_version_vector_json, dependencies_json
-          FROM timeline_revisions
-         WHERE revision_id = ?
-      `).get(revision.revisionId);
-      if (existing && !sameTimelineRevision(timelineRevisionFromRow(existing), revision)) {
-        throw new Error(`Timeline revision ${revision.revisionId} already exists with different metadata`);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const existing = db.prepare(`
+          SELECT revision_id, timeline_id, parent_revision_id, project_id, node_id,
+                 created_at, timeline_hash, hash_algorithm, source_file_path,
+                 source_file_hash, actor_json, loro_frontiers_json,
+                 loro_version_vector_json, dependencies_json
+            FROM timeline_revisions
+           WHERE revision_id = ?
+        `).get(revision.revisionId);
+        if (existing && !sameTimelineRevision(timelineRevisionFromRow(existing), revision)) {
+          throw new Error(`Timeline revision ${revision.revisionId} already exists with different metadata`);
+        }
+        db.prepare(`
+          INSERT OR REPLACE INTO timeline_revisions (
+            revision_id, timeline_id, parent_revision_id, project_id, node_id,
+            created_at, timeline_hash, hash_algorithm, source_file_path,
+            source_file_hash, actor_json, loro_frontiers_json,
+            loro_version_vector_json, dependencies_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          revision.revisionId,
+          revision.timelineId,
+          revision.parentRevisionId ?? null,
+          revision.projectId,
+          revision.nodeId,
+          revision.createdAt,
+          revision.timelineHash,
+          revision.hashAlgorithm,
+          revision.sourceFilePath,
+          revision.sourceFileHash,
+          jsonOrNull(revision.actor),
+          jsonOrNull(revision.loroFrontiers),
+          jsonOrNull(revision.loroVersionVector),
+          JSON.stringify(revision.dependencies),
+        );
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
       }
-      db.prepare(`
-        INSERT OR REPLACE INTO timeline_revisions (
-          revision_id, timeline_id, parent_revision_id, project_id, node_id,
-          created_at, timeline_hash, hash_algorithm, source_file_path,
-          source_file_hash, actor_json, loro_frontiers_json,
-          loro_version_vector_json, dependencies_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        revision.revisionId,
-        revision.timelineId,
-        revision.parentRevisionId ?? null,
-        revision.projectId,
-        revision.nodeId,
-        revision.createdAt,
-        revision.timelineHash,
-        revision.hashAlgorithm,
-        revision.sourceFilePath,
-        revision.sourceFileHash,
-        jsonOrNull(revision.actor),
-        jsonOrNull(revision.loroFrontiers),
-        jsonOrNull(revision.loroVersionVector),
-        JSON.stringify(revision.dependencies),
-      );
-      markMigration(db, dataDir, "");
     });
     return revision;
   }

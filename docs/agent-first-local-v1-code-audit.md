@@ -164,6 +164,9 @@ The local product metadata contract is SQLite-only:
   authoritative,
 - new project/session/asset/provider writes go to SQLite-backed product
   metadata,
+- immutable text/timeline revision ids are checked and inserted inside
+  `BEGIN IMMEDIATE` SQLite write transactions, so same-id metadata conflicts
+  cannot degrade into last-writer-wins replacement,
 - conformance scripts auto-detect desktop local-api state only by
   `local.sqlite`.
 
