@@ -565,7 +565,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T15-41-03-104Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T04-26-27-433Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:
@@ -587,8 +587,8 @@ Conclusion:
   direct real Codex layout runs remain the end-to-end evidence for cwd shape.
 - Timeline create/restore smoke is passing in both QA harness targets.
 - Local-api package tests are passing with 290 tests, and the receipt smoke is
-  passing with 135 checks, including read-only
-  derived agent views, provider model test action mutation records, local audio
+  passing with 190 checks, including read-only
+  derived agent views, provider model test action sanitized mutation audit evidence, local audio
   model install, local audio transcription action mutation records, local harness
   install, provider OAuth restart/complete
   missing/bare/current receipt handling, missing-target CAS rejection,

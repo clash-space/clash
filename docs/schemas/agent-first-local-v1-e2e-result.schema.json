@@ -266,7 +266,6 @@
           "snapshot-bin-read",
           "snapshot-bin-write",
           "sqlite-direct-edit",
-          "db-json-direct-edit",
           "secret-read",
           "source-code-patch",
           "other"

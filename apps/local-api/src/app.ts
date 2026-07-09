@@ -3040,7 +3040,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     });
   });
   app.post("/api/v1/model-providers/test", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown; live?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown; live?: unknown } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
     const provider = normalizeProviderAccountInput(body.provider);
     const rawProvider = body.provider && typeof body.provider === "object"
       ? body.provider as Record<string, unknown>
@@ -3090,10 +3091,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       "provider-test",
       `${account.providerId}:${modelId}`,
     );
-    const providerTestResponse = (result: ModelProviderTestResult) => c.json({
-      ...result,
-      mutation: hostMutationSucceeded(envelope, { resultEntityId: envelope.entity.id }),
-    });
+    const providerTestResponse = async (result: ModelProviderTestResult) => {
+      const mutation = hostMutationSucceeded(envelope, { resultEntityId: envelope.entity.id });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider model test",
+      }));
+      return c.json({
+        ...result,
+        mutation,
+      });
+    };
     if (account.enabled === false) {
       return providerTestResponse({
         ok: false,

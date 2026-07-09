@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-09T03-47-50-548Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T04-26-08-664Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -672,15 +672,16 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T03-48-06-521Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T04-26-27-433Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
 - 190 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
-- derived agent reads stayed read-only, provider model tests and local audio
-  transcription actions recorded host mutation envelopes, and local sync, audio,
+- derived agent reads stayed read-only, provider model tests wrote sanitized
+  mutation audit evidence, local audio transcription actions recorded host
+  mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
   upload/read symlinked-root/parent rejection plus workflow-generated asset
   acceptance, sanitized audit evidence, and symlinked-parent rejection,
@@ -722,7 +723,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T03-48-01-247Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T04-26-21-211Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -837,7 +838,7 @@ The gate runs and validates these black-box report artifacts:
 Latest verified gate report:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T03-47-50-440Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T04-26-08-542Z/agent-first-local-v1-gate-report.json
 ```
 
 Result:
@@ -845,10 +846,10 @@ Result:
 - `status: pass`,
 - 4 suites passed,
 - nested report contracts validated:
-  - `.tmp/short-drama-timeline/2026-07-09T03-47-50-497Z/short-drama-timeline-report.json` with 4 checks,
-  - `.tmp/agent-first-cas/2026-07-09T03-47-50-548Z/agent-first-cas-report.json` with 56 checks,
-  - `.tmp/storage-doctor-repair/2026-07-09T03-48-01-247Z/storage-doctor-repair-report.json` with 86 checks,
-  - `.tmp/agent-first-asset-receipts/2026-07-09T03-48-06-521Z/agent-first-asset-receipt-report.json` with 190 checks.
+  - `.tmp/short-drama-timeline/2026-07-09T04-26-08-593Z/short-drama-timeline-report.json` with 4 checks,
+  - `.tmp/agent-first-cas/2026-07-09T04-26-08-664Z/agent-first-cas-report.json` with 56 checks,
+  - `.tmp/storage-doctor-repair/2026-07-09T04-26-21-211Z/storage-doctor-repair-report.json` with 86 checks,
+  - `.tmp/agent-first-asset-receipts/2026-07-09T04-26-27-433Z/agent-first-asset-receipt-report.json` with 190 checks.
 
 Target boundary:
 

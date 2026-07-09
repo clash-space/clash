@@ -1208,19 +1208,32 @@ async function main() {
 
   const providerModelTestResponse = await request("/api/v1/model-providers/test", {
     method: "POST",
+    headers: { "x-clash-client-type": "agent" },
     body: JSON.stringify({
       provider: { id: "replicate-primary", providerId: "replicate", upstreamId: "replicate", enabled: true },
       modelId: "nano-banana-2",
     }),
   });
   const providerModelTestJson = await parseJsonResponse(providerModelTestResponse);
+  const providerModelTestAuditResponse = await request("/api/v1/mutation-audit?operation=provider_model_test&entityId=replicate%3Anano-banana-2");
+  const providerModelTestAudit = await parseJsonResponse(providerModelTestAuditResponse);
+  const providerModelTestAuditRecord = providerModelTestAudit.records?.find((record) => record.actorClientType === "agent");
   recordCheck(
-    "provider model test action returns host mutation record",
+    "provider model test action writes sanitized local mutation audit evidence",
     providerModelTestResponse.status === 200 &&
       providerModelTestJson.ok === true &&
       providerModelTestJson.mutation?.operation === "provider_model_test" &&
-      providerModelTestJson.mutation?.accepted === true,
-    JSON.stringify(providerModelTestJson),
+      providerModelTestJson.mutation?.accepted === true &&
+      providerModelTestAuditResponse.status === 200 &&
+      providerModelTestAuditRecord?.operation === "provider_model_test" &&
+      providerModelTestAuditRecord.entity?.id === "replicate:nano-banana-2" &&
+      providerModelTestAuditRecord.accepted === true &&
+      providerModelTestAuditRecord.actorClientType === "agent" &&
+      providerModelTestAuditRecord.reason === "provider model test" &&
+      providerModelTestAuditRecord.mutation?.expectedReadToken == null &&
+      providerModelTestAuditRecord.mutation?.beforeReadToken == null &&
+      providerModelTestAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify({ response: providerModelTestJson, audit: providerModelTestAudit }),
     { mutation: providerModelTestJson.mutation },
   );
 
@@ -3910,7 +3923,7 @@ async function main() {
       providerAccountsBareCasRejected: checks.some((check) => check.name === "provider accounts update with bare CAS token is rejected" && check.status === "pass"),
       providerAccountsReceiptAccepted: checks.some((check) => check.name === "provider accounts update with receipt read token is accepted" && check.status === "pass"),
       providerAccountsUpdateAuditRecorded: checks.some((check) => check.name === "provider accounts update writes sanitized local mutation audit evidence" && check.status === "pass"),
-      providerModelTestMutationRecorded: checks.some((check) => check.name === "provider model test action returns host mutation record" && check.status === "pass"),
+      providerModelTestMutationRecorded: checks.some((check) => check.name === "provider model test action writes sanitized local mutation audit evidence" && check.status === "pass"),
       providerAccountDeleteMissingReadRejected: checks.some((check) => check.name === "provider account delete without prior read is rejected" && check.status === "pass"),
       providerAccountDeleteStaleReceiptRejected: checks.some((check) => check.name === "provider account delete with stale receipt is rejected" && check.status === "pass"),
       providerAccountDeleteBareCasRejected: checks.some((check) => check.name === "provider account delete with bare CAS token is rejected" && check.status === "pass"),

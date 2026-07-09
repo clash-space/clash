@@ -4173,7 +4173,7 @@ describe("local API app", () => {
 
     const ok = await app.request("/api/v1/model-providers/test", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
       body: JSON.stringify({
         provider: { id: "mock-primary", providerId: "mock", upstreamId: "mock", enabled: true },
         modelId: "nano-banana-2",
@@ -4216,6 +4216,13 @@ describe("local API app", () => {
       }),
       expect.any(Object),
     );
+    await expectSingleMutationAudit(app, {
+      operation: "provider_model_test",
+      entityId: "mock:nano-banana-2",
+      entityKind: "provider-test",
+      reason: "provider model test",
+      actorClientType: "agent",
+    });
 
     const mockModel = await app.request("/api/v1/model-providers/test", {
       method: "POST",
