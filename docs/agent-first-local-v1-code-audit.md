@@ -144,7 +144,8 @@ structured columns such as asset metadata, asset sources, and message events.
 The metadata/provider schema bootstraps upgrade old partial core metadata,
 asset/text/timeline projection tables, and provider/OAuth tables before
 local-api route reads or writes, while storage doctor validates and repairs the
-  same provider/OAuth table/key shape without inspecting secret values. A partially
+same provider/OAuth table/key shape without inspecting secret values and removes
+obsolete local product JSON database files. A partially
 initialized `local.sqlite` therefore does not require a separate doctor repair
 before the API can restart for core metadata or provider auth reads.
 `GET /api/v1/agents` now returns derived built-in local agents without inserting
@@ -166,6 +167,8 @@ Provider account and OAuth state route through
 The local product metadata contract is SQLite-only:
 
 - if SQLite does not exist yet, routes start from an empty local metadata state,
+- obsolete local product JSON database files are purged by local-api store
+  construction and by `clash doctor storage --repair`,
 - after a metadata write, `local_migration.metadata-sqlite-v1` marks SQLite as
   authoritative,
 - audit-only metadata writes use the same marker path, so a rejected-only local

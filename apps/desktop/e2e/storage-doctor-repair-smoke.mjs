@@ -226,6 +226,23 @@ async function main() {
     checkById(beforeReport, ["legacy", "project", "marker"].join("-")) === undefined,
     JSON.stringify(beforeReport.checks.filter((check) => /project.*marker/i.test(String(check.id)))),
   );
+  const legacyProductDbPath = path.join(clashHome, "local-api", ["db", "json"].join("."));
+  await mkdir(path.dirname(legacyProductDbPath), { recursive: true });
+  await writeFile(legacyProductDbPath, "{\"projects\":[]}\n", "utf8");
+  const legacyProductDb = runCli(["doctor", "storage", "--json"]);
+  recordCheck(
+    "doctor storage reports legacy product JSON database before repair",
+    legacyProductDb.status === 0,
+    legacyProductDb.stderr || legacyProductDb.stdout,
+    { command: legacyProductDb.command },
+  );
+  const legacyProductDbReport = parseStdoutJson(legacyProductDb);
+  recordCheck(
+    "doctor legacy product JSON database report is path-specific",
+    checkById(legacyProductDbReport, "legacy-product-json-database")?.level === "warning" &&
+      checkById(legacyProductDbReport, "legacy-product-json-database")?.path === legacyProductDbPath,
+    JSON.stringify(checkById(legacyProductDbReport, "legacy-product-json-database")),
+  );
 
   const secondaryReplicaRoot = path.join(workspace, "loro");
   const secondarySnapshotPath = path.join(secondaryReplicaRoot, "snapshot.bin");
@@ -271,6 +288,16 @@ async function main() {
       repairReport.repairs?.some((item) => item.id === "project-workspace") &&
       repairReport.repairs?.some((item) => item.id === "local-sqlite-schema"),
     JSON.stringify({ repaired: repairReport.repaired, repairs: repairReport.repairs }),
+  );
+  recordCheck(
+    "doctor repair removes legacy product JSON database",
+    repairReport.repairs?.some((item) => item.id === "legacy-product-json-database" && item.path === legacyProductDbPath) === true &&
+      checkById(repairReport, "legacy-product-json-database")?.level === "ok" &&
+      !(await pathIsFile(legacyProductDbPath)),
+    JSON.stringify({
+      repair: repairReport.repairs?.find((item) => item.path === legacyProductDbPath),
+      check: checkById(repairReport, "legacy-product-json-database"),
+    }),
   );
   recordCheck(
     "doctor repair makes valid writable revision blobs read-only",

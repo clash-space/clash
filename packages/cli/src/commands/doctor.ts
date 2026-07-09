@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
-import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   buildProjectRecoveryPolicy,
@@ -16,6 +16,7 @@ import {
 } from "./projects";
 
 const require = createRequire(process.execPath);
+const LEGACY_PRODUCT_JSON_DATABASE_FILE = ["db", "json"].join(".");
 
 type SqliteStatement = {
   get(...params: unknown[]): Record<string, unknown> | undefined;
@@ -226,6 +227,7 @@ export async function runStorageDoctor(options: {
   if (options.repair === true) {
     repairs.push(...await repairProjectWorkspace(status));
     repairs.push(...await repairSecondaryCanvasReplicas(status, cwd));
+    repairs.push(...await repairLegacyProductJsonDatabase(status.localApiDataDir));
     repairs.push(...await repairLocalSqliteSchema(status.localSqlitePath));
     repairs.push(...await repairRevisionBlobPermissions(status));
     checks.push({
@@ -322,6 +324,7 @@ export async function runStorageDoctor(options: {
     existsMessage: "Local SQLite target exists.",
     missingMessage: "Local SQLite target does not exist yet; local metadata will be initialized on first write.",
   });
+  checks.push(await inspectLegacyProductJsonDatabase(status.localApiDataDir));
   checks.push(await inspectLocalSqliteSchema(status.localSqlitePath));
 
   return {
@@ -1817,6 +1820,39 @@ async function pathExists(path: string, kind: "file" | "directory"): Promise<boo
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
+}
+
+function legacyProductJsonDatabasePath(localApiDataDir: string): string {
+  return join(localApiDataDir, LEGACY_PRODUCT_JSON_DATABASE_FILE);
+}
+
+async function repairLegacyProductJsonDatabase(localApiDataDir: string): Promise<StorageDoctorRepair[]> {
+  const path = legacyProductJsonDatabasePath(localApiDataDir);
+  if (!(await pathExists(path, "file"))) return [];
+  await rm(path, { force: true });
+  return [{
+    id: "legacy-product-json-database",
+    message: "Removed obsolete local product JSON database; local product metadata is SQLite-only.",
+    path,
+  }];
+}
+
+async function inspectLegacyProductJsonDatabase(localApiDataDir: string): Promise<StorageDoctorCheck> {
+  const path = legacyProductJsonDatabasePath(localApiDataDir);
+  if (await pathExists(path, "file")) {
+    return {
+      id: "legacy-product-json-database",
+      level: "warning",
+      message: "Obsolete local product JSON database exists; run `clash doctor storage --repair` to remove it.",
+      path,
+    };
+  }
+  return {
+    id: "legacy-product-json-database",
+    level: "ok",
+    message: "No obsolete local product JSON database file is present.",
+    path,
+  };
 }
 
 async function inspectAssetLinksRoot(assetLinksRoot: string): Promise<StorageDoctorCheck> {
