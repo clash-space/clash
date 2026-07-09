@@ -412,7 +412,7 @@ export function GroupChatPanel({
   const roomSyncBlockedReason = room.sync?.admission?.allowed === false
     ? roomSyncAdmission?.reason === 'remote-room-not-configured'
       ? 'Cloud room is not configured for this project'
-      : 'Room sync is not available for this project'
+      : 'Cloud room is unavailable in this local project'
     : null;
   const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
   const roomSyncConflictCount = roomSyncConflicts.length;

@@ -176,47 +176,38 @@ describe("useProjectRoom", () => {
     expect(result.current.sync?.remote_room.status).toBe("mirrored");
   });
 
-  it("adds the returned local room message after send when no live echo is available", async () => {
+  it("treats removed local room endpoints as hosted-room unavailable instead of emulating local room", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "POST") {
-        return new Response(JSON.stringify({
-          id: "local-message-1",
-          project_id: "project-1",
-          sender_kind: "user",
-          sender_id: "local-user",
-          sender_user_id: "local-user",
-          mentions: [],
-          text: "hello local room",
-          at: 1_700_000_001,
-          sync: {
-            mode: "local-only",
-            remote_room: { enabled: false, status: "disabled" },
-          },
-        }), { status: 201, headers: { "content-type": "application/json" } });
-      }
+      if (init?.method === "POST") throw new Error("local room POST should not be called once unavailable");
       return new Response(JSON.stringify({
-        sync: {
-          mode: "local-only",
-          remote_room: { enabled: false, status: "disabled" },
-        },
-        messages: [],
-      }), { headers: { "content-type": "application/json" } });
+        error: "not found",
+      }), { status: 404, headers: { "content-type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => useProjectRoom("project-1"));
-    await waitFor(() => expect(result.current.sync?.mode).toBe("local-only"));
+    await waitFor(() => expect(result.current.sync?.admission?.allowed).toBe(false));
+    expect(result.current.sync).toEqual({
+      mode: "local-only",
+      remote_room: { enabled: false, status: "disabled" },
+      admission: {
+        allowed: false,
+        reason: null,
+        requirements: [],
+      },
+    });
+    expect(result.current.error).toBeNull();
 
     await act(async () => {
-      await result.current.send("hello local room");
+      await result.current.send("hello removed room");
     });
 
-    expect(result.current.messages).toEqual([
-      expect.objectContaining({
-        id: "local-message-1",
-        type: "room.message",
-        text: "hello local room",
-      }),
-    ]);
+    await act(async () => {
+      await result.current.syncRoom();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.error).toBe("Cloud room is unavailable in this local project");
   });
 });

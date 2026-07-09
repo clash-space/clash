@@ -124,6 +124,7 @@ describe("GroupChatPanel primitives", () => {
 
     expect(panelSource).toContain("remote-room-not-configured");
     expect(panelSource).toContain("Cloud room is not configured for this project");
+    expect(panelSource).toContain("Cloud room is unavailable in this local project");
     expect(panelSource).not.toContain("room-sync-capability-not-ready");
     expect(panelSource).not.toContain("room mirror capability");
   });
@@ -135,6 +136,7 @@ describe("GroupChatPanel primitives", () => {
     expect(panelSource).toContain("roomSyncBlockedReason");
     expect(panelSource).toContain("room.sync?.admission?.allowed === false");
     expect(panelSource).toContain("Cloud room is not configured for this project");
+    expect(panelSource).toContain("Cloud room is unavailable in this local project");
     expect(panelSource).not.toContain("Room sync is waiting for the cloud room capability");
     expect(panelSource).toContain("roomSyncButtonTooltip");
     expect(panelSource).toContain("disabled={roomSyncBlockedReason !== null}");

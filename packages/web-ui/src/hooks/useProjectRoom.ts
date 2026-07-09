@@ -1,10 +1,10 @@
 /**
- * useProjectRoom — group-chat IM state for one project.
+ * useProjectRoom — hosted/cloud group-chat IM state for one project.
  *
  * Owns:
  *   - The room message log (initial fetch from /messages, then live
  *     updates piped in via setLiveMessage).
- *   - The send path (POST /api/v1/projects/:pid/room/messages) which
+ *   - The hosted send path (POST /api/v1/projects/:pid/room/messages) which
  *     handles both human-typed messages (sender_kind='user', omitted in
  *     body — server uses x-user-id) and agent tool-originated broadcasts
  *     (later, when the say_to_room MCP tool ships).
@@ -17,7 +17,10 @@
  *   useLoroSync({ ..., onRoomMessage: room.setLiveMessage });
  *
  * History fetch fires once on mount; refetch() can be called manually
- * after a long disconnect / reconnect to backfill anything missed.
+ * after a long disconnect / reconnect to backfill anything missed. Local-first
+ * v1 intentionally does not expose local room persistence; a 404 from the
+ * local runtime means hosted/cloud room is unavailable, not that local room
+ * state should be emulated.
  *
  * No coupling to agent sessions — the GroupChat panel composes this hook
  * with useGroupChat to wire @-mention dispatch and inbound room.mention
@@ -29,6 +32,7 @@ import type { RoomMessageEvent, RoomMention } from '@clash/shared-types';
 import { runtimeApiUrl } from '../lib/runtimeConfig';
 
 const ROOM_BASE = '/api/v1/projects';
+const LOCAL_ROOM_UNAVAILABLE = 'Cloud room is unavailable in this local project';
 
 export type RoomSyncStatus = 'disabled' | 'pending' | 'imported' | 'mirrored' | 'failed';
 
@@ -121,6 +125,19 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
   const [syncPlan, setSyncPlan] = useState<RoomSyncPlan | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
 
+  const markRoomUnavailable = useCallback(() => {
+    setSync({
+      mode: 'local-only',
+      remote_room: { enabled: false, status: 'disabled' },
+      admission: {
+        allowed: false,
+        reason: null,
+        requirements: [],
+      },
+    });
+    setSyncPlan(null);
+  }, []);
+
   const append = useCallback((batch: RoomMessageEvent[]) => {
     if (batch.length === 0) return;
     // Dedup + mutate seenIds OUTSIDE the setMessages updater. React
@@ -151,6 +168,10 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
         sync?: RoomSyncMeta;
         plan?: RoomSyncPlan;
       };
+      if (res.status === 404) {
+        markRoomUnavailable();
+        return;
+      }
       setSync(json.sync ?? null);
       setSyncPlan(json.plan ?? null);
       if (!res.ok) {
@@ -166,7 +187,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
     } finally {
       setLoading(false);
     }
-  }, [projectId, append]);
+  }, [projectId, append, markRoomUnavailable]);
 
   // History fetch on mount / project change. Live updates flow via
   // setLiveMessage from the parent's WS subscription.
@@ -180,6 +201,10 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
 
   const send = useCallback(async (text: string, mentions?: RoomMention[]) => {
     if (!projectId) return;
+    if (sync?.admission?.allowed === false) {
+      setError(LOCAL_ROOM_UNAVAILABLE);
+      return;
+    }
     const body = JSON.stringify({ text, mentions: mentions ?? [] });
     try {
       const res = await fetch(runtimeApiUrl(`${ROOM_BASE}/${projectId}/room/messages`), {
@@ -191,6 +216,11 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
       const json = (await res.json().catch(() => null)) as
         | (Partial<RoomMessageEvent> & { type?: string; error?: string; sync?: RoomSyncMeta; plan?: RoomSyncPlan })
         | null;
+      if (res.status === 404) {
+        markRoomUnavailable();
+        setError(LOCAL_ROOM_UNAVAILABLE);
+        return;
+      }
       if (json?.sync) setSync(json.sync);
       if (json?.plan) setSyncPlan(json.plan);
       if (!res.ok) {
@@ -211,16 +241,20 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
       ) {
         append([{ ...(json as RoomMessageEvent), type: 'room.message' }]);
       }
-      // Cloud rooms usually echo through ProjectRoom; local daemon rooms
-      // return the authoritative message directly. Append it here and let
+      // Hosted rooms usually echo through ProjectRoom. Some compatible hosts
+      // return the authoritative message directly; append it here and let
       // seenIds dedupe any later live echo.
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [projectId, append]);
+  }, [projectId, append, markRoomUnavailable, sync?.admission?.allowed]);
 
   const syncRoom = useCallback(async () => {
     if (!projectId) return;
+    if (sync?.admission?.allowed === false) {
+      setError(LOCAL_ROOM_UNAVAILABLE);
+      return;
+    }
     setError(null);
     try {
       const res = await fetch(runtimeApiUrl(`${ROOM_BASE}/${projectId}/room/sync`), {
@@ -232,6 +266,11 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
         sync?: RoomSyncMeta;
         plan?: RoomSyncPlan;
       };
+      if (res.status === 404) {
+        markRoomUnavailable();
+        setError(LOCAL_ROOM_UNAVAILABLE);
+        return;
+      }
       setSync(json.sync ?? null);
       setSyncPlan(json.plan ?? null);
       if (!res.ok) {
@@ -244,7 +283,7 @@ export function useProjectRoom(projectId: string | null): UseProjectRoomReturn {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [projectId, refetch]);
+  }, [projectId, refetch, markRoomUnavailable, sync?.admission?.allowed]);
 
   const setLiveMessage = useCallback((msg: RoomMessageEvent) => {
     append([msg]);
