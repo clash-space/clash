@@ -197,6 +197,10 @@ Product rule:
 - Project status exposes this split as `collaboration.tracePolicy`: room
   messages and public session metadata are sync-worthy collaboration context,
   while raw agent traces are `local-only` by default and excluded from room.
+  The same status payload exposes the raw-trace retention control: traces are
+  kept until per-session deletion through `DELETE /api/v1/sessions` or
+  `clash sessions delete`, which clears the runtime session row and its
+  `chat_message` trace rows.
 
 ### Assets
 

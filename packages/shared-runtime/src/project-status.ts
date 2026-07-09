@@ -227,6 +227,13 @@ export interface ProjectStatusTracePolicy {
     optInRequiredForSync: true;
     excludedFromRoom: true;
     sensitiveFields: string[];
+    retention: {
+      default: "until-session-delete";
+      scope: "per-session";
+      api: "DELETE /api/v1/sessions";
+      cliCommand: "clash sessions delete";
+      clears: ["runtime_session", "chat_message"];
+    };
   };
 }
 
@@ -891,6 +898,13 @@ function projectTracePolicy(): ProjectStatusTracePolicy {
       optInRequiredForSync: true,
       excludedFromRoom: true,
       sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+      retention: {
+        default: "until-session-delete",
+        scope: "per-session",
+        api: "DELETE /api/v1/sessions",
+        cliCommand: "clash sessions delete",
+        clears: ["runtime_session", "chat_message"],
+      },
     },
   };
 }

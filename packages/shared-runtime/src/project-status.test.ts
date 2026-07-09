@@ -19,6 +19,13 @@ const expectedTracePolicy = {
     optInRequiredForSync: true,
     excludedFromRoom: true,
     sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+    retention: {
+      default: "until-session-delete",
+      scope: "per-session",
+      api: "DELETE /api/v1/sessions",
+      cliCommand: "clash sessions delete",
+      clears: ["runtime_session", "chat_message"],
+    },
   },
 } as const;
 

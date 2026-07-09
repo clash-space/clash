@@ -556,7 +556,14 @@ Agents need a stable inspection payload:
         "syncDefault": "local-only",
         "optInRequiredForSync": true,
         "excludedFromRoom": true,
-        "sensitiveFields": ["tool-logs", "local-file-paths", "scratch-context"]
+        "sensitiveFields": ["tool-logs", "local-file-paths", "scratch-context"],
+        "retention": {
+          "default": "until-session-delete",
+          "scope": "per-session",
+          "api": "DELETE /api/v1/sessions",
+          "cliCommand": "clash sessions delete",
+          "clears": ["runtime_session", "chat_message"]
+        }
       }
     },
     "localAgentRuntime": {
@@ -765,7 +772,8 @@ revision-content sync capabilities are explicitly ready in local sync config
 and passed through the status builder; only ready synced projects may use
 `roomAuthority: "local-with-cloud-mirror"`. The same payload exposes
 `tracePolicy` so room chat/public session metadata and raw agent traces do not
-share an accidental sync surface. Only `shared` enables
+share an accidental sync surface; raw trace retention is explicit and tied to
+per-session deletion, not room sync. Only `shared` enables
 `cloudProjectRoom: "sequencer"` and `multiUser: true`. Local actions still
 require the owner's machine-local agent runtime in every mode.
 `syncPolicy` is the machine-readable mirror contract behind those gates:
