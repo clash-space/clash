@@ -52,7 +52,7 @@ describe("resolveProjectShareAdmission", () => {
     })).toEqual({
       visible: true,
       allowed: false,
-      tooltip: "Finish cloud sync setup before sharing: canvas, room, asset-metadata, revision-content",
+      tooltip: "Finish cloud sync setup before sharing: canvas, room, asset metadata, revision content",
       source: "project-status",
     });
   });

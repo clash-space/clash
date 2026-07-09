@@ -39,10 +39,18 @@ function projectShareGateTooltip(
   if (reason === "project-is-local-only") return "Enable sync before sharing this project";
   if (reason === "cloud-sync-not-ready") {
     const missing = requirements.length > 0
-      ? `: ${requirements.join(", ")}`
+      ? `: ${requirements.map(projectShareRequirementLabel).join(", ")}`
       : "";
     return `Finish cloud sync setup before sharing${missing}`;
   }
   if (reason === "sync-mode-unknown") return "Resolve project sync mode before sharing";
   return "Copy project link";
+}
+
+function projectShareRequirementLabel(requirement: string): string {
+  if (requirement === "asset-metadata") return "asset metadata";
+  if (requirement === "revision-content") return "revision content";
+  if (requirement === "enable-sync") return "enable sync";
+  if (requirement === "sync-mode") return "sync mode";
+  return requirement;
 }
