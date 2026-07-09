@@ -1249,6 +1249,9 @@ Do not implement text projection without CAS.
 Do not implement asset editing without copy-on-write.
 Do not present hosted/cloud room state as local sync readiness; local v1 has no
 local room mirror path.
+Share/Open-in-Web UI must also filter stale `room` readiness requirements from
+cloud-sync tooltips, because older status payloads may still carry the legacy
+mirror name.
 
 ## Done Criteria For v1 Local/Agent-First
 

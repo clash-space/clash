@@ -72,8 +72,9 @@ function projectShareGateTooltip(
 ): string {
   if (reason === "project-is-local-only") return "Enable sync before sharing this project";
   if (reason === "cloud-sync-not-ready") {
-    const missing = requirements.length > 0
-      ? `: ${requirements.map(projectShareRequirementLabel).join(", ")}`
+    const labels = projectShareRequirementLabels(requirements);
+    const missing = labels.length > 0
+      ? `: ${labels.join(", ")}`
       : "";
     return `Finish cloud sync setup before sharing${missing}`;
   }
@@ -87,8 +88,9 @@ function projectWebGateTooltip(
 ): string {
   if (reason === "project-is-local-only") return "Enable sync before opening this project on the web";
   if (reason === "cloud-sync-not-ready") {
-    const missing = requirements.length > 0
-      ? `: ${requirements.map(projectShareRequirementLabel).join(", ")}`
+    const labels = projectShareRequirementLabels(requirements);
+    const missing = labels.length > 0
+      ? `: ${labels.join(", ")}`
       : "";
     return `Finish cloud sync setup before opening in web${missing}`;
   }
@@ -102,4 +104,10 @@ function projectShareRequirementLabel(requirement: string): string {
   if (requirement === "enable-sync") return "enable sync";
   if (requirement === "sync-mode") return "sync mode";
   return requirement;
+}
+
+function projectShareRequirementLabels(requirements: readonly string[]): string[] {
+  return requirements
+    .filter((requirement) => requirement !== "room")
+    .map(projectShareRequirementLabel);
 }

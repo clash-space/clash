@@ -42,19 +42,22 @@ describe("resolveProjectShareAdmission", () => {
   });
 
   it("surfaces missing mirror requirements for pending cloud-sync projects", () => {
-    expect(resolveProjectShareAdmission({
+    const admission = resolveProjectShareAdmission({
       shareGate: {
         allowed: false,
         reason: "cloud-sync-not-ready",
         requirements: ["canvas", "room", "asset-metadata", "revision-content"],
       },
       runtimePersistence: "remote",
-    })).toEqual({
+    });
+
+    expect(admission).toEqual({
       visible: true,
       allowed: false,
-      tooltip: "Finish cloud sync setup before sharing: canvas, room, asset metadata, revision content",
+      tooltip: "Finish cloud sync setup before sharing: canvas, asset metadata, revision content",
       source: "project-status",
     });
+    expect(admission.tooltip).not.toContain("room");
   });
 });
 
@@ -76,19 +79,22 @@ describe("resolveProjectWebAdmission", () => {
   });
 
   it("keeps cloud-sync pending requirements readable for web admission", () => {
-    expect(resolveProjectWebAdmission({
+    const admission = resolveProjectWebAdmission({
       openInWebGate: {
         allowed: false,
         reason: "cloud-sync-not-ready",
         requirements: ["canvas", "room", "asset-metadata", "revision-content"],
       },
-    })).toEqual({
+    });
+
+    expect(admission).toEqual({
       visible: true,
       allowed: false,
-      tooltip: "Finish cloud sync setup before opening in web: canvas, room, asset metadata, revision content",
+      tooltip: "Finish cloud sync setup before opening in web: canvas, asset metadata, revision content",
       url: null,
       source: "project-status",
     });
+    expect(admission.tooltip).not.toContain("room");
   });
 
   it("does not show an enabled web action without a real web URL", () => {

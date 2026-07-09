@@ -377,6 +377,9 @@ Evidence:
 - Cloud schema/routes may still implement room messages for hosted/shared
   projects.
 - Web conflict recovery copy no longer renders removed room CLI commands.
+- Web Share/Open-in-Web admission filters legacy `room` readiness requirements
+  out of cloud-sync tooltips so stale local status cannot reintroduce a local
+  room mirror concept.
 - Raw ACP traces remain session/runtime state rather than project chat.
 
 Conclusion:
@@ -439,8 +442,8 @@ Current status:
   link to the v1 docs and this traceability matrix.
 - Item 12 is checked with `git diff --check`, JSON parse for schema, desktop
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
-- Code implementation remains incomplete for fuller room admission policy/live UI beyond hosted/cloud room compatibility
-  gate, fuller conflict recovery workflow, stronger direct
+- Code implementation remains incomplete for fuller hosted/cloud room live UI
+  beyond compatibility gates, fuller conflict recovery workflow, stronger direct
   action-runner/confirmation UX for visual revision restore requests, remaining
   storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume

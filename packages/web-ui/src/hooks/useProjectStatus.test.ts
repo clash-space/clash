@@ -30,8 +30,8 @@ describe("useProjectStatus", () => {
           syncReadiness: {
             status: "disabled",
             ready: false,
-            required: ["canvas", "room", "asset-metadata", "revision-content"],
-            missing: ["canvas", "room", "asset-metadata", "revision-content"],
+            required: ["canvas", "asset-metadata", "revision-content"],
+            missing: ["canvas", "asset-metadata", "revision-content"],
           },
           actions: {
             openInWeb: {
@@ -77,6 +77,8 @@ describe("useProjectStatus", () => {
     });
     expect(result.current.actions?.enableSync.allowed).toBe(true);
     expect(result.current.actions?.runLocalAgent.requirements).toEqual(["owner-machine-online"]);
+    expect(result.current.status?.collaboration.syncReadiness.required).toEqual(["canvas", "asset-metadata", "revision-content"]);
+    expect(result.current.status?.collaboration.syncReadiness.required).not.toContain("room");
   });
 
   it("does not fetch without a project id", () => {
