@@ -706,6 +706,9 @@ async function main() {
       contentModel.textNodes.projectionPath === textViewFiles?.path &&
       contentModel.textNodes.applyCommand === "clash text apply" &&
       contentModel.textNodes.replaceCommand === "clash text replace" &&
+      contentModel.textNodes.restoreCommand === "clash text restore" &&
+      contentModel.textNodes.historyCommand === "clash text history" &&
+      contentModel.textNodes.contentCommand === "clash text content" &&
       contentModel.textNodes.casRequired === true &&
       contentModel.textNodes.copyOnWriteWhenReferenced === true &&
       contentModel.textNodes.revisionRegistry === "text_revisions" &&
@@ -721,6 +724,9 @@ async function main() {
       contentModel.timelines.projectionPath === timelineViewFiles?.path &&
       contentModel.timelines.applyCommand === "clash timeline apply" &&
       contentModel.timelines.replaceCommand === "clash timeline replace" &&
+      contentModel.timelines.restoreCommand === "clash timeline restore" &&
+      contentModel.timelines.historyCommand === "clash timeline history" &&
+      contentModel.timelines.contentCommand === "clash timeline content" &&
       contentModel.timelines.casRequired === true &&
       contentModel.timelines.copyOnWriteWhenReferenced === true &&
       contentModel.timelines.revisionRegistry === "timeline_revisions" &&

@@ -1320,6 +1320,45 @@ test("storage doctor fails when text or timeline content is modeled as media ass
   assert.match(contract.message, /timeline content model incorrectly uses media assets/);
 });
 
+test("storage doctor fails when text or timeline revision read commands drift from the CLI contract", () => {
+  const status = buildProjectStatus(
+    { projectId: "doctor_project", source: "explicit" },
+    { homeDir: "/tmp/clash-home" },
+  );
+  const corrupted = {
+    ...status,
+    storage: {
+      ...status.storage,
+      contentModel: {
+        ...status.storage.contentModel,
+        textNodes: {
+          ...status.storage.contentModel.textNodes,
+          restoreCommand: "clash text apply",
+          historyCommand: "clash assets list",
+          contentCommand: "clash asset get",
+        },
+        timelines: {
+          ...status.storage.contentModel.timelines,
+          restoreCommand: "clash timeline apply",
+          historyCommand: "clash text history",
+          contentCommand: "clash text content",
+        },
+      },
+    },
+  };
+
+  const checks = inspectStorageContract(corrupted as any);
+
+  const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
+  assert.equal(contract.level, "error");
+  assert.match(contract.message, /text content model restore command is wrong/);
+  assert.match(contract.message, /text content model history command is wrong/);
+  assert.match(contract.message, /text content model content command is wrong/);
+  assert.match(contract.message, /timeline content model restore command is wrong/);
+  assert.match(contract.message, /timeline content model history command is wrong/);
+  assert.match(contract.message, /timeline content model content command is wrong/);
+});
+
 test("storage doctor fails when workspace editable paths omit a declared agent root", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },

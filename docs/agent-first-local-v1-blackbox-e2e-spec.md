@@ -723,7 +723,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-08T15-53-17-254Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T02-53-42-505Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -815,7 +815,8 @@ Result:
   local-only storage rather than agent-editable projections,
 - `storage.contentModel` separated text/timeline projection files from non-media
   host-indexed revision blobs and confirmed text/timeline bodies are not media
-  asset rows,
+  asset rows, while pinning the explicit `restore`, `history`, and `content`
+  CLI commands agents use to recover/read revisions,
 - doctor rejected tampered/writable text and timeline revision blobs with a
   parseable JSON report that identified `text-revision-blob-integrity` and
   `timeline-revision-blob-integrity` failures.

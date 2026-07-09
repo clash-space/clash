@@ -719,6 +719,9 @@ function validateContentModelContract(
     projectionPath: storage.workspace.viewFiles?.texts?.path,
     applyCommand: "clash text apply",
     replaceCommand: "clash text replace",
+    restoreCommand: "clash text restore",
+    historyCommand: "clash text history",
+    contentCommand: "clash text content",
     revisionRegistry: "text_revisions",
     revisionBlobPath: storage.canonicalReplica.contentBlobs?.textRevisions?.path,
     registryBlobStore: "storage.canonicalReplica.contentBlobs.textRevisions",
@@ -732,6 +735,9 @@ function validateContentModelContract(
     projectionPath: storage.workspace.viewFiles?.timelines?.path,
     applyCommand: "clash timeline apply",
     replaceCommand: "clash timeline replace",
+    restoreCommand: "clash timeline restore",
+    historyCommand: "clash timeline history",
+    contentCommand: "clash timeline content",
     revisionRegistry: "timeline_revisions",
     revisionBlobPath: storage.canonicalReplica.contentBlobs?.timelineRevisions?.path,
     registryBlobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
@@ -750,6 +756,9 @@ function validateContentModelEntry(
     projectionPath?: string;
     applyCommand: string;
     replaceCommand: string;
+    restoreCommand: string;
+    historyCommand: string;
+    contentCommand: string;
     revisionRegistry: string;
     revisionBlobPath?: string;
     registryBlobStore: string;
@@ -776,6 +785,15 @@ function validateContentModelEntry(
   }
   if (expected.entry.replaceCommand !== expected.replaceCommand) {
     problems.push(`${expected.label} content model replace command is wrong`);
+  }
+  if (expected.entry.restoreCommand !== expected.restoreCommand) {
+    problems.push(`${expected.label} content model restore command is wrong`);
+  }
+  if (expected.entry.historyCommand !== expected.historyCommand) {
+    problems.push(`${expected.label} content model history command is wrong`);
+  }
+  if (expected.entry.contentCommand !== expected.contentCommand) {
+    problems.push(`${expected.label} content model content command is wrong`);
   }
   if (expected.entry.casRequired !== true) {
     problems.push(`${expected.label} content model does not require CAS`);
