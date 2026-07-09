@@ -2978,6 +2978,7 @@ async function main() {
   await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(edgeAuditProjectId, (doc) => {
     doc.getMap("nodes").set("edge-source", { type: "text", data: { label: "Edge source" } });
     doc.getMap("nodes").set("edge-target", { type: "text", data: { label: "Edge target" } });
+    doc.getMap("nodes").set("edge-extra", { type: "text", data: { label: "Edge extra target" } });
     doc.getMap("edges").set("edge-source-edge-target", {
       source: "edge-source",
       target: "edge-target",
@@ -2998,11 +2999,95 @@ async function main() {
     { readToken: edgeList.readToken, edgeReadToken: edgeToDelete?.readToken },
   );
 
-  const edgeDeleteResponse = await request(`/api/v1/projects/${edgeAuditProjectId}/canvas/edges/edge-source-edge-target`, {
+  const edgeAddResponse = await request(`/api/v1/projects/${edgeAuditProjectId}/canvas/edges/edge-target-edge-extra`, {
+    method: "POST",
+    body: JSON.stringify({
+      source: "edge-target",
+      target: "edge-extra",
+      type: "reference",
+      actorClientType: "agent",
+      ifMatch: edgeList.readToken,
+    }),
+  });
+  const edgeAdd = await parseJsonResponse(edgeAddResponse);
+  recordCheck(
+    "canvas edge add with graph receipt is accepted",
+    edgeAddResponse.status === 200 &&
+      edgeAdd.edge?.id === "edge-target-edge-extra" &&
+      hasReceipt(edgeAdd.edge?.readToken, "edge") &&
+      hasReceipt(edgeAdd.readToken, "edges") &&
+      edgeAdd.mutation?.accepted === true &&
+      edgeAdd.mutation?.operation === "canvas_add_edge" &&
+      edgeAdd.mutation?.expectedReadToken === edgeList.readToken &&
+      edgeAdd.mutation?.beforeReadToken === baseReadToken(edgeList.readToken),
+    JSON.stringify(edgeAdd),
+    { mutation: edgeAdd.mutation },
+  );
+
+  const edgeAddAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_add_edge&entityId=edge-target-edge-extra");
+  const edgeAddAudit = await parseJsonResponse(edgeAddAuditResponse);
+  const edgeAddAuditRecord = edgeAddAudit.records?.[0];
+  recordCheck(
+    "canvas edge add writes sanitized local mutation audit evidence",
+    edgeAddAuditResponse.status === 200 &&
+      edgeAddAudit.records?.length === 1 &&
+      edgeAddAuditRecord.operation === "canvas_add_edge" &&
+      edgeAddAuditRecord.entity?.id === "edge-target-edge-extra" &&
+      edgeAddAuditRecord.accepted === true &&
+      edgeAddAuditRecord.reason === "canvas edge add" &&
+      !JSON.stringify(edgeAddAuditRecord.mutation ?? {}).includes("receipt") &&
+      edgeAddAuditRecord.mutation?.expectedReadToken == null &&
+      edgeAddAuditRecord.mutation?.beforeReadToken == null &&
+      edgeAddAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(edgeAddAudit),
+  );
+
+  const edgeUpdateResponse = await request(`/api/v1/projects/${edgeAuditProjectId}/canvas/edges/edge-target-edge-extra`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      type: "copy-on-write",
+      actorClientType: "agent",
+      ifMatch: edgeAdd.edge?.readToken,
+    }),
+  });
+  const edgeUpdate = await parseJsonResponse(edgeUpdateResponse);
+  recordCheck(
+    "canvas edge update with edge receipt is accepted",
+    edgeUpdateResponse.status === 200 &&
+      edgeUpdate.edge?.id === "edge-target-edge-extra" &&
+      edgeUpdate.edge?.type === "copy-on-write" &&
+      hasReceipt(edgeUpdate.readToken, "edge") &&
+      edgeUpdate.mutation?.accepted === true &&
+      edgeUpdate.mutation?.operation === "canvas_update_edge" &&
+      edgeUpdate.mutation?.expectedReadToken === edgeAdd.edge?.readToken &&
+      edgeUpdate.mutation?.beforeReadToken === baseReadToken(edgeAdd.edge?.readToken),
+    JSON.stringify(edgeUpdate),
+    { mutation: edgeUpdate.mutation },
+  );
+
+  const edgeUpdateAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_update_edge&entityId=edge-target-edge-extra");
+  const edgeUpdateAudit = await parseJsonResponse(edgeUpdateAuditResponse);
+  const edgeUpdateAuditRecord = edgeUpdateAudit.records?.[0];
+  recordCheck(
+    "canvas edge update writes sanitized local mutation audit evidence",
+    edgeUpdateAuditResponse.status === 200 &&
+      edgeUpdateAudit.records?.length === 1 &&
+      edgeUpdateAuditRecord.operation === "canvas_update_edge" &&
+      edgeUpdateAuditRecord.entity?.id === "edge-target-edge-extra" &&
+      edgeUpdateAuditRecord.accepted === true &&
+      edgeUpdateAuditRecord.reason === "canvas edge update" &&
+      !JSON.stringify(edgeUpdateAuditRecord.mutation ?? {}).includes("receipt") &&
+      edgeUpdateAuditRecord.mutation?.expectedReadToken == null &&
+      edgeUpdateAuditRecord.mutation?.beforeReadToken == null &&
+      edgeUpdateAuditRecord.mutation?.afterReadToken == null,
+    JSON.stringify(edgeUpdateAudit),
+  );
+
+  const edgeDeleteResponse = await request(`/api/v1/projects/${edgeAuditProjectId}/canvas/edges/edge-target-edge-extra`, {
     method: "DELETE",
     body: JSON.stringify({
       actorClientType: "agent",
-      ifMatch: edgeToDelete?.readToken,
+      ifMatch: edgeUpdate.readToken,
     }),
   });
   const edgeDelete = await parseJsonResponse(edgeDeleteResponse);
@@ -3011,13 +3096,13 @@ async function main() {
     edgeDeleteResponse.status === 200 &&
       edgeDelete.mutation?.accepted === true &&
       edgeDelete.mutation?.operation === "canvas_delete_edge" &&
-      edgeDelete.mutation?.expectedReadToken === edgeToDelete?.readToken &&
-      edgeDelete.mutation?.beforeReadToken === baseReadToken(edgeToDelete?.readToken),
+      edgeDelete.mutation?.expectedReadToken === edgeUpdate.readToken &&
+      edgeDelete.mutation?.beforeReadToken === baseReadToken(edgeUpdate.readToken),
     JSON.stringify(edgeDelete),
     { mutation: edgeDelete.mutation },
   );
 
-  const edgeDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_delete_edge&entityId=edge-source-edge-target");
+  const edgeDeleteAuditResponse = await request("/api/v1/mutation-audit?operation=canvas_delete_edge&entityId=edge-target-edge-extra");
   const edgeDeleteAudit = await parseJsonResponse(edgeDeleteAuditResponse);
   const edgeDeleteAuditRecord = edgeDeleteAudit.records?.[0];
   recordCheck(
@@ -3025,7 +3110,7 @@ async function main() {
     edgeDeleteAuditResponse.status === 200 &&
       edgeDeleteAudit.records?.length === 1 &&
       edgeDeleteAuditRecord.operation === "canvas_delete_edge" &&
-      edgeDeleteAuditRecord.entity?.id === "edge-source-edge-target" &&
+      edgeDeleteAuditRecord.entity?.id === "edge-target-edge-extra" &&
       edgeDeleteAuditRecord.accepted === true &&
       edgeDeleteAuditRecord.reason === "canvas edge delete" &&
       !JSON.stringify(edgeDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
@@ -3749,6 +3834,10 @@ async function main() {
       canvasBatchDeleteReceiptAccepted: checks.some((check) => check.name === "canvas batch delete with receipt is accepted" && check.status === "pass"),
       canvasBatchDeleteAuditRecorded: checks.some((check) => check.name === "canvas batch delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       canvasEdgeListReceiptReturned: checks.some((check) => check.name === "canvas edge list returns graph and edge receipt read tokens" && check.status === "pass"),
+      canvasEdgeAddReceiptAccepted: checks.some((check) => check.name === "canvas edge add with graph receipt is accepted" && check.status === "pass"),
+      canvasEdgeAddAuditRecorded: checks.some((check) => check.name === "canvas edge add writes sanitized local mutation audit evidence" && check.status === "pass"),
+      canvasEdgeUpdateReceiptAccepted: checks.some((check) => check.name === "canvas edge update with edge receipt is accepted" && check.status === "pass"),
+      canvasEdgeUpdateAuditRecorded: checks.some((check) => check.name === "canvas edge update writes sanitized local mutation audit evidence" && check.status === "pass"),
       canvasEdgeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas edge delete with receipt is accepted" && check.status === "pass"),
       canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
       localObsoleteProjectEndpointsRejected: checks.some((check) => check.name === "obsolete local project endpoints are not exposed" && check.status === "pass"),

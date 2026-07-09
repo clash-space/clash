@@ -3106,6 +3106,29 @@ describe("local API app", () => {
         resultEntityId: "edge-bc",
       },
     });
+    const addAudit = await app.request(`/api/v1/mutation-audit?operation=canvas_add_edge&entityId=edge-bc`);
+    expect(addAudit.status).toBe(200);
+    const addAuditJson = await addAudit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(addAuditJson.records).toHaveLength(1);
+    expect(addAuditJson.records[0]).toMatchObject({
+      operation: "canvas_add_edge",
+      entity: { kind: "canvas-edge", id: "edge-bc" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "canvas edge add",
+      mutation: {
+        operation: "canvas_add_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        resultEntityId: "edge-bc",
+        forced: false,
+        accepted: true,
+      },
+    });
+    expect(JSON.stringify(addAuditJson.records[0].mutation)).not.toContain("receipt");
+    expect(addAuditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(addAuditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
+    expect(addAuditJson.records[0].mutation).not.toHaveProperty("afterReadToken");
 
     const bareUpdate = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
       method: "PATCH",
@@ -3156,6 +3179,29 @@ describe("local API app", () => {
         accepted: true,
       },
     });
+    const updateAudit = await app.request(`/api/v1/mutation-audit?operation=canvas_update_edge&entityId=edge-bc`);
+    expect(updateAudit.status).toBe(200);
+    const updateAuditJson = await updateAudit.json() as { records: Array<{ mutation?: unknown }> };
+    expect(updateAuditJson.records).toHaveLength(1);
+    expect(updateAuditJson.records[0]).toMatchObject({
+      operation: "canvas_update_edge",
+      entity: { kind: "canvas-edge", id: "edge-bc" },
+      accepted: true,
+      forced: false,
+      actorClientType: "agent",
+      reason: "canvas edge update",
+      mutation: {
+        operation: "canvas_update_edge",
+        entity: { kind: "canvas-edge", id: "edge-bc" },
+        resultEntityId: "edge-bc",
+        forced: false,
+        accepted: true,
+      },
+    });
+    expect(JSON.stringify(updateAuditJson.records[0].mutation)).not.toContain("receipt");
+    expect(updateAuditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
+    expect(updateAuditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
+    expect(updateAuditJson.records[0].mutation).not.toHaveProperty("afterReadToken");
 
     const staleDelete = await app.request(`/api/v1/projects/${projectId}/canvas/edges/edge-bc`, {
       method: "DELETE",
