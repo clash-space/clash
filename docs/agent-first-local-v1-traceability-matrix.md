@@ -192,8 +192,9 @@ Evidence:
   revisions plus explicit `clash text/timeline content --revision ... --out ...`
   recovery commands and `clash text/timeline restore --mode replace` COW
   commands. `useRevisionHistory.test.ts`,
-  `RevisionHistoryBadge.test.tsx`, and `nodeModalPrimitives.test.ts` protect
-  the endpoint selection, command surface, and node integration.
+  `RevisionHistoryBadge.test.tsx`, `nodeModalPrimitives.test.ts`, and
+  `agent-first-cas-smoke.mjs` protect the endpoint selection, command surface,
+  node integration, and black-box CLI restore gate.
 
 Conclusion:
 

@@ -1812,10 +1812,12 @@ async function runDirectCanvasCliReadTokenCas() {
     let textApplyPayload = null;
     let textHistoryPayload = null;
     let textContentPayload = null;
+    let textRestorePayload = null;
     let timelinePullPayload = null;
     let timelineApplyPayload = null;
     let timelineHistoryPayload = null;
     let timelineContentPayload = null;
+    let timelineRestorePayload = null;
     try {
       const revisionEnv = {
         ...env,
@@ -1927,6 +1929,44 @@ async function runDirectCanvasCliReadTokenCas() {
           ),
         textContent.stderr || textContent.stdout,
         { command: textContent.command, textContentPayload, revisionHostRequests: revisionHost.requests },
+      );
+      const textRestore = runText([
+        "restore",
+        "--project",
+        projectId,
+        "--node",
+        "text-cli",
+        "--revision",
+        textApplyPayload.textRevision.revisionId,
+        "--new-node",
+        "text-cli-restored",
+        "--json",
+      ], revisionEnv);
+      textRestorePayload = textRestore.status === 0 ? parseStdoutJson(textRestore) : null;
+      recordCheck(
+        "text restore creates copy-on-write revision from host content",
+        textRestore.status === 0 &&
+          textRestorePayload?.mode === "replace" &&
+          textRestorePayload?.copyOnWrite === true &&
+          textRestorePayload?.sourceNodeId === "text-cli" &&
+          textRestorePayload?.newNodeId === "text-cli-restored" &&
+          textRestorePayload?.textRevision?.parentRevisionId === textApplyPayload.textRevision.revisionId &&
+          textRestorePayload?.textRevisionIndex?.indexed === true &&
+          readOptionalText(textRestorePayload?.filePath) === "history-indexed copy\n" &&
+          revisionHost.requests.some((request) =>
+            request.method === "GET" &&
+            request.path === `/api/v1/projects/${projectId}/text-revisions/${textApplyPayload.textRevision.revisionId}/content`
+          ) &&
+          revisionHost.requests.some((request) =>
+            request.method === "POST" && request.path === "/api/v1/text-revisions"
+          ),
+        textRestore.stderr || textRestore.stdout || textRestore.error,
+        {
+          command: textRestore.command,
+          textRestorePayload,
+          revisionHostRequests: revisionHost.requests,
+          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
+        },
       );
 
       const timelinePull = runTimeline([
@@ -2053,6 +2093,44 @@ async function runDirectCanvasCliReadTokenCas() {
         timelineContent.stderr || timelineContent.stdout,
         { command: timelineContent.command, timelineContentPayload, revisionHostRequests: revisionHost.requests },
       );
+      const timelineRestore = runTimeline([
+        "restore",
+        "--project",
+        projectId,
+        "--node",
+        "timeline-cli",
+        "--revision",
+        timelineApplyPayload.timelineRevision.revisionId,
+        "--new-node",
+        "timeline-cli-restored",
+        "--json",
+      ], revisionEnv);
+      timelineRestorePayload = timelineRestore.status === 0 ? parseStdoutJson(timelineRestore) : null;
+      recordCheck(
+        "timeline restore creates copy-on-write revision from host content",
+        timelineRestore.status === 0 &&
+          timelineRestorePayload?.mode === "replace" &&
+          timelineRestorePayload?.copyOnWrite === true &&
+          timelineRestorePayload?.sourceNodeId === "timeline-cli" &&
+          timelineRestorePayload?.newNodeId === "timeline-cli-restored" &&
+          timelineRestorePayload?.timelineRevision?.parentRevisionId === timelineApplyPayload.timelineRevision.revisionId &&
+          timelineRestorePayload?.timelineRevisionIndex?.indexed === true &&
+          readOptionalText(timelineRestorePayload?.filePath)?.includes("sourceNodeId: text-cli") === true &&
+          revisionHost.requests.some((request) =>
+            request.method === "GET" &&
+            request.path === `/api/v1/projects/${projectId}/timeline-revisions/${timelineApplyPayload.timelineRevision.revisionId}/content`
+          ) &&
+          revisionHost.requests.some((request) =>
+            request.method === "POST" && request.path === "/api/v1/timeline-revisions"
+          ),
+        timelineRestore.stderr || timelineRestore.stdout || timelineRestore.error,
+        {
+          command: timelineRestore.command,
+          timelineRestorePayload,
+          revisionHostRequests: revisionHost.requests,
+          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
+        },
+      );
     } finally {
       await revisionHost.close();
     }
@@ -2075,12 +2153,14 @@ async function runDirectCanvasCliReadTokenCas() {
         apply: textApplyPayload,
         history: textHistoryPayload,
         content: textContentPayload,
+        restore: textRestorePayload,
       },
       timelineRevisionHistory: {
         pull: timelinePullPayload,
         apply: timelineApplyPayload,
         history: timelineHistoryPayload,
         content: timelineContentPayload,
+        restore: timelineRestorePayload,
       },
     };
   } finally {
@@ -2112,9 +2192,11 @@ async function main() {
     requireCheckPassed("text history reads host revision index");
     requireCheckPassed("text revision history exposes non-media revision content storage");
     requireCheckPassed("text content restores host revision body");
+    requireCheckPassed("text restore creates copy-on-write revision from host content");
     requireCheckPassed("timeline history reads host revision index");
     requireCheckPassed("timeline revision history exposes non-media revision content storage");
     requireCheckPassed("timeline content restores host revision body");
+    requireCheckPassed("timeline restore creates copy-on-write revision from host content");
     requireCheckPassed("caption export pins manifest to applied timeline revision");
     requireCheckPassed("timeline handoff export pins manifest to applied timeline revision");
     requireCheckPassed("caption-burn export pins derived asset to applied timeline revision");
@@ -2157,11 +2239,17 @@ async function main() {
         check.name === "text revision history exposes non-media revision content storage" && check.status === "pass"
       ),
       textContentRestoresHostRevisionBody: checks.some((check) => check.name === "text content restores host revision body" && check.status === "pass"),
+      textRestoreCreatesCopyOnWriteRevisionFromHostContent: checks.some(
+        (check) => check.name === "text restore creates copy-on-write revision from host content" && check.status === "pass"
+      ),
       timelineHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "timeline history reads host revision index" && check.status === "pass"),
       timelineRevisionContentStorageContract: checks.some((check) =>
         check.name === "timeline revision history exposes non-media revision content storage" && check.status === "pass"
       ),
       timelineContentRestoresHostRevisionBody: checks.some((check) => check.name === "timeline content restores host revision body" && check.status === "pass"),
+      timelineRestoreCreatesCopyOnWriteRevisionFromHostContent: checks.some(
+        (check) => check.name === "timeline restore creates copy-on-write revision from host content" && check.status === "pass"
+      ),
       textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
       textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),
       captionExportTimelineRevisionPinned: checks.some((check) =>
