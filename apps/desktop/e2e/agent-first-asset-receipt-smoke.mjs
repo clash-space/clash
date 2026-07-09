@@ -461,6 +461,46 @@ async function main() {
     }),
   );
 
+  const routeTextRevisionAudit = await parseJsonResponse(
+    await routeMigrationRequest(
+      `/api/v1/mutation-audit?operation=text_revision_index&entityId=${encodeURIComponent(`${routeProject.id}:script`)}`,
+    ),
+  );
+  const routeTextRevisionAuditRecord = routeTextRevisionAudit.records?.[0];
+  recordCheck(
+    "text revision index writes sanitized local mutation audit evidence",
+    routeTextRevisionAudit.records?.length === 1 &&
+      routeTextRevisionAuditRecord.operation === "text_revision_index" &&
+      routeTextRevisionAuditRecord.entity?.kind === "text" &&
+      routeTextRevisionAuditRecord.entity?.id === `${routeProject.id}:script` &&
+      routeTextRevisionAuditRecord.accepted === true &&
+      routeTextRevisionAuditRecord.reason === "text revision indexed" &&
+      routeTextRevisionAuditRecord.resultEntityId === routeTextRevision.revisionId &&
+      !JSON.stringify(routeTextRevisionAuditRecord.mutation ?? {}).includes("receipt") &&
+      mutationAuditRecordsHaveNoReadTokens(routeTextRevisionAudit.records),
+    JSON.stringify(routeTextRevisionAudit),
+  );
+
+  const routeTimelineRevisionAudit = await parseJsonResponse(
+    await routeMigrationRequest(
+      `/api/v1/mutation-audit?operation=timeline_revision_index&entityId=${encodeURIComponent(`${routeProject.id}:editor`)}`,
+    ),
+  );
+  const routeTimelineRevisionAuditRecord = routeTimelineRevisionAudit.records?.[0];
+  recordCheck(
+    "timeline revision index writes sanitized local mutation audit evidence",
+    routeTimelineRevisionAudit.records?.length === 1 &&
+      routeTimelineRevisionAuditRecord.operation === "timeline_revision_index" &&
+      routeTimelineRevisionAuditRecord.entity?.kind === "timeline" &&
+      routeTimelineRevisionAuditRecord.entity?.id === `${routeProject.id}:editor` &&
+      routeTimelineRevisionAuditRecord.accepted === true &&
+      routeTimelineRevisionAuditRecord.reason === "timeline revision indexed" &&
+      routeTimelineRevisionAuditRecord.resultEntityId === routeTimelineRevision.revisionId &&
+      !JSON.stringify(routeTimelineRevisionAuditRecord.mutation ?? {}).includes("receipt") &&
+      mutationAuditRecordsHaveNoReadTokens(routeTimelineRevisionAudit.records),
+    JSON.stringify(routeTimelineRevisionAudit),
+  );
+
   const agentReadOnlyProjectResponse = await request("/api/v1/projects", {
     method: "POST",
     body: JSON.stringify({ name: "Agent read-only smoke" }),
@@ -4020,6 +4060,8 @@ async function main() {
       workflowGeneratedAssetSymlinkParentRejected: checks.some((check) => check.name === "workflow generated asset writes reject symlinked parent outside local asset storage" && check.status === "pass"),
       workflowGeneratedAssetAccepted: checks.some((check) => check.name === "workflow generated asset accepts agent local generation" && check.status === "pass"),
       workflowGeneratedAssetAuditRecorded: checks.some((check) => check.name === "workflow generated asset writes sanitized local mutation audit evidence" && check.status === "pass"),
+      textRevisionIndexAuditRecorded: checks.some((check) => check.name === "text revision index writes sanitized local mutation audit evidence" && check.status === "pass"),
+      timelineRevisionIndexAuditRecorded: checks.some((check) => check.name === "timeline revision index writes sanitized local mutation audit evidence" && check.status === "pass"),
       workflowGeneratedTextRevisionIndexed: checks.some((check) => check.name === "workflow generated text indexes host text revision" && check.status === "pass"),
       workflowGeneratedTextContentReturned: checks.some((check) => check.name === "workflow generated text content endpoint returns revision body" && check.status === "pass"),
       workflowGeneratedTextAuditRecorded: checks.some((check) => check.name === "workflow generated text writes sanitized local mutation audit evidence" && check.status === "pass"),

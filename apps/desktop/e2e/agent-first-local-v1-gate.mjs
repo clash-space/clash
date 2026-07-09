@@ -64,7 +64,7 @@ const suiteDefinitions = [
     id: "agent-first-asset-receipts",
     command: [pnpmBin, "exec", "tsx", "e2e/agent-first-asset-receipt-smoke.mjs"],
     schemaVersion: 1,
-    minChecks: 190,
+    minChecks: 192,
     requiredBooleans: [
       "syncConfigAuditRecorded",
       "localObsoleteProjectEndpointsRejected",
@@ -76,6 +76,8 @@ const suiteDefinitions = [
       "customActionCheckpointOverwriteRejected",
       "assetUploadSymlinkRootRejected",
       "workflowGeneratedTextRevisionIndexed",
+      "textRevisionIndexAuditRecorded",
+      "timelineRevisionIndexAuditRecorded",
       "canvasNodeReferencedPatchRejected",
       "canvasBatchDeleteOrphanRejected",
       "canvasEdgeAddReceiptAccepted",

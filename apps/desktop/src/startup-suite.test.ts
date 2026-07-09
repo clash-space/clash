@@ -215,6 +215,8 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("localObsoleteProjectEndpointsRejected");
     expect(source).toContain("projectUpdateAuditRecorded");
     expect(source).toContain("projectDeleteAuditRecorded");
+    expect(source).toContain("textRevisionIndexAuditRecorded");
+    expect(source).toContain("timelineRevisionIndexAuditRecorded");
     expect(source).toContain("legacyLocalRoomReadRemoved");
     expect(source).toContain("legacyLocalRoomWriteRemoved");
     expect(source).toContain("legacyLocalRoomSyncRemoved");
