@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { timelineDslHash } from "@clash/shared-types";
 
 import {
   buildPendingRenderVideoNodePayload,
@@ -22,8 +23,8 @@ const timelineDsl: PendingRenderTimelineDsl = {
 };
 
 describe("buildPendingRenderVideoNodePayload", () => {
-  it("pins rendered videos to the applied timeline revision provenance", () => {
-    const payload = buildPendingRenderVideoNodePayload(timelineDsl, {
+  it("pins rendered videos to the applied timeline revision provenance", async () => {
+    const payload = await buildPendingRenderVideoNodePayload(timelineDsl, {
       sourceTimelineNodeId: "editor-1",
       appliedRevision: {
         timelineId: "timeline:timelines/main.timeline.yaml",
@@ -45,13 +46,14 @@ describe("buildPendingRenderVideoNodePayload", () => {
     });
   });
 
-  it("does not invent a timeline revision id for draft canvas renders", () => {
-    const payload = buildPendingRenderVideoNodePayload(timelineDsl, {
+  it("pins draft canvas renders to a semantic timeline hash without inventing a revision id", async () => {
+    const payload = await buildPendingRenderVideoNodePayload(timelineDsl, {
       sourceTimelineNodeId: "editor-1",
     });
 
     expect(payload.data.sourceTimelineNodeId).toBe("editor-1");
+    expect(payload.data.sourceTimelineHash).toBe(await timelineDslHash(timelineDsl));
+    expect(payload.data.sourceTimelineRevisionStatus).toBe("draft-canvas");
     expect(payload.data).not.toHaveProperty("sourceTimelineRevisionId");
-    expect(payload.data).not.toHaveProperty("sourceTimelineHash");
   });
 });

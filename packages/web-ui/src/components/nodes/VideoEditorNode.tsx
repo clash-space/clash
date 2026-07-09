@@ -415,7 +415,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                     timelineDsl.durationInFrames,
                 ),
             };
-            const pendingVideoNode = buildPendingRenderVideoNodePayload(updatedTimelineDsl, {
+            const pendingVideoNode = await buildPendingRenderVideoNodePayload(updatedTimelineDsl, {
                 sourceTimelineNodeId: id,
                 appliedRevision: readPendingRenderAppliedTimelineRevision(sourceTimelineData),
             });

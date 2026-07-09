@@ -201,8 +201,9 @@ Evidence:
   applied timeline revision, the materialized video node records
   `sourceTimelineNodeId`, `sourceTimelineId`, `sourceTimelineRevisionId`,
   `sourceTimelineHash`, `sourceTimelineRevisionStatus`, and Loro frontier/vector
-  provenance. Draft canvas renders keep `sourceTimelineNodeId` but do not
-  invent a revision id.
+  provenance. Draft canvas renders keep `sourceTimelineNodeId`, record a shared
+  semantic `sourceTimelineHash` plus `sourceTimelineRevisionStatus: "draft-canvas"`,
+  and do not invent a revision id.
 - `packages/web-ui/src/hooks/useRevisionHistory.ts` is the read-only web
   consumer for host-indexed text/timeline revisions. Text and timeline canvas
   nodes display first-pass history panels from that hook, including recent

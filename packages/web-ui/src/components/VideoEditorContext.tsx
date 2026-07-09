@@ -222,7 +222,7 @@ export function VideoEditorProvider({
         const currentNodes = nodes || [];
         const currentEdges = edges || [];
         const editorNode = currentNodes.find(n => n.id === editorNodeId);
-        const pendingVideoNode = buildPendingRenderVideoNodePayload(finalDsl, {
+        const pendingVideoNode = await buildPendingRenderVideoNodePayload(finalDsl, {
             sourceTimelineNodeId: editorNodeId,
             appliedRevision: readPendingRenderAppliedTimelineRevision(editorNode?.data),
         });

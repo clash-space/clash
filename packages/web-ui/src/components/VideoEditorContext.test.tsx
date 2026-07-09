@@ -151,6 +151,10 @@ describe("VideoEditorProvider", () => {
     expect(createdNode.data.naturalHeight).toBe(1080);
     expect(createdNode.width).toBe(500);
     expect(createdNode.height).toBe(281);
+    expect(createdNode.data.sourceTimelineNodeId).toBe("editor-node-1");
+    expect(createdNode.data.sourceTimelineHash).toMatch(/^[a-f0-9]{16}$/);
+    expect(createdNode.data.sourceTimelineRevisionStatus).toBe("draft-canvas");
+    expect(createdNode.data).not.toHaveProperty("sourceTimelineRevisionId");
   });
 
   it("pins exported render nodes to the applied timeline revision on the editor node", async () => {

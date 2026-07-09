@@ -781,8 +781,9 @@ Current first pass:
 - Web `VideoEditorNode` Render and modal `VideoEditorContext` Export use the
   same pending-render payload helper to copy applied timeline revision
   provenance onto materialized video nodes. If the source editor node has no
-  applied revision, the render records the source timeline node id but does not
-  fabricate a revision id/hash.
+  applied revision, the render records the source timeline node id plus a
+  shared semantic hash with `sourceTimelineRevisionStatus: "draft-canvas"`, but
+  does not fabricate a revision id.
 - Timeline body/history remains canonical in the Loro canvas state; the SQLite
   index is only for query/provenance milestones, not a per-keystroke log.
 - Web timeline editor nodes use the same read-only revision history panel to

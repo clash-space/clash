@@ -1018,8 +1018,9 @@ Rules:
   source editor node has an applied timeline revision, the output node records
   `sourceTimelineNodeId`, `sourceTimelineId`, `sourceTimelineRevisionId`,
   `sourceTimelineHash`, `sourceTimelineRevisionStatus`, and available Loro
-  frontier/version-vector provenance. Draft canvas renders keep the source
-  node id but do not invent a revision id/hash.
+  frontier/version-vector provenance. Draft canvas renders record
+  `sourceTimelineNodeId`, a shared semantic `sourceTimelineHash`, and
+  `sourceTimelineRevisionStatus: "draft-canvas"` without inventing a revision id.
 
 Remaining:
 

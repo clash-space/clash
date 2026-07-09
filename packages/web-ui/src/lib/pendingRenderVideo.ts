@@ -1,4 +1,5 @@
 import type { EditorState } from "@master-clash/remotion-core";
+import { timelineDslHash } from "@clash/shared-types";
 
 import { calculateScaledDimensions } from "../components/nodes/assetNodeSizing";
 
@@ -69,28 +70,38 @@ export function readPendingRenderAppliedTimelineRevision(
   };
 }
 
-function timelineProvenanceData(options?: PendingRenderTimelineProvenance) {
+async function timelineProvenanceData(
+  timelineDsl: PendingRenderTimelineDsl,
+  options?: PendingRenderTimelineProvenance,
+) {
   const appliedRevision = options?.appliedRevision;
+  if (!appliedRevision) {
+    return {
+      ...(options?.sourceTimelineNodeId ? { sourceTimelineNodeId: options.sourceTimelineNodeId } : {}),
+      ...(options?.sourceTimelineNodeId
+        ? {
+            sourceTimelineHash: await timelineDslHash(timelineDsl),
+            sourceTimelineRevisionStatus: "draft-canvas",
+          }
+        : {}),
+    };
+  }
   return {
     ...(options?.sourceTimelineNodeId ? { sourceTimelineNodeId: options.sourceTimelineNodeId } : {}),
-    ...(appliedRevision
-      ? {
-          sourceTimelineId: appliedRevision.timelineId,
-          sourceTimelineRevisionId: appliedRevision.revisionId,
-          sourceTimelineHash: appliedRevision.timelineHash,
-          sourceTimelineRevisionStatus: "applied",
-          ...(appliedRevision.loroFrontiers !== undefined
-            ? { sourceTimelineFrontiers: appliedRevision.loroFrontiers }
-            : {}),
-          ...(appliedRevision.loroVersionVector !== undefined
-            ? { sourceTimelineVersionVector: appliedRevision.loroVersionVector }
-            : {}),
-        }
+    sourceTimelineId: appliedRevision.timelineId,
+    sourceTimelineRevisionId: appliedRevision.revisionId,
+    sourceTimelineHash: appliedRevision.timelineHash,
+    sourceTimelineRevisionStatus: "applied",
+    ...(appliedRevision.loroFrontiers !== undefined
+      ? { sourceTimelineFrontiers: appliedRevision.loroFrontiers }
+      : {}),
+    ...(appliedRevision.loroVersionVector !== undefined
+      ? { sourceTimelineVersionVector: appliedRevision.loroVersionVector }
       : {}),
   };
 }
 
-export function buildPendingRenderVideoNodePayload(
+export async function buildPendingRenderVideoNodePayload(
   timelineDsl: PendingRenderTimelineDsl,
   provenance?: PendingRenderTimelineProvenance,
 ) {
@@ -119,7 +130,7 @@ export function buildPendingRenderVideoNodePayload(
       naturalWidth,
       naturalHeight,
       aspectRatio: `${naturalWidth}:${naturalHeight}`,
-      ...timelineProvenanceData(provenance),
+      ...(await timelineProvenanceData(timelineDsl, provenance)),
     },
   };
 }
