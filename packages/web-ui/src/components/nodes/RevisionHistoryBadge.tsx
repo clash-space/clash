@@ -22,15 +22,21 @@ function labelFor(kind: RevisionHistoryKind): string {
 
 function recoveryCommand(kind: RevisionHistoryKind, revisionId: string): string {
   const extension = kind === "text" ? "md" : "timeline.yaml";
-  return `clash ${kind} content --revision ${revisionId} --out revisions/${revisionId}.${extension}`;
+  return `clash ${kind} content --revision ${shellArg(revisionId)} --out ${shellArg(`revisions/${revisionId}.${extension}`)}`;
 }
 
 function restoreCommand(kind: RevisionHistoryKind, nodeId: string, revisionId: string): string {
-  return `clash ${kind} restore --node ${nodeId} --revision ${revisionId} --mode replace`;
+  return `clash ${kind} restore --node ${shellArg(nodeId)} --revision ${shellArg(revisionId)} --mode replace`;
 }
 
 function revisionHash(revision: RevisionHistoryEntry): string | null {
   return revision.textHash ?? revision.timelineHash ?? revision.content?.hash ?? null;
+}
+
+function shellArg(value: string): string {
+  return /^[A-Za-z0-9_./:=@%+-]+$/.test(value)
+    ? value
+    : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export function RevisionHistoryBadge({ kind, nodeId, history, className = "" }: RevisionHistoryBadgeProps) {

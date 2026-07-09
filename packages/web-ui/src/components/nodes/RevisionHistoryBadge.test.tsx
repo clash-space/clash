@@ -74,6 +74,27 @@ describe("RevisionHistoryBadge", () => {
     expect(screen.getByText("clash timeline restore --node editor-1 --revision tlrev-1 --mode replace")).toBeTruthy();
   });
 
+  it("quotes unsafe shell arguments in CLI restore commands", () => {
+    render(
+      <RevisionHistoryBadge
+        kind="text"
+        nodeId={"script node 'A'"}
+        history={{
+          count: 1,
+          latest: { revisionId: "txrev-weird id" },
+          revisions: [{ revisionId: "txrev-weird id" }],
+          loading: false,
+          error: null,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
+
+    expect(screen.getByText("clash text content --revision 'txrev-weird id' --out 'revisions/txrev-weird id.md'")).toBeTruthy();
+    expect(screen.getByText("clash text restore --node 'script node '\\''A'\\''' --revision 'txrev-weird id' --mode replace")).toBeTruthy();
+  });
+
   it("stays hidden when no revisions are indexed", () => {
     const { container } = render(
       <RevisionHistoryBadge
