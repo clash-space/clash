@@ -28,6 +28,12 @@ const expectedTracePolicy = {
     optInRequiredForSync: true,
     excludedFromRoom: true,
     sensitiveFields: ["tool-logs", "local-file-paths", "scratch-context"],
+    syncAdmission: {
+      allowed: false,
+      reason: "explicit-policy-required",
+      requirements: ["user-opt-in-or-team-policy"],
+      defaultAllowed: false,
+    },
     retention: {
       default: "until-session-delete",
       scope: "per-session",
