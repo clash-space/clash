@@ -254,13 +254,13 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-08T15-34-38-521Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T02-41-08-674Z/agent-first-cas-report.json
 ```
 
 Result:
 
 - `status: pass`
-- 54 checks passed,
+- 56 checks passed,
 - `projectionPathOutsideCwdRejected: true`.
 - `textHistoryReadsHostRevisionIndex: true`.
 - `textRevisionContentStorageContract: true` with `content.stored: true`.

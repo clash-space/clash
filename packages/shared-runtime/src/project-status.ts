@@ -121,6 +121,8 @@ export interface ProjectStatusStorage {
       applyCommand: "clash text apply";
       replaceCommand: "clash text replace";
       restoreCommand: "clash text restore";
+      historyCommand: "clash text history";
+      contentCommand: "clash text content";
       casRequired: true;
       copyOnWriteWhenReferenced: true;
       revisionRegistry: "text_revisions";
@@ -141,6 +143,8 @@ export interface ProjectStatusStorage {
       applyCommand: "clash timeline apply";
       replaceCommand: "clash timeline replace";
       restoreCommand: "clash timeline restore";
+      historyCommand: "clash timeline history";
+      contentCommand: "clash timeline content";
       casRequired: true;
       copyOnWriteWhenReferenced: true;
       revisionRegistry: "timeline_revisions";
@@ -610,6 +614,8 @@ export function buildProjectStatus(
           applyCommand: "clash text apply",
           replaceCommand: "clash text replace",
           restoreCommand: "clash text restore",
+          historyCommand: "clash text history",
+          contentCommand: "clash text content",
           casRequired: true,
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "text_revisions",
@@ -630,6 +636,8 @@ export function buildProjectStatus(
           applyCommand: "clash timeline apply",
           replaceCommand: "clash timeline replace",
           restoreCommand: "clash timeline restore",
+          historyCommand: "clash timeline history",
+          contentCommand: "clash timeline content",
           casRequired: true,
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "timeline_revisions",

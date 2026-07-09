@@ -116,6 +116,8 @@ describe("project status path builder", () => {
     expect(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path).toBe("/tmp/clash-home/local-api/timeline-revision-blobs");
     expect(status.storage.contentModel.textNodes.revisionRegistry).toBe("text_revisions");
     expect(status.storage.contentModel.textNodes.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
+    expect(status.storage.contentModel.textNodes.historyCommand).toBe("clash text history");
+    expect(status.storage.contentModel.textNodes.contentCommand).toBe("clash text content");
     expect(status.storage.contentModel.textNodes.contentRegistry).toEqual({
       kind: "sqlite-non-media-revision-registry",
       table: "text_revisions",
@@ -125,6 +127,8 @@ describe("project status path builder", () => {
     expect(status.storage.contentModel.textNodes.mediaAsset).toBe(false);
     expect(status.storage.contentModel.timelines.revisionRegistry).toBe("timeline_revisions");
     expect(status.storage.contentModel.timelines.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
+    expect(status.storage.contentModel.timelines.historyCommand).toBe("clash timeline history");
+    expect(status.storage.contentModel.timelines.contentCommand).toBe("clash timeline content");
     expect(status.storage.contentModel.timelines.contentRegistry).toEqual({
       kind: "sqlite-non-media-revision-registry",
       table: "timeline_revisions",
@@ -292,6 +296,8 @@ describe("project status path builder", () => {
           applyCommand: "clash text apply",
           replaceCommand: "clash text replace",
           restoreCommand: "clash text restore",
+          historyCommand: "clash text history",
+          contentCommand: "clash text content",
           casRequired: true,
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "text_revisions",
@@ -312,6 +318,8 @@ describe("project status path builder", () => {
           applyCommand: "clash timeline apply",
           replaceCommand: "clash timeline replace",
           restoreCommand: "clash timeline restore",
+          historyCommand: "clash timeline history",
+          contentCommand: "clash timeline content",
           casRequired: true,
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "timeline_revisions",
