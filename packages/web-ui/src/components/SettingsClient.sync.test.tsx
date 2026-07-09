@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import SettingsClient from "./SettingsClient";
 import { AppFeedbackProvider } from "./AppFeedback";
-import { listVariables } from "@clash/web-ui/lib/clientActions";
+import { listApiTokens, listVariables } from "@clash/web-ui/lib/clientActions";
 import {
   SettingsSurface,
   readLastSettingsSection,
@@ -148,7 +148,7 @@ describe("SettingsSurface tab state", () => {
     expect(readLastSettingsSection()).toBeNull();
   });
 
-  it("renders the active sidebar tab as a clear brand state", () => {
+  it("renders the hosted API tokens sidebar tab as a clear brand state", () => {
     render(
       <MemoryRouter>
         <SettingsSurface active="tokens" onActiveChange={vi.fn()} variant="page" />
@@ -159,6 +159,42 @@ describe("SettingsSurface tab state", () => {
     expect(activeTab.getAttribute("aria-selected")).toBe("true");
     expect(activeTab.className).toContain("border-brand");
     expect(activeTab.className).toContain("bg-brand-light");
+  });
+
+  it("does not load or expose hosted API tokens in desktop local settings", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+    const listApiTokensMock = vi.mocked(listApiTokens);
+    listApiTokensMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"tokens" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listApiTokensMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tab", { name: "API Tokens" })).toBeNull();
+    expect(screen.queryByText("Create tokens for CLI or API access")).toBeNull();
+  });
+
+  it("keeps hosted API tokens available", async () => {
+    const listApiTokensMock = vi.mocked(listApiTokens);
+    listApiTokensMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"tokens" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listApiTokensMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("tab", { name: "API Tokens" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("uses Agents as the local agent settings tab instead of Runtimes", () => {

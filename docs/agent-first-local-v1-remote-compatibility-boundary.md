@@ -153,6 +153,8 @@ Restriction:
 
 - Local provider secrets should be encrypted or keychain-backed.
 - Public DTOs never expose raw credentials/tokens.
+- Hosted API tokens remain a cloud/hosted access mechanism. Desktop/local
+  settings must not expose token creation or revocation as a local auth path.
 
 ### Web shared-project UX
 
@@ -195,6 +197,25 @@ Allowed replacement:
 - local provider account config,
 - local OAuth/device auth,
 - OS keychain or encrypted SQLite credentials.
+
+### Local API token mutations
+
+Keep unavailable locally:
+
+- `POST /api/settings/tokens`
+- `DELETE /api/settings/tokens/:id`
+
+Current evidence:
+
+- local-api returns an empty token list for read compatibility, but mutation
+  routes stay 404.
+- `SettingsSurface` skips hosted API token loading and hides the API Tokens
+  section in desktop/local runtime.
+
+Reason:
+
+- Local CLI/agent auth should use the local runtime and provider/OAuth setup,
+  not cloud API token issuance.
 
 ### Local action-secret endpoints
 

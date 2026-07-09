@@ -51,6 +51,8 @@ export const SETTINGS_NAV_ITEMS: NavItem[] = [
   { id: 'cli', label: 'CLI', icon: Terminal },
 ];
 
+const HOSTED_ONLY_SETTINGS_SECTIONS = new Set<SettingsSection>(['tokens', 'variables']);
+
 type LoadState =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -101,8 +103,17 @@ function supportsRemoteWorkerVariables(): boolean {
   return getRuntimeConfig().mode === 'hosted';
 }
 
-function effectiveSettingsSection(section: SettingsSection, remoteWorkerVariablesAvailable: boolean): SettingsSection {
-  if (section === 'variables' && !remoteWorkerVariablesAvailable) return 'agents';
+function supportsHostedSettings(): boolean {
+  return getRuntimeConfig().mode === 'hosted';
+}
+
+function availableSettingsNavItems(hostedSettingsAvailable: boolean): NavItem[] {
+  if (hostedSettingsAvailable) return SETTINGS_NAV_ITEMS;
+  return SETTINGS_NAV_ITEMS.filter((item) => !HOSTED_ONLY_SETTINGS_SECTIONS.has(item.id));
+}
+
+function effectiveSettingsSection(section: SettingsSection, hostedSettingsAvailable: boolean): SettingsSection {
+  if (!hostedSettingsAvailable && HOSTED_ONLY_SETTINGS_SECTIONS.has(section)) return 'agents';
   return section;
 }
 
@@ -147,14 +158,18 @@ export function SettingsSurface({
 }: SettingsSurfaceProps) {
   const [load, setLoad] = useState<LoadState>({ status: 'idle' });
   const isPage = variant === 'page';
+  const hostedSettingsAvailable = supportsHostedSettings();
   const remoteWorkerVariablesAvailable = supportsRemoteWorkerVariables();
-  const activeSection = effectiveSettingsSection(active, remoteWorkerVariablesAvailable);
+  const navItems = availableSettingsNavItems(hostedSettingsAvailable);
+  const activeSection = effectiveSettingsSection(active, hostedSettingsAvailable);
 
   useEffect(() => {
     let cancelled = false;
     setLoad({ status: 'loading' });
     Promise.all([
-      listApiTokens().catch(() => [] as ApiTokenInfo[]),
+      hostedSettingsAvailable
+        ? listApiTokens().catch(() => [] as ApiTokenInfo[])
+        : Promise.resolve([] as ApiTokenInfo[]),
       remoteWorkerVariablesAvailable
         ? listVariables().catch(() => [] as VariableInfo[])
         : Promise.resolve([] as VariableInfo[]),
@@ -174,7 +189,7 @@ export function SettingsSurface({
     return () => {
       cancelled = true;
     };
-  }, [remoteWorkerVariablesAvailable]);
+  }, [hostedSettingsAvailable, remoteWorkerVariablesAvailable]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -230,7 +245,7 @@ export function SettingsSurface({
           focusLoop
         >
           <TabList className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1" aria-label="Settings sections">
-            {SETTINGS_NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const isActive = activeSection === item.id;
               const Icon = item.icon;
               return (
@@ -268,7 +283,7 @@ export function SettingsSurface({
       <main className={`${isPage ? 'clash-settings-page-content' : 'clash-settings-dialog-content'} min-w-0 flex-1 overflow-y-auto`}>
         <div className={isPage ? 'mx-auto w-full max-w-6xl px-10 py-10 xl:px-14' : 'px-8 py-6'}>
           <h2 className="mb-6 font-display text-xl font-bold text-stone-900 dark:text-stone-100">
-            {SETTINGS_NAV_ITEMS.find((item) => item.id === activeSection)?.label ?? 'Settings'}
+            {navItems.find((item) => item.id === activeSection)?.label ?? 'Settings'}
           </h2>
 
           {load.status === 'loading' || load.status === 'idle' ? (

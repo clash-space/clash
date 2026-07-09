@@ -968,6 +968,26 @@ describe("local API app", () => {
     }
   });
 
+  it("does not expose hosted API token mutations locally", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const list = await app.request("/api/settings/tokens");
+    expect(list.status).toBe(200);
+    expect(await list.json()).toEqual([]);
+
+    for (const [method, path] of [
+      ["POST", "/api/settings/tokens"],
+      ["DELETE", "/api/settings/tokens/token-id"],
+    ] as const) {
+      const res = await app.request(path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: method === "POST" ? JSON.stringify({ name: "CLI" }) : undefined,
+      });
+      expect(res.status).toBe(404);
+    }
+  });
+
   it("persists local project metadata in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 

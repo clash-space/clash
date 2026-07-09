@@ -187,6 +187,7 @@ v1 decision:
 - credential/token payloads encrypted or OS-keychain backed,
 - public routes never return raw secrets,
 - local custom actions should use local runtime auth, not action-secret vars.
+- hosted API token creation/revocation is not a local auth path.
 
 ### Local runtime/agent routes
 
@@ -274,6 +275,8 @@ v1 decision:
 
 Regression tests assert these are 404 locally:
 
+- `POST /api/settings/tokens`
+- `DELETE /api/settings/tokens/:id`
 - `/api/settings/variables`
 - `/api/settings/action-secrets`
 - `/api/v1/vars`
@@ -282,6 +285,9 @@ Regression tests assert these are 404 locally:
 v1 decision:
 
 - keep local variables/action-secret endpoints unavailable,
+- keep hosted API token mutations unavailable locally,
+- keep the shared settings UI from loading or rendering API Tokens in
+  desktop/local runtime,
 - keep the shared settings UI from loading or rendering variables in
   desktop/local runtime; variables remain hosted-only remote worker
   compatibility,
@@ -1059,6 +1065,8 @@ local API contract.
 
 - Projects/assets/sessions/providers keep existing response shapes after SQLite.
 - Local vars/action-secret endpoints remain 404.
+- Local hosted-token mutation endpoints remain 404, and desktop/local settings
+  do not request `/api/settings/tokens` or render the API Tokens section.
 - Desktop/local settings do not request `/api/settings/variables` and do not
   render the hidden variables section.
 - Local room endpoint persistence tests replace the old 404 expectation.
