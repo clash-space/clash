@@ -966,13 +966,14 @@ Rules:
   commands, and explicit `clash text restore --mode replace` commands, without
   opening SQLite or mutable revision blob paths. Each revision row also exposes
   a restore affordance that copies the standard restore command and emits
-  `clash:revision-restore-request`; when an upper layer injects an execution
-  handler, the same control becomes a direct Restore action through the
-  explicit CLI/action path.
+  `clash:revision-restore-request`. Desktop `ChatbotCopilot` listens for valid
+  requests and forwards the explicit CLI/CAS restore command to the selected
+  local runtime agent with a guardrail prompt; it does not mutate canvas,
+  snapshot, or SQLite directly.
 
 Remaining:
 
-- desktop/local execution wiring for `clash:revision-restore-request`,
+- stronger direct action-runner/confirmation UX for visual restore requests,
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 
@@ -1030,9 +1031,10 @@ Rules:
   recovery commands, and explicit `clash timeline restore --mode replace`
   commands, without opening SQLite or mutable revision blob paths. Each
   revision row also exposes a restore affordance that copies the standard
-  restore command and emits `clash:revision-restore-request`; when an upper
-  layer injects an execution handler, the same control becomes a direct
-  Restore action through the explicit CLI/action path.
+  restore command and emits `clash:revision-restore-request`. Desktop
+  `ChatbotCopilot` listens for valid requests and forwards the explicit CLI/CAS
+  restore command to the selected local runtime agent with a guardrail prompt;
+  it does not mutate canvas, snapshot, or SQLite directly.
 - `VideoEditorNode` Render and `VideoEditorContext` Export both build pending
   rendered video nodes through `buildPendingRenderVideoNodePayload`; when the
   source editor node has an applied timeline revision, the output node records
@@ -1044,7 +1046,7 @@ Rules:
 
 Remaining:
 
-- desktop/local execution wiring for `clash:revision-restore-request`,
+- stronger direct action-runner/confirmation UX for visual restore requests,
 - local-to-cloud timeline revision mirror policy.
 
 ### Projection apply endpoints/commands

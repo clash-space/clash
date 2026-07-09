@@ -1376,6 +1376,47 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(select).not.toHaveBeenCalled();
   });
 
+  it("routes revision restore requests through the local runtime CLI action path", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const sendMessage = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      sendMessage,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("clash:revision-restore-request", {
+        detail: {
+          kind: "text",
+          nodeId: "text-1",
+          revisionId: "txrev-2",
+          mode: "replace",
+          command: "clash text restore --node text-1 --revision txrev-2 --mode replace",
+        },
+      }));
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage.mock.calls[0]?.[0]).toContain("clash text restore --node text-1 --revision txrev-2 --mode replace");
+    expect(sendMessage.mock.calls[0]?.[0]).toContain("Do not edit the canvas, snapshot, or SQLite directly");
+  });
+
   it("renders ACP model and thought-level config directly in the composer selector", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(

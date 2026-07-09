@@ -41,6 +41,10 @@ import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
 import { getRuntimeConfig, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { buildMention } from '@clash/shared-types';
+import {
+    REVISION_RESTORE_REQUEST_EVENT,
+    type RevisionRestoreRequest,
+} from './nodes/RevisionHistoryBadge';
 
 
 interface Message {
@@ -319,6 +323,34 @@ function resolvePermissionModeForSession(
 
 function permissionModeOption(modeId: string | null | undefined): { permissionModeId?: string } {
     return modeId ? { permissionModeId: modeId } : {};
+}
+
+function isRevisionRestoreRequest(value: unknown): value is RevisionRestoreRequest {
+    if (!value || typeof value !== 'object') return false;
+    const request = value as Record<string, unknown>;
+    const kind = request.kind;
+    const command = typeof request.command === 'string' ? request.command.trim() : '';
+    return (
+        (kind === 'text' || kind === 'timeline') &&
+        typeof request.nodeId === 'string' &&
+        request.nodeId.trim().length > 0 &&
+        typeof request.revisionId === 'string' &&
+        request.revisionId.trim().length > 0 &&
+        request.mode === 'replace' &&
+        command.startsWith(`clash ${kind} restore `)
+    );
+}
+
+function revisionRestorePrompt(request: RevisionRestoreRequest): string {
+    return [
+        'Run the explicit local revision restore action below from the current project cwd.',
+        '',
+        'Use the CLI/CAS restore path exactly as written. Do not edit the canvas, snapshot, or SQLite directly.',
+        '',
+        '```bash',
+        request.command,
+        '```',
+    ].join('\n');
 }
 
 function modelValuesForHarness(
@@ -947,6 +979,74 @@ export default function ChatbotCopilot({
             }
         }, []),
     });
+
+    const sendRevisionRestoreRequest = useCallback((request: RevisionRestoreRequest) => {
+        const runtimePrompt = revisionRestorePrompt(request);
+        setSuggestions([]);
+        setSessionError(null);
+        clearConnectionError();
+        updateStickToBottom(true);
+
+        if (chatMode !== 'runtime') {
+            setInput(runtimePrompt);
+            return;
+        }
+        if (selectedSessionHarnessAuth) {
+            setInput(runtimePrompt);
+            return;
+        }
+        if (!clashRt.ready) {
+            const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
+            if (isDesktopLocalMode && runtime && runtime.status === 'online' && runtime.agents.length > 0) {
+                if (!clashRt.selectedRuntimeId || clashRt.status === 'idle' || clashRt.status === 'disconnected') {
+                    clashRt.startDraft(runtime.id, undefined, {
+                        projectId,
+                        agentId: effectiveSessionHarnessId ?? preferredLocalAgentId(runtime.agents),
+                        ...permissionModeOption(sessionPermissionModeId),
+                    });
+                }
+            } else if (isDesktopLocalMode) {
+                setInput(runtimePrompt);
+                void clashRt.refresh();
+                return;
+            } else {
+                setInput(runtimePrompt);
+                setSessionError(t('copilot.status.localRuntimeRequired'));
+                return;
+            }
+        }
+        setInput('');
+        clashRt.sendMessage(runtimePrompt);
+    }, [
+        chatMode,
+        clashRt.ready,
+        clashRt.refresh,
+        clashRt.selectedRuntimeId,
+        clashRt.sendMessage,
+        clashRt.startDraft,
+        clashRt.status,
+        clearConnectionError,
+        desktopLocalRuntime,
+        effectiveSessionHarnessId,
+        isDesktopLocalMode,
+        projectId,
+        selectedRuntimeForSession,
+        selectedSessionHarnessAuth,
+        sessionPermissionModeId,
+        t,
+        updateStickToBottom,
+    ]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const onRevisionRestoreRequest = (event: Event) => {
+            const detail = (event as Event & { detail?: unknown }).detail;
+            if (!isRevisionRestoreRequest(detail)) return;
+            sendRevisionRestoreRequest(detail);
+        };
+        window.addEventListener(REVISION_RESTORE_REQUEST_EVENT, onRevisionRestoreRequest);
+        return () => window.removeEventListener(REVISION_RESTORE_REQUEST_EVENT, onRevisionRestoreRequest);
+    }, [sendRevisionRestoreRequest]);
 
     useEffect(() => {
         if (!isDesktopLocalMode || chatMode !== 'runtime') return;

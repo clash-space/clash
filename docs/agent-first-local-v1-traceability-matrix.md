@@ -230,11 +230,12 @@ Conclusion:
   locks share the generic projection envelope, and edited metadata JSON has an
   explicit CAS apply command. `RevisionHistoryBadge` now exposes a visual
   restore affordance that copies the standard CLI restore command, emits a
-  `clash:revision-restore-request` payload, and only becomes a direct Restore
-  action when an upper layer injects an execution handler, leaving canvas
-  mutation on the explicit CLI/action path. The remaining gaps are desktop/local
-  execution wiring for that request and adoption by future non-JSON/storyboard/editor
-  projections.
+  `clash:revision-restore-request` payload, and `ChatbotCopilot` now listens
+  for valid requests and forwards the explicit CLI/CAS restore command to the
+  selected local runtime agent, leaving canvas mutation on the explicit
+  CLI/action path rather than browser-side state writes. The remaining gaps are
+  stronger direct action-runner/confirmation UX and adoption by future
+  non-JSON/storyboard/editor projections.
 
 ### Storyboard prompt-pack CAS
 
@@ -494,7 +495,7 @@ Current status:
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
 - Code implementation remains incomplete for automatic SQLite repair, fuller
   room admission policy/live UI beyond the Sync room gate, fuller conflict recovery workflow,
-  desktop/local execution wiring for visual revision restore requests, remaining
+  stronger direct action-runner/confirmation UX for visual revision restore requests, remaining
   storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume
   layout QA paths passed. The real runs recorded session cwd under

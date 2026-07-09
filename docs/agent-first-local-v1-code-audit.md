@@ -71,11 +71,12 @@ The main v1 gaps are:
   --revision <id> [--out <path>]` retrieves immutable revision Markdown without
   opening SQLite; `RevisionHistoryBadge` now gives text/timeline revisions a
   visual restore affordance that copies the standard `clash ... restore --mode
-  replace` command, emits a `clash:revision-restore-request` payload, and only
-  labels the control as direct Restore when an upper layer injects an execution
-  handler; it does not directly mutate canvas state. Conflict recovery,
-  visual restore-request execution wiring, canonical file-backed text mode, and
-  sync policy are still future work,
+  replace` command and emits a `clash:revision-restore-request` payload;
+  desktop `ChatbotCopilot` listens for valid requests and forwards the explicit
+  CLI/CAS restore command to the selected local runtime agent with a guardrail
+  prompt, without directly mutating canvas, snapshot, or SQLite. Conflict
+  recovery, stronger direct action-runner/confirmation UX, canonical
+  file-backed text mode, and sync policy are still future work,
 - shared projection path resolution now keeps text/timeline projection files
   inside the current agent/project cwd and rejects symlinked parents that
   resolve outside it, and applies the same cwd/realpath guard to generated
