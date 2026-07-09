@@ -2009,6 +2009,12 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
       PRIMARY KEY (project_id, asset_id, position)
     );
 
+    CREATE TABLE IF NOT EXISTS local_config (
+      key TEXT PRIMARY KEY NOT NULL,
+      value_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS assets (
       id TEXT PRIMARY KEY NOT NULL,
       user_id TEXT NOT NULL,
@@ -2111,6 +2117,12 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
     "position INTEGER NOT NULL DEFAULT 0",
   ]) {
     ensureSqliteColumn(db, "project_preview_asset", column);
+  }
+  for (const column of [
+    "value_json TEXT NOT NULL DEFAULT '{}'",
+    "updated_at TEXT NOT NULL DEFAULT ''",
+  ]) {
+    ensureSqliteColumn(db, "local_config", column);
   }
   for (const column of [
     "user_id TEXT NOT NULL DEFAULT ''",
@@ -2529,6 +2541,12 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
     inspectSqliteTableSchema(db, problems, {
       table: "project_preview_asset",
       columns: ["project_id", "asset_id", "url", "type", "storage_key", "created_at", "position"],
+      indexes: [],
+    });
+    inspectSqliteTableSchema(db, problems, {
+      table: "local_config",
+      primaryKey: ["key"],
+      columns: ["key", "value_json", "updated_at"],
       indexes: [],
     });
     inspectSqliteTableSchema(db, problems, {

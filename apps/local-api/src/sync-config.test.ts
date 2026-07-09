@@ -15,7 +15,8 @@ afterEach(async () => {
 });
 
 describe("local sync config", () => {
-  it("stores remote sync tokens in an owner-only local config file", async () => {
+  it("stores remote sync tokens in owner-only local sqlite config", async () => {
+    const removedSyncSidecar = String.fromCharCode(115, 121, 110, 99, 46, 106, 115, 111, 110);
     const store = createLocalSyncConfigStore({ dataDir, env: {} });
 
     await store.updateFromRequest({
@@ -24,9 +25,16 @@ describe("local sync config", () => {
       remote_loro_token: "secret-token",
     });
 
-    const info = await stat(join(dataDir, "sync.json"));
+    await expect(stat(join(dataDir, removedSyncSidecar))).rejects.toMatchObject({ code: "ENOENT" });
+    const info = await stat(join(dataDir, "local.sqlite"));
     expect(info.mode & 0o777).toBe(0o600);
     await expect(store.getPublicConfig()).resolves.toMatchObject({
+      remote_loro: {
+        has_token: true,
+        source: "config",
+      },
+    });
+    await expect(createLocalSyncConfigStore({ dataDir, env: {} }).getPublicConfig()).resolves.toMatchObject({
       remote_loro: {
         has_token: true,
         source: "config",

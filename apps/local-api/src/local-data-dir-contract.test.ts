@@ -15,6 +15,14 @@ function findRepoRoot(startDirectory: string): string {
 
 const repoRoot = findRepoRoot(process.cwd());
 
+function spell(...codes: number[]): string {
+  return String.fromCharCode(...codes);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function readScript(name: string): string {
   return readFileSync(new URL(`../scripts/${name}`, import.meta.url), "utf8");
 }
@@ -106,6 +114,39 @@ describe("local data dir contract", () => {
         forbiddenBroadStoreSpellings
           .filter((name) => content.includes(name))
           .map(() => `${file.slice(repoRoot.length + 1)} contains a forbidden app metadata spelling`),
+      );
+
+    expect(matches).toEqual([]);
+  });
+
+  it("keeps local-api config state out of visible JSON sidecar filenames", () => {
+    const forbiddenLocalConfigFiles = [
+      spell(115, 121, 110, 99, 46, 106, 115, 111, 110),
+      spell(97, 117, 100, 105, 111, 46, 106, 115, 111, 110),
+      spell(104, 97, 114, 110, 101, 115, 115, 101, 115, 46, 106, 115, 111, 110),
+    ];
+    const scannedFiles = [
+      ...sourceFilesUnder("apps/local-api/src"),
+      ...sourceFilesUnder("apps/desktop/e2e"),
+      ...sourceFilesUnder("packages/cli/src"),
+      ...sourceFilesUnder("packages/shared-runtime/src"),
+      ...sourceFilesUnder("packages/web-ui/src"),
+      ...sourceFilesUnder("skills"),
+      ...sourceFilesUnder("docs"),
+    ].filter((file) => !file.endsWith("apps/local-api/src/local-data-dir-contract.test.ts"));
+
+    const forbiddenLocalConfigFilePatterns = forbiddenLocalConfigFiles.map((name) => ({
+      name,
+      pattern: new RegExp(`(^|[^A-Za-z0-9._-])${escapeRegExp(name)}($|[^A-Za-z0-9._-])`),
+    }));
+
+    const matches = scannedFiles
+      .map((file) => ({ file, content: readFileSync(file, "utf8") }))
+      .flatMap(({ file, content }) =>
+        forbiddenLocalConfigFilePatterns
+          .filter(({ pattern }) => pattern.test(content))
+          .map(({ name }) => name)
+          .map((name) => `${file.slice(repoRoot.length + 1)} contains removed local config sidecar ${name}`),
       );
 
     expect(matches).toEqual([]);

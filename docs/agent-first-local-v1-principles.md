@@ -307,7 +307,7 @@ Classification rule:
 | `projections/**/*.{md,yaml,json}` | Yes | Yes, then explicit `apply` | Product projection with CAS |
 | `sessions/*` | Yes | Yes, only for documented session artifacts | Agent-readable/editable session projections or configs |
 | `*.lock.json` next to projections | Yes | No, except command-generated | CAS evidence; editing it bypasses stale-read safety |
-| `sync.json`, `audio.json`, `harnesses.json` | Via settings/CLI for now | Only if documented as config | Narrow local config, not relational product data |
+| Local sync/audio/harness settings | Through API/CLI receipts | No direct file edits | Stored in `local.sqlite` `local_config`, not JSON sidecars |
 | `credentials.json`, CLI `config.json` | No by default | Auth/setup commands only | Contains bearer credentials or auth state |
 | `host.json`, socket/pid files, runtime dirs | Debug only | No | Runtime discovery/ephemeral state |
 | `local.sqlite` | No product workflow | No | Queryable product metadata; use API/CLI |
@@ -670,8 +670,9 @@ Reuse the cloud D1 schema names where possible. Do not add broad JSON product
 database readers or writers back into local-api, status, doctor, conformance, or
 agent-facing docs.
 
-Keep JSON only for narrow, intended-to-edit config files such as `sync.json`
-and `audio.json`, and revisit even those once settings become richer.
+Keep JSON only for agent-facing projections, explicit workspace artifacts, or
+local secret/runtime discovery files. Local sync, audio, and harness settings
+belong in SQLite settings rows.
 
 ### P0: Generalize projection CAS
 
@@ -907,11 +908,10 @@ That is simple and probably acceptable for v1 alpha, but internal files
    must be protected by `project status`/`doctor` visibility, real E2E layout
    gates, and apply commands. This is not yet a full OS-level sandbox.
 
-2. Should `sync.json` and `audio.json` remain JSON?
+2. Should local sync/audio/harness settings remain JSON files?
 
-   They are local settings and are small. They can stay JSON if agent editing
-   is a deliberate product feature. Otherwise they should eventually move to
-   SQLite settings rows.
+   No for local v1. They are local settings and now live in SQLite settings
+   rows; direct agent edits should go through receipt-bearing API/CLI mutations.
 
 3. Are user variables still a product concept?
 

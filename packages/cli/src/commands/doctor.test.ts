@@ -1613,6 +1613,7 @@ test("storage doctor warns when local SQLite lacks core metadata tables", async 
   const schemaCheck = checkById(report, "local-sqlite-schema");
   assert.equal(schemaCheck.level, "warning");
   assert.match(schemaCheck.message, /project/);
+  assert.match(schemaCheck.message, /local_config/);
   assert.match(schemaCheck.message, /runtime_session/);
   assert.match(schemaCheck.message, /mutation_audit/);
 });
@@ -1753,6 +1754,7 @@ test("storage doctor repair creates core local SQLite metadata tables", async ()
       "local_migration",
       "project",
       "project_preview_asset",
+      "local_config",
       "assets",
       "asset_refs",
       "runtime_session",

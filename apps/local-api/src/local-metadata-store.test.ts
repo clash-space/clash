@@ -42,6 +42,22 @@ function readMetadataMigrationMarker(dataDir: string): Record<string, unknown> |
   }
 }
 
+function readSqliteObjectName(dataDir: string, type: string, name: string): string | undefined {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { get(...params: unknown[]): Record<string, unknown> | undefined };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    const row = db.prepare("SELECT name FROM sqlite_master WHERE type = ? AND name = ?").get(type, name);
+    return typeof row?.name === "string" ? row.name : undefined;
+  } finally {
+    db.close();
+  }
+}
+
 function createPartialCoreMetadataSqlite(dataDir: string): void {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
@@ -94,6 +110,7 @@ describe("local metadata store", () => {
     });
 
     expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
+    expect(readSqliteObjectName(dataDir, "table", "local_config")).toBe("local_config");
   });
 
   it("upgrades partial sqlite metadata and projection tables before local-api metadata access", async () => {

@@ -1,10 +1,9 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import {
   createHttpRemoteLoroPersistence,
   type RemoteLoroPersistence,
   type RemoteLoroPersistenceEnv,
 } from "./sync.js";
+import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
 
 export type LocalSyncMode = "local-only" | "cloud-sync";
 export type RemoteLoroSource = "none" | "env" | "config";
@@ -66,10 +65,7 @@ interface LocalSyncConfigStoreOptions {
   env?: RemoteLoroPersistenceEnv;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
-
-function configPath(dataDir: string): string {
-  return join(dataDir, "sync.json");
-}
+const LOCAL_SYNC_CONFIG_KEY = "local-sync-config";
 
 function trimToNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -157,36 +153,31 @@ function toReadState(config: EffectiveLocalSyncConfig): LocalSyncConfigReadState
   };
 }
 
-async function readConfigFile(path: string): Promise<LocalSyncConfigFile | null> {
-  try {
-    const data = JSON.parse(await readFile(path, "utf8")) as Partial<LocalSyncConfigFile>;
-    return {
-      version: 1,
-      mode: normalizeMode(data.mode),
-      remoteLoroUrl: normalizeRemoteUrl(data.remoteLoroUrl),
-      remoteLoroToken: trimToNull(data.remoteLoroToken),
-      capabilities: normalizeCapabilities(data.capabilities),
-      updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date(0).toISOString(),
-    };
-  } catch {
-    return null;
-  }
+async function readConfig(store: SqliteLocalConfigStore): Promise<LocalSyncConfigFile | null> {
+  const data = await store.getJson<Partial<LocalSyncConfigFile>>(LOCAL_SYNC_CONFIG_KEY);
+  if (!data) return null;
+  return {
+    version: 1,
+    mode: normalizeMode(data.mode),
+    remoteLoroUrl: normalizeRemoteUrl(data.remoteLoroUrl),
+    remoteLoroToken: trimToNull(data.remoteLoroToken),
+    capabilities: normalizeCapabilities(data.capabilities),
+    updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date(0).toISOString(),
+  };
 }
 
-async function writeConfigFile(path: string, config: LocalSyncConfigFile): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
-  await chmod(path, 0o600).catch(() => undefined);
+async function writeConfig(store: SqliteLocalConfigStore, config: LocalSyncConfigFile): Promise<void> {
+  await store.setJson(LOCAL_SYNC_CONFIG_KEY, config, config.updatedAt);
 }
 
 export function createLocalSyncConfigStore(
   options: LocalSyncConfigStoreOptions,
 ): LocalSyncConfigStore {
-  const path = configPath(options.dataDir);
+  const configStore = createSqliteLocalConfigStore(options.dataDir);
   const env = options.env ?? {};
 
   async function effective(): Promise<EffectiveLocalSyncConfig> {
-    const file = await readConfigFile(path);
+    const file = await readConfig(configStore);
     if (!file) return envConfig(env);
     return {
       mode: file.mode,
@@ -208,7 +199,7 @@ export function createLocalSyncConfigStore(
     },
 
     async updateFromRequest(input) {
-      const current = (await readConfigFile(path)) ?? {
+      const current = (await readConfig(configStore)) ?? {
         version: 1 as const,
         mode: envConfig(env).mode,
         remoteLoroUrl: envConfig(env).remoteLoroUrl,
@@ -240,7 +231,7 @@ export function createLocalSyncConfigStore(
         capabilities,
         updatedAt: new Date().toISOString(),
       };
-      await writeConfigFile(path, next);
+      await writeConfig(configStore, next);
       return toPublicConfig({
         mode: next.mode,
         remoteLoroUrl: next.remoteLoroUrl,

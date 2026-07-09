@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import {
   type LocalAsrRuntime as LocalAsrRuntimePort,
   type LocalModelStatus,
 } from "@clash-space/sdk";
+import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
 
 export type LocalAsrProvider = "builtin-funasr";
 export type LocalAsrRuntime = "builtin-rpc";
@@ -83,10 +84,7 @@ interface LocalAudioConfigStoreOptions {
 const DEFAULT_ASR_PROVIDER: LocalAsrProvider = "builtin-funasr";
 const DEFAULT_ASR_MODEL = "iic/SenseVoiceSmall";
 const DEFAULT_PYTHON_BINARY = "python3";
-
-function configPath(dataDir: string): string {
-  return join(dataDir, "audio.json");
-}
+const LOCAL_AUDIO_CONFIG_KEY = "local-audio-config";
 
 function normalizeProvider(value: unknown): LocalAsrProvider {
   if (value === undefined || value === null || value === "") {
@@ -159,27 +157,22 @@ async function readState(
   };
 }
 
-async function readConfigFile(path: string): Promise<LocalAudioConfigFile | null> {
-  try {
-    const data = JSON.parse(await readFile(path, "utf8")) as Partial<LocalAudioConfigFile>;
-    return {
-      version: 1,
-      asrEnabled: data.asrEnabled === true,
-      asrProvider: normalizeProvider(data.asrProvider),
-      asrBaseUrl: null,
-      asrApiKey: null,
-      asrModel: normalizeModel(data.asrModel),
-      updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date(0).toISOString(),
-    };
-  } catch {
-    return null;
-  }
+async function readConfig(store: SqliteLocalConfigStore): Promise<LocalAudioConfigFile | null> {
+  const data = await store.getJson<Partial<LocalAudioConfigFile>>(LOCAL_AUDIO_CONFIG_KEY);
+  if (!data) return null;
+  return {
+    version: 1,
+    asrEnabled: data.asrEnabled === true,
+    asrProvider: normalizeProvider(data.asrProvider),
+    asrBaseUrl: null,
+    asrApiKey: null,
+    asrModel: normalizeModel(data.asrModel),
+    updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : new Date(0).toISOString(),
+  };
 }
 
-async function writeConfigFile(path: string, config: LocalAudioConfigFile): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
-  await chmod(path, 0o600).catch(() => undefined);
+async function writeConfig(store: SqliteLocalConfigStore, config: LocalAudioConfigFile): Promise<void> {
+  await store.setJson(LOCAL_AUDIO_CONFIG_KEY, config, config.updatedAt);
 }
 
 function defaultClashSdkPythonPath(): string {
@@ -263,12 +256,12 @@ async function transcribeWithRuntime(
 export function createLocalAudioConfigStore(
   options: LocalAudioConfigStoreOptions,
 ): LocalAudioConfigStore {
-  const path = configPath(options.dataDir);
+  const configStore = createSqliteLocalConfigStore(options.dataDir);
   const pythonBinary = options.pythonBinary ?? DEFAULT_PYTHON_BINARY;
   const asrRuntime = createDefaultAsrRuntime(options, pythonBinary);
 
   async function current(): Promise<LocalAudioConfigFile> {
-    return (await readConfigFile(path)) ?? defaultConfig();
+    return (await readConfig(configStore)) ?? defaultConfig();
   }
 
   async function currentRuntimeStatus(model: string): Promise<LocalModelStatus> {
@@ -311,7 +304,7 @@ export function createLocalAudioConfigStore(
         asrModel: model,
         updatedAt: new Date().toISOString(),
       };
-      await writeConfigFile(path, next);
+      await writeConfig(configStore, next);
       return publicConfig(next, await currentRuntimeStatus(next.asrModel));
     },
 
@@ -334,7 +327,7 @@ export function createLocalAudioConfigStore(
         asrModel: model,
         updatedAt: new Date().toISOString(),
       };
-      await writeConfigFile(path, next);
+      await writeConfig(configStore, next);
       return publicConfig(next, await currentRuntimeStatus(next.asrModel));
     },
 

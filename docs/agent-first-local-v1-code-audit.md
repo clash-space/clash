@@ -597,19 +597,19 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T09-36-03-580Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T09-54-28-294Z/agent-first-asset-receipt-report.json
 ```
 
 Latest full agent-first local v1 gate:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T09-35-45-550Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T09-54-12-642Z/agent-first-local-v1-gate-report.json
 ```
 
 Latest storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T09-35-58-372Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T09-54-23-133Z/storage-doctor-repair-report.json
 ```
 
 Conclusion:
@@ -633,11 +633,12 @@ Conclusion:
 - Session rows and local transcript messages now store in `local.sqlite`;
   direct real Codex layout runs remain the end-to-end evidence for cwd shape.
 - Timeline create/restore smoke is passing in both QA harness targets.
-- Local-api package tests are passing with 301 tests, and the receipt smoke is
-  passing with 199 checks, including route-level partial SQLite migration
+- Local-api package tests are passing with 302 tests, and the receipt smoke is
+  passing with 201 checks, including route-level partial SQLite migration
   recovery plus read-only
   derived agent views, provider model test action sanitized mutation audit evidence, local audio
-  model install, local audio transcription action mutation records, local harness
+  model install, local audio transcription action mutation records, SQLite
+  `local_config` persistence for local sync/audio/harness settings, local harness
   install, provider OAuth restart/complete
   missing/bare/current receipt handling, missing-target CAS rejection,
   deleted-row stale rejection, and stale

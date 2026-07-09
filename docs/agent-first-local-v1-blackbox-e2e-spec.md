@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-09T09-35-45-641Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T09-54-12-728Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -672,18 +672,20 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T09-36-03-580Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T09-54-28-294Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 199 checks passed through `node apps/desktop/e2e/agent-first-local-v1-gate.mjs`,
+- 201 checks passed through `node apps/desktop/e2e/agent-first-local-v1-gate.mjs`,
 - route-level partial SQLite migration recovery is covered through project,
   text revision, timeline revision, and provider writes,
 - derived agent reads stayed read-only, provider model tests wrote sanitized
   mutation audit evidence, local audio transcription actions recorded host
-  mutation envelopes, and local sync, audio,
+  mutation envelopes, local sync/audio/harness config writes stayed in
+  `local_config` SQLite rows, and removed local config sidecar files were not
+  created,
   harness, custom agent-server, provider account, provider OAuth, asset
   upload/read symlinked-root/parent rejection plus workflow-generated asset
   acceptance, sanitized audit evidence, and symlinked-parent rejection,
@@ -719,7 +721,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T09-35-58-372Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T09-54-23-133Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -733,7 +735,7 @@ Result:
   successful and rejected
   `clash doctor storage-recovery compare --manifest ... --json` calls, and
   follow-up read-only doctor commands produced the expected exit codes,
-- workspace roots and local SQLite core metadata tables, provider auth
+- workspace roots and local SQLite core metadata/config tables, provider auth
   tables/primary keys, plus asset/text/timeline projection indexes were
   repaired through public CLI commands,
 - doctor reported the v1 `.clash/project.toml` marker as the only project
@@ -834,7 +836,7 @@ The gate runs and validates these black-box report artifacts:
 Latest verified gate report:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T09-35-45-550Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T09-54-12-642Z/agent-first-local-v1-gate-report.json
 ```
 
 Result:
@@ -842,10 +844,10 @@ Result:
 - `status: pass`,
 - 4 suites passed,
 - nested report contracts validated:
-  - `.tmp/short-drama-timeline/2026-07-09T09-35-45-592Z/short-drama-timeline-report.json` with 4 checks,
-  - `.tmp/agent-first-cas/2026-07-09T09-35-45-641Z/agent-first-cas-report.json` with 56 checks,
-  - `.tmp/storage-doctor-repair/2026-07-09T09-35-58-372Z/storage-doctor-repair-report.json` with 86 checks,
-  - `.tmp/agent-first-asset-receipts/2026-07-09T09-36-03-580Z/agent-first-asset-receipt-report.json` with 199 checks.
+  - `.tmp/short-drama-timeline/2026-07-09T09-54-12-683Z/short-drama-timeline-report.json` with 4 checks,
+  - `.tmp/agent-first-cas/2026-07-09T09-54-12-728Z/agent-first-cas-report.json` with 56 checks,
+  - `.tmp/storage-doctor-repair/2026-07-09T09-54-23-133Z/storage-doctor-repair-report.json` with 86 checks,
+  - `.tmp/agent-first-asset-receipts/2026-07-09T09-54-28-294Z/agent-first-asset-receipt-report.json` with 201 checks.
 
 Target boundary:
 

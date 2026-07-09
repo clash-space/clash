@@ -43,7 +43,8 @@ function deferred<T = void>() {
 }
 
 describe("local ACP adapter", () => {
-  it("writes local harness config with owner-only permissions", async () => {
+  it("writes local harness config to owner-only local sqlite", async () => {
+    const removedHarnessSidecar = String.fromCharCode(104, 97, 114, 110, 101, 115, 115, 101, 115, 46, 106, 115, 111, 110);
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-acp-config-"));
     try {
       const store = createLocalHarnessConfigStore(dataDir);
@@ -58,8 +59,17 @@ describe("local ACP adapter", () => {
         },
       });
 
-      const mode = (await stat(join(dataDir, "harnesses.json"))).mode & 0o777;
+      await expect(stat(join(dataDir, removedHarnessSidecar))).rejects.toMatchObject({ code: "ENOENT" });
+      const mode = (await stat(join(dataDir, "local.sqlite"))).mode & 0o777;
       expect(mode).toBe(0o600);
+      await expect(createLocalHarnessConfigStore(dataDir).loadAgentServers?.()).resolves.toEqual({
+        local: {
+          type: "custom",
+          command: "node",
+          args: ["server.js"],
+          env: { LOCAL_TOKEN: "redacted" },
+        },
+      });
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }

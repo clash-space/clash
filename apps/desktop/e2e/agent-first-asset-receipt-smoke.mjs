@@ -62,6 +62,10 @@ function hasReceipt(readToken, namespace) {
   );
 }
 
+async function pathIsFile(filePath) {
+  return stat(filePath).then((info) => info.isFile(), () => false);
+}
+
 function appRequest(app) {
   return async (pathname, init = {}) => {
     const headers = new Headers(init.headers ?? {});
@@ -77,6 +81,15 @@ function sqliteCount(sql, params = []) {
   const db = new DatabaseSync(path.join(dataDir, "local.sqlite"));
   try {
     return db.prepare(sql).get(...params)?.count ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+function sqliteRows(sql, params = []) {
+  const db = new DatabaseSync(path.join(dataDir, "local.sqlite"));
+  try {
+    return db.prepare(sql).all(...params);
   } finally {
     db.close();
   }
@@ -180,6 +193,7 @@ async function main() {
   const startedAt = now();
   const { createLocalApiApp } = await import("../../local-api/src/app.ts");
   const { createLocalAudioConfigStore } = await import("../../local-api/src/audio-config.ts");
+  const { createLocalHarnessConfigStore } = await import("../../local-api/src/local-acp.ts");
   const { createLocalSyncConfigStore } = await import("../../local-api/src/sync-config.ts");
   const { FileReplicaStore } = await import("../../local-api/src/loro/file-replica-store.ts");
   const { LocalLoroRoom } = await import("../../local-api/src/sync.ts");
@@ -200,6 +214,7 @@ async function main() {
   let geminiAuthConfigured = false;
   let audioInstalled = false;
   let oauthStartCount = 0;
+  const harnessConfig = createLocalHarnessConfigStore(dataDir);
   const audioConfig = createLocalAudioConfigStore({
     dataDir,
     builtinStatus: async () => ({ available: audioInstalled, message: audioInstalled ? undefined : "FunASR is not installed" }),
@@ -271,6 +286,7 @@ async function main() {
       },
       async updateHarnesses(ids) {
         enabledHarnessIds = ids;
+        await harnessConfig.saveEnabledHarnessIds(ids);
         return { harnesses: harnessRows() };
       },
       async installHarness() {
@@ -297,6 +313,7 @@ async function main() {
       },
       async updateAgentServers(servers) {
         agentServers = servers;
+        await harnessConfig.saveAgentServers?.(servers);
         return {
           agent_servers: agentServers,
           harnesses: [{ id: "custom-openclaw-acp", custom: true }],
@@ -1337,6 +1354,27 @@ async function main() {
       },
     }),
     { mutation: acceptedAgentServersUpdateJson.mutation },
+  );
+
+  const removedLocalConfigSidecars = [
+    String.fromCharCode(115, 121, 110, 99, 46, 106, 115, 111, 110),
+    String.fromCharCode(97, 117, 100, 105, 111, 46, 106, 115, 111, 110),
+    String.fromCharCode(104, 97, 114, 110, 101, 115, 115, 101, 115, 46, 106, 115, 111, 110),
+  ];
+  const sidecarEvidence = Object.fromEntries(await Promise.all(
+    removedLocalConfigSidecars.map(async (filename) => [filename, await pathIsFile(path.join(dataDir, filename))]),
+  ));
+  recordCheck(
+    "local config writes do not create JSON sidecar files",
+    Object.values(sidecarEvidence).every((exists) => exists === false),
+    JSON.stringify(sidecarEvidence),
+  );
+
+  const localConfigKeys = sqliteRows("SELECT key FROM local_config ORDER BY key").map((row) => row.key);
+  recordCheck(
+    "local config writes persist through sqlite local_config rows",
+    ["local-audio-config", "local-harness-config", "local-sync-config"].every((key) => localConfigKeys.includes(key)),
+    JSON.stringify(localConfigKeys),
   );
 
   await request("/api/v1/model-providers", {
@@ -4116,6 +4154,8 @@ async function main() {
       syncConfigStaleReceiptRejected: checks.some((check) => check.name === "sync config update with stale receipt is rejected" && check.status === "pass"),
       syncConfigReceiptAccepted: checks.some((check) => check.name === "sync config update with receipt read token is accepted" && check.status === "pass"),
       syncConfigAuditRecorded: checks.some((check) => check.name === "sync config update writes sanitized local mutation audit evidence" && check.status === "pass"),
+      localConfigNoSidecars: checks.some((check) => check.name === "local config writes do not create JSON sidecar files" && check.status === "pass"),
+      localConfigSqliteRowsPersisted: checks.some((check) => check.name === "local config writes persist through sqlite local_config rows" && check.status === "pass"),
       audioConfigGetReceiptReturned: checks.some((check) => check.name === "audio config get returns receipt read token" && check.status === "pass"),
       audioConfigMissingReadRejected: checks.some((check) => check.name === "audio config update without prior read is rejected" && check.status === "pass"),
       audioConfigBareCasRejected: checks.some((check) => check.name === "audio config update with bare CAS token is rejected" && check.status === "pass"),

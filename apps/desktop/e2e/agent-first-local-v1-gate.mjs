@@ -64,9 +64,11 @@ const suiteDefinitions = [
     id: "agent-first-asset-receipts",
     command: [pnpmBin, "exec", "tsx", "e2e/agent-first-asset-receipt-smoke.mjs"],
     schemaVersion: 1,
-    minChecks: 199,
+    minChecks: 201,
     requiredBooleans: [
       "syncConfigAuditRecorded",
+      "localConfigNoSidecars",
+      "localConfigSqliteRowsPersisted",
       "localObsoleteProjectEndpointsRejected",
       "providerOAuthCompleteAuditRecorded",
       "audioTranscriptionAuditRecorded",

@@ -86,9 +86,10 @@ Current status:
   `local.sqlite`.
 - Covered by `apps/local-api/src/app.test.ts`, `apps/local-api/src/sync.test.ts`,
   focused local-api store routes, typecheck, and daemon smoke.
-- `sync.json`, `audio.json`, `harnesses.json`, `host.json`, credential JSON,
-  provider test recordings, and projection lock sidecars are classified as
-  narrow config/runtime/artifact/projection files, not local metadata stores.
+- Local sync, audio, and harness settings are stored in the `local_config`
+  SQLite table. Host discovery files, credential JSON, provider test recordings,
+  and projection lock sidecars remain narrow runtime/artifact/projection files,
+  not local metadata stores.
 
 ### P0-02: Create shared projection CAS library
 
@@ -524,7 +525,7 @@ Current status:
   verifies `clash project status --project ... --json` from a detached cwd still
   resolves the same canonical project workspace and local SQLite state.
 - `clash doctor storage --repair` creates missing workspace roots, ensures the
-  local SQLite core metadata tables, provider auth tables/primary keys, plus
+  local SQLite core metadata/config tables, provider auth tables/primary keys, plus
   asset/text/timeline projection indexes, and quarantines secondary cwd /
   workspace `snapshot.bin` or `updates.log` files into protected runtime
   recovery with durable manifest evidence instead of treating them as project

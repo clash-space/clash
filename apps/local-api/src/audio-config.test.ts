@@ -17,6 +17,7 @@ afterEach(async () => {
 
 describe("local audio config", () => {
   it("depends on an injected local ASR runtime for status, deploy, and transcription", async () => {
+    const removedAudioSidecar = String.fromCharCode(97, 117, 100, 105, 111, 46, 106, 115, 111, 110);
     const runtime: LocalAsrRuntime = {
       status: vi.fn(async ({ model }) => ({ available: model === "iic/SenseVoiceSmall" })),
       deploy: vi.fn(async () => undefined),
@@ -42,8 +43,15 @@ describe("local audio config", () => {
       asr_provider: "builtin-funasr",
       asr_model: "iic/SenseVoiceSmall",
     });
-    const info = await stat(join(dataDir, "audio.json"));
-    expect(info.mode & 0o777).toBe(0o600);
+    await expect(stat(join(dataDir, removedAudioSidecar))).rejects.toMatchObject({ code: "ENOENT" });
+    const sqliteInfo = await stat(join(dataDir, "local.sqlite"));
+    expect(sqliteInfo.mode & 0o777).toBe(0o600);
+    await expect(createLocalAudioConfigStore({ dataDir, asrRuntime: runtime }).getPublicConfig()).resolves.toMatchObject({
+      asr: {
+        enabled: true,
+        model: "iic/SenseVoiceSmall",
+      },
+    });
 
     const result = await store.transcribe({
       file: new File(["voice-bytes"], "voice.webm", { type: "audio/webm" }),

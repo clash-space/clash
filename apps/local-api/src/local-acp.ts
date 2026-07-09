@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
@@ -34,6 +34,7 @@ import {
   uninstallAcpRegistryAgent,
   uninstallManagedAdapter,
 } from "./acp-registry-installer.js";
+import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
 
 export const DESKTOP_LOCAL_RUNTIME_ID = "desktop-local";
 
@@ -549,25 +550,22 @@ function shouldEnableRegistryCatalog(options: LocalAcpAdapterOptions): boolean {
   return options.agentCatalog.some((entry) => entry.installSource === "registry");
 }
 
-async function readHarnessConfigFile(configPath: string): Promise<Record<string, unknown>> {
-  try {
-    const parsed = JSON.parse(await readFile(configPath, "utf8"));
-    return isPlainObject(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
+const LOCAL_HARNESS_CONFIG_KEY = "local-harness-config";
+
+async function readHarnessConfig(store: SqliteLocalConfigStore): Promise<Record<string, unknown>> {
+  const parsed = await store.getJson<Record<string, unknown>>(LOCAL_HARNESS_CONFIG_KEY);
+  return isPlainObject(parsed) ? parsed : {};
 }
 
-async function writeHarnessConfigFile(configPath: string, value: Record<string, unknown>): Promise<void> {
-  await writeFile(configPath, JSON.stringify(value, null, 2), { encoding: "utf8", mode: 0o600 });
-  await chmod(configPath, 0o600).catch(() => undefined);
+async function writeHarnessConfig(store: SqliteLocalConfigStore, value: Record<string, unknown>): Promise<void> {
+  await store.setJson(LOCAL_HARNESS_CONFIG_KEY, value);
 }
 
 export function createLocalHarnessConfigStore(dataDir: string): LocalAcpHarnessConfigStore {
-  const configPath = join(dataDir, "harnesses.json");
+  const configStore = createSqliteLocalConfigStore(dataDir);
   return {
     async loadEnabledHarnessIds() {
-      const parsed = await readHarnessConfigFile(configPath) as {
+      const parsed = await readHarnessConfig(configStore) as {
         enabled_harness_ids?: unknown;
         enabledHarnessIds?: unknown;
       };
@@ -580,19 +578,17 @@ export function createLocalHarnessConfigStore(dataDir: string): LocalAcpHarnessC
       return ids.filter((id): id is string => typeof id === "string");
     },
     async saveEnabledHarnessIds(ids) {
-      await mkdir(dataDir, { recursive: true });
-      const parsed = await readHarnessConfigFile(configPath);
-      await writeHarnessConfigFile(configPath, { ...parsed, enabled_harness_ids: ids });
+      const parsed = await readHarnessConfig(configStore);
+      await writeHarnessConfig(configStore, { ...parsed, enabled_harness_ids: ids });
     },
     async loadAgentServers() {
-      const parsed = await readHarnessConfigFile(configPath);
+      const parsed = await readHarnessConfig(configStore);
       const servers = normalizeAgentServersConfig(parsed.agent_servers);
       return Object.keys(servers).length > 0 ? servers : null;
     },
     async saveAgentServers(servers) {
-      await mkdir(dataDir, { recursive: true });
-      const parsed = await readHarnessConfigFile(configPath);
-      await writeHarnessConfigFile(configPath, {
+      const parsed = await readHarnessConfig(configStore);
+      await writeHarnessConfig(configStore, {
         ...parsed,
         agent_servers: normalizeAgentServersConfig(servers),
       });
