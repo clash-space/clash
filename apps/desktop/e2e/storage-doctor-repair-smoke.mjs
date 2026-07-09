@@ -93,10 +93,6 @@ async function pathIsFile(targetPath) {
   }
 }
 
-function removedBroadAppStateFilename() {
-  return String.fromCharCode(100, 98, 46, 106, 115, 111, 110);
-}
-
 function isInside(childPath, parentPath) {
   const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -209,10 +205,6 @@ async function main() {
     { command: init.command },
   );
 
-  const oldBroadStatePath = path.join(clashHome, "local-api", removedBroadAppStateFilename());
-  await mkdir(path.dirname(oldBroadStatePath), { recursive: true });
-  await writeFile(oldBroadStatePath, JSON.stringify({ projects: [{ id: "obsolete" }] }), "utf8");
-
   const before = runCli(["doctor", "storage", "--json"]);
   recordCheck(
     "doctor storage before repair exits successfully with warnings",
@@ -229,12 +221,6 @@ async function main() {
       drafts: checkById(beforeReport, "editable-drafts-root"),
       sqliteSchema: checkById(beforeReport, "local-sqlite-schema"),
     }),
-  );
-  recordCheck(
-    "doctor before repair reports old broad app-state file",
-    checkById(beforeReport, "old-broad-app-state")?.level === "warning" &&
-      checkById(beforeReport, "old-broad-app-state")?.path === oldBroadStatePath,
-    JSON.stringify(checkById(beforeReport, "old-broad-app-state")),
   );
   recordCheck(
     "doctor before repair does not expose obsolete marker compatibility",
@@ -295,17 +281,6 @@ async function main() {
     JSON.stringify({
       repair: repairReport.repairs?.find((item) => item.path === repairableTextBlob),
       integrity: checkById(repairReport, "text-revision-blob-integrity"),
-    }),
-  );
-  recordCheck(
-    "doctor repair removes old broad app-state file",
-    repairReport.repairs?.some((item) => item.id === "old-broad-app-state" && item.path === oldBroadStatePath) === true &&
-      checkById(repairReport, "old-broad-app-state")?.level === "ok" &&
-      !(await pathIsFile(oldBroadStatePath)),
-    JSON.stringify({
-      repair: repairReport.repairs?.find((item) => item.id === "old-broad-app-state"),
-      check: checkById(repairReport, "old-broad-app-state"),
-      exists: await pathIsFile(oldBroadStatePath),
     }),
   );
   const quarantinedSnapshot = repairReport.repairs?.find((item) =>
@@ -946,15 +921,6 @@ async function main() {
     }),
   );
   recordCheck(
-    "doctor after repair keeps old broad app-state file removed",
-    checkById(afterReport, "old-broad-app-state")?.level === "ok" &&
-      !(await pathIsFile(oldBroadStatePath)),
-    JSON.stringify({
-      check: checkById(afterReport, "old-broad-app-state"),
-      exists: await pathIsFile(oldBroadStatePath),
-    }),
-  );
-  recordCheck(
     "doctor after repair reports quarantined recovery inventory",
     checkById(afterReport, "secondary-canvas-recovery")?.level === "warning" &&
       checkById(afterReport, "secondary-canvas-recovery")?.path === manifestPath,
@@ -1240,7 +1206,7 @@ async function main() {
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots, removes old broad app-state files, ensures local SQLite core metadata/provider/projection schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
+    summary: "Storage doctor repair initializes agent workspace roots, ensures local SQLite core metadata/provider/projection schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
     run: {
       artifactRoot,
       workspace,

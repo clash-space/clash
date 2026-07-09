@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { createHash } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { createRequire } from "node:module";
-import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   buildProjectRecoveryPolicy,
@@ -224,7 +224,6 @@ export async function runStorageDoctor(options: {
   checks.push(...inspectStorageContract(status));
 
   if (options.repair === true) {
-    repairs.push(...await repairOldBroadAppState(status.localApiDataDir));
     repairs.push(...await repairProjectWorkspace(status));
     repairs.push(...await repairSecondaryCanvasReplicas(status, cwd));
     repairs.push(...await repairLocalSqliteSchema(status.localSqlitePath));
@@ -241,7 +240,6 @@ export async function runStorageDoctor(options: {
   checks.push(await inspectTimelineRevisionBlobIntegrity(status));
   checks.push(await inspectSecondaryCanvasReplica(status, cwd));
   checks.push(await inspectSecondaryCanvasRecovery(status));
-  checks.push(await inspectOldBroadAppState(status.localApiDataDir));
 
   await pushPathCheck(checks, {
     id: "project-workspace",
@@ -1821,27 +1819,6 @@ async function pathExists(path: string, kind: "file" | "directory"): Promise<boo
   }
 }
 
-function removedBroadAppStateFilename(): string {
-  return String.fromCharCode(100, 98, 46, 106, 115, 111, 110);
-}
-
-function oldBroadAppStatePath(localApiDataDir: string): string {
-  return join(localApiDataDir, removedBroadAppStateFilename());
-}
-
-async function inspectOldBroadAppState(localApiDataDir: string): Promise<StorageDoctorCheck> {
-  const path = oldBroadAppStatePath(localApiDataDir);
-  const exists = await pathExists(path, "file");
-  return {
-    id: "old-broad-app-state",
-    level: exists ? "warning" : "ok",
-    message: exists
-      ? "Old broad app-state file is still present; it is not read or migrated. Run doctor storage --repair to delete it."
-      : "No old broad app-state file is present.",
-    path,
-  };
-}
-
 async function inspectAssetLinksRoot(assetLinksRoot: string): Promise<StorageDoctorCheck> {
   let entries: Dirent<string>[];
   try {
@@ -1901,17 +1878,6 @@ async function inspectAssetLinksRoot(assetLinksRoot: string): Promise<StorageDoc
       : "Asset links resolve to files.",
     path: assetLinksRoot,
   };
-}
-
-async function repairOldBroadAppState(localApiDataDir: string): Promise<StorageDoctorRepair[]> {
-  const path = oldBroadAppStatePath(localApiDataDir);
-  if (!(await pathExists(path, "file"))) return [];
-  await rm(path, { force: true });
-  return [{
-    id: "old-broad-app-state",
-    message: "Removed old broad app-state file; local metadata remains SQLite-only.",
-    path,
-  }];
 }
 
 async function repairProjectWorkspace(status: ProjectStatus): Promise<StorageDoctorRepair[]> {

@@ -2577,6 +2577,23 @@ describe("local API app", () => {
         resultEntityId: "image-replacement",
       },
     });
+    const audit = await app.request("/api/v1/mutation-audit?operation=asset_cow_replace&entityId=image-source");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "asset_cow_replace",
+      entity: { kind: "media-node", id: "image-source" },
+      actorClientType: "agent",
+      forced: false,
+      accepted: true,
+      reason: "asset copy-on-write replacement",
+      resultEntityId: "image-replacement",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
     const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
     const canvas = recovered.getMap("nodes");

@@ -173,6 +173,35 @@ describe("local data dir contract", () => {
     expect(matches).toEqual([]);
   });
 
+  it("keeps hidden broad app-state compatibility hooks out of source, docs, and skills", () => {
+    const scannedFiles = [
+      ...sourceFilesUnder("apps/desktop/e2e"),
+      ...sourceFilesUnder("apps/local-api/src"),
+      ...sourceFilesUnder("packages/cli/src"),
+      ...sourceFilesUnder("packages/shared-runtime/src"),
+      ...sourceFilesUnder("packages/shared-types/src"),
+      ...sourceFilesUnder("packages/web-ui/src"),
+      ...sourceFilesUnder("skills"),
+      ...sourceFilesUnder("docs"),
+    ].filter((file) => !file.endsWith("apps/local-api/src/local-data-dir-contract.test.ts"));
+    const forbidden = [
+      /old broad app-state/i,
+      /old-broad-app-state/i,
+      /removedBroadAppState/i,
+      /String\.fromCharCode\(\s*100\s*,\s*98\s*,\s*46\s*,\s*106\s*,\s*115\s*,\s*111\s*,\s*110\s*\)/,
+    ];
+
+    const matches = scannedFiles.flatMap((file) => {
+      const content = readFileSync(file, "utf8");
+      const relativePath = file.slice(repoRoot.length + 1);
+      return forbidden
+        .filter((pattern) => pattern.test(content))
+        .map((pattern) => `${relativePath} contains removed broad app-state compatibility hook ${pattern}`);
+    });
+
+    expect(matches).toEqual([]);
+  });
+
   it("keeps legacy remote vars and room commands off the local-first CLI surface", () => {
     const cliIndex = readRepoFile("packages/cli/src/index.ts");
 

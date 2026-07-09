@@ -2500,6 +2500,85 @@ async function main() {
     JSON.stringify(assetCoverAudit),
   );
 
+  const assetCowReplaceProjectId = "project-asset-cow-replace-smoke";
+  const assetCowReplaceAssetResponse = await request("/api/v1/assets", {
+    method: "POST",
+    headers: { "x-clash-client-type": "agent" },
+    body: JSON.stringify({
+      projectId: assetCowReplaceProjectId,
+      kind: "image",
+      srcR2Key: "uploads/asset-cow-replacement.png",
+    }),
+  });
+  const assetCowReplaceAsset = await parseJsonResponse(assetCowReplaceAssetResponse);
+  recordCheck(
+    "asset COW replacement test asset is registered",
+    assetCowReplaceAssetResponse.status === 200 && typeof assetCowReplaceAsset.id === "string",
+    JSON.stringify(assetCowReplaceAsset),
+    { mutation: assetCowReplaceAsset.mutation },
+  );
+  await new FileReplicaStore(path.join(dataDir, "projects")).updateSnapshotAtomic(assetCowReplaceProjectId, (doc) => {
+    doc.getMap("nodes").set("asset-replace-source", {
+      type: "image",
+      data: { label: "Replace source", assetId: "asset-replace-original", status: "completed" },
+    });
+    return { value: null };
+  });
+  const assetReplaceNodeReadResponse = await request(`/api/v1/projects/${assetCowReplaceProjectId}/canvas/nodes/asset-replace-source`);
+  const assetReplaceNodeRead = await parseJsonResponse(assetReplaceNodeReadResponse);
+  recordCheck(
+    "asset COW replacement node read returns receipt read token",
+    assetReplaceNodeReadResponse.status === 200 && hasReceipt(assetReplaceNodeRead.readToken, "node"),
+    JSON.stringify(assetReplaceNodeRead),
+    { readToken: assetReplaceNodeRead.readToken },
+  );
+  const assetCowReplaceResponse = await request("/api/v1/assets/replace", {
+    method: "POST",
+    headers: { "x-clash-client-type": "agent" },
+    body: JSON.stringify({
+      projectId: assetCowReplaceProjectId,
+      nodeId: "asset-replace-source",
+      assetId: assetCowReplaceAsset.id,
+      ifMatch: assetReplaceNodeRead.readToken,
+      newNodeId: "asset-replace-copy",
+      label: "Replace copy",
+    }),
+  });
+  const assetCowReplace = await parseJsonResponse(assetCowReplaceResponse);
+  recordCheck(
+    "asset COW replacement with node receipt is accepted",
+    assetCowReplaceResponse.status === 200 &&
+      assetCowReplace.copyOnWrite === true &&
+      assetCowReplace.newNodeId === "asset-replace-copy" &&
+      assetCowReplace.sourceNodeId === "asset-replace-source" &&
+      assetCowReplace.assetId === assetCowReplaceAsset.id &&
+      assetCowReplace.mutation?.operation === "asset_cow_replace" &&
+      assetCowReplace.mutation?.entity?.id === "asset-replace-source" &&
+      assetCowReplace.mutation?.expectedReadToken === assetReplaceNodeRead.readToken &&
+      assetCowReplace.mutation?.beforeReadToken === baseReadToken(assetReplaceNodeRead.readToken) &&
+      hasReceipt(assetCowReplace.mutation?.afterReadToken, "node") &&
+      assetCowReplace.mutation?.accepted === true,
+    JSON.stringify(assetCowReplace),
+    { mutation: assetCowReplace.mutation },
+  );
+  const assetCowReplaceAuditResponse = await request("/api/v1/mutation-audit?operation=asset_cow_replace&entityId=asset-replace-source");
+  const assetCowReplaceAudit = await parseJsonResponse(assetCowReplaceAuditResponse);
+  const assetCowReplaceAuditRecord = assetCowReplaceAudit.records?.[0];
+  recordCheck(
+    "asset COW replacement writes sanitized local mutation audit evidence",
+    assetCowReplaceAuditResponse.status === 200 &&
+      assetCowReplaceAudit.records?.length === 1 &&
+      assetCowReplaceAuditRecord.operation === "asset_cow_replace" &&
+      assetCowReplaceAuditRecord.entity?.kind === "media-node" &&
+      assetCowReplaceAuditRecord.entity?.id === "asset-replace-source" &&
+      assetCowReplaceAuditRecord.accepted === true &&
+      assetCowReplaceAuditRecord.actorClientType === "agent" &&
+      assetCowReplaceAuditRecord.reason === "asset copy-on-write replacement" &&
+      mutationAuditRecordsHaveNoReadTokens(assetCowReplaceAudit.records),
+    JSON.stringify(assetCowReplaceAudit),
+    { mutation: assetCowReplace.mutation },
+  );
+
   const initialRef = await fetchAssetProjectRef({ assetId, projectId, request });
   recordCheck(
     "asset ref get returns receipt read token",
@@ -3933,16 +4012,18 @@ async function main() {
       coverReceiptAccepted: checks.some((check) => check.name === "asset cover update with receipt read token is accepted" && check.status === "pass"),
       coverStaleReceiptRejected: checks.some((check) => check.name === "asset cover update with stale receipt is rejected" && check.status === "pass"),
       assetCoverAuditRecorded: checks.some((check) => check.name === "asset cover update writes sanitized local mutation audit evidence" && check.status === "pass"),
+      assetCowReplaceReceiptAccepted: checks.some((check) => check.name === "asset COW replacement with node receipt is accepted" && check.status === "pass"),
+      assetCowReplaceAuditRecorded: checks.some((check) => check.name === "asset COW replacement writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetRefGetReceiptReturned: checks.some((check) => check.name === "asset ref get returns receipt read token" && check.status === "pass"),
-	      assetRefMissingReadRejected: checks.some((check) => check.name === "asset ref delete without prior read is rejected" && check.status === "pass"),
-	      assetRefBareCasRejected: checks.some((check) => check.name === "asset ref delete with bare CAS token is rejected" && check.status === "pass"),
-	      assetRefReceiptAccepted: checks.some((check) => check.name === "asset ref delete with receipt read token is accepted" && check.status === "pass"),
-	      assetRefDeleteAuditRecorded: checks.some((check) => check.name === "asset ref delete writes sanitized local mutation audit evidence" && check.status === "pass"),
-	      assetReferenceRefreshMissingReadRejected: checks.some((check) => check.name === "asset reference refresh without prior asset read is rejected" && check.status === "pass"),
-	      assetReferenceRefreshBareCasRejected: checks.some((check) => check.name === "asset reference refresh with bare CAS token is rejected" && check.status === "pass"),
-	      assetReferenceRefreshReceiptAccepted: checks.some((check) => check.name === "asset reference refresh with asset receipt is accepted" && check.status === "pass"),
+      assetRefMissingReadRejected: checks.some((check) => check.name === "asset ref delete without prior read is rejected" && check.status === "pass"),
+      assetRefBareCasRejected: checks.some((check) => check.name === "asset ref delete with bare CAS token is rejected" && check.status === "pass"),
+      assetRefReceiptAccepted: checks.some((check) => check.name === "asset ref delete with receipt read token is accepted" && check.status === "pass"),
+      assetRefDeleteAuditRecorded: checks.some((check) => check.name === "asset ref delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      assetReferenceRefreshMissingReadRejected: checks.some((check) => check.name === "asset reference refresh without prior asset read is rejected" && check.status === "pass"),
+      assetReferenceRefreshBareCasRejected: checks.some((check) => check.name === "asset reference refresh with bare CAS token is rejected" && check.status === "pass"),
+      assetReferenceRefreshReceiptAccepted: checks.some((check) => check.name === "asset reference refresh with asset receipt is accepted" && check.status === "pass"),
       assetReferenceRefreshAuditRecorded: checks.some((check) => check.name === "asset reference refresh writes sanitized local mutation audit evidence" && check.status === "pass"),
-	      assetGcDryRunReceiptReturned: checks.some((check) => check.name === "asset GC dry-run returns receipt read token" && check.status === "pass"),
+      assetGcDryRunReceiptReturned: checks.some((check) => check.name === "asset GC dry-run returns receipt read token" && check.status === "pass"),
       assetGcMissingDryRunRejected: checks.some((check) => check.name === "asset GC delete without prior dry-run is rejected" && check.status === "pass"),
       assetGcBareCasRejected: checks.some((check) => check.name === "asset GC delete with bare dry-run CAS token is rejected" && check.status === "pass"),
       assetGcStaleReceiptRejected: checks.some((check) => check.name === "asset GC delete with stale dry-run receipt is rejected" && check.status === "pass"),

@@ -174,10 +174,6 @@ function checkById(report: Awaited<ReturnType<typeof runStorageDoctor>>, id: str
   return check;
 }
 
-function removedBroadAppStateFilename(): string {
-  return String.fromCharCode(100, 98, 46, 106, 115, 111, 110);
-}
-
 test("storage doctor reports marker project with non-fatal missing-store warnings", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
@@ -1731,32 +1727,6 @@ test("storage doctor repair creates workspace roots and fixes local SQLite asset
 
   const verified = await runStorageDoctor({ cwd, env: {}, homeDir });
   assert.equal(checkById(verified, "local-sqlite-schema").level, "ok");
-});
-
-test("storage doctor repair removes old broad app-state files instead of migrating them", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "doctor_project" });
-  const localApiDir = join(homeDir, ".clash", "local-api");
-  await mkdir(localApiDir, { recursive: true });
-  const removedStatePath = join(localApiDir, removedBroadAppStateFilename());
-  await writeFile(removedStatePath, JSON.stringify({ projects: [{ id: "old" }] }), "utf8");
-
-  const before = await runStorageDoctor({ cwd, env: {}, homeDir });
-  const beforeCheck = checkById(before, "old-broad-app-state");
-  assert.equal(beforeCheck.level, "warning");
-  assert.equal(beforeCheck.path, removedStatePath);
-
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
-
-  assert.equal(repaired.ok, true);
-  assert.equal(repaired.repaired, true);
-  assert.ok(repaired.repairs?.some((repair) => repair.id === "old-broad-app-state" && repair.path === removedStatePath));
-  assert.equal(checkById(repaired, "old-broad-app-state").level, "ok");
-  await assert.rejects(stat(removedStatePath), { code: "ENOENT" });
-
-  const verified = await runStorageDoctor({ cwd, env: {}, homeDir });
-  assert.equal(checkById(verified, "old-broad-app-state").level, "ok");
 });
 
 test("storage doctor repair creates core local SQLite metadata tables", async () => {

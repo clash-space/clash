@@ -6480,6 +6480,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           ...current.assetRefs.filter((ref) => !(ref.assetId === assetId && ref.projectId === projectId)),
         ];
       });
+      const mutation = result.body.mutation as HostMutationRecord | undefined;
+      if (mutation?.accepted === true) {
+        await db.appendMutationAudit(mutationAuditRecord({
+          mutation,
+          actorClientType,
+          reason: "asset copy-on-write replacement",
+        }));
+      }
     }
     return c.json(result.body, result.status);
   });

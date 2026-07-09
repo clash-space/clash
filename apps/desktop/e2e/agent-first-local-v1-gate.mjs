@@ -50,7 +50,6 @@ const suiteDefinitions = [
     minChecks: 70,
     requiredChecks: [
       "doctor before repair does not expose obsolete marker compatibility",
-      "doctor repair removes old broad app-state file",
       "local project status is not web-openable or shared",
       "local project action gates require sync before web or sharing",
       "local project sync policy keeps cloud admission disabled and private runtime data local",
@@ -65,12 +64,14 @@ const suiteDefinitions = [
     id: "agent-first-asset-receipts",
     command: [pnpmBin, "exec", "tsx", "e2e/agent-first-asset-receipt-smoke.mjs"],
     schemaVersion: 1,
-    minChecks: 193,
+    minChecks: 197,
     requiredBooleans: [
       "syncConfigAuditRecorded",
       "localObsoleteProjectEndpointsRejected",
       "providerOAuthCompleteAuditRecorded",
       "audioTranscriptionAuditRecorded",
+      "assetCowReplaceReceiptAccepted",
+      "assetCowReplaceAuditRecorded",
       "assetReferenceRefreshMissingReadRejected",
       "assetReferenceRefreshBareCasRejected",
       "assetReferenceRefreshReceiptAccepted",

@@ -223,6 +223,7 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("legacyLocalRoomSyncRemoved");
     expect(source).not.toContain("roomSyncConflictResolutionAuditRecorded");
     expect(source).toContain("doctor before repair does not expose obsolete marker compatibility");
+    expect(source).not.toContain("doctor repair removes old broad app-state file");
     expect(source).toContain("cloud-sync pending action gates block web and sharing until required mirrors are ready");
     expect(source).toContain("CLASH_AGENT_FIRST_LOCAL_V1_SUITES");
     expect(source).toContain("agent-first-local-v1-gate-report.json");
