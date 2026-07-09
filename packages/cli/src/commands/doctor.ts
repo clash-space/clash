@@ -370,16 +370,6 @@ export async function runStorageDoctor(options: {
   });
   checks.push(await inspectLocalSqliteSchema(status.localSqlitePath));
 
-  const legacyDbExists = await pathExists(status.legacyDbJsonPath, "file");
-  checks.push({
-    id: "legacy-db-json",
-    level: legacyDbExists ? "warning" : "ok",
-    message: legacyDbExists
-      ? "Legacy db.json exists but is ignored by local-api; remove it after checking it does not contain secrets you still need."
-      : "Legacy db.json was not found.",
-    path: status.legacyDbJsonPath,
-  });
-
   return {
     ok: !checks.some((check) => check.level === "error"),
     projectId: status.projectId,

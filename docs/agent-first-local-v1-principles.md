@@ -45,8 +45,6 @@ Companion implementation specs:
   with scope, acceptance criteria, and minimum tests.
 - `agent-first-local-v1-blackbox-e2e-spec.md`: Codex-agent black-box QA
   harness, required artifacts, suites, and JSON schema output contract.
-- `local-sqlite-migration-spec.md`: replace broad local `db.json` product
-  state with local SQLite.
 - `local-project-storage-layout-spec.md`: canonical app-root project store,
   cwd as draft/reference surface, asset blob/link policy, session/workspace
   layout, and sync-mode storage boundaries.
@@ -313,7 +311,6 @@ Classification rule:
 | `credentials.json`, CLI `config.json` | No by default | Auth/setup commands only | Contains bearer credentials or auth state |
 | `host.json`, socket/pid files, runtime dirs | Debug only | No | Runtime discovery/ephemeral state |
 | `local.sqlite` | No product workflow | No | Queryable product metadata; use API/CLI |
-| `db.json` | Migration/debug only | No | Legacy database, not an editable product file |
 | `snapshot.bin`, `updates.log` | Debug/recovery only | No | CRDT persistence internals |
 | canonical asset blobs | Read through inspect/link commands | No in-place overwrite | Asset identity and downstream refs require COW |
 
@@ -503,8 +500,8 @@ asset blobs must stay behind commands or APIs.
 
 ### Misaligned or incomplete
 
-- Local-api product metadata has moved to `local.sqlite`; `db.json` is ignored
-  by local-api and is only a cleanup/secrets warning if present.
+- Local-api product metadata uses `local.sqlite` only; no broad JSON product DB
+  remains a documented or active state surface.
 - Provider credential/OAuth payloads are now encrypted before SQLite write;
   direct SQL writes must not bypass `local-provider-store`.
 - Room messages exist in cloud schema, but local room persistence should be
@@ -629,7 +626,7 @@ Do not silently run them as cloud workers.
 | Canvas replica | Local Loro `snapshot.bin` + `updates.log` exists | One local durable replica per project per machine | No direct agent writes to `snapshot.bin` | Keep persistence internal; expose projections/CLI only |
 | Project marker | `.clash/project.toml` resolves project id | CWD is a reference/draft workspace | Marker is not a lock or replica | Keep resolver priority and conflict errors |
 | Agent cwd | `${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>` is agent cwd with materialized editable roots and protected `runtime`; marker stores canonical id | Either canonical root with protected dirs, or separate draft workspace | Agents should not mutate internal dirs directly | Decide root vs draft model; add migration/repair and stronger enforcement |
-| Local metadata | `local.sqlite`; legacy `db.json` ignored | `local.sqlite` matching cloud D1 schema | JSON is not app DB | Keep ignored-legacy tests and add doctor/schema checks |
+| Local metadata | `local.sqlite` only | `local.sqlite` matching cloud D1 schema | JSON is not app DB | Keep SQLite schema/status/doctor contract tests |
 | Assets | Local files + SQLite asset rows plus first-pass `clash asset link`; `clash asset get` / `GET /api/v1/assets/:id` returns receipt-bearing asset read tokens; `clash asset ref get` / `GET /api/v1/assets/:id/ref?projectId=...` returns receipt-bearing relation read tokens; `clash assets gc --dry-run --json` / `/api/v1/assets/gc` returns receipt-bearing `asset-gc` plan tokens; `/api/v1/assets/import` is idempotent for the same immutable blob identity and rejects reusing an asset id for different content; asset create/cover writes reject storage keys that escape local asset storage; blob upload, asset reads, workflow generated asset writes, local blob import reads, and GC deletion share real filesystem containment so symlinked storage roots or parents cannot escape local asset storage; agent cover metadata updates, ref deletes, and destructive GC deletes require the matching receipt; accepted blob uploads, workflow generated asset writes, and cover metadata updates write sanitized local mutation audit evidence | SQLite asset rows + canonical content-addressed blobs/links | No in-place overwrite of referenced blobs; content changes require new asset id plus explicit COW replacement; metadata fill/update, relation delete, and GC delete paths need CAS/read receipt | Define content id, import/replace COW, and remaining metadata guards |
 | Text nodes | Canvas `data.content` live state with workflow text generation indexing `clash.text.revision` host milestones plus `clash text pull/apply/replace/history/content/restore` Markdown CAS/COW projection, local SQLite `text_revisions` index/API, immutable text revision content blobs, `project status.storage.contentModel.textNodes.contentRegistry` explicitly marking `text_revisions` as a non-media revision registry rather than the media `assets` table, and a first-pass canvas node history panel backed by the host revision endpoint with CLI content recovery and COW restore commands | File-backed projection with host-indexed text revisions, not media asset rows | Text feeding materialized downstream state is copy-on-write; text feeding only action drafts remains editable | Add optional direct visual restore affordance and canonical file-backed mode only if they preserve the content-model contract |
 | Timeline | YAML projection with `clash timeline pull/apply/replace/history/content/restore` CAS/COW workflow plus `clash.timeline.revision` applied milestones, local SQLite `timeline_revisions` index/API, immutable timeline revision content blobs, `project status.storage.contentModel.timelines.contentRegistry`, caption/handoff/caption-burn exports pinning manifests/packages/plans/asset metadata to applied timeline revision ids, and a first-pass canvas node history panel backed by the host revision endpoint with CLI content recovery and COW restore commands | Shared projection framework | No blind apply; materialized renders keep old timeline input unless explicitly replaced | Add optional direct visual restore affordance and remaining export/render views pinned to revision ids |
@@ -657,9 +654,9 @@ Do not silently run them as cloud workers.
 
 ## Needed v1 Work
 
-### P0: Keep local `db.json` replaced by local SQLite
+### P0: Keep local product metadata SQLite-only
 
-These have moved out of active `db.json` writes:
+These must stay in SQLite product tables:
 
 - projects,
 - assets,
@@ -670,14 +667,12 @@ These have moved out of active `db.json` writes:
 - providerAccounts,
 - providerOAuth.
 
-Reuse the cloud D1 schema names where possible. Do not add `db.json` readers
-or writers back into local-api; doctor may warn about an existing file only for
-cleanup/secrets hygiene.
+Reuse the cloud D1 schema names where possible. Do not add broad JSON product
+database readers or writers back into local-api, status, doctor, conformance, or
+agent-facing docs.
 
 Keep JSON only for narrow, intended-to-edit config files such as `sync.json`
 and `audio.json`, and revisit even those once settings become richer.
-
-Implementation spec: `local-sqlite-migration-spec.md`.
 
 ### P0: Generalize projection CAS
 

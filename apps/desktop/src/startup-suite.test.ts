@@ -133,7 +133,6 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("smoke.booleans");
     expect(source).toContain('if (report.status !== "pass")');
     expect(source).toContain("QA report status");
-    expect(source).not.toContain("${localDataDir}/db.json");
     expect(casSmokeSource).toContain("runDirectCanvasCliReadTokenCas");
     expect(casSmokeSource).toContain("clash canvas update");
     expect(casSmokeSource).toContain("CLASH_AGENT_MEMBER_ID");

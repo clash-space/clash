@@ -968,7 +968,7 @@ describe("local API app", () => {
     }
   });
 
-  it("persists local project metadata in SQLite without creating legacy db.json", async () => {
+  it("persists local project metadata in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
     const created = await app.request("/api/v1/projects", {
@@ -979,7 +979,6 @@ describe("local API app", () => {
 
     expect(created.status).toBe(201);
     await expect(stat(join(dataDir, "local.sqlite"))).resolves.toMatchObject({ mode: expect.any(Number) });
-    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
 
     const sqlite = openSqlite();
     try {
@@ -3751,64 +3750,7 @@ describe("local API app", () => {
     expect(await bytes.text()).toBe("first-checkpoint");
   });
 
-  it("ignores legacy local metadata db.json instead of making JSON authoritative", async () => {
-    await writeFile(
-      join(dataDir, "db.json"),
-      JSON.stringify({
-        projects: [
-          {
-            id: "legacy-project",
-            ownerId: "local-user",
-            name: "Legacy Project",
-            description: "from db.json",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-            assets: [],
-          },
-        ],
-        sessions: [
-          {
-            id: "legacy-session",
-            projectId: "legacy-project",
-            title: "Legacy Session",
-            type: "runtime",
-            runtimeId: "desktop-local",
-            agentId: "codex-acp",
-            createdAt: "2026-01-01T00:00:01.000Z",
-            updatedAt: "2026-01-01T00:00:01.000Z",
-          },
-        ],
-        sessionMessages: [
-          {
-            session_id: "legacy-session",
-            id: "legacy-message",
-            sender_kind: "agent",
-            sender_id: "local-agent",
-            turn_id: "turn-legacy",
-            events: [{ type: "text", text: "legacy transcript" }],
-            created_at: 1_767_225_601,
-          },
-        ],
-      }),
-      "utf8",
-    );
-
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const listed = await app.request("/api/projects");
-    expect(await listed.json()).toEqual([]);
-
-    const sessions = await app.request("/api/v1/sessions?projectId=legacy-project");
-    expect(await sessions.json()).toEqual({ sessions: [] });
-
-    const renamed = await app.request("/api/projects/legacy-project", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "SQLite Project" }),
-    });
-    expect(renamed.status).toBe(404);
-  });
-
-  it("persists local provider accounts in SQLite without creating legacy db.json", async () => {
+  it("persists local provider accounts in SQLite", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
     const saved = await app.request("/api/v1/model-providers", {
@@ -3830,7 +3772,6 @@ describe("local API app", () => {
 
     expect(saved.status).toBe(200);
     await expect(stat(join(dataDir, "local.sqlite"))).resolves.toMatchObject({ mode: expect.any(Number) });
-    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
 
     const sqlite = openSqlite();
     try {
@@ -4030,89 +3971,6 @@ describe("local API app", () => {
       candidateProviders: ["official"],
       missingCredentials: ["apiKey"],
     });
-  });
-
-  it("does not expose provider accounts from legacy db.json", async () => {
-    await writeFile(
-      join(dataDir, "db.json"),
-      JSON.stringify({
-        providerAccounts: [
-          {
-            userId: "local-user",
-            providerId: "official",
-            upstreamId: "google",
-            region: "global",
-            enabled: true,
-            priority: 20,
-          },
-          {
-            userId: "local-user",
-            providerId: "official",
-            region: "global",
-            enabled: true,
-            priority: 15,
-          },
-          {
-            userId: "local-user",
-            providerId: "official",
-            upstreamId: "google-agent-platform",
-            region: "global",
-            enabled: true,
-            priority: 25,
-            credentials: { vertexCredentials: "{}" },
-          },
-        ],
-      }),
-      "utf8",
-    );
-
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const response = await app.request("/api/v1/model-providers");
-    const body = (await response.json()) as { providers: Array<Record<string, unknown>> };
-
-    expect(body.providers).toEqual([]);
-  });
-
-  it("ignores legacy provider accounts when SQLite already exists", async () => {
-    const bootstrap = createLocalApiApp({ dataDir, userId: "local-user" });
-    const created = await bootstrap.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Existing SQLite" }),
-    });
-    expect(created.status).toBe(201);
-    await expect(stat(join(dataDir, "local.sqlite"))).resolves.toMatchObject({ mode: expect.any(Number) });
-
-    await writeFile(
-      join(dataDir, "db.json"),
-      JSON.stringify({
-        providerAccounts: [
-          {
-            id: "legacy-openai-account",
-            userId: "local-user",
-            providerId: "official",
-            upstreamId: "openai",
-            region: "global",
-            enabled: true,
-            credentials: { apiKey: "sk-legacy-openai" },
-          },
-        ],
-      }),
-      "utf8",
-    );
-
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const listed = await app.request("/api/v1/model-providers");
-    const listedJson = (await listed.json()) as { providers: Array<Record<string, unknown>> };
-    expect(listedJson.providers).toEqual([]);
-
-    const sqlite = openSqlite();
-    try {
-      expect(sqlite.prepare("select count(*) as count from provider_accounts").get()).toEqual({ count: 0 });
-      expect(sqlite.prepare("select id from local_migration where id = 'provider-accounts-sqlite-v1'").get()).toBeUndefined();
-    } finally {
-      sqlite.close();
-    }
   });
 
   it("rewrites legacy plaintext provider credentials in SQLite as encrypted values", async () => {
@@ -8599,7 +8457,6 @@ describe("local API app", () => {
     const sessions = await app.request("/api/v1/sessions?projectId=project-race");
     const restored = await app.request("/api/v1/local-sessions/local-session-race/messages");
 
-    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
     const sqlite = openSqlite();
     try {
       expect(sqlite.prepare("select count(*) as count from chat_message").get()).toEqual({ count: 24 });

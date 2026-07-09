@@ -46,8 +46,8 @@ Treat the status payload as your filesystem contract:
   through explicit `clash asset` / canvas COW commands.
 - Treat every path listed in `protectedPaths` as internal Clash state.
 - `runtimeRoot` is a protected runtime/cache directory, not scratch space.
-- Do not read or edit `snapshot.bin`, `updates.log`, `local.sqlite`, or
-  legacy `db.json` directly.
+- Do not read or edit `snapshot.bin`, `updates.log`, or `local.sqlite`
+  directly.
 - Treat `storage.localSecrets` paths such as `config.json` and
   `credentials.json` as local-only secret files; use auth or runtime setup
   commands instead of reading or editing them.

@@ -16,7 +16,6 @@ Inputs:
 - `agent-first-local-v1-api-surface-inventory.md`
 - `agent-first-local-v1-remote-compatibility-boundary.md`
 - `agent-first-local-v1-blackbox-e2e-spec.md`
-- `local-sqlite-migration-spec.md`
 - `local-project-storage-layout-spec.md`
 - `agent-file-projection-cas-spec.md`
 
@@ -34,7 +33,7 @@ The highest-risk work is storage and mutation semantics:
 
 ## P0 Work
 
-### P0-01: Replace local `db.json` with SQLite
+### P0-01: Keep local product metadata SQLite-only
 
 Scope:
 
@@ -47,27 +46,28 @@ Implementation:
 - Add local SQLite schema.
 - Add `LocalStore` interface.
 - Add SQLite implementation.
-- Do not add or retain a `db.json` importer for alpha local state.
 - Route local-api through `LocalStore`.
-- Stop writing broad product state to `db.json`.
+- Keep broad product state out of JSON files.
 
 Acceptance:
 
-- Existing local `db.json` is ignored by local-api and reported only as a
-  cleanup warning by doctor.
+- No local route reads or writes a broad JSON product database.
+- Project status and storage doctor expose `local.sqlite` as the only local
+  product metadata store.
 - Route responses are unchanged.
 - Restart preserves projects, assets, sessions, messages, providers, OAuth.
 - Provider credentials/OAuth tokens are not exposed by public APIs.
-- `db.json` is not a product backup or editable state surface.
-- No local route imports the old JSON helper.
+- JSON remains limited to intentionally editable config/projection/runtime
+  artifact files.
 
 Minimum tests:
 
 - `sqlite-store.test.ts`
-- ignored-legacy-JSON regression tests
+- local data-dir contract regression tests
 - local-api route parity test with SQLite store
 - restart persistence test
-- regression test that fails if route code uses old `createDb`
+- regression test that fails if conformance scripts select a product DB by any
+  broad JSON file
 
 Current status:
 
@@ -75,12 +75,14 @@ Current status:
   runtime session, agent member, local session message, provider account, and
   provider OAuth state.
 - `apps/local-api/src/local-metadata-store.ts` owns metadata tables and no
-  longer reads `db.json`; its schema bootstrap upgrades old or partial core
-  metadata/projection tables before route reads or writes run.
+  longer has a broad JSON product DB path; its schema bootstrap upgrades old or
+  partial core metadata/projection tables before route reads or writes run.
 - `apps/local-api/src/local-provider-store.ts` owns provider/OAuth tables and
-  no longer reads legacy provider rows from `db.json`.
-- New local-api and local workflow processor writes no longer create broad
-  `db.json`; existing `db.json` is ignored and surfaced only as cleanup risk.
+  persists provider/OAuth state through SQLite rows.
+- New local-api and local workflow processor writes do not create broad product
+  JSON state.
+- Conformance scripts auto-detect desktop local-api state only by
+  `local.sqlite`.
 - Covered by `apps/local-api/src/app.test.ts`, `apps/local-api/src/sync.test.ts`,
   focused local-api store routes, typecheck, and daemon smoke.
 - `sync.json`, `audio.json`, `harnesses.json`, `host.json`, credential JSON,
@@ -462,8 +464,7 @@ Current status:
   - Clash home root,
   - alpha project workspace root,
   - local-api data dir,
-  - future SQLite path,
-  - ignored legacy `db.json` cleanup path,
+  - SQLite metadata path,
   - Loro replica/snapshot/update-log paths,
   - editable draft/projection/asset-link roots,
   - explicit `roots.runtime`/`runtimeRoot`,
@@ -490,8 +491,8 @@ Current status:
   marker existence, editable/protected path separation, protected cwd, project
   workspace, editable draft/projection/session/asset-link roots, protected
   runtime root, Loro replica, local SQLite target, broken/invalid asset links,
-  ignored legacy `db.json`, ignored legacy `.clash/project.json` project
-  markers, and the structured `storage` role contract that keeps agent
+  ignored legacy `.clash/project.json` project markers, and the structured
+  `storage` role contract that keeps agent
   workspace paths separate from the protected canonical replica,
   including immutable media asset and text/timeline revision content blob roots.
   Existing
@@ -506,8 +507,8 @@ Current status:
   `runtime`.
 - Bundled AGENTS.md now instructs spawned agents to treat `editablePaths` as
   their writable surface, use `storage.workspace.viewFiles` for timeline path
-  selection, and treat `protectedPaths`/`runtimeRoot`/Loro/SQLite/legacy
-  `db.json` as internal state reachable only through explicit `clash` commands.
+  selection, and treat `protectedPaths`/`runtimeRoot`/Loro/SQLite as internal
+  state reachable only through explicit `clash` commands.
 - `clash project status --json` and local-api project status now expose a
   structured `storage` contract: `storage.workspace` is the draft/projection
   surface and explicitly owns no canonical snapshot/metadata, while
@@ -571,8 +572,6 @@ Remaining gap:
 - Broader workspace migration and explicit recovery import tooling are still
   open; quarantined Loro bytes remain review-only until a future command defines
   a safe import policy.
-- `clash doctor storage` reports an ignored legacy `db.json` path only as a
-  cleanup/secrets warning; it does not migrate legacy JSON state.
 
 ### P0-07: Local/remote variables boundary
 

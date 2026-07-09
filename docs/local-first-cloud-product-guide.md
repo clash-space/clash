@@ -21,7 +21,6 @@ v1 local/agent-first follow-up docs:
 - `agent-first-local-v1-traceability-matrix.md`
 - `agent-first-local-v1-implementation-plan.md`
 - `agent-first-local-v1-remote-compatibility-boundary.md`
-- `local-sqlite-migration-spec.md`
 - `agent-file-projection-cas-spec.md`
 
 Those docs refine this guide with concrete storage, SQLite, projection/CAS,

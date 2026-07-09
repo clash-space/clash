@@ -189,7 +189,6 @@ describe("LocalLoroRoom", () => {
     expect(imageNode.data.assetId).toMatch(/^local-asset-/);
     expect(imageNode.data.pendingTask).toBeUndefined();
 
-    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
     const sqlite = openSqlite();
     let srcR2Key = "";
     try {
@@ -325,7 +324,6 @@ describe("LocalLoroRoom", () => {
     expect(videoNode.data.assetId).toMatch(/^local-asset-/);
     expect(audioNode.data.assetId).toMatch(/^local-asset-/);
 
-    await expect(stat(join(dataDir, "db.json"))).rejects.toMatchObject({ code: "ENOENT" });
     const sqlite = openSqlite();
     let videoAsset: Record<string, unknown> | undefined;
     let audioAsset: Record<string, unknown> | undefined;

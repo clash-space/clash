@@ -85,7 +85,6 @@ Rules:
 - Run the exact timeline command below second. It creates and restores a deterministic short-drama timeline artifact from the scenario path.
 - Run the exact CAS command below third. It verifies missing/stale/wrong-file read-proof rejection and copy-on-write preservation through public CLI commands.
 - After all commands exit, inspect only the command logs, screenshots, files under ${localDataDir}/projects, ${timelineReportPath}, ${createdTimelinePath}, ${restoredTimelinePath}, and ${agentFirstCasReportPath}.
-- Treat legacy db.json as non-authoritative cleanup evidence only if a command log mentions it. Do not read it as project state.
 - If the primary command log contains projectStatus, convert it into paths.projectStatuses. Do not read snapshot.bin or edit SQLite directly.
 - If the command fails, still produce the schema report with status "fail" or "blocked" and include the log path.
 

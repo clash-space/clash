@@ -56,7 +56,7 @@ function defaultDesktopDataDir(): string {
 function defaultDataDir(): string {
   if (process.env.CLASH_LOCAL_DATA_DIR) return process.env.CLASH_LOCAL_DATA_DIR;
   const desktop = defaultDesktopDataDir();
-  if (existsSync(join(desktop, "local.sqlite")) || existsSync(join(desktop, "db.json"))) return desktop;
+  if (existsSync(join(desktop, "local.sqlite"))) return desktop;
   return join(homedir(), ".clash", "local-api");
 }
 

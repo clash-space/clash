@@ -331,7 +331,6 @@ export interface ProjectStatus {
   currentWorkspace: ProjectStatusCurrentWorkspace;
   localApiDataDir: string;
   localSqlitePath: string;
-  legacyDbJsonPath: string;
   loro: {
     replicaRoot: string;
     snapshotPath: string;
@@ -420,7 +419,6 @@ export function buildProjectStatus(
       : "unknown";
   const collaboration = projectCollaborationStatus(mode, options.marker?.sync);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
-  const legacyDbJsonPath = joinPath(localApiDataDir, "db.json");
   const cliConfigPath = joinPath(clashRoot, "config.json");
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
@@ -439,7 +437,6 @@ export function buildProjectStatus(
   const protectedPaths = [
     localApiDataDir,
     localSqlitePath,
-    legacyDbJsonPath,
     cliConfigPath,
     bridgeCredentialsPath,
     loroReplicaRoot,
@@ -484,7 +481,6 @@ export function buildProjectStatus(
     currentWorkspace,
     localApiDataDir,
     localSqlitePath,
-    legacyDbJsonPath,
     loro: {
       replicaRoot: loroReplicaRoot,
       snapshotPath: loroSnapshotPath,

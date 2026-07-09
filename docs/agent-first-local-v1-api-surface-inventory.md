@@ -36,7 +36,8 @@ Current storage:
 - local SQLite via `apps/local-api/src/local-metadata-store.ts`.
 - local metadata/provider schema bootstraps upgrade old partial
   core/provider/projection SQLite tables before route reads or writes.
-- legacy `db.json` is ignored; SQLite starts empty until first local write.
+- SQLite starts empty until first local write when no local product metadata DB
+  exists.
 - `POST /api/v1/sessions` and `DELETE /api/v1/sessions` now include
   accepted/rejected host mutation records. Session create keeps
   `threadId`/`title`; session delete returns JSON `{ ok: true, mutation }`.
@@ -461,7 +462,7 @@ Registered commands:
 
 | Surface | Current mismatch | Product risk | Required fix |
 | --- | --- | --- | --- |
-| Local metadata | `db.json` is ignored if present | stale docs/tools may treat legacy DB as editable truth | keep ignored-legacy tests and doctor cleanup warnings |
+| Local metadata | local product metadata is SQLite-only | stale docs/tools may treat ad-hoc files as editable truth | keep data-dir contract, status, doctor, and schema tests |
 | Local room | SQLite-backed local room POST/GET exists; POST carries accepted/rejected mutation records and POST/GET `sync.admission`; local-only room message responses expose `remote-room-not-configured` with `enable-sync`, same project/id with different content is rejected; cloud room route matches the idempotency rule; cloud-configured local reads mark explicit room sync `pending` with allowed admission; `POST /api/v1/projects/:id/room/sync` and `clash room sync` run the mirror planner, export local-only rows, import remote-only rows, write sanitized audit evidence after accepted mirror actions, and reject same-id conflicts without overwriting; conflict plans include local/remote message snapshots plus content hashes for review; `POST /api/v1/projects/:id/room/sync/conflicts/:messageId/resolve` and `clash room resolve-conflict` record hash-checked `accept-divergence` receipts so later sync can continue without overwriting either side; `GroupChatPanel` now renders first-pass conflict recovery details with ids, local/remote hashes, and the exact CLI command instead of a count-only banner, and disables the UI sync action when `sync.admission.allowed=false` | fuller admission policy, richer local/remote recovery UX, and live parity are not wired yet | live room parity, admission policy, fuller recovery workflow |
 | Vars | CLI exposes remote worker vars; local-api 404; cloud supports vars | future copy/API changes may blur local auth boundary | keep mode-aware CLI copy and local 404 tests |
 | Provider auth | local provider/OAuth rows live in SQLite and sensitive credential/token payloads are encrypted before persistence; public DTOs expose configured credential names/status/read tokens rather than raw values | key-source hardening and future OS keychain migration remain local-compromise risk reducers | keep encrypted SQLite, add keychain/token-store hardening when available, and keep projection paths secret-free |
@@ -583,7 +584,6 @@ Agents need a stable inspection payload:
   },
   "localApiDataDir": "${CLASH_HOME:-~/.clash}/local-api",
   "localSqlitePath": "${CLASH_HOME:-~/.clash}/local-api/local.sqlite",
-  "legacyDbJsonPath": "${CLASH_HOME:-~/.clash}/local-api/db.json",
   "loro": {
     "replicaRoot": ".../loro",
     "snapshotPath": ".../snapshot.bin",
@@ -1111,8 +1111,7 @@ The API surface gap is not that local and cloud are different. They should be
 different in authority.
 
 The gap is that some local surfaces still look cloud-shaped without local
-persistence (`room`), while legacy `db.json` is ignored and only reported as a
-cleanup/secrets warning. v1 needs to make both truths explicit:
+persistence (`room`). v1 needs to make these truths explicit:
 
 - local owns a complete single-user path,
 - cloud owns sync/shared authority,

@@ -272,7 +272,6 @@ test("storage doctor reports marker project with non-fatal missing-store warning
   assert.equal(checkById(report, "protected-runtime-root").level, "warning");
   assert.equal(checkById(report, "loro-replica").level, "warning");
   assert.equal(checkById(report, "local-sqlite").level, "warning");
-  assert.equal(checkById(report, "legacy-db-json").level, "ok");
 });
 
 test("storage doctor reports v1 project workspace roots when they exist", async () => {
@@ -1617,26 +1616,6 @@ test("storage doctor repair makes valid timeline revision content blobs read-onl
   assert.ok(repaired.repairs?.some((repair) => repair.id === "revision-blob-permissions" && repair.path === blobPath));
   assert.equal(checkById(repaired, "timeline-revision-blob-integrity").level, "ok");
   assert.equal((await stat(blobPath)).mode & 0o222, 0);
-});
-
-test("storage doctor warns when legacy db.json exists", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  const localApiDir = join(homeDir, ".clash", "local-api");
-  await mkdir(localApiDir, { recursive: true });
-  await writeFile(join(localApiDir, "db.json"), "{}\n", "utf8");
-
-  const report = await runStorageDoctor({
-    cwd,
-    project: "doctor_project",
-    env: {},
-    homeDir,
-  });
-
-  assert.equal(report.ok, true);
-  const dbJsonCheck = checkById(report, "legacy-db-json");
-  assert.equal(dbJsonCheck.level, "warning");
-  assert.match(dbJsonCheck.message, /Legacy db\.json exists but is ignored/);
 });
 
 test("storage doctor warns when local SQLite lacks the asset reference index schema", async () => {

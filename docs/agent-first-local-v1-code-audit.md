@@ -22,7 +22,6 @@ Companion docs:
 - `agent-first-local-v1-cli-cas-audit.md`
 - `agent-first-local-v1-implementation-plan.md`
 - `agent-first-local-v1-blackbox-e2e-spec.md`
-- `local-sqlite-migration-spec.md`
 - `local-project-storage-layout-spec.md`
 - `agent-file-projection-cas-spec.md`
 
@@ -113,9 +112,10 @@ The main v1 gaps are:
 
 ## Evidence Snapshot
 
-### Local `db.json`
+### Local SQLite Product Metadata
 
-`apps/local-api/src/app.ts` still uses a route DTO shape `LocalDb` with:
+`apps/local-api/src/app.ts` still uses an in-memory route DTO shape `LocalDb`
+with:
 
 - `projects`
 - `assets`
@@ -151,31 +151,28 @@ Provider account and OAuth state route through
   stored as `enc:v1:` AES-256-GCM payloads with row/field AAD,
 - local secret-key resolution prefers explicit environment keys, then macOS
   Keychain for real local data dirs, with a `0600` machine-local key file only
-  for test/temp/fallback paths,
-- legacy provider rows from `db.json` are ignored,
-- provider-only writes no longer create a fresh `db.json`.
+  for test/temp/fallback paths.
 
-The metadata store no longer keeps a legacy `db.json` importer:
+The local product metadata contract is SQLite-only:
 
-- if SQLite does not exist yet, routes start from an empty local metadata
-  state instead of reading `db.json`,
+- if SQLite does not exist yet, routes start from an empty local metadata state,
 - after a metadata write, `local_migration.metadata-sqlite-v1` marks SQLite as
   authoritative,
-- new project/session/asset/provider writes do not create a fresh `db.json`.
+- new project/session/asset/provider writes do not create broad JSON product
+  state,
+- conformance scripts auto-detect desktop local-api state only by
+  `local.sqlite`.
 
 Conclusion:
 
-- `db.json` is now an ignored cleanup/secrets-risk file, not an active local
-  product DB or importer.
-- Do not document `db.json` as agent-editable.
-- Do not add new route or processor writes to `db.json`.
+- Do not document any broad JSON product database as an agent-editable surface.
+- Do not add route, processor, doctor, status, or conformance writes to broad
+  JSON product state.
 - Do not bypass `local-provider-store` for provider credential/OAuth writes;
   direct SQL would bypass encryption and migration handling.
 - Do not reintroduce `db.load()` followed by `db.save(state)` in request
   handlers. Route writes must go through `db.update()` or a narrower store
   transaction so concurrent local API requests cannot overwrite each other.
-
-Spec: `local-sqlite-migration-spec.md`.
 
 ### Project cwd and marker
 
@@ -446,7 +443,7 @@ Conclusion:
 
 ### Restrict local DB editing
 
-- Do not document `db.json` or `local.sqlite` as agent-editable.
+- Do not document `local.sqlite` as agent-editable.
 - Provide admin/debug export/import commands if needed.
 - Keep product mutations behind API/store methods.
 
@@ -513,7 +510,7 @@ Conclusion:
 
 ## Near-Term Implementation Order
 
-1. SQLite local store with ignored-legacy-JSON regression tests.
+1. SQLite-only local store with data-dir contract regression tests.
 2. Generic projection lock/hash/path library.
 3. Text node Markdown pull/apply/replace with copy-on-write.
 4. Mode-aware CLI help for vars/provider auth.

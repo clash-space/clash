@@ -166,7 +166,6 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.equal(status.projectWorkspaceRoot, projectStore);
   assert.equal(status.localApiDataDir, localApiDataDir);
   assert.equal(status.localSqlitePath, join(localApiDataDir, "local.sqlite"));
-  assert.equal(status.legacyDbJsonPath, join(localApiDataDir, "db.json"));
   assert.equal(status.loro.replicaRoot, loroRoot);
   assert.equal(status.loro.snapshotPath, join(loroRoot, "snapshot.bin"));
   assert.equal(status.loro.updatesLogPath, join(loroRoot, "updates.log"));
@@ -191,7 +190,6 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.deepEqual(status.protectedPaths, [
     localApiDataDir,
     join(localApiDataDir, "local.sqlite"),
-    join(localApiDataDir, "db.json"),
     join(homeDir, ".clash", "config.json"),
     join(homeDir, ".clash", "credentials.json"),
     loroRoot,

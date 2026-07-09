@@ -96,8 +96,7 @@ Allowed inspection:
 Forbidden as pass criteria:
 
 - reading/writing `snapshot.bin` as a product format,
-- reading legacy `db.json` as authoritative product state,
-- editing `db.json` or `local.sqlite`,
+- editing `local.sqlite` or other internal product stores,
 - asserting only that a command printed success without checking product state,
 - using mocks when the case is marked black-box.
 
@@ -126,7 +125,7 @@ docs/schemas/agent-first-local-v1-e2e-result.schema.json
 # Rules
 
 - Use public Clash CLI/API surfaces.
-- Do not edit snapshot.bin, local.sqlite, db.json, or app source code.
+- Do not edit snapshot.bin, local.sqlite, or app source code.
 - Record every command with cwd, exit code, and concise output excerpts.
 - If a product surface is missing, mark the assertion failed or skipped with a
   precise reason.
@@ -551,7 +550,8 @@ A run can pass only when:
   in the spawned agent cwd.
 - Real Codex QA reports include project status evidence proving `runtimeRoot` is
   explicit and listed under `protectedPaths`.
-- No product assertion relies on editing `snapshot.bin`, `db.json`, or SQLite.
+- No product assertion relies on editing `snapshot.bin`, SQLite, or another
+  internal product store.
 - Renderer logs do not contain React lifecycle errors such as
   `Cannot update a component while rendering a different component`.
 
@@ -723,7 +723,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T02-53-42-505Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T03-07-03-345Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -891,8 +891,7 @@ Current status:
   schema.
 - Direct real Codex E2E now asserts the happy-path workspace roots. Storage
   doctor smoke asserts secondary replica/recovery behavior through public CLI,
-  while focused CLI tests cover protected cwd plus legacy `db.json`/schema
-  warnings.
+  while focused CLI tests cover protected cwd plus SQLite schema warnings.
 - Local room endpoints now exist as a SQLite local-only baseline, and
   `apps/local-api/src/room-cli.e2e.test.ts` starts a real local-api HTTP server
   while driving `clash room say/read/sync/resolve-conflict --json` through a

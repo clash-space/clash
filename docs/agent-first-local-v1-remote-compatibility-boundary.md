@@ -213,7 +213,7 @@ Allowed replacement:
 - provider accounts/OAuth,
 - action-specific local setup with explicit user consent.
 
-### Broad local `db.json`
+### Broad local JSON product database
 
 Remove as product DB:
 
@@ -233,8 +233,7 @@ Reason:
 
 Allowed replacement:
 
-- local SQLite; existing `db.json` is ignored and reported only as a
-  cleanup/secrets warning.
+- local SQLite,
 - narrow JSON config only when intentionally user/agent editable.
 
 ### Local project room behavior

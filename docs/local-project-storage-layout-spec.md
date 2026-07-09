@@ -663,8 +663,7 @@ rejected; shared recovery must use a cloud/shared conflict path instead.
 1. Keep `${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>` as the alpha agent cwd.
 2. Create explicit `drafts/`, `projections/`, `sessions/`, and `assets/links/`
    directories.
-3. Keep local metadata in `local-api/local.sqlite`; treat `db.json` only as a
-   legacy import/debug artifact.
+3. Keep local metadata in `local-api/local.sqlite`.
 4. Align local-api Loro store and bridge project cwd documentation around the
    same project id and directory model.
 5. Ensure every local subsystem derives paths from `CLASH_HOME` or an explicit
@@ -698,8 +697,8 @@ rejected; shared recovery must use a cloud/shared conflict path instead.
      `runtime/recovery/secondary-canvas-replicas/` with durable `manifest.json`
      source-path and destination-path evidence, without applying them to
      canonical state,
-   - do not delete `db.json`, canonical asset blobs, canonical `snapshot.bin`,
-     or broken links without a separate explicit destructive command.
+   - do not delete canonical asset blobs, canonical `snapshot.bin`, or broken
+     links without a separate explicit destructive command.
      Deleted-project recovery points use `clash project purge <projectId>
      --yes --if-match <deletedReadToken>` / `DELETE
      /api/v1/projects/:id/purge`, which rejects active projects, defaults to a
