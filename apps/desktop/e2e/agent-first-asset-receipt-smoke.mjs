@@ -2532,6 +2532,46 @@ async function main() {
     JSON.stringify(assetReplaceNodeRead),
     { readToken: assetReplaceNodeRead.readToken },
   );
+  const assetCowReplaceBareResponse = await request("/api/v1/assets/replace", {
+    method: "POST",
+    headers: { "x-clash-client-type": "agent" },
+    body: JSON.stringify({
+      projectId: assetCowReplaceProjectId,
+      nodeId: "asset-replace-source",
+      assetId: assetCowReplaceAsset.id,
+      ifMatch: baseReadToken(assetReplaceNodeRead.readToken),
+      newNodeId: "asset-replace-bare-cas",
+      label: "Bare CAS replace",
+    }),
+  });
+  const assetCowReplaceBare = await parseJsonResponse(assetCowReplaceBareResponse);
+  recordCheck(
+    "asset COW replacement with bare CAS token is rejected",
+    assetCowReplaceBareResponse.status === 409 &&
+      /Missing canvas update read receipt for agent/.test(assetCowReplaceBare.error ?? "") &&
+      assetCowReplaceBare.mutation?.operation === "asset_cow_replace" &&
+      assetCowReplaceBare.mutation?.entity?.id === "asset-replace-source" &&
+      assetCowReplaceBare.mutation?.accepted === false,
+    JSON.stringify(assetCowReplaceBare),
+    { mutation: assetCowReplaceBare.mutation },
+  );
+  const assetCowReplaceRejectedAuditResponse = await request("/api/v1/mutation-audit?operation=asset_cow_replace&entityId=asset-replace-source");
+  const assetCowReplaceRejectedAudit = await parseJsonResponse(assetCowReplaceRejectedAuditResponse);
+  const assetCowReplaceRejectedAuditRecord = assetCowReplaceRejectedAudit.records?.find((record) => record.accepted === false);
+  recordCheck(
+    "asset COW replacement rejection writes sanitized local mutation audit evidence",
+    assetCowReplaceRejectedAuditResponse.status === 200 &&
+      assetCowReplaceRejectedAuditRecord?.operation === "asset_cow_replace" &&
+      assetCowReplaceRejectedAuditRecord?.entity?.kind === "media-node" &&
+      assetCowReplaceRejectedAuditRecord?.entity?.id === "asset-replace-source" &&
+      assetCowReplaceRejectedAuditRecord?.accepted === false &&
+      assetCowReplaceRejectedAuditRecord?.actorClientType === "agent" &&
+      assetCowReplaceRejectedAuditRecord?.reason === "asset copy-on-write replacement rejected" &&
+      /Missing canvas update read receipt for agent/.test(assetCowReplaceRejectedAuditRecord?.error ?? "") &&
+      mutationAuditRecordsHaveNoReadTokens(assetCowReplaceRejectedAudit.records),
+    JSON.stringify(assetCowReplaceRejectedAudit),
+    { mutation: assetCowReplaceBare.mutation },
+  );
   const assetCowReplaceResponse = await request("/api/v1/assets/replace", {
     method: "POST",
     headers: { "x-clash-client-type": "agent" },
@@ -2563,17 +2603,16 @@ async function main() {
   );
   const assetCowReplaceAuditResponse = await request("/api/v1/mutation-audit?operation=asset_cow_replace&entityId=asset-replace-source");
   const assetCowReplaceAudit = await parseJsonResponse(assetCowReplaceAuditResponse);
-  const assetCowReplaceAuditRecord = assetCowReplaceAudit.records?.[0];
+  const assetCowReplaceAuditRecord = assetCowReplaceAudit.records?.find((record) => record.accepted === true);
   recordCheck(
     "asset COW replacement writes sanitized local mutation audit evidence",
     assetCowReplaceAuditResponse.status === 200 &&
-      assetCowReplaceAudit.records?.length === 1 &&
-      assetCowReplaceAuditRecord.operation === "asset_cow_replace" &&
-      assetCowReplaceAuditRecord.entity?.kind === "media-node" &&
-      assetCowReplaceAuditRecord.entity?.id === "asset-replace-source" &&
-      assetCowReplaceAuditRecord.accepted === true &&
-      assetCowReplaceAuditRecord.actorClientType === "agent" &&
-      assetCowReplaceAuditRecord.reason === "asset copy-on-write replacement" &&
+      assetCowReplaceAuditRecord?.operation === "asset_cow_replace" &&
+      assetCowReplaceAuditRecord?.entity?.kind === "media-node" &&
+      assetCowReplaceAuditRecord?.entity?.id === "asset-replace-source" &&
+      assetCowReplaceAuditRecord?.accepted === true &&
+      assetCowReplaceAuditRecord?.actorClientType === "agent" &&
+      assetCowReplaceAuditRecord?.reason === "asset copy-on-write replacement" &&
       mutationAuditRecordsHaveNoReadTokens(assetCowReplaceAudit.records),
     JSON.stringify(assetCowReplaceAudit),
     { mutation: assetCowReplace.mutation },
@@ -4012,6 +4051,8 @@ async function main() {
       coverReceiptAccepted: checks.some((check) => check.name === "asset cover update with receipt read token is accepted" && check.status === "pass"),
       coverStaleReceiptRejected: checks.some((check) => check.name === "asset cover update with stale receipt is rejected" && check.status === "pass"),
       assetCoverAuditRecorded: checks.some((check) => check.name === "asset cover update writes sanitized local mutation audit evidence" && check.status === "pass"),
+      assetCowReplaceBareCasRejected: checks.some((check) => check.name === "asset COW replacement with bare CAS token is rejected" && check.status === "pass"),
+      assetCowReplaceRejectedAuditRecorded: checks.some((check) => check.name === "asset COW replacement rejection writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetCowReplaceReceiptAccepted: checks.some((check) => check.name === "asset COW replacement with node receipt is accepted" && check.status === "pass"),
       assetCowReplaceAuditRecorded: checks.some((check) => check.name === "asset COW replacement writes sanitized local mutation audit evidence" && check.status === "pass"),
       assetRefGetReceiptReturned: checks.some((check) => check.name === "asset ref get returns receipt read token" && check.status === "pass"),

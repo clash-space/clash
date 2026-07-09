@@ -6480,14 +6480,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           ...current.assetRefs.filter((ref) => !(ref.assetId === assetId && ref.projectId === projectId)),
         ];
       });
-      const mutation = result.body.mutation as HostMutationRecord | undefined;
-      if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType,
-          reason: "asset copy-on-write replacement",
-        }));
-      }
+    }
+    const mutation = result.body.mutation as HostMutationRecord | undefined;
+    if (mutation?.accepted === true) {
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType,
+        reason: "asset copy-on-write replacement",
+      }));
+    } else if (
+      mutation?.accepted === false &&
+      actorClientType === "agent" &&
+      (mutation.expectedReadToken !== undefined || mutation.beforeReadToken !== undefined)
+    ) {
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType,
+        reason: "asset copy-on-write replacement rejected",
+      }));
     }
     return c.json(result.body, result.status);
   });

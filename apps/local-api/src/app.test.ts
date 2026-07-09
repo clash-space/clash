@@ -2535,6 +2535,22 @@ describe("local API app", () => {
         accepted: false,
       },
     });
+    const rejectedAudit = await app.request("/api/v1/mutation-audit?operation=asset_cow_replace&entityId=image-source");
+    expect(rejectedAudit.status).toBe(200);
+    const rejectedAuditJson = await rejectedAudit.json() as { records: Array<any> };
+    const rejectedRecord = rejectedAuditJson.records.find((record) => record.accepted === false);
+    expect(rejectedRecord).toMatchObject({
+      operation: "asset_cow_replace",
+      entity: { kind: "media-node", id: "image-source" },
+      actorClientType: "agent",
+      forced: false,
+      accepted: false,
+      reason: "asset copy-on-write replacement rejected",
+      error: expect.stringContaining("Missing canvas update read receipt for agent"),
+    });
+    expect(rejectedRecord.mutation.expectedReadToken).toBeUndefined();
+    expect(rejectedRecord.mutation.beforeReadToken).toBeUndefined();
+    expect(rejectedRecord.mutation.afterReadToken).toBeUndefined();
 
     const read = await app.request(`/api/v1/projects/${projectId}/canvas/nodes/image-source`);
     expect(read.status).toBe(200);
@@ -2580,8 +2596,8 @@ describe("local API app", () => {
     const audit = await app.request("/api/v1/mutation-audit?operation=asset_cow_replace&entityId=image-source");
     expect(audit.status).toBe(200);
     const auditJson = await audit.json() as { records: Array<any> };
-    expect(auditJson.records).toHaveLength(1);
-    expect(auditJson.records[0]).toMatchObject({
+    const acceptedRecord = auditJson.records.find((record) => record.accepted === true);
+    expect(acceptedRecord).toMatchObject({
       operation: "asset_cow_replace",
       entity: { kind: "media-node", id: "image-source" },
       actorClientType: "agent",
@@ -2590,10 +2606,10 @@ describe("local API app", () => {
       reason: "asset copy-on-write replacement",
       resultEntityId: "image-replacement",
     });
-    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
-    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
-    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
-    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
+    expect(JSON.stringify(acceptedRecord.mutation ?? {})).not.toContain("receipt");
+    expect(acceptedRecord.mutation.expectedReadToken).toBeUndefined();
+    expect(acceptedRecord.mutation.beforeReadToken).toBeUndefined();
+    expect(acceptedRecord.mutation.afterReadToken).toBeUndefined();
 
     const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
     const canvas = recovered.getMap("nodes");
