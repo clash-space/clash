@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -80,6 +80,31 @@ function createPartialCoreMetadataSqlite(dataDir: string): void {
 }
 
 describe("local metadata store", () => {
+  it("removes legacy product JSON database files when metadata stores are created", async () => {
+    const dataDir = await tempDir();
+    const legacyPath = join(dataDir, ["db", "json"].join("."));
+    await writeFile(legacyPath, "{\"projects\":[]}\n", "utf8");
+
+    createLocalMetadataStore(dataDir);
+
+    await expect(stat(legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removes legacy product JSON database files before metadata reads", async () => {
+    const dataDir = await tempDir();
+    const legacyPath = join(dataDir, ["db", "json"].join("."));
+    await writeFile(legacyPath, "{\"projects\":[]}\n", "utf8");
+    const store = createLocalMetadataStore(dataDir);
+
+    await expect(store.load()).resolves.toMatchObject({
+      projects: [],
+      assets: [],
+      sessions: [],
+    });
+
+    await expect(stat(legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("initializes sqlite metadata with WAL journal mode for local multi-client safety", async () => {
     const dataDir = await tempDir();
     const store = createLocalMetadataStore(dataDir);

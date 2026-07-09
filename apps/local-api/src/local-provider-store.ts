@@ -9,6 +9,10 @@ import {
   type LocalProviderAccountConfig,
   type LocalProviderOAuthRecord,
 } from "./provider-accounts.js";
+import {
+  purgeLegacyProductJsonDatabase,
+  purgeLegacyProductJsonDatabaseSync,
+} from "./legacy-product-database.js";
 
 type SqlitePrimitive = string | number | null;
 
@@ -813,8 +817,16 @@ function readProviderOAuthUnsafe(db: SqliteDatabase, secretKey: Buffer): LocalPr
 
 export function createLocalProviderStore(dataDir: string) {
   const path = sqlitePath(dataDir);
+  purgeLegacyProductJsonDatabaseSync(dataDir);
+  let legacyProductJsonDatabasePurge: Promise<void> | null = null;
+
+  async function ensureLegacyProductJsonDatabasePurged(): Promise<void> {
+    legacyProductJsonDatabasePurge ??= purgeLegacyProductJsonDatabase(dataDir);
+    await legacyProductJsonDatabasePurge;
+  }
 
   async function exists(): Promise<boolean> {
+    await ensureLegacyProductJsonDatabasePurged();
     try {
       await stat(path);
       return true;
@@ -824,6 +836,7 @@ export function createLocalProviderStore(dataDir: string) {
   }
 
   async function withDb<T>(task: (db: SqliteDatabase) => T): Promise<T> {
+    await ensureLegacyProductJsonDatabasePurged();
     await mkdir(dataDir, { recursive: true });
     const db = openDatabase(path);
     try {
