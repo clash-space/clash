@@ -192,6 +192,17 @@ export type ProjectRoomAuthority = "local" | "local-with-cloud-mirror" | "cloud-
 export type ProjectCloudRoomMode = "disabled" | "sequencer";
 export type ProjectSyncReadinessStatus = "disabled" | "pending" | "ready";
 
+export interface ProjectStatusProjectRoomPolicy {
+  schemaVersion: 1;
+  localSurface: "removed";
+  localPersistence: false;
+  localApiEndpoints: "404";
+  cliCommand: "unregistered";
+  cloudSurface: ProjectCloudRoomMode;
+  rawAgentTrace: false;
+  agentDefaultChannels: ["sessions", "canvas", "actions"];
+}
+
 export interface ProjectSyncReadiness {
   status: ProjectSyncReadinessStatus;
   ready: boolean;
@@ -312,6 +323,7 @@ export interface ProjectStatusCollaboration {
     requiredForLocalActions: true;
     availability: "owner-machine-online";
   };
+  projectRoom: ProjectStatusProjectRoomPolicy;
   tracePolicy: ProjectStatusTracePolicy;
 }
 
@@ -719,7 +731,21 @@ export function projectCollaborationStatus(
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    projectRoom: projectRoomPolicy(normalized),
     tracePolicy: projectTracePolicy(),
+  };
+}
+
+function projectRoomPolicy(mode: ProjectCollaborationMode): ProjectStatusProjectRoomPolicy {
+  return {
+    schemaVersion: 1,
+    localSurface: "removed",
+    localPersistence: false,
+    localApiEndpoints: "404",
+    cliCommand: "unregistered",
+    cloudSurface: mode === "shared" ? "sequencer" : "disabled",
+    rawAgentTrace: false,
+    agentDefaultChannels: ["sessions", "canvas", "actions"],
   };
 }
 

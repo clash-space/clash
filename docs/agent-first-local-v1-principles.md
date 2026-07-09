@@ -864,6 +864,11 @@ registered by the local-first CLI. Web room UI treats those 404 responses as
 hosted/cloud room unavailable and stops send/sync POSTs rather than emulating
 local room persistence; the room composer is disabled while hosted/cloud room
 availability is loading or unavailable.
+`project status.collaboration.projectRoom` is the machine-readable contract for
+this boundary: `localSurface: "removed"`, `localPersistence: false`, local API
+endpoints returning 404, and agent default channels limited to sessions,
+canvas, and actions. `roomAuthority` remains a sync/recovery authority hint and
+must not be interpreted as a local project chat surface.
 
 If project chat returns later, it must be designed as project-visible
 conversation, not as raw ACP trace storage. Agent session internals stay in

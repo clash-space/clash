@@ -51,9 +51,11 @@ const suiteDefinitions = [
     requiredChecks: [
       "doctor before repair does not expose obsolete marker compatibility",
       "local project status is not web-openable or shared",
+      "local project room surface is removed from local-first status",
       "local project action gates require sync before web or sharing",
       "local project sync policy keeps cloud admission disabled and private runtime data local",
       "machine-local config is a SQLite table, not agent-editable JSON sidecars",
+      "no obsolete local JSON database sidecars exist in workspace or local home",
       "text and timeline content model separates projections from non-media revision blobs",
       "local sqlite core metadata, provider auth tables, and projection indexes exist after repair",
       "cloud-sync pending action gates block web and sharing until required mirrors are ready",

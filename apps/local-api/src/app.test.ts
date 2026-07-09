@@ -9369,6 +9369,16 @@ describe("local API app", () => {
           requiredForLocalActions: true,
           availability: "owner-machine-online",
         },
+        projectRoom: {
+          schemaVersion: 1,
+          localSurface: "removed",
+          localPersistence: false,
+          localApiEndpoints: "404",
+          cliCommand: "unregistered",
+          cloudSurface: "disabled",
+          rawAgentTrace: false,
+          agentDefaultChannels: ["sessions", "canvas", "actions"],
+        },
         tracePolicy: {
           schemaVersion: 1,
           roomMessages: {

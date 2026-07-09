@@ -44,6 +44,19 @@ const expectedTracePolicy = {
   },
 };
 
+function expectedProjectRoomPolicy(cloudSurface: "disabled" | "sequencer") {
+  return {
+    schemaVersion: 1,
+    localSurface: "removed",
+    localPersistence: false,
+    localApiEndpoints: "404",
+    cliCommand: "unregistered",
+    cloudSurface,
+    rawAgentTrace: false,
+    agentDefaultChannels: ["sessions", "canvas", "actions"],
+  };
+}
+
 const expectedSyncMirrorPolicy = {
   canvas: {
     requirement: "canvas",
@@ -166,6 +179,7 @@ test("project status exposes agent-readable project roots and protected local fi
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    projectRoom: expectedProjectRoomPolicy("disabled"),
     tracePolicy: expectedTracePolicy,
   });
   assert.equal(status.clashHome, join(homeDir, ".clash"));
@@ -579,6 +593,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    projectRoom: expectedProjectRoomPolicy("disabled"),
     tracePolicy: expectedTracePolicy,
   });
   assert.deepEqual(shared.collaboration, {
@@ -622,6 +637,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
       requiredForLocalActions: true,
       availability: "owner-machine-online",
     },
+    projectRoom: expectedProjectRoomPolicy("sequencer"),
     tracePolicy: expectedTracePolicy,
   });
 });

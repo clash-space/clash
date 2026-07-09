@@ -597,19 +597,19 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T10-06-19-427Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T10-23-50-675Z/agent-first-asset-receipt-report.json
 ```
 
 Latest full agent-first local v1 gate:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T10-06-03-586Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T10-23-34-739Z/agent-first-local-v1-gate-report.json
 ```
 
 Latest storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T10-06-14-216Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T10-23-45-422Z/storage-doctor-repair-report.json
 ```
 
 Conclusion:

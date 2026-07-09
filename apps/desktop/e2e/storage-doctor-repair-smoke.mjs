@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -91,6 +91,28 @@ async function pathIsFile(targetPath) {
   } catch {
     return false;
   }
+}
+
+async function findFilesByBasename(rootPath, filenames) {
+  const matches = [];
+  async function walk(currentPath) {
+    let entries;
+    try {
+      entries = await readdir(currentPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isFile() && filenames.has(entry.name)) {
+        matches.push(entryPath);
+      } else if (entry.isDirectory()) {
+        await walk(entryPath);
+      }
+    }
+  }
+  await walk(rootPath);
+  return matches;
 }
 
 function isInside(childPath, parentPath) {
@@ -573,6 +595,21 @@ async function main() {
       status?.collaboration?.cloudProjectRoom === "disabled",
     JSON.stringify(status?.collaboration),
   );
+  const projectRoom = status?.collaboration?.projectRoom;
+  recordCheck(
+    "local project room surface is removed from local-first status",
+    projectRoom?.schemaVersion === 1 &&
+      projectRoom?.localSurface === "removed" &&
+      projectRoom?.localPersistence === false &&
+      projectRoom?.localApiEndpoints === "404" &&
+      projectRoom?.cliCommand === "unregistered" &&
+      projectRoom?.cloudSurface === "disabled" &&
+      projectRoom?.rawAgentTrace === false &&
+      projectRoom?.agentDefaultChannels?.includes("sessions") === true &&
+      projectRoom?.agentDefaultChannels?.includes("canvas") === true &&
+      projectRoom?.agentDefaultChannels?.includes("actions") === true,
+    JSON.stringify(projectRoom),
+  );
   recordCheck(
     "local project action gates require sync before web or sharing",
     status?.collaboration?.actions?.openInWeb?.allowed === false &&
@@ -631,6 +668,21 @@ async function main() {
       projectWorkspaceRoot: status?.projectWorkspaceRoot,
       protectedPaths: status?.protectedPaths,
     }),
+  );
+  const obsoleteLocalJsonDatabaseSidecars = new Set([
+    String.fromCharCode(115, 121, 110, 99, 46, 106, 115, 111, 110),
+    String.fromCharCode(97, 117, 100, 105, 111, 46, 106, 115, 111, 110),
+    String.fromCharCode(104, 97, 114, 110, 101, 115, 115, 101, 115, 46, 106, 115, 111, 110),
+  ]);
+  const obsoleteSidecarMatches = [
+    ...await findFilesByBasename(workspace, obsoleteLocalJsonDatabaseSidecars),
+    ...await findFilesByBasename(clashHome, obsoleteLocalJsonDatabaseSidecars),
+    ...await findFilesByBasename(status.projectWorkspaceRoot, obsoleteLocalJsonDatabaseSidecars),
+  ];
+  recordCheck(
+    "no obsolete local JSON database sidecars exist in workspace or local home",
+    obsoleteSidecarMatches.length === 0,
+    JSON.stringify(obsoleteSidecarMatches),
   );
   recordCheck(
     "local secret files are protected local-only storage, not agent-editable projections",

@@ -542,6 +542,16 @@ Agents need a stable inspection payload:
         }
       }
     },
+    "projectRoom": {
+      "schemaVersion": 1,
+      "localSurface": "removed",
+      "localPersistence": false,
+      "localApiEndpoints": "404",
+      "cliCommand": "unregistered",
+      "cloudSurface": "disabled",
+      "rawAgentTrace": false,
+      "agentDefaultChannels": ["sessions", "canvas", "actions"]
+    },
     "tracePolicy": {
       "schemaVersion": 1,
       "roomMessages": {

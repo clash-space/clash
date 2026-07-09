@@ -295,6 +295,9 @@ Current evidence:
   with a focused contract test covering read, write, sync, and conflict
   recovery paths;
 - the local-first CLI no longer registers `room`;
+- `project status.collaboration.projectRoom` marks the local project room
+  surface as removed, local persistence as absent, local room endpoints as 404,
+  and the CLI room command as unregistered;
 - cloud route tests may keep cloud room compatibility for shared projects, but
   local agents should use session/canvas/action channels instead of project
   room commands.

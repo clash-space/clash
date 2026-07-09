@@ -649,11 +649,14 @@ Current status:
   bodies.
 - The old room CLI source, tests, and local loopback E2E were deleted.
 - `GroupChatPanel` no longer renders removed room CLI recovery commands.
+- `project status --json` now exposes `collaboration.projectRoom` so agents can
+  see that the local project room surface is removed, local room persistence is
+  absent, local room endpoints return 404, and the local-first CLI has no room
+  command. The same field keeps cloud ProjectRoom availability mode-gated under
+  `cloudSurface`.
 
 Remaining gap:
 
-- Local SQLite room tables have been removed from the v1 local metadata/doctor
-  contract; hosted/cloud room compatibility should not depend on them.
 - Hosted/cloud room compatibility should be tested separately from local-first
   CLI/API behavior.
 

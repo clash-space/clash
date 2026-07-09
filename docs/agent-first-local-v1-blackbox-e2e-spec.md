@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-09T10-06-03-674Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T10-23-34-829Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -672,7 +672,7 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T10-06-19-427Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T10-23-50-675Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
@@ -721,13 +721,13 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T10-06-14-216Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T10-23-45-422Z/storage-doctor-repair-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 87 checks passed,
+- 89 checks passed,
 - `clash init`, `clash doctor storage --json`,
   failing `clash doctor storage --json` with a parseable JSON report,
   `clash doctor storage --repair --json`,
@@ -738,6 +738,8 @@ Result:
 - workspace roots and local SQLite core metadata/config tables, provider auth
   tables/primary keys, plus asset/text/timeline projection indexes were
   repaired through public CLI commands,
+- the repaired workspace, local home, and project workspace contained no
+  removed local config JSON sidecar files,
 - doctor reported the v1 `.clash/project.toml` marker as the only project
   marker context,
 - a hash-valid writable text revision blob was repaired back to read-only
@@ -783,6 +785,9 @@ Result:
 - a `cloud-sync` marker stayed `syncReadiness.status: pending`,
   `webOpenable: false`, and `roomAuthority: local` until the full sync
   capabilities are ready,
+- local project status exposed `collaboration.projectRoom.localSurface:
+  removed`, no local room persistence, local room endpoints as 404, and
+  `sessions`/`canvas`/`actions` as the local agent channels,
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
   sharing admission with `canvas`, `asset-metadata`, and `revision-content`
   requirements,
@@ -836,7 +841,7 @@ The gate runs and validates these black-box report artifacts:
 Latest verified gate report:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T10-06-03-586Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T10-23-34-739Z/agent-first-local-v1-gate-report.json
 ```
 
 Result:
@@ -844,10 +849,10 @@ Result:
 - `status: pass`,
 - 4 suites passed,
 - nested report contracts validated:
-  - `.tmp/short-drama-timeline/2026-07-09T10-06-03-628Z/short-drama-timeline-report.json` with 4 checks,
-  - `.tmp/agent-first-cas/2026-07-09T10-06-03-674Z/agent-first-cas-report.json` with 56 checks,
-  - `.tmp/storage-doctor-repair/2026-07-09T10-06-14-216Z/storage-doctor-repair-report.json` with 87 checks,
-  - `.tmp/agent-first-asset-receipts/2026-07-09T10-06-19-427Z/agent-first-asset-receipt-report.json` with 201 checks.
+  - `.tmp/short-drama-timeline/2026-07-09T10-23-34-781Z/short-drama-timeline-report.json` with 4 checks,
+  - `.tmp/agent-first-cas/2026-07-09T10-23-34-829Z/agent-first-cas-report.json` with 56 checks,
+  - `.tmp/storage-doctor-repair/2026-07-09T10-23-45-422Z/storage-doctor-repair-report.json` with 89 checks,
+  - `.tmp/agent-first-asset-receipts/2026-07-09T10-23-50-675Z/agent-first-asset-receipt-report.json` with 201 checks.
 
 Target boundary:
 

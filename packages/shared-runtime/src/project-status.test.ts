@@ -35,6 +35,19 @@ const expectedTracePolicy = {
   },
 } as const;
 
+function expectedProjectRoomPolicy(cloudSurface: "disabled" | "sequencer") {
+  return {
+    schemaVersion: 1,
+    localSurface: "removed",
+    localPersistence: false,
+    localApiEndpoints: "404",
+    cliCommand: "unregistered",
+    cloudSurface,
+    rawAgentTrace: false,
+    agentDefaultChannels: ["sessions", "canvas", "actions"],
+  } as const;
+}
+
 const expectedSyncMirrorPolicy = {
   canvas: {
     requirement: "canvas",
@@ -202,6 +215,7 @@ describe("project status path builder", () => {
         requiredForLocalActions: true,
         availability: "owner-machine-online",
       },
+      projectRoom: expectedProjectRoomPolicy("disabled"),
       tracePolicy: expectedTracePolicy,
     });
     expect(status.storage).toEqual({
@@ -531,6 +545,7 @@ describe("project status path builder", () => {
       multiUser: true,
       roomAuthority: "cloud-sequencer",
       cloudProjectRoom: "sequencer",
+      projectRoom: expectedProjectRoomPolicy("sequencer"),
       syncPolicy: {
         cloudAdmission: "cloud-sequencer",
       },
@@ -826,6 +841,7 @@ describe("project status path builder", () => {
       { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "shared" } } },
     );
 
+    expect(status.collaboration.projectRoom).toEqual(expectedProjectRoomPolicy("sequencer"));
     expect(status.collaboration.tracePolicy).toEqual(expectedTracePolicy);
   });
 });
