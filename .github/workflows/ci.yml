@@ -60,6 +60,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run test
 
+  agent-first-local-v1:
+    name: Agent-First Local V1 Gate
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:e2e:agent-first-local-v1
+
   build:
     name: Build
     runs-on: ubuntu-latest

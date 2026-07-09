@@ -821,10 +821,10 @@ Result:
 
 ### Agent-First Local v1 Gate
 
-Manual release gate:
+CI/release gate:
 
 ```bash
-pnpm --filter @master-clash/desktop test:e2e:agent-first-local-v1
+pnpm test:e2e:agent-first-local-v1
 ```
 
 The gate runs and validates these black-box report artifacts:
@@ -912,8 +912,9 @@ Current status:
   root, explicit runtime root, local SQLite path, protected paths, and sync
   mode.
 - Black-box storage/project smokes now assert these fields against initialized,
-  restored, and deleted-marker-workspace local project paths; broader UI release
-  gates still need to carry the same evidence.
+  restored, and deleted-marker-workspace local project paths; the aggregate
+  gate is wired into CI and release workflows, while broader live UI product
+  fixtures still need to carry the same evidence.
 - `clash doctor storage --json` now has first-pass read-only path checks, and
   `clash doctor storage --repair` can initialize missing workspace roots plus
   the local SQLite core metadata, provider auth table/key, and projection
@@ -954,7 +955,7 @@ Current status:
   plus local-api canvas node read/update/delete receipt enforcement,
   downstream text content patch rejection, local-api canvas batch delete
   plan/apply receipt enforcement, external orphan rejection, local-api canvas edge list/delete
-  receipt enforcement, and sanitized audit evidence for accepted v1/legacy
+  receipt enforcement, and sanitized audit evidence for accepted v1
   project create, obsolete local project endpoint rejection, asset create, asset import, custom
   action checkpoint upload, asset cover updates, asset reference refresh, asset
   GC, session creation/deletion, node update/delete, batch deletion, and edge deletion;

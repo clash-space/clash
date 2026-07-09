@@ -9,6 +9,10 @@ function readText(relativePath: string) {
   return readFileSync(new URL(relativePath, desktopRoot), "utf8");
 }
 
+function readRootText(relativePath: string) {
+  return readFileSync(new URL(`../../${relativePath}`, desktopRoot), "utf8");
+}
+
 describe("desktop startup test suite", () => {
   it("exposes startup scripts from the workspace root", () => {
     const rootPkg = JSON.parse(
@@ -214,6 +218,16 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("cloud-sync pending action gates block web and sharing until required mirrors are ready");
     expect(source).toContain("CLASH_AGENT_FIRST_LOCAL_V1_SUITES");
     expect(source).toContain("agent-first-local-v1-gate-report.json");
+  });
+
+  it("wires the agent-first local v1 release gate into CI policy", () => {
+    const ciWorkflow = readRootText(".github/workflows/ci.yml");
+    const releaseWorkflow = readRootText(".github/workflows/release.yml");
+
+    expect(ciWorkflow).toContain("agent-first-local-v1");
+    expect(ciWorkflow).toContain("pnpm test:e2e:agent-first-local-v1");
+    expect(releaseWorkflow).toContain("agent-first-local-v1");
+    expect(releaseWorkflow).toContain("pnpm test:e2e:agent-first-local-v1");
   });
 
   it("keeps real Codex transport diagnostics out of assistant text", async () => {
