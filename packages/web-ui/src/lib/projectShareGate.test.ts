@@ -46,7 +46,7 @@ describe("resolveProjectShareAdmission", () => {
       shareGate: {
         allowed: false,
         reason: "cloud-sync-not-ready",
-        requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+        requirements: ["canvas", "room", "raw-agent-traces", "local-runtime-secrets", "asset-metadata", "revision-content"],
       },
       runtimePersistence: "remote",
     });
@@ -58,6 +58,8 @@ describe("resolveProjectShareAdmission", () => {
       source: "project-status",
     });
     expect(admission.tooltip).not.toContain("room");
+    expect(admission.tooltip).not.toContain("raw-agent-traces");
+    expect(admission.tooltip).not.toContain("local-runtime-secrets");
   });
 });
 
@@ -83,7 +85,7 @@ describe("resolveProjectWebAdmission", () => {
       openInWebGate: {
         allowed: false,
         reason: "cloud-sync-not-ready",
-        requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+        requirements: ["canvas", "room", "raw-agent-traces", "local-runtime-secrets", "asset-metadata", "revision-content"],
       },
     });
 
@@ -95,6 +97,8 @@ describe("resolveProjectWebAdmission", () => {
       source: "project-status",
     });
     expect(admission.tooltip).not.toContain("room");
+    expect(admission.tooltip).not.toContain("raw-agent-traces");
+    expect(admission.tooltip).not.toContain("local-runtime-secrets");
   });
 
   it("does not show an enabled web action without a real web URL", () => {

@@ -377,9 +377,10 @@ Evidence:
 - Cloud schema/routes may still implement room messages for hosted/shared
   projects.
 - Web conflict recovery copy no longer renders removed room CLI commands.
-- Web Share/Open-in-Web admission filters legacy `room` readiness requirements
-  out of cloud-sync tooltips so stale local status cannot reintroduce a local
-  room mirror concept.
+- Web Share/Open-in-Web admission filters legacy `room`, raw agent trace, and
+  local runtime secret readiness requirements out of cloud-sync tooltips so
+  stale local status cannot reintroduce a hosted room, private trace, or local
+  secret mirror concept.
 - Web `useProjectRoom` treats local 404 room responses as hosted/cloud room
   unavailable and stops send/sync POSTs instead of emulating a local room log.
 - Group chat disables the room composer when hosted/cloud room admission is

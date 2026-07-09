@@ -106,8 +106,16 @@ function projectShareRequirementLabel(requirement: string): string {
   return requirement;
 }
 
+const EXCLUDED_SYNC_REQUIREMENTS = new Set([
+  "room",
+  "raw-agent-traces",
+  "rawAgentTraces",
+  "local-runtime-secrets",
+  "localRuntimeSecrets",
+]);
+
 function projectShareRequirementLabels(requirements: readonly string[]): string[] {
   return requirements
-    .filter((requirement) => requirement !== "room")
+    .filter((requirement) => !EXCLUDED_SYNC_REQUIREMENTS.has(requirement))
     .map(projectShareRequirementLabel);
 }
