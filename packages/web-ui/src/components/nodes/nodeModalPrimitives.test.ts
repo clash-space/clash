@@ -49,15 +49,23 @@ describe("node modal primitives", () => {
   it("surfaces host-indexed text and timeline revision history on canvas nodes", () => {
     const textSource = readNodeSource("TextNode.tsx");
     const timelineSource = readNodeSource("VideoEditorNode.tsx");
+    const badgeSource = readNodeSource("RevisionHistoryBadge.tsx");
 
     expect(textSource).toContain("@clash/web-ui/hooks/useRevisionHistory");
+    expect(textSource).toContain("./RevisionHistoryBadge");
+    expect(textSource).toContain("<RevisionHistoryBadge");
     expect(textSource).toContain("kind: \"text\"");
-    expect(textSource).toContain("Text revision history");
-    expect(textSource).toContain("revisionHistory.count");
+    expect(textSource).toContain("history={revisionHistory}");
 
     expect(timelineSource).toContain("@clash/web-ui/hooks/useRevisionHistory");
+    expect(timelineSource).toContain("./RevisionHistoryBadge");
+    expect(timelineSource).toContain("<RevisionHistoryBadge");
     expect(timelineSource).toContain("kind: 'timeline'");
-    expect(timelineSource).toContain("Timeline revision history");
-    expect(timelineSource).toContain("revisionHistory.count");
+    expect(timelineSource).toContain("history={revisionHistory}");
+
+    expect(badgeSource).toContain("Text revision history");
+    expect(badgeSource).toContain("Timeline revision history");
+    expect(badgeSource).toContain("clash ${kind} content --revision");
+    expect(badgeSource).toContain("timeline.yaml");
   });
 });

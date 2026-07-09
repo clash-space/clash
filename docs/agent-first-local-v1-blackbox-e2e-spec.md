@@ -932,10 +932,10 @@ Current status:
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
 - `clash text pull/apply/replace` exists, and web canvas text/timeline nodes now
-  show first-pass revision badges through the read-only `useRevisionHistory`
-  hook. Suite D still needs real project fixture coverage and full visual
-  revision history/recovery interactions beyond the deterministic command smoke
-  and node badge.
+  show first-pass read-only revision history panels through `useRevisionHistory`,
+  including explicit CLI content recovery commands. Suite D still needs real
+  project fixture coverage and direct visual restore/apply interactions beyond
+  the deterministic command smoke and read-only panel.
 - Short-drama/storyboard prompt-pack and timeline projection commands exist;
   Suite E still needs a fuller canvas/asset/provider fixture beyond timeline
   JSON creation/restore.

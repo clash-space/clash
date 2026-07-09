@@ -905,12 +905,13 @@ Rules:
   endpoint as the agent-facing revision recovery surface; `--out` writes are
   cwd-contained.
 - `useRevisionHistory` reads the same host-owned text revision endpoint for
-  the web canvas. `TextNode` shows a first-pass revision badge when revisions
-  exist, without opening SQLite or mutable revision blob paths.
+  the web canvas. `TextNode` shows a first-pass read-only history panel with
+  recent revisions and `clash text content --revision ... --out ...` recovery
+  commands, without opening SQLite or mutable revision blob paths.
 
 Remaining:
 
-- full visual text revision history/recovery UI beyond the node badge,
+- full visual text revision restore/apply workflow beyond the read-only panel,
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 
@@ -954,12 +955,13 @@ Rules:
   source timeline lock and pin manifests, packages, ffmpeg plans, and derived
   asset metadata to the applied timeline revision id when one is present.
 - `useRevisionHistory` reads the same host-owned timeline revision endpoint for
-  the web canvas. `VideoEditorNode` shows a first-pass revision badge when
-  revisions exist, without opening SQLite or mutable revision blob paths.
+  the web canvas. `VideoEditorNode` shows a first-pass read-only history panel
+  with recent revisions and `clash timeline content --revision ... --out ...`
+  recovery commands, without opening SQLite or mutable revision blob paths.
 
 Remaining:
 
-- full visual timeline revision history/recovery UI beyond the node badge,
+- full visual timeline revision restore/apply workflow beyond the read-only panel,
 - local-to-cloud timeline revision mirror policy,
 - remaining render/export UI surfaces that still need revision pinning.
 

@@ -188,9 +188,11 @@ Evidence:
   `updateNode`, and shares the same materialized-checkpoint guard.
 - `packages/web-ui/src/hooks/useRevisionHistory.ts` is the read-only web
   consumer for host-indexed text/timeline revisions. Text and timeline canvas
-  nodes display first-pass revision badges from that hook, and
-  `useRevisionHistory.test.ts` plus `nodeModalPrimitives.test.ts` protect the
-  endpoint selection and node integration.
+  nodes display first-pass history panels from that hook, including recent
+  revisions and explicit `clash text/timeline content --revision ... --out ...`
+  recovery commands. `useRevisionHistory.test.ts`,
+  `RevisionHistoryBadge.test.tsx`, and `nodeModalPrimitives.test.ts` protect
+  the endpoint selection, command surface, and node integration.
 
 Conclusion:
 
@@ -199,8 +201,9 @@ Conclusion:
   first-pass COW replacement commands, and text/timeline/storyboard prompt-pack
   plus `apply-metadata` asset metadata locks share the generic projection
   envelope, and edited metadata JSON has an explicit CAS apply command. The
-  remaining gap is full revision history/recovery UI beyond the first-pass node
-  badges plus adoption by future non-JSON/storyboard/editor projections.
+  remaining gap is visual restore/apply workflow beyond the first-pass
+  read-only history panels plus adoption by future non-JSON/storyboard/editor
+  projections.
 
 ### Storyboard prompt-pack CAS
 
@@ -439,7 +442,7 @@ Current status:
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
 - Code implementation remains incomplete for automatic SQLite repair, fuller
   room admission policy/live UI beyond the Sync room gate, fuller conflict recovery workflow,
-  full copy-on-write revision history/recovery UI,
+  visual copy-on-write revision restore/apply workflow beyond the read-only history panel,
   remaining storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume
   layout QA paths passed. The real runs recorded session cwd under
