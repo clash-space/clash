@@ -19,12 +19,14 @@ clash projects get --id <project-id> --json
 clash project status --project <project-id> --json
 clash doctor storage --project <project-id> --json
 clash doctor storage --project <project-id> --repair --json
-clash projects delete --id <project-id> --yes --json
-clash project restore <project-id> --json
+clash projects delete --id <project-id> --if-match <readToken> --yes --json
+clash project get --id <project-id> --include-deleted --json
+clash project restore <project-id> --if-match <readToken> --json
 ```
 
-Local project delete is a recoverable soft-delete. Use `restore` to make the
-project visible again before creating or resuming sessions.
+Local project delete is a recoverable soft-delete. Read the project first and
+pass its `readToken` to delete; read it again with `--include-deleted` and pass
+that `readToken` to `restore` before creating or resuming sessions.
 `doctor storage` is read-only by default. It validates editable/protected path
 boundaries, project asset links, and local SQLite asset reference index
 readiness before an agent relies on project projections. `--repair` explicitly

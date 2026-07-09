@@ -47,11 +47,12 @@ Implementation:
 - Add `LocalStore` interface.
 - Add SQLite implementation.
 - Route local-api through `LocalStore`.
-- Keep broad product state out of JSON files.
+- Keep product metadata in SQLite; JSON/YAML files are limited to
+  intentionally agent-editable config, projections, and runtime artifacts.
 
 Acceptance:
 
-- No local route reads or writes a broad JSON product database.
+- No local route reads or writes a broad product-state file store.
 - Project status and storage doctor expose `local.sqlite` as the only local
   product metadata store.
 - Route responses are unchanged.

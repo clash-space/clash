@@ -76,9 +76,22 @@ export type ReplaceStoryboardPromptPackResult = {
   copyOnWrite: true;
   storyboardAssetId: string;
   projectionPath: string;
+  referencePolicy: StoryboardPromptPackReferencePolicy;
   sourcePromptPackHash?: string;
   promptPackHash: string;
   prompts: number;
+};
+
+export type StoryboardPromptPackReferencePolicy = {
+  target: "storyboard-prompt-pack";
+  automaticRewire: false;
+  existingReferencesPreserved: true;
+  managedProjectionPath: string;
+  replacementProjectionPath: string;
+  rewireRequiredForDownstream: true;
+  rewireCommand: "clash production apply-storyboard-prompt-pack";
+  rewireArgs: string[];
+  reason: string;
 };
 
 export async function projectStoryboardPromptPack(
@@ -257,6 +270,12 @@ export async function replaceStoryboardPromptPack(
   const replacementHash = promptPackHash(promptPack);
   const sourcePromptPackHash = currentPromptPack ? promptPackHash(currentPromptPack) : lock?.promptPackHash;
   const projectionPath = cowPromptPackProjectionPath(cwd, promptPack.storyboardAssetId, replacementHash);
+  const referencePolicy = promptPackReferencePolicy({
+    managedProjectionPath: toProjectPath(cwd, managedProjectionPath),
+    replacementProjectionPath: toProjectPath(cwd, projectionPath),
+    promptPackPath: toProjectPath(cwd, promptPackPath),
+    lockPath: toProjectPath(cwd, lockPath),
+  });
   await writeJson(projectionPath, {
     schemaVersion: 1,
     kind: "clash.storyboard.prompt-pack.replacement",
@@ -264,10 +283,11 @@ export async function replaceStoryboardPromptPack(
     sourceActionPath: lock?.sourceActionPath,
     copyOnWrite: true,
     copyOnWriteKind: "storyboard-prompt-pack-replacement",
-    sourceProjectionPath: toProjectPath(cwd, managedProjectionPath),
+    sourceProjectionPath: referencePolicy.managedProjectionPath,
     sourcePromptPackHash,
     promptPack,
     promptPackHash: replacementHash,
+    referencePolicy,
     replacedAt: new Date().toISOString(),
     casApply: {
       ...casApplyDescriptor(cwd, promptPackPath, lockPath),
@@ -281,9 +301,29 @@ export async function replaceStoryboardPromptPack(
     copyOnWrite: true,
     storyboardAssetId: promptPack.storyboardAssetId,
     projectionPath,
+    referencePolicy,
     sourcePromptPackHash,
     promptPackHash: replacementHash,
     prompts: promptPack.prompts.length,
+  };
+}
+
+function promptPackReferencePolicy(options: {
+  managedProjectionPath: string;
+  replacementProjectionPath: string;
+  promptPackPath: string;
+  lockPath: string;
+}): StoryboardPromptPackReferencePolicy {
+  return {
+    target: "storyboard-prompt-pack",
+    automaticRewire: false,
+    existingReferencesPreserved: true,
+    managedProjectionPath: options.managedProjectionPath,
+    replacementProjectionPath: options.replacementProjectionPath,
+    rewireRequiredForDownstream: true,
+    rewireCommand: "clash production apply-storyboard-prompt-pack",
+    rewireArgs: ["--file", options.promptPackPath, "--lock", options.lockPath],
+    reason: "copy-on-write replacement is staged as a separate projection; existing downstream references stay on the managed prompt-pack until explicitly rewired",
   };
 }
 

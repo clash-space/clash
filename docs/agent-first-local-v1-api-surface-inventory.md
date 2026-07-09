@@ -402,8 +402,10 @@ Registered commands:
   in-place apply when the text node has downstream canvas references.
 - `production project/apply/replace-storyboard-prompt-pack` implements
   storyboard prompt-pack projection CAS with a managed prompt-pack hash plus the
-  source storyboard action hash. It is still a file-only CAS path rather than a
-  host-issued receipt path.
+  source storyboard action hash. Replace returns and persists a
+  `referencePolicy` that preserves existing downstream references until an
+  explicit apply rewires the managed projection. It is still a file-only CAS
+  path rather than a host-issued receipt path.
 - `asset link --asset <id>` creates an agent-readable file under the project
   `assets/links/` directory through the immutable global asset cache. It is
   read-only inspection convenience, not a write/apply path.

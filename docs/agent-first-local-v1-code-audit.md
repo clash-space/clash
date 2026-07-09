@@ -92,16 +92,18 @@ The main v1 gaps are:
   `clash canvas replace-asset` COW path; storyboard prompt-pack replacement now
   has a first-pass explicit `clash production replace-storyboard-prompt-pack`
   path. Prompt-pack locks now require source action path/hash proof and reject
-  locks with stripped source proof. Text, timeline, storyboard prompt-pack,
-  primary asset metadata, editable metadata apply, and `apply-metadata`
-  JSON-derived projection locks share a generic projection identity envelope
-  while keeping legacy sidecar parsing where applicable. Generated and
-  explicit production projection lock sidecars now use the shared cwd/realpath
-  guard, review/stage gate JSON plus lock sidecars use the same agent-file
-  cwd/realpath boundary, production QA/report/action-plan/receipt outputs use
-  that boundary before writing agent-facing evidence, and asset metadata
-  projection lock rejection happens before manifest mutation. Broader storyboard
-  host/UI integration, recovery/rewire flows, host-issued receipt paths, and
+  locks with stripped source proof; COW prompt-pack replacements also write and
+  return a `referencePolicy` declaring that existing downstream references stay
+  on the managed projection until an explicit apply rewires it. Text, timeline,
+  storyboard prompt-pack, primary asset metadata, editable metadata apply, and
+  `apply-metadata` JSON-derived projection locks share a generic projection
+  identity envelope while keeping legacy sidecar parsing where applicable.
+  Generated and explicit production projection lock sidecars now use the shared
+  cwd/realpath guard, review/stage gate JSON plus lock sidecars use the same
+  agent-file cwd/realpath boundary, production QA/report/action-plan/receipt
+  outputs use that boundary before writing agent-facing evidence, and asset
+  metadata projection lock rejection happens before manifest mutation. Broader
+  storyboard host/UI integration, recovery UX, host-issued receipt paths, and
   adoption of the generic lock envelope by future non-JSON/editor projections
   remain pending.
 - talking-head text-cut media export now records source action path/hash in the
@@ -158,16 +160,16 @@ The local product metadata contract is SQLite-only:
 - if SQLite does not exist yet, routes start from an empty local metadata state,
 - after a metadata write, `local_migration.metadata-sqlite-v1` marks SQLite as
   authoritative,
-- new project/session/asset/provider writes do not create broad JSON product
-  state,
+- new project/session/asset/provider writes go to SQLite-backed product
+  metadata,
 - conformance scripts auto-detect desktop local-api state only by
   `local.sqlite`.
 
 Conclusion:
 
-- Do not document any broad JSON product database as an agent-editable surface.
+- Do not document product metadata storage as an agent-editable surface.
 - Do not add route, processor, doctor, status, or conformance writes to broad
-  JSON product state.
+  product-state files.
 - Do not bypass `local-provider-store` for provider credential/OAuth writes;
   direct SQL would bypass encryption and migration handling.
 - Do not reintroduce `db.load()` followed by `db.save(state)` in request

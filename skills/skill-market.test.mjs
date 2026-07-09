@@ -11,7 +11,7 @@ const clashCommandsReferencePath = path.join(repoRoot, "skills", "clash", "refer
 const canvasOperationsSkillPath = path.join(repoRoot, "packages", "claude-code-plugin", "skills", "canvas-operations", "SKILL.md");
 const projectManagementSkillPath = path.join(repoRoot, "packages", "claude-code-plugin", "skills", "project-management", "SKILL.md");
 const forbiddenInternalSurfacePattern =
-  /\b(snapshot\.bin|db\.json|local\.sqlite|sqlite|loro|room|variables|runtime\/|\.clash\/db)\b/i;
+  /\b(snapshot\.bin|local\.sqlite|sqlite|loro|room|variables|runtime\/|\.clash\/db)\b/i;
 
 function parseFrontmatter(markdown) {
   const match = markdown.match(/^---\n([\s\S]*?)\n---\n/);
@@ -539,8 +539,9 @@ test("agent-facing project docs expose recoverable project delete and restore", 
   for (const docs of [commands, projectSkill]) {
     assert.match(docs, /clash projects get --id <project-id> --json/);
     assert.match(docs, /clash projects create --name/);
-    assert.match(docs, /clash projects delete --id <project-id> --yes/);
-    assert.match(docs, /clash project restore <project-id>/);
+    assert.match(docs, /clash projects delete --id <project-id> --if-match <readToken> --yes/);
+    assert.match(docs, /clash project get --id <project-id> --include-deleted --json/);
+    assert.match(docs, /clash project restore <project-id> --if-match <readToken>/);
     assert.match(docs, /soft-delete|recoverable|restore/i);
     assert.doesNotMatch(docs, /removes the canvas, asset references, and history/i);
     assert.doesNotMatch(docs, /clash projects get <project-id>/);

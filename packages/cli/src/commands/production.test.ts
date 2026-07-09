@@ -7183,6 +7183,19 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   assert.equal(replaced.copyOnWrite, true);
   assert.equal(replaced.storyboardAssetId, "asset-storyboard");
   assert.match(replaced.projectionPath, /projections\/storyboards\/asset-storyboard\.prompt-pack\.[a-f0-9]{16}\.cow\.json$/);
+  const replacementProjectionPath = replaced.projectionPath.match(/projections\/storyboards\/asset-storyboard\.prompt-pack\.[a-f0-9]{16}\.cow\.json$/)?.[0];
+  assert.ok(replacementProjectionPath);
+  assert.deepEqual(replaced.referencePolicy, {
+    target: "storyboard-prompt-pack",
+    automaticRewire: false,
+    existingReferencesPreserved: true,
+    managedProjectionPath: "projections/storyboards/asset-storyboard.prompt-pack.json",
+    replacementProjectionPath,
+    rewireRequiredForDownstream: true,
+    rewireCommand: "clash production apply-storyboard-prompt-pack",
+    rewireArgs: ["--file", "plans/prompt-pack.json", "--lock", "plans/prompt-pack.lock.json"],
+    reason: "copy-on-write replacement is staged as a separate projection; existing downstream references stay on the managed prompt-pack until explicitly rewired",
+  });
   assert.ok(existsSync(replaced.projectionPath));
   const replacement = JSON.parse(await readFile(replaced.projectionPath, "utf8"));
   assert.equal(replacement.kind, "clash.storyboard.prompt-pack.replacement");
@@ -7190,6 +7203,7 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   assert.equal(replacement.copyOnWriteKind, "storyboard-prompt-pack-replacement");
   assert.equal(replacement.sourcePromptPackHash, replaced.sourcePromptPackHash);
   assert.equal(replacement.promptPackHash, replaced.promptPackHash);
+  assert.deepEqual(replacement.referencePolicy, replaced.referencePolicy);
   assert.match(replacement.promptPack.prompts[0].prompt, /alternate tense close-up/);
   const managedAfterReplace = JSON.parse(await readFile(applied.projectionPath, "utf8"));
   assert.doesNotMatch(managedAfterReplace.promptPack.prompts[0].prompt, /alternate tense close-up/);

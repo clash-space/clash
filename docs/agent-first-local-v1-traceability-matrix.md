@@ -245,11 +245,17 @@ Evidence:
   storyboard asset compatibility field.
 - `replace-storyboard-prompt-pack` writes a copy-on-write replacement projection
   instead of mutating the existing managed prompt-pack projection.
+- The replacement projection and CLI result include `referencePolicy` with
+  `automaticRewire: false`, `existingReferencesPreserved: true`, the managed
+  and replacement projection paths, and the explicit
+  `clash production apply-storyboard-prompt-pack --file ... --lock ...` command
+  needed before downstream references move.
 
 Conclusion:
 
 - Prompt-pack editing has first-pass CAS and COW semantics. Remaining storyboard
-  work is host/UI integration plus recovery/rewire UX, not blind lock bypass.
+  work is host/UI integration plus recovery UX and broader non prompt-pack
+  storyboard/editor projections, not blind lock bypass.
 
 ### Direct patch/update risk
 
@@ -459,7 +465,7 @@ The active goal can be marked complete only when these are true:
 2. local/cloud collaboration boundaries are documented.
 3. file projection/CAS boundary is documented.
 4. project/cwd/global storage split is documented.
-5. db/json/sqlite classification is documented.
+5. Agent-editable file vs SQLite product-state classification is documented.
 6. snapshot/assets/text/timeline entity relationship is documented.
 7. current code and CLI/API surfaces have been audited.
 8. concrete implementation gaps are listed.

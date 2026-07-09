@@ -39,7 +39,7 @@ function sourceFilesUnder(path: string): string[] {
       const fullPath = join(directory, entry.name);
       if (entry.isDirectory()) {
         visit(fullPath);
-      } else if (/\.(ts|tsx|md)$/.test(entry.name)) {
+      } else if (/\.(ts|tsx|md|mjs|json)$/.test(entry.name)) {
         files.push(fullPath);
       }
     }
@@ -59,21 +59,28 @@ describe("local data dir contract", () => {
     expect(googleAgentPlatform).not.toContain("|| existsSync(join(desktop,");
   });
 
-  it("keeps the legacy JSON database file name out of local-first source and docs", () => {
-    const legacyName = "db" + ".json";
+  it("keeps broad product database file names out of local-first source, docs, and skills", () => {
+    const forbiddenProductDatabaseSpellings = [
+      String.fromCharCode(100, 98, 46, 106, 115, 111, 110),
+      String.fromCharCode(100, 98, 92, 46, 106, 115, 111, 110),
+    ];
     const scannedFiles = [
       ...sourceFilesUnder("apps/local-api/src"),
       ...sourceFilesUnder("packages/cli/src"),
       ...sourceFilesUnder("packages/shared-runtime/src"),
       ...sourceFilesUnder("packages/shared-types/src"),
       ...sourceFilesUnder("packages/web-ui/src"),
+      ...sourceFilesUnder("skills"),
       ...sourceFilesUnder("docs"),
     ];
 
     const matches = scannedFiles
       .map((file) => ({ file, content: readFileSync(file, "utf8") }))
-      .filter(({ content }) => content.includes(legacyName))
-      .map(({ file }) => file.slice(repoRoot.length + 1));
+      .flatMap(({ file, content }) =>
+        forbiddenProductDatabaseSpellings
+          .filter((name) => content.includes(name))
+          .map(() => `${file.slice(repoRoot.length + 1)} contains a forbidden product database spelling`),
+      );
 
     expect(matches).toEqual([]);
   });
