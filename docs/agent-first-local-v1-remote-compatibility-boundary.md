@@ -98,6 +98,9 @@ Restriction:
 
 - Do not present variables as the local v1 auth path.
 - Do not reintroduce local `/api/v1/vars` or local action-secret endpoints.
+- Desktop/local settings must not load `/api/settings/variables` or expose the
+  hidden variables pane; hosted settings may still use it for remote worker
+  actions.
 - CLI should be mode-aware:
   - local provider/model auth: provider accounts/OAuth/local runtime setup,
   - remote worker action: vars compatibility.
@@ -179,6 +182,8 @@ Keep unavailable locally:
 Current evidence:
 
 - local-api tests assert 404.
+- `SettingsSurface` skips remote worker variables in desktop/local runtime and
+  falls back to Agents if a hidden `variables` section is requested locally.
 
 Reason:
 

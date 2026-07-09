@@ -12,6 +12,7 @@ import {
   Microphone,
 } from '@phosphor-icons/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
+import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
 import SettingsClient, { type SettingsSection } from './SettingsClient';
 import { Tooltip } from './ui/tooltip';
 import { IconButton } from './ui/icon-button';
@@ -96,6 +97,15 @@ export function writeLastSettingsSection(section: SettingsSection): void {
   }
 }
 
+function supportsRemoteWorkerVariables(): boolean {
+  return getRuntimeConfig().mode === 'hosted';
+}
+
+function effectiveSettingsSection(section: SettingsSection, remoteWorkerVariablesAvailable: boolean): SettingsSection {
+  if (section === 'variables' && !remoteWorkerVariablesAvailable) return 'agents';
+  return section;
+}
+
 function SettingsSurfaceSkeletonLine({ className = '' }: { className?: string }) {
   return (
     <span
@@ -137,13 +147,17 @@ export function SettingsSurface({
 }: SettingsSurfaceProps) {
   const [load, setLoad] = useState<LoadState>({ status: 'idle' });
   const isPage = variant === 'page';
+  const remoteWorkerVariablesAvailable = supportsRemoteWorkerVariables();
+  const activeSection = effectiveSettingsSection(active, remoteWorkerVariablesAvailable);
 
   useEffect(() => {
     let cancelled = false;
     setLoad({ status: 'loading' });
     Promise.all([
       listApiTokens().catch(() => [] as ApiTokenInfo[]),
-      listVariables().catch(() => [] as VariableInfo[]),
+      remoteWorkerVariablesAvailable
+        ? listVariables().catch(() => [] as VariableInfo[])
+        : Promise.resolve([] as VariableInfo[]),
       listInstalledActions().catch(() => [] as InstalledActionInfo[]),
       listInstalledSkills().catch(() => [] as InstalledSkillInfo[]),
       listModelProviders().catch(() => [] as ModelProviderAccountInfo[]),
@@ -160,7 +174,7 @@ export function SettingsSurface({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [remoteWorkerVariablesAvailable]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -208,7 +222,7 @@ export function SettingsSurface({
           )}
         </div>
         <TabProvider
-          selectedId={active}
+          selectedId={activeSection}
           setSelectedId={(section) => {
             if (isSettingsSection(section)) onActiveChange(section);
           }}
@@ -217,7 +231,7 @@ export function SettingsSurface({
         >
           <TabList className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1" aria-label="Settings sections">
             {SETTINGS_NAV_ITEMS.map((item) => {
-              const isActive = active === item.id;
+              const isActive = activeSection === item.id;
               const Icon = item.icon;
               return (
                 <Tab
@@ -254,7 +268,7 @@ export function SettingsSurface({
       <main className={`${isPage ? 'clash-settings-page-content' : 'clash-settings-dialog-content'} min-w-0 flex-1 overflow-y-auto`}>
         <div className={isPage ? 'mx-auto w-full max-w-6xl px-10 py-10 xl:px-14' : 'px-8 py-6'}>
           <h2 className="mb-6 font-display text-xl font-bold text-stone-900 dark:text-stone-100">
-            {SETTINGS_NAV_ITEMS.find((item) => item.id === active)?.label ?? 'Settings'}
+            {SETTINGS_NAV_ITEMS.find((item) => item.id === activeSection)?.label ?? 'Settings'}
           </h2>
 
           {load.status === 'loading' || load.status === 'idle' ? (
@@ -271,7 +285,7 @@ export function SettingsSurface({
               initialSkills={load.skills}
               initialModelProviders={load.modelProviders}
               initialModelCatalog={load.modelCatalog}
-              activeSection={active}
+              activeSection={activeSection}
               embedded
             />
           )}

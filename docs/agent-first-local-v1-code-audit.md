@@ -565,7 +565,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T04-26-27-433Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T04-32-37-680Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:

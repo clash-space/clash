@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import SettingsClient from "./SettingsClient";
 import { AppFeedbackProvider } from "./AppFeedback";
+import { listVariables } from "@clash/web-ui/lib/clientActions";
 import {
   SettingsSurface,
   readLastSettingsSection,
@@ -135,6 +136,7 @@ describe("SettingsSurface tab state", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     window.localStorage.clear();
   });
 
@@ -168,6 +170,56 @@ describe("SettingsSurface tab state", () => {
 
     expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.queryByRole("tab", { name: "Runtimes" })).toBeNull();
+  });
+
+  it("does not load remote worker variables in desktop local settings", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+    const listVariablesMock = vi.mocked(listVariables);
+    listVariablesMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"agents" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listVariablesMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps remote worker variables available in hosted settings", async () => {
+    const listVariablesMock = vi.mocked(listVariables);
+    listVariablesMock.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"agents" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(listVariablesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render the hidden variables section in desktop local settings", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active={"variables" as any} onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading settings" })).toBeNull());
+    expect(screen.getByRole("tab", { name: "Agents" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByText("API Keys")).toBeNull();
+    expect(screen.queryByPlaceholderText("KEY_NAME")).toBeNull();
   });
 
   it("uses the shared tab primitive for the settings section selector instead of direct Ariakit or handwritten sidebar tab buttons", () => {

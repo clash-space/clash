@@ -282,6 +282,9 @@ Regression tests assert these are 404 locally:
 v1 decision:
 
 - keep local variables/action-secret endpoints unavailable,
+- keep the shared settings UI from loading or rendering variables in
+  desktop/local runtime; variables remain hosted-only remote worker
+  compatibility,
 - do not silently reintroduce local action secrets.
 
 ## Cloud API Surface
@@ -1056,6 +1059,8 @@ local API contract.
 
 - Projects/assets/sessions/providers keep existing response shapes after SQLite.
 - Local vars/action-secret endpoints remain 404.
+- Desktop/local settings do not request `/api/settings/variables` and do not
+  render the hidden variables section.
 - Local room endpoint persistence tests replace the old 404 expectation.
 
 ### Cloud compatibility
