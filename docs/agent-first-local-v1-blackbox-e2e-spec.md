@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-09T04-59-38-745Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T06-54-11-063Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -672,13 +672,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T04-59-57-506Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T06-54-27-208Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 190 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 191 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests wrote sanitized
   mutation audit evidence, local audio transcription actions recorded host
   mutation envelopes, and local sync, audio,
@@ -723,7 +723,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T04-59-51-347Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T06-54-21-975Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -838,7 +838,7 @@ The gate runs and validates these black-box report artifacts:
 Latest verified gate report:
 
 ```text
-.tmp/agent-first-local-v1-gate/2026-07-09T04-59-38-644Z/agent-first-local-v1-gate-report.json
+.tmp/agent-first-local-v1-gate/2026-07-09T06-54-10-939Z/agent-first-local-v1-gate-report.json
 ```
 
 Result:
@@ -847,9 +847,9 @@ Result:
 - 4 suites passed,
 - nested report contracts validated:
   - `.tmp/short-drama-timeline/2026-07-09T04-59-38-692Z/short-drama-timeline-report.json` with 4 checks,
-  - `.tmp/agent-first-cas/2026-07-09T04-59-38-745Z/agent-first-cas-report.json` with 56 checks,
-  - `.tmp/storage-doctor-repair/2026-07-09T04-59-51-347Z/storage-doctor-repair-report.json` with 86 checks,
-  - `.tmp/agent-first-asset-receipts/2026-07-09T04-59-57-506Z/agent-first-asset-receipt-report.json` with 190 checks.
+  - `.tmp/agent-first-cas/2026-07-09T06-54-11-063Z/agent-first-cas-report.json` with 56 checks,
+  - `.tmp/storage-doctor-repair/2026-07-09T06-54-21-975Z/storage-doctor-repair-report.json` with 86 checks,
+  - `.tmp/agent-first-asset-receipts/2026-07-09T06-54-27-208Z/agent-first-asset-receipt-report.json` with 191 checks.
 
 Target boundary:
 
@@ -931,7 +931,7 @@ Current status:
   rejection, explicit divergence recovery persistence, and later sync
   continuation without overwriting local text. `GroupChatPanel` also exposes
   first-pass conflict id/hash/CLI recovery details from that sync plan and
-  gates its Sync room action when `sync.admission.allowed=false`. Remaining
+  gates its Sync room action when `sync.admission.allowed=false`; room sync meta also exposes raw-trace local-only admission evidence. Remaining
   work is remote sync loop wiring beyond the UI admission gate, fuller
   local/remote recovery workflow, and broader live UI parity.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI

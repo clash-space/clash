@@ -710,6 +710,19 @@ function allowedRoomSyncAdmission() {
   };
 }
 
+function publicRoomTracePolicy() {
+  const tracePolicy = buildProjectStatus(
+    { projectId: "room-sync-policy", source: "explicit" },
+    { clashRoot: "/", localApiDataDir: "/local-api" },
+  ).collaboration.tracePolicy;
+  return {
+    schemaVersion: tracePolicy.schemaVersion,
+    room_messages: tracePolicy.roomMessages,
+    agent_session_metadata: tracePolicy.agentSessionMetadata,
+    raw_agent_traces: tracePolicy.rawAgentTraces,
+  };
+}
+
 async function publicRoomSyncMeta(
   syncConfig: LocalSyncConfigStore,
   override?: { status?: PublicRoomSyncStatus; error?: string },
@@ -730,6 +743,7 @@ async function publicRoomSyncMeta(
       ...(override?.error ? { error: override.error } : {}),
     },
     admission,
+    trace_policy: publicRoomTracePolicy(),
   };
 }
 

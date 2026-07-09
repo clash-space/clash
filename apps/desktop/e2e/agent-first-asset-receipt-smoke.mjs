@@ -3571,6 +3571,16 @@ async function main() {
 	    JSON.stringify({ acceptedRoomSync, remoteRoomRequests }),
 	    { mutation: acceptedRoomSync.mutation },
 	  );
+	  recordCheck(
+	    "room sync exposes raw trace local-only admission policy",
+	    acceptedRoomSync.sync?.trace_policy?.room_messages?.rawAgentTrace === false &&
+	      acceptedRoomSync.sync?.trace_policy?.room_messages?.syncDefault === "sync-when-project-sync-enabled" &&
+	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.syncDefault === "local-only" &&
+	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.excludedFromRoom === true &&
+	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.syncAdmission?.allowed === false &&
+	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.syncAdmission?.requirements?.includes("user-opt-in-or-team-policy") === true,
+	    JSON.stringify(acceptedRoomSync.sync?.trace_policy),
+	  );
 	  const acceptedRoomSyncAuditResponse = await acceptedRoomRequest(`/api/v1/mutation-audit?operation=room_sync&entityId=${encodeURIComponent(acceptedRoomProject.id)}`);
 	  const acceptedRoomSyncAudit = await parseJsonResponse(acceptedRoomSyncAuditResponse);
 	  const acceptedRoomSyncAuditRecord = acceptedRoomSyncAudit.records?.[0];
@@ -3989,6 +3999,7 @@ async function main() {
 	      roomSyncMissingProjectFirst: checks.some((check) => check.name === "room sync checks project existence before remote admission" && check.status === "pass"),
 	      roomSyncLocalOnlyAdmissionReturned: checks.some((check) => check.name === "local-only room sync returns explicit admission gate" && check.status === "pass"),
 	      roomSyncExplicitMirrorAccepted: checks.some((check) => check.name === "room sync mirrors local and remote messages through explicit action" && check.status === "pass"),
+	      roomSyncTracePolicyReturned: checks.some((check) => check.name === "room sync exposes raw trace local-only admission policy" && check.status === "pass"),
 	      roomSyncAuditRecorded: checks.some((check) => check.name === "room sync writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      roomSyncConflictExposed: checks.some((check) => check.name === "room sync conflict exposes local and remote hashes without overwrite" && check.status === "pass"),
 	      roomSyncConflictStaleResolveRejected: checks.some((check) => check.name === "room sync conflict recovery rejects stale hashes" && check.status === "pass"),

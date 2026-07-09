@@ -44,6 +44,39 @@ export interface RoomSyncMeta {
     reason: 'remote-room-not-configured' | 'room-sync-capability-not-ready' | null;
     requirements: string[];
   };
+  trace_policy?: {
+    schemaVersion: 1;
+    room_messages: {
+      kind: 'project-chat';
+      syncDefault: 'sync-when-project-sync-enabled';
+      rawAgentTrace: false;
+    };
+    agent_session_metadata?: {
+      kind: 'public-session-metadata';
+      syncDefault: 'sync-when-project-sync-enabled';
+      rawAgentTrace: false;
+    };
+    raw_agent_traces: {
+      kind: 'private-runtime-trace';
+      syncDefault: 'local-only';
+      optInRequiredForSync: true;
+      excludedFromRoom: true;
+      sensitiveFields?: string[];
+      syncAdmission: {
+        allowed: false;
+        reason: 'explicit-policy-required';
+        requirements: string[];
+        defaultAllowed: false;
+      };
+      retention?: {
+        default: 'until-session-delete';
+        scope: 'per-session';
+        api: string;
+        cliCommand: string;
+        clears: string[];
+      };
+    };
+  };
 }
 
 export interface RoomConflictMessage extends RoomMessageEvent {

@@ -79,6 +79,7 @@ const suiteDefinitions = [
       "runtimeSessionAttachReceiptAccepted",
       "roomSyncLocalOnlyAdmissionReturned",
       "roomSyncExplicitMirrorAccepted",
+      "roomSyncTracePolicyReturned",
       "roomSyncConflictDivergenceAccepted",
       "roomSyncConflictResolutionAuditRecorded",
     ],

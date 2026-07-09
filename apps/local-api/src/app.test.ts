@@ -10246,6 +10246,57 @@ describe("local API app", () => {
     });
   });
 
+  it("exposes room sync trace admission so raw agent traces stay local by default", async () => {
+    const syncConfig = createLocalSyncConfigStore({
+      dataDir,
+      env: {},
+    });
+    await syncConfig.updateFromRequest({
+      mode: "cloud-sync",
+      remote_loro_url: "https://api.example.com",
+      remote_loro_token: "token-1",
+      capabilities: {
+        room: true,
+      },
+    });
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      syncConfig,
+    });
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Room Trace Policy Project" }),
+    });
+    const project = await created.json() as { id: string };
+
+    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      sync: {
+        trace_policy: {
+          room_messages: {
+            kind: "project-chat",
+            rawAgentTrace: false,
+            syncDefault: "sync-when-project-sync-enabled",
+          },
+          raw_agent_traces: {
+            kind: "private-runtime-trace",
+            syncDefault: "local-only",
+            excludedFromRoom: true,
+            syncAdmission: {
+              allowed: false,
+              reason: "explicit-policy-required",
+              requirements: ["user-opt-in-or-team-policy"],
+              defaultAllowed: false,
+            },
+          },
+        },
+      },
+    });
+  });
+
   it("checks project existence before room sync remote admission", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
