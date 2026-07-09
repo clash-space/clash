@@ -213,6 +213,7 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("textRestoreCreatesCopyOnWriteRevisionFromHostContent");
     expect(source).toContain("timelineRestoreCreatesCopyOnWriteRevisionFromHostContent");
     expect(source).toContain("localObsoleteProjectEndpointsRejected");
+    expect(source).toContain("audioTranscriptionAuditRecorded");
     expect(source).toContain("projectUpdateAuditRecorded");
     expect(source).toContain("projectDeleteAuditRecorded");
     expect(source).toContain("textRevisionIndexAuditRecorded");

@@ -3584,9 +3584,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         file,
         language: typeof language === "string" ? language : null,
       });
+      const mutation = hostMutationSucceeded(envelope, { resultEntityId: "audio-transcription" });
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        reason: "local audio transcription",
+      }));
       return c.json({
         ...result,
-        mutation: hostMutationSucceeded(envelope, { resultEntityId: "audio-transcription" }),
+        mutation,
       });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {

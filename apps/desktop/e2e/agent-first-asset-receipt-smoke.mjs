@@ -891,6 +891,23 @@ async function main() {
     JSON.stringify(audioTranscriptionJson),
     { mutation: audioTranscriptionJson.mutation },
   );
+  const audioTranscriptionAuditResponse = await request("/api/v1/mutation-audit?operation=local_audio_transcription&entityId=audio-transcription");
+  const audioTranscriptionAudit = await parseJsonResponse(audioTranscriptionAuditResponse);
+  const audioTranscriptionAuditRecord = audioTranscriptionAudit.records?.[0];
+  recordCheck(
+    "audio transcription action writes sanitized local mutation audit evidence",
+    audioTranscriptionAuditResponse.status === 200 &&
+      audioTranscriptionAudit.records?.length === 1 &&
+      audioTranscriptionAuditRecord.operation === "local_audio_transcription" &&
+      audioTranscriptionAuditRecord.entity?.kind === "local-action" &&
+      audioTranscriptionAuditRecord.entity?.id === "audio-transcription" &&
+      audioTranscriptionAuditRecord.accepted === true &&
+      audioTranscriptionAuditRecord.reason === "local audio transcription" &&
+      audioTranscriptionAuditRecord.resultEntityId === "audio-transcription" &&
+      !JSON.stringify(audioTranscriptionAuditRecord.mutation ?? {}).includes("receipt") &&
+      mutationAuditRecordsHaveNoReadTokens(audioTranscriptionAudit.records),
+    JSON.stringify(audioTranscriptionAudit),
+  );
 
   const initialHarnessesResponse = await request("/api/v1/local/harnesses");
   const initialHarnesses = await parseJsonResponse(initialHarnessesResponse);
@@ -3989,6 +4006,7 @@ async function main() {
       audioInstallStaleReceiptRejected: checks.some((check) => check.name === "audio install with stale receipt is rejected" && check.status === "pass"),
       audioInstallAuditRecorded: checks.some((check) => check.name === "audio install writes sanitized local mutation audit evidence" && check.status === "pass"),
       audioTranscriptionMutationRecorded: checks.some((check) => check.name === "audio transcription action returns host mutation record" && check.status === "pass"),
+      audioTranscriptionAuditRecorded: checks.some((check) => check.name === "audio transcription action writes sanitized local mutation audit evidence" && check.status === "pass"),
       localHarnessGetReceiptReturned: checks.some((check) => check.name === "local harnesses get returns receipt read token" && check.status === "pass"),
       localHarnessMissingReadRejected: checks.some((check) => check.name === "local harness enablement update without prior read is rejected" && check.status === "pass"),
       localHarnessBareCasRejected: checks.some((check) => check.name === "local harness enablement update with bare CAS token is rejected" && check.status === "pass"),

@@ -895,6 +895,23 @@ describe("local API app", () => {
       },
     });
     expect(builtinTranscribe).toHaveBeenCalledTimes(1);
+
+    const audit = await app.request("/api/v1/mutation-audit?operation=local_audio_transcription&entityId=audio-transcription");
+    expect(audit.status).toBe(200);
+    const auditJson = await audit.json() as { records: Array<any> };
+    expect(auditJson.records).toHaveLength(1);
+    expect(auditJson.records[0]).toMatchObject({
+      operation: "local_audio_transcription",
+      entity: { kind: "local-action", id: "audio-transcription" },
+      accepted: true,
+      forced: false,
+      reason: "local audio transcription",
+      resultEntityId: "audio-transcription",
+    });
+    expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
+    expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
+    expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
   });
 
   it("records rejected mutation envelopes for local ASR transcription failures", async () => {
