@@ -1171,7 +1171,15 @@ export function createLocalMetadataStore(dataDir: string) {
 
   async function appendMutationAudit(record: LocalMutationAuditRecord): Promise<void> {
     await withDb((db) => {
-      insertMutationAudit(db, record);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        insertMutationAudit(db, record);
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     });
   }
 

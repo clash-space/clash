@@ -27,6 +27,21 @@ function readSqlitePragma(dataDir: string, pragma: string): string | number | un
   }
 }
 
+function readMetadataMigrationMarker(dataDir: string): Record<string, unknown> | undefined {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { get(...params: unknown[]): Record<string, unknown> | undefined };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    return db.prepare("SELECT id, source_path FROM local_migration WHERE id = ?").get("metadata-sqlite-v1");
+  } finally {
+    db.close();
+  }
+}
+
 function createPartialCoreMetadataSqlite(dataDir: string): void {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
@@ -259,6 +274,36 @@ describe("local metadata store", () => {
         },
       },
     ]);
+  });
+
+  it("marks sqlite metadata authoritative after an audit-only write", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir);
+
+    await store.appendMutationAudit({
+      id: "audit-rejected-text-apply",
+      createdAt: 1783428000000,
+      operation: "text_revision_index",
+      entity: { kind: "text", id: "project-text:script" },
+      actorClientType: "agent",
+      forced: false,
+      accepted: false,
+      reason: "text revision rejected",
+      resultEntityId: null,
+      error: "text revision contentHash does not match content",
+      mutation: {
+        operation: "text_revision_index",
+        entity: { kind: "text", id: "project-text:script" },
+        forced: false,
+        accepted: false,
+        error: "text revision contentHash does not match content",
+      },
+    });
+
+    expect(readMetadataMigrationMarker(dataDir)).toMatchObject({
+      id: "metadata-sqlite-v1",
+      source_path: join(dataDir, "local.sqlite"),
+    });
   });
 
   it("persists room sync conflict resolutions outside metadata rewrites", async () => {

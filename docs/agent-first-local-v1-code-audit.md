@@ -162,6 +162,8 @@ The local product metadata contract is SQLite-only:
 - if SQLite does not exist yet, routes start from an empty local metadata state,
 - after a metadata write, `local_migration.metadata-sqlite-v1` marks SQLite as
   authoritative,
+- audit-only metadata writes use the same marker path, so a rejected-only local
+  action cannot create an unmarked SQLite product database,
 - new project/session/asset/provider writes go to SQLite-backed product
   metadata,
 - immutable text/timeline revision ids are checked and inserted inside

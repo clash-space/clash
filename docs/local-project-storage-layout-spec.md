@@ -400,6 +400,11 @@ SQLite owns the metadata:
 - reason/result/error summary,
 - sanitized mutation JSON without receipt-bearing read tokens.
 
+Appending audit evidence is a local metadata write. Even if the audit row is
+the first and only product row, local-api marks `local_migration.metadata-sqlite-v1`
+inside the same SQLite write transaction so the database is not left as an
+unmarked side store.
+
 This avoids copying the same blob for every project or session.
 `clash project status --json` exposes this same boundary as
 `storage.canonicalReplica.mediaAssets`; agents should inspect blobs through

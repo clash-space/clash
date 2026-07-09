@@ -104,6 +104,8 @@ Evidence:
   `BEGIN IMMEDIATE` write/schema transactions; text/timeline revision
   immutable-id checks and inserts are covered by the same write-transaction
   contract.
+- Audit-only writes now set `local_migration.metadata-sqlite-v1`, so rejected
+  local actions cannot create unmarked SQLite product state.
 - Rejected text/timeline revision index attempts, including content hash
   preflight failures, write sanitized `mutation_audit` rows while leaving no
   orphan revision blob.
