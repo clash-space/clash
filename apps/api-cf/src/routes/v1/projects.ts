@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../../config";
+import { getProjectById, listProjectsWithAssets } from "../../services/projects-d1";
 
 export const projectRoutes = new Hono<{ Bindings: Env }>();
 
@@ -15,14 +16,7 @@ function getUserId(c: { req: { header: (name: string) => string | undefined } })
 // GET /api/v1/projects — List user's projects
 projectRoutes.get("/", async (c) => {
   const userId = getUserId(c);
-
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, name, description, created_at, updated_at FROM project WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50"
-  )
-    .bind(userId)
-    .all();
-
-  return c.json({ projects: results ?? [] });
+  return c.json({ projects: await listProjectsWithAssets(c.env, userId, 50) });
 });
 
 // POST /api/v1/projects — Create a project
@@ -48,9 +42,24 @@ projectRoutes.post("/", async (c) => {
 projectRoutes.get("/:id", async (c) => {
   const userId = getUserId(c);
   const projectId = c.req.param("id");
+  const project = await getProjectById(c.env, userId, projectId);
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  return c.json(project);
+});
+
+// PATCH /api/v1/projects/:id — Rename a project
+projectRoutes.patch("/:id", async (c) => {
+  const userId = getUserId(c);
+  const projectId = c.req.param("id");
+  const body = await c.req.json<{ name?: string }>().catch(() => ({}));
+  const name = body.name?.trim();
+  if (!name) return c.json({ error: "name is required" }, 400);
 
   const { results } = await c.env.DB.prepare(
-    "SELECT id, name, description, created_at, updated_at FROM project WHERE id = ? AND owner_id = ? LIMIT 1"
+    "SELECT id FROM project WHERE id = ? AND owner_id = ? LIMIT 1"
   )
     .bind(projectId, userId)
     .all();
@@ -59,7 +68,13 @@ projectRoutes.get("/:id", async (c) => {
     return c.json({ error: "Project not found" }, 404);
   }
 
-  return c.json(results[0]);
+  await c.env.DB.prepare(
+    "UPDATE project SET name = ?, updated_at = strftime('%s','now') WHERE id = ? AND owner_id = ?"
+  )
+    .bind(name, projectId, userId)
+    .run();
+
+  return c.json({ ok: true, id: projectId, name });
 });
 
 // DELETE /api/v1/projects/:id — Delete a project

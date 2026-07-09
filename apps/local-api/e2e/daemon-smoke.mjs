@@ -322,10 +322,10 @@ async function exerciseLoroSync(origin, mockRemote) {
   });
   assert(sync.mode === "cloud-sync", "cloud sync config is enabled", sync);
 
-  const created = await jsonFetch(`${origin}/api/projects`, {
+  const created = await jsonFetch(`${origin}/api/v1/projects`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt: "daemon e2e project" }),
+    body: JSON.stringify({ name: "daemon e2e project" }),
   });
   const projectId = created.id;
   assert(projectId, "project created", created);
@@ -640,10 +640,10 @@ async function exerciseOpenAiProviderGeneration(origin, mockOpenAi) {
     configured,
   );
 
-  const created = await jsonFetch(`${origin}/api/projects`, {
+  const created = await jsonFetch(`${origin}/api/v1/projects`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ prompt: "daemon provider e2e project" }),
+    body: JSON.stringify({ name: "daemon provider e2e project" }),
   });
   const projectId = created.id;
   assert(projectId, "provider e2e project created", created);

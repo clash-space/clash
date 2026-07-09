@@ -32,6 +32,9 @@ describe("desktop startup test suite", () => {
     expect(rootPkg.scripts["test:e2e:qa-agent"]).toBe(
       "pnpm --filter @master-clash/desktop test:e2e:qa-agent",
     );
+    expect(rootPkg.scripts["test:e2e:agent-first-local-v1"]).toBe(
+      "pnpm --filter @master-clash/desktop test:e2e:agent-first-local-v1",
+    );
     expect(rootPkg.scripts["test:e2e:agent-first-cas"]).toBe(
       "pnpm --filter @master-clash/desktop test:e2e:agent-first-cas",
     );
@@ -79,6 +82,9 @@ describe("desktop startup test suite", () => {
     expect(pkg.scripts["test:e2e:agent-first-cas"]).toContain(
       "agent-first-cas-smoke.mjs",
     );
+    expect(pkg.scripts["test:e2e:agent-first-local-v1"]).toContain(
+      "agent-first-local-v1-gate.mjs",
+    );
     expect(pkg.scripts["test:e2e:qa-agent"]).toContain(
       "qa-agent-codex.mjs",
     );
@@ -90,6 +96,7 @@ describe("desktop startup test suite", () => {
       "e2e/startup-ui-smoke.mjs",
       "e2e/real-codex-acp-backend.mjs",
       "e2e/real-codex-agent-browser.mjs",
+      "e2e/agent-first-local-v1-gate.mjs",
       "e2e/short-drama-timeline-smoke.mjs",
       "e2e/agent-first-cas-smoke.mjs",
       "e2e/qa-agent-codex.mjs",
@@ -187,6 +194,26 @@ describe("desktop startup test suite", () => {
     }
     expect(JSON.stringify(schema)).toContain('"timeline"');
     expect(JSON.stringify(schema)).toContain('"runtimeRoot"');
+  });
+
+  it("runs the agent-first local v1 release gate over required black-box reports", () => {
+    const source = readText("e2e/agent-first-local-v1-gate.mjs");
+
+    expect(source).toContain("short-drama-timeline-smoke.mjs");
+    expect(source).toContain("agent-first-cas-smoke.mjs");
+    expect(source).toContain("storage-doctor-repair-smoke.mjs");
+    expect(source).toContain("agent-first-asset-receipt-smoke.mjs");
+    expect(source).toContain("requiredChecks");
+    expect(source).toContain("requiredBooleans");
+    expect(source).toContain("directCanvasCliFreshReadTokenAccepted");
+    expect(source).toContain("textRestoreCreatesCopyOnWriteRevisionFromHostContent");
+    expect(source).toContain("timelineRestoreCreatesCopyOnWriteRevisionFromHostContent");
+    expect(source).toContain("roomSyncConflictResolutionAuditRecorded");
+    expect(source).toContain("localObsoleteProjectEndpointsRejected");
+    expect(source).toContain("doctor before repair does not expose obsolete marker compatibility");
+    expect(source).toContain("cloud-sync pending action gates block web and sharing until required mirrors are ready");
+    expect(source).toContain("CLASH_AGENT_FIRST_LOCAL_V1_SUITES");
+    expect(source).toContain("agent-first-local-v1-gate-report.json");
   });
 
   it("keeps real Codex transport diagnostics out of assistant text", async () => {

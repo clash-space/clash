@@ -16,7 +16,7 @@ describe("web-ui runtimeConfig", () => {
   it("defaults to hosted same-origin HTTP paths", () => {
     expect(getRuntimeConfig()).toMatchObject({ mode: "hosted", apiBaseUrl: "", wsBaseUrl: "" });
     expect(getRuntimeCapabilities().assets.storage).toBe("cloud");
-    expect(runtimeApiUrl("/api/projects")).toBe("/api/projects");
+    expect(runtimeApiUrl("/api/v1/projects")).toBe("/api/v1/projects");
     expect(runtimeAssetFallbackUrl("uploads/a.png")).toBe("/assets/uploads/a.png");
   });
 
@@ -26,7 +26,7 @@ describe("web-ui runtimeConfig", () => {
       apiBaseUrl: "http://127.0.0.1:49152",
     };
 
-    expect(runtimeApiUrl("/api/projects")).toBe("http://127.0.0.1:49152/api/projects");
+    expect(runtimeApiUrl("/api/v1/projects")).toBe("http://127.0.0.1:49152/api/v1/projects");
     expect(runtimeApiUrl("/upload")).toBe("http://127.0.0.1:49152/upload");
     expect(getRuntimeCapabilities().assets.storage).toBe("local");
     expect(getRuntimeCapabilities().loro.persistence).toBe("local");

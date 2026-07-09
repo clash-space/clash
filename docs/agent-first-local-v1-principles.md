@@ -560,8 +560,7 @@ Not allowed:
 Every projection apply must require a lock unless `--force` is present.
 
 `--force` should be explicit and logged as intentional overwrite. The local
-API now has first-pass sanitized mutation audit evidence for v1/legacy project
-create/delete, legacy project update, project restore/purge, session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, local agent-server config update, provider account update/delete,
+API now has first-pass sanitized mutation audit evidence for v1 project create/update/delete/restore/purge, session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, local agent-server config update, provider account update/delete,
 provider OAuth start/complete/delete, asset create, asset import, custom action upload, asset cover update, asset reference refresh, asset-ref delete, asset GC delete, local-api canvas node
 update/delete, local-api canvas batch delete, and local-api canvas edge delete, readable through
 `GET /api/v1/mutation-audit` and `clash audit mutations`;

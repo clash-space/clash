@@ -4,10 +4,11 @@ import ProjectsClient from "@clash/web-ui/components/ProjectsClient";
 import { runtimeApiUrl } from "@clash/web-ui/lib/runtimeConfig";
 
 export async function loader(_: LoaderFunctionArgs) {
-  const res = await fetch(runtimeApiUrl("/api/projects"), { credentials: "include" });
+  const res = await fetch(runtimeApiUrl("/api/v1/projects"), { credentials: "include" });
   if (res.status === 401) throw redirect("/login");
   if (!res.ok) throw new Response("Failed to load projects", { status: 500 });
-  const projects = (await res.json()) as unknown[];
+  const data = (await res.json()) as { projects?: unknown[] };
+  const projects = data.projects ?? [];
   return { projects };
 }
 

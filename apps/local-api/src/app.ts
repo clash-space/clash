@@ -1447,7 +1447,7 @@ function withSignedAssetUrls<T extends Asset>(
   };
 }
 
-function withProjectAssets(project: LocalProject, state: LocalDb): LocalProject & { readToken: string } {
+function projectPreviewAssets(project: LocalProject, state: LocalDb): LocalProjectAsset[] {
   const assetsById = new Map(state.assets.map((asset) => [asset.id, asset]));
   const refs = [
     ...state.assetRefs.filter((ref) => ref.projectId === project.id),
@@ -1477,7 +1477,7 @@ function withProjectAssets(project: LocalProject, state: LocalDb): LocalProject 
     previewAssets.push(preview);
   }
 
-  return { ...project, assets: previewAssets, readToken: projectReceiptReadToken(project) };
+  return previewAssets;
 }
 
 function isDeletedProject(project: LocalProject): boolean {
@@ -1561,11 +1561,12 @@ function purgeProjectFromState(state: LocalDb, projectId: string) {
   return { project, counts };
 }
 
-function toV1Project(project: LocalProject) {
+function toV1Project(project: LocalProject, state?: LocalDb) {
   return {
     id: project.id,
     name: project.name,
     description: project.description,
+    assets: state ? projectPreviewAssets(project, state) : project.assets,
     created_at: isoToEpochSeconds(project.createdAt),
     updated_at: isoToEpochSeconds(project.updatedAt),
     ...(isDeletedProject(project) ? { deletedAt: project.deletedAt } : {}),
@@ -4606,12 +4607,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 		    }
   });
 
-	  app.get("/api/v1/projects", async (c) => {
-	    const state = await db.load();
-	    return c.json({
-	      projects: activeProjects(state).map(toV1Project),
-	    });
-	  });
+  app.get("/api/v1/projects", async (c) => {
+    const state = await db.load();
+    return c.json({
+      projects: activeProjects(state).map((project) => toV1Project(project, state)),
+    });
+  });
 
   app.post("/api/v1/projects", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -5264,7 +5265,78 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const project = includeDeleted
       ? state.projects.find((candidate) => candidate.id === c.req.param("id"))
       : findActiveProject(state, c.req.param("id"));
-    return project ? c.json(toV1Project(project)) : c.json({ error: "Project not found" }, 404);
+    return project ? c.json(toV1Project(project, state)) : c.json({ error: "Project not found" }, 404);
+  });
+
+  app.patch("/api/v1/projects/:id", async (c) => {
+    const projectId = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as { name?: string } & ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
+    const name = body.name?.trim();
+    if (!name) {
+      return c.json({
+        error: "name is required",
+        mutation: hostMutationRejected({
+          operation: "project_update",
+          entity: { kind: "project", id: projectId },
+          expectedReadToken: preconditions.expectedReadToken,
+          forced: preconditions.force,
+        }, "name is required"),
+      }, 400);
+    }
+    const result = await db.update((state) => {
+      const project = findActiveProject(state, projectId);
+      if (!project) {
+        return {
+          status: 404 as const,
+          body: {
+            error: "Project not found",
+            mutation: hostMutationRejected({
+              operation: "project_update",
+              entity: { kind: "project", id: projectId },
+              expectedReadToken: preconditions.expectedReadToken,
+              forced: preconditions.force,
+            }, "Project not found"),
+          },
+        };
+      }
+      const hostMutation = validateProjectReadMutation({
+        project,
+        operation: "update",
+        preconditions,
+      });
+      if (!hostMutation.ok) {
+        return {
+          status: 409 as const,
+          body: { error: hostMutation.error, mutation: hostMutation.mutation },
+        };
+      }
+      project.name = name;
+      project.updatedAt = nowIso();
+      const readToken = projectReceiptReadToken(project);
+      return {
+        status: 200 as const,
+        body: {
+          ok: true,
+          id: project.id,
+          name: project.name,
+          readToken,
+          mutation: hostMutationSucceeded(hostMutation.envelope, {
+            resultEntityId: project.id,
+            afterReadToken: readToken,
+          }),
+        },
+      };
+    });
+    const mutation = (result.body as { mutation?: HostMutationRecord }).mutation;
+    if (mutation?.accepted === true) {
+      await db.appendMutationAudit(mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "project update",
+      }));
+    }
+    return c.json(result.body, result.status);
   });
 
   app.get("/api/v1/projects/:projectId/canvas/nodes/:nodeId", async (c) => {
@@ -6231,213 +6303,6 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       limit: Number.isFinite(limit) ? limit : undefined,
     });
     return c.json({ records });
-  });
-
-  app.get("/api/projects", async (c) => {
-    const state = await db.load();
-    return c.json(activeProjects(state).map((project) => withProjectAssets(project, state)));
-  });
-
-  app.post("/api/projects", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      prompt?: string;
-      name?: string;
-      description?: string;
-    } & ProjectWriteBody;
-    const preconditions = requestProjectWritePreconditions(c, body);
-    const prompt = (body.prompt ?? body.name ?? "Untitled project").trim();
-    if (!prompt) {
-      return c.json({
-        error: "Missing prompt",
-        mutation: hostMutationRejected({
-          operation: "project_create",
-          entity: { kind: "project", id: "" },
-          forced: false,
-        }, "Missing prompt"),
-      }, 400);
-    }
-
-    const project = await db.update((state) => {
-      const createdAt = nowIso();
-      const next: LocalProject = {
-        id: crypto.randomUUID(),
-        ownerId: userId,
-        name: truncateProjectName(prompt),
-        description: body.description ?? prompt,
-        createdAt,
-        updatedAt: createdAt,
-        assets: [],
-      };
-      state.projects.unshift(next);
-      return next;
-    });
-    const readToken = projectReceiptReadToken(project);
-    const mutation = hostMutationSucceeded({
-      operation: "project_create",
-      entity: { kind: "project", id: project.id },
-      forced: false,
-    }, {
-      resultEntityId: project.id,
-      afterReadToken: readToken,
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "legacy project create",
-    }));
-    return c.json({
-      id: project.id,
-      readToken,
-      mutation,
-    });
-  });
-
-  app.get("/api/projects/:id", async (c) => {
-    const state = await db.load();
-    const project = findActiveProject(state, c.req.param("id"));
-    return project ? c.json(withProjectAssets(project, state)) : c.json({ error: "Not found" }, 404);
-  });
-
-  app.patch("/api/projects/:id", async (c) => {
-    const projectId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as { name?: string } & ProjectWriteBody;
-    const preconditions = requestProjectWritePreconditions(c, body);
-    const name = body.name?.trim();
-    if (!name) {
-      return c.json({
-        error: "Missing name",
-        mutation: hostMutationRejected({
-          operation: "project_update",
-          entity: { kind: "project", id: projectId },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, "Missing name"),
-      }, 400);
-    }
-    const result = await db.update((state) => {
-      const project = findActiveProject(state, projectId);
-      if (!project) {
-        return {
-          status: 404 as const,
-          body: {
-            error: "Not found",
-            mutation: hostMutationRejected({
-              operation: "project_update",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Not found"),
-          },
-        };
-      }
-      const hostMutation = validateProjectReadMutation({
-        project,
-        operation: "update",
-        preconditions,
-      });
-      if (!hostMutation.ok) {
-        return {
-          status: 409 as const,
-          body: { error: hostMutation.error, mutation: hostMutation.mutation },
-        };
-      }
-      project.name = name;
-      project.updatedAt = nowIso();
-      const readToken = projectReceiptReadToken(project);
-      return {
-        status: 200 as const,
-        body: {
-          ok: true,
-          id: project.id,
-          readToken,
-          mutation: hostMutationSucceeded(hostMutation.envelope, {
-            resultEntityId: project.id,
-            afterReadToken: readToken,
-          }),
-        },
-      };
-    });
-    const mutation = (result.body as { mutation?: HostMutationRecord }).mutation;
-    if (mutation?.accepted === true) {
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "legacy project update",
-      }));
-    }
-    return c.json(result.body, result.status);
-  });
-
-  app.delete("/api/projects/:id", async (c) => {
-    const projectId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
-    const preconditions = requestProjectWritePreconditions(c, body);
-    const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
-    const result = await db.update((state) => {
-      const project = findActiveProject(state, projectId);
-      if (!project) {
-        return {
-          status: 404 as const,
-          body: {
-            error: "Not found",
-            mutation: hostMutationRejected({
-              operation: "project_delete",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Not found"),
-          },
-        };
-      }
-      const hostMutation = validateProjectReadMutation({
-        project,
-        operation: "delete",
-        preconditions,
-      });
-      if (!hostMutation.ok) {
-        return {
-          status: 409 as const,
-          body: { error: hostMutation.error, mutation: hostMutation.mutation },
-        };
-      }
-      const deleted = deleteProjectFromState(state, projectId);
-      if (!deleted) {
-        return {
-          status: 404 as const,
-          body: {
-            error: "Not found",
-            mutation: hostMutationRejected(hostMutation.envelope, "Not found"),
-          },
-        };
-      }
-      const readToken = projectReceiptReadToken(deleted);
-      return {
-        status: 200 as const,
-        body: {
-          deleted: true,
-          recoverable: true,
-          id: deleted.id,
-          deletedAt: deleted.deletedAt,
-          readToken,
-          recoveryPolicy,
-          mutation: hostMutationSucceeded(hostMutation.envelope, {
-            resultEntityId: deleted.id,
-            afterReadToken: readToken,
-          }),
-        },
-      };
-    });
-    if (result.status === 200) {
-      const mutation = result.body.mutation as HostMutationRecord | undefined;
-      if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "legacy project soft delete",
-        }));
-      }
-    }
-    return c.json(result.body, result.status);
   });
 
   app.get("/api/v1/sessions", async (c) => {

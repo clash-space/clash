@@ -82,13 +82,16 @@ async function main() {
   await mkdir(path.join(projectCwd, ".clash"), { recursive: true });
   await copyCodexAuthContext();
   await writeFile(
-    path.join(projectCwd, ".clash", "project.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      projectId: "local_real_codex_backend_smoke",
-      store: "managed",
-      sync: { mode: "local" },
-    }, null, 2),
+    path.join(projectCwd, ".clash", "project.toml"),
+    [
+      "schema_version = 1",
+      'project_id = "local_real_codex_backend_smoke"',
+      'store = "managed"',
+      "",
+      "[sync]",
+      'mode = "local"',
+      "",
+    ].join("\n"),
     "utf8",
   );
 

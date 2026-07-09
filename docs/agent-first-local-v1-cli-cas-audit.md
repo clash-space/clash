@@ -235,13 +235,13 @@ Remaining guardrails:
   callers. The same deleted-project receipt gates
   `clash project purge <projectId> --if-match <readToken> --yes`; the host
   rejects active projects, defaults to a 7-day purge delay, and treats
-  `--force` as the explicit admin purge override. v1 project create/delete/restore/purge,
-  legacy project create/update/delete, local room message create, asset create/ref-delete/cover-update, local sync
+  `--force` as the explicit admin purge override. v1 project
+  create/update/delete/restore/purge, local room message create,
+  asset create/ref-delete/cover-update, local sync
   config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate,
   local agent-server config update, provider account update/delete, provider OAuth
   start/complete/delete, session create/delete, and runtime session create/attach responses include accepted/rejected mutation records.
-  Accepted v1 project create/delete, accepted legacy project create/update/delete,
-  accepted project restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, accepted session create/delete, accepted runtime session create/attach, and accepted local room message create write
+  Accepted v1 project create/update/delete/restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, accepted session create/delete, accepted runtime session create/attach, and accepted local room message create write
   first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,

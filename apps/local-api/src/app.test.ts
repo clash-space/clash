@@ -1288,10 +1288,10 @@ describe("local API app", () => {
 
   it("keeps all concurrent asset creates for a project preview", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const createdProject = await app.request("/api/projects", {
+    const createdProject = await app.request("/api/v1/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "Concurrent Asset Project" }),
+      body: JSON.stringify({ name: "Concurrent Asset Project" }),
     });
     const { id: projectId } = await createdProject.json() as { id: string };
     const keys = Array.from({ length: 12 }, (_, index) => `uploads/concurrent-${index}.png`);
@@ -6133,7 +6133,7 @@ describe("local API app", () => {
   it("allows browser requests from the local web runtime", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
-    const preflight = await app.request("/api/projects", {
+    const preflight = await app.request("/api/v1/projects", {
       method: "OPTIONS",
       headers: {
         origin: "http://127.0.0.1:3001",
@@ -8472,12 +8472,15 @@ describe("local API app", () => {
   it("creates, lists, renames, and deletes local projects", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
-    const created = await app.request("/api/projects", {
+    const created = await app.request("/api/v1/projects", {
       method: "POST",
-      body: JSON.stringify({ prompt: "A local-first video project" }),
+      body: JSON.stringify({
+        name: "A local-first video project",
+        description: "A local-first video project",
+      }),
       headers: { "content-type": "application/json" },
     });
-    expect(created.status).toBe(200);
+    expect(created.status).toBe(201);
     const createdJson = (await created.json()) as { id: string; readToken?: string; mutation?: any };
     const { id } = createdJson;
     expect(createdJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
@@ -8490,25 +8493,25 @@ describe("local API app", () => {
       accepted: true,
     });
 
-    const listed = await app.request("/api/projects");
-    const projects = (await listed.json()) as Array<{
+    const listed = await app.request("/api/v1/projects");
+    const listedJson = (await listed.json()) as { projects: Array<{
       id: string;
       name: string;
       description: string;
       assets: unknown[];
       readToken?: string;
-    }>;
+    }> };
+    const projects = listedJson.projects;
     expect(projects).toHaveLength(1);
     expect(projects[0]).toMatchObject({
       id,
-      ownerId: "local-user",
-      name: "A local-first video ...",
+      name: "A local-first video project",
       description: "A local-first video project",
       assets: [],
     });
     expect(projects[0].readToken).toBe(createdJson.readToken);
 
-    const renamed = await app.request(`/api/projects/${id}`, {
+    const renamed = await app.request(`/api/v1/projects/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "Renamed" }),
       headers: { "content-type": "application/json" },
@@ -8527,10 +8530,10 @@ describe("local API app", () => {
       accepted: true,
     });
 
-    const loaded = await app.request(`/api/projects/${id}`);
+    const loaded = await app.request(`/api/v1/projects/${id}`);
     expect(await loaded.json()).toMatchObject({ id, name: "Renamed", readToken: renamedJson.readToken });
 
-    const deleted = await app.request(`/api/projects/${id}`, { method: "DELETE" });
+    const deleted = await app.request(`/api/v1/projects/${id}`, { method: "DELETE" });
     expect(deleted.status).toBe(200);
     const deletedJson = (await deleted.json()) as { readToken?: string; mutation?: any };
     expect(deletedJson).toMatchObject({ deleted: true, recoverable: true, id });
@@ -8553,13 +8556,13 @@ describe("local API app", () => {
       entity: { kind: "project", id },
       accepted: true,
       actorClientType: null,
-      reason: "legacy project soft delete",
+      reason: "project soft delete",
     });
     expect(JSON.stringify(auditJson.records[0].mutation ?? {})).not.toContain("receipt");
     expect(auditJson.records[0].mutation.expectedReadToken).toBeUndefined();
     expect(auditJson.records[0].mutation.beforeReadToken).toBeUndefined();
     expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
-    expect(await (await app.request("/api/projects")).json()).toEqual([]);
+    expect(await (await app.request("/api/v1/projects")).json()).toEqual({ projects: [] });
   });
 
   it("writes sanitized mutation audit records for local project creation", async () => {
@@ -8591,31 +8594,32 @@ describe("local API app", () => {
     expect(v1AuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
     expect(v1AuditJson.records[0].mutation.afterReadToken).toBeUndefined();
 
-    const legacyCreated = await app.request("/api/projects", {
-      method: "POST",
-      body: JSON.stringify({ prompt: "Legacy Agent Project" }),
-      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
-    });
-    expect(legacyCreated.status).toBe(200);
-    const legacyProject = await legacyCreated.json() as { id: string; readToken: string };
+  });
 
-    const legacyAudit = await app.request(`/api/v1/mutation-audit?operation=project_create&entityId=${encodeURIComponent(legacyProject.id)}`);
-    expect(legacyAudit.status).toBe(200);
-    const legacyAuditJson = await legacyAudit.json() as { records: Array<any> };
-    expect(legacyAuditJson.records).toHaveLength(1);
-    expect(legacyAuditJson.records[0]).toMatchObject({
-      operation: "project_create",
-      entity: { kind: "project", id: legacyProject.id },
-      actorClientType: "agent",
-      accepted: true,
-      forced: false,
-      reason: "legacy project create",
-      resultEntityId: legacyProject.id,
+  it("does not expose obsolete local project endpoints", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: "V1 Only Project" }),
+      headers: { "content-type": "application/json" },
     });
-    expect(JSON.stringify(legacyAuditJson.records[0].mutation ?? {})).not.toContain("receipt");
-    expect(legacyAuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
-    expect(legacyAuditJson.records[0].mutation.beforeReadToken).toBeUndefined();
-    expect(legacyAuditJson.records[0].mutation.afterReadToken).toBeUndefined();
+    const project = await created.json() as { id: string };
+
+    for (const [method, path, body] of [
+      ["GET", "/api/projects", undefined],
+      ["POST", "/api/projects", { prompt: "Old create" }],
+      ["GET", `/api/projects/${project.id}`, undefined],
+      ["PATCH", `/api/projects/${project.id}`, { name: "Old rename" }],
+      ["DELETE", `/api/projects/${project.id}`, undefined],
+    ] as const) {
+      const response = await app.request(path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      expect(response.status).toBe(404);
+    }
   });
 
   it("requires agent project writes to carry a fresh read proof", async () => {
@@ -8628,7 +8632,7 @@ describe("local API app", () => {
     });
     const createdJson = await created.json() as { id: string; readToken: string };
 
-    const missing = await app.request(`/api/projects/${createdJson.id}`, {
+    const missing = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "No proof" }),
       headers: {
@@ -8655,7 +8659,7 @@ describe("local API app", () => {
       readToken: createdJson.readToken,
     });
 
-    const humanRename = await app.request(`/api/projects/${createdJson.id}`, {
+    const humanRename = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "Concurrent human rename" }),
       headers: { "content-type": "application/json" },
@@ -8663,7 +8667,7 @@ describe("local API app", () => {
     const humanRenameJson = await humanRename.json() as { readToken: string };
     expect(humanRenameJson.readToken).not.toBe(createdJson.readToken);
 
-    const stale = await app.request(`/api/projects/${createdJson.id}`, {
+    const stale = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "Stale agent rename" }),
       headers: {
@@ -8686,9 +8690,9 @@ describe("local API app", () => {
       },
     });
 
-    const fresh = await app.request(`/api/projects/${createdJson.id}`);
+    const fresh = await app.request(`/api/v1/projects/${createdJson.id}`);
     const freshJson = await fresh.json() as { readToken: string };
-    const accepted = await app.request(`/api/projects/${createdJson.id}`, {
+    const accepted = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "Fresh agent rename" }),
       headers: {
@@ -8720,7 +8724,7 @@ describe("local API app", () => {
       actorClientType: null,
       accepted: true,
       forced: false,
-      reason: "legacy project update",
+      reason: "project update",
       resultEntityId: createdJson.id,
     });
     expect(agentUpdateAuditRecord).toMatchObject({
@@ -8729,7 +8733,7 @@ describe("local API app", () => {
       actorClientType: "agent",
       accepted: true,
       forced: false,
-      reason: "legacy project update",
+      reason: "project update",
       resultEntityId: createdJson.id,
     });
     for (const record of updateAuditJson.records) {
@@ -8786,7 +8790,7 @@ describe("local API app", () => {
     const createdJson = await created.json() as { id: string; readToken: string };
     expect(createdJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
 
-    const syntheticCasOnly = await app.request(`/api/projects/${createdJson.id}`, {
+    const syntheticCasOnly = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "Synthetic CAS" }),
       headers: {
@@ -8808,11 +8812,11 @@ describe("local API app", () => {
       },
     });
 
-    const read = await app.request(`/api/projects/${createdJson.id}`);
+    const read = await app.request(`/api/v1/projects/${createdJson.id}`);
     const readJson = await read.json() as { readToken: string };
     expect(readJson.readToken).toMatch(PROJECT_RECEIPT_READ_TOKEN_RE);
 
-    const accepted = await app.request(`/api/projects/${createdJson.id}`, {
+    const accepted = await app.request(`/api/v1/projects/${createdJson.id}`, {
       method: "PATCH",
       body: JSON.stringify({ name: "Host receipt rename" }),
       headers: {
@@ -10741,9 +10745,9 @@ describe("local API app", () => {
   it("returns local project preview assets for the desktop project grid", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
 
-    const created = await app.request("/api/projects", {
+    const created = await app.request("/api/v1/projects", {
       method: "POST",
-      body: JSON.stringify({ prompt: "Desktop grid previews" }),
+      body: JSON.stringify({ name: "Desktop grid previews" }),
       headers: { "content-type": "application/json" },
     });
     const { id: projectId } = (await created.json()) as { id: string };
@@ -10761,11 +10765,12 @@ describe("local API app", () => {
       expect(res.status).toBe(200);
     }
 
-    const listed = await app.request("/api/projects");
-    const projects = (await listed.json()) as Array<{
+    const listed = await app.request("/api/v1/projects");
+    const listedJson = (await listed.json()) as { projects: Array<{
       id: string;
       assets: Array<{ url: string; type: string; storageKey: string }>;
-    }>;
+    }> };
+    const projects = listedJson.projects;
     expect(projects[0].id).toBe(projectId);
     expect(projects[0].assets).toHaveLength(4);
     expect(new Set(projects[0].assets.map((asset) => asset.url))).toEqual(
@@ -10777,7 +10782,7 @@ describe("local API app", () => {
       ]),
     );
 
-    const loaded = await app.request(`/api/projects/${projectId}`);
+    const loaded = await app.request(`/api/v1/projects/${projectId}`);
     const project = (await loaded.json()) as { assets: unknown[] };
     expect(project.assets).toHaveLength(4);
   });

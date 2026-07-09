@@ -144,11 +144,10 @@ export interface CreateProjectOptions {
 }
 
 export async function createProject(prompt: string, options: CreateProjectOptions = {}): Promise<void> {
-  const { id } = await jsonFetch<{ id: string }>("/api/projects", {
+  const { id } = await jsonFetch<{ id: string }>("/api/v1/projects", {
     method: "POST",
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ name: prompt }),
   });
-  // Match legacy server-action behavior: navigate to the new project.
   if (typeof window !== "undefined") {
     const shouldStartFromPrompt = options.startFromPrompt ?? true;
     const suffix = shouldStartFromPrompt ? `?prompt=${encodeURIComponent(prompt)}` : "";
@@ -157,14 +156,14 @@ export async function createProject(prompt: string, options: CreateProjectOption
 }
 
 export async function updateProjectName(id: string, name: string): Promise<void> {
-  await jsonFetch(`/api/projects/${id}`, {
+  await jsonFetch(`/api/v1/projects/${id}`, {
     method: "PATCH",
     body: JSON.stringify({ name }),
   });
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  await jsonFetch(`/api/projects/${id}`, { method: "DELETE" });
+  await jsonFetch(`/api/v1/projects/${id}`, { method: "DELETE" });
 }
 
 // ───────── Settings: API tokens ─────────

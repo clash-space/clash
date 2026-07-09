@@ -196,9 +196,8 @@ Current status:
   guardrails. Existing edge update/delete now compare per-edge read tokens, and
   agent add-edge writes among existing nodes compare the graph read token, both
   from `clash canvas edges --json`.
-- local-api v1 project create/delete/restore and legacy project
-  create/update/delete responses include accepted/rejected project mutation
-  records while preserving legacy response fields where possible. Project
+- local-api v1 project create/update/delete/restore/purge responses include
+  accepted/rejected project mutation records. Project
   create/get/list responses include `readToken`; project update/delete reject
   agent callers with missing or stale `ifMatch` unless explicitly forced, and
   accepted/rejected records include `expectedReadToken`, `beforeReadToken`, and
@@ -491,8 +490,7 @@ Current status:
   marker existence, editable/protected path separation, protected cwd, project
   workspace, editable draft/projection/session/asset-link roots, protected
   runtime root, Loro replica, local SQLite target, broken/invalid asset links,
-  ignored legacy `.clash/project.json` project markers, and the structured
-  `storage` role contract that keeps agent
+  and the structured `storage` role contract that keeps agent
   workspace paths separate from the protected canonical replica,
   including immutable media asset and text/timeline revision content blob roots.
   Existing

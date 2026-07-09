@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
@@ -63,25 +63,6 @@ it("resolver falls back to CLASH_PROJECT_ID when no marker exists", async () => 
     projectId: "proj_env",
     source: "env",
   });
-});
-
-it("resolver ignores legacy JSON project markers", async () => {
-  const root = await tempDir();
-  await mkdir(join(root, ".clash"), { recursive: true });
-  await writeFile(
-    join(root, ".clash", "project.json"),
-    `${JSON.stringify({
-      schemaVersion: 1,
-      projectId: "proj_legacy_json",
-      store: "managed",
-      sync: { mode: "local" },
-    }, null, 2)}\n`,
-    "utf-8",
-  );
-
-  await expect(resolveProjectContext({ cwd: root, env: {} })).rejects.toThrow(
-    /No Clash project context found/i,
-  );
 });
 
 it("resolver gives guidance when no project context exists", async () => {

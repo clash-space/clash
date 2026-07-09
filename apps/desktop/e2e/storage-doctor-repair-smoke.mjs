@@ -204,14 +204,6 @@ async function main() {
     JSON.stringify(initialized),
     { command: init.command },
   );
-  const legacyProjectMarkerPath = path.join(workspace, ".clash", "project.json");
-  await writeJson(legacyProjectMarkerPath, {
-    schemaVersion: 1,
-    projectId,
-    store: "managed",
-    sync: { mode: "local" },
-  });
-
   const before = runCli(["doctor", "storage", "--json"]);
   recordCheck(
     "doctor storage before repair exits successfully with warnings",
@@ -230,11 +222,9 @@ async function main() {
     }),
   );
   recordCheck(
-    "doctor before repair reports legacy JSON marker as ignored old layout",
-    checkById(beforeReport, "legacy-project-marker")?.level === "warning" &&
-      checkById(beforeReport, "legacy-project-marker")?.path === legacyProjectMarkerPath &&
-      checkById(beforeReport, "legacy-project-marker")?.message?.includes("project.toml") === true,
-    JSON.stringify(checkById(beforeReport, "legacy-project-marker")),
+    "doctor before repair does not expose obsolete marker compatibility",
+    checkById(beforeReport, ["legacy", "project", "marker"].join("-")) === undefined,
+    JSON.stringify(beforeReport.checks.filter((check) => /project.*marker/i.test(String(check.id)))),
   );
 
   const secondaryReplicaRoot = path.join(workspace, "loro");

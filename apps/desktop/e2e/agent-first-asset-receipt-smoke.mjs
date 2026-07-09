@@ -2797,91 +2797,24 @@ async function main() {
     JSON.stringify(edgeDeleteAudit),
   );
 
-  const legacyDeleteProjectResponse = await request("/api/projects", {
-    method: "POST",
-    headers: { "x-clash-client-type": "agent" },
-    body: JSON.stringify({ prompt: "Legacy Project Delete Audit Smoke" }),
-  });
-  const legacyDeleteProject = await parseJsonResponse(legacyDeleteProjectResponse);
-  const legacyCreateAuditResponse = await request(`/api/v1/mutation-audit?operation=project_create&entityId=${encodeURIComponent(legacyDeleteProject.id)}`);
-  const legacyCreateAudit = await parseJsonResponse(legacyCreateAuditResponse);
-  const legacyCreateAuditRecord = legacyCreateAudit.records?.[0];
+  const obsoleteProjectEndpointChecks = await Promise.all([
+    request("/api/projects", { method: "GET" }),
+    request("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
+      body: JSON.stringify({ prompt: "Legacy Project Create Audit Smoke" }),
+    }),
+    request(`/api/projects/${encodeURIComponent(projectId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
+      body: JSON.stringify({ name: "Legacy Project Rename Audit Smoke" }),
+    }),
+    request(`/api/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
+  ]);
   recordCheck(
-    "legacy project create writes sanitized local mutation audit evidence",
-    legacyDeleteProjectResponse.status === 200 &&
-      legacyDeleteProject.mutation?.accepted === true &&
-      legacyCreateAuditResponse.status === 200 &&
-      legacyCreateAudit.records?.length === 1 &&
-      legacyCreateAuditRecord.operation === "project_create" &&
-      legacyCreateAuditRecord.entity?.id === legacyDeleteProject.id &&
-      legacyCreateAuditRecord.accepted === true &&
-      legacyCreateAuditRecord.actorClientType === "agent" &&
-      legacyCreateAuditRecord.reason === "legacy project create" &&
-      !JSON.stringify(legacyCreateAuditRecord.mutation ?? {}).includes("receipt") &&
-      legacyCreateAuditRecord.mutation?.expectedReadToken == null &&
-      legacyCreateAuditRecord.mutation?.beforeReadToken == null &&
-      legacyCreateAuditRecord.mutation?.afterReadToken == null,
-    JSON.stringify({ legacyDeleteProject, legacyCreateAudit }),
-    { mutation: legacyDeleteProject.mutation },
-  );
-  const legacyUpdateResponse = await request(`/api/projects/${encodeURIComponent(legacyDeleteProject.id)}`, {
-    method: "PATCH",
-    headers: {
-      "content-type": "application/json",
-      "x-clash-client-type": "agent",
-      "x-clash-if-match": legacyDeleteProject.readToken,
-    },
-    body: JSON.stringify({ name: "Legacy Project Rename Audit Smoke" }),
-  });
-  const legacyUpdate = await parseJsonResponse(legacyUpdateResponse);
-  const legacyUpdateAuditResponse = await request(`/api/v1/mutation-audit?operation=project_update&entityId=${encodeURIComponent(legacyDeleteProject.id)}`);
-  const legacyUpdateAudit = await parseJsonResponse(legacyUpdateAuditResponse);
-  const legacyUpdateAuditRecord = legacyUpdateAudit.records?.[0];
-  recordCheck(
-    "legacy project update writes sanitized local mutation audit evidence",
-    legacyUpdateResponse.status === 200 &&
-      legacyUpdate.mutation?.accepted === true &&
-      legacyUpdate.mutation?.expectedReadToken === legacyDeleteProject.readToken &&
-      legacyUpdateAuditResponse.status === 200 &&
-      legacyUpdateAudit.records?.length === 1 &&
-      legacyUpdateAuditRecord.operation === "project_update" &&
-      legacyUpdateAuditRecord.entity?.id === legacyDeleteProject.id &&
-      legacyUpdateAuditRecord.accepted === true &&
-      legacyUpdateAuditRecord.actorClientType === "agent" &&
-      legacyUpdateAuditRecord.reason === "legacy project update" &&
-      !JSON.stringify(legacyUpdateAuditRecord.mutation ?? {}).includes("receipt") &&
-      legacyUpdateAuditRecord.mutation?.expectedReadToken == null &&
-      legacyUpdateAuditRecord.mutation?.beforeReadToken == null &&
-      legacyUpdateAuditRecord.mutation?.afterReadToken == null,
-    JSON.stringify({ legacyUpdate, legacyUpdateAudit }),
-    { mutation: legacyUpdate.mutation },
-  );
-  const legacyDeleteResponse = await request(`/api/projects/${encodeURIComponent(legacyDeleteProject.id)}`, {
-    method: "DELETE",
-  });
-  const legacyDelete = await parseJsonResponse(legacyDeleteResponse);
-  const legacyDeleteAuditResponse = await request(`/api/v1/mutation-audit?operation=project_delete&entityId=${encodeURIComponent(legacyDeleteProject.id)}`);
-  const legacyDeleteAudit = await parseJsonResponse(legacyDeleteAuditResponse);
-  const legacyDeleteAuditRecord = legacyDeleteAudit.records?.[0];
-  recordCheck(
-    "legacy project delete writes sanitized local mutation audit evidence",
-    legacyDeleteProjectResponse.status === 200 &&
-      legacyDeleteResponse.status === 200 &&
-      legacyDelete.deleted === true &&
-      legacyDelete.mutation?.accepted === true &&
-      legacyDeleteAuditResponse.status === 200 &&
-      legacyDeleteAudit.records?.length === 1 &&
-      legacyDeleteAuditRecord.operation === "project_delete" &&
-      legacyDeleteAuditRecord.entity?.id === legacyDeleteProject.id &&
-      legacyDeleteAuditRecord.accepted === true &&
-      legacyDeleteAuditRecord.actorClientType == null &&
-      legacyDeleteAuditRecord.reason === "legacy project soft delete" &&
-      !JSON.stringify(legacyDeleteAuditRecord.mutation ?? {}).includes("receipt") &&
-      legacyDeleteAuditRecord.mutation?.expectedReadToken == null &&
-      legacyDeleteAuditRecord.mutation?.beforeReadToken == null &&
-      legacyDeleteAuditRecord.mutation?.afterReadToken == null,
-    JSON.stringify({ legacyDeleteProject, legacyDelete, legacyDeleteAudit }),
-    { mutation: legacyDelete.mutation },
+    "obsolete local project endpoints are not exposed",
+    obsoleteProjectEndpointChecks.every((response) => response.status === 404),
+    JSON.stringify(obsoleteProjectEndpointChecks.map((response) => response.status)),
   );
 
   const restoreProjectResponse = await request("/api/v1/projects", {
@@ -3840,29 +3773,29 @@ async function main() {
       deletedProviderId: "replicate-primary",
       remainingProviderIds: providerIdsAfterDelete,
     },
-	    providerOAuth: {
-	      providerId: "dreamina",
-	      accountId: "jimeng-smoke",
-	      pendingReadToken: pendingOAuth.readToken,
-	      completedReadToken: oauthComplete.readToken,
-	      authorizedReadToken: authorizedOAuth.readToken,
-	    },
-	    session: {
-	      projectId: sessionProject.id,
-	      threadId: sessionCreated.threadId,
-	      readToken: session.readToken,
-	      runtimeAttachSessionId: runtimeSession.session_id,
-	      runtimeAttachReadToken: runtimeHistory.readToken,
-	    },
-	    room: {
-	      projectId: sessionProject.id,
-	      messageId: firstRoomMessage.id,
-	      localOnlyProjectId: localOnlyRoomProject.id,
-	      localOnlyAdmissionReason: localOnlyRoomSync.admission?.reason,
-	    },
+    providerOAuth: {
+      providerId: "dreamina",
+      accountId: "jimeng-smoke",
+      pendingReadToken: pendingOAuth.readToken,
+      completedReadToken: oauthComplete.readToken,
+      authorizedReadToken: authorizedOAuth.readToken,
+    },
+    session: {
+      projectId: sessionProject.id,
+      threadId: sessionCreated.threadId,
+      readToken: session.readToken,
+      runtimeAttachSessionId: runtimeSession.session_id,
+      runtimeAttachReadToken: runtimeHistory.readToken,
+    },
+    room: {
+      projectId: sessionProject.id,
+      messageId: firstRoomMessage.id,
+      localOnlyProjectId: localOnlyRoomProject.id,
+      localOnlyAdmissionReason: localOnlyRoomSync.admission?.reason,
+    },
     projectRestore: {
-      legacyDeletedProjectId: legacyDeleteProject.id,
       projectId: restoreProject.id,
+      localObsoleteProjectEndpointStatuses: obsoleteProjectEndpointChecks.map((response) => response.status),
       deletedReadToken: deletedProjectRead.readToken,
       restoredReadToken: acceptedProjectRestoreJson.readToken,
     },
@@ -3913,9 +3846,7 @@ async function main() {
       canvasEdgeListReceiptReturned: checks.some((check) => check.name === "canvas edge list returns graph and edge receipt read tokens" && check.status === "pass"),
       canvasEdgeDeleteReceiptAccepted: checks.some((check) => check.name === "canvas edge delete with receipt is accepted" && check.status === "pass"),
       canvasEdgeDeleteAuditRecorded: checks.some((check) => check.name === "canvas edge delete writes sanitized local mutation audit evidence" && check.status === "pass"),
-      legacyProjectCreateAuditRecorded: checks.some((check) => check.name === "legacy project create writes sanitized local mutation audit evidence" && check.status === "pass"),
-      legacyProjectUpdateAuditRecorded: checks.some((check) => check.name === "legacy project update writes sanitized local mutation audit evidence" && check.status === "pass"),
-      legacyProjectDeleteAuditRecorded: checks.some((check) => check.name === "legacy project delete writes sanitized local mutation audit evidence" && check.status === "pass"),
+      localObsoleteProjectEndpointsRejected: checks.some((check) => check.name === "obsolete local project endpoints are not exposed" && check.status === "pass"),
       projectCreateAuditRecorded: checks.some((check) => check.name === "v1 project create writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectRestoreDeletedGetHidden: checks.some((check) => check.name === "deleted project is hidden from normal project get" && check.status === "pass"),
       projectRestoreGetReceiptReturned: checks.some((check) => check.name === "deleted project get returns restore receipt" && check.status === "pass"),

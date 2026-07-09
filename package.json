@@ -11,6 +11,7 @@
     "test": "turbo run test",
     "test:e2e": "pnpm --filter @master-clash/local-api test:e2e && pnpm --filter @master-clash/web test:e2e && pnpm --filter @master-clash/desktop test:e2e",
     "test:e2e:qa-agent": "pnpm --filter @master-clash/desktop test:e2e:qa-agent",
+    "test:e2e:agent-first-local-v1": "pnpm --filter @master-clash/desktop test:e2e:agent-first-local-v1",
     "test:e2e:short-drama-timeline": "pnpm --filter @master-clash/desktop test:e2e:short-drama-timeline",
     "test:e2e:agent-first-cas": "pnpm --filter @master-clash/desktop test:e2e:agent-first-cas",
     "test:skills": "node --test skills/skill-market.test.mjs skills/video-production-e2e.test.mjs",

@@ -253,7 +253,7 @@ Assertions:
 Latest deterministic report:
 
 ```text
-.tmp/agent-first-cas/2026-07-09T02-41-08-674Z/agent-first-cas-report.json
+.tmp/agent-first-cas/2026-07-09T03-47-50-548Z/agent-first-cas-report.json
 ```
 
 Result:
@@ -672,13 +672,13 @@ Result:
 Latest verified asset receipt CAS smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-08T15-41-03-104Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T03-48-06-521Z/agent-first-asset-receipt-report.json
 ```
 
 Result:
 
 - `status: pass`,
-- 192 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
+- 190 checks passed through `npm --prefix apps/desktop run test:e2e:asset-receipts`,
 - derived agent reads stayed read-only, provider model tests and local audio
   transcription actions recorded host mutation envelopes, and local sync, audio,
   harness, custom agent-server, provider account, provider OAuth, asset
@@ -693,8 +693,7 @@ Result:
   updates, provider account updates, provider OAuth start/complete, and asset
   cover updates and generic asset blob uploads write sanitized local mutation audit
   evidence; the same run also proved the restore
-  path's sanitized audit evidence, v1/legacy project create audit evidence,
-  legacy project update/delete audit evidence, session create audit evidence,
+  path's sanitized audit evidence, v1 project create audit evidence, obsolete local project endpoint rejection evidence, session create audit evidence,
   local room message create audit evidence,
   project purge's default delayed purge window,
   explicit force override, deleted recovery point removal,
@@ -723,7 +722,7 @@ Result:
 Latest verified storage doctor repair smoke:
 
 ```text
-.tmp/storage-doctor-repair/2026-07-09T03-07-03-345Z/storage-doctor-repair-report.json
+.tmp/storage-doctor-repair/2026-07-09T03-48-01-247Z/storage-doctor-repair-report.json
 ```
 
 Result:
@@ -740,9 +739,8 @@ Result:
 - workspace roots and local SQLite core metadata tables, provider auth
   tables/primary keys, plus asset/text/timeline projection indexes were
   repaired through public CLI commands,
-- legacy `.clash/project.json` was reported as ignored old-layout evidence
-  while the v1 `.clash/project.toml` marker remained the actual project
-  context,
+- doctor reported the v1 `.clash/project.toml` marker as the only project
+  marker context,
 - a hash-valid writable text revision blob was repaired back to read-only
   permissions through the public `doctor storage --repair --json` path,
 - doctor detected a cwd secondary canvas replica before repair, then
@@ -820,6 +818,37 @@ Result:
 - doctor rejected tampered/writable text and timeline revision blobs with a
   parseable JSON report that identified `text-revision-blob-integrity` and
   `timeline-revision-blob-integrity` failures.
+
+### Agent-First Local v1 Gate
+
+Manual release gate:
+
+```bash
+pnpm --filter @master-clash/desktop test:e2e:agent-first-local-v1
+```
+
+The gate runs and validates these black-box report artifacts:
+
+- short-drama timeline smoke,
+- agent-first CAS smoke,
+- storage doctor repair smoke,
+- asset/action/room/project receipt smoke.
+
+Latest verified gate report:
+
+```text
+.tmp/agent-first-local-v1-gate/2026-07-09T03-47-50-440Z/agent-first-local-v1-gate-report.json
+```
+
+Result:
+
+- `status: pass`,
+- 4 suites passed,
+- nested report contracts validated:
+  - `.tmp/short-drama-timeline/2026-07-09T03-47-50-497Z/short-drama-timeline-report.json` with 4 checks,
+  - `.tmp/agent-first-cas/2026-07-09T03-47-50-548Z/agent-first-cas-report.json` with 56 checks,
+  - `.tmp/storage-doctor-repair/2026-07-09T03-48-01-247Z/storage-doctor-repair-report.json` with 86 checks,
+  - `.tmp/agent-first-asset-receipts/2026-07-09T03-48-06-521Z/agent-first-asset-receipt-report.json` with 190 checks.
 
 Target boundary:
 
@@ -926,7 +955,7 @@ Current status:
   downstream text content patch rejection, local-api canvas batch delete
   plan/apply receipt enforcement, external orphan rejection, local-api canvas edge list/delete
   receipt enforcement, and sanitized audit evidence for accepted v1/legacy
-  project create, legacy project update, asset create, asset import, custom
+  project create, obsolete local project endpoint rejection, asset create, asset import, custom
   action checkpoint upload, asset cover updates, asset reference refresh, asset
   GC, session creation/deletion, node update/delete, batch deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
@@ -941,6 +970,5 @@ Current status:
 - Short-drama/storyboard prompt-pack and timeline projection commands exist;
   Suite E still needs a fuller canvas/asset/provider fixture beyond timeline
   JSON creation/restore.
-- Need broader storage doctor coverage for richer migration/recovery UX,
-  stronger path assertions across old layouts, and destructive repair
-  boundaries.
+- Need broader storage doctor coverage for richer recovery UX, stronger path
+  assertions, and destructive repair boundaries.
