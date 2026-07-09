@@ -48,6 +48,28 @@ export interface RoomMirrorPlan {
   matchedIds: string[];
 }
 
+export interface LocalRoomMirrorMention {
+  user_id?: string;
+  agent_member_id?: string;
+}
+
+export interface LocalRoomMirrorMessage {
+  id: string;
+  project_id: string;
+  sender_kind: "user" | "agent";
+  sender_id: string;
+  sender_user_id: string;
+  mentions: LocalRoomMirrorMention[];
+  text: string;
+  created_at: number;
+}
+
+export interface SelectRoomMessagesForMirrorInput {
+  projectId: string;
+  roomMessages: readonly LocalRoomMirrorMessage[];
+  sessionMessages?: readonly unknown[];
+}
+
 function endpoint(baseUrl: string, projectId: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/v1/projects/${encodeURIComponent(projectId)}/room/messages`;
 }
@@ -78,6 +100,27 @@ export function roomMessageContentKey(message: RemoteRoomMessage): string {
     mentions: roomMentionsContentKey(message.mentions),
     text: message.text,
   });
+}
+
+export function selectRoomMessagesForMirror({
+  projectId,
+  roomMessages,
+}: SelectRoomMessagesForMirrorInput): RemoteRoomMessage[] {
+  return roomMessages
+    .filter((message) => message.project_id === projectId)
+    .map((message) => ({
+      id: message.id,
+      project_id: message.project_id,
+      sender_kind: message.sender_kind,
+      sender_id: message.sender_id,
+      sender_user_id: message.sender_user_id,
+      mentions: message.mentions.map((mention) => ({
+        ...(mention.user_id ? { user_id: mention.user_id } : {}),
+        ...(mention.agent_member_id ? { agent_member_id: mention.agent_member_id } : {}),
+      })),
+      text: message.text,
+      at: message.created_at,
+    }));
 }
 
 function appendOrder(messages: RemoteRoomMessage[]): RemoteRoomMessage[] {

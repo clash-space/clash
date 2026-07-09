@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createHttpRemoteRoomSync,
   planRoomMirror,
+  selectRoomMessagesForMirror,
   type RemoteRoomMessage,
 } from "./room-sync";
 
@@ -106,6 +107,62 @@ function roomMessage(
 }
 
 describe("planRoomMirror", () => {
+  it("selects only explicit project room messages for sync mirrors", () => {
+    const selected = selectRoomMessagesForMirror({
+      projectId: "project-1",
+      roomMessages: [
+        {
+          id: "room-1",
+          project_id: "project-1",
+          sender_kind: "agent",
+          sender_id: "agent-1",
+          sender_user_id: "user-1",
+          mentions: [{ user_id: "user-2" }],
+          text: "safe room message",
+          created_at: 200,
+        },
+        {
+          id: "other-room",
+          project_id: "project-2",
+          sender_kind: "agent",
+          sender_id: "agent-1",
+          sender_user_id: "user-1",
+          mentions: [],
+          text: "wrong project",
+          created_at: 100,
+        },
+      ],
+      sessionMessages: [
+        {
+          id: "trace-1",
+          session_id: "session-1",
+          events_json: JSON.stringify([
+            {
+              type: "tool_log",
+              path: "/Users/local/private-project/secret-script.md",
+              output: "raw trace must stay local",
+            },
+          ]),
+        },
+      ],
+    });
+
+    expect(selected).toEqual([
+      {
+        id: "room-1",
+        project_id: "project-1",
+        sender_kind: "agent",
+        sender_id: "agent-1",
+        sender_user_id: "user-1",
+        mentions: [{ user_id: "user-2" }],
+        text: "safe room message",
+        at: 200,
+      },
+    ]);
+    expect(JSON.stringify(selected)).not.toContain("raw trace must stay local");
+    expect(JSON.stringify(selected)).not.toContain("/Users/local/private-project/secret-script.md");
+  });
+
   it("plans missing local and remote room messages in append order", () => {
     const plan = planRoomMirror({
       localMessages: [

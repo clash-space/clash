@@ -119,6 +119,7 @@ import { createLocalProviderStore } from "./local-provider-store.js";
 import {
   planRoomMirror,
   roomMessageContentKey,
+  selectRoomMessagesForMirror,
   type RemoteRoomMessage,
   type RemoteRoomMessageInput,
   type RoomMirrorConflict,
@@ -569,22 +570,6 @@ function publicRemoteRoomMessage(message: RemoteRoomMessage) {
     text: message.text,
     at: message.at,
     contentHash: roomMessageContentHash(message),
-  };
-}
-
-function localRoomMessageToRemote(message: LocalRoomMessage): RemoteRoomMessage {
-  return {
-    id: message.id,
-    project_id: message.project_id,
-    sender_kind: message.sender_kind,
-    sender_id: message.sender_id,
-    sender_user_id: message.sender_user_id,
-    mentions: message.mentions.map((mention) => ({
-      ...(mention.user_id ? { user_id: mention.user_id } : {}),
-      ...(mention.agent_member_id ? { agent_member_id: mention.agent_member_id } : {}),
-    })),
-    text: message.text,
-    at: message.created_at,
   };
 }
 
@@ -4737,9 +4722,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 409);
     }
 
-    const localMessages = state.roomMessages
-      .filter((message) => message.project_id === projectId)
-      .map(localRoomMessageToRemote);
+    const localMessages = selectRoomMessagesForMirror({
+      projectId,
+      roomMessages: state.roomMessages,
+      sessionMessages: state.sessionMessages,
+    });
 
     let remoteMessages: RemoteRoomMessage[];
     try {
@@ -4904,9 +4891,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }, 409);
     }
 
-    const localMessages = state.roomMessages
-      .filter((message) => message.project_id === projectId)
-      .map(localRoomMessageToRemote);
+    const localMessages = selectRoomMessagesForMirror({
+      projectId,
+      roomMessages: state.roomMessages,
+      sessionMessages: state.sessionMessages,
+    });
     let remoteMessages: RemoteRoomMessage[];
     try {
       remoteMessages = (await remoteRoom.listMessages(projectId))
