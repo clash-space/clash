@@ -807,6 +807,14 @@ media blob bytes, and revision content means immutable text/timeline revision
 indexes plus content-addressed revision blobs. It also records that raw agent
 traces and local runtime secrets are local-only by default and require explicit
 opt-in before any future sync path may include them.
+
+UI evidence is explicit: `packages/web-ui/src/components/SettingsClient.tsx`
+exposes a `Cloud mirror readiness` block in the Sync section, and
+`packages/web-ui/src/components/SettingsClient.sync.test.tsx` verifies that
+`Canvas mirror ready`, `Room mirror ready`, `Asset metadata mirror ready`, and
+`Revision content mirror ready` are patched to `/api/v1/local/sync`
+`capabilities`. A remote URL/token alone does not open Web/share gates.
+
 The `storage` object is the machine-readable role contract: the workspace is
 for drafts/projections and does not own canonical snapshot/metadata; the
 canonical replica is protected SQLite + Loro state plus immutable

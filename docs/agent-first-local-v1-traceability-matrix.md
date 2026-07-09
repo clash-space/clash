@@ -411,6 +411,17 @@ Conclusion:
   narrowed to remote sync loop wiring beyond the UI admission gate, fuller
   local/remote recovery UX, and live UI parity.
 
+## Sync Readiness UI Evidence
+
+`packages/web-ui/src/components/SettingsClient.tsx` is the desktop/local UI
+proof for synced-mode admission: its Sync section renders
+`Cloud mirror readiness` switches for `Canvas mirror ready`,
+`Room mirror ready`, `Asset metadata mirror ready`, and
+`Revision content mirror ready`. `packages/web-ui/src/components/SettingsClient.sync.test.tsx`
+verifies the switches are written through `/api/v1/local/sync` `capabilities`,
+so `syncReadiness` and Web/share gates are not inferred from a remote Loro
+URL/token.
+
 ## Restriction Matrix
 
 | Capability                            | Allow in v1?             | Required restriction                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

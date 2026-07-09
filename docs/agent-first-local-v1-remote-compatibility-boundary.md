@@ -364,6 +364,12 @@ Allowed replacement:
 | Raw ACP traces | local/private | local unless opt-in | local unless team policy opt-in |
 | Provider credentials | local encrypted/keychain | local or cloud depending account type | per-user credential boundary |
 
+`Synced` is not URL-only. `SettingsClient` exposes `Cloud mirror readiness` in
+local Sync settings, and the project is not Web/share-openable until
+`Canvas mirror ready`, `Room mirror ready`, `Asset metadata mirror ready`, and
+`Revision content mirror ready` have real mirror paths and are saved to
+`/api/v1/local/sync` `capabilities`.
+
 ## Deprecation Rules
 
 ### Rule 1: Do not delete remote before local replacement exists
