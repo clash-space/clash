@@ -170,7 +170,7 @@ The local product metadata contract is SQLite-only:
 - after a metadata write, `local_migration.metadata-sqlite-v1` marks SQLite as
   authoritative,
 - audit-only metadata writes use the same marker path, so a rejected-only local
-  action cannot create an unmarked SQLite product database,
+  action cannot create an unmarked SQLite metadata database,
 - new project/session/asset/provider writes go to SQLite-backed product
   metadata,
 - immutable text/timeline revision ids are checked and inserted inside
@@ -600,7 +600,7 @@ Latest direct real Codex ACP resume layout run:
 Latest local-api receipt smoke:
 
 ```text
-.tmp/agent-first-asset-receipts/2026-07-09T06-54-27-208Z/agent-first-asset-receipt-report.json
+.tmp/agent-first-asset-receipts/2026-07-09T07-06-01-350Z/agent-first-asset-receipt-report.json
 ```
 
 Conclusion:
@@ -622,7 +622,8 @@ Conclusion:
   direct real Codex layout runs remain the end-to-end evidence for cwd shape.
 - Timeline create/restore smoke is passing in both QA harness targets.
 - Local-api package tests are passing with 290 tests, and the receipt smoke is
-  passing with 191 checks, including read-only
+  passing with 192 checks, including route-level partial SQLite migration
+  recovery plus read-only
   derived agent views, provider model test action sanitized mutation audit evidence, local audio
   model install, local audio transcription action mutation records, local harness
   install, provider OAuth restart/complete

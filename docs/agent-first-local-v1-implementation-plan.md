@@ -67,7 +67,7 @@ Minimum tests:
 - local data-dir contract regression tests
 - local-api route parity test with SQLite store
 - restart persistence test
-- regression test that fails if conformance scripts select a product DB by any
+- regression test that fails if conformance scripts select local metadata by any
   broad JSON file
 
 Current status:
@@ -76,11 +76,11 @@ Current status:
   runtime session, agent member, local session message, provider account, and
   provider OAuth state.
 - `apps/local-api/src/local-metadata-store.ts` owns metadata tables and no
-  longer has a broad JSON product DB path; its schema bootstrap upgrades old or
+  longer has a broad JSON state-store path; its schema bootstrap upgrades old or
   partial core metadata/projection tables before route reads or writes run.
 - `apps/local-api/src/local-provider-store.ts` owns provider/OAuth tables and
   persists provider/OAuth state through SQLite rows.
-- New local-api and local workflow processor writes do not create broad product
+- New local-api and local workflow processor writes do not create broad app
   JSON state.
 - Conformance scripts auto-detect desktop local-api state only by
   `local.sqlite`.
@@ -88,7 +88,7 @@ Current status:
   focused local-api store routes, typecheck, and daemon smoke.
 - `sync.json`, `audio.json`, `harnesses.json`, `host.json`, credential JSON,
   provider test recordings, and projection lock sidecars are classified as
-  narrow config/runtime/artifact/projection files, not product databases.
+  narrow config/runtime/artifact/projection files, not local metadata stores.
 
 ### P0-02: Create shared projection CAS library
 

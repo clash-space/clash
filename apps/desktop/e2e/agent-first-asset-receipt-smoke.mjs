@@ -1,4 +1,5 @@
 import { mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
@@ -76,6 +77,63 @@ function sqliteCount(sql, params = []) {
   const db = new DatabaseSync(path.join(dataDir, "local.sqlite"));
   try {
     return db.prepare(sql).get(...params)?.count ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+function sqliteCountAt(targetDataDir, sql, params = []) {
+  const db = new DatabaseSync(path.join(targetDataDir, "local.sqlite"));
+  try {
+    return db.prepare(sql).get(...params)?.count ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+function hash16(content) {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
+
+function createPartialRouteMigrationSqlite(targetDataDir) {
+  const db = new DatabaseSync(path.join(targetDataDir, "local.sqlite"));
+  try {
+    db.exec(`
+      CREATE TABLE local_migration (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE project (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE project_preview_asset (project_id TEXT NOT NULL);
+      CREATE TABLE assets (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE asset_refs (
+        asset_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        PRIMARY KEY (asset_id, project_id)
+      );
+      CREATE TABLE asset_node_refs (asset_id TEXT NOT NULL);
+      CREATE TABLE text_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE timeline_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE runtime_session (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE agent_member (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE chat_message (
+        session_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        PRIMARY KEY (session_id, id)
+      );
+      CREATE TABLE room_message (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE provider_accounts (
+        user_id TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        PRIMARY KEY (user_id, account_key)
+      );
+      CREATE TABLE provider_account_credentials (user_id TEXT NOT NULL);
+      CREATE TABLE provider_account_supported_models (user_id TEXT NOT NULL);
+      CREATE TABLE provider_account_model_priorities (user_id TEXT NOT NULL);
+      CREATE TABLE provider_oauth (
+        user_id TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, provider_id)
+      );
+    `);
   } finally {
     db.close();
   }
@@ -269,6 +327,139 @@ async function main() {
   const request = appRequest(app);
   const projectId = "project-asset-receipt-smoke";
   const agentEnv = { CLASH_AGENT_MEMBER_ID: "asset-receipt-smoke-agent" };
+
+  const routeMigrationDataDir = path.join(artifactRoot, "route-level-sqlite-migration-data");
+  await mkdir(routeMigrationDataDir, { recursive: true });
+  createPartialRouteMigrationSqlite(routeMigrationDataDir);
+  const routeMigrationApp = createLocalApiApp({
+    dataDir: routeMigrationDataDir,
+    userId: "asset-receipt-smoke-user",
+  });
+  const routeMigrationRequest = appRequest(routeMigrationApp);
+
+  const routeProjectResponse = await routeMigrationRequest("/api/v1/projects", {
+    method: "POST",
+    body: JSON.stringify({ name: "Route-level SQLite migration smoke" }),
+  });
+  const routeProject = await parseJsonResponse(routeProjectResponse);
+  const routeTextContent = "# Route migrated text\n\nThrough local-api route.\n";
+  const routeTextHash = hash16(routeTextContent);
+  const routeTextRevision = {
+    schemaVersion: 1,
+    kind: "clash.text.revision",
+    textId: `text:${routeProject.id}:script`,
+    revisionId: "txrev-route-migration-000000000001",
+    projectId: routeProject.id,
+    nodeId: "script",
+    createdAt: "2026-07-09T00:00:00.000Z",
+    contentHash: routeTextHash,
+    hashAlgorithm: "sha256-64",
+    sourceFilePath: "projections/text/script.md",
+    sourceFileHash: routeTextHash,
+    actor: {
+      actorType: "agent",
+      actorUserId: "asset-receipt-smoke-user",
+      actorAgentId: "route-migration-smoke",
+    },
+  };
+  const routeTextRevisionResponse = await routeMigrationRequest("/api/v1/text-revisions", {
+    method: "POST",
+    body: JSON.stringify({ revision: routeTextRevision, content: routeTextContent }),
+  });
+  const routeTextRevisionJson = await parseJsonResponse(routeTextRevisionResponse);
+  const routeTimelineContent = [
+    "tracks:",
+    "  - id: main",
+    "    items:",
+    "      - id: scene-001-video",
+    "        type: video",
+    "        from: start",
+    "        durationInFrames: 30",
+    "        sourceNodeId: scene-001",
+    "        assetId: asset-001",
+    "        componentId: lower-third",
+    "        textNodeId: script-001",
+    "",
+  ].join("\n");
+  const routeTimelineHash = "e727416a48c14543";
+  const routeTimelineRevision = {
+    schemaVersion: 1,
+    kind: "clash.timeline.revision",
+    timelineId: `timeline:${routeProject.id}:editor`,
+    revisionId: "tlrev-route-migration-000000000001",
+    projectId: routeProject.id,
+    nodeId: "editor",
+    createdAt: "2026-07-09T00:00:00.000Z",
+    timelineHash: routeTimelineHash,
+    hashAlgorithm: "sha256-64",
+    sourceFilePath: "timelines/main.timeline.yaml",
+    sourceFileHash: routeTimelineHash,
+    actor: {
+      actorType: "agent",
+      actorUserId: "asset-receipt-smoke-user",
+      actorAgentId: "route-migration-smoke",
+    },
+    dependencies: {
+      sourceNodeIds: ["scene-001"],
+      assetIds: ["asset-001"],
+      componentIds: ["lower-third"],
+      textNodeIds: ["script-001"],
+    },
+  };
+  const routeTimelineRevisionResponse = await routeMigrationRequest("/api/v1/timeline-revisions", {
+    method: "POST",
+    body: JSON.stringify({ revision: routeTimelineRevision, content: routeTimelineContent }),
+  });
+  const routeTimelineRevisionJson = await parseJsonResponse(routeTimelineRevisionResponse);
+  const routeProviderResponse = await routeMigrationRequest("/api/v1/model-providers", {
+    method: "PATCH",
+    body: JSON.stringify({
+      providers: [{
+        id: "route-official",
+        providerId: "official",
+        upstreamId: "openai",
+        region: "global",
+        enabled: true,
+        weight: 1,
+      }],
+    }),
+  });
+  const routeProviderJson = await parseJsonResponse(routeProviderResponse);
+  const routeProjectsJson = await parseJsonResponse(await routeMigrationRequest("/api/v1/projects"));
+  const routeTextListJson = await parseJsonResponse(
+    await routeMigrationRequest(`/api/v1/projects/${encodeURIComponent(routeProject.id)}/text-revisions?nodeId=script`),
+  );
+  const routeTimelineListJson = await parseJsonResponse(
+    await routeMigrationRequest(`/api/v1/projects/${encodeURIComponent(routeProject.id)}/timeline-revisions?nodeId=editor`),
+  );
+  const routeProviderListJson = await parseJsonResponse(await routeMigrationRequest("/api/v1/model-providers"));
+  recordCheck(
+    "route-level local-api sqlite migration upgrades partial schemas before route writes",
+    routeProjectResponse.status === 201 &&
+      routeTextRevisionResponse.status === 200 &&
+      routeTimelineRevisionResponse.status === 200 &&
+      routeProviderResponse.status === 200 &&
+      routeProjectsJson.projects?.some((project) => project.id === routeProject.id) &&
+      routeTextListJson.revisions?.some((revision) => revision.revisionId === routeTextRevision.revisionId) &&
+      routeTimelineListJson.revisions?.some((revision) => revision.revisionId === routeTimelineRevision.revisionId) &&
+      routeProviderListJson.providers?.some((provider) => provider.id === "route-official") &&
+      sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM project WHERE id = ?", [routeProject.id]) === 1 &&
+      sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM text_revisions WHERE revision_id = ?", [routeTextRevision.revisionId]) === 1 &&
+      sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM timeline_revisions WHERE revision_id = ?", [routeTimelineRevision.revisionId]) === 1 &&
+      sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM provider_accounts WHERE provider_id = ?", ["official"]) === 1,
+    JSON.stringify({
+      statuses: {
+        project: routeProjectResponse.status,
+        textRevision: routeTextRevisionResponse.status,
+        timelineRevision: routeTimelineRevisionResponse.status,
+        provider: routeProviderResponse.status,
+      },
+      routeProject,
+      routeTextRevisionJson,
+      routeTimelineRevisionJson,
+      routeProviderJson,
+    }),
+  );
 
   const agentReadOnlyProjectResponse = await request("/api/v1/projects", {
     method: "POST",
@@ -3878,6 +4069,7 @@ async function main() {
       projectRestoreStaleReceiptRejected: checks.some((check) => check.name === "project restore with stale active receipt is rejected" && check.status === "pass"),
       projectRestoreReceiptAccepted: checks.some((check) => check.name === "project restore with deleted-project receipt is accepted" && check.status === "pass"),
       projectRestoreStatusPathStable: checks.some((check) => check.name === "restored project status preserves local storage path contract" && check.status === "pass"),
+      routeLevelSqliteMigrationRecovered: checks.some((check) => check.name === "route-level local-api sqlite migration upgrades partial schemas before route writes" && check.status === "pass"),
       projectRestoreAuditRecorded: checks.some((check) => check.name === "project restore writes sanitized local mutation audit evidence" && check.status === "pass"),
       projectPurgeGetReceiptReturned: checks.some((check) => check.name === "project purge deleted get returns purge receipt" && check.status === "pass"),
       projectPurgeMissingReadRejected: checks.some((check) => check.name === "project purge without prior deleted read is rejected" && check.status === "pass"),

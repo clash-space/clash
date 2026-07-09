@@ -76,6 +76,7 @@ const suiteDefinitions = [
       "canvasNodeReferencedPatchRejected",
       "canvasBatchDeleteOrphanRejected",
       "projectRestoreStatusPathStable",
+      "routeLevelSqliteMigrationRecovered",
       "runtimeSessionAttachReceiptAccepted",
       "roomSyncLocalOnlyAdmissionReturned",
       "roomSyncExplicitMirrorAccepted",

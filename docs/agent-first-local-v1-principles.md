@@ -500,7 +500,7 @@ asset blobs must stay behind commands or APIs.
 
 ### Misaligned or incomplete
 
-- Local-api product metadata uses `local.sqlite` only; no broad JSON product DB
+- Local-api product metadata uses `local.sqlite` only; no broad JSON state store
   remains a documented or active state surface.
 - Provider credential/OAuth payloads are now encrypted before SQLite write;
   direct SQL writes must not bypass `local-provider-store`.

@@ -19,7 +19,7 @@ Editable:
 Protected:
 
 - `snapshot.bin`
-- SQLite/product DB
+- local SQLite metadata store
 - credentials
 - runtime/tool caches
 - approved media blobs unless copy-on-write creates a new version

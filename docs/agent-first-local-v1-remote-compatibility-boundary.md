@@ -260,9 +260,9 @@ Allowed replacement:
 - provider accounts/OAuth,
 - action-specific local setup with explicit user consent.
 
-### Broad local JSON product database
+### Broad Local JSON State Store
 
-Remove as product DB:
+Move to local SQLite metadata:
 
 - projects,
 - assets,

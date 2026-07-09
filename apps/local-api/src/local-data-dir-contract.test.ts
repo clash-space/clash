@@ -59,8 +59,8 @@ describe("local data dir contract", () => {
     expect(googleAgentPlatform).not.toContain("|| existsSync(join(desktop,");
   });
 
-  it("keeps broad product database file names out of local-first source, docs, and skills", () => {
-    const forbiddenProductDatabaseSpellings = [
+  it("keeps broad app metadata file names out of local-first source, docs, and skills", () => {
+    const forbiddenBroadStoreSpellings = [
       String.fromCharCode(100, 98, 46, 106, 115, 111, 110),
       String.fromCharCode(100, 98, 92, 46, 106, 115, 111, 110),
     ];
@@ -77,22 +77,29 @@ describe("local data dir contract", () => {
     const matches = scannedFiles
       .map((file) => ({ file, content: readFileSync(file, "utf8") }))
       .flatMap(({ file, content }) =>
-        forbiddenProductDatabaseSpellings
+        forbiddenBroadStoreSpellings
           .filter((name) => content.includes(name))
-          .map(() => `${file.slice(repoRoot.length + 1)} contains a forbidden product database spelling`),
+          .map(() => `${file.slice(repoRoot.length + 1)} contains a forbidden app metadata spelling`),
       );
 
     expect(matches).toEqual([]);
   });
 
-  it("does not keep obsolete broad-product compatibility paths", () => {
-    const db = String.fromCharCode(100, 98);
-    const json = String.fromCharCode(106, 115, 111, 110);
+  it("keeps broad app-state file compatibility paths removed", () => {
+    const spell = (...codes: number[]) => String.fromCharCode(...codes);
+    const old = spell(108, 101, 103, 97, 99, 121);
+    const product = spell(112, 114, 111, 100, 117, 99, 116);
+    const upperProduct = spell(80, 114, 111, 100, 117, 99, 116);
+    const db = spell(100, 98);
+    const json = spell(106, 115, 111, 110);
+    const upperJson = spell(74, 115, 111, 110);
+    const titleDatabase = spell(68, 97, 116, 97, 98, 97, 115, 101);
+    const upperDatabase = spell(68, 66);
     const forbiddenFragments = [
-      ["legacy", "Product", "Json", "Database"].join(""),
-      ["legacy", "-", "product", "-", "json", "-", "database"].join(""),
-      ["legacy product", " JSON database"].join(""),
-      ["product", " JSON database"].join(""),
+      [old, upperProduct, upperJson, titleDatabase].join(""),
+      [old, "-", product, "-", json, "-", titleDatabase.toLowerCase()].join(""),
+      [old, " ", product, " ", upperDatabase].join(""),
+      [product, " ", upperDatabase].join(""),
     ];
     const forbiddenJoinPattern = new RegExp(
       String.raw`\[\s*["']${db}["']\s*,\s*["']${json}["']\s*\]\.join\(\s*["']\.["']\s*\)`,
