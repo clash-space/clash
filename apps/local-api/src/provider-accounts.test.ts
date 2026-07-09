@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -60,17 +60,6 @@ function createPartialProviderSqlite(dataDir: string): void {
 }
 
 describe("provider accounts", () => {
-  it("removes legacy product JSON database files before provider reads", async () => {
-    const dataDir = await tempProviderDir();
-    const legacyPath = join(dataDir, ["db", "json"].join("."));
-    await writeFile(legacyPath, "{\"providerAccounts\":[]}\n", "utf8");
-    const store = createLocalProviderStore(dataDir);
-
-    await expect(store.loadProviderAccounts()).resolves.toEqual([]);
-
-    await expect(stat(legacyPath)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
   it("initializes sqlite provider storage with WAL journal mode for local multi-client safety", async () => {
     const dataDir = await tempProviderDir();
     const store = createLocalProviderStore(dataDir);

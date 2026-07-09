@@ -37,9 +37,6 @@ Current storage:
   core/provider/projection SQLite tables before route reads or writes.
 - SQLite starts empty until first local write when no local product metadata DB
   exists.
-- `clash doctor storage` reports obsolete local product JSON database files and
-  `clash doctor storage --repair` removes them; local-api store construction
-  also purges that legacy file before metadata/provider access.
 - `POST /api/v1/sessions` and `DELETE /api/v1/sessions` now include
   accepted/rejected host mutation records. Session create keeps
   `threadId`/`title`; session delete returns JSON `{ ok: true, mutation }`.

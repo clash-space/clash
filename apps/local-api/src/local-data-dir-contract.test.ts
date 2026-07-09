@@ -85,6 +85,43 @@ describe("local data dir contract", () => {
     expect(matches).toEqual([]);
   });
 
+  it("does not keep obsolete broad-product compatibility paths", () => {
+    const db = String.fromCharCode(100, 98);
+    const json = String.fromCharCode(106, 115, 111, 110);
+    const forbiddenFragments = [
+      ["legacy", "Product", "Json", "Database"].join(""),
+      ["legacy", "-", "product", "-", "json", "-", "database"].join(""),
+      ["legacy product", " JSON database"].join(""),
+      ["product", " JSON database"].join(""),
+    ];
+    const forbiddenJoinPattern = new RegExp(
+      String.raw`\[\s*["']${db}["']\s*,\s*["']${json}["']\s*\]\.join\(\s*["']\.["']\s*\)`,
+    );
+    const scannedFiles = [
+      ...sourceFilesUnder("apps/local-api/src"),
+      ...sourceFilesUnder("apps/desktop/e2e"),
+      ...sourceFilesUnder("packages/cli/src"),
+      ...sourceFilesUnder("packages/shared-runtime/src"),
+      ...sourceFilesUnder("packages/shared-types/src"),
+      ...sourceFilesUnder("packages/web-ui/src"),
+      ...sourceFilesUnder("skills"),
+      ...sourceFilesUnder("docs"),
+    ];
+
+    const matches = scannedFiles.flatMap((file) => {
+      const content = readFileSync(file, "utf8");
+      const relativePath = file.slice(repoRoot.length + 1);
+      const fragmentMatches = forbiddenFragments
+        .filter((fragment) => content.includes(fragment))
+        .map((fragment) => `${relativePath} contains ${fragment}`);
+      return forbiddenJoinPattern.test(content)
+        ? [...fragmentMatches, `${relativePath} constructs a forbidden local-first product filename`]
+        : fragmentMatches;
+    });
+
+    expect(matches).toEqual([]);
+  });
+
   it("documents Settings sync readiness switches as the cloud admission control", () => {
     const inventory = readRepoFile("docs/agent-first-local-v1-api-surface-inventory.md");
     const boundary = readRepoFile("docs/agent-first-local-v1-remote-compatibility-boundary.md");

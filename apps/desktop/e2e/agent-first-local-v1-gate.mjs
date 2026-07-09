@@ -47,11 +47,9 @@ const suiteDefinitions = [
     id: "storage-doctor-repair",
     command: [process.execPath, "e2e/storage-doctor-repair-smoke.mjs"],
     schemaVersion: 1,
-    minChecks: 70,
+    minChecks: 67,
     requiredChecks: [
       "doctor before repair does not expose obsolete marker compatibility",
-      "doctor storage reports legacy product JSON database before repair",
-      "doctor repair removes legacy product JSON database",
       "local project status is not web-openable or shared",
       "local project action gates require sync before web or sharing",
       "local project sync policy keeps cloud admission disabled and private runtime data local",

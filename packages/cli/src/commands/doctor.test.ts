@@ -1571,33 +1571,6 @@ test("storage doctor warns when local SQLite lacks the asset reference index sch
   assert.match(schemaCheck.message, /asset_node_refs/);
 });
 
-test("storage doctor repair removes legacy product JSON database files", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "doctor_project" });
-  const localApiDir = join(homeDir, ".clash", "local-api");
-  await mkdir(localApiDir, { recursive: true });
-  const legacyProductDbPath = join(localApiDir, ["db", "json"].join("."));
-  await writeFile(legacyProductDbPath, "{\"projects\":[]}\n", "utf8");
-
-  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
-
-  assert.equal(report.ok, true);
-  const legacyCheck = checkById(report, "legacy-product-json-database");
-  assert.equal(legacyCheck.level, "warning");
-  assert.equal(legacyCheck.path, legacyProductDbPath);
-
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
-
-  assert.equal(repaired.ok, true);
-  assert.equal(checkById(repaired, "legacy-product-json-database").level, "ok");
-  assert.ok(repaired.repairs?.some((repair) =>
-    repair.id === "legacy-product-json-database" &&
-    repair.path === legacyProductDbPath
-  ));
-  await assert.rejects(stat(legacyProductDbPath), { code: "ENOENT" });
-});
-
 test("storage doctor warns when local SQLite lacks text and timeline revision index schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();

@@ -3,10 +3,6 @@ import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { TextAppliedRevision, TimelineAppliedRevision } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
-import {
-  purgeLegacyProductJsonDatabase,
-  purgeLegacyProductJsonDatabaseSync,
-} from "./legacy-product-database.js";
 
 type SqlitePrimitive = string | number | null;
 
@@ -727,16 +723,8 @@ function markMigration(db: SqliteDatabase, dataDir: string, sourceSha256: string
 
 export function createLocalMetadataStore(dataDir: string) {
   const path = sqlitePath(dataDir);
-  purgeLegacyProductJsonDatabaseSync(dataDir);
-  let legacyProductJsonDatabasePurge: Promise<void> | null = null;
-
-  async function ensureLegacyProductJsonDatabasePurged(): Promise<void> {
-    legacyProductJsonDatabasePurge ??= purgeLegacyProductJsonDatabase(dataDir);
-    await legacyProductJsonDatabasePurge;
-  }
 
   async function exists(): Promise<boolean> {
-    await ensureLegacyProductJsonDatabasePurged();
     try {
       await stat(path);
       return true;
@@ -746,7 +734,6 @@ export function createLocalMetadataStore(dataDir: string) {
   }
 
   async function withDb<T>(task: (db: SqliteDatabase) => T): Promise<T> {
-    await ensureLegacyProductJsonDatabasePurged();
     await mkdir(dataDir, { recursive: true });
     const db = openDatabase(path);
     try {
