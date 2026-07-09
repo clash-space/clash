@@ -324,6 +324,9 @@ export async function fetchAssetReferences(options: {
   assetId: string;
   projectId?: string;
   refresh?: boolean;
+  ifMatch?: string;
+  force?: boolean;
+  env?: Record<string, string | undefined>;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
 }): Promise<AssetReferencesResult> {
   const assetId = options.assetId.trim();
@@ -331,6 +334,11 @@ export async function fetchAssetReferences(options: {
   if (options.refresh) {
     const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
       method: "POST",
+      headers: agentWriteHeaders({
+        ifMatch: options.ifMatch,
+        force: options.force,
+        env: options.env,
+      }),
       body: JSON.stringify({
         ...(options.projectId?.trim() ? { projectIds: [options.projectId.trim()] } : {}),
       }),
@@ -824,13 +832,17 @@ assetsCommand
   .requiredOption("--asset <id>", "Asset ID")
   .option("--project <id>", "Only show references in one project")
   .option("--refresh", "Refresh indexed references from the local project replica before reading")
+  .option("--if-match <readToken>", "Require the asset read token from `clash asset get --json` before refreshing")
+  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; project?: string; refresh?: boolean; json?: boolean }) => {
+  .action(async (options: { asset: string; project?: string; refresh?: boolean; ifMatch?: string; force?: boolean; json?: boolean }) => {
     try {
       const result = await fetchAssetReferences({
         assetId: options.asset,
         projectId: options.project,
         refresh: options.refresh === true,
+        ifMatch: options.ifMatch,
+        force: options.force === true,
       });
       if (isJsonMode(options)) {
         printJson(result);

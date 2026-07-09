@@ -129,6 +129,38 @@ describe("local data dir contract", () => {
     expect(matches).toEqual([]);
   });
 
+  it("keeps legacy remote vars and room commands off the local-first CLI surface", () => {
+    const cliIndex = readRepoFile("packages/cli/src/index.ts");
+
+    expect(cliIndex).not.toContain("./commands/vars");
+    expect(cliIndex).not.toContain("./commands/room");
+    expect(cliIndex).not.toContain("varsCommand");
+    expect(cliIndex).not.toContain("roomCommand");
+  });
+
+  it("keeps removed room and vars commands out of agent-facing docs and skills", () => {
+    const scannedFiles = [
+      ...sourceFilesUnder("skills"),
+      ...sourceFilesUnder("docs"),
+    ].filter((file) => !/\.test\.(mjs|ts|tsx|js|jsx)$/.test(file));
+
+    const forbidden = [
+      /clash vars\b/,
+      /clash room\b/,
+      /commands\/vars/,
+      /commands\/room/,
+    ];
+    const matches = scannedFiles.flatMap((file) => {
+      const content = readFileSync(file, "utf8");
+      const relativePath = file.slice(repoRoot.length + 1);
+      return forbidden
+        .filter((pattern) => pattern.test(content))
+        .map((pattern) => `${relativePath} contains removed command spelling ${pattern}`);
+    });
+
+    expect(matches).toEqual([]);
+  });
+
   it("documents Settings sync readiness switches as the cloud admission control", () => {
     const inventory = readRepoFile("docs/agent-first-local-v1-api-surface-inventory.md");
     const boundary = readRepoFile("docs/agent-first-local-v1-remote-compatibility-boundary.md");

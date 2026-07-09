@@ -259,12 +259,6 @@ export interface ProjectStatusSyncPolicy {
       source: "loro-canvas-replica";
       conflictPolicy: "loro-crdt";
     };
-    room: {
-      requirement: "room";
-      source: "sqlite-room-messages";
-      conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise";
-      rawAgentTrace: false;
-    };
     assetMetadata: {
       requirement: "asset-metadata";
       source: "sqlite-asset-indexes";
@@ -724,12 +718,6 @@ function projectSyncPolicy(
         source: "loro-canvas-replica",
         conflictPolicy: "loro-crdt",
       },
-      room: {
-        requirement: "room",
-        source: "sqlite-room-messages",
-        conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
-        rawAgentTrace: false,
-      },
       assetMetadata: {
         requirement: "asset-metadata",
         source: "sqlite-asset-indexes",
@@ -774,7 +762,7 @@ function projectSyncCloudAdmission(
   return "unknown-until-sync-mode-known";
 }
 
-const CLOUD_SYNC_REQUIREMENTS = ["canvas", "room", "asset-metadata", "revision-content"];
+const CLOUD_SYNC_REQUIREMENTS = ["canvas", "asset-metadata", "revision-content"];
 
 function projectSyncReadiness(
   mode: ProjectCollaborationMode,

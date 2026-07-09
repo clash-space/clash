@@ -21,7 +21,7 @@ export function localActionsDir(env: Record<string, string | undefined> = proces
 export function customActionSecretHint(runtime: unknown): string {
   return runtime === "local"
     ? "  → Local actions read credentials from their local runtime environment."
-    : "  → Remote worker action secrets: clash vars set <KEY>";
+    : "  → Remote worker action secrets are managed in hosted/remote Settings.";
 }
 
 /** Shape of the GET /api/v1/actions/:id/package response. */

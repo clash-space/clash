@@ -203,9 +203,8 @@ export class AcpSessionImpl implements AcpSession {
           // Local daemon = trusted environment (the user runs it on
           // their own machine). Auto-approve by picking the first
           // affirmative option the agent offers — typically "allow"
-          // or "allow once". Without this, every Bash / clash room say
-          // / fs.write etc. tool use gets cancelled and the agent
-          // silently stops — never broadcasts, never finishes a turn.
+          // or "allow once". Without this, Bash / fs.write and similar
+          // tool use gets cancelled and the agent silently stops.
           //
           // Hosts that need stricter control (remote-managed bridge,
           // multi-tenant) can subclass and override this method.

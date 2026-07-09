@@ -71,7 +71,6 @@ function createPartialCoreMetadataSqlite(dataDir: string): void {
         id TEXT NOT NULL,
         PRIMARY KEY (session_id, id)
       );
-      CREATE TABLE room_message (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
     `);
   } finally {
@@ -92,7 +91,6 @@ describe("local metadata store", () => {
       sessions: [],
       agentMembers: [],
       sessionMessages: [],
-      roomMessages: [],
     });
 
     expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
@@ -108,7 +106,6 @@ describe("local metadata store", () => {
       assets: [],
       assetRefs: [],
       sessions: [],
-      roomMessages: [],
     });
     await expect(store.save({
       projects: [
@@ -128,7 +125,6 @@ describe("local metadata store", () => {
       sessions: [],
       agentMembers: [],
       sessionMessages: [],
-      roomMessages: [],
     })).resolves.toBeUndefined();
     await expect(store.load()).resolves.toMatchObject({
       projects: [{ id: "project-upgraded", ownerId: "local-user" }],
@@ -167,7 +163,6 @@ describe("local metadata store", () => {
       sessions: [],
       agentMembers: [],
       sessionMessages: [],
-      roomMessages: [],
     });
 
     await expect(store.load()).resolves.toMatchObject({
@@ -209,7 +204,6 @@ describe("local metadata store", () => {
       sessions: [],
       agentMembers: [],
       sessionMessages: [],
-      roomMessages: [],
     });
 
     await expect(store.resolveStorageKeys("project-a", ["asset-shared-id"])).resolves.toEqual([
@@ -250,7 +244,6 @@ describe("local metadata store", () => {
       sessions: [],
       agentMembers: [],
       sessionMessages: [],
-      roomMessages: [],
     });
 
     await expect(store.listMutationAudit({ operation: "project_purge", limit: 10 })).resolves.toEqual([
@@ -306,41 +299,4 @@ describe("local metadata store", () => {
     });
   });
 
-  it("persists room sync conflict resolutions outside metadata rewrites", async () => {
-    const dataDir = await tempDir();
-    const store = createLocalMetadataStore(dataDir);
-
-    await store.upsertRoomSyncConflictResolution({
-      projectId: "project-room",
-      messageId: "room-conflict",
-      strategy: "accept-divergence",
-      localContentHash: "local-hash",
-      remoteContentHash: "remote-hash",
-      resolvedAt: 1783428000000,
-      mutationId: "audit-room-conflict",
-    });
-
-    await store.save({
-      projects: [],
-      assets: [],
-      assetRefs: [],
-      assetNodeRefs: [],
-      sessions: [],
-      agentMembers: [],
-      sessionMessages: [],
-      roomMessages: [],
-    });
-
-    await expect(store.listRoomSyncConflictResolutions({ projectId: "project-room" })).resolves.toEqual([
-      {
-        projectId: "project-room",
-        messageId: "room-conflict",
-        strategy: "accept-divergence",
-        localContentHash: "local-hash",
-        remoteContentHash: "remote-hash",
-        resolvedAt: 1783428000000,
-        mutationId: "audit-room-conflict",
-      },
-    ]);
-  });
 });

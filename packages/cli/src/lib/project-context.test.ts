@@ -113,14 +113,13 @@ it("project marker writer preserves nested sync capabilities as TOML tables", as
     schemaVersion: 1,
     projectId: "proj_cloud_ready",
     store: "managed",
-    sync: {
-      mode: "cloud-sync",
-      capabilities: {
-        canvas: true,
-        room: true,
-        asset_metadata: true,
+      sync: {
+        mode: "cloud-sync",
+        capabilities: {
+          canvas: true,
+          asset_metadata: true,
+        },
       },
-    },
   });
 
   const marker = await readFile(markerPath, "utf-8");
@@ -133,7 +132,6 @@ it("project marker writer preserves nested sync capabilities as TOML tables", as
     mode: "cloud-sync",
     capabilities: {
       canvas: true,
-      room: true,
       asset_metadata: true,
     },
   });

@@ -512,7 +512,6 @@ describe("SettingsClient sync section", () => {
           },
           capabilities: {
             canvas: false,
-            room: false,
             asset_metadata: false,
             revision_content: false,
           },
@@ -525,7 +524,6 @@ describe("SettingsClient sync section", () => {
           remote_loro_token: "secret",
           capabilities: {
             canvas: true,
-            room: true,
             asset_metadata: true,
             revision_content: true,
           },
@@ -540,7 +538,6 @@ describe("SettingsClient sync section", () => {
           },
           capabilities: {
             canvas: true,
-            room: true,
             asset_metadata: true,
             revision_content: true,
           },
@@ -574,7 +571,6 @@ describe("SettingsClient sync section", () => {
       target: { value: "secret" },
     });
     fireEvent.click(screen.getByRole("switch", { name: "Canvas mirror ready" }));
-    fireEvent.click(screen.getByRole("switch", { name: "Room mirror ready" }));
     fireEvent.click(screen.getByRole("switch", { name: "Asset metadata mirror ready" }));
     fireEvent.click(screen.getByRole("switch", { name: "Revision content mirror ready" }));
 

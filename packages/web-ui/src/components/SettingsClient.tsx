@@ -3352,7 +3352,6 @@ interface LocalSyncConfig {
 
 interface LocalSyncCapabilities {
     canvas: boolean;
-    room: boolean;
     asset_metadata: boolean;
     revision_content: boolean;
 }
@@ -3366,11 +3365,6 @@ const LOCAL_SYNC_CAPABILITY_FIELDS: Array<{
         key: 'canvas',
         label: 'Canvas mirror ready',
         description: 'Loro canvas snapshots and updates are mirrored.',
-    },
-    {
-        key: 'room',
-        label: 'Room mirror ready',
-        description: 'Project room messages can be mirrored explicitly.',
     },
     {
         key: 'asset_metadata',
@@ -3387,7 +3381,6 @@ const LOCAL_SYNC_CAPABILITY_FIELDS: Array<{
 function defaultLocalSyncCapabilities(): LocalSyncCapabilities {
     return {
         canvas: false,
-        room: false,
         asset_metadata: false,
         revision_content: false,
     };

@@ -17,12 +17,9 @@ test("model provider help does not present vars as the local provider auth path"
   assert.doesNotMatch(source, /No model providers configured\.[^`]+`clash vars set <KEY>`/);
 });
 
-test("vars copy is scoped to remote worker action secrets", () => {
-  const varsSource = commandSource("vars.ts");
+test("remote worker action secret copy does not point to local vars CLI", () => {
   const actionsSource = commandSource("actions.ts");
 
-  assert.match(varsSource, /Manage remote worker action variables/);
-  assert.match(varsSource, /only for cloud\/remote worker actions/);
-  assert.match(varsSource, /Local custom actions and local providers do not use `clash vars`/);
-  assert.match(actionsSource, /Remote worker action secrets: clash vars set <KEY>/);
+  assert.match(actionsSource, /Remote worker action secrets are managed in hosted\/remote Settings/);
+  assert.doesNotMatch(actionsSource, /clash vars/);
 });

@@ -9,7 +9,9 @@ test("local custom action secret hint does not point users to remote vars", () =
   assert.doesNotMatch(hint, /clash vars/);
 });
 
-test("remote worker custom action secret hint keeps vars compatibility", () => {
-  assert.match(customActionSecretHint("worker"), /clash vars set <KEY>/);
-  assert.match(customActionSecretHint(undefined), /clash vars set <KEY>/);
+test("remote worker custom action secret hint does not point to removed local vars CLI", () => {
+  assert.match(customActionSecretHint("worker"), /hosted\/remote Settings/);
+  assert.match(customActionSecretHint(undefined), /hosted\/remote Settings/);
+  assert.doesNotMatch(customActionSecretHint("worker"), /clash vars/);
+  assert.doesNotMatch(customActionSecretHint(undefined), /clash vars/);
 });

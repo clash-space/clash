@@ -523,13 +523,11 @@ test("first-party skill marketplace registry is self-contained and installable",
   );
 });
 
-test("clash command reference uses current remote vars CLI syntax", async () => {
+test("clash command reference does not expose removed vars CLI syntax", async () => {
   const commands = await readFile(clashCommandsReferencePath, "utf8");
 
-  assert.match(commands, /clash vars set API_KEY --value "\.\.\."/);
-  assert.match(commands, /clash vars delete API_KEY/);
-  assert.doesNotMatch(commands, /clash vars set --key/);
-  assert.doesNotMatch(commands, /clash vars delete --key/);
+  assert.match(commands, /Remote worker action secrets are managed in hosted\/remote Settings/);
+  assert.doesNotMatch(commands, /clash vars/);
 });
 
 test("agent-facing project docs expose recoverable project delete and restore", async () => {

@@ -79,7 +79,6 @@ const PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE = /^provider-oauth-v1:[a-f0-9]{16}:re
 const ASSET_GC_RECEIPT_READ_TOKEN_RE = /^asset-gc-v1:[a-f0-9]{16}:receipt:[A-Za-z0-9._~-]+$/;
 const DEFAULT_SYNC_CAPABILITIES = {
   canvas: false,
-  room: false,
   asset_metadata: false,
   revision_content: false,
 };
@@ -971,6 +970,35 @@ describe("local API app", () => {
         method,
         headers: { "content-type": "application/json" },
         body: method === "POST" || method === "PUT" ? JSON.stringify({ key: "FAL_API_KEY", value: "secret" }) : undefined,
+      });
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("does not expose legacy project room endpoints locally", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const created = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "No Local Room" }),
+    });
+    const project = await created.json() as { id: string };
+
+    for (const [method, path, body] of [
+      ["GET", `/api/v1/projects/${project.id}/room/messages`, undefined],
+      ["POST", `/api/v1/projects/${project.id}/room/messages`, { text: "legacy room", sender_kind: "agent", sender_id: "local-master-clash" }],
+      ["POST", `/api/v1/projects/${project.id}/room/sync`, {}],
+      [
+        "POST",
+        `/api/v1/projects/${project.id}/room/sync/conflicts/room-conflict/resolve`,
+        { resolution: "accept-divergence", localContentHash: "local", remoteContentHash: "remote" },
+      ],
+    ] as const) {
+      const res = await app.request(path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined,
       });
       expect(res.status).toBe(404);
     }
@@ -3782,15 +3810,63 @@ describe("local API app", () => {
     });
     expect(removedRef.status).toBe(200);
 
-    const refresh = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
+    const assetRead = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}`);
+    expect(assetRead.status).toBe(200);
+    const assetReadJson = await assetRead.json() as { readToken: string };
+    expect(assetReadJson.readToken).toMatch(ASSET_RECEIPT_READ_TOKEN_RE);
+
+    const missingRead = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-clash-client-type": "agent" },
+      body: JSON.stringify({ projectIds: [projectId] }),
+    });
+    expect(missingRead.status).toBe(409);
+    expect(await missingRead.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset references refresh read proof for agent"),
+      mutation: {
+        operation: "asset_references_refresh",
+        entity: { kind: "asset", id: assetId },
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const bareRead = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": baseReadToken(assetReadJson.readToken),
+      },
+      body: JSON.stringify({ projectIds: [projectId] }),
+    });
+    expect(bareRead.status).toBe(409);
+    expect(await bareRead.json()).toMatchObject({
+      error: expect.stringContaining("Missing asset references refresh read receipt for agent"),
+      mutation: {
+        operation: "asset_references_refresh",
+        entity: { kind: "asset", id: assetId },
+        expectedReadToken: baseReadToken(assetReadJson.readToken),
+        beforeReadToken: baseReadToken(assetReadJson.readToken),
+        forced: false,
+        accepted: false,
+      },
+    });
+
+    const refresh = await app.request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": assetReadJson.readToken,
+      },
       body: JSON.stringify({ projectIds: [projectId] }),
     });
 
     expect(refresh.status).toBe(200);
     expect(await refresh.json()).toEqual({
       assetId,
+      readToken: assetReadJson.readToken,
       refreshed: true,
       protectedProjectIds: [projectId],
       references: [
@@ -3806,6 +3882,9 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_references_refresh",
         entity: { kind: "asset", id: assetId },
+        expectedReadToken: assetReadJson.readToken,
+        beforeReadToken: baseReadToken(assetReadJson.readToken),
+        afterReadToken: assetReadJson.readToken,
         resultEntityId: assetId,
         forced: false,
         accepted: true,
@@ -9165,8 +9244,8 @@ describe("local API app", () => {
         syncReadiness: {
           status: "disabled",
           ready: false,
-          required: ["canvas", "room", "asset-metadata", "revision-content"],
-          missing: ["canvas", "room", "asset-metadata", "revision-content"],
+          required: ["canvas", "asset-metadata", "revision-content"],
+          missing: ["canvas", "asset-metadata", "revision-content"],
         },
         actions: {
           openInWeb: {
@@ -9389,14 +9468,14 @@ describe("local API app", () => {
         syncReadiness: {
           status: "pending",
           ready: false,
-          required: ["canvas", "room", "asset-metadata", "revision-content"],
-          missing: ["canvas", "room", "asset-metadata", "revision-content"],
+          required: ["canvas", "asset-metadata", "revision-content"],
+          missing: ["canvas", "asset-metadata", "revision-content"],
         },
         actions: {
           openInWeb: {
             allowed: false,
             reason: "cloud-sync-not-ready",
-            requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+            requirements: ["canvas", "asset-metadata", "revision-content"],
           },
           enableSync: {
             allowed: false,
@@ -9406,7 +9485,7 @@ describe("local API app", () => {
           shareProject: {
             allowed: false,
             reason: "cloud-sync-not-ready",
-            requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+            requirements: ["canvas", "asset-metadata", "revision-content"],
           },
           runLocalAgent: {
             allowed: true,
@@ -9432,7 +9511,6 @@ describe("local API app", () => {
         remote_loro_url: "https://api.example.com",
         capabilities: {
           canvas: true,
-          room: true,
           asset_metadata: true,
           revision_content: true,
         },
@@ -9464,7 +9542,7 @@ describe("local API app", () => {
         syncReadiness: {
           status: "ready",
           ready: true,
-          required: ["canvas", "room", "asset-metadata", "revision-content"],
+          required: ["canvas", "asset-metadata", "revision-content"],
           missing: [],
         },
         actions: {
@@ -9755,7 +9833,6 @@ describe("local API app", () => {
       remote_loro_token: "token-1",
       capabilities: {
         canvas: true,
-        room: true,
         asset_metadata: true,
         revision_content: true,
       },
@@ -9855,10 +9932,6 @@ describe("local API app", () => {
         INSERT INTO chat_message (session_id, id, sender_kind, sender_id, turn_id, events_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(sessionJson.threadId, "purge-chat-message", "agent", "agent-1", null, "[]", now);
-      sqlite.prepare(`
-        INSERT INTO room_message (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run("purge-room-message", project.id, "agent", "agent-1", "local-user", "[]", "purge me", now);
       sqlite.prepare(`
         INSERT INTO assets (
           id, user_id, kind, src_r2_key, cover_r2_key, metadata, source_model, source_prompt,
@@ -10017,7 +10090,6 @@ describe("local API app", () => {
         projectPreviewAssets: 1,
         sessions: 1,
         sessionMessages: 1,
-        roomMessages: 1,
         assetRowsUnlinked: 1,
         assetRefs: 1,
         assetNodeRefs: 1,
@@ -10046,7 +10118,6 @@ describe("local API app", () => {
       expect(check.prepare("select count(*) as count from project_preview_asset where project_id = ?").get(project.id)).toEqual({ count: 0 });
       expect(check.prepare("select count(*) as count from runtime_session where project_id = ?").get(project.id)).toEqual({ count: 0 });
       expect(check.prepare("select count(*) as count from chat_message where session_id = ?").get(sessionJson.threadId)).toEqual({ count: 0 });
-      expect(check.prepare("select count(*) as count from room_message where project_id = ?").get(project.id)).toEqual({ count: 0 });
       expect(check.prepare("select count(*) as count from asset_refs where project_id = ?").get(project.id)).toEqual({ count: 0 });
       expect(check.prepare("select count(*) as count from asset_node_refs where project_id = ?").get(project.id)).toEqual({ count: 0 });
       expect(check.prepare("select count(*) as count from assets where id = ?").get("purge-asset")).toEqual({ count: 1 });
@@ -10087,966 +10158,6 @@ describe("local API app", () => {
     expect(JSON.stringify(auditJson.records[0].mutation)).not.toContain("receipt");
     expect(auditJson.records[0].mutation).not.toHaveProperty("expectedReadToken");
     expect(auditJson.records[0].mutation).not.toHaveProperty("beforeReadToken");
-  });
-
-  it("persists local project room messages in SQLite", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-message-1",
-        text: "hello local room",
-        sender_kind: "agent",
-        sender_id: "local-master-clash",
-        mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-      }),
-    });
-    expect(posted.status).toBe(200);
-    expect(await posted.json()).toMatchObject({
-      id: "room-message-1",
-      project_id: project.id,
-      sender_kind: "agent",
-      sender_id: "local-master-clash",
-      sender_user_id: "local-user",
-      text: "hello local room",
-      mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-      sync: {
-        mode: "local-only",
-        remote_room: { enabled: false, status: "disabled" },
-        admission: {
-          allowed: false,
-          reason: "remote-room-not-configured",
-          requirements: ["enable-sync"],
-        },
-      },
-      mutation: {
-        operation: "room_message_create",
-        entity: { kind: "room-message", id: "room-message-1" },
-        resultEntityId: "room-message-1",
-        forced: false,
-        accepted: true,
-      },
-    });
-    await expectSingleMutationAudit(app, {
-      operation: "room_message_create",
-      entityId: "room-message-1",
-      entityKind: "room-message",
-      reason: "local room message create",
-    });
-
-    const replayed = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-message-1",
-        text: "hello local room",
-        sender_kind: "agent",
-        sender_id: "local-master-clash",
-        mentions: [{ user_id: "local-user", agent_member_id: "local-master-clash" }],
-      }),
-    });
-    expect(replayed.status).toBe(200);
-    await expectSingleMutationAudit(app, {
-      operation: "room_message_create",
-      entityId: "room-message-1",
-      entityKind: "room-message",
-      reason: "local room message create",
-    });
-
-    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(await listed.json()).toMatchObject({
-      sync: {
-        mode: "local-only",
-        remote_room: { enabled: false, status: "disabled" },
-        admission: {
-          allowed: false,
-          reason: "remote-room-not-configured",
-          requirements: ["enable-sync"],
-        },
-      },
-      messages: [
-        {
-          id: "room-message-1",
-          sender_kind: "agent",
-          sender_id: "local-master-clash",
-          sender_user_id: "local-user",
-          text: "hello local room",
-        },
-      ],
-    });
-
-    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
-    const persisted = await reopened.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(await persisted.json()).toMatchObject({
-      messages: [{ id: "room-message-1", text: "hello local room" }],
-    });
-
-    const sqlite = openSqlite();
-    try {
-      expect(sqlite.prepare("select project_id, sender_kind, sender_id, text from room_message").get()).toEqual({
-        project_id: project.id,
-        sender_kind: "agent",
-        sender_id: "local-master-clash",
-        text: "hello local room",
-      });
-    } finally {
-      sqlite.close();
-    }
-  });
-
-  it("reports explicit room sync as pending in cloud-sync mode", async () => {
-    const syncConfig = createLocalSyncConfigStore({
-      dataDir,
-      env: {},
-    });
-    await syncConfig.updateFromRequest({
-      mode: "cloud-sync",
-      remote_loro_url: "https://api.example.com",
-      remote_loro_token: "token-1",
-      capabilities: {
-        room: true,
-      },
-    });
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      syncConfig,
-    });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(await listed.json()).toMatchObject({
-      sync: {
-        mode: "cloud-sync",
-        remote_room: {
-          enabled: true,
-          status: "pending",
-        },
-        admission: {
-          allowed: true,
-          reason: null,
-          requirements: [],
-        },
-      },
-      messages: [],
-    });
-  });
-
-  it("exposes room sync trace admission so raw agent traces stay local by default", async () => {
-    const syncConfig = createLocalSyncConfigStore({
-      dataDir,
-      env: {},
-    });
-    await syncConfig.updateFromRequest({
-      mode: "cloud-sync",
-      remote_loro_url: "https://api.example.com",
-      remote_loro_token: "token-1",
-      capabilities: {
-        room: true,
-      },
-    });
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      syncConfig,
-    });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Trace Policy Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(listed.status).toBe(200);
-    expect(await listed.json()).toMatchObject({
-      sync: {
-        trace_policy: {
-          room_messages: {
-            kind: "project-chat",
-            rawAgentTrace: false,
-            syncDefault: "sync-when-project-sync-enabled",
-          },
-          raw_agent_traces: {
-            kind: "private-runtime-trace",
-            syncDefault: "local-only",
-            excludedFromRoom: true,
-            syncAdmission: {
-              allowed: false,
-              reason: "explicit-policy-required",
-              requirements: ["user-opt-in-or-team-policy"],
-              defaultAllowed: false,
-            },
-          },
-        },
-      },
-    });
-  });
-
-  it("checks project existence before room sync remote admission", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-
-    const synced = await app.request("/api/v1/projects/missing-project/room/sync", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-    });
-
-    expect(synced.status).toBe(404);
-    expect(await synced.json()).toMatchObject({
-      error: "not found",
-      mutation: {
-        operation: "room_sync",
-        entity: { kind: "room", id: "missing-project" },
-        forced: false,
-        accepted: false,
-        error: "not found",
-      },
-    });
-  });
-
-  it("returns explicit room sync admission when cloud sync is not configured", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Local Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-    });
-
-    expect(synced.status).toBe(409);
-    expect(await synced.json()).toMatchObject({
-      error: "remote room sync is not configured",
-      admission: {
-        allowed: false,
-        reason: "remote-room-not-configured",
-        requirements: ["enable-sync"],
-      },
-      sync: {
-        mode: "local-only",
-        remote_room: {
-          enabled: false,
-          status: "disabled",
-          error: "remote room sync is not configured",
-        },
-      },
-      mutation: {
-        operation: "room_sync",
-        entity: { kind: "room", id: project.id },
-        forced: false,
-        accepted: false,
-        error: "remote room sync is not configured",
-      },
-    });
-  });
-
-  it("blocks explicit room sync until the room mirror capability is ready", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [] }), {
-      headers: { "content-type": "application/json" },
-    }));
-    const syncConfig = createLocalSyncConfigStore({
-      dataDir,
-      env: {
-        CLASH_REMOTE_LORO_URL: "https://api.example.com",
-        CLASH_REMOTE_LORO_TOKEN: "token-1",
-      },
-      fetch: fetchMock,
-    });
-    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Sync Pending Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-    });
-
-    expect(synced.status).toBe(409);
-    expect(await synced.json()).toMatchObject({
-      error: "room sync capability is not ready",
-      admission: {
-        allowed: false,
-        reason: "room-sync-capability-not-ready",
-        requirements: ["room"],
-      },
-      sync: {
-        mode: "cloud-sync",
-        remote_room: {
-          enabled: true,
-          status: "pending",
-          error: "room sync capability is not ready",
-        },
-      },
-      mutation: {
-        operation: "room_sync",
-        entity: { kind: "room", id: project.id },
-        forced: false,
-        accepted: false,
-        error: "room sync capability is not ready",
-      },
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("explicitly mirrors local and remote room messages without a blind overwrite", async () => {
-    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
-      if (init?.method === "GET") {
-        return new Response(JSON.stringify({
-          messages: [
-            {
-              id: "remote-room-1",
-              project_id: "pending-project",
-              sender_kind: "user",
-              sender_id: "remote-user",
-              sender_user_id: "remote-user",
-              mentions: [{ user_id: "local-user" }],
-              text: "remote only",
-              at: 900,
-            },
-          ],
-        }), { headers: { "content-type": "application/json" } });
-      }
-      if (init?.method === "POST") {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 201,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response("unexpected remote room request", { status: 500 });
-    });
-    const syncConfig = createLocalSyncConfigStore({
-      dataDir,
-      env: {
-        CLASH_REMOTE_LORO_URL: "https://api.example.com",
-        CLASH_REMOTE_LORO_TOKEN: "token-1",
-      },
-      fetch: fetchMock,
-    });
-    await syncConfig.updateFromRequest({
-      mode: "cloud-sync",
-      remote_loro_url: "https://api.example.com",
-      remote_loro_token: "token-1",
-      capabilities: {
-        room: true,
-      },
-    });
-    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Sync Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "local-room-1",
-        text: "local only",
-        mentions: [{ user_id: "remote-user" }],
-      }),
-    });
-    expect(posted.status).toBe(200);
-
-    const rawTraceEvents = JSON.stringify([
-      {
-        type: "tool_log",
-        path: "/Users/local/private-project/secret-script.md",
-        output: "raw agent trace must stay out of room sync",
-      },
-    ]);
-    const sqlite = openSqlite();
-    try {
-      sqlite.prepare(`
-        INSERT INTO runtime_session (
-          id,
-          project_id,
-          title,
-          type,
-          runtime_id,
-          agent_id,
-          agent_template_id,
-          created_at,
-          updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        "local-session-room-sync-private-trace",
-        project.id,
-        "Private runtime trace",
-        "runtime",
-        "desktop-local",
-        "codex-acp",
-        "master-clash",
-        "2026-07-08T00:00:00.000Z",
-        "2026-07-08T00:00:00.000Z",
-      );
-      sqlite.prepare(`
-        INSERT INTO chat_message (
-          session_id,
-          id,
-          sender_kind,
-          sender_id,
-          turn_id,
-          events_json,
-          created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        "local-session-room-sync-private-trace",
-        "private-trace-message",
-        "agent",
-        "local-master-clash",
-        "turn-private",
-        rawTraceEvents,
-        1_700_000_000,
-      );
-    } finally {
-      sqlite.close();
-    }
-
-    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-    });
-    expect(synced.status).toBe(200);
-    expect(await synced.json()).toMatchObject({
-      sync: {
-        mode: "cloud-sync",
-        remote_room: { enabled: true, status: "mirrored" },
-      },
-      plan: {
-        exportedIds: ["local-room-1"],
-        importedIds: ["remote-room-1"],
-        matchedIds: [],
-        conflicts: [],
-      },
-      mutation: {
-        operation: "room_sync",
-        entity: { kind: "room", id: project.id },
-        forced: false,
-        accepted: true,
-        resultEntityId: project.id,
-      },
-    });
-    await expectSingleMutationAudit(app, {
-      operation: "room_sync",
-      entityId: project.id,
-      entityKind: "room",
-      reason: "room sync",
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `https://api.example.com/api/v1/projects/${encodeURIComponent(project.id)}/room/messages`,
-      expect.objectContaining({ method: "GET" }),
-    );
-    const remotePost = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
-    expect(remotePost).toBeTruthy();
-    expect(remotePost?.[0]).toBe(
-      `https://api.example.com/api/v1/projects/${encodeURIComponent(project.id)}/room/messages`,
-    );
-    expect(JSON.parse(String(remotePost?.[1]?.body))).toEqual({
-      id: "local-room-1",
-      sender_kind: "user",
-      sender_id: "local-user",
-      sender_user_id: "local-user",
-      text: "local only",
-      mentions: [{ user_id: "remote-user" }],
-    });
-    const remotePostBody = String(remotePost?.[1]?.body);
-    expect(remotePostBody).not.toContain("raw agent trace must stay out of room sync");
-    expect(remotePostBody).not.toContain("/Users/local/private-project/secret-script.md");
-    expect(remotePostBody).not.toContain("private-trace-message");
-    const remotePostHeaders = remotePost?.[1]?.headers as Headers;
-    expect(remotePostHeaders.get("authorization")).toBe("Bearer token-1");
-
-    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(await listed.json()).toMatchObject({
-      sync: {
-        mode: "cloud-sync",
-        remote_room: { enabled: true, status: "pending" },
-      },
-      messages: expect.arrayContaining([
-        expect.objectContaining({ id: "local-room-1", text: "local only" }),
-        expect.objectContaining({
-          id: "remote-room-1",
-          sender_id: "remote-user",
-          sender_user_id: "remote-user",
-          text: "remote only",
-        }),
-      ]),
-    });
-  });
-
-  it("rejects explicit room sync conflicts without overwriting local rows", async () => {
-    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
-      if (init?.method === "GET") {
-        return new Response(JSON.stringify({
-          messages: [
-            {
-              id: "room-conflict",
-              project_id: "ignored-project",
-              sender_kind: "user",
-              sender_id: "remote-user",
-              sender_user_id: "remote-user",
-              mentions: [],
-              text: "remote text",
-              at: 1000,
-            },
-          ],
-        }), { headers: { "content-type": "application/json" } });
-      }
-      return new Response("unexpected remote room write", { status: 500 });
-    });
-    const syncConfig = createLocalSyncConfigStore({
-      dataDir,
-      env: {
-        CLASH_REMOTE_LORO_URL: "https://api.example.com",
-        CLASH_REMOTE_LORO_TOKEN: "token-1",
-      },
-      fetch: fetchMock,
-    });
-    await syncConfig.updateFromRequest({
-      mode: "cloud-sync",
-      remote_loro_url: "https://api.example.com",
-      remote_loro_token: "token-1",
-      capabilities: {
-        room: true,
-      },
-    });
-    const app = createLocalApiApp({ dataDir, userId: "local-user", syncConfig });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Conflict Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-conflict",
-        text: "local text",
-      }),
-    });
-    expect(posted.status).toBe(200);
-
-    const synced = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-    });
-    expect(synced.status).toBe(409);
-    const conflictBody = await synced.json() as {
-      plan: {
-        conflicts: Array<{
-          id: string;
-          local: { contentHash: string };
-          remote: { contentHash: string };
-        }>;
-      };
-    };
-    expect(conflictBody).toMatchObject({
-      error: "room sync conflict",
-      sync: {
-        mode: "cloud-sync",
-        remote_room: {
-          enabled: true,
-          status: "failed",
-          error: "room sync conflict",
-        },
-      },
-      plan: {
-        exportedIds: [],
-        importedIds: [],
-        matchedIds: [],
-        conflicts: [
-          {
-            id: "room-conflict",
-            reason: "content-mismatch",
-            local: {
-              id: "room-conflict",
-              project_id: project.id,
-              sender_kind: "user",
-              sender_id: "local-user",
-              sender_user_id: "local-user",
-              mentions: [],
-              text: "local text",
-              contentHash: expect.any(String),
-            },
-            remote: {
-              id: "room-conflict",
-              project_id: project.id,
-              sender_kind: "user",
-              sender_id: "remote-user",
-              sender_user_id: "remote-user",
-              mentions: [],
-              text: "remote text",
-              at: 1000,
-              contentHash: expect.any(String),
-            },
-          },
-        ],
-      },
-      mutation: {
-        operation: "room_sync",
-        entity: { kind: "room", id: project.id },
-        forced: false,
-        accepted: false,
-        error: "room sync conflict",
-      },
-    });
-    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
-
-    const staleResolution = await app.request(`/api/v1/projects/${project.id}/room/sync/conflicts/room-conflict/resolve`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        resolution: "accept-divergence",
-        localContentHash: "stale-local",
-        remoteContentHash: conflictBody.plan.conflicts[0]?.remote.contentHash,
-      }),
-    });
-    expect(staleResolution.status).toBe(409);
-    expect(await staleResolution.json()).toMatchObject({
-      error: "stale room sync conflict resolution",
-      mutation: {
-        operation: "room_sync_conflict_resolve",
-        entity: { kind: "room-message-conflict", id: `${project.id}:room-conflict` },
-        accepted: false,
-      },
-    });
-
-    const resolution = await app.request(`/api/v1/projects/${project.id}/room/sync/conflicts/room-conflict/resolve`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        resolution: "accept-divergence",
-        localContentHash: conflictBody.plan.conflicts[0]?.local.contentHash,
-        remoteContentHash: conflictBody.plan.conflicts[0]?.remote.contentHash,
-      }),
-    });
-    expect(resolution.status).toBe(200);
-    expect(await resolution.json()).toMatchObject({
-      resolution: {
-        strategy: "accept-divergence",
-        project_id: project.id,
-        message_id: "room-conflict",
-        localContentHash: conflictBody.plan.conflicts[0]?.local.contentHash,
-        remoteContentHash: conflictBody.plan.conflicts[0]?.remote.contentHash,
-      },
-      mutation: {
-        operation: "room_sync_conflict_resolve",
-        entity: { kind: "room-message-conflict", id: `${project.id}:room-conflict` },
-        accepted: true,
-        resultEntityId: "room-conflict",
-      },
-    });
-    const sqlite = openSqlite();
-    try {
-      expect(sqlite.prepare(`
-        select project_id, message_id, strategy, local_content_hash, remote_content_hash
-          from room_sync_conflict_resolution
-         where project_id = ? and message_id = ?
-      `).get(project.id, "room-conflict")).toEqual({
-        project_id: project.id,
-        message_id: "room-conflict",
-        strategy: "accept-divergence",
-        local_content_hash: conflictBody.plan.conflicts[0]?.local.contentHash,
-        remote_content_hash: conflictBody.plan.conflicts[0]?.remote.contentHash,
-      });
-    } finally {
-      sqlite.close();
-    }
-
-    const resumed = await app.request(`/api/v1/projects/${project.id}/room/sync`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-    });
-    expect(resumed.status).toBe(200);
-    expect(await resumed.json()).toMatchObject({
-      sync: { remote_room: { status: "mirrored" } },
-      plan: {
-        exportedIds: [],
-        importedIds: [],
-        matchedIds: [],
-        conflicts: [],
-        resolvedConflictIds: ["room-conflict"],
-      },
-      mutation: {
-        operation: "room_sync",
-        accepted: true,
-      },
-    });
-
-    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(await listed.json()).toMatchObject({
-      messages: [{ id: "room-conflict", text: "local text" }],
-    });
-  });
-
-  it("paginates local room messages with a stable same-second cursor", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const sqlite = openSqlite();
-    try {
-      const insert = sqlite.prepare(`
-        INSERT INTO room_message
-          (id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      insert.run("room-a", project.id, "user", "local-user", "local-user", "[]", "first", 1000);
-      insert.run("room-b", project.id, "user", "local-user", "local-user", "[]", "second", 1000);
-    } finally {
-      sqlite.close();
-    }
-
-    const firstPage = await app.request(`/api/v1/projects/${project.id}/room/messages?limit=1`);
-    expect(await firstPage.json()).toMatchObject({
-      messages: [{ id: "room-b", text: "second" }],
-    });
-
-    const secondPage = await app.request(`/api/v1/projects/${project.id}/room/messages?limit=1&before=room-b`);
-    expect(await secondPage.json()).toMatchObject({
-      messages: [{ id: "room-a", text: "first" }],
-    });
-  });
-
-  it("dispatches local room agent-member-only mentions", async () => {
-    const pushRoomMention = vi.fn(async () => true);
-    const app = createLocalApiApp({
-      dataDir,
-      userId: "local-user",
-      localAcp: { pushRoomMention } as any,
-    });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-mention-1",
-        text: "ping",
-        mentions: [{ agent_member_id: "local-master-clash" }],
-      }),
-    });
-
-    expect(posted.status).toBe(200);
-    expect(await posted.json()).toMatchObject({
-      id: "room-mention-1",
-      mentions: [{ agent_member_id: "local-master-clash" }],
-    });
-    expect(pushRoomMention).toHaveBeenCalledWith(project.id, "local-master-clash", expect.objectContaining({
-      message_id: "room-mention-1",
-      from_kind: "user",
-      from_id: "local-user",
-      from_user_id: "local-user",
-      text: "ping",
-    }));
-  });
-
-  it("rejects duplicate local room message ids across projects", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const firstProjectResponse = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "First Room Project" }),
-    });
-    const firstProject = await firstProjectResponse.json() as { id: string };
-    const secondProjectResponse = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Second Room Project" }),
-    });
-    const secondProject = await secondProjectResponse.json() as { id: string };
-
-    const firstPost = await app.request(`/api/v1/projects/${firstProject.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-shared-id",
-        text: "first",
-      }),
-    });
-    expect(firstPost.status).toBe(200);
-
-    const duplicatePost = await app.request(`/api/v1/projects/${secondProject.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-shared-id",
-        text: "second",
-      }),
-    });
-    expect(duplicatePost.status).toBe(409);
-    expect(await duplicatePost.json()).toEqual({
-      error: "room message id already exists",
-      mutation: {
-        operation: "room_message_create",
-        entity: { kind: "room-message", id: "room-shared-id" },
-        forced: false,
-        accepted: false,
-        error: "room message id already exists",
-      },
-    });
-  });
-
-  it("rejects same-project room message id reuse with different content", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Conflict Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const firstPost = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-local-conflict",
-        text: "first",
-      }),
-    });
-    expect(firstPost.status).toBe(200);
-
-    const duplicatePost = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-local-conflict",
-        text: "second",
-      }),
-    });
-    expect(duplicatePost.status).toBe(409);
-    expect(await duplicatePost.json()).toEqual({
-      error: "room message id already exists with different content",
-      mutation: {
-        operation: "room_message_create",
-        entity: { kind: "room-message", id: "room-local-conflict" },
-        forced: false,
-        accepted: false,
-        error: "room message id already exists with different content",
-      },
-    });
-
-    const listed = await app.request(`/api/v1/projects/${project.id}/room/messages`);
-    expect(await listed.json()).toMatchObject({
-      messages: [{ id: "room-local-conflict", text: "first" }],
-    });
-  });
-
-  it("rejects local room messages from unknown agent members", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const posted = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        id: "room-spoofed-agent",
-        text: "spoofed",
-        sender_kind: "agent",
-        sender_id: "local-missing-agent",
-      }),
-    });
-
-    expect(posted.status).toBe(403);
-    expect(await posted.json()).toEqual({
-      error: "sender_id is not an agent_member you own",
-      mutation: {
-        operation: "room_message_create",
-        entity: { kind: "room-message", id: "room-spoofed-agent" },
-        forced: false,
-        accepted: false,
-        error: "sender_id is not an agent_member you own",
-      },
-    });
-  });
-
-  it("records rejected mutation envelopes for invalid local room message writes", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const created = await app.request("/api/v1/projects", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Room Project" }),
-    });
-    const project = await created.json() as { id: string };
-
-    const missingText = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "room-empty-text", text: "   " }),
-    });
-
-    expect(missingText.status).toBe(400);
-    expect(await missingText.json()).toEqual({
-      error: "text required",
-      mutation: {
-        operation: "room_message_create",
-        entity: { kind: "room-message", id: "room-empty-text" },
-        forced: false,
-        accepted: false,
-        error: "text required",
-      },
-    });
-
-    const missingSender = await app.request(`/api/v1/projects/${project.id}/room/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "room-missing-agent", text: "ping", sender_kind: "agent" }),
-    });
-
-    expect(missingSender.status).toBe(400);
-    expect(await missingSender.json()).toEqual({
-      error: "sender_id required for agent sender",
-      mutation: {
-        operation: "room_message_create",
-        entity: { kind: "room-message", id: "room-missing-agent" },
-        forced: false,
-        accepted: false,
-        error: "sender_id required for agent sender",
-      },
-    });
   });
 
   it("returns local project preview assets for the desktop project grid", async () => {

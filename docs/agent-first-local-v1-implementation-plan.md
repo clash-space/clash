@@ -576,7 +576,6 @@ Remaining gap:
 
 Scope:
 
-- `packages/cli/src/commands/vars.ts`
 - CLI copy in actions/models commands
 - local-api route tests
 - cloud routes remain intact
@@ -587,16 +586,16 @@ Implementation:
 - Do not delete cloud `/api/v1/vars`.
 - Make CLI help mode-aware:
   - local provider auth: use provider account/OAuth commands,
-  - remote worker action: vars compatibility,
-  - unsupported local vars: clear error.
-- Remove local default suggestions that tell users to use `clash vars set`.
+  - remote worker action: hosted/remote Settings,
+  - unsupported local vars: no local CLI surface.
+- Remove local default suggestions that tell users to use a vars CLI.
 
 Acceptance:
 
 - Local API continues returning 404 for variables/action-secrets.
-- Remote vars command remains available when pointed at cloud API.
+- Remote worker secrets remain a hosted/remote Settings concept.
 - Local CLI no longer tells agents to use vars as the default auth path.
-- Tests cover both local rejection and remote compatibility expectation.
+- Tests cover local rejection and copy/registration expectations.
 
 Minimum tests:
 
@@ -606,8 +605,8 @@ Minimum tests:
 
 Current status:
 
-- CLI copy now scopes `clash vars` to remote/cloud worker action variables.
-- CLI `clash vars` maps 404 to an explicit remote-only/local-auth message.
+- Local-first CLI no longer registers `vars`.
+- CLI copy points remote worker action secrets to hosted/remote Settings.
 - `models providers` now points local users to `clash models provider set`.
 - Added `remote-compat-copy.test.ts` for the CLI copy contract.
 - Local endpoint and cloud route regression coverage still need to remain in
@@ -615,81 +614,50 @@ Current status:
 
 ## P1 Work
 
-### P1-01: Local room persistence
+### P1-01: Local room removal from v1 surface
 
 Scope:
 
-- local SQLite `room_message`,
-- local-api project room endpoints,
-- `clash room say/read`,
-- web room hook behavior in local mode.
+- legacy local-api project room endpoints,
+- local-first CLI registration,
+- web room copy that referenced removed CLI commands,
+- hosted/cloud room routes remain intact.
 
 Implementation:
 
-- Implement local `/api/v1/projects/:pid/room/messages`.
-- Store room messages in SQLite.
-- Keep room separate from raw ACP traces.
-- Route mentions to local ACP sessions where supported.
+- Return 404 for legacy local `/api/v1/projects/:pid/room/*` routes.
+- Remove local-first CLI room command registration and source.
+- Keep raw ACP traces in session/runtime stores.
+- Keep cloud/shared room compatibility out of the local-first default path.
 
 Acceptance:
 
-- `clash room say/read` works in local-only project.
-- Room survives local-api restart.
-- Room messages can later sync to cloud.
+- Local-first CLI does not register room.
+- Local-api read/write/sync/recovery room paths return 404.
+- Web copy does not point users to removed room CLI commands.
 - Raw ACP trace is not dumped into room.
 
 Current status:
 
-- Local API implements SQLite-backed room POST/GET.
-- Room survives local-api restart and does not dump raw ACP trace.
-- Agent sender spoofing is rejected.
-- Agent-member-only mentions are preserved and dispatched best-effort to local
-  ACP sessions.
-- Room POST success and validation/conflict rejections now return the shared
-  host mutation envelope with `operation: "room_message_create"` while keeping
-  the public room DTO and sync marker fields.
-- Same project/id room replays are idempotent only when normalized sender, text,
-  and mentions match; conflicting content is rejected before the original row can
-  be overwritten.
-- Cloud room POST now uses the same same-project/id replay rule, so local-to-cloud
-  mirroring cannot silently turn a client id into an overwrite handle.
-- `apps/local-api/src/room-sync.ts` now exposes a deterministic room mirror
-  planner: local-only messages export oldest-first, remote-only messages import
-  oldest-first, identical same-id rows are treated as already mirrored, and
-  same-id content differences surface as conflicts without planning an overwrite.
-- Room responses include `sync.remote_room.enabled=false` until remote room
-  sync is explicitly implemented.
-- CLI maps 404 to a generic missing-room-API message for older local-api/cloud
-  targets.
-- `apps/local-api/src/room-cli.e2e.test.ts` now starts a real local-api HTTP
-  server and drives `clash room say/read` through a spawned CLI process, proving
-  the agent-facing command path can post/read local-only room messages and see
-  the response-level sync metadata.
-- Local-api exposes explicit `POST /api/v1/projects/:projectId/room/sync`, and
-  `clash room sync --json` gives agents an auditable mirror action. Cloud
-  configured reads report room sync as `pending`; explicit action results can
-  report `mirrored` or `failed`.
-- Explicit room sync now has a mirror admission gate: a configured remote URL is
-  not enough; `capabilities.room=true` must be present before local-api returns
-  a remote room adapter or lets `POST /room/sync` touch the network. Without it,
-  the action returns `room-sync-capability-not-ready` with `requirements:
-  ["room"]`.
+- Local-first CLI no longer registers `room`.
+- Local-api installs a 404 gate for legacy room paths and removes the local route
+  bodies.
+- The old room CLI source, tests, and local loopback E2E were deleted.
+- `GroupChatPanel` no longer renders removed room CLI recovery commands.
 
 Remaining gap:
 
-- Background room sync, broader admission policy controls, conflict recovery UI,
-  and live room UI parity are still incomplete.
+- Local SQLite room tables have been removed from the v1 local metadata/doctor
+  contract; hosted/cloud room compatibility should not depend on them.
+- Hosted/cloud room compatibility should be tested separately from local-first
+  CLI/API behavior.
 
 Minimum tests:
 
-- local room POST/GET
-- mention shape validation
-- restart persistence
-- local ACP mention dispatch
-- same-second pagination and duplicate-id idempotency/conflict rejection
-- cloud route duplicate-id idempotency/conflict parity
-- deterministic room mirror planning for import/export/conflict classification
-- spawned CLI `room say/read` against a real local-api loopback server
+- local legacy room read/write/sync/recovery endpoints return 404
+- local-first CLI does not register `room`
+- agent templates do not instruct agents to call the removed legacy room CLI
+- cloud route duplicate-id idempotency/conflict parity remains hosted-side
 
 ### P1-02: Real Codex ACP cwd verification
 
@@ -1061,7 +1029,7 @@ Current status:
   deleted local recovery point after `confirm: "purge"`; it rejects active
   projects, defaults to a 7-day purge delay, accepts explicit `--force` admin
   purge, requires a deleted-project receipt for agent callers, removes
-  project-scoped sessions/messages/room rows/asset refs and the canonical Loro
+  project-scoped sessions/messages/asset refs and the canonical Loro
   replica, clears project ownership from retained immutable asset rows, and
   leaves retained asset blobs/rows for asset GC.
 - CLI `clash project purge <projectId> --yes --if-match <readToken>` exposes the
@@ -1245,7 +1213,7 @@ Acceptance:
 
 - UI and CLI show correct mode.
 - Local-only is not web-openable.
-- Synced means canvas, room, and required asset metadata have a real sync path.
+- Synced means canvas, asset metadata, and revision content have real sync paths.
 - Shared means cloud ProjectRoom sequencing and permissions are active.
 
 ### P2-02: Project export/import
@@ -1263,7 +1231,7 @@ Critical path:
 
 ```text
 SQLite store
-  -> local room persistence
+  -> project/session/asset metadata
   -> project mode/status
 
 Projection CAS library
@@ -1279,8 +1247,8 @@ Storage layout guardrails
 
 Do not implement text projection without CAS.
 Do not implement asset editing without copy-on-write.
-Do not present `remote_room.status=pending` as synced; room mirroring must stay
-an explicit action until background admission and conflict recovery are real.
+Do not present hosted/cloud room state as local sync readiness; local v1 has no
+local room mirror path.
 
 ## Done Criteria For v1 Local/Agent-First
 
@@ -1293,7 +1261,7 @@ v1 local/agent-first is credible when:
 - timeline and text can be edited through normal files and applied with CAS,
 - text/assets feeding materialized downstream state are copy-on-write,
 - local custom actions use local runtime auth, not action secrets,
-- local room messages are persisted locally,
-- cloud-only vars and room sync are not presented as local defaults,
+- legacy local room endpoints and CLI commands are absent,
+- cloud-only vars and hosted room are not presented as local defaults,
 - black-box agent E2E covers project creation, restoration, projection edit,
   stale conflict, generation, and timeline edit.

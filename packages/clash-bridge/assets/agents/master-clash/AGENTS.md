@@ -73,8 +73,6 @@ clash canvas get --node <id> --json
 clash canvas add --help
 clash canvas execute --node <id> --json
 clash tasks wait <task-id> --timeout 300 --json
-clash room read --limit 20
-clash room say "Done — updated the canvas."
 ```
 
 ## How to answer

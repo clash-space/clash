@@ -41,12 +41,6 @@ const expectedSyncMirrorPolicy = {
     source: "loro-canvas-replica",
     conflictPolicy: "loro-crdt",
   },
-  room: {
-    requirement: "room",
-    source: "sqlite-room-messages",
-    conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
-    rawAgentTrace: false,
-  },
   assetMetadata: {
     requirement: "asset-metadata",
     source: "sqlite-asset-indexes",
@@ -169,8 +163,8 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "disabled",
         ready: false,
-        required: ["canvas", "room", "asset-metadata", "revision-content"],
-        missing: ["canvas", "room", "asset-metadata", "revision-content"],
+        required: ["canvas", "asset-metadata", "revision-content"],
+        missing: ["canvas", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
@@ -449,7 +443,7 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "disabled",
         ready: false,
-        missing: ["canvas", "room", "asset-metadata", "revision-content"],
+        missing: ["canvas", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
@@ -487,13 +481,13 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "pending",
         ready: false,
-        missing: ["canvas", "room", "asset-metadata", "revision-content"],
+        missing: ["canvas", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+          requirements: ["canvas", "asset-metadata", "revision-content"],
         },
         enableSync: {
           allowed: false,
@@ -503,7 +497,7 @@ describe("project status path builder", () => {
         shareProject: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+          requirements: ["canvas", "asset-metadata", "revision-content"],
         },
         runLocalAgent: {
           allowed: true,
@@ -566,7 +560,6 @@ describe("project status path builder", () => {
             mode: "cloud-sync",
             capabilities: {
               canvas: true,
-              room: true,
               assetMetadata: true,
               revisionContent: true,
             },
@@ -629,7 +622,7 @@ describe("project status path builder", () => {
     });
   });
 
-  it("keeps cloud-sync pending until canvas, room, and asset metadata sync are all ready", () => {
+  it("keeps cloud-sync pending until canvas, asset metadata, and revision content sync are all ready", () => {
     const pending = buildProjectStatus(
       { projectId: "project-synced", source: "explicit" },
       { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "cloud-sync" } } },
@@ -643,7 +636,6 @@ describe("project status path builder", () => {
             mode: "cloud-sync",
             capabilities: {
               canvas: true,
-              room: true,
               assetMetadata: true,
               revisionContent: true,
             },
@@ -659,18 +651,18 @@ describe("project status path builder", () => {
       syncReadiness: {
         status: "pending",
         ready: false,
-        missing: ["canvas", "room", "asset-metadata", "revision-content"],
+        missing: ["canvas", "asset-metadata", "revision-content"],
       },
       actions: {
         openInWeb: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+          requirements: ["canvas", "asset-metadata", "revision-content"],
         },
         shareProject: {
           allowed: false,
           reason: "cloud-sync-not-ready",
-          requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+          requirements: ["canvas", "asset-metadata", "revision-content"],
         },
       },
     });
@@ -708,7 +700,6 @@ describe("project status path builder", () => {
             mode: "cloud-sync",
             capabilities: {
               canvas: true,
-              room: true,
               assetMetadata: true,
             },
           },
@@ -724,7 +715,6 @@ describe("project status path builder", () => {
             mode: "cloud-sync",
             capabilities: {
               canvas: true,
-              room: true,
               assetMetadata: true,
               revisionContent: true,
             },
@@ -777,7 +767,6 @@ describe("project status path builder", () => {
             mode: "cloud-sync",
             capabilities: {
               canvas: true,
-              room: true,
               assetMetadata: true,
               revisionContent: true,
             },

@@ -118,7 +118,6 @@ function createPartialRouteMigrationSqlite(targetDataDir) {
         id TEXT NOT NULL,
         PRIMARY KEY (session_id, id)
       );
-      CREATE TABLE room_message (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE mutation_audit (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE provider_accounts (
         user_id TEXT NOT NULL,
@@ -189,6 +188,7 @@ async function main() {
   const {
     deleteAssetProjectRef,
     fetchAssetProjectRef,
+    fetchAssetReferences,
     fetchAssetRecord,
     updateAssetCover,
     runAssetGarbageCollection,
@@ -2502,18 +2502,52 @@ async function main() {
 	    JSON.stringify(assetRefDeleteAudit),
 	  );
 
+  await expectRejected(
+    "asset reference refresh without prior asset read is rejected",
+    () =>
+      fetchAssetReferences({
+        assetId,
+        projectId,
+        refresh: true,
+        env: agentEnv,
+        request,
+      }),
+    ["Missing asset references refresh read proof for agent", "clash asset get --asset"],
+  );
+
+  await expectRejected(
+    "asset reference refresh with bare CAS token is rejected",
+    () =>
+      fetchAssetReferences({
+        assetId,
+        projectId,
+        refresh: true,
+        ifMatch: baseReadToken(currentAsset.readToken),
+        env: agentEnv,
+        request,
+      }),
+    ["Missing asset references refresh read receipt for agent", "clash asset get --asset"],
+  );
+
 	  const refreshedAssetReferencesResponse = await request(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
 	    method: "POST",
-      headers: { "x-clash-client-type": "agent" },
+      headers: {
+        "x-clash-client-type": "agent",
+        "x-clash-if-match": currentAsset.readToken,
+      },
 	    body: JSON.stringify({ projectIds: [projectId] }),
 	  });
 	  const refreshedAssetReferences = await parseJsonResponse(refreshedAssetReferencesResponse);
 	  recordCheck(
-	    "asset reference refresh returns host mutation record",
+	    "asset reference refresh with asset receipt is accepted",
 	    refreshedAssetReferencesResponse.status === 200 &&
 	      refreshedAssetReferences.refreshed === true &&
+        refreshedAssetReferences.readToken === currentAsset.readToken &&
 	      refreshedAssetReferences.mutation?.operation === "asset_references_refresh" &&
 	      refreshedAssetReferences.mutation?.entity?.id === assetId &&
+        refreshedAssetReferences.mutation?.expectedReadToken === currentAsset.readToken &&
+        refreshedAssetReferences.mutation?.beforeReadToken === baseReadToken(currentAsset.readToken) &&
+        refreshedAssetReferences.mutation?.afterReadToken === currentAsset.readToken &&
 	      refreshedAssetReferences.mutation?.accepted === true,
 	    JSON.stringify(refreshedAssetReferences),
 	    { mutation: refreshedAssetReferences.mutation },
@@ -3565,387 +3599,42 @@ async function main() {
 	    { mutation: acceptedRuntimeAttachJson.mutation },
 	  );
 
-	  const firstRoomMessageResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/messages`, {
+	  const legacyRoomReadResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/messages`);
+	  const legacyRoomRead = await parseJsonResponse(legacyRoomReadResponse);
+	  recordCheck(
+	    "legacy local room read endpoint is removed",
+	    legacyRoomReadResponse.status === 404 && legacyRoomRead.error === "not found",
+	    JSON.stringify(legacyRoomRead),
+	  );
+
+	  const legacyRoomWriteResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/messages`, {
 	    method: "POST",
 	    body: JSON.stringify({
 	      id: "room-message-replay-smoke",
-	      text: "first local room message",
+	      text: "legacy local room write should be removed",
 	    }),
 	  });
-	  const firstRoomMessage = await parseJsonResponse(firstRoomMessageResponse);
+	  const legacyRoomWrite = await parseJsonResponse(legacyRoomWriteResponse);
 	  recordCheck(
-	    "local room message create accepts first client id",
-	    firstRoomMessageResponse.status === 200 &&
-	      firstRoomMessage.id === "room-message-replay-smoke" &&
-	      firstRoomMessage.text === "first local room message" &&
-	      firstRoomMessage.mutation?.accepted === true,
-	    JSON.stringify(firstRoomMessage),
-	    { mutation: firstRoomMessage.mutation },
-	  );
-	  const localRoomMessageAuditResponse = await request("/api/v1/mutation-audit?operation=room_message_create&entityId=room-message-replay-smoke");
-	  const localRoomMessageAudit = await parseJsonResponse(localRoomMessageAuditResponse);
-	  const localRoomMessageAuditRecord = localRoomMessageAudit.records?.[0];
-	  recordCheck(
-	    "local room message create writes sanitized local mutation audit evidence",
-	    localRoomMessageAuditResponse.status === 200 &&
-	      localRoomMessageAudit.records?.length === 1 &&
-	      localRoomMessageAuditRecord.operation === "room_message_create" &&
-	      localRoomMessageAuditRecord.entity?.id === "room-message-replay-smoke" &&
-	      localRoomMessageAuditRecord.accepted === true &&
-	      localRoomMessageAuditRecord.actorClientType == null &&
-	      localRoomMessageAuditRecord.reason === "local room message create" &&
-	      mutationAuditRecordsHaveNoReadTokens(localRoomMessageAudit.records),
-	    JSON.stringify(localRoomMessageAudit),
-	    { mutation: firstRoomMessage.mutation },
+	    "legacy local room write endpoint is removed",
+	    legacyRoomWriteResponse.status === 404 && legacyRoomWrite.error === "not found",
+	    JSON.stringify(legacyRoomWrite),
 	  );
 
-	  const conflictingRoomMessageResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/messages`, {
-	    method: "POST",
-	    body: JSON.stringify({
-	      id: "room-message-replay-smoke",
-	      text: "second conflicting local room message",
-	    }),
-	  });
-	  const conflictingRoomMessage = await parseJsonResponse(conflictingRoomMessageResponse);
-	  recordCheck(
-	    "local room message id replay with different content is rejected",
-	    conflictingRoomMessageResponse.status === 409 &&
-	      /room message id already exists with different content/.test(conflictingRoomMessage.error ?? "") &&
-	      conflictingRoomMessage.mutation?.accepted === false,
-	    JSON.stringify(conflictingRoomMessage),
-	    { mutation: conflictingRoomMessage.mutation },
-	  );
-
-	  const roomMessagesResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/messages`);
-	  const roomMessages = await parseJsonResponse(roomMessagesResponse);
-	  recordCheck(
-	    "local room message conflict preserves original content",
-	    roomMessagesResponse.status === 200 &&
-	      roomMessages.messages?.some((message) =>
-	        message.id === "room-message-replay-smoke" &&
-	        message.text === "first local room message"
-	      ) &&
-	      !roomMessages.messages?.some((message) =>
-	        message.id === "room-message-replay-smoke" &&
-	        message.text === "second conflicting local room message"
-	      ),
-	    JSON.stringify(roomMessages),
-	  );
-
-	  const missingProjectRoomSyncResponse = await request("/api/v1/projects/missing-project/room/sync", {
+	  const legacyRoomSyncResponse = await request(`/api/v1/projects/${encodeURIComponent(sessionProject.id)}/room/sync`, {
 	    method: "POST",
 	  });
-	  const missingProjectRoomSync = await parseJsonResponse(missingProjectRoomSyncResponse);
+	  const legacyRoomSync = await parseJsonResponse(legacyRoomSyncResponse);
 	  recordCheck(
-	    "room sync checks project existence before remote admission",
-	    missingProjectRoomSyncResponse.status === 404 &&
-	      missingProjectRoomSync.error === "not found" &&
-	      missingProjectRoomSync.mutation?.accepted === false &&
-	      missingProjectRoomSync.mutation?.error === "not found",
-	    JSON.stringify(missingProjectRoomSync),
-	    { mutation: missingProjectRoomSync.mutation },
-	  );
-
-	  const localOnlyRoomDataDir = path.join(artifactRoot, "local-only-room-data");
-	  await mkdir(localOnlyRoomDataDir, { recursive: true });
-	  const localOnlyRoomApp = createLocalApiApp({
-	    dataDir: localOnlyRoomDataDir,
-	    userId: "asset-receipt-smoke-user",
-	  });
-	  const localOnlyRoomRequest = appRequest(localOnlyRoomApp);
-	  const localOnlyRoomProjectResponse = await localOnlyRoomRequest("/api/v1/projects", {
-	    method: "POST",
-	    body: JSON.stringify({ name: "Local-only room admission smoke" }),
-	  });
-	  const localOnlyRoomProject = await parseJsonResponse(localOnlyRoomProjectResponse);
-	  const localOnlyRoomSyncResponse = await localOnlyRoomRequest(`/api/v1/projects/${encodeURIComponent(localOnlyRoomProject.id)}/room/sync`, {
-	    method: "POST",
-	  });
-	  const localOnlyRoomSync = await parseJsonResponse(localOnlyRoomSyncResponse);
-	  recordCheck(
-	    "local-only room sync returns explicit admission gate",
-	    localOnlyRoomSyncResponse.status === 409 &&
-	      localOnlyRoomSync.error === "remote room sync is not configured" &&
-	      localOnlyRoomSync.admission?.allowed === false &&
-	      localOnlyRoomSync.admission?.reason === "remote-room-not-configured" &&
-	      localOnlyRoomSync.admission?.requirements?.includes("enable-sync") === true &&
-	      localOnlyRoomSync.sync?.mode === "local-only" &&
-	      localOnlyRoomSync.sync?.remote_room?.status === "disabled" &&
-	      localOnlyRoomSync.mutation?.accepted === false,
-	    JSON.stringify(localOnlyRoomSync),
-	    { mutation: localOnlyRoomSync.mutation },
-	  );
-
-	  const acceptedRoomSyncDataDir = path.join(artifactRoot, "accepted-room-sync-data");
-	  await mkdir(acceptedRoomSyncDataDir, { recursive: true });
-	  const remoteRoomRequests = [];
-	  const acceptedRoomSyncConfig = createLocalSyncConfigStore({
-	    dataDir: acceptedRoomSyncDataDir,
-	    env: {},
-	    fetch: async (input, init = {}) => {
-	      const headers = new Headers(init.headers);
-	      remoteRoomRequests.push({
-	        input,
-	        method: init.method ?? "GET",
-	        authorization: headers.get("authorization"),
-	        body: init.body ? String(init.body) : "",
-	      });
-	      if (!init.method || init.method === "GET") {
-	        return new Response(JSON.stringify({
-	          messages: [
-	            {
-	              id: "remote-room-sync-smoke",
-	              project_id: "ignored-by-local-api",
-	              sender_kind: "user",
-	              sender_id: "remote-user",
-	              sender_user_id: "remote-user",
-	              mentions: [],
-	              text: "remote room sync smoke",
-	              at: 1_700_000_100,
-	            },
-	          ],
-	        }), { headers: { "content-type": "application/json" } });
-	      }
-	      if (init.method === "POST") {
-	        return new Response(JSON.stringify({ ok: true }), {
-	          status: 201,
-	          headers: { "content-type": "application/json" },
-	        });
-	      }
-	      return new Response("unexpected room sync method", { status: 500 });
-	    },
-	  });
-	  await acceptedRoomSyncConfig.updateFromRequest({
-	    mode: "cloud-sync",
-	    remote_loro_url: "https://room-sync.example",
-	    remote_loro_token: "room-token",
-	    capabilities: { room: true },
-	  });
-	  const acceptedRoomSyncApp = createLocalApiApp({
-	    dataDir: acceptedRoomSyncDataDir,
-	    userId: "asset-receipt-smoke-user",
-	    syncConfig: acceptedRoomSyncConfig,
-	  });
-	  const acceptedRoomRequest = appRequest(acceptedRoomSyncApp);
-	  const acceptedRoomProjectResponse = await acceptedRoomRequest("/api/v1/projects", {
-	    method: "POST",
-	    body: JSON.stringify({ name: "Accepted Room Sync Smoke" }),
-	  });
-	  const acceptedRoomProject = await parseJsonResponse(acceptedRoomProjectResponse);
-	  const acceptedLocalRoomMessageResponse = await acceptedRoomRequest(`/api/v1/projects/${encodeURIComponent(acceptedRoomProject.id)}/room/messages`, {
-	    method: "POST",
-	    body: JSON.stringify({
-	      id: "local-room-sync-smoke",
-	      text: "local room sync smoke",
-	    }),
-	  });
-	  const acceptedLocalRoomMessage = await parseJsonResponse(acceptedLocalRoomMessageResponse);
-	  const acceptedRoomSyncResponse = await acceptedRoomRequest(`/api/v1/projects/${encodeURIComponent(acceptedRoomProject.id)}/room/sync`, {
-	    method: "POST",
-	  });
-	  const acceptedRoomSync = await parseJsonResponse(acceptedRoomSyncResponse);
-	  recordCheck(
-	    "room sync mirrors local and remote messages through explicit action",
-	    acceptedRoomProjectResponse.status === 201 &&
-	      acceptedLocalRoomMessageResponse.status === 200 &&
-	      acceptedLocalRoomMessage.mutation?.accepted === true &&
-	      acceptedRoomSyncResponse.status === 200 &&
-	      acceptedRoomSync.mutation?.operation === "room_sync" &&
-	      acceptedRoomSync.mutation?.accepted === true &&
-	      acceptedRoomSync.plan?.exportedIds?.includes("local-room-sync-smoke") === true &&
-	      acceptedRoomSync.plan?.importedIds?.includes("remote-room-sync-smoke") === true &&
-	      remoteRoomRequests.some((request) =>
-	        request.method === "POST" &&
-	        request.authorization === "Bearer room-token" &&
-	        request.body.includes("local room sync smoke")
-	      ),
-	    JSON.stringify({ acceptedRoomSync, remoteRoomRequests }),
-	    { mutation: acceptedRoomSync.mutation },
-	  );
-	  recordCheck(
-	    "room sync exposes raw trace local-only admission policy",
-	    acceptedRoomSync.sync?.trace_policy?.room_messages?.rawAgentTrace === false &&
-	      acceptedRoomSync.sync?.trace_policy?.room_messages?.syncDefault === "sync-when-project-sync-enabled" &&
-	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.syncDefault === "local-only" &&
-	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.excludedFromRoom === true &&
-	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.syncAdmission?.allowed === false &&
-	      acceptedRoomSync.sync?.trace_policy?.raw_agent_traces?.syncAdmission?.requirements?.includes("user-opt-in-or-team-policy") === true,
-	    JSON.stringify(acceptedRoomSync.sync?.trace_policy),
-	  );
-	  const acceptedRoomSyncAuditResponse = await acceptedRoomRequest(`/api/v1/mutation-audit?operation=room_sync&entityId=${encodeURIComponent(acceptedRoomProject.id)}`);
-	  const acceptedRoomSyncAudit = await parseJsonResponse(acceptedRoomSyncAuditResponse);
-	  const acceptedRoomSyncAuditRecord = acceptedRoomSyncAudit.records?.[0];
-	  recordCheck(
-	    "room sync writes sanitized local mutation audit evidence",
-	    acceptedRoomSyncAuditResponse.status === 200 &&
-	      acceptedRoomSyncAudit.records?.length === 1 &&
-	      acceptedRoomSyncAuditRecord.operation === "room_sync" &&
-	      acceptedRoomSyncAuditRecord.entity?.id === acceptedRoomProject.id &&
-	      acceptedRoomSyncAuditRecord.entity?.kind === "room" &&
-	      acceptedRoomSyncAuditRecord.accepted === true &&
-	      acceptedRoomSyncAuditRecord.reason === "room sync" &&
-	      mutationAuditRecordsHaveNoReadTokens(acceptedRoomSyncAudit.records),
-	    JSON.stringify(acceptedRoomSyncAudit),
-	    { mutation: acceptedRoomSync.mutation },
-	  );
-
-	  const conflictRoomDataDir = path.join(artifactRoot, "conflict-room-sync-data");
-	  await mkdir(conflictRoomDataDir, { recursive: true });
-	  const conflictRoomSyncConfig = createLocalSyncConfigStore({
-	    dataDir: conflictRoomDataDir,
-	    env: {},
-	    fetch: async (_input, init = {}) => {
-	      if (!init.method || init.method === "GET") {
-	        return new Response(JSON.stringify({
-	          messages: [
-	            {
-	              id: "room-sync-conflict-smoke",
-	              project_id: "ignored-by-local-api",
-	              sender_kind: "user",
-	              sender_id: "remote-user",
-	              sender_user_id: "remote-user",
-	              mentions: [],
-	              text: "remote room conflict text",
-	              at: 1_700_000_300,
-	            },
-	          ],
-	        }), { headers: { "content-type": "application/json" } });
-	      }
-	      return new Response("unexpected remote conflict write", { status: 500 });
-	    },
-	  });
-	  await conflictRoomSyncConfig.updateFromRequest({
-	    mode: "cloud-sync",
-	    remote_loro_url: "https://room-sync-conflict.example",
-	    remote_loro_token: "room-conflict-token",
-	    capabilities: { room: true },
-	  });
-	  const conflictRoomApp = createLocalApiApp({
-	    dataDir: conflictRoomDataDir,
-	    userId: "asset-receipt-smoke-user",
-	    syncConfig: conflictRoomSyncConfig,
-	  });
-	  const conflictRoomRequest = appRequest(conflictRoomApp);
-	  const conflictRoomProjectResponse = await conflictRoomRequest("/api/v1/projects", {
-	    method: "POST",
-	    body: JSON.stringify({ name: "Room Sync Conflict Smoke" }),
-	  });
-	  const conflictRoomProject = await parseJsonResponse(conflictRoomProjectResponse);
-	  await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/messages`, {
-	    method: "POST",
-	    body: JSON.stringify({
-	      id: "room-sync-conflict-smoke",
-	      text: "local room conflict text",
-	    }),
-	  });
-	  const conflictedRoomSyncResponse = await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync`, {
-	    method: "POST",
-	  });
-	  const conflictedRoomSync = await parseJsonResponse(conflictedRoomSyncResponse);
-	  const roomConflict = conflictedRoomSync.plan?.conflicts?.[0];
-	  recordCheck(
-	    "room sync conflict exposes local and remote hashes without overwrite",
-	    conflictedRoomSyncResponse.status === 409 &&
-	      conflictedRoomSync.error === "room sync conflict" &&
-	      roomConflict?.id === "room-sync-conflict-smoke" &&
-	      roomConflict?.local?.text === "local room conflict text" &&
-	      roomConflict?.remote?.text === "remote room conflict text" &&
-	      typeof roomConflict?.local?.contentHash === "string" &&
-	      typeof roomConflict?.remote?.contentHash === "string" &&
-	      conflictedRoomSync.mutation?.operation === "room_sync" &&
-	      conflictedRoomSync.mutation?.accepted === false,
-	    JSON.stringify(conflictedRoomSync),
-	    { mutation: conflictedRoomSync.mutation },
-	  );
-	  const staleConflictResolutionResponse = await conflictRoomRequest(
-	    `/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync/conflicts/room-sync-conflict-smoke/resolve`,
-	    {
-	      method: "POST",
-	      body: JSON.stringify({
-	        resolution: "accept-divergence",
-	        localContentHash: "stale-local-hash",
-	        remoteContentHash: roomConflict?.remote?.contentHash,
-	      }),
-	    },
-	  );
-	  const staleConflictResolution = await parseJsonResponse(staleConflictResolutionResponse);
-	  recordCheck(
-	    "room sync conflict recovery rejects stale hashes",
-	    staleConflictResolutionResponse.status === 409 &&
-	      staleConflictResolution.error === "stale room sync conflict resolution" &&
-	      staleConflictResolution.mutation?.operation === "room_sync_conflict_resolve" &&
-	      staleConflictResolution.mutation?.accepted === false,
-	    JSON.stringify(staleConflictResolution),
-	    { mutation: staleConflictResolution.mutation },
-	  );
-	  const acceptedConflictResolutionResponse = await conflictRoomRequest(
-	    `/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync/conflicts/room-sync-conflict-smoke/resolve`,
-	    {
-	      method: "POST",
-	      body: JSON.stringify({
-	        resolution: "accept-divergence",
-	        localContentHash: roomConflict?.local?.contentHash,
-	        remoteContentHash: roomConflict?.remote?.contentHash,
-	      }),
-	    },
-	  );
-	  const acceptedConflictResolution = await parseJsonResponse(acceptedConflictResolutionResponse);
-	  recordCheck(
-	    "room sync conflict recovery accepts inspected divergence",
-	    acceptedConflictResolutionResponse.status === 200 &&
-	      acceptedConflictResolution.resolution?.strategy === "accept-divergence" &&
-	      acceptedConflictResolution.resolution?.message_id === "room-sync-conflict-smoke" &&
-	      acceptedConflictResolution.mutation?.operation === "room_sync_conflict_resolve" &&
-	      acceptedConflictResolution.mutation?.accepted === true &&
-	      acceptedConflictResolution.mutation?.resultEntityId === "room-sync-conflict-smoke",
-	    JSON.stringify(acceptedConflictResolution),
-	    { mutation: acceptedConflictResolution.mutation },
-	  );
-	  const resumedConflictRoomSyncResponse = await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/sync`, {
-	    method: "POST",
-	  });
-	  const resumedConflictRoomSync = await parseJsonResponse(resumedConflictRoomSyncResponse);
-	  const conflictRoomMessagesResponse = await conflictRoomRequest(`/api/v1/projects/${encodeURIComponent(conflictRoomProject.id)}/room/messages`);
-	  const conflictRoomMessages = await parseJsonResponse(conflictRoomMessagesResponse);
-	  recordCheck(
-	    "room sync conflict recovery preserves local divergence",
-	    resumedConflictRoomSyncResponse.status === 200 &&
-	      resumedConflictRoomSync.plan?.resolvedConflictIds?.includes("room-sync-conflict-smoke") === true &&
-	      resumedConflictRoomSync.plan?.conflicts?.length === 0 &&
-	      resumedConflictRoomSync.mutation?.operation === "room_sync" &&
-	      resumedConflictRoomSync.mutation?.accepted === true &&
-	      conflictRoomMessages.messages?.some((message) =>
-	        message.id === "room-sync-conflict-smoke" &&
-	        message.text === "local room conflict text"
-	      ) &&
-	      !conflictRoomMessages.messages?.some((message) =>
-	        message.id === "room-sync-conflict-smoke" &&
-	        message.text === "remote room conflict text"
-	      ),
-	    JSON.stringify({ resumedConflictRoomSync, conflictRoomMessages }),
-	    { mutation: resumedConflictRoomSync.mutation },
-	  );
-	  const conflictResolutionEntityId = `${conflictRoomProject.id}:room-sync-conflict-smoke`;
-	  const conflictResolutionAuditResponse = await conflictRoomRequest(`/api/v1/mutation-audit?operation=room_sync_conflict_resolve&entityId=${encodeURIComponent(conflictResolutionEntityId)}`);
-	  const conflictResolutionAudit = await parseJsonResponse(conflictResolutionAuditResponse);
-	  const conflictResolutionAuditRecord = conflictResolutionAudit.records?.[0];
-	  recordCheck(
-	    "room sync conflict recovery writes sanitized audit evidence",
-	    conflictResolutionAuditResponse.status === 200 &&
-	      conflictResolutionAudit.records?.length === 1 &&
-	      conflictResolutionAuditRecord.operation === "room_sync_conflict_resolve" &&
-	      conflictResolutionAuditRecord.entity?.id === conflictResolutionEntityId &&
-	      conflictResolutionAuditRecord.accepted === true &&
-	      conflictResolutionAuditRecord.reason === "room sync conflict accepted as divergence" &&
-	      mutationAuditRecordsHaveNoReadTokens(conflictResolutionAudit.records),
-	    JSON.stringify(conflictResolutionAudit),
-	    { mutation: acceptedConflictResolution.mutation },
+	    "legacy local room sync endpoint is removed",
+	    legacyRoomSyncResponse.status === 404 && legacyRoomSync.error === "not found",
+	    JSON.stringify(legacyRoomSync),
 	  );
 
 	  const report = {
 	    schemaVersion: 1,
 	    status: "pass",
-	    summary: "Local sync/audio/runtime/provider config, derived agent read views, provider model test actions, local audio transcription actions, asset metadata/ref/GC, asset reference metadata refresh, project delete/restore/purge, local session agent writes/attach, and local room id replays/admission require host-side read/idempotency proofs, read-only metadata views, explicit gates, or host mutation records.",
+	    summary: "Local sync/audio/runtime/provider config, derived agent read views, provider model test actions, local audio transcription actions, asset metadata/ref/GC, asset reference metadata refresh, project delete/restore/purge, local session agent writes/attach, and removed legacy room endpoints require host-side read/idempotency proofs, read-only metadata views, explicit gates, or host mutation records.",
     run: {
       artifactRoot,
       dataDir,
@@ -4001,11 +3690,11 @@ async function main() {
       runtimeAttachSessionId: runtimeSession.session_id,
       runtimeAttachReadToken: runtimeHistory.readToken,
     },
-    room: {
+    removedLegacyRoom: {
       projectId: sessionProject.id,
-      messageId: firstRoomMessage.id,
-      localOnlyProjectId: localOnlyRoomProject.id,
-      localOnlyAdmissionReason: localOnlyRoomSync.admission?.reason,
+      readStatus: legacyRoomReadResponse.status,
+      writeStatus: legacyRoomWriteResponse.status,
+      syncStatus: legacyRoomSyncResponse.status,
     },
     projectRestore: {
       projectId: restoreProject.id,
@@ -4036,7 +3725,9 @@ async function main() {
 	      assetRefBareCasRejected: checks.some((check) => check.name === "asset ref delete with bare CAS token is rejected" && check.status === "pass"),
 	      assetRefReceiptAccepted: checks.some((check) => check.name === "asset ref delete with receipt read token is accepted" && check.status === "pass"),
 	      assetRefDeleteAuditRecorded: checks.some((check) => check.name === "asset ref delete writes sanitized local mutation audit evidence" && check.status === "pass"),
-	      assetReferenceRefreshMutationRecorded: checks.some((check) => check.name === "asset reference refresh returns host mutation record" && check.status === "pass"),
+	      assetReferenceRefreshMissingReadRejected: checks.some((check) => check.name === "asset reference refresh without prior asset read is rejected" && check.status === "pass"),
+	      assetReferenceRefreshBareCasRejected: checks.some((check) => check.name === "asset reference refresh with bare CAS token is rejected" && check.status === "pass"),
+	      assetReferenceRefreshReceiptAccepted: checks.some((check) => check.name === "asset reference refresh with asset receipt is accepted" && check.status === "pass"),
       assetReferenceRefreshAuditRecorded: checks.some((check) => check.name === "asset reference refresh writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      assetGcDryRunReceiptReturned: checks.some((check) => check.name === "asset GC dry-run returns receipt read token" && check.status === "pass"),
       assetGcMissingDryRunRejected: checks.some((check) => check.name === "asset GC delete without prior dry-run is rejected" && check.status === "pass"),
@@ -4184,20 +3875,9 @@ async function main() {
 	      runtimeSessionAttachReceiptAccepted: checks.some((check) => check.name === "runtime session attach with receipt read token is accepted" && check.status === "pass"),
 	      runtimeSessionCreateAuditRecorded: checks.some((check) => check.name === "runtime session create writes sanitized local mutation audit evidence" && check.status === "pass"),
 	      runtimeSessionAttachAuditRecorded: checks.some((check) => check.name === "runtime session attach writes sanitized local mutation audit evidence" && check.status === "pass"),
-	      localRoomMessageCreateAccepted: checks.some((check) => check.name === "local room message create accepts first client id" && check.status === "pass"),
-	      localRoomMessageCreateAuditRecorded: checks.some((check) => check.name === "local room message create writes sanitized local mutation audit evidence" && check.status === "pass"),
-	      localRoomMessageConflictRejected: checks.some((check) => check.name === "local room message id replay with different content is rejected" && check.status === "pass"),
-	      localRoomMessageOriginalPreserved: checks.some((check) => check.name === "local room message conflict preserves original content" && check.status === "pass"),
-	      roomSyncMissingProjectFirst: checks.some((check) => check.name === "room sync checks project existence before remote admission" && check.status === "pass"),
-	      roomSyncLocalOnlyAdmissionReturned: checks.some((check) => check.name === "local-only room sync returns explicit admission gate" && check.status === "pass"),
-	      roomSyncExplicitMirrorAccepted: checks.some((check) => check.name === "room sync mirrors local and remote messages through explicit action" && check.status === "pass"),
-	      roomSyncTracePolicyReturned: checks.some((check) => check.name === "room sync exposes raw trace local-only admission policy" && check.status === "pass"),
-	      roomSyncAuditRecorded: checks.some((check) => check.name === "room sync writes sanitized local mutation audit evidence" && check.status === "pass"),
-	      roomSyncConflictExposed: checks.some((check) => check.name === "room sync conflict exposes local and remote hashes without overwrite" && check.status === "pass"),
-	      roomSyncConflictStaleResolveRejected: checks.some((check) => check.name === "room sync conflict recovery rejects stale hashes" && check.status === "pass"),
-	      roomSyncConflictDivergenceAccepted: checks.some((check) => check.name === "room sync conflict recovery accepts inspected divergence" && check.status === "pass"),
-	      roomSyncConflictLocalDivergencePreserved: checks.some((check) => check.name === "room sync conflict recovery preserves local divergence" && check.status === "pass"),
-	      roomSyncConflictResolutionAuditRecorded: checks.some((check) => check.name === "room sync conflict recovery writes sanitized audit evidence" && check.status === "pass"),
+	      legacyLocalRoomReadRemoved: checks.some((check) => check.name === "legacy local room read endpoint is removed" && check.status === "pass"),
+	      legacyLocalRoomWriteRemoved: checks.some((check) => check.name === "legacy local room write endpoint is removed" && check.status === "pass"),
+	      legacyLocalRoomSyncRemoved: checks.some((check) => check.name === "legacy local room sync endpoint is removed" && check.status === "pass"),
 	    },
 	  };
 

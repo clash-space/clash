@@ -50,12 +50,6 @@ const expectedSyncMirrorPolicy = {
     source: "loro-canvas-replica",
     conflictPolicy: "loro-crdt",
   },
-  room: {
-    requirement: "room",
-    source: "sqlite-room-messages",
-    conflictPolicy: "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
-    rawAgentTrace: false,
-  },
   assetMetadata: {
     requirement: "asset-metadata",
     source: "sqlite-asset-indexes",
@@ -142,8 +136,8 @@ test("project status exposes agent-readable project roots and protected local fi
     syncReadiness: {
       status: "disabled",
       ready: false,
-      required: ["canvas", "room", "asset-metadata", "revision-content"],
-      missing: ["canvas", "room", "asset-metadata", "revision-content"],
+      required: ["canvas", "asset-metadata", "revision-content"],
+      missing: ["canvas", "asset-metadata", "revision-content"],
     },
     actions: {
       openInWeb: {
@@ -406,7 +400,6 @@ test("project status reads marker sync capabilities before opening cloud collabo
       "",
       "[sync.capabilities]",
       "canvas = true",
-      "room = true",
       "asset_metadata = true",
       "revision_content = true",
       "",
@@ -423,7 +416,7 @@ test("project status reads marker sync capabilities before opening cloud collabo
   assert.deepEqual(status.collaboration.syncReadiness, {
     status: "ready",
     ready: true,
-    required: ["canvas", "room", "asset-metadata", "revision-content"],
+    required: ["canvas", "asset-metadata", "revision-content"],
     missing: [],
   });
   assert.deepEqual(status.collaboration.actions.openInWeb, {
@@ -455,7 +448,6 @@ test("project status keeps cloud-sync marker pending until revision content is m
       "",
       "[sync.capabilities]",
       "canvas = true",
-      "room = true",
       "asset_metadata = true",
       "",
     ].join("\n"),
@@ -470,7 +462,7 @@ test("project status keeps cloud-sync marker pending until revision content is m
   assert.deepEqual(status.collaboration.syncReadiness, {
     status: "pending",
     ready: false,
-    required: ["canvas", "room", "asset-metadata", "revision-content"],
+    required: ["canvas", "asset-metadata", "revision-content"],
     missing: ["revision-content"],
   });
   assert.deepEqual(status.collaboration.actions.openInWeb, {
@@ -548,14 +540,14 @@ test("project status exposes explicit collaboration gates for synced and shared 
     syncReadiness: {
       status: "pending",
       ready: false,
-      required: ["canvas", "room", "asset-metadata", "revision-content"],
-      missing: ["canvas", "room", "asset-metadata", "revision-content"],
+      required: ["canvas", "asset-metadata", "revision-content"],
+      missing: ["canvas", "asset-metadata", "revision-content"],
     },
     actions: {
       openInWeb: {
         allowed: false,
         reason: "cloud-sync-not-ready",
-        requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+        requirements: ["canvas", "asset-metadata", "revision-content"],
       },
       enableSync: {
         allowed: false,
@@ -565,7 +557,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
       shareProject: {
         allowed: false,
         reason: "cloud-sync-not-ready",
-        requirements: ["canvas", "room", "asset-metadata", "revision-content"],
+        requirements: ["canvas", "asset-metadata", "revision-content"],
       },
       runLocalAgent: {
         allowed: true,
@@ -591,7 +583,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
     syncReadiness: {
       status: "ready",
       ready: true,
-      required: ["canvas", "room", "asset-metadata", "revision-content"],
+      required: ["canvas", "asset-metadata", "revision-content"],
       missing: [],
     },
     actions: {

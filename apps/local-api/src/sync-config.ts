@@ -5,14 +5,12 @@ import {
   type RemoteLoroPersistence,
   type RemoteLoroPersistenceEnv,
 } from "./sync.js";
-import { createHttpRemoteRoomSync, type RemoteRoomSync } from "./room-sync.js";
 
 export type LocalSyncMode = "local-only" | "cloud-sync";
 export type RemoteLoroSource = "none" | "env" | "config";
 
 export interface LocalSyncCapabilities {
   canvas: boolean;
-  room: boolean;
   asset_metadata: boolean;
   revision_content: boolean;
 }
@@ -37,7 +35,6 @@ export interface LocalSyncConfigStore {
   getReadState?(): Promise<LocalSyncConfigReadState>;
   updateFromRequest(input: Record<string, unknown>): Promise<PublicLocalSyncConfig>;
   resolveRemotePersistence(): Promise<RemoteLoroPersistence | undefined>;
-  resolveRemoteRoomSync(): Promise<RemoteRoomSync | undefined>;
 }
 
 export class LocalSyncConfigError extends Error {
@@ -102,7 +99,6 @@ function normalizeMode(value: unknown): LocalSyncMode {
 function defaultSyncCapabilities(): LocalSyncCapabilities {
   return {
     canvas: false,
-    room: false,
     asset_metadata: false,
     revision_content: false,
   };
@@ -119,7 +115,6 @@ function normalizeCapabilities(
   const record = value as Record<string, unknown>;
   return {
     canvas: record.canvas === undefined ? fallback.canvas : record.canvas === true,
-    room: record.room === undefined ? fallback.room : record.room === true,
     asset_metadata: record.asset_metadata === undefined
       ? fallback.asset_metadata
       : record.asset_metadata === true,
@@ -260,18 +255,6 @@ export function createLocalSyncConfigStore(
       const config = await effective();
       if (config.mode !== "cloud-sync" || !config.remoteLoroUrl) return undefined;
       return createHttpRemoteLoroPersistence({
-        baseUrl: config.remoteLoroUrl,
-        token: config.remoteLoroToken ?? undefined,
-        fetch: options.fetch,
-      });
-    },
-
-    async resolveRemoteRoomSync() {
-      const config = await effective();
-      if (config.mode !== "cloud-sync" || !config.remoteLoroUrl || config.capabilities.room !== true) {
-        return undefined;
-      }
-      return createHttpRemoteRoomSync({
         baseUrl: config.remoteLoroUrl,
         token: config.remoteLoroToken ?? undefined,
         fetch: options.fetch,

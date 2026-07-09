@@ -71,16 +71,16 @@ state.
 The `collaboration` object in the same payload is the mode gate agents and UI
 should use before offering cloud/web/shared affordances: local projects are not
 web-openable, `cloud-sync` projects remain pending and not web-openable until
-`syncReadiness` proves canvas, room, asset-metadata, and revision-content sync
+`syncReadiness` proves canvas, asset-metadata, and revision-content sync
 capabilities are ready, and shared projects are the only mode that uses a cloud
 sequencer for multiplayer.
 The companion `collaboration.syncPolicy` object names what those capabilities
-mean: canvas mirrors the Loro replica, room mirrors project chat but not raw
-agent traces, asset metadata mirrors SQLite asset indexes without media blob
-bytes, and revision-content mirrors `text_revisions`/`timeline_revisions` plus
-immutable content-addressed revision blobs without treating those bodies as
-media assets. Raw agent traces and local runtime secrets stay local-only unless
-an explicit future opt-in policy says otherwise.
+mean: canvas mirrors the Loro replica, asset metadata mirrors SQLite asset
+indexes without raw local blobs, and revision content mirrors immutable
+`text_revisions`/`timeline_revisions` plus content-addressed revision blobs
+without treating those bodies as media assets. Raw agent traces and local
+runtime secrets stay local-only unless an explicit future opt-in policy says
+otherwise.
 The `storage` object makes this non-inferential: `storage.workspace` is the
 agent draft/projection workspace and explicitly does not own canonical snapshot
 or metadata state; `storage.canonicalReplica` points at the machine-scoped
@@ -535,11 +535,8 @@ Synced:
 - text/timeline revision content is mirrored as non-media immutable revision
   content through `text_revisions` / `timeline_revisions` registries, not as
   editable media `assets` rows,
-- room messages sync,
-- local-only runtime traces remain local unless opted in.
-- explicit room mirroring is admitted only when the remote endpoint is
-  configured and the local sync capability flag `room=true` is ready; a remote
-  URL alone keeps room sync pending and non-writing.
+- local-only runtime traces remain local unless opted in,
+- hosted/cloud project chat remains outside the local v1 metadata/sync contract.
 
 Shared:
 

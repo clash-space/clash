@@ -46,8 +46,8 @@ async function main() {
 
     // Compose AGENTS.md = shared prelude (universal agent rules) + this
     // role's body. The prelude pins behaviors that have to hold across
-    // every agent template (must `clash room say` when @-mentioned, etc.)
-    // — putting them in the shared SKILL is unreliable because Claude
+    // every agent template. Putting them in the shared SKILL is unreliable
+    // because Claude
     // Code only loads skills on demand, but AGENTS.md is always read at
     // session start. Keep role-specific guidance in
     // assets/agents/<role>/AGENTS.md; cross-cutting rules go in the

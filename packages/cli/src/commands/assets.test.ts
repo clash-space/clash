@@ -439,16 +439,19 @@ test("asset refs reads node references through the host API", async () => {
 });
 
 test("asset refs can explicitly refresh indexed references through the host API", async () => {
-  const calls: Array<{ path: string; method?: string; body: unknown }> = [];
+  const calls: Array<{ path: string; method?: string; headers?: Record<string, string>; body: unknown }> = [];
 
   const result = await fetchAssetReferences({
     assetId: "asset-live",
     projectId: "project-refresh",
     refresh: true,
+    ifMatch: "asset-v1:abc:receipt:host-proof",
+    env: { CLASH_AGENT_MEMBER_ID: "agent-1" },
     request: async (path, init) => {
       calls.push({
         path,
         method: init?.method,
+        headers: init?.headers as Record<string, string> | undefined,
         body: JSON.parse(String(init?.body ?? "{}")),
       });
       return new Response(JSON.stringify({
@@ -472,6 +475,10 @@ test("asset refs can explicitly refresh indexed references through the host API"
   assert.deepEqual(calls, [{
     path: "/api/v1/assets/asset-live/references/refresh",
     method: "POST",
+    headers: {
+      "x-clash-client-type": "agent",
+      "x-clash-if-match": "asset-v1:abc:receipt:host-proof",
+    },
     body: { projectIds: ["project-refresh"] },
   }]);
   assert.equal(result.references[0]?.referenceRole, "primary");

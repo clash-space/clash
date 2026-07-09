@@ -119,13 +119,13 @@ describe("GroupChatPanel primitives", () => {
     expect(pillSource).not.toContain("title=");
   });
 
-  it("surfaces the local-only room sync admission requirement in the room indicator", () => {
+  it("surfaces hosted room unavailability without local mirror capability copy", () => {
     const panelSource = readSource("packages/web-ui/src/components/GroupChatPanel.tsx");
 
     expect(panelSource).toContain("remote-room-not-configured");
-    expect(panelSource).toContain("Enable sync to mirror this room to cloud");
-    expect(panelSource).toContain("room-sync-capability-not-ready");
-    expect(panelSource).toContain("room mirror capability is not ready");
+    expect(panelSource).toContain("Cloud room is not configured for this project");
+    expect(panelSource).not.toContain("room-sync-capability-not-ready");
+    expect(panelSource).not.toContain("room mirror capability");
   });
 
   it("gates the room sync action when admission says cloud mirroring is not allowed", () => {
@@ -134,8 +134,8 @@ describe("GroupChatPanel primitives", () => {
     expect(panelSource).toContain("roomSyncAdmission");
     expect(panelSource).toContain("roomSyncBlockedReason");
     expect(panelSource).toContain("room.sync?.admission?.allowed === false");
-    expect(panelSource).toContain("Enable project sync before syncing the room");
-    expect(panelSource).toContain("Room sync is waiting for the cloud room capability");
+    expect(panelSource).toContain("Cloud room is not configured for this project");
+    expect(panelSource).not.toContain("Room sync is waiting for the cloud room capability");
     expect(panelSource).toContain("roomSyncButtonTooltip");
     expect(panelSource).toContain("disabled={roomSyncBlockedReason !== null}");
     expect(panelSource).toContain("if (roomSyncBlockedReason) return");
@@ -146,13 +146,12 @@ describe("GroupChatPanel primitives", () => {
 
     expect(panelSource).toContain("room.syncPlan?.conflicts");
     expect(panelSource).toContain("Room sync conflict");
-    expect(panelSource).toContain("clash room sync --json");
-    expect(panelSource).toContain("clash room resolve-conflict");
+    expect(panelSource).toContain("hosted room recovery flow");
+    expect(panelSource).not.toContain("clash room sync --json");
+    expect(panelSource).not.toContain("clash room resolve-conflict");
     expect(panelSource).toContain("roomSyncConflicts.slice");
     expect(panelSource).toContain("conflict.local.contentHash");
     expect(panelSource).toContain("conflict.remote.contentHash");
-    expect(panelSource).toContain("--local-hash");
-    expect(panelSource).toContain("--remote-hash");
   });
 
   it("uses a mature gesture primitive for panel resizing instead of document mouse listeners", () => {

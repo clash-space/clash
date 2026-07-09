@@ -65,23 +65,6 @@ export interface LocalMetadataSessionMessage {
   created_at: number;
 }
 
-export interface LocalMetadataRoomMention {
-  user_id?: string;
-  agent_member_id?: string;
-  agent_template_id?: string;
-}
-
-export interface LocalMetadataRoomMessage {
-  id: string;
-  project_id: string;
-  sender_kind: "user" | "agent";
-  sender_id: string;
-  sender_user_id: string;
-  mentions: LocalMetadataRoomMention[];
-  text: string;
-  created_at: number;
-}
-
 export interface LocalMetadataAgentMember {
   id: string;
   user_id: string;
@@ -122,20 +105,6 @@ export interface LocalMutationAuditFilter {
   limit?: number;
 }
 
-export interface LocalRoomSyncConflictResolution {
-  projectId: string;
-  messageId: string;
-  strategy: "accept-divergence";
-  localContentHash: string;
-  remoteContentHash: string;
-  resolvedAt: number;
-  mutationId: string | null;
-}
-
-export interface LocalRoomSyncConflictResolutionFilter {
-  projectId: string;
-}
-
 export interface LocalTextRevisionFilter {
   projectId: string;
   nodeId?: string;
@@ -156,7 +125,6 @@ export interface LocalMetadataDb {
   sessions: LocalMetadataSession[];
   agentMembers: LocalMetadataAgentMember[];
   sessionMessages: LocalMetadataSessionMessage[];
-  roomMessages: LocalMetadataRoomMessage[];
 }
 
 const EMPTY_METADATA_DB: LocalMetadataDb = {
@@ -167,7 +135,6 @@ const EMPTY_METADATA_DB: LocalMetadataDb = {
   sessions: [],
   agentMembers: [],
   sessionMessages: [],
-  roomMessages: [],
 };
 
 const METADATA_MIGRATION_ID = "metadata-sqlite-v1";
@@ -328,28 +295,6 @@ function applySchema(db: SqliteDatabase): void {
       PRIMARY KEY (session_id, id)
     );
 
-	    CREATE TABLE IF NOT EXISTS room_message (
-	      id TEXT PRIMARY KEY NOT NULL,
-	      project_id TEXT NOT NULL,
-	      sender_kind TEXT NOT NULL,
-	      sender_id TEXT NOT NULL,
-	      sender_user_id TEXT NOT NULL,
-	      mentions_json TEXT NOT NULL,
-	      text TEXT NOT NULL,
-	      created_at INTEGER NOT NULL
-	    );
-
-    CREATE TABLE IF NOT EXISTS room_sync_conflict_resolution (
-      project_id TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      strategy TEXT NOT NULL,
-      local_content_hash TEXT NOT NULL,
-      remote_content_hash TEXT NOT NULL,
-      resolved_at INTEGER NOT NULL,
-      mutation_id TEXT,
-      PRIMARY KEY (project_id, message_id, local_content_hash, remote_content_hash)
-    );
-
 	    CREATE TABLE IF NOT EXISTS mutation_audit (
       id TEXT PRIMARY KEY NOT NULL,
       created_at INTEGER NOT NULL,
@@ -383,9 +328,6 @@ function applySchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
     CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
 	    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
-	    CREATE INDEX IF NOT EXISTS room_message_project_idx ON room_message(project_id, created_at);
-    CREATE INDEX IF NOT EXISTS room_sync_conflict_resolution_project_idx
-      ON room_sync_conflict_resolution(project_id, resolved_at DESC);
 	    CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
@@ -516,28 +458,6 @@ function ensureLocalMetadataColumns(db: SqliteDatabase): void {
     ensureSqliteColumn(db, "chat_message", column);
   }
   for (const column of [
-    "project_id TEXT NOT NULL DEFAULT ''",
-    "sender_kind TEXT NOT NULL DEFAULT ''",
-    "sender_id TEXT NOT NULL DEFAULT ''",
-    "sender_user_id TEXT NOT NULL DEFAULT ''",
-    "mentions_json TEXT NOT NULL DEFAULT '[]'",
-    "text TEXT NOT NULL DEFAULT ''",
-    "created_at INTEGER NOT NULL DEFAULT 0",
-  ]) {
-    ensureSqliteColumn(db, "room_message", column);
-  }
-  for (const column of [
-    "project_id TEXT NOT NULL DEFAULT ''",
-    "message_id TEXT NOT NULL DEFAULT ''",
-    "strategy TEXT NOT NULL DEFAULT 'accept-divergence'",
-    "local_content_hash TEXT NOT NULL DEFAULT ''",
-    "remote_content_hash TEXT NOT NULL DEFAULT ''",
-    "resolved_at INTEGER NOT NULL DEFAULT 0",
-    "mutation_id TEXT",
-  ]) {
-    ensureSqliteColumn(db, "room_sync_conflict_resolution", column);
-  }
-  for (const column of [
     "created_at INTEGER NOT NULL DEFAULT 0",
     "operation TEXT NOT NULL DEFAULT ''",
     "entity_kind TEXT NOT NULL DEFAULT ''",
@@ -604,18 +524,6 @@ function parseJson<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function roomSyncConflictResolutionFromRow(row: Record<string, unknown>): LocalRoomSyncConflictResolution {
-  return {
-    projectId: rowString(row, "project_id"),
-    messageId: rowString(row, "message_id"),
-    strategy: "accept-divergence",
-    localContentHash: rowString(row, "local_content_hash"),
-    remoteContentHash: rowString(row, "remote_content_hash"),
-    resolvedAt: rowNumber(row, "resolved_at"),
-    mutationId: rowOptionalString(row, "mutation_id") ?? null,
-  };
 }
 
 function mutationAuditLimit(limit: number | undefined): number {
@@ -704,8 +612,7 @@ function hasRows(db: SqliteDatabase): boolean {
       (SELECT COUNT(*) FROM timeline_revisions) +
       (SELECT COUNT(*) FROM runtime_session) +
       (SELECT COUNT(*) FROM agent_member) +
-      (SELECT COUNT(*) FROM chat_message) +
-      (SELECT COUNT(*) FROM room_message) AS count
+      (SELECT COUNT(*) FROM chat_message) AS count
   `).get();
   return rowNumber(row ?? {}, "count") > 0;
 }
@@ -904,21 +811,6 @@ export function createLocalMetadataStore(dataDir: string) {
         created_at: rowNumber(row, "created_at"),
       }));
 
-      const roomMessages = db.prepare(`
-        SELECT id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
-          FROM room_message
-         ORDER BY project_id, created_at DESC, id
-      `).all().map((row) => ({
-        id: rowString(row, "id"),
-        project_id: rowString(row, "project_id"),
-        sender_kind: rowString(row, "sender_kind") === "agent" ? "agent" as const : "user" as const,
-        sender_id: rowString(row, "sender_id"),
-        sender_user_id: rowString(row, "sender_user_id"),
-        mentions: parseJson<LocalMetadataRoomMention[]>(row.mentions_json, []),
-        text: rowString(row, "text"),
-        created_at: rowNumber(row, "created_at"),
-      }));
-
       return {
         projects,
         assets,
@@ -927,7 +819,6 @@ export function createLocalMetadataStore(dataDir: string) {
         sessions,
         agentMembers,
         sessionMessages,
-        roomMessages,
       };
     });
     return loaded ?? structuredClone(EMPTY_METADATA_DB);
@@ -937,7 +828,6 @@ export function createLocalMetadataStore(dataDir: string) {
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
       try {
-        db.prepare("DELETE FROM room_message").run();
         db.prepare("DELETE FROM chat_message").run();
         db.prepare("DELETE FROM agent_member").run();
         db.prepare("DELETE FROM runtime_session").run();
@@ -1077,24 +967,6 @@ export function createLocalMetadataStore(dataDir: string) {
           );
         }
 
-        const insertRoomMessage = db.prepare(`
-          INSERT INTO room_message (
-            id, project_id, sender_kind, sender_id, sender_user_id, mentions_json, text, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const message of metadata.roomMessages) {
-          insertRoomMessage.run(
-            message.id,
-            message.project_id,
-            message.sender_kind,
-            message.sender_id,
-            message.sender_user_id,
-            JSON.stringify(message.mentions),
-            message.text,
-            message.created_at,
-          );
-        }
-
         markMigration(db, dataDir, "");
         db.exec("COMMIT");
       } catch (error) {
@@ -1220,41 +1092,6 @@ export function createLocalMetadataStore(dataDir: string) {
 	      mutation: parseJson<Record<string, unknown>>(row.mutation_json, {}),
 	    })));
 	  }
-
-  async function upsertRoomSyncConflictResolution(
-    resolution: LocalRoomSyncConflictResolution,
-  ): Promise<LocalRoomSyncConflictResolution> {
-    await withDb((db) => {
-      db.prepare(`
-        INSERT OR REPLACE INTO room_sync_conflict_resolution (
-          project_id, message_id, strategy, local_content_hash, remote_content_hash,
-          resolved_at, mutation_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        resolution.projectId,
-        resolution.messageId,
-        resolution.strategy,
-        resolution.localContentHash,
-        resolution.remoteContentHash,
-        resolution.resolvedAt,
-        resolution.mutationId,
-      );
-      markMigration(db, dataDir, "");
-    });
-    return resolution;
-  }
-
-  async function listRoomSyncConflictResolutions(
-    filter: LocalRoomSyncConflictResolutionFilter,
-  ): Promise<LocalRoomSyncConflictResolution[]> {
-    return withDb((db) => db.prepare(`
-      SELECT project_id, message_id, strategy, local_content_hash, remote_content_hash,
-             resolved_at, mutation_id
-        FROM room_sync_conflict_resolution
-       WHERE project_id = ?
-       ORDER BY resolved_at DESC, message_id
-    `).all(filter.projectId).map(roomSyncConflictResolutionFromRow));
-  }
 
   async function upsertTextRevision(
     revision: TextAppliedRevision,
@@ -1421,8 +1258,6 @@ export function createLocalMetadataStore(dataDir: string) {
     resolveStorageKeys,
     appendMutationAudit,
     listMutationAudit,
-    upsertRoomSyncConflictResolution,
-    listRoomSyncConflictResolutions,
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,

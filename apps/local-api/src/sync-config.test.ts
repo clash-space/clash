@@ -42,7 +42,6 @@ describe("local sync config", () => {
       remote_loro_url: "https://sync.example",
       capabilities: {
         canvas: true,
-        room: true,
         asset_metadata: true,
         revision_content: true,
       },
@@ -52,7 +51,6 @@ describe("local sync config", () => {
       mode: "cloud-sync",
       capabilities: {
         canvas: true,
-        room: true,
         asset_metadata: true,
         revision_content: true,
       },

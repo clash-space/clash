@@ -193,14 +193,8 @@ clash action install --id <id>
 clash action uninstall --id <id>
 ```
 
-## remote worker vars
+## remote worker secrets
 
-```bash
-clash vars list --json
-clash vars set API_KEY --value "..."
-clash vars delete API_KEY
-```
-
-These commands are for cloud/remote worker action variables. Local custom
-actions use the local host environment and provider configuration instead of
-syncing secrets into the project.
+Remote worker action secrets are managed in hosted/remote Settings, not through
+the local-first CLI. Local custom actions use the local host environment and
+provider configuration instead of syncing secrets into the project.

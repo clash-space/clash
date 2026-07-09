@@ -86,21 +86,13 @@ function roomSyncIndicator(sync: RoomSyncMeta | null | undefined): {
   }
   if (!sync?.remote_room.enabled) {
     const title = sync?.admission?.reason === 'remote-room-not-configured'
-      ? 'Room messages are local to this desktop. Enable sync to mirror this room to cloud'
-      : 'Room messages are local to this desktop';
+      ? 'Cloud room is not configured for this project'
+      : 'Cloud room is unavailable in this local project';
     return {
       label: 'Local',
       title,
       dotClass: 'bg-stone-300 dark:bg-stone-500',
       textClass: 'text-stone-500 dark:text-stone-400',
-    };
-  }
-  if (sync.admission?.reason === 'room-sync-capability-not-ready') {
-    return {
-      label: 'Pending',
-      title: 'Cloud room sync is configured but the room mirror capability is not ready',
-      dotClass: 'bg-amber-400 dark:bg-amber-300',
-      textClass: 'text-amber-700 dark:text-amber-300',
     };
   }
   if (sync.remote_room.status === 'mirrored' || sync.remote_room.status === 'imported') {
@@ -419,10 +411,8 @@ export function GroupChatPanel({
   const roomSyncAdmission = room.sync?.admission;
   const roomSyncBlockedReason = room.sync?.admission?.allowed === false
     ? roomSyncAdmission?.reason === 'remote-room-not-configured'
-      ? 'Enable project sync before syncing the room'
-      : roomSyncAdmission?.reason === 'room-sync-capability-not-ready'
-        ? 'Room sync is waiting for the cloud room capability'
-        : 'Room sync is not available for this project'
+      ? 'Cloud room is not configured for this project'
+      : 'Room sync is not available for this project'
     : null;
   const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
   const roomSyncConflictCount = roomSyncConflicts.length;
@@ -432,7 +422,7 @@ export function GroupChatPanel({
   const hiddenRoomSyncConflictCount = Math.max(0, roomSyncConflictCount - visibleRoomSyncConflicts.length);
   const roomSyncConflictRecoveryHint =
     roomSyncConflictCount > 0
-      ? `${roomSyncConflictCount} room conflict${roomSyncConflictCount === 1 ? '' : 's'} needs review. Hashes come from clash room sync --json; apply an explicit recovery with clash room resolve-conflict after comparing both sides.`
+      ? `${roomSyncConflictCount} room conflict${roomSyncConflictCount === 1 ? '' : 's'} needs review. Compare both sides in the hosted room recovery flow before accepting divergence.`
       : '';
 
   return (
@@ -675,8 +665,7 @@ export function GroupChatPanel({
               </span>
             </div>
             <p className="mt-1 leading-snug text-red-700 dark:text-red-200/90">
-              Compare the local and remote hashes from <code className="font-mono">clash room sync --json</code>,
-              then acknowledge the inspected conflict explicitly.
+              Compare the local and remote hashes, then acknowledge the inspected conflict explicitly.
             </p>
             <ul className="mt-2 space-y-2" aria-label="Room sync conflict recovery commands">
               {visibleRoomSyncConflicts.map((conflict) => (
@@ -702,9 +691,9 @@ export function GroupChatPanel({
                       </dd>
                     </div>
                   </dl>
-                  <code className="mt-1 block break-all rounded-matrix bg-red-100/70 px-2 py-1 font-mono text-[10px] leading-snug text-red-900 dark:bg-red-950/60 dark:text-red-100">
-                    {`clash room resolve-conflict ${conflict.id} --local-hash ${conflict.local.contentHash} --remote-hash ${conflict.remote.contentHash} --json`}
-                  </code>
+                  <p className="mt-1 break-all rounded-matrix bg-red-100/70 px-2 py-1 text-[10px] leading-snug text-red-900 dark:bg-red-950/60 dark:text-red-100">
+                    {`Accept divergence for ${conflict.id} after comparing local ${conflict.local.contentHash} with remote ${conflict.remote.contentHash}`}
+                  </p>
                 </li>
               ))}
             </ul>

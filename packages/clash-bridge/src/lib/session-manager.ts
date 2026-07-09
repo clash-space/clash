@@ -61,8 +61,7 @@ export interface SessionStartParams {
   permission_mode?: string;
   /**
    * Server-side agent member id. Daemon injects it into the spawned
-   * agent's env as CLASH_AGENT_MEMBER_ID — used by `clash room say`
-   * to identify itself when broadcasting to the project room.
+   * agent's env as CLASH_AGENT_MEMBER_ID for host-side attribution.
    */
   agent_member_id?: string;
   /**
@@ -455,9 +454,9 @@ export class SessionManager {
       for (const [key, value] of Object.entries(this.#env)) {
         if (value) spawnEnv[key] = value;
       }
-      // Identity for room tools (`clash room say` / `clash room read`)
-      // — without these the agent has no way to know which member id
-      // it is, or which project's room to target.
+      // Identity for host-side collaboration/session metadata. Local v1 no
+      // longer exposes a local room CLI, but hosted runtimes may still use
+      // these values for attribution.
       if (p.agent_member_id) spawnEnv.CLASH_AGENT_MEMBER_ID = p.agent_member_id;
       if (p.project_id) spawnEnv.CLASH_PROJECT_ID = p.project_id;
       const agentSpec = applyPermissionModeToAgentSpec(resolvedAgentId, agent.spec, p.permission_mode);

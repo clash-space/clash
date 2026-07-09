@@ -335,12 +335,11 @@ Current routes:
 Current schema:
 
 - `room_message`
-- `room_sync_conflict_resolution`
 
 v1 local/cloud decision:
 
 - keep room as project-visible conversation,
-- local should converge on the same row shape,
+- local-first v1 does not expose room endpoints or CLI commands,
 - room is not raw ACP trace.
 
 ### Cloud vars
@@ -376,9 +375,7 @@ Registered commands:
 - `canvas`
 - `tasks`
 - `action`
-- `vars`
 - `models`
-- `room`
 - `doctor`
 - `timeline`
 - `text`
@@ -454,39 +451,31 @@ Registered commands:
   - still needs delayed purge/admin hard-delete policy and cloud/shared-project
     recovery semantics.
 
-- `vars`
-  - cloud compatibility remains,
-  - local help/copy should not advertise vars as local auth path.
+- hosted `/api/v1/vars` / cloud `user_variable`
+  - cloud compatibility remains for remote worker actions,
+  - local-first CLI no longer registers a vars command,
+  - local help/copy must not advertise vars as local auth path.
 
 - `auth login/logout`
   - writes `${CLASH_HOME:-~/.clash}/config.json` with owner-only permissions;
   - OS keychain/token store remains future hardening.
 
-- `room say/read`
-  - CLI exists,
-  - local API has SQLite-backed room POST/GET,
-  - local room POST returns accepted/rejected host mutation records and first-create
-    sanitized audit records,
-  - local room client ids are idempotent only when the normalized content
-    matches; same project/id with different content is rejected, and identical
-    replay does not create another audit record,
-  - local room responses explicitly report `remote_room.enabled=false`,
-  - `clash room read --json` preserves response-level `sync` metadata instead
-    of returning only the message list,
-  - CLI maps 404 to a generic missing-room-API message for older targets,
-  - needs cloud sync conflict policy and deeper route parity tests.
+- `room`
+  - local-first CLI does not register a room command,
+  - local-api returns 404 for legacy `/api/v1/projects/:id/room/*` routes,
+  - cloud room compatibility remains a hosted/shared-project concern.
 
 ## Mismatch Matrix
 
 | Surface | Current mismatch | Product risk | Required fix |
 | --- | --- | --- | --- |
 | Local metadata | local product metadata is SQLite-only | stale docs/tools may treat ad-hoc files as editable truth | keep data-dir contract, status, doctor, and schema tests |
-| Local room | SQLite-backed local room POST/GET exists; POST carries accepted/rejected mutation records and POST/GET `sync.admission` plus `sync.trace_policy` raw-trace exclusion evidence; local-only room message responses expose `remote-room-not-configured` with `enable-sync`, same project/id with different content is rejected; cloud room route matches the idempotency rule; cloud-configured local reads mark explicit room sync `pending` with allowed admission; `POST /api/v1/projects/:id/room/sync` and `clash room sync` run the mirror planner, export local-only rows, import remote-only rows, write sanitized audit evidence after accepted mirror actions, and reject same-id conflicts without overwriting; conflict plans include local/remote message snapshots plus content hashes for review; `POST /api/v1/projects/:id/room/sync/conflicts/:messageId/resolve` and `clash room resolve-conflict` record hash-checked `accept-divergence` receipts so later sync can continue without overwriting either side; `GroupChatPanel` now renders first-pass conflict recovery details with ids, local/remote hashes, and the exact CLI command instead of a count-only banner, and disables the UI sync action when `sync.admission.allowed=false`; room sync responses expose `trace_policy.raw_agent_traces.syncAdmission.allowed=false` so agents can see raw runtime traces are local-only | team/opt-in raw trace sync policy controls, richer local/remote recovery UX, and live parity are not wired yet | live room parity, opt-in admission policy controls, fuller recovery workflow |
-| Vars | CLI exposes remote worker vars; local-api 404; cloud supports vars | future copy/API changes may blur local auth boundary | keep mode-aware CLI copy and local 404 tests |
+| Local room | Local-first CLI/API room surface is removed; local-api returns 404 for legacy room read/write/sync/recovery routes; cloud room remains remote/shared compatibility only | stale docs/tools may direct agents into removed commands or raw trace chat | keep local 404 and CLI-registration tests; design any future chat as a separate product surface |
+| Vars | Local-first CLI no longer exposes vars; local-api 404; hosted/cloud supports remote worker secret management | future copy/API changes may blur local auth boundary | keep mode-aware copy and local 404 tests |
 | Provider auth | local provider/OAuth rows live in SQLite and sensitive credential/token payloads are encrypted before persistence; public DTOs expose configured credential names/status/read tokens rather than raw values | key-source hardening and future OS keychain migration remain local-compromise risk reducers | keep encrypted SQLite, add keychain/token-store hardening when available, and keep projection paths secret-free |
 | Project status | CLI and local-api return roots/protected paths; CLI status also exposes `currentWorkspace` so the active cwd/marker root is visible as a reference workspace separate from the canonical project workspace/store, including the marker's stable `workspace_id` as `markerWorkspaceId` when present; `storage.canonicalReplica` includes SQLite metadata, Loro canvas replica, protected immutable media asset blob root, and protected content-addressed text/timeline revision blob roots; `storage.contentModel` makes text/timeline live state vs projection vs host-indexed revision content explicit, and each text/timeline entry has `contentRegistry: { kind: "sqlite-non-media-revision-registry", table: "text_revisions" | "timeline_revisions", mediaAssetTable: false }` so revision bodies are not confused with media `assets` rows; `storage.localSecrets` identifies local-only `config.json` and `credentials.json` secret files as non-agent-writable protected paths; `doctor storage` validates path boundaries, broken asset links, stray secondary canvas replica files, protected media/revision content roots, content-model contracts, local secret file contracts, existing text/timeline revision blob hash/permission integrity, existing recovery manifests, and local SQLite core metadata tables, provider auth tables/primary keys, plus asset/text/timeline projection indexes; `doctor storage --repair` creates missing workspace roots, repairs the local SQLite core metadata tables, provider auth tables/primary keys, plus asset/text/timeline projection indexes, and quarantines secondary canvas replica files into protected runtime recovery with manifest evidence; `doctor storage-recovery list --json` exposes quarantined recovery manifest inventory plus prior restore receipt summaries only after current-project recovery-root, destination containment, and symlink/non-regular-file checks pass, otherwise reporting invalid entries; `doctor storage-recovery list/compare/restore --json` include `recoveryPolicy` so agents can see that recovery is scoped to the local canonical replica, cloud state is neither imported nor mutated, `cloud-sync` needs cloud conflict review, and `shared`/`cloud-sequencer` projects can be compared but cannot be locally restored; `doctor storage-recovery compare --manifest ... --json` reports quarantined-vs-canonical file evidence plus a restore read token without import only after current-project recovery-root, project/canonical-replica, destination containment, and symlink/non-regular-file checks pass; `doctor storage-recovery restore --manifest ... --if-match <readToken> --yes --json` is the explicit promotion path and rejects stale compare tokens plus shared/cloud-sequencer recovery before overwriting canonical bytes | agents can inspect paths and host-owned repair can initialize safe workspace/schema prerequisites without blessing obsolete markers, cwd snapshots, cloud sequencer state, media blobs, revision blobs, text/timeline content, or local secret files as agent-writable truth | broader recovery UX and destructive repair boundary checks |
 | Canvas update | direct patch/admin path still exists | broad patch exits can bypass projection workflow if guardrails drift | keep shared field/checkpoint guards plus agent read-token CAS |
-| Project delete | Local API soft-deletes and CLI requires `--yes`; `clash project get --json` returns active-project `readToken`; `clash project delete --if-match` passes agent read proof; `clash project get --include-deleted --json` returns a deleted-project restore/purge receipt; `clash project restore --if-match` requires that receipt for agent restores; `DELETE /api/v1/projects/:id/purge` and `clash project purge <projectId> --yes --if-match <readToken>` permanently remove only deleted local recovery points after explicit `confirm: "purge"`, default to a 7-day delay unless `--force` is used, remove project-scoped sessions/messages/room rows/asset refs plus the canonical Loro replica, clear project ownership from retained immutable asset rows, and leave retained asset blobs/rows for asset GC; accepted v1 project create/update/delete/restore/purge, session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, local agent-server config update, provider account update/delete, provider OAuth start/complete/delete, asset import, asset cover update, asset reference refresh, asset-ref delete, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete write sanitized local mutation audit evidence readable through `GET /api/v1/mutation-audit` and `clash audit mutations` without exposing read receipts; local-api canvas node patch/delete requires receipt-bearing node reads for agent writes and rejects downstream text content patches unless the caller uses the explicit COW/projection path; local-api canvas batch delete uses an explicit delete-plan receipt and rejects orphaning external references before deleting a closed subgraph; v1 create/update/delete/restore/purge responses include accepted/rejected mutation records; obsolete local project endpoints are not exposed | cloud/shared recovery and purge parity are not specified; audit coverage is first-pass for these destructive local exits | remote parity, conflict recovery, and broader destructive mutation audit coverage |
+| Project delete | Local API soft-deletes and CLI requires `--yes`; `clash project get --json` returns active-project `readToken`; `clash project delete --if-match` passes agent read proof; `clash project get --include-deleted --json` returns a deleted-project restore/purge receipt; `clash project restore --if-match` requires that receipt for agent restores; `DELETE /api/v1/projects/:id/purge` and `clash project purge <projectId> --yes --if-match <readToken>` permanently remove only deleted local recovery points after explicit `confirm: "purge"`, default to a 7-day delay unless `--force` is used, remove project-scoped sessions/messages/asset refs plus the canonical Loro replica, clear project ownership from retained immutable asset rows, and leave retained asset blobs/rows for asset GC; accepted v1 project create/update/delete/restore/purge, session create/delete, runtime session create/attach, local sync config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, local agent-server config update, provider account update/delete, provider OAuth start/complete/delete, asset import, asset cover update, asset reference refresh, asset-ref delete, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete write sanitized local mutation audit evidence readable through `GET /api/v1/mutation-audit` and `clash audit mutations` without exposing read receipts; local-api canvas node patch/delete requires receipt-bearing node reads for agent writes and rejects downstream text content patches unless the caller uses the explicit COW/projection path; local-api canvas batch delete uses an explicit delete-plan receipt and rejects orphaning external references before deleting a closed subgraph; v1 create/update/delete/restore/purge responses include accepted/rejected mutation records; obsolete local project endpoints are not exposed | cloud/shared recovery and purge parity are not specified; audit coverage is first-pass for these destructive local exits | remote parity, conflict recovery, and broader destructive mutation audit coverage |
 | Assets | local files plus SQLite rows/refs, optional project links, alpha `clash asset import --file` content-addressed blobs, `clash asset replace --node --file` import-plus-COW replacement, local-api `/api/v1/assets/import` registration into `assets`/`asset_refs` with immutable same-id content checks and sanitized local mutation audit evidence, local-api asset create/cover storage-key validation before SQLite persistence, asset create sanitized local mutation audit evidence, local-api blob upload with sanitized audit evidence, workflow generated asset writes with sanitized audit evidence, and `/assets/*` reads validating real filesystem containment so symlinked storage roots or parents cannot escape local asset storage, `GET /api/v1/assets/:id` receipt-bearing asset read plus agent-guarded `/api/v1/assets/:id/cover` metadata update, `GET /api/v1/assets/:id/ref?projectId=...` receipt-bearing project asset-ref read plus agent-guarded ref delete exposed through `clash asset ref get/delete --if-match`, local-api `/api/v1/projects/:projectId/canvas/nodes/:nodeId` receipt-bearing node read plus `/api/v1/assets/replace` registered-asset COW replacement, and `clash asset gc` / `/api/v1/assets/gc` for unreferenced local blobs with explicit protected asset ids, automatic or requested-project Loro canvas scans, first-pass `*AssetId` / `*AssetIds` downstream metadata scanning, dry-run receipt read tokens for the current deletion plan, `clash assets gc --delete --if-match` for agent destructive GC, guarded local-blob deletion, non-dry-run refresh of known scanned refs back into SQLite `asset_refs`, first-pass node/field/role projection rows in `asset_node_refs`, host-readable reference lookup through `GET /api/v1/assets/:id/references` / `clash asset refs`, and explicit reference-index refresh through `POST /api/v1/assets/:id/references/refresh` / `clash asset refs --refresh` with an accepted host metadata mutation, sanitized local mutation audit evidence, and without running GC deletion | richer role ontology/provenance UI/E2E evidence remains incomplete | richer materialized ref index + live replace/UI parity |
 | Sync status | marker has local hint but not authoritative cloud state | false `Synced` claims | explicit project mode/status model |
 
@@ -512,8 +501,8 @@ Agents need a stable inspection payload:
     "syncReadiness": {
       "status": "disabled",
       "ready": false,
-      "required": ["canvas", "room", "asset-metadata", "revision-content"],
-      "missing": ["canvas", "room", "asset-metadata", "revision-content"]
+      "required": ["canvas", "asset-metadata", "revision-content"],
+      "missing": ["canvas", "asset-metadata", "revision-content"]
     },
     "syncPolicy": {
       "schemaVersion": 1,
@@ -523,12 +512,6 @@ Agents need a stable inspection payload:
           "requirement": "canvas",
           "source": "loro-canvas-replica",
           "conflictPolicy": "loro-crdt"
-        },
-        "room": {
-          "requirement": "room",
-          "source": "sqlite-room-messages",
-          "conflictPolicy": "same-message-id-same-normalized-content-idempotent-conflict-otherwise",
-          "rawAgentTrace": false
         },
         "assetMetadata": {
           "requirement": "asset-metadata",
@@ -792,7 +775,7 @@ not need to infer the protected runtime directory by scanning `protectedPaths`.
 The `collaboration` object is the machine-readable local/cloud mode gate:
 `local`/`local-only` normalize to `local-only` and are not web-openable;
 `cloud-sync`/`synced` normalize to `synced` but remain `webOpenable: false`
-with `syncReadiness.status: "pending"` until canvas, room, asset-metadata, and
+with `syncReadiness.status: "pending"` until canvas, asset-metadata, and
 revision-content sync capabilities are explicitly ready in local sync config
 and passed through the status builder; only ready synced projects may use
 `roomAuthority: "local-with-cloud-mirror"`. The same payload exposes
@@ -803,9 +786,8 @@ deletion, not room sync. Only `shared` enables
 `cloudProjectRoom: "sequencer"` and `multiUser: true`. Local actions still
 require the owner's machine-local agent runtime in every mode.
 `syncPolicy` is the machine-readable mirror contract behind those gates:
-canvas means the Loro canvas replica, room means SQLite-backed project chat
-without raw agent traces, asset metadata means SQLite asset indexes without
-media blob bytes, and revision content means immutable text/timeline revision
+canvas means the Loro canvas replica, asset metadata means SQLite asset indexes
+without media blob bytes, and revision content means immutable text/timeline revision
 indexes plus content-addressed revision blobs. It also records that raw agent
 traces and local runtime secrets are local-only by default and require explicit
 opt-in before any future sync path may include them.
@@ -813,7 +795,7 @@ opt-in before any future sync path may include them.
 UI evidence is explicit: `packages/web-ui/src/components/SettingsClient.tsx`
 exposes a `Cloud mirror readiness` block in the Sync section, and
 `packages/web-ui/src/components/SettingsClient.sync.test.tsx` verifies that
-`Canvas mirror ready`, `Room mirror ready`, `Asset metadata mirror ready`, and
+`Canvas mirror ready`, `Asset metadata mirror ready`, and
 `Revision content mirror ready` are patched to `/api/v1/local/sync`
 `capabilities`. A remote URL/token alone does not open Web/share gates.
 
@@ -865,57 +847,19 @@ destructive repair boundary checks are still needed.
 
 ### Local room endpoints
 
-Implemented locally in SQLite:
+Removed from local-first v1:
 
 - `GET /api/v1/projects/:pid/room/messages`
 - `POST /api/v1/projects/:pid/room/messages`
+- `POST /api/v1/projects/:pid/room/sync`
+- `POST /api/v1/projects/:pid/room/sync/conflicts/:messageId/resolve`
 
 Rules:
 
-- append-only,
-- stable message ids,
-- sender validation,
-- mention validation,
-- same-id replay is accepted only when normalized sender/text/mentions match,
-- SQLite persistence,
-- accepted/rejected host mutation records on POST,
-- no raw trace dumps.
-- Cloud room POST matches the same same-project/id idempotency rule and rejects
-  changed content instead of returning the old row as a silent success.
-- Local room sync code includes a pure mirror planner that sorts import/export
-  candidates by append order and classifies same-id content mismatches as
-  conflicts instead of overwrites.
-- Local-api exposes explicit `POST /api/v1/projects/:projectId/room/sync`;
-  the CLI exposes `clash room sync --json` so agents can mirror only through
-  an auditable action result.
-- Same-id room sync conflicts expose local/remote message snapshots and content
-  hashes in the public plan, so failed sync output is inspectable without
-  mutating either side.
-- Local-api exposes explicit
-  `POST /api/v1/projects/:projectId/room/sync/conflicts/:messageId/resolve`,
-  and the CLI exposes `clash room resolve-conflict --local-hash --remote-hash`.
-  The only first-pass strategy is `accept-divergence`; it writes the resolution
-  to SQLite `room_sync_conflict_resolution` and records a mutation audit receipt
-  only when the supplied local/remote hashes still match the current conflict.
-  Later sync reports that id in `resolvedConflictIds` instead of overwriting
-  either message.
-- Room sync now checks active project existence before remote admission, so a
-  missing project returns 404 instead of being hidden by cloud configuration.
-- Local-only room sync rejection includes a machine-readable `admission` gate
-  with `allowed: false`, `reason: "remote-room-not-configured"`, and
-  `requirements: ["enable-sync"]`.
-- Room message read/send responses now include `sync.admission` too, so agents
-  and UI can inspect local-only admission requirements before invoking the
-  explicit mirror action.
-- `clash room sync --json` preserves that rejected API body on stdout while
-  keeping the nonzero exit and stderr error text, so agents can parse the
-  admission/mutation evidence even when sync is denied.
-
-Remaining:
-
-- team/opt-in raw trace sync policy controls beyond the read-only `sync.trace_policy` admission evidence,
-- fuller visible conflict recovery UX across local and remote,
-- live room UI parity in local desktop.
+- local-api returns 404 for those legacy paths,
+- the local-first CLI does not register `room`,
+- cloud room routes may remain hosted/shared compatibility only,
+- raw ACP traces stay in session/runtime stores, not project chat.
 
 ### Local text revision endpoints
 
@@ -1063,7 +1007,7 @@ Every projection apply must carry:
 
 Host validates before mutation.
 
-local-api v1 project create/update/delete/restore/purge, local room message create, asset create/ref-delete/cover
+local-api v1 project create/update/delete/restore/purge, asset create/ref-delete/cover
 update plus invalid storage-key rejection, session create/delete, runtime session create/attach success plus
 validation rejection, provider account update/delete, provider OAuth
 start/complete/delete, local sync/audio/runtime config update/install, and local
@@ -1132,12 +1076,9 @@ local API contract.
   with bare synthesized timeline CAS tokens.
 - `clash text apply/replace` rejects stale locks and daemon agent writes with
   bare synthesized text CAS tokens.
-- `clash room say/read` works against current local-api/cloud APIs and reports
-  a generic missing-room-API message for older targets.
-- A focused local-api e2e starts a real loopback server and drives
-  `clash room say/read` through a spawned CLI process, including local-only
-  sync metadata assertions.
-- `clash vars` does not claim to be local auth default.
+- Room and vars commands are not registered by the local-first CLI.
+- Remote worker secrets are described as hosted/remote Settings, not local CLI
+  variables.
 - `clash audit mutations --operation project_create --entity <projectId>
   --json`, `clash audit mutations --operation project_update --entity <projectId>
   --json`, `clash audit mutations --operation project_restore --entity <projectId>
@@ -1184,8 +1125,8 @@ local API contract.
 The API surface gap is not that local and cloud are different. They should be
 different in authority.
 
-The gap is that some local surfaces still look cloud-shaped without local
-persistence (`room`). v1 needs to make these truths explicit:
+The historical gap was that some local surfaces looked cloud-shaped without
+local persistence, especially project room. v1 now makes these truths explicit:
 
 - local owns a complete single-user path,
 - cloud owns sync/shared authority,

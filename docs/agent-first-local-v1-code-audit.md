@@ -85,10 +85,10 @@ The main v1 gaps are:
 - local asset storage paths now share a local-api realpath guard for blob
   upload/read, workflow-generated asset writes, local blob imports, and GC
   deletion,
-- local room POST/GET now persists to SQLite, keeps raw ACP traces separate,
-  and dispatches mentions best-effort to local ACP sessions,
-- CLI keeps `clash vars` for remote worker compatibility; current copy scopes
-  it to remote worker action variables instead of local provider auth,
+- local-api now rejects legacy local room endpoints with 404; cloud room remains
+  remote/shared compatibility only,
+- local-first CLI no longer registers `vars`; remote worker secrets are described
+  as hosted/remote Settings instead of local provider auth,
 - generic `clash canvas update` remains a direct patch/admin path rather than
   projection apply; it now blocks projection/provenance fields, text feeding
   materialized downstream state, fulfilled referenced media `assetId`
@@ -404,10 +404,9 @@ Cloud still has:
 - worker-action secret injection,
 - web settings variable UI.
 
-CLI still includes `clash vars`, but local-provider copy now points users to
-`clash models provider set <PROVIDER>`, while `vars` copy is scoped to
-remote/cloud worker action secrets. A 404 from `/api/v1/vars` is reported as
-an explicit remote-only/local-auth boundary.
+Local-first CLI no longer includes a vars command. Local-provider copy points
+users to provider account setup, while remote worker action secrets are managed
+in hosted/remote Settings. Local `/api/v1/vars` remains unavailable.
 
 Conclusion:
 
@@ -418,7 +417,7 @@ Conclusion:
   local skill management.
 - Keep CLI/help mode-aware:
   - local mode: provider accounts/OAuth/local runtime setup,
-  - remote worker mode: vars compatibility,
+  - remote worker mode: hosted/remote Settings for secrets,
   - shared mode: explicit remote-secret boundary.
 
 Required limit:
@@ -432,16 +431,12 @@ actions use local-api auth/runtime setup, not action secrets.
 
 Current facts:
 
-- CLI has `clash room say/read` and expects
-  `/api/v1/projects/:pid/room/messages`.
-- CLI catches 404 from that endpoint and reports missing API support for older
-  targets.
-- Web UI hooks and cloud routes use project room message semantics.
+- Local-first CLI no longer registers `room`.
+- local-api returns 404 for legacy `/api/v1/projects/:id/room/*` routes.
+- Web UI hooks and cloud routes may still use hosted project room semantics.
 - Cloud schema has `room_message`.
-- Local-api tests cover local project room SQLite persistence, restart
-  recovery, same-second pagination, duplicate-id protection, same-project
-  same-id content conflict rejection, sender validation, and mention dispatch.
-- Local ACP can push room mentions into matching project agent sessions.
+- A focused local-api contract test covers the removed local room read, write,
+  sync, and conflict-recovery paths.
 
 Conclusion:
 
@@ -539,8 +534,8 @@ Conclusion:
 ### Restrict cloud labels
 
 - Local-only projects are not web-openable.
-- `Synced` means canvas, room, and needed asset metadata have an actual sync
-  path.
+- `Synced` means canvas, asset metadata, and revision content have actual sync
+  paths.
 - Local-only custom actions are unavailable when the owner's machine is offline.
 
 ## Near-Term Implementation Order
@@ -549,7 +544,7 @@ Conclusion:
 2. Generic projection lock/hash/path library.
 3. Text node Markdown pull/apply/replace with copy-on-write.
 4. Mode-aware CLI help for vars/provider auth.
-5. Local room SQLite endpoints or clear local-only unsupported errors.
+5. Clear local-only unsupported errors for legacy room endpoints.
 6. Direct `canvas update` guardrails for materialized checkpoint references.
 7. Asset link/projection policy and GC rules.
 8. Real Codex ACP black-box path test for spawned agent cwd.
@@ -641,8 +636,7 @@ Conclusion:
   task/output reruns with different content before overwriting the checkpoint
   file. Focused Web/CLI/shared-type tests now cover graph/edge read-token CAS
   for runtime ACP edge add/update/delete plus `clash canvas edges --json`.
-  Local room message client-id replays with different content are rejected and
-  preserve the original message.
+  Legacy local room endpoints are removed from local v1 and return 404.
 
 ## What Not To Delete
 

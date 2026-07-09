@@ -410,8 +410,8 @@ Assertions:
 - canonical Loro snapshot path is protected and outside the editable project
   workspace root,
 - a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
-  `cloud-sync-not-ready` until canvas, room, asset metadata, and revision
-  content mirrors are ready,
+  `cloud-sync-not-ready` until canvas, asset metadata, and revision content
+  mirrors are ready,
 - cloud-sync sync policy names the required mirrors and admits ready
   `cloud-sync` projects as `ready-local-with-cloud-mirror`, not as cloud
   sequencer authority,
@@ -697,7 +697,7 @@ Result:
   cover updates and generic asset blob uploads write sanitized local mutation audit
   evidence; the same run also proved the restore
   path's sanitized audit evidence, v1 project create audit evidence, obsolete local project endpoint rejection evidence, session create audit evidence,
-  local room message create audit evidence,
+  legacy local room endpoint removal evidence,
   project purge's default delayed purge window,
   explicit force override, deleted recovery point removal,
   canonical project replica deletion, and sanitized local mutation audit
@@ -706,21 +706,15 @@ Result:
   now requires receipt-bearing node reads, rejects downstream text content patch,
   local-api canvas batch delete now requires a graph-aware delete-plan receipt,
   rejects orphaning external references and bare CAS tokens, and writes sanitized
-  audit evidence; accepted room sync mirrors local/remote room messages through
-  the explicit action and writes sanitized local mutation audit evidence; room
-  sync conflict recovery exposes local/remote hashes, rejects stale hash
-  resolution, accepts inspected divergence, preserves local text on later sync,
-  and writes sanitized mutation audit evidence;
-  session create/delete, runtime session create/attach, local room message create, local sync config update, local audio config update/install, local harness enablement/install/upgrade/authenticate/uninstall, local agent-server config update, provider account
+  audit evidence;
+  session create/delete, runtime session create/attach, local sync config update, local audio config update/install, local harness enablement/install/upgrade/authenticate/uninstall, local agent-server config update, provider account
   update/delete, provider OAuth start/complete/delete, asset-ref delete, asset GC delete, and local-api canvas edge delete also write sanitized local mutation audit
   evidence after accepted agent writes,
 - stale provider, OAuth, asset GC, project restore, and session receipts were
   rejected,
 - fresh host-issued receipts were accepted and reported mutation envelopes,
 - restored project status preserved the local storage path contract,
-- room sync checked project existence before remote admission, local-only room
-  sync returned a machine-readable admission gate requiring `enable-sync`, and
-  conflict recovery preserved local divergence without overwriting either side.
+- legacy local room endpoints reject read/write/sync/recovery calls with 404.
 
 Latest verified storage doctor repair smoke:
 
@@ -788,13 +782,13 @@ Result:
   `webOpenable: false`, and `roomAuthority: local` until the full sync
   capabilities are ready,
 - cloud-sync pending action gates reported `cloud-sync-not-ready` for web and
-  sharing admission with `canvas`, `room`, `asset-metadata`, and
-  `revision-content` requirements,
-- cloud-sync pending sync policy named canvas, room, asset metadata, and
+  sharing admission with `canvas`, `asset-metadata`, and `revision-content`
+  requirements,
+- cloud-sync pending sync policy named canvas, asset metadata, and
   revision content mirrors while keeping media blob bytes outside the asset
   metadata mirror,
 - a separate cwd marker for the same project with `[sync.capabilities]`
-  declaring canvas, room, asset metadata, and revision content ready changed
+  declaring canvas, asset metadata, and revision content ready changed
   project status to `syncReadiness.status: ready`, `webOpenable: true`, and
   `roomAuthority: local-with-cloud-mirror` while keeping
   `multiUser: false` and local agent execution allowed,
@@ -925,17 +919,11 @@ Current status:
 - Direct real Codex E2E now asserts the happy-path workspace roots. Storage
   doctor smoke asserts secondary replica/recovery behavior through public CLI,
   while focused CLI tests cover protected cwd plus SQLite schema warnings.
-- Local room endpoints now exist as a SQLite local-only baseline, and
-  `apps/local-api/src/room-cli.e2e.test.ts` starts a real local-api HTTP server
-  while driving `clash room say/read/sync/resolve-conflict --json` through a
-  spawned CLI process, including denied local-only sync with parseable stdout
-  admission evidence, remote/local conflict hash inspection, stale-hash
-  rejection, explicit divergence recovery persistence, and later sync
-  continuation without overwriting local text. `GroupChatPanel` also exposes
-  first-pass conflict id/hash/CLI recovery details from that sync plan and
-  gates its Sync room action when `sync.admission.allowed=false`; room sync meta also exposes raw-trace local-only admission evidence. Remaining
-  work is remote sync loop wiring beyond the UI admission gate, fuller
-  local/remote recovery workflow, and broader live UI parity.
+- Local room endpoints are removed from the local-first surface: local-api
+  returns 404 for legacy room read/write/sync/recovery paths, and the CLI no
+  longer registers room commands. `GroupChatPanel` no longer renders removed CLI
+  recovery commands; hosted/cloud room compatibility remains separate from the
+  local-first E2E gate.
 - `apps/desktop/e2e/agent-first-cas-smoke.mjs` now covers public CLI
   read-proof rejection for missing/stale/wrong-file locks, text/timeline
   outside-cwd and symlink-outside-cwd projection path rejection including

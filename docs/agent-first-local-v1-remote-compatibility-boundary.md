@@ -73,7 +73,8 @@ Reason:
 
 - Room is project-visible conversation.
 - Shared projects need cloud room authority.
-- Local v1 should add local room persistence, not delete room.
+- Local v1 does not expose local room persistence; cloud/shared room remains a
+  hosted compatibility surface.
 
 Restriction:
 
@@ -285,51 +286,25 @@ Allowed replacement:
 
 ### Local project room behavior
 
-Do not route raw ACP traces through room.
+Do not route raw ACP traces through room, and do not expose local room as an
+agent-facing local-first CLI/API surface.
 
 Current evidence:
 
-- local-api tests cover SQLite-backed local room persistence, pagination,
-  idempotency, and mention dispatch.
-- CLI `clash room say/read` already exists and expects room endpoints.
-- cloud route tests now keep client-provided room ids idempotent only for the
-  same normalized sender/text/mentions payload, matching local conflict
-  semantics.
-- local-api room sync tests now cover deterministic mirror planning: local-only
-  export, remote-only import, already-mirrored same-id rows, and same-id content
-  conflicts.
-- local-api app tests cover explicit room sync metadata, remote-only import,
-  local-only export, accepted `room_sync` mutation records plus sanitized audit
-  evidence, and same-id conflict rejection without local overwrite; same-id
-  conflict plans expose local/remote
-  room-message snapshots plus content hashes for manual or agent review.
-- local-api and CLI now expose explicit hash-checked `accept-divergence`
-  conflict recovery. The recovery action writes local SQLite
-  `room_sync_conflict_resolution`, records an auditable local mutation receipt,
-  and later sync reports the message id in `resolvedConflictIds` instead of
-  overwriting either local or remote content.
-- room message read/send responses carry `sync.admission`, so local-only clients
-  can see `remote-room-not-configured`/`enable-sync` before attempting explicit
-  room sync, while cloud-configured reads expose allowed admission.
-- local-api room sync now checks active project existence before remote
-  admission, and local-only sync rejection returns a machine-readable admission
-  gate (`remote-room-not-configured`, requiring `enable-sync`).
-- `clash room sync --json` exposes the mirror action to agents with
-  exported/imported/matched/conflict ids and accepted/rejected mutation
-  evidence; denied local-only sync also prints the structured admission body
-  on stdout while retaining stderr compatibility.
+- local-api now returns 404 for legacy `/api/v1/projects/:id/room/*` endpoints,
+  with a focused contract test covering read, write, sync, and conflict
+  recovery paths;
+- the local-first CLI no longer registers `room`;
+- cloud route tests may keep cloud room compatibility for shared projects, but
+  local agents should use session/canvas/action channels instead of project
+  room commands.
 
 v1 decision:
 
-- Keep local room as project-visible SQLite rows.
-- Keep cloud room routes compatible.
-- Treat cloud sync as a separate boundary with explicit conflict/idempotency and
-  mirror-sequencing tests. Cloud-configured local room reads report
-  `remote_room.enabled=true` with `status=pending`; only explicit sync action
-  results can report `mirrored` or `failed`.
-- Do not introduce background room sync until admission controls beyond the
-  first local-only gate, richer conflict recovery UI, and live room parity are
-  designed and tested.
+- Keep cloud room routes compatible where remote collaboration still needs them.
+- Do not expose local room persistence or `room` CLI commands in v1.
+- Treat any future local project chat as a separate product surface that must be
+  designed and tested without becoming raw agent trace storage.
 
 Reason:
 
@@ -355,7 +330,7 @@ Allowed replacement:
 | --- | --- | --- | --- |
 | Canvas state | local Loro replica | local + cloud mirror | cloud ProjectRoom sequenced, local cache |
 | Web open | no | yes, from cloud copy | yes, from cloud copy |
-| Room messages | local SQLite | local + cloud append log | cloud authoritative, local cache |
+| Room messages | unavailable in local v1 | hosted/cloud compatibility | cloud authoritative, local cache |
 | Asset metadata | local SQLite | synced metadata | cloud/shared metadata |
 | Asset blobs | local disk | uploaded/lazy as policy | uploaded/streamed for collaborators |
 | Local agents | user machine only | user machine, sync-visible outputs | user-owned runtime endpoint |
@@ -366,9 +341,9 @@ Allowed replacement:
 
 `Synced` is not URL-only. `SettingsClient` exposes `Cloud mirror readiness` in
 local Sync settings, and the project is not Web/share-openable until
-`Canvas mirror ready`, `Room mirror ready`, `Asset metadata mirror ready`, and
-`Revision content mirror ready` have real mirror paths and are saved to
-`/api/v1/local/sync` `capabilities`.
+`Canvas mirror ready`, `Asset metadata mirror ready`, and
+`Revision content mirror ready` have real mirror paths and are saved to `/api/v1/local/sync`
+`capabilities`.
 
 ## Deprecation Rules
 
@@ -395,14 +370,14 @@ CLI and UI copy should say which mode a feature belongs to.
 Bad:
 
 ```text
-Set variables with clash vars set <KEY>
+Set remote worker secrets with the local CLI
 ```
 
 Good:
 
 ```text
 Local provider auth: configure a provider account.
-Remote worker action secret: use cloud vars.
+Remote worker action secret: use hosted/remote Settings.
 ```
 
 ### Rule 4: Shared project local runtime is availability-bound
@@ -429,12 +404,11 @@ Local tests:
 - local variables endpoints remain unavailable,
 - local action-secret endpoints remain unavailable,
 - provider public DTOs do not expose secrets,
-- local room SQLite persistence, pagination, idempotency, and mention dispatch
-  remain covered.
+- local legacy room endpoints remain unavailable.
 
 Cloud tests:
 
-- `/api/v1/vars` routes continue to work,
+- hosted `/api/v1/vars` routes continue to work,
 - cloud room GET/POST continue to work,
 - ProjectRoom sync behavior remains unchanged,
 - remote custom action secret injection remains covered.
@@ -442,10 +416,8 @@ Cloud tests:
 CLI tests:
 
 - local-mode help does not direct users to vars as default auth,
-- local vars 404 is explained as remote-only/local-auth boundary,
-- remote vars compatibility remains callable with cloud target,
-- room 404 is explained as missing API support for older local-api/cloud
-  targets.
+- local-first CLI does not register `vars` or `room`,
+- remote action secret copy points users to hosted/remote Settings.
 
 ## Implementation Consequence
 

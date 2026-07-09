@@ -62,7 +62,6 @@ local install idempotency
 
 Examples:
 
-- `clash room say`,
 - `clash tasks status/wait`,
 - `clash canvas add`,
 - `clash action install <id>` local package install.
@@ -110,8 +109,6 @@ Examples:
 | `clash projects delete` | Local API soft-delete, preserves project sessions/messages, and requires `--yes` in CLI | Read-token CAS for agents | Use `clash project get --json` then `clash project delete --if-match <readToken> --yes`; permanent removal is a separate purge action |
 | `clash projects restore` | Restores a soft-deleted local project through the local recovery endpoint | Read-token CAS for agents | Use `clash project get --include-deleted --json` then `clash project restore --if-match <readToken>`; keep cloud/shared-project recovery parity separate |
 | `clash projects purge` | Permanently removes a deleted local recovery point after explicit confirmation | Deleted-project read-token CAS for agents | Use `clash project get --include-deleted --json` then `clash project purge <projectId> --if-match <readToken> --yes`; defaults to delayed purge unless `--force` is explicit |
-| `clash room say` | Append-only project chat | Not CAS | Store locally in SQLite and cloud D1; validate sender |
-| `clash room read` | Read-only | Not needed | Safe inspection |
 | `clash tasks status/wait` | Read-only/polling | Not needed | Safe inspection |
 | `clash models provider set` | Provider account config mutation | Read-token CAS for agents | Use `clash models providers --json` then `clash models provider set <PROVIDER> --if-match <readToken>`; `--force` is the explicit overwrite escape hatch |
 | `clash production plan-review-gate/approve-review-gate` | Writes local review gate JSON plus lock; approval checks lock file path and hash | OK | Keep as read-proof CAS for review decisions; durable DB/multi-user review UI is separate |
@@ -120,7 +117,7 @@ Examples:
 | `clash production apply-metadata-projection` | Applies an edited primary asset metadata projection back to `assets/manifest.json`, checks lock file path and stale metadata hash, refreshes the lock on success | OK for file CAS | Keep explicit; do not let agents mutate the manifest directly for projection edits |
 | `clash production apply-storyboard-prompt-pack` | Applies edited prompt-pack JSON through a generic projection lock envelope plus source-action proof | OK | Keep hash, entity, source-action, and file-path mismatch rejection; host-issued receipt remains separate |
 | `clash production replace-storyboard-prompt-pack` | Creates a versioned COW prompt-pack projection from a locked prompt-pack JSON file | OK | Same generic lock as read proof; source managed prompt-pack stale rejection; returns/persists `referencePolicy` so existing downstream references stay put until explicit apply rewires the managed projection |
-| `clash vars set/delete` | Remote variable compatibility | Not local CAS | Remote-only compatibility; not local v1 auth path |
+| room/vars commands | Removed from local-first CLI | Not applicable | Hosted/remote compatibility must not appear as local CLI state |
 | `clash auth login/logout` | Writes `${CLASH_HOME:-~/.clash}/config.json` API key with owner-only permissions | Not CAS | Secret/config store; keychain/token store remains a hardening follow-up |
 
 ## Findings
@@ -236,12 +233,11 @@ Remaining guardrails:
   `clash project purge <projectId> --if-match <readToken> --yes`; the host
   rejects active projects, defaults to a 7-day purge delay, and treats
   `--force` as the explicit admin purge override. v1 project
-  create/update/delete/restore/purge, local room message create,
-  asset create/ref-delete/cover-update, local sync
+  create/update/delete/restore/purge, asset create/ref-delete/cover-update, local sync
   config update, local audio config update/install, local harness enablement/install/install-adapter/upgrade/uninstall/authenticate,
   local agent-server config update, provider account update/delete, provider OAuth
   start/complete/delete, session create/delete, and runtime session create/attach responses include accepted/rejected mutation records.
-  Accepted v1 project create/update/delete/restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, accepted session create/delete, accepted runtime session create/attach, and accepted local room message create write
+  Accepted v1 project create/update/delete/restore/purge, accepted local sync config update, accepted local audio config update/install, accepted local harness enablement/install/install-adapter/upgrade/uninstall/authenticate, accepted local agent-server config update, accepted provider account update/delete, accepted provider OAuth start/complete/delete, accepted session create/delete, and accepted runtime session create/attach write
   first-pass sanitized local audit records readable through
   `clash audit mutations --operation project_create --entity <projectId> --json`,
   `clash audit mutations --operation project_update --entity <projectId> --json`,
@@ -265,9 +261,6 @@ Remaining guardrails:
   `clash audit mutations --operation session_create --entity <threadId> --json`,
   or `clash audit mutations --operation session_delete --entity <threadId> --json`
   without exposing receipt-bearing read tokens or raw SQLite.
-  Local room message POST responses also include accepted/rejected mutation
-  records while keeping `sync.remote_room.enabled=false` until remote sync is
-  implemented.
   Runtime session create/attach success and validation rejections also include
   mutation records. Provider account update/delete responses include mutation
   records. Provider OAuth start/complete/delete responses include mutation
@@ -321,7 +314,7 @@ It does need:
 ### Project-level action registration needs version semantics
 
 `clash action install --project --repo/--url` and `clash action remove
---project` mutate project action registration through ProjectRoom sideband.
+--project` mutate project action registration through the host action registry.
 
 This is not file projection CAS, but it is a concurrent project mutation.
 
@@ -375,7 +368,7 @@ Required behavior:
 
 ### P1
 
-- Add local room SQLite persistence.
+- Keep legacy local room CLI/API removed from the local-first surface.
 - Add project-level action version/conflict semantics.
 - Move CLI auth token storage to a safer local store if/when keychain support is
   added; current file-backed storage is strict-permission `0600`.
@@ -384,7 +377,7 @@ Required behavior:
 
 - Add admin/debug commands for explicit low-level patching.
 - Extend first-pass local mutation audit beyond project create/update/delete/restore/purge,
-  session create/delete, runtime session create/attach, local room message create, provider account update/delete, provider OAuth start/complete/delete, asset-ref
+  session create/delete, runtime session create/attach, provider account update/delete, provider OAuth start/complete/delete, asset-ref
   delete, asset create, asset import, custom action upload, asset cover update, asset reference refresh, asset GC delete, local-api canvas node update/delete, local-api canvas batch delete, and local-api canvas edge delete to the remaining
   force/destructive mutation surfaces.
 - Broaden direct canvas read-token fixtures beyond the live local-api node/batch/edge

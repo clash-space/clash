@@ -858,8 +858,6 @@ async function main() {
       { type: "index", name: "agent_member_user_idx" },
       { type: "table", name: "chat_message" },
       { type: "index", name: "chat_message_session_idx" },
-      { type: "table", name: "room_message" },
-      { type: "index", name: "room_message_project_idx" },
       { type: "table", name: "mutation_audit" },
       { type: "index", name: "mutation_audit_created_idx" },
       { type: "index", name: "mutation_audit_operation_idx" },
@@ -1012,7 +1010,6 @@ async function main() {
       cloudSyncStatus?.collaboration?.roomAuthority === "local" &&
       cloudSyncStatus?.collaboration?.syncReadiness?.status === "pending" &&
       cloudSyncStatus?.collaboration?.syncReadiness?.ready === false &&
-      cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("room") === true &&
       cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("asset-metadata") === true &&
       cloudSyncStatus?.collaboration?.syncReadiness?.missing?.includes("revision-content") === true,
     JSON.stringify(cloudSyncStatus?.collaboration),
@@ -1021,7 +1018,6 @@ async function main() {
     "cloud-sync pending sync policy names required mirrors without treating revision content as media assets",
     cloudSyncStatus?.collaboration?.syncPolicy?.cloudAdmission === "blocked-until-requirements-ready" &&
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.canvas?.requirement === "canvas" &&
-      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.room?.requirement === "room" &&
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.assetMetadata?.requirement === "asset-metadata" &&
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.assetMetadata?.mediaBlobsIncluded === false &&
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.requirement === "revision-content" &&
@@ -1032,10 +1028,9 @@ async function main() {
   );
   recordCheck(
     "cloud-sync pending action gates block web and sharing until required mirrors are ready",
-    cloudSyncStatus?.collaboration?.actions?.openInWeb?.allowed === false &&
+      cloudSyncStatus?.collaboration?.actions?.openInWeb?.allowed === false &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.reason === "cloud-sync-not-ready" &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("canvas") === true &&
-      cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("room") === true &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("asset-metadata") === true &&
       cloudSyncStatus?.collaboration?.actions?.openInWeb?.requirements?.includes("revision-content") === true &&
       cloudSyncStatus?.collaboration?.actions?.enableSync?.allowed === false &&
@@ -1057,7 +1052,6 @@ async function main() {
       "",
       "[sync.capabilities]",
       "canvas = true",
-      "room = true",
       "asset_metadata = true",
       "revision_content = true",
       "",
@@ -1097,7 +1091,7 @@ async function main() {
   recordCheck(
     "cloud-sync ready sync policy admits local mirror instead of cloud sequencer authority",
     readyCloudSyncStatus?.collaboration?.syncPolicy?.cloudAdmission === "ready-local-with-cloud-mirror" &&
-      readyCloudSyncStatus?.collaboration?.syncPolicy?.mirror?.room?.rawAgentTrace === false &&
+      readyCloudSyncStatus?.collaboration?.syncPolicy?.mirror?.assetMetadata?.mediaBlobsIncluded === false &&
       readyCloudSyncStatus?.collaboration?.syncPolicy?.excluded?.rawAgentTraces?.optInRequiredForSync === true,
     JSON.stringify(readyCloudSyncStatus?.collaboration?.syncPolicy),
   );
