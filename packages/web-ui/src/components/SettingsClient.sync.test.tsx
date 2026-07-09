@@ -510,6 +510,12 @@ describe("SettingsClient sync section", () => {
             has_token: false,
             source: "none",
           },
+          capabilities: {
+            canvas: false,
+            room: false,
+            asset_metadata: false,
+            revision_content: false,
+          },
         }), { headers: { "content-type": "application/json" } });
       }
       if (url.includes("/api/v1/local/sync") && init?.method === "PATCH") {
@@ -517,6 +523,12 @@ describe("SettingsClient sync section", () => {
           mode: "cloud-sync",
           remote_loro_url: "https://cloud.example",
           remote_loro_token: "secret",
+          capabilities: {
+            canvas: true,
+            room: true,
+            asset_metadata: true,
+            revision_content: true,
+          },
         });
         return new Response(JSON.stringify({
           mode: "cloud-sync",
@@ -525,6 +537,12 @@ describe("SettingsClient sync section", () => {
             url: "https://cloud.example",
             has_token: true,
             source: "config",
+          },
+          capabilities: {
+            canvas: true,
+            room: true,
+            asset_metadata: true,
+            revision_content: true,
           },
         }), { headers: { "content-type": "application/json" } });
       }
@@ -555,6 +573,10 @@ describe("SettingsClient sync section", () => {
     fireEvent.change(screen.getByLabelText("Remote Loro token"), {
       target: { value: "secret" },
     });
+    fireEvent.click(screen.getByRole("switch", { name: "Canvas mirror ready" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Room mirror ready" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Asset metadata mirror ready" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Revision content mirror ready" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(screen.getAllByText("Token saved").length).toBeGreaterThan(0);
