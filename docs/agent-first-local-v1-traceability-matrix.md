@@ -384,6 +384,9 @@ Evidence:
   unavailable and stops send/sync POSTs instead of emulating a local room log.
 - Group chat disables the room composer when hosted/cloud room admission is
   unavailable so local-only projects do not present room as a writable surface.
+- The composer also stays disabled while hosted room availability is still
+  loading, avoiding a transient writable local room affordance before the 404
+  boundary is known.
 - Raw ACP traces remain session/runtime state rather than project chat.
 
 Conclusion:

@@ -134,9 +134,13 @@ describe("GroupChatPanel primitives", () => {
 
     expect(panelSource).toContain("roomSyncAdmission");
     expect(panelSource).toContain("roomSyncBlockedReason");
+    expect(panelSource).toContain("roomComposerPending");
     expect(panelSource).toContain("roomComposerDisabled");
+    expect(panelSource).toContain("roomComposerPlaceholder");
     expect(panelSource).toContain("roomComposerError");
+    expect(panelSource).toContain("room.loading && room.sync === null");
     expect(panelSource).toContain("room.sync?.admission?.allowed === false");
+    expect(panelSource).toContain("Checking hosted room availability...");
     expect(panelSource).toContain("Cloud room is not configured for this project");
     expect(panelSource).toContain("Cloud room is unavailable in this local project");
     expect(panelSource).not.toContain("Room sync is waiting for the cloud room capability");

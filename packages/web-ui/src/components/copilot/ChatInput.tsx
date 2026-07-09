@@ -549,9 +549,7 @@ function ChatInputInner({
         noKeyboard: true,
         onDropAccepted: handleDropAccepted,
     });
-    // placeholder prop is currently unused by MilkdownEditor; reference it
-    // so TS/lint doesn't flag it as unused while keeping the public API.
-    void placeholder;
+    const disabledPlaceholder = actionLocked && !input.trim() ? placeholder : null;
 
     return (
         <div className={isHero ? '' : 'px-4 pb-4'}>
@@ -661,6 +659,11 @@ function ChatInputInner({
                             onPointerUp={() => window.requestAnimationFrame(updateCaretTarget)}
                             onInput={() => window.requestAnimationFrame(updateCaretTarget)}
                         >
+                            {disabledPlaceholder ? (
+                                <div className="px-[18px] py-4 text-sm text-stone-500 dark:text-stone-400">
+                                    {disabledPlaceholder}
+                                </div>
+                            ) : null}
                             <MilkdownEditor
                                 ref={editorRef}
                                 value={input}

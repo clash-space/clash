@@ -276,6 +276,20 @@ export function GroupChatPanel({
     () => new Set(invitedAgent.map((c) => c.id)),
     [invitedAgent],
   );
+  const roomSyncAdmission = room.sync?.admission;
+  const roomSyncBlockedReason = room.sync?.admission?.allowed === false
+    ? roomSyncAdmission?.reason === 'remote-room-not-configured'
+      ? 'Cloud room is not configured for this project'
+      : 'Cloud room is unavailable in this local project'
+    : null;
+  const roomComposerPending = room.loading && room.sync === null;
+  const roomComposerDisabled = roomComposerPending || room.sync?.admission?.allowed === false;
+  const roomComposerPlaceholder = roomComposerPending
+    ? 'Checking hosted room availability...'
+    : roomComposerDisabled
+      ? roomSyncBlockedReason ?? 'Cloud room is unavailable in this local project'
+      : null;
+  const roomComposerError = room.error ?? (!roomComposerPending && roomComposerDisabled ? roomSyncBlockedReason : null);
 
   /**
    * ChatInput submit handler. Receives markdown text containing
@@ -288,7 +302,7 @@ export function GroupChatPanel({
   const onChatSubmit = useCallback(
     async (text: string, _attachments: UploadedAttachment[] = []) => {
       const value = text.trim();
-      if (!value) return;
+      if (!value || roomComposerDisabled) return;
       void _attachments; // attachments wired in next pass (asset/upload plumbing)
 
       const agentMentions: Array<{ user_id: string; agent_member_id: string }> = [];
@@ -325,7 +339,7 @@ export function GroupChatPanel({
       // the right tab.
       if (agentMentions[0]) group.focus(agentMentions[0].agent_member_id);
     },
-    [userId, room, group, resolveMention, invitedAgentIdSet],
+    [userId, room, group, resolveMention, invitedAgentIdSet, roomComposerDisabled],
   );
 
   const resizeStartWidthRef = useRef(width);
@@ -408,14 +422,6 @@ export function GroupChatPanel({
     ? invitedAgent.find((c) => c.id === activeTab)?.display_name ?? 'Agent'
     : 'Room';
   const syncIndicator = roomSyncIndicator(room.sync);
-  const roomSyncAdmission = room.sync?.admission;
-  const roomSyncBlockedReason = room.sync?.admission?.allowed === false
-    ? roomSyncAdmission?.reason === 'remote-room-not-configured'
-      ? 'Cloud room is not configured for this project'
-      : 'Cloud room is unavailable in this local project'
-    : null;
-  const roomComposerDisabled = room.sync?.admission?.allowed === false;
-  const roomComposerError = room.error ?? (roomComposerDisabled ? roomSyncBlockedReason : null);
   const roomSyncConflicts = room.syncPlan?.conflicts ?? [];
   const roomSyncConflictCount = roomSyncConflicts.length;
   const roomSyncButtonTooltip = roomSyncBlockedReason
@@ -747,11 +753,10 @@ export function GroupChatPanel({
           onInputChange={setDraft}
           onSubmit={onChatSubmit}
           placeholder={
-            roomComposerDisabled
-              ? roomSyncBlockedReason ?? 'Cloud room is unavailable in this local project'
-              : invitedAgent.length === 0
+            roomComposerPlaceholder
+              ?? (invitedAgent.length === 0
               ? 'Invite a agent member with + to start chatting'
-              : `Chat the room, or @${firstInvitedHandle} a agent member`
+              : `Chat the room, or @${firstInvitedHandle} a agent member`)
           }
           mentionableNodes={mentionableNodes}
           projectId={projectId}

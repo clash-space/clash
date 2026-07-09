@@ -159,6 +159,24 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("milkdown-editor").closest(".clash-chat-input-editor")?.className).toContain("pointer-events-none");
   });
 
+  it("renders the placeholder as a disabled composer hint", async () => {
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          placeholder="Cloud room is unavailable in this local project"
+          disabled
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+
+    expect(screen.getByText("Cloud room is unavailable in this local project")).toBeTruthy();
+  });
+
   it("exposes focus through an explicit handle instead of requiring DOM queries", async () => {
     const inputRef = createRef<{ focus: () => void }>();
     render(
