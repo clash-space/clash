@@ -11,6 +11,7 @@ import { NodeModalDialog } from "./NodeModalDialog";
 import { Button } from "../ui/button";
 import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
+import { useRevisionHistory } from "@clash/web-ui/hooks/useRevisionHistory";
 
 const TextNode = ({
   data,
@@ -24,6 +25,12 @@ const TextNode = ({
   );
   const { setNodes } = useReactFlow();
   const loroSync = useOptionalLoroSyncContext();
+  const revisionHistory = useRevisionHistory({
+    projectId: loroSync?.projectId ?? null,
+    nodeId: id,
+    kind: "text",
+    limit: 5,
+  });
 
   // Sync when data changes (from Loro or other sources)
   useEffect(() => {
@@ -147,6 +154,14 @@ const TextNode = ({
               : "ring-1 ring-warm-border"
           }`}
         >
+          {revisionHistory.count > 0 && (
+            <div
+              className="absolute right-3 top-3 z-20 rounded-md border border-warm-border bg-warm-surface/95 px-2 py-1 text-[10px] font-semibold text-stone-700 shadow-sm dark:text-stone-200"
+              aria-label={`Text revision history: ${revisionHistory.count} revision${revisionHistory.count === 1 ? "" : "s"}, latest ${revisionHistory.latest?.revisionId ?? "unknown"}`}
+            >
+              {revisionHistory.count} rev
+            </div>
+          )}
           {normalizedStatus === "draft" ? (
             <DraftPlaceholder nodeId={id} modality="text" />
           ) : normalizedStatus === "generating" ? (

@@ -186,6 +186,11 @@ Evidence:
   explicit force allowed.
 - Web timeline editor save uses `useLoroSync.applyTimelineDsl`, not generic
   `updateNode`, and shares the same materialized-checkpoint guard.
+- `packages/web-ui/src/hooks/useRevisionHistory.ts` is the read-only web
+  consumer for host-indexed text/timeline revisions. Text and timeline canvas
+  nodes display first-pass revision badges from that hook, and
+  `useRevisionHistory.test.ts` plus `nodeModalPrimitives.test.ts` protect the
+  endpoint selection and node integration.
 
 Conclusion:
 
@@ -194,8 +199,8 @@ Conclusion:
   first-pass COW replacement commands, and text/timeline/storyboard prompt-pack
   plus `apply-metadata` asset metadata locks share the generic projection
   envelope, and edited metadata JSON has an explicit CAS apply command. The
-  remaining gap is richer version UI/history plus adoption by future
-  non-JSON/storyboard/editor projections.
+  remaining gap is full revision history/recovery UI beyond the first-pass node
+  badges plus adoption by future non-JSON/storyboard/editor projections.
 
 ### Storyboard prompt-pack CAS
 
@@ -434,7 +439,7 @@ Current status:
   agent-browser smoke, short-drama timeline smoke, and the Codex QA harness.
 - Code implementation remains incomplete for automatic SQLite repair, fuller
   room admission policy/live UI beyond the Sync room gate, fuller conflict recovery workflow,
-  copy-on-write UI/history,
+  full copy-on-write revision history/recovery UI,
   remaining storyboard/asset projection adoption, and deeper guardrails.
 - Stub ACP, real Codex ACP, direct real Codex layout, and real Codex ACP resume
   layout QA paths passed. The real runs recorded session cwd under

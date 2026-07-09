@@ -931,8 +931,11 @@ Current status:
   GC, session creation/deletion, node update/delete, batch deletion, and edge deletion;
   broader live UI asset/session/settings editing still needs product fixture
   coverage.
-- `clash text pull/apply/replace` exists; Suite D still needs real project
-  fixture coverage beyond the deterministic command smoke.
+- `clash text pull/apply/replace` exists, and web canvas text/timeline nodes now
+  show first-pass revision badges through the read-only `useRevisionHistory`
+  hook. Suite D still needs real project fixture coverage and full visual
+  revision history/recovery interactions beyond the deterministic command smoke
+  and node badge.
 - Short-drama/storyboard prompt-pack and timeline projection commands exist;
   Suite E still needs a fuller canvas/asset/provider fixture beyond timeline
   JSON creation/restore.

@@ -14,6 +14,7 @@ import { hydrateAssetIdsFromNodes } from '@clash/web-ui/lib/timelineDsl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getItemSourceNodeId } from '@master-clash/remotion-core';
 import { Button } from '../ui/button';
+import { useRevisionHistory } from '@clash/web-ui/hooks/useRevisionHistory';
 
 /**
  * Resolve a canvas node's authoritative R2 key + cover + dimensions + duration.
@@ -77,6 +78,12 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
     const [rendering, setRendering] = useState(false);
     const [previewSrc, setPreviewSrc] = useState<string | null>(null);
     const signedPreviewUrl = useSignedUrl(previewSrc || undefined);
+    const revisionHistory = useRevisionHistory({
+        projectId: loroSync?.projectId ?? null,
+        nodeId: id,
+        kind: 'timeline',
+        limit: 5,
+    });
 
     // Extract first frame source from timeline
     // Force re-render trigger for Loro updates
@@ -499,6 +506,14 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                         <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Timeline Editor</span>
                     </div>
                 </div>
+                {revisionHistory.count > 0 && (
+                    <div
+                        className="absolute right-3 top-3 z-10 rounded-md border border-warm-border bg-warm-surface/95 px-2 py-1 text-[10px] font-semibold text-stone-700 shadow-sm dark:text-stone-200"
+                        aria-label={`Timeline revision history: ${revisionHistory.count} revision${revisionHistory.count === 1 ? '' : 's'}, latest ${revisionHistory.latest?.revisionId ?? 'unknown'}`}
+                    >
+                        {revisionHistory.count} rev
+                    </div>
+                )}
 
                 {/* Preview Area */}
                 <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-warm-border">

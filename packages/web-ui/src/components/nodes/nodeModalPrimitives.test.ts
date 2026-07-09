@@ -2,9 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const nodeSourceRoot = process.cwd().endsWith("packages/web-ui")
+  ? join(process.cwd(), "src/components/nodes")
+  : join(process.cwd(), "packages/web-ui/src/components/nodes");
+
 const readNodeSource = (file: string) =>
   readFileSync(
-    join(process.cwd(), "packages/web-ui/src/components/nodes", file),
+    join(nodeSourceRoot, file),
     "utf8",
   );
 
@@ -41,4 +45,19 @@ describe("node modal primitives", () => {
       expect(source).not.toMatch(/<button[\s\S]*onClick=\{handleCancel\}/);
     },
   );
+
+  it("surfaces host-indexed text and timeline revision history on canvas nodes", () => {
+    const textSource = readNodeSource("TextNode.tsx");
+    const timelineSource = readNodeSource("VideoEditorNode.tsx");
+
+    expect(textSource).toContain("@clash/web-ui/hooks/useRevisionHistory");
+    expect(textSource).toContain("kind: \"text\"");
+    expect(textSource).toContain("Text revision history");
+    expect(textSource).toContain("revisionHistory.count");
+
+    expect(timelineSource).toContain("@clash/web-ui/hooks/useRevisionHistory");
+    expect(timelineSource).toContain("kind: 'timeline'");
+    expect(timelineSource).toContain("Timeline revision history");
+    expect(timelineSource).toContain("revisionHistory.count");
+  });
 });

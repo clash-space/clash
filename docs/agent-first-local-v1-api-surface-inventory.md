@@ -904,10 +904,13 @@ Rules:
 - `clash text content --revision <id> [--out <path>]` reads the content GET
   endpoint as the agent-facing revision recovery surface; `--out` writes are
   cwd-contained.
+- `useRevisionHistory` reads the same host-owned text revision endpoint for
+  the web canvas. `TextNode` shows a first-pass revision badge when revisions
+  exist, without opening SQLite or mutable revision blob paths.
 
 Remaining:
 
-- richer visual text revision UI/history,
+- full visual text revision history/recovery UI beyond the node badge,
 - canonical file-backed text asset mode,
 - local-to-cloud text revision mirror policy.
 
@@ -950,10 +953,13 @@ Rules:
 - caption export, timeline handoff export, and caption-burn export read the
   source timeline lock and pin manifests, packages, ffmpeg plans, and derived
   asset metadata to the applied timeline revision id when one is present.
+- `useRevisionHistory` reads the same host-owned timeline revision endpoint for
+  the web canvas. `VideoEditorNode` shows a first-pass revision badge when
+  revisions exist, without opening SQLite or mutable revision blob paths.
 
 Remaining:
 
-- richer visual timeline revision UI/history,
+- full visual timeline revision history/recovery UI beyond the node badge,
 - local-to-cloud timeline revision mirror policy,
 - remaining render/export UI surfaces that still need revision pinning.
 
