@@ -120,6 +120,7 @@ export interface ProjectStatusStorage {
       projectionPath: string;
       applyCommand: "clash text apply";
       replaceCommand: "clash text replace";
+      restoreCommand: "clash text restore";
       casRequired: true;
       copyOnWriteWhenReferenced: true;
       revisionRegistry: "text_revisions";
@@ -139,6 +140,7 @@ export interface ProjectStatusStorage {
       projectionPath: string;
       applyCommand: "clash timeline apply";
       replaceCommand: "clash timeline replace";
+      restoreCommand: "clash timeline restore";
       casRequired: true;
       copyOnWriteWhenReferenced: true;
       revisionRegistry: "timeline_revisions";
@@ -607,6 +609,7 @@ export function buildProjectStatus(
           projectionPath: textProjections,
           applyCommand: "clash text apply",
           replaceCommand: "clash text replace",
+          restoreCommand: "clash text restore",
           casRequired: true,
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "text_revisions",
@@ -626,6 +629,7 @@ export function buildProjectStatus(
           projectionPath: timelines,
           applyCommand: "clash timeline apply",
           replaceCommand: "clash timeline replace",
+          restoreCommand: "clash timeline restore",
           casRequired: true,
           copyOnWriteWhenReferenced: true,
           revisionRegistry: "timeline_revisions",
