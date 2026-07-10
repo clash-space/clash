@@ -10,6 +10,7 @@ import {
 import { apiJson } from "../lib/api";
 import { requireDestructiveConfirmation } from "../lib/destructive-guardrails";
 import { resolveClashRoot } from "../lib/clash-home";
+import { readProductReplicationState } from "../lib/product-replication-state";
 import { isJsonMode, printJson, printTable } from "../lib/output";
 import {
   readProjectMarker,
@@ -64,7 +65,6 @@ export async function linkProject(
     projectId: canonicalProjectId,
     workspaceId: projectWorkspaceId("external", canonicalProjectId, cwd),
     store: "external",
-    sync: { mode: "local" },
   });
 }
 
@@ -80,7 +80,6 @@ export async function initProject(options: {
     projectId,
     workspaceId,
     store: "managed",
-    sync: { mode: "local" },
   });
   return { projectId, markerPath, workspaceId };
 }
@@ -91,9 +90,13 @@ export async function resolveProjectStatus(options: {
   env?: Record<string, string | undefined>;
   homeDir?: string;
   clashRoot?: string;
+  replicationState?: Record<string, unknown> | null;
 } = {}): Promise<ProjectStatus> {
   const env = options.env ?? process.env;
   const cwd = resolve(options.cwd ?? process.cwd());
+  const clashRoot = options.clashRoot ?? (
+    options.homeDir ? join(options.homeDir, ".clash") : resolveClashRoot(env)
+  );
   const context = await resolveProjectContext({
     project: options.project,
     cwd,
@@ -104,11 +107,18 @@ export async function resolveProjectStatus(options: {
     const candidate = await readProjectMarker(context.markerPath);
     marker = candidate.projectId === context.projectId ? candidate : null;
   }
+  const replicationState = options.replicationState === undefined
+    ? readProductReplicationState({
+        localApiDataDir: join(clashRoot, "local-api"),
+        env,
+      })
+    : options.replicationState;
   return buildProjectStatus(context, {
     marker,
     homeDir: options.homeDir,
-    clashRoot: options.clashRoot ?? (options.homeDir ? undefined : resolveClashRoot(env)),
+    clashRoot,
     currentWorkingDirectory: cwd,
+    replicationState,
   });
 }
 
@@ -119,11 +129,13 @@ export function buildProjectStatus(
     homeDir?: string;
     clashRoot?: string;
     currentWorkingDirectory?: string;
+    replicationState?: Record<string, unknown> | null;
   } = {},
 ): ProjectStatus {
   const clashRoot = options.clashRoot ?? join(options.homeDir ?? homedir(), ".clash");
   return buildSharedProjectStatus(context, {
     marker: options.marker,
+    replicationState: options.replicationState,
     clashRoot,
     currentWorkingDirectory: options.currentWorkingDirectory,
   });
@@ -184,7 +196,8 @@ projectsCommand
 
     console.log(`Project:      ${status.projectId}`);
     console.log(`Source:       ${status.source}`);
-    console.log(`Mode:         ${status.mode}`);
+    console.log(`Replica:      ${status.mode}`);
+    console.log(`Sync:         ${status.syncMode}`);
     console.log(`Marker:       ${status.markerPath ?? "(none)"}`);
     console.log(`Clash home:   ${status.clashHome}`);
     console.log(`Workspace:    ${status.projectWorkspaceRoot}`);

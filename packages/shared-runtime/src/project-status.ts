@@ -9,8 +9,9 @@ export interface ProjectStatusContext {
 export interface ProjectStatusMarker {
   store?: unknown;
   workspaceId?: unknown;
-  sync?: Record<string, unknown>;
 }
+
+export type ProjectReplicationState = Record<string, unknown>;
 
 export type ProjectWorkspaceIdKind = "managed" | "external";
 
@@ -351,7 +352,7 @@ export interface ProjectStatus {
   projectId: string;
   source: ProjectStatusSource;
   markerPath?: string;
-  mode: string;
+  mode: "local";
   syncMode: string;
   clashHome: string;
   projectStore: string;
@@ -416,6 +417,7 @@ export function buildProjectStatus(
   context: ProjectStatusContext,
   options: {
     marker?: ProjectStatusMarker | null;
+    replicationState?: ProjectReplicationState | null;
     clashRoot: string;
     localApiDataDir?: string;
     currentWorkingDirectory?: string;
@@ -442,10 +444,10 @@ export function buildProjectStatus(
   const assetLinks = joinPath(projectWorkspaceRoot, "assets", "links");
   const runtimeRoot = joinPath(projectWorkspaceRoot, "runtime");
   const mode =
-    typeof options.marker?.sync?.mode === "string"
-      ? options.marker.sync.mode
+    typeof options.replicationState?.mode === "string"
+      ? options.replicationState.mode
       : "unknown";
-  const collaboration = projectCollaborationStatus(mode, options.marker?.sync);
+  const collaboration = projectCollaborationStatus(mode, options.replicationState ?? undefined);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
   const cliConfigPath = joinPath(clashRoot, "config.json");
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
@@ -501,7 +503,7 @@ export function buildProjectStatus(
     projectId: context.projectId,
     source: context.source,
     ...(context.markerPath ? { markerPath: context.markerPath } : {}),
-    mode,
+    mode: "local",
     syncMode: mode,
     clashHome: clashRoot,
     projectStore: projectWorkspaceRoot,

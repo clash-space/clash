@@ -9327,7 +9327,7 @@ describe("local API app", () => {
     expect(status).toMatchObject({
       projectId: project.id,
       source: "explicit",
-      mode: "local-only",
+      mode: "local",
       syncMode: "local-only",
       collaboration: {
         schemaVersion: 1,
@@ -9561,7 +9561,7 @@ describe("local API app", () => {
     const status = (await statusRes.json()) as any;
     expect(status).toMatchObject({
       projectId: project.id,
-      mode: "cloud-sync",
+      mode: "local",
       syncMode: "cloud-sync",
       collaboration: {
         schemaVersion: 1,
@@ -9637,7 +9637,7 @@ describe("local API app", () => {
     const status = (await statusRes.json()) as any;
     expect(status).toMatchObject({
       projectId: project.id,
-      mode: "cloud-sync",
+      mode: "local",
       syncMode: "cloud-sync",
       collaboration: {
         mode: "synced",

@@ -9,8 +9,9 @@ project through the `clash` CLI.
 
 - **Cwd**: `$CLASH_HOME/projects/<project-id>/`, or
   `~/.clash/projects/<project-id>/` by default. Stay in this directory.
-- **Project context**: the cwd is initialized with `.clash/project.toml`,
-  equivalent to `clash init --project "$CLASH_PROJECT_ID"`.
+- **Project context**: the cwd is a project working tree initialized with
+  `.clash/project.toml`, equivalent to `clash init --project
+  "$CLASH_PROJECT_ID"`. CLI commands resolve it automatically.
 - **CLI**: `clash` is pre-authenticated. Use it directly.
 - **Identity**: if asked who you are, say you are Master Clash, the local
   Clash project agent. You may mention the underlying harness only if the
@@ -18,34 +19,27 @@ project through the `clash` CLI.
 
 ## Start of work
 
-When a task depends on current project state, verify context first:
+When a task depends on current canvas state, inspect that state directly:
 
 ```bash
-clash project status --json
 clash canvas list --json
 ```
 
 Do not add `--project` to normal canvas commands while you are in this
 managed cwd. The project marker resolves it. Use `--project <id>` only
-when the user explicitly asks for another project or the status command
-reports a conflict.
+when the user explicitly asks for another project. Project-reference
+conflicts are reported by the command you attempted.
 
-Use the status payload as the local filesystem boundary: write only under
-`editablePaths`; read `storage.workspace.viewFiles` before choosing editable
-view paths. Text nodes live under `projections/text/` and apply through
-`clash text apply`. `timelines/` is the primary timeline view file area for
-`clash timeline pull/apply`; `projections/timelines/` is for generated action
-projections that still require explicit CAS apply. Treat `assets/links` as
-inspection links, not the media blob owner; do not write directly into
-`storage.canonicalReplica.mediaAssets.path`. Treat `protectedPaths`,
-`runtimeRoot`, Loro files, and SQLite as internal state. Do not read or edit
-`snapshot.bin` directly. Treat `storage.localSecrets` paths such as
-`config.json` and `credentials.json` as local-only secret files; use auth or
-runtime setup commands instead of reading or editing them. Use
-`storage.contentModel` to distinguish text/timeline projection files from
-host-indexed non-media revision content; do not treat text/timeline revision
-bodies as media assets. Apply canvas, text, timeline, and asset changes through
-explicit `clash` commands.
+Read and write the project working tree with normal filesystem tools. Text
+working files live under `projections/text/`; timelines live under
+`timelines/` or generated `projections/timelines/`. Check current text or
+timeline state out with its `pull` command, edit the file, then use the matching
+`apply` command. The lock sidecar carries read proof and the CLI performs CAS.
+Treat `assets/links` as inspection links and use explicit asset/COW commands
+to import or replace canonical media. Leave `.clash/` and `runtime/` alone;
+never edit Loro snapshots, SQLite, credentials, or revision blobs. Cloud
+collaboration is a product-internal replicator over the same local replica; it
+does not alter the working-tree workflow or create a second project workspace.
 
 If the marker is missing, repair the workspace with the standard setup:
 
@@ -67,7 +61,6 @@ Useful commands:
 
 ```bash
 clash --help
-clash project status --json
 clash canvas list --json
 clash canvas get --node <id> --json
 clash canvas add --help

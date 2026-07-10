@@ -154,6 +154,7 @@ export async function runStorageDoctor(options: {
   cwd?: string;
   env?: Record<string, string | undefined>;
   homeDir?: string;
+  replicationState?: Record<string, unknown> | null;
   repair?: boolean;
 } = {}): Promise<StorageDoctorReport> {
   const cwd = resolve(options.cwd ?? process.cwd());
@@ -539,7 +540,11 @@ function validateMachineLocalConfigContract(
   if (localConfig.table !== "local_config") {
     problems.push("machine-local config table is wrong");
   }
-  const expectedKeys = ["local-sync-config", "local-audio-config", "local-harness-config"];
+  const expectedKeys: Array<(typeof localConfig.keys)[number]> = [
+    "local-sync-config",
+    "local-audio-config",
+    "local-harness-config",
+  ];
   for (const key of expectedKeys) {
     if (!localConfig.keys.includes(key)) {
       problems.push(`machine-local config missing ${key} key`);
@@ -1183,6 +1188,7 @@ export async function compareSecondaryCanvasRecovery(options: {
   cwd?: string;
   env?: Record<string, string | undefined>;
   homeDir?: string;
+  replicationState?: Record<string, unknown> | null;
 }): Promise<SecondaryCanvasRecoveryCompareReport> {
   const status = await resolveProjectStatus(options);
   const recoveryRoot = join(status.roots.runtime, "recovery", "secondary-canvas-replicas");
@@ -1273,6 +1279,7 @@ export async function restoreSecondaryCanvasRecovery(options: {
   cwd?: string;
   env?: Record<string, string | undefined>;
   homeDir?: string;
+  replicationState?: Record<string, unknown> | null;
   expectedReadToken?: string;
   confirm?: boolean;
 }): Promise<SecondaryCanvasRecoveryRestoreReport> {
@@ -1358,6 +1365,7 @@ export async function listSecondaryCanvasRecoveries(options: {
   cwd?: string;
   env?: Record<string, string | undefined>;
   homeDir?: string;
+  replicationState?: Record<string, unknown> | null;
 } = {}): Promise<SecondaryCanvasRecoveryListReport> {
   const status = await resolveProjectStatus(options);
   const inventory = await collectSecondaryCanvasRecoveryInventory(status);

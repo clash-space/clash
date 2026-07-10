@@ -265,17 +265,15 @@ Marker:
 Example:
 
 ```toml
-schemaVersion = 1
-projectId = "proj_123"
-workspaceId = "local_ws_123"
+schema_version = 1
+project_id = "proj_123"
+workspace_id = "local_ws_123"
 store = "managed"
-
-[sync]
-mode = "local"
 ```
 
 This marker resolves project identity for CLI/agent commands. It does not imply
-filesystem ownership, store locking, or host lifecycle ownership.
+filesystem ownership, store locking, host lifecycle ownership, replication
+state, cloud capability, or permissions.
 
 Resolver priority:
 

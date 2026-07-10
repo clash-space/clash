@@ -76,7 +76,7 @@ export function createSqliteLocalConfigStore(dataDir: string): SqliteLocalConfig
   }
 
   return {
-    async getJson<T>(key) {
+    async getJson<T>(key: string) {
       if (!(await exists(path))) return null;
       return withDb((db) => {
         const row = db.prepare("SELECT value_json FROM local_config WHERE key = ?").get(key);

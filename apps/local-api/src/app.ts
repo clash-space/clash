@@ -575,7 +575,7 @@ async function projectRecoveryPolicy(
       {
         clashRoot: "/clash",
         localApiDataDir: "/clash/local-api",
-        marker: { sync: { mode: sync.mode, capabilities: sync.capabilities } },
+        replicationState: { mode: sync.mode, capabilities: sync.capabilities },
       },
     ),
     options,
@@ -4468,7 +4468,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       {
         clashRoot,
         localApiDataDir,
-        marker: { sync: { mode: sync.mode, capabilities: sync.capabilities } },
+        replicationState: { mode: sync.mode, capabilities: sync.capabilities },
       },
     ));
   });

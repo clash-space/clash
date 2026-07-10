@@ -392,7 +392,8 @@ Assertions:
 - protected runtime root exists but remains protected,
 - local SQLite exists and reports the core metadata, provider auth table/key,
   and projection schema as ready,
-- project status collaboration mode is `local-only`, not web-openable, not
+- project status top-level mode remains `local`; replication/collaboration is
+  `local-only`, not web-openable, not
   multi-user, and does not claim cloud ProjectRoom sequencing,
 - local project action gates deny `openInWeb`/`shareProject` with
   `project-is-local-only`, allow `enableSync`, and keep local agent execution
@@ -409,9 +410,10 @@ Assertions:
   `projectWorkspaceRoot` and local SQLite path,
 - canonical Loro snapshot path is protected and outside the editable project
   workspace root,
-- a `cloud-sync` marker keeps `openInWeb`/`shareProject` denied with
-  `cloud-sync-not-ready` until canvas, asset metadata, and revision content
-  mirrors are ready,
+- a forged marker `[sync]` table cannot grant synced/shared capability,
+- product-owned SQLite replication state keeps `openInWeb`/`shareProject`
+  denied with `cloud-sync-not-ready` until canvas, asset metadata, and revision
+  content mirrors are ready,
 - cloud-sync sync policy names the required mirrors and admits ready
   `cloud-sync` projects as `ready-local-with-cloud-mirror`, not as cloud
   sequencer authority,
@@ -782,9 +784,11 @@ Result:
   and reported that deleting that workspace does not delete project state,
 - after deleting the original marker workspace, explicit project status from a
   detached cwd still found the canonical project store and SQLite state,
-- a `cloud-sync` marker stayed `syncReadiness.status: pending`,
-  `webOpenable: false`, and `roomAuthority: local` until the full sync
-  capabilities are ready,
+- a marker claiming `shared` was ignored and the project stayed local-only
+  until product-owned replication state changed,
+- SQLite-backed `cloud-sync` replication state stayed
+  `syncReadiness.status: pending`, `webOpenable: false`, and
+  `roomAuthority: local` until the full mirror capabilities were ready,
 - local project status exposed `collaboration.projectRoom.localSurface:
   removed`, no local room persistence, local room endpoints as 404, and
   `sessions`/`canvas`/`actions` as the local agent channels,
@@ -794,20 +798,20 @@ Result:
 - cloud-sync pending sync policy named canvas, asset metadata, and
   revision content mirrors while keeping media blob bytes outside the asset
   metadata mirror,
-- a separate cwd marker for the same project with `[sync.capabilities]`
-  declaring canvas, asset metadata, and revision content ready changed
-  project status to `syncReadiness.status: ready`, `webOpenable: true`, and
-  `roomAuthority: local-with-cloud-mirror` while keeping
-  `multiUser: false` and local agent execution allowed,
+- after product-owned replication capabilities became ready, a separate cwd
+  containing only the same project reference reported
+  `syncReadiness.status: ready`, `webOpenable: true`, and
+  `roomAuthority: local-with-cloud-mirror`, while retaining the exact same
+  `projectWorkspaceRoot`, Loro replica, storage root, mutation commands,
+  `multiUser: false`, and local agent execution,
 - cloud-sync ready sync policy reported `cloudAdmission:
   ready-local-with-cloud-mirror`, so Web/share admission does not imply shared
   cloud-sequencer authority,
 - cloud-sync recovery list exposed `recoveryPolicy` showing recovery is a local
   replica promotion, does not include or mutate cloud state, and requires cloud
   conflict review,
-- shared recovery compare remained available for evidence, but reported
-  `cloud-sequencer` authority and `localRestoreAllowed: false`; public CLI
-  restore with the shared compare read token was rejected before overwrite,
+- shared/cloud-sequencer recovery remains a hosted product test concern and is
+  not simulated by mutating a local project marker,
 - canonical Loro snapshot path remained protected and outside the editable
   workspace root,
 - text/timeline revision content blob roots were exposed through
@@ -911,10 +915,11 @@ Current status:
 
 ## Open Implementation Gaps
 
-- `clash project status --json` now has first-pass stable fields for project
+- `clash project status --json` is a diagnostic surface with first-pass stable fields for project
   workspace, current cwd/marker reference workspace, projection root, draft
-  root, explicit runtime root, local SQLite path, protected paths, and sync
-  mode.
+  root, explicit runtime root, local SQLite path, protected paths, fixed local
+  replica mode, and separate product-owned replication state. Agents do not
+  need it before normal work.
 - Black-box storage/project smokes now assert these fields against initialized,
   restored, and deleted-marker-workspace local project paths; the aggregate
   gate is wired into CI and release workflows, while broader live UI product

@@ -6,17 +6,16 @@ section below this prelude.
 
 ## Standard setup — project cwd is already initialized
 
-Your current working directory is a managed Clash project workspace. It
-is initialized the same way `clash init --project "$CLASH_PROJECT_ID"`
-would initialize a normal terminal directory: `.clash/project.toml`
-contains the active project id, and Clash CLI commands resolve that
-marker automatically.
+Your current working directory is the project working tree. It is
+initialized the same way `clash init --project "$CLASH_PROJECT_ID"`
+would initialize a normal terminal directory: `.clash/project.toml` is
+the project reference, and Clash CLI commands resolve it automatically.
+You do not need a separate context or storage preflight before normal work.
 
-Start a task by verifying context when needed:
+Inspect the project state needed for the task, then work directly with
+files in this tree:
 
 ```bash
-pwd
-clash project status --json
 clash canvas list --json
 ```
 
@@ -24,39 +23,32 @@ Do not add `--project` to normal canvas commands while you are in this
 managed cwd. Prefer `clash canvas list --json`, `clash canvas get
 --node <id> --json`, `clash canvas add ...`, and `clash canvas execute
 --node <id> --json`. Only pass `--project <id>` when the user explicitly
-asks you to operate on a different project or `clash project status`
-reports a conflict.
+asks you to operate on a different project. A marker/environment conflict
+is reported automatically by the command you attempted.
 
-Treat the status payload as your filesystem contract:
+Treat this directory like a Git working tree:
 
-- Read `currentWorkspace` before assuming what the cwd owns. It identifies
-  the current marker/reference workspace, whether it is inside
-  `projectWorkspaceRoot`, and whether deleting that workspace would delete
-  project state. Treat `deletionDeletesProjectState: false` as proof that
-  project deletion must go through an explicit Clash command, not file cleanup.
-- Write drafts, projections, session work files, and asset links only under
-  paths listed in `editablePaths`.
-- Use `storage.workspace.viewFiles` before choosing editable view paths:
-  text nodes live under `projections/text/` and apply through `clash text apply`;
-  primary timeline view files live under `timelines/` for `clash timeline
-  pull/apply`; generated timeline projections live under
-  `projections/timelines/` and still require explicit CAS apply.
+- Create and edit drafts, scripts, analysis, and source material in the
+  working tree with normal filesystem tools.
+- Text-node working files live under `projections/text/`; use `clash text
+  pull` to check out current content and `clash text apply` after editing.
+- Primary timeline working files live under `timelines/`; use `clash timeline
+  pull` and `clash timeline apply`. Generated timeline files may live under
+  `projections/timelines/` and use the same explicit apply path.
+- Keep the lock/read-proof sidecars created by pull commands. Apply performs
+  CAS and reports a conflict when the project changed since checkout.
 - Treat project `assets/links` as inspection links only. Do not write directly
-  into `storage.canonicalReplica.mediaAssets.path`; import or replace media
-  through explicit `clash asset` / canvas COW commands.
-- Treat every path listed in `protectedPaths` as internal Clash state.
-- `runtimeRoot` is a protected runtime/cache directory, not scratch space.
-- Do not read or edit `snapshot.bin`, `updates.log`, or `local.sqlite`
-  directly.
-- Treat `storage.localSecrets` paths such as `config.json` and
-  `credentials.json` as local-only secret files; use auth or runtime setup
-  commands instead of reading or editing them.
-- Use `storage.contentModel` to distinguish text/timeline projection files
-  from host-indexed non-media revision content; do not treat text/timeline
-  revision bodies as media assets.
-- Use explicit `clash` commands to inspect or apply project changes.
+  into canonical asset blobs; import or replace media through explicit
+  `clash asset` / canvas COW commands.
+- `.clash/project.toml` is a reference, not editable project content. Leave
+  `.clash/` and `runtime/` alone during normal work.
+- Never search for or edit `snapshot.bin`, `updates.log`, `local.sqlite`,
+  credentials, or canonical revision blobs. Product internals own them.
+- Cloud collaboration is a product-internal replicator over the same local
+  replica. It does not change how you read, edit, or apply files in this
+  working tree, and it never creates a second project workspace.
 
-If a workspace is missing its marker, repair it with the standard setup
+If the working tree is missing its marker, repair it with the standard setup
 command instead of guessing:
 
 ```bash

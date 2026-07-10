@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,8 @@ import {
   resolveProjectStatus,
 } from "./projects";
 import type { ResolvedProjectContext } from "../lib/project-context";
+
+const require = createRequire(import.meta.url);
 
 const expectedTracePolicy = {
   schemaVersion: 1,
@@ -103,6 +106,36 @@ async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "clash-project-status-"));
 }
 
+async function writeProductReplicationConfig(
+  homeDir: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  const dataDir = join(homeDir, ".clash", "local-api");
+  await mkdir(dataDir, { recursive: true });
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      exec(sql: string): void;
+      prepare(sql: string): { run(...values: unknown[]): void };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS local_config (
+        key TEXT PRIMARY KEY NOT NULL,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    db.prepare(
+      "INSERT OR REPLACE INTO local_config (key, value_json, updated_at) VALUES (?, ?, ?)",
+    ).run("local-sync-config", JSON.stringify(config), new Date(0).toISOString());
+  } finally {
+    db.close();
+  }
+}
+
 test("project status exposes agent-readable project roots and protected local files", () => {
   const homeDir = "/tmp/clash-home";
   const projectId = "project/with spaces";
@@ -118,8 +151,8 @@ test("project status exposes agent-readable project roots and protected local fi
       schemaVersion: 1,
       projectId,
       store: "managed",
-      sync: { mode: "local" },
     },
+    replicationState: { mode: "local" },
   });
 
   const projectStore = join(homeDir, ".clash", "projects", "project%2Fwith%20spaces");
@@ -388,7 +421,7 @@ test("project status uses collision-resistant project workspace paths", () => {
   assert.match(first.projectWorkspaceRoot, /project%2Fone|project%252Fone/);
 });
 
-test("project status reads marker sync mode when marker selects the project", async () => {
+test("project pointer marker uses the product-internal local-only default", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
 
@@ -399,6 +432,7 @@ test("project status reads marker sync mode when marker selects the project", as
   assert.equal(status.source, "marker");
   assert.equal(status.markerPath, initialized.markerPath);
   assert.equal(status.mode, "local");
+  assert.equal(status.syncMode, "local-only");
   assert.equal(status.collaboration.mode, "local-only");
   assert.equal(status.collaboration.webOpenable, false);
   assert.equal(
@@ -407,7 +441,7 @@ test("project status reads marker sync mode when marker selects the project", as
   );
 });
 
-test("project status reads marker sync capabilities before opening cloud collaboration gates", async () => {
+test("project marker sync fields cannot open cloud collaboration gates", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await mkdir(join(cwd, ".clash"), { recursive: true });
@@ -433,6 +467,48 @@ test("project status reads marker sync capabilities before opening cloud collabo
   const status = await resolveProjectStatus({ cwd, env: {}, homeDir });
 
   assert.equal(status.projectId, "ready_cloud_project");
+  assert.equal(status.collaboration.mode, "local-only");
+  assert.equal(status.collaboration.webOpenable, false);
+  assert.equal(status.collaboration.roomAuthority, "local");
+  assert.equal(status.collaboration.cloudProjectRoom, "disabled");
+  assert.deepEqual(status.collaboration.syncReadiness, {
+    status: "disabled",
+    ready: false,
+    required: ["canvas", "asset-metadata", "revision-content"],
+    missing: ["canvas", "asset-metadata", "revision-content"],
+  });
+  assert.deepEqual(status.collaboration.actions.openInWeb, {
+    allowed: false,
+    reason: "project-is-local-only",
+    requirements: ["enable-sync"],
+  });
+  assert.deepEqual(status.collaboration.actions.shareProject, {
+    allowed: false,
+    reason: "project-is-local-only",
+    requirements: ["enable-sync"],
+  });
+  assert.deepEqual(status.collaboration.syncPolicy, expectedSyncPolicy("disabled-until-enable-sync"));
+});
+
+test("project status reads canonical sync readiness from the product SQLite store", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "sqlite_cloud_project" });
+  await writeProductReplicationConfig(homeDir, {
+    version: 1,
+    mode: "cloud-sync",
+    remoteLoroUrl: "https://sync.example",
+    remoteLoroToken: null,
+    capabilities: {
+      canvas: true,
+      asset_metadata: true,
+      revision_content: true,
+    },
+    updatedAt: new Date(0).toISOString(),
+  });
+
+  const status = await resolveProjectStatus({ cwd, env: {}, homeDir });
+
   assert.equal(status.collaboration.mode, "synced");
   assert.equal(status.collaboration.webOpenable, true);
   assert.equal(status.collaboration.roomAuthority, "local-with-cloud-mirror");
@@ -442,20 +518,9 @@ test("project status reads marker sync capabilities before opening cloud collabo
     required: ["canvas", "asset-metadata", "revision-content"],
     missing: [],
   });
-  assert.deepEqual(status.collaboration.actions.openInWeb, {
-    allowed: true,
-    reason: null,
-    requirements: [],
-  });
-  assert.deepEqual(status.collaboration.actions.shareProject, {
-    allowed: true,
-    reason: null,
-    requirements: [],
-  });
-  assert.deepEqual(status.collaboration.syncPolicy, expectedSyncPolicy("ready-local-with-cloud-mirror"));
 });
 
-test("project status keeps cloud-sync marker pending until revision content is mirrored", async () => {
+test("project status uses canonical sync readiness supplied by the product", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await mkdir(join(cwd, ".clash"), { recursive: true });
@@ -477,7 +542,18 @@ test("project status keeps cloud-sync marker pending until revision content is m
     "utf8",
   );
 
-  const status = await resolveProjectStatus({ cwd, env: {}, homeDir });
+  const status = await resolveProjectStatus({
+    cwd,
+    env: {},
+    homeDir,
+    replicationState: {
+      mode: "cloud-sync",
+      capabilities: {
+        canvas: true,
+        asset_metadata: true,
+      },
+    },
+  });
 
   assert.equal(status.projectId, "missing_revision_content_project");
   assert.equal(status.collaboration.webOpenable, false);
@@ -533,22 +609,14 @@ test("project status exposes explicit collaboration gates for synced and shared 
     { projectId: "synced_project", source: "marker" },
     {
       homeDir: "/tmp/clash-home",
-      marker: {
-        schemaVersion: 1,
-        projectId: "synced_project",
-        sync: { mode: "cloud-sync" },
-      },
+      replicationState: { mode: "cloud-sync" },
     },
   );
   const shared = buildProjectStatus(
     { projectId: "shared_project", source: "marker" },
     {
       homeDir: "/tmp/clash-home",
-      marker: {
-        schemaVersion: 1,
-        projectId: "shared_project",
-        sync: { mode: "shared" },
-      },
+      replicationState: { mode: "shared" },
     },
   );
 
@@ -642,7 +710,7 @@ test("project status exposes explicit collaboration gates for synced and shared 
   });
 });
 
-test("explicit project status does not inherit an unrelated marker mode", async () => {
+test("explicit project selection does not inherit collaboration from an unrelated marker", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   const initialized = await initProject({ cwd, projectId: "marker_project" });
@@ -657,14 +725,15 @@ test("explicit project status does not inherit an unrelated marker mode", async 
   assert.equal(status.projectId, "explicit_project");
   assert.equal(status.source, "explicit");
   assert.equal(status.markerPath, initialized.markerPath);
-  assert.equal(status.mode, "unknown");
+  assert.equal(status.mode, "local");
+  assert.equal(status.syncMode, "local-only");
   assert.equal(
     status.projectStore,
     join(homeDir, ".clash", "projects", "explicit_project"),
   );
 });
 
-test("environment project status has unknown mode without a marker", async () => {
+test("environment project selection uses product-internal collaboration state without a marker", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
 
@@ -677,7 +746,8 @@ test("environment project status has unknown mode without a marker", async () =>
   assert.equal(status.projectId, "env_project");
   assert.equal(status.source, "env");
   assert.equal(status.markerPath, undefined);
-  assert.equal(status.mode, "unknown");
+  assert.equal(status.mode, "local");
+  assert.equal(status.syncMode, "local-only");
   assert.equal(
     status.projectStore,
     join(homeDir, ".clash", "projects", "env_project"),

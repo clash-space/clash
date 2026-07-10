@@ -199,10 +199,14 @@ Conclusion:
 
 ```text
 .clash/project.toml
+schema_version = 1
+project_id = "<project-id>"
+workspace_id = "managed:<opaque-id>"
 store = "managed"
-[sync]
-mode = "local"
 ```
+
+The marker is a project/workspace reference only. Replication state is stored
+inside the product; legacy marker `[sync]` tables are ignored.
 
 It also creates:
 

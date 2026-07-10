@@ -1,10 +1,20 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { NodeSpawner } from "./node";
+
+const require = createRequire(import.meta.url);
+const tsxLoader = (() => {
+  try {
+    return require.resolve("tsx");
+  } catch {
+    return createRequire(new URL("../../../../cli/package.json", import.meta.url)).resolve("tsx");
+  }
+})();
 
 async function waitForGone(pid: number, timeoutMs = 1500): Promise<void> {
   const start = Date.now();
@@ -115,7 +125,7 @@ await writeFile(${JSON.stringify(pidFile)}, grandchildPid, "utf8");
 process.exit(0);
 `;
 
-    const parent = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", parentScript], {
+    const parent = spawn(process.execPath, ["--import", tsxLoader, "--input-type=module", "-e", parentScript], {
       cwd: join(import.meta.dirname, "../../../../.."),
       stdio: "ignore",
     });
@@ -165,7 +175,7 @@ await writeFile(${JSON.stringify(pidFile)}, await readFirstLine(handle.stdout), 
 setInterval(() => {}, 1000);
 `;
 
-    const parent = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", parentScript], {
+    const parent = spawn(process.execPath, ["--import", tsxLoader, "--input-type=module", "-e", parentScript], {
       cwd: join(import.meta.dirname, "../../../../.."),
       stdio: "ignore",
     });

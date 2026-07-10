@@ -26,6 +26,14 @@ v1 local/agent-first follow-up docs:
 Those docs refine this guide with concrete storage, SQLite, projection/CAS,
 and agent-editability constraints.
 
+Terminology correction: `Local-only`, `Synced`, and `Shared` below are
+user-facing replication/collaboration states over the same local project
+replica. They are not separate project stores, working trees, or mutation
+modes. The agent always edits the local working tree; cloud is an attached
+replicator. Where this older guide mentions local room persistence, the v1
+principles and remote-compatibility boundary supersede it: local room is
+removed, while hosted/shared room remains remote product functionality.
+
 ## Principles
 
 1. Default to local.

@@ -56,20 +56,25 @@ Current state is coherent for alpha, but not yet fully aligned:
   yet have a full dependency graph or full UI/E2E coverage,
 - session/draft/project boundaries are not yet visible enough to agents.
 
-`clash project status --json` should be treated as the alpha source of truth
-for these current paths. It exposes the bridge workspace root
+The working-tree layout and `.clash/project.toml` resolver are the normal
+agent contract. `clash project status --json` is a diagnostic view of the same
+layout, not a precondition for reading or editing the project. It exposes the
+bridge workspace root
 (`projectWorkspaceRoot`), the protected runtime root (`roots.runtime` and
 `runtimeRoot`), and the current local-api Loro replica root
-(`loro.replicaRoot`). Agents must not infer that `snapshot.bin` or runtime state
-lives under an editable workspace root unless the status payload says so.
+(`loro.replicaRoot`). Stable working-tree conventions and host path guards keep
+`snapshot.bin`, SQLite, revision blobs, credentials, and runtime internals out
+of the editable surface without requiring agents to inspect this payload.
 For CLI calls, `currentWorkspace` records the actual cwd and `.clash/project.toml`
 marker root as a `project-reference-workspace`; when the marker has
 `workspace_id`, status exposes it as `markerWorkspaceId`. This is deliberately
 separate from `projectWorkspaceRoot`: deleting or moving the cwd/marker
 workspace must not imply deleting the machine's canonical SQLite/Loro project
 state.
-The `collaboration` object in the same payload is the mode gate agents and UI
-should use before offering cloud/web/shared affordances: local projects are not
+The top-level `mode` is always `local`, because all operations target the same
+local replica. `syncMode` and `collaboration` are product-internal replication
+diagnostics that UI/doctor surfaces may use before offering cloud/web/shared
+affordances: projects without replication are not
 web-openable, `cloud-sync` projects remain pending and not web-openable until
 `syncReadiness` proves canvas, asset-metadata, and revision-content sync
 capabilities are ready, and shared projects are the only mode that uses a cloud
@@ -302,9 +307,6 @@ JSON/YAML remains appropriate only for:
 schema_version = 1
 project_id = "project_123"
 store = "managed"
-
-[sync]
-mode = "local"
 ```
 
 Rules:
@@ -315,8 +317,10 @@ Rules:
   storage path.
 - Marker does not create a project replica.
 - Marker does not lock the project.
-- Marker does not decide whether cloud sync is active by itself.
-- `sync.mode` is a local hint/status field, not proof that cloud has all data.
+- Marker does not contain or decide replication/cloud state, readiness,
+  credentials, permissions, or storage topology.
+- Legacy `[sync]` tables are ignored and cannot grant Web/share/cloud room
+  capability.
 
 ## Agent CWD Policy
 
@@ -515,7 +519,9 @@ Both contain `.clash/project.toml`.
 
 ## Cloud Sync
 
-Cloud is layered on the same project identity.
+Cloud is a replicator layered on the same local project replica. It does not
+change working-tree paths, local storage ownership, mutation commands, CAS/COW
+rules, or the object an agent edits.
 
 Local-only:
 
@@ -726,4 +732,5 @@ This layout is implemented when:
 - storage/debug commands can diagnose path drift,
 - `clash audit mutations` can inspect sanitized destructive/forced mutation
   evidence without reading SQLite directly,
-- local-only/synced/shared project modes do not blur storage ownership.
+- local-only/synced/shared replication states use the same local storage and
+  mutation ownership.

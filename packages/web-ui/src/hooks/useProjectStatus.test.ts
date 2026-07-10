@@ -17,7 +17,7 @@ describe("useProjectStatus", () => {
       return new Response(JSON.stringify({
         projectId: "project-1",
         source: "explicit",
-        mode: "local-only",
+        mode: "local",
         syncMode: "local-only",
         collaboration: {
           schemaVersion: 1,

@@ -41,6 +41,7 @@
     "build": "npm --prefix ../shared-runtime run build && tsup && node scripts/bundle-agents.mjs",
     "bundle:agents": "node scripts/bundle-agents.mjs",
     "dev": "tsup --watch",
+    "test": "vitest run",
     "typecheck": "npm --prefix ../shared-runtime run build && tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -55,6 +56,7 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "tsup": "^8.5.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.4"
   }

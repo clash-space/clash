@@ -206,6 +206,33 @@ function rewriteProviderAuthTablesWithLegacyPrimaryKeys(sqlitePath) {
   }
 }
 
+function writeProductReplicationConfig(sqlitePath, config) {
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(sqlitePath);
+  try {
+    db.prepare(
+      "INSERT OR REPLACE INTO local_config (key, value_json, updated_at) VALUES (?, ?, ?)",
+    ).run(
+      "local-sync-config",
+      JSON.stringify({
+        version: 1,
+        mode: config.mode,
+        remoteLoroUrl: config.remoteLoroUrl ?? null,
+        remoteLoroToken: null,
+        capabilities: config.capabilities ?? {
+          canvas: false,
+          asset_metadata: false,
+          revision_content: false,
+        },
+        updatedAt: now(),
+      }),
+      now(),
+    );
+  } finally {
+    db.close();
+  }
+}
+
 async function main() {
   await mkdir(workspace, { recursive: true });
   await mkdir(clashHome, { recursive: true });
@@ -1065,14 +1092,40 @@ async function main() {
       'store = "managed"',
       "",
       "[sync]",
-      'mode = "cloud-sync"',
+      'mode = "shared"',
       "",
     ].join("\n"),
     "utf8",
   );
+  const forgedMarkerStatusResult = runCli(["project", "status", "--json"]);
+  recordCheck(
+    "project marker cannot grant cloud or shared capability",
+    forgedMarkerStatusResult.status === 0,
+    forgedMarkerStatusResult.stderr || forgedMarkerStatusResult.stdout,
+    { command: forgedMarkerStatusResult.command },
+  );
+  const forgedMarkerStatus = parseStdoutJson(forgedMarkerStatusResult);
+  recordCheck(
+    "forged marker collaboration state is ignored",
+    forgedMarkerStatus?.mode === "local" &&
+      forgedMarkerStatus?.syncMode === "local-only" &&
+      forgedMarkerStatus?.collaboration?.mode === "local-only" &&
+      forgedMarkerStatus?.collaboration?.webOpenable === false &&
+      forgedMarkerStatus?.collaboration?.cloudProjectRoom === "disabled",
+    JSON.stringify({
+      mode: forgedMarkerStatus?.mode,
+      syncMode: forgedMarkerStatus?.syncMode,
+      collaboration: forgedMarkerStatus?.collaboration,
+    }),
+  );
+
+  writeProductReplicationConfig(status.localSqlitePath, {
+    mode: "cloud-sync",
+    remoteLoroUrl: "https://sync.example",
+  });
   const cloudSyncStatusResult = runCli(["project", "status", "--json"]);
   recordCheck(
-    "cloud-sync project status stays pending until sync capabilities are ready",
+    "product replication state keeps cloud-sync pending until mirrors are ready",
     cloudSyncStatusResult.status === 0,
     cloudSyncStatusResult.stderr || cloudSyncStatusResult.stdout,
     { command: cloudSyncStatusResult.command },
@@ -1080,7 +1133,11 @@ async function main() {
   const cloudSyncStatus = parseStdoutJson(cloudSyncStatusResult);
   recordCheck(
     "cloud-sync pending status is not web-openable",
-    cloudSyncStatus?.collaboration?.mode === "synced" &&
+    cloudSyncStatus?.mode === "local" &&
+      cloudSyncStatus?.syncMode === "cloud-sync" &&
+      cloudSyncStatus?.projectWorkspaceRoot === forgedMarkerStatus?.projectWorkspaceRoot &&
+      cloudSyncStatus?.loro?.replicaRoot === forgedMarkerStatus?.loro?.replicaRoot &&
+      cloudSyncStatus?.collaboration?.mode === "synced" &&
       cloudSyncStatus?.collaboration?.webOpenable === false &&
       cloudSyncStatus?.collaboration?.roomAuthority === "local" &&
       cloudSyncStatus?.collaboration?.syncReadiness?.status === "pending" &&
@@ -1113,6 +1170,15 @@ async function main() {
       cloudSyncStatus?.collaboration?.actions?.shareProject?.reason === "cloud-sync-not-ready",
     JSON.stringify(cloudSyncStatus?.collaboration?.actions),
   );
+  writeProductReplicationConfig(status.localSqlitePath, {
+    mode: "cloud-sync",
+    remoteLoroUrl: "https://sync.example",
+    capabilities: {
+      canvas: true,
+      asset_metadata: true,
+      revision_content: true,
+    },
+  });
   const readyCloudSyncWorkspace = path.join(artifactRoot, "ready-cloud-sync-workspace");
   await mkdir(path.join(readyCloudSyncWorkspace, ".clash"), { recursive: true });
   await writeFile(
@@ -1122,28 +1188,25 @@ async function main() {
       `project_id = ${JSON.stringify(projectId)}`,
       'store = "managed"',
       "",
-      "[sync]",
-      'mode = "cloud-sync"',
-      "",
-      "[sync.capabilities]",
-      "canvas = true",
-      "asset_metadata = true",
-      "revision_content = true",
-      "",
     ].join("\n"),
     "utf8",
   );
   const readyCloudSyncStatusResult = runCli(["project", "status", "--json"], readyCloudSyncWorkspace);
   recordCheck(
-    "cloud-sync ready project status succeeds from capability marker",
+    "cloud-sync ready project status succeeds from product replication state",
     readyCloudSyncStatusResult.status === 0,
     readyCloudSyncStatusResult.stderr || readyCloudSyncStatusResult.stdout,
     { command: readyCloudSyncStatusResult.command, cwd: readyCloudSyncStatusResult.cwd },
   );
   const readyCloudSyncStatus = parseStdoutJson(readyCloudSyncStatusResult);
   recordCheck(
-    "cloud-sync ready marker opens web and sharing gates while keeping local agent authority",
+    "cloud-sync ready state keeps the same local replica and opens product gates",
     readyCloudSyncStatus?.projectId === projectId &&
+      readyCloudSyncStatus?.mode === "local" &&
+      readyCloudSyncStatus?.syncMode === "cloud-sync" &&
+      readyCloudSyncStatus?.projectWorkspaceRoot === cloudSyncStatus?.projectWorkspaceRoot &&
+      readyCloudSyncStatus?.loro?.replicaRoot === cloudSyncStatus?.loro?.replicaRoot &&
+      readyCloudSyncStatus?.storage?.workspace?.root === cloudSyncStatus?.storage?.workspace?.root &&
       readyCloudSyncStatus?.collaboration?.mode === "synced" &&
       readyCloudSyncStatus?.collaboration?.webOpenable === true &&
       readyCloudSyncStatus?.collaboration?.multiUser === false &&
@@ -1182,65 +1245,14 @@ async function main() {
     "cloud-sync storage recovery reports local replica recovery policy",
     cloudSyncRecoveryListReport?.recoveryPolicy?.collaborationMode === "synced" &&
       cloudSyncRecoveryListReport?.recoveryPolicy?.rawSyncMode === "cloud-sync" &&
-      cloudSyncRecoveryListReport?.recoveryPolicy?.roomAuthority === "local" &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.roomAuthority === "local-with-cloud-mirror" &&
+      cloudSyncRecoveryListReport?.recoveryPolicy?.syncReadinessStatus === "ready" &&
       cloudSyncRecoveryListReport?.recoveryPolicy?.localRestoreAllowed === true &&
       cloudSyncRecoveryListReport?.recoveryPolicy?.cloudStateIncluded === false &&
       cloudSyncRecoveryListReport?.recoveryPolicy?.cloudStateMutated === false &&
       cloudSyncRecoveryListReport?.recoveryPolicy?.requiresCloudConflictReview === true &&
       cloudSyncRecoveryListReport?.recoveryPolicy?.reason === "cloud-sync-local-replica-review-required",
     JSON.stringify(cloudSyncRecoveryListReport?.recoveryPolicy),
-  );
-  await writeFile(
-    markerPath,
-    [
-      "schema_version = 1",
-      `project_id = ${JSON.stringify(projectId)}`,
-      'store = "managed"',
-      "",
-      "[sync]",
-      'mode = "shared"',
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-  const sharedRecoveryCompare = runCli(["doctor", "storage-recovery", "compare", "--manifest", manifestPath, "--json"]);
-  recordCheck(
-    "shared storage recovery compare command succeeds for review",
-    sharedRecoveryCompare.status === 0,
-    sharedRecoveryCompare.stderr || sharedRecoveryCompare.stdout,
-    { command: sharedRecoveryCompare.command },
-  );
-  const sharedRecoveryCompareReport = parseStdoutJson(sharedRecoveryCompare);
-  recordCheck(
-    "shared storage recovery compare reports cloud sequencer restore block",
-    sharedRecoveryCompareReport?.recoveryPolicy?.collaborationMode === "shared" &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.roomAuthority === "cloud-sequencer" &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.cloudProjectRoom === "sequencer" &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.localRestoreAllowed === false &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.cloudStateIncluded === false &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.cloudStateMutated === false &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.requiresCloudConflictReview === true &&
-      sharedRecoveryCompareReport?.recoveryPolicy?.reason === "shared-cloud-sequencer-restore-blocked" &&
-      typeof sharedRecoveryCompareReport?.readToken === "string",
-    JSON.stringify(sharedRecoveryCompareReport?.recoveryPolicy),
-  );
-  const sharedRecoveryRestore = runCli([
-    "doctor",
-    "storage-recovery",
-    "restore",
-    "--manifest",
-    manifestPath,
-    "--if-match",
-    sharedRecoveryCompareReport.readToken,
-    "--yes",
-    "--json",
-  ]);
-  recordCheck(
-    "shared storage recovery restore is rejected by public CLI",
-    sharedRecoveryRestore.status !== 0 &&
-      `${sharedRecoveryRestore.stdout}\n${sharedRecoveryRestore.stderr}`.includes("cloud sequencer"),
-    sharedRecoveryRestore.stderr || sharedRecoveryRestore.stdout,
-    { command: sharedRecoveryRestore.command },
   );
 
   const detachedWorkspace = path.join(artifactRoot, "detached-workspace");
@@ -1280,7 +1292,7 @@ async function main() {
   const report = {
     schemaVersion: 1,
     status: "pass",
-    summary: "Storage doctor repair initializes agent workspace roots, ensures local SQLite core metadata/config/provider/projection schema through public CLI commands, and project status exposes explicit local/cloud action gates.",
+    summary: "Storage doctor repair validates one local project replica while product-internal replication state drives optional cloud gates.",
     run: {
       artifactRoot,
       workspace,
@@ -1306,10 +1318,10 @@ async function main() {
       after,
       invalidRecoveryList,
       invalidRecoveryDoctor,
+      forgedMarkerStatusResult,
       cloudSyncStatusResult,
+      readyCloudSyncStatusResult,
       cloudSyncRecoveryList,
-      sharedRecoveryCompare,
-      sharedRecoveryRestore,
       detachedStatusResult,
     ].map((result) => ({
       command: result.command,

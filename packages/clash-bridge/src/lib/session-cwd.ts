@@ -153,9 +153,6 @@ async function writeProjectMarker(cwd: string, projectId: string): Promise<void>
       `workspace_id = ${JSON.stringify(projectWorkspaceId("managed", projectId, cwd))}`,
       'store = "managed"',
       "",
-      "[sync]",
-      'mode = "local"',
-      "",
     ].join("\n"),
     "utf-8",
   );

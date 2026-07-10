@@ -11,6 +11,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **All `/api/v1/*` routes live in api-cf (Hono), not in Next.js.** Gateway routes `/api/v1/*` to api-cf. Never create Next.js API routes under `/api/v1/` — they will 404. Add new endpoints in `apps/api-cf/src/routes/v1/` and register them in `apps/api-cf/src/routes/v1/index.ts`. Next.js API routes (`apps/web/app/api/`) are only for paths that gateway does not intercept (e.g., `/api/better-auth/*`).
 - **Timeline/composition has three distinct frame/pixel coordinate systems** (tracks-viewport px, composition-absolute frames, Sequence-relative frames). Mixing them silently "works" for the first item (`from=0`) and fails for everything else. Before touching `buildPreview`, `updatePreviewFromDnd`, `ItemComponent`, or anything passing frame numbers into `<Sequence>`, read [`packages/remotion-ui/TIMELINE_COORDINATES.md`](packages/remotion-ui/TIMELINE_COORDINATES.md) — it lists the two historical bugs (stale `.tracks-viewport` ref, sequence-relative vs composition-absolute mismatch) with reproducers.
 
+## Local-first Project Invariants
+
+These rules define the agent-first local product model. Hosted collaboration
+must extend this model without creating a second local workflow.
+
+- `.clash/project.toml` is a project reference, analogous to a Git worktree
+  pointer. It may identify the project, workspace, and managed/external
+  relationship. It must not contain collaboration mode, sync readiness,
+  credentials, permissions, canonical storage paths, or mutable project state.
+- The agent owns its working tree. It may use native filesystem tools for
+  drafts, scripts, source assets, text projections, and timeline files. The
+  marker resolves project identity automatically; normal operations must not
+  require a status preflight or expose internal storage topology.
+- Local-only, synced, and shared use the same local replica, working tree,
+  asset model, CLI commands, CAS rules, and copy-on-write semantics. Never add
+  a cloud-specific project directory, canvas, mutation API, or agent workflow.
+- Cloud sync is a replicator attached to the local replica. Product-internal
+  state owns remote admission, mirror readiness, auth, Web/share gates, CRDT
+  transport, and conflict UI. A cwd file or agent edit must never grant cloud
+  capability. Hosted `ProjectRoom` code remains valid remote infrastructure,
+  but it must not become the local working-tree authority.
+- For projected text and timelines, the workflow is checkout/pull, native file
+  edit, then explicit apply. Apply performs CAS and copy-on-write when needed;
+  stale overwrite, replace, delete, restore, or metadata-fill operations must
+  fail with a structured conflict unless force/admin intent is explicit.
+- Media assets and applied text/timeline revisions are immutable facts.
+  Editing creates a new revision or asset and moves the selected reference;
+  downstream outputs keep the revision they rendered from.
+- `project status` is diagnostic only. It may report working-tree dirtiness,
+  conflicts, recovery state, or product-internal replication health, but an
+  agent must be able to read and modify the project without calling it first.
+  Deep storage inspection and repair belong under doctor/inspect surfaces.
+- Local project room persistence and raw agent-trace sync are not part of the
+  local default. Cloud collaboration may sync explicitly admitted public
+  state; scratch context, tool logs, local paths, secrets, and raw traces stay
+  local unless a separate product policy opts them in.
+
 ## Build & Development Commands
 
 ```bash

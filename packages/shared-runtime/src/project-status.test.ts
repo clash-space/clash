@@ -427,7 +427,6 @@ describe("project status path builder", () => {
         marker: {
           store: "managed",
           workspaceId: "workspace-1",
-          sync: { mode: "local" },
         },
       },
     );
@@ -448,18 +447,54 @@ describe("project status path builder", () => {
     });
   });
 
+  it("treats the project marker as a reference, never collaboration authority", () => {
+    const canonicalLocal = buildProjectStatus(
+      { projectId: "project-local", source: "marker" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: { sync: { mode: "shared" } },
+        replicationState: { mode: "local-only" },
+      } as Parameters<typeof buildProjectStatus>[1] & {
+        marker: { sync: Record<string, unknown> };
+        replicationState: Record<string, unknown>;
+      },
+    );
+    const markerOnly = buildProjectStatus(
+      { projectId: "project-marker-only", source: "marker" },
+      {
+        clashRoot: "/tmp/clash-home",
+        marker: { sync: { mode: "shared" } },
+      } as Parameters<typeof buildProjectStatus>[1] & {
+        marker: { sync: Record<string, unknown> };
+      },
+    );
+
+    expect(canonicalLocal.collaboration).toMatchObject({
+      mode: "local-only",
+      rawMode: "local-only",
+      webOpenable: false,
+      cloudProjectRoom: "disabled",
+    });
+    expect(markerOnly.collaboration).toMatchObject({
+      mode: "unknown",
+      rawMode: "unknown",
+      webOpenable: false,
+      cloudProjectRoom: "disabled",
+    });
+  });
+
   it("normalizes project collaboration modes into explicit local/cloud gates", () => {
     const local = buildProjectStatus(
       { projectId: "project-local", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "local" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "local" } },
     );
     const cloudSync = buildProjectStatus(
       { projectId: "project-synced", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "cloud-sync" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "cloud-sync" } },
     );
     const shared = buildProjectStatus(
       { projectId: "project-shared", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "shared" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "shared" } },
     );
 
     expect(local.collaboration).toMatchObject({
@@ -579,30 +614,56 @@ describe("project status path builder", () => {
     });
   });
 
+  it("keeps one local replica and mutation surface across replication states", () => {
+    const context = { projectId: "project-one", source: "marker" } as const;
+    const local = buildProjectStatus(context, {
+      clashRoot: "/tmp/clash-home",
+      replicationState: { mode: "local-only" },
+    });
+    const synced = buildProjectStatus(context, {
+      clashRoot: "/tmp/clash-home",
+      replicationState: {
+        mode: "cloud-sync",
+        capabilities: {
+          canvas: true,
+          assetMetadata: true,
+          revisionContent: true,
+        },
+      },
+    });
+
+    expect(local.mode).toBe("local");
+    expect(synced.mode).toBe("local");
+    expect(local.syncMode).toBe("local-only");
+    expect(synced.syncMode).toBe("cloud-sync");
+    expect(synced.projectWorkspaceRoot).toBe(local.projectWorkspaceRoot);
+    expect(synced.loro).toEqual(local.loro);
+    expect(synced.roots).toEqual(local.roots);
+    expect(synced.storage).toEqual(local.storage);
+  });
+
   it("derives recovery policy from project collaboration status", () => {
     const local = buildProjectStatus(
       { projectId: "project-local", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "local" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "local" } },
     );
     const cloudSync = buildProjectStatus(
       { projectId: "project-synced", source: "explicit" },
       {
         clashRoot: "/tmp/clash-home",
-        marker: {
-          sync: {
-            mode: "cloud-sync",
-            capabilities: {
-              canvas: true,
-              assetMetadata: true,
-              revisionContent: true,
-            },
+        replicationState: {
+          mode: "cloud-sync",
+          capabilities: {
+            canvas: true,
+            assetMetadata: true,
+            revisionContent: true,
           },
         },
       },
     );
     const shared = buildProjectStatus(
       { projectId: "project-shared", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "shared" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "shared" } },
     );
     const unknown = buildProjectStatus(
       { projectId: "project-unknown", source: "explicit" },
@@ -658,20 +719,18 @@ describe("project status path builder", () => {
   it("keeps cloud-sync pending until canvas, asset metadata, and revision content sync are all ready", () => {
     const pending = buildProjectStatus(
       { projectId: "project-synced", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "cloud-sync" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "cloud-sync" } },
     );
     const ready = buildProjectStatus(
       { projectId: "project-synced", source: "explicit" },
       {
         clashRoot: "/tmp/clash-home",
-        marker: {
-          sync: {
-            mode: "cloud-sync",
-            capabilities: {
-              canvas: true,
-              assetMetadata: true,
-              revisionContent: true,
-            },
+        replicationState: {
+          mode: "cloud-sync",
+          capabilities: {
+            canvas: true,
+            assetMetadata: true,
+            revisionContent: true,
           },
         },
       },
@@ -728,13 +787,11 @@ describe("project status path builder", () => {
       { projectId: "project-synced", source: "explicit" },
       {
         clashRoot: "/tmp/clash-home",
-        marker: {
-          sync: {
-            mode: "cloud-sync",
-            capabilities: {
-              canvas: true,
-              assetMetadata: true,
-            },
+        replicationState: {
+          mode: "cloud-sync",
+          capabilities: {
+            canvas: true,
+            assetMetadata: true,
           },
         },
       },
@@ -743,14 +800,12 @@ describe("project status path builder", () => {
       { projectId: "project-synced", source: "explicit" },
       {
         clashRoot: "/tmp/clash-home",
-        marker: {
-          sync: {
-            mode: "cloud-sync",
-            capabilities: {
-              canvas: true,
-              assetMetadata: true,
-              revisionContent: true,
-            },
+        replicationState: {
+          mode: "cloud-sync",
+          capabilities: {
+            canvas: true,
+            assetMetadata: true,
+            revisionContent: true,
           },
         },
       },
@@ -795,14 +850,12 @@ describe("project status path builder", () => {
       { projectId: "project-synced", source: "explicit" },
       {
         clashRoot: "/tmp/clash-home",
-        marker: {
-          sync: {
-            mode: "cloud-sync",
-            capabilities: {
-              canvas: true,
-              assetMetadata: true,
-              revisionContent: true,
-            },
+        replicationState: {
+          mode: "cloud-sync",
+          capabilities: {
+            canvas: true,
+            assetMetadata: true,
+            revisionContent: true,
           },
         },
       },
@@ -838,7 +891,7 @@ describe("project status path builder", () => {
   it("publishes the room chat and raw agent trace sync boundary", () => {
     const status = buildProjectStatus(
       { projectId: "project-shared", source: "explicit" },
-      { clashRoot: "/tmp/clash-home", marker: { sync: { mode: "shared" } } },
+      { clashRoot: "/tmp/clash-home", replicationState: { mode: "shared" } },
     );
 
     expect(status.collaboration.projectRoom).toEqual(expectedProjectRoomPolicy("sequencer"));

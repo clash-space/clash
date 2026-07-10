@@ -22,22 +22,6 @@ async function tempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "clash-storage-doctor-"));
 }
 
-async function writeProjectMarkerWithSyncMode(cwd: string, projectId: string, mode: string): Promise<void> {
-  await writeFile(
-    join(cwd, ".clash", "project.toml"),
-    [
-      "schema_version = 1",
-      `project_id = ${JSON.stringify(projectId)}`,
-      'store = "managed"',
-      "",
-      "[sync]",
-      `mode = ${JSON.stringify(mode)}`,
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-}
-
 function openSqlite(path: string) {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
@@ -411,16 +395,16 @@ test("secondary canvas recovery reports cloud-sync as local replica recovery onl
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
-  await writeProjectMarkerWithSyncMode(cwd, "doctor_project", "cloud-sync");
+  const replicationState = { mode: "cloud-sync" };
   const snapshotPath = join(cwd, "loro", "snapshot.bin");
   await mkdir(join(cwd, "loro"), { recursive: true });
   await writeFile(snapshotPath, "draft snapshot", "utf8");
 
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, replicationState, repair: true });
   const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
   const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
-  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
-  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir, replicationState });
+  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir, replicationState });
 
   const expectedPolicy = {
     scope: "local-canonical-replica",
@@ -444,6 +428,7 @@ test("secondary canvas recovery reports cloud-sync as local replica recovery onl
 test("secondary canvas recovery restore copies quarantined bytes into canonical replica only with compare read token", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
+  const replicationState = { mode: "local-only" };
   await initProject({ cwd, projectId: "doctor_project" });
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
@@ -458,16 +443,17 @@ test("secondary canvas recovery restore copies quarantined bytes into canonical 
   await writeFile(snapshotPath, "draft snapshot", "utf8");
   await writeFile(updatesPath, "draft updates", "utf8");
 
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, replicationState, repair: true });
   const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
   const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
-  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir, replicationState });
 
   const restored = await restoreSecondaryCanvasRecovery({
     manifestPath,
     cwd,
     env: {},
     homeDir,
+    replicationState,
     expectedReadToken: compared.readToken,
     confirm: true,
   });
@@ -511,10 +497,10 @@ test("secondary canvas recovery restore rejects shared projects owned by the clo
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
-  await writeProjectMarkerWithSyncMode(cwd, "doctor_project", "shared");
+  const replicationState = { mode: "shared" };
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "marker", markerPath: join(cwd, ".clash", "project.toml") },
-    { homeDir, marker: { schemaVersion: 1, projectId: "doctor_project", store: "managed", sync: { mode: "shared" } } },
+    { homeDir, replicationState },
   );
   await mkdir(status.loro.replicaRoot, { recursive: true });
   await writeFile(status.loro.snapshotPath, "canonical snapshot", "utf8");
@@ -522,10 +508,10 @@ test("secondary canvas recovery restore rejects shared projects owned by the clo
   await mkdir(join(cwd, "loro"), { recursive: true });
   await writeFile(snapshotPath, "draft snapshot", "utf8");
 
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, replicationState, repair: true });
   const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
   const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
-  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir, replicationState });
 
   assert.deepEqual(compared.recoveryPolicy, {
     scope: "local-canonical-replica",
@@ -546,6 +532,7 @@ test("secondary canvas recovery restore rejects shared projects owned by the clo
       cwd,
       env: {},
       homeDir,
+      replicationState,
       expectedReadToken: compared.readToken,
       confirm: true,
     }),
@@ -857,6 +844,7 @@ test("secondary canvas recovery list reports quarantined manifests for review", 
 test("secondary canvas recovery list reports prior restore receipts for review", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
+  const replicationState = { mode: "local-only" };
   await initProject({ cwd, projectId: "doctor_project" });
   const snapshotPath = join(cwd, "loro", "snapshot.bin");
   const updatesPath = join(cwd, "loro", "updates.log");
@@ -864,20 +852,21 @@ test("secondary canvas recovery list reports prior restore receipts for review",
   await writeFile(snapshotPath, "draft snapshot", "utf8");
   await writeFile(updatesPath, "draft updates", "utf8");
 
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
+  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, replicationState, repair: true });
   const quarantined = repaired.repairs?.filter((repair) => repair.id === "secondary-canvas-replica-quarantine") ?? [];
   const manifestPath = join(quarantined[0].path ? join(quarantined[0].path, "..", "..") : "", "manifest.json");
-  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir });
+  const compared = await compareSecondaryCanvasRecovery({ manifestPath, cwd, env: {}, homeDir, replicationState });
   const restored = await restoreSecondaryCanvasRecovery({
     manifestPath,
     cwd,
     env: {},
     homeDir,
+    replicationState,
     expectedReadToken: compared.readToken,
     confirm: true,
   });
 
-  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir });
+  const inventory = await listSecondaryCanvasRecoveries({ cwd, env: {}, homeDir, replicationState });
 
   assert.equal(inventory.invalidEntries.length, 0);
   assert.equal(inventory.sets.length, 1);

@@ -465,7 +465,8 @@ Minimum tests:
 Current status:
 
 - `clash project status --json` now exposes:
-  - selected project id/source/mode,
+  - selected project id/source and fixed local replica mode,
+  - separate product-owned `syncMode`/collaboration diagnostics,
   - Clash home root,
   - alpha project workspace root,
   - local-api data dir,
@@ -487,9 +488,9 @@ Current status:
     `assets/links` remain inspection/projection convenience paths,
   - protected text/timeline revision content blob roots under
     `storage.canonicalReplica.contentBlobs`.
-- The command treats a marker in the cwd as context only. If `--project`
-  selects a different project, the status does not inherit the marker's sync
-  mode.
+- The command treats a marker in the cwd as identity context only. New markers
+  contain no sync/readiness fields, legacy `[sync]` tables are ignored, and
+  replication diagnostics come from product-owned SQLite/host state.
 - local-api `GET /api/v1/projects/:id/status` exposes the same path contract
   for explicit project ids through the shared-runtime status builder.
 - `clash doctor storage --json` now runs read-only checks for project context,
@@ -649,10 +650,10 @@ Current status:
   bodies.
 - The old room CLI source, tests, and local loopback E2E were deleted.
 - `GroupChatPanel` no longer renders removed room CLI recovery commands.
-- `project status --json` now exposes `collaboration.projectRoom` so agents can
-  see that the local project room surface is removed, local room persistence is
-  absent, local room endpoints return 404, and the local-first CLI has no room
-  command. The same field keeps cloud ProjectRoom availability mode-gated under
+- Product status/doctor surfaces expose `collaboration.projectRoom` so UI and
+  diagnostics can prove that local room persistence/endpoints/CLI are absent.
+  Agents are taught the boundary directly in `AGENTS.md` and do not need a
+  status preflight. The field keeps cloud ProjectRoom availability gated under
   `cloudSurface`.
 
 Remaining gap:
@@ -1209,9 +1210,9 @@ Minimum tests:
 
 ## P2 Work
 
-### P2-01: Explicit project modes
+### P2-01: Explicit replication states
 
-Modes:
+Replication states:
 
 - Local-only
 - Synced
@@ -1219,7 +1220,8 @@ Modes:
 
 Acceptance:
 
-- UI and CLI show correct mode.
+- The project remains one local replica in every state; top-level status mode
+  is `local`, while UI/diagnostics show replication separately.
 - Local-only is not web-openable.
 - Synced means canvas, asset metadata, and revision content have real sync paths.
 - Shared means cloud ProjectRoom sequencing and permissions are active.
@@ -1240,7 +1242,7 @@ Critical path:
 ```text
 SQLite store
   -> project/session/asset metadata
-  -> project mode/status
+  -> product replication state/status
 
 Projection CAS library
   -> text projection

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -11,6 +12,15 @@ import {
 } from "@agentclientprotocol/sdk";
 import { describe, expect, it } from "vitest";
 import { parseCodexAppServerOutput, runCodexDebug } from "./codex-app-server-acp";
+
+const require = createRequire(import.meta.url);
+const tsxLoader = (() => {
+  try {
+    return require.resolve("tsx");
+  } catch {
+    return createRequire(new URL("../../cli/package.json", import.meta.url)).resolve("tsx");
+  }
+})();
 
 async function waitForCondition(condition: () => boolean, timeoutMs = 1000): Promise<void> {
   const start = Date.now();
@@ -145,7 +155,7 @@ process.exit(0);
 
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", "packages/clash-bridge/src/codex-app-server-acp.ts", "--codex", fakeCodex],
+      ["--import", tsxLoader, "packages/clash-bridge/src/codex-app-server-acp.ts", "--codex", fakeCodex],
       {
         cwd: join(import.meta.dirname, "../../.."),
         stdio: ["pipe", "pipe", "inherit"],
@@ -219,7 +229,7 @@ process.exit(0);
 
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", "packages/clash-bridge/src/codex-app-server-acp.ts", "--codex", fakeCodex],
+      ["--import", tsxLoader, "packages/clash-bridge/src/codex-app-server-acp.ts", "--codex", fakeCodex],
       {
         cwd: join(import.meta.dirname, "../../.."),
         stdio: ["pipe", "pipe", "inherit"],
@@ -329,7 +339,7 @@ for (const event of events) {
 
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", "packages/clash-bridge/src/codex-app-server-acp.ts", "--codex", fakeCodex],
+      ["--import", tsxLoader, "packages/clash-bridge/src/codex-app-server-acp.ts", "--codex", fakeCodex],
       {
         cwd: join(import.meta.dirname, "../../.."),
         stdio: ["pipe", "pipe", "inherit"],

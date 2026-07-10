@@ -84,8 +84,8 @@ it("project link writes a v1 marker in the current directory", async () => {
   expect(marker).toContain('project_id = "proj_linked"');
   expect(marker).toMatch(/workspace_id = "external:[a-f0-9]{16}"/);
   expect(marker).toContain('store = "external"');
-  expect(marker).toContain("[sync]");
-  expect(marker).toContain('mode = "local"');
+  expect(marker).not.toContain("[sync]");
+  expect(marker).not.toContain("mode =");
   const parsed = await readProjectMarker(markerPath);
   expect(parsed.workspaceId).toMatch(/^external:[a-f0-9]{16}$/);
 });
@@ -103,11 +103,11 @@ it("init writes a local managed v1 marker without cloud dependency", async () =>
   expect(marker).toContain(`project_id = "${result.projectId}"`);
   expect(marker).toContain(`workspace_id = "${result.workspaceId}"`);
   expect(marker).toContain('store = "managed"');
-  expect(marker).toContain("[sync]");
-  expect(marker).toContain('mode = "local"');
+  expect(marker).not.toContain("[sync]");
+  expect(marker).not.toContain("mode =");
 });
 
-it("project marker writer preserves nested sync capabilities as TOML tables", async () => {
+it("project marker remains a project pointer and drops collaboration state", async () => {
   const root = await tempDir();
   const markerPath = await writeProjectMarker(root, {
     schemaVersion: 1,
@@ -120,19 +120,13 @@ it("project marker writer preserves nested sync capabilities as TOML tables", as
           asset_metadata: true,
         },
       },
-  });
+  } as Parameters<typeof writeProjectMarker>[1] & { sync: Record<string, unknown> });
 
   const marker = await readFile(markerPath, "utf-8");
   const parsed = await readProjectMarker(markerPath);
 
-  expect(marker).toContain("[sync]");
-  expect(marker).toContain('mode = "cloud-sync"');
-  expect(marker).toContain("[sync.capabilities]");
-  expect(parsed.sync).toEqual({
-    mode: "cloud-sync",
-    capabilities: {
-      canvas: true,
-      asset_metadata: true,
-    },
-  });
+  expect(marker).not.toContain("[sync]");
+  expect(marker).not.toContain("mode =");
+  expect(marker).not.toContain("capabilities");
+  expect(parsed).not.toHaveProperty("sync");
 });

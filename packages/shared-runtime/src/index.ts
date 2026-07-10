@@ -20,6 +20,7 @@ export {
   type ProjectStatusActionGateReason,
   type ProjectStatusActionGates,
   type ProjectStatus,
+  type ProjectReplicationState,
   type ProjectStatusContext,
   type ProjectStatusCurrentWorkspace,
   type ProjectStatusMarker,

@@ -23,8 +23,8 @@ This means:
 - Agent-readable files are projections of product entities.
 - Any projection that is read, edited on disk, then applied back to the
   project must use CAS.
-- Cloud collaboration is a mode layered on the same project model, not a
-  separate product truth.
+- Cloud collaboration is an optional replicator over the same local replica,
+  not a separate project mode or product truth.
 
 Companion implementation specs:
 
@@ -116,6 +116,11 @@ It must not imply:
 - A project lock.
 - A separate snapshot.
 - Lifecycle ownership of the local host.
+
+The marker is identity/reference metadata only. It must not carry sync mode,
+replication readiness, cloud admission, credentials, or permissions. Those are
+product-internal state and multiple working trees pointing at one project must
+not be able to disagree about them.
 
 ### 4. Snapshot is not an agent-editable format
 
@@ -639,7 +644,7 @@ Do not silently run them as cloud workers.
 | User variables | Legacy cloud table; local-first CLI/API vars surface is removed | Hosted/remote compatibility only | Do not make variables the main local auth model | Keep local provider/OAuth/runtime auth separate |
 | Local custom actions | Local runtime registration; binary uploads become checkpoint assets that reject same task/output id with different content | User-owned runtime capability | No secret-based cloud-like runtime shortcut; no silent overwrite of published checkpoint outputs | Require local-api auth/OAuth setup and explicit replacement/version UX |
 | Direct canvas update/delete | Shared guardrails cover CLI/daemon/Web UI direct patches/deletes: safe metadata can be patched; timeline/provenance fields, text feeding materialized downstream state, referenced media `assetId` replacement, materialized downstream action checkpoint fields including metadata and asset dependency/provenance fields, referenced node delete, batch delete that would orphan downstream references outside the deleted set, and checkpoint lineage edge add/update/delete are blocked by default; `hasRun` alone does not lock an action, and pending media first fulfillment plus draft/idle downstream placeholders are allowed. CLI/daemon direct `update`/`delete` require an agent `readToken` from `canvas get --json` via `--if-match`, unless explicitly forced. Existing Web/runtime edge add/update/delete writes require graph or edge `readToken` values from `canvas edges --json` when the caller is an agent; ACP `add_edge`/`update_edge`/`delete_edge` preserves `ifMatch`/`force` into `useLoroSync`, with same-patch create-and-consume edges exempted when they connect a newly created node. Local-api edge HTTP actions mirror that contract: `GET /api/v1/projects/:projectId/canvas/edges` returns receipt-bearing graph/per-edge tokens, `POST` uses the graph token, and `PATCH`/`DELETE` use the per-edge token. In the daemon path, `canvas get` returns a host-issued receipt-bearing token, and agent `update`/`delete`/media COW writes reject bare hash tokens. Local-api project write paths also require receipt-bearing project read tokens for agent update/delete. Local-api media COW now uses `/api/v1/projects/:projectId/canvas/nodes/:nodeId` to issue receipt-bearing node read tokens, and `/api/v1/assets/replace` rejects agent writes with bare node CAS tokens. `canvas replace-asset` is the explicit COW path for fulfilled media asset replacement. Web UI multi-node deletion uses a single host mutation path that validates the whole delete set before mutating Loro, allowing closed-subgraph deletes while rejecting external orphaning. Agent batch delete uses `canvas delete-plan` plus `canvas delete-batch --if-match`, with daemon-issued receipt tokens required for spawned-agent writes, matching graph-aware tokens accepted by Web `useLoroSync.removeNodes`, and local-api `POST /api/v1/projects/:projectId/canvas/delete-plan` plus `POST /api/v1/projects/:projectId/canvas/delete-batch` mirroring the same receipt/CAS and orphan-reference guard. | Explicit patch/admin command, not file apply path | No bypass of CAS/read-token or materialized-checkpoint protection | Add storyboard replace/recovery UX, remaining direct/admin receipt coverage, and force/recovery UX |
-| Cloud sync | Existing cloud paths | Optional Synced/Shared modes | Do not label partial sync as full sync | Add explicit project mode/status gates |
+| Cloud sync | Existing cloud paths plus product-internal replication readiness | Optional Synced/Shared replication states over the same local replica | Do not label partial sync as full sync or change local mutation semantics | Keep replication/Web/share gates inside product status; never put them in the marker or agent workflow |
 
 ## Restriction Matrix
 
@@ -891,15 +896,17 @@ CLI and local agents should converge on a host-owned mutation API:
 The current CLI still has legacy direct one-shot Loro paths. Those should
 be hidden, removed, or kept as debug-only once local host is stable.
 
-### P2: Sync mode boundaries
+### P2: Replication state boundaries
 
-Implement explicit modes:
+Keep one local project and model optional replication states:
 
 - Local-only,
 - Synced,
 - Shared.
 
-Each mode should define:
+These are not alternate project stores or mutation modes. Every state uses the
+same local working tree, replica, assets, CLI, CAS, and COW rules. Replication
+state only defines:
 
 - source of real-time sequencing,
 - asset availability,
@@ -914,8 +921,9 @@ Each mode should define:
 Current implementation uses the canonical
 `${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>`.
 That is simple and probably acceptable for v1 alpha, but internal files
-   must be protected by `project status`/`doctor` visibility, real E2E layout
-   gates, and apply commands. This is not yet a full OS-level sandbox.
+   must use stable working-tree conventions, explicit apply commands, and
+   product-enforced path guards. `doctor` may diagnose violations, but agents
+   must not need a status preflight. This is not yet a full OS-level sandbox.
 
 2. Should local sync/audio/harness settings remain JSON files?
 
@@ -944,13 +952,19 @@ That is simple and probably acceptable for v1 alpha, but internal files
 
 Agents should be taught:
 
-1. Resolve project context with `clash project status --json`.
-2. Inspect canvas with CLI commands.
-3. For projected entities, use pull/edit/apply.
-4. Never edit `snapshot.bin`.
-5. Never overwrite a projection without its lock unless explicitly instructed.
-6. Treat `--force` as destructive and explain it.
-7. Use room messages for human-visible project communication.
-8. Keep raw scratch files in draft/projection directories.
-9. Use copy-on-write for referenced content.
-10. Do not assume cloud availability for local-only projects.
+1. Treat cwd as the project working tree; `.clash/project.toml` resolves the
+   project automatically.
+2. Read and write drafts, source files, text projections, and timeline files
+   with native filesystem tools.
+3. Inspect canvas with CLI commands when canvas state is relevant.
+4. For projected entities, use pull/edit/apply; apply carries CAS/read proof.
+5. Never edit `snapshot.bin`, SQLite, revision blobs, credentials, or runtime
+   internals.
+6. Never overwrite a projection without its lock unless explicitly instructed.
+7. Treat `--force` as destructive and explain it.
+8. Use copy-on-write for referenced content and preserve downstream revision
+   provenance.
+9. Do not use local room APIs; respond through the active session/canvas/action
+   surfaces.
+10. Treat cloud as a product-internal replicator over the same local replica,
+    not as a different project workflow.
