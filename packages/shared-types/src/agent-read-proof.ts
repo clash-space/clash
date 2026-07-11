@@ -1,6 +1,10 @@
 export type AgentReadProofResult =
   | { ok: true }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      code?: "READ_REQUIRED" | "STALE_READ" | "INVALID_READ_PROOF";
+    };
 
 export type AgentReadReceiptProof = {
   expectedReadToken: string;
@@ -215,19 +219,17 @@ export function validateAgentReadProof(options: {
   expectedReadToken?: string;
   requireReceipt?: boolean;
   readReceiptVerifier?: AgentReadReceiptVerifier;
-  force?: boolean;
   readCommandHint?: string;
 }): AgentReadProofResult {
-  if (options.force) return { ok: true };
-
   const isAgent = options.actorClientType === "agent";
   const operation = options.operation.trim() || "write";
   const hint = options.readCommandHint?.trim() ||
-    "re-read the target before writing, or pass --force for an explicit overwrite.";
+    "re-read the target before writing.";
   if (typeof options.expectedReadToken !== "string" || options.expectedReadToken.trim().length === 0) {
     if (!isAgent) return { ok: true };
     return {
       ok: false,
+      code: "READ_REQUIRED",
       error: `Missing ${operation} read proof for agent. ${hint}`,
     };
   }
@@ -240,10 +242,8 @@ export function validateAgentReadProof(options: {
   if (expectedBase !== currentBase) {
     return {
       ok: false,
-      error:
-        `Stale ${operation} rejected. Current read token is ${currentBase}, ` +
-        `but --if-match was ${expectedBase}. ` +
-        "re-read the target before writing, or pass --force for an explicit overwrite.",
+      code: "STALE_READ",
+      error: `Stale ${operation} rejected (STALE_READ). The target changed after it was read. ${hint}`,
     };
   }
 
@@ -251,6 +251,7 @@ export function validateAgentReadProof(options: {
     if (!expected?.receipt) {
       return {
         ok: false,
+        code: "READ_REQUIRED",
         error: `Missing ${operation} read receipt for agent. ${hint}`,
       };
     }
@@ -271,6 +272,7 @@ export function validateAgentReadProof(options: {
     if (!verified) {
       return {
         ok: false,
+        code: "INVALID_READ_PROOF",
         error: `Invalid ${operation} read receipt for agent. ${hint}`,
       };
     }

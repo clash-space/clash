@@ -27,7 +27,6 @@ export type ProjectMvBeatCutsResult = {
   projected: true;
   targetAssetId: string;
   timelineProjectionPath: string;
-  timelineLockPath: string;
   manifestPath: string;
   cuts: number;
 };
@@ -75,7 +74,7 @@ export async function projectMvBeatCutsTimeline(
     "timelines",
     `${safeSlug(action.targetAssetId)}.mv-beat-cut.timeline.yaml`,
   );
-  const { casApply, lockPath: timelineLockPath } = timelineProjectionCasApply({
+  const { casApply } = timelineProjectionCasApply({
     cwd,
     filePath: timelineProjectionPath,
   });
@@ -163,7 +162,6 @@ export async function projectMvBeatCutsTimeline(
     projected: true,
     targetAssetId: action.targetAssetId,
     timelineProjectionPath,
-    timelineLockPath,
     manifestPath,
     cuts: cuts.length,
   };

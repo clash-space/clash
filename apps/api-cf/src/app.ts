@@ -55,6 +55,45 @@ async function forwardLoroPersistenceRequest(
   return c.env.ROOM.get(id).fetch(req);
 }
 
+function clshBearerToken(authorization: string): string | null {
+  const match = /^Bearer[\t ]+(\S+)$/i.exec(authorization.trim());
+  const token = match?.[1] ?? "";
+  return token.startsWith("clsh_") ? token : null;
+}
+
+async function applyValidatedPublicIdentity(
+  c: Context<{ Bindings: Env }>,
+): Promise<string | null> {
+  const request = new Request(c.req.raw);
+  request.headers.delete("x-user-id");
+
+  const token = clshBearerToken(request.headers.get("authorization") ?? "");
+  let userId: string | null = null;
+  if (token) {
+    request.headers.set("authorization", `Bearer ${token}`);
+    try {
+      userId = await getUserIdFromApiToken(request, c.env as any);
+    } catch {
+      userId = null;
+    }
+  }
+  if (!userId) {
+    try {
+      userId = await getUserIdFromRequest(
+        request,
+        c.env as any,
+        c.req.raw.cf as any,
+      );
+    } catch {
+      userId = null;
+    }
+  }
+
+  if (userId) request.headers.set("x-user-id", userId);
+  c.req.raw = request;
+  return userId;
+}
+
 export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> {
   setPlugins(opts.plugins ?? []);
 
@@ -62,24 +101,17 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
 
   app.use("/*", cors());
 
-  // For /api/v1/* (and other token/header-auth endpoints), let Better Auth
-  // session cookies stand in for x-user-id. CLI / external integrations keep
-  // setting x-user-id directly (via gateway) — only fill in when missing.
-  app.use("/api/v1/*", async (c, next) => {
-    if (!c.req.header("x-user-id")) {
-      const userId =
-        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
-        (await getUserIdFromRequest(
-          c.req.raw,
-          c.env as any,
-          c.req.raw.cf as any,
-        ));
-      if (userId) {
-        const req = new Request(c.req.raw);
-        req.headers.set("x-user-id", userId);
-        c.req.raw = req;
-      }
+  // Public API identity is always derived here. An x-user-id supplied by a
+  // browser, CLI, reverse proxy, or service binding is untrusted input.
+  app.use("/api/*", async (c, next) => {
+    if (c.req.path === "/api/better-auth" || c.req.path.startsWith("/api/better-auth/")) {
+      const request = new Request(c.req.raw);
+      request.headers.delete("x-user-id");
+      c.req.raw = request;
+      await next();
+      return;
     }
+    await applyValidatedPublicIdentity(c);
     await next();
   });
 
@@ -119,52 +151,31 @@ export function createApp(opts: CreateAppOptions = {}): Hono<{ Bindings: Env }> 
     const rawRoom = c.req.param("room");
     const room = rawRoom.split("/")[0];
     const id = c.env.SUPERVISOR.idFromName(room);
-    const req = new Request(c.req.raw);
-    req.headers.set("x-partykit-room", room);
-    req.headers.set("x-partykit-namespace", "SUPERVISOR");
     // Resolve userId at the gateway so supervisor logs can be filtered per user.
     // Best-effort: don't 401 here — the WS handshake is what carries the cookie,
     // and DO has no other way to learn the user.
     try {
-      const userId =
-        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
-        (await getUserIdFromRequest(
-          c.req.raw,
-          c.env as any,
-          c.req.raw.cf as any,
-        ));
-      if (userId) req.headers.set("x-user-id", userId);
-    } catch { /* observability only — never block the connection */ }
+      await applyValidatedPublicIdentity(c);
+    } catch {
+      const sanitized = new Request(c.req.raw);
+      sanitized.headers.delete("x-user-id");
+      c.req.raw = sanitized;
+    }
+    const req = new Request(c.req.raw);
+    req.headers.set("x-partykit-room", room);
+    req.headers.set("x-partykit-namespace", "SUPERVISOR");
     return c.env.SUPERVISOR.get(id).fetch(req);
   });
 
   // ─── BYO local agent bridge ────────────────────────────────
-  // Auto-fill x-user-id from Better Auth so the route + DO can use it.
-  // (CLI side is exempt: its credential is the pair token, not a session cookie.)
+  // Browser-side bridge requests use the same validated identity boundary.
+  // CLI-side pair credentials are handled inside the bridge route itself.
   app.use("/agents/byo-bridge/pair", async (c, next) => {
-    if (!c.req.header("x-user-id")) {
-      const userId =
-        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
-        (await getUserIdFromRequest(c.req.raw, c.env as any, c.req.raw.cf as any));
-      if (userId) {
-        const req = new Request(c.req.raw);
-        req.headers.set("x-user-id", userId);
-        c.req.raw = req;
-      }
-    }
+    await applyValidatedPublicIdentity(c);
     await next();
   });
   app.use("/agents/byo-bridge/browser", async (c, next) => {
-    if (!c.req.header("x-user-id")) {
-      const userId =
-        (await getUserIdFromApiToken(c.req.raw, c.env as any)) ??
-        (await getUserIdFromRequest(c.req.raw, c.env as any, c.req.raw.cf as any));
-      if (userId) {
-        const req = new Request(c.req.raw);
-        req.headers.set("x-user-id", userId);
-        c.req.raw = req;
-      }
-    }
+    await applyValidatedPublicIdentity(c);
     await next();
   });
   app.route("/agents/byo-bridge", byoBridgeRoutes);

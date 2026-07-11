@@ -15,9 +15,11 @@ describe("PlanBar", () => {
 
     expect(screen.queryByText("Capture b-roll")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show plan" }));
+    const trigger = screen.getByRole("button", { name: "Toggle plan" });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
 
-    expect(screen.getByRole("button", { name: "Hide plan" })).toBeTruthy();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("Capture b-roll")).toBeTruthy();
   });
 });

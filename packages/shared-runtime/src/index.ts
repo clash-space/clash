@@ -1,6 +1,18 @@
 export type RuntimeMode = "hosted" | "local" | "desktop";
 
 export {
+  planCascadeTick,
+  type CascadeAdoptDecision,
+  type CascadeClearDecision,
+  type CascadeClearReason,
+  type CascadeDecision,
+  type CascadeGraphEdge,
+  type CascadeGraphNode,
+  type CascadeTickInput,
+  type CascadeTickPlan,
+} from "./cascade-scheduler.js";
+
+export {
   generateTextCompletion,
   type TextContentPart,
   type TextGenerationInput,
@@ -12,6 +24,10 @@ export {
 export {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
+  PROJECT_TIMELINE_APPLY_COMMAND,
+  PROJECT_TIMELINE_FILE_PATTERN,
+  PROJECT_TIMELINE_PUBLIC_COMMANDS,
+  PROJECT_TIMELINE_PULL_COMMAND,
   projectIdPathSegment,
   projectWorkspaceId,
   type ProjectRecoveryPolicy,
@@ -59,7 +75,8 @@ export interface LocalHostShutdownClient {
 export function isLocalHostDiscoveryRecord(value: unknown): value is LocalHostDiscoveryRecord {
   if (!value || typeof value !== "object") return false;
   const record = value as Partial<LocalHostDiscoveryRecord>;
-  return record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION
+  return (
+    record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION
     && typeof record.protocolVersion === "number"
     && Number.isInteger(record.protocolVersion)
     && typeof record.dataSchemaVersion === "number"
@@ -75,15 +92,18 @@ export function isLocalHostDiscoveryRecord(value: unknown): value is LocalHostDi
     && isHostStartedBy(record.startedBy)
     && (record.ownerClientId === undefined || typeof record.ownerClientId === "string")
     && typeof record.startedAt === "string"
-    && typeof record.updatedAt === "string";
+    && typeof record.updatedAt === "string"
+  );
 }
 
 export function isCompatibleHost(
   record: LocalHostDiscoveryRecord,
   clientProtocolVersion: number,
 ): boolean {
-  return record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION
-    && record.protocolVersion <= clientProtocolVersion;
+  return (
+    record.schemaVersion === LOCAL_HOST_RECORD_SCHEMA_VERSION
+    && record.protocolVersion <= clientProtocolVersion
+  );
 }
 
 export function shouldClientOwnShutdown(
@@ -97,17 +117,21 @@ export function shouldClientOwnShutdown(
 }
 
 function isHostLaunchMode(value: unknown): value is HostLaunchMode {
-  return value === "desktop"
+  return (
+    value === "desktop"
     || value === "cli-once"
     || value === "user-service"
-    || value === "launchd";
+    || value === "launchd"
+  );
 }
 
 function isHostStartedBy(value: unknown): value is HostStartedBy {
-  return value === "desktop"
+  return (
+    value === "desktop"
     || value === "cli"
     || value === "user-service"
-    || value === "launchd";
+    || value === "launchd"
+  );
 }
 
 export interface RuntimeCapabilities {

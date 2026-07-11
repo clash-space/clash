@@ -15,7 +15,6 @@ export type HostMutationEnvelope = {
   beforeHash?: string;
   expectedReadToken?: string;
   beforeReadToken?: string;
-  forced: boolean;
 };
 
 export type HostMutationRecord = HostMutationEnvelope & {
@@ -34,7 +33,6 @@ export function validateHostMutationEnvelope(options: {
   currentHash?: string | null;
   expectedReadToken?: string | null;
   currentReadToken?: string | null;
-  force?: boolean;
   guard: HostMutationGuardResult;
 }):
   | { ok: true; envelope: HostMutationEnvelope }
@@ -47,7 +45,6 @@ export function validateHostMutationEnvelope(options: {
     beforeHash: options.currentHash ?? undefined,
     expectedReadToken: options.expectedReadToken ?? undefined,
     beforeReadToken: options.currentReadToken ?? undefined,
-    forced: options.force === true,
   });
   if (!options.guard.ok) {
     return {

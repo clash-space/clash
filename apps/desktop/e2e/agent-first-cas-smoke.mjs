@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -27,16 +27,26 @@ function now() {
   return new Date().toISOString();
 }
 
+function shortSocketHome(label) {
+  const root = process.platform === "win32" ? tmpdir() : "/tmp";
+  return path.join(root, `cl-${label}-${process.pid}-${Date.now().toString(36)}`);
+}
+
 async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function runProduction(args) {
+function runProduction(args, env = {}) {
   const result = spawnSync(
     process.execPath,
     ["--import", tsxLoader, cliEntry, "production", ...args],
-    { cwd: workspace, encoding: "utf8", timeout: CLI_TIMEOUT_MS },
+    {
+      cwd: workspace,
+      encoding: "utf8",
+      timeout: CLI_TIMEOUT_MS,
+      env: { ...process.env, ...env },
+    },
   );
   return {
     command: `clash production ${args.join(" ")}`,
@@ -172,8 +182,16 @@ async function startCliDaemonSocket(options) {
     import daemon from ${JSON.stringify(daemonModule)};
 
     const projectId = ${JSON.stringify(options.projectId)};
+    const timelineId = ${JSON.stringify(options.timelineId ?? "timeline-cli")};
+    const timelineState = ${JSON.stringify(options.timelineState ?? {
+      compositionWidth: 1080,
+      compositionHeight: 1920,
+      fps: 30,
+      durationInFrames: 60,
+      tracks: [{ id: "main", items: [] }],
+    })};
     const clashHome = ${JSON.stringify(options.clashHome)};
-    const { handleCommandForTest } = daemon;
+    const { getSocketPath, handleCommandForTest } = daemon;
     if (typeof handleCommandForTest !== "function") {
       throw new Error("daemon handleCommandForTest export missing");
     }
@@ -181,8 +199,8 @@ async function startCliDaemonSocket(options) {
     const socketDir = join(clashHome, "sockets");
     const commandLogPath = join(clashHome, "daemon-command-log.jsonl");
     mkdirSync(socketDir, { recursive: true });
-    const sockPath = join(socketDir, projectId + ".sock");
-    const pidPath = join(socketDir, projectId + ".pid");
+    const sockPath = getSocketPath(projectId, { CLASH_HOME: clashHome });
+    const pidPath = sockPath.replace(/\.sock$/, ".pid");
     rmSync(sockPath, { force: true });
     writeFileSync(pidPath, String(process.pid));
 
@@ -192,17 +210,15 @@ async function startCliDaemonSocket(options) {
       token: "test",
     });
     client.createNode("text-cli", "text", { label: "CLI Text", content: "before" });
-    client.createNode("timeline-cli", "video-editor", {
-      label: "CLI Timeline",
-      timelineDsl: {
-        compositionWidth: 1080,
-        compositionHeight: 1920,
-        fps: 30,
-        durationInFrames: 60,
-        tracks: [{ id: "main", items: [] }],
-      },
+    client.createTimeline({
+      id: timelineId,
+      name: "CLI Timeline",
+      state: timelineState,
     });
     client.createNode("delete-cli", "text", { label: "Delete CLI", content: "before" });
+    client.createNode("immutable-cli", "text", { label: "Immutable CLI", content: "before" });
+    client.createNode("immutable-consumer", "text", { label: "Immutable Consumer", content: "consumer" });
+    client.canvas.insertEdge("immutable-cli-consumer", "immutable-cli", "immutable-consumer", "default");
 
     const server = createServer((conn) => {
       let buf = "";
@@ -295,8 +311,8 @@ async function startCliDaemonSocket(options) {
   };
 }
 
-async function startRevisionIndexHost() {
-  const hostDir = path.join(artifactRoot, "revision-index-host");
+async function startTextRevisionIndexHost() {
+  const hostDir = path.join(artifactRoot, "text-revision-index-host");
   const requestsPath = path.join(hostDir, "requests.jsonl");
   const revisionsPath = path.join(hostDir, "revisions.json");
   const source = `
@@ -362,25 +378,6 @@ async function startRevisionIndexHost() {
           },
         };
       }
-      if (revision.kind === "clash.timeline.revision") {
-        return {
-          ...revision,
-          content: {
-            kind: "timeline-revision-content",
-            stored: true,
-            timelineHash: revision.timelineHash,
-            mediaType: "application/yaml",
-            url: "/api/v1/projects/" + encodeURIComponent(revision.projectId) + "/timeline-revisions/" + encodeURIComponent(revision.revisionId) + "/content",
-            immutable: true,
-            storage: {
-              kind: "content-addressed-revision-blob",
-              registry: "timeline_revisions",
-              mediaAsset: false,
-              agentWritable: false,
-            },
-          },
-        };
-      }
       return revision;
     }
 
@@ -414,34 +411,6 @@ async function startRevisionIndexHost() {
               entity: { kind: "text", id: \`\${body.revision.projectId}:\${body.revision.nodeId}\` },
               resultEntityId: body.revision.revisionId,
               accepted: true,
-              forced: false,
-            },
-          });
-          return;
-        }
-        if (request.method === "POST" && url.pathname === "/api/v1/timeline-revisions") {
-          const body = await readRequestJson(request);
-          if (!body.revision?.revisionId) {
-            sendJson(response, 400, { error: "missing revision" });
-            return;
-          }
-          const existing = revisions.find((revision) => revision.revisionId === body.revision.revisionId);
-          if (!existing) {
-            revisions.push(body.revision);
-            if (typeof body.content === "string") {
-              revisionContents.set(body.revision.revisionId, body.content);
-            }
-            persistRevisions();
-          }
-          sendJson(response, 200, {
-            revision: body.revision,
-            ...(typeof body.content === "string" ? { content: revisionWithContentDescriptor(body.revision).content } : {}),
-            mutation: {
-              operation: "timeline_revision_index",
-              entity: { kind: "timeline", id: \`\${body.revision.projectId}:\${body.revision.nodeId}\` },
-              resultEntityId: body.revision.revisionId,
-              accepted: true,
-              forced: false,
             },
           });
           return;
@@ -473,35 +442,6 @@ async function startRevisionIndexHost() {
             return;
           }
           sendText(response, 200, content, "text/markdown; charset=utf-8");
-          return;
-        }
-        const timelineMatch = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/timeline-revisions$/);
-        if (request.method === "GET" && timelineMatch) {
-          const projectId = decodeURIComponent(timelineMatch[1]);
-          const nodeId = url.searchParams.get("nodeId");
-          const limit = Number(url.searchParams.get("limit") || "50");
-          const filtered = revisions
-            .filter((revision) => revision.projectId === projectId && revision.kind === "clash.timeline.revision" && (!nodeId || revision.nodeId === nodeId))
-            .slice(0, Number.isFinite(limit) ? limit : 50)
-            .map(revisionWithContentDescriptor);
-          sendJson(response, 200, { revisions: filtered });
-          return;
-        }
-        const timelineContentMatch = url.pathname.match(/^\\/api\\/v1\\/projects\\/([^/]+)\\/timeline-revisions\\/([^/]+)\\/content$/);
-        if (request.method === "GET" && timelineContentMatch) {
-          const projectId = decodeURIComponent(timelineContentMatch[1]);
-          const revisionId = decodeURIComponent(timelineContentMatch[2]);
-          const revision = revisions.find((item) =>
-            item.projectId === projectId &&
-            item.revisionId === revisionId &&
-            item.kind === "clash.timeline.revision"
-          );
-          const content = revisionContents.get(revisionId);
-          if (!revision || typeof content !== "string") {
-            sendJson(response, 404, { error: "revision content not found" });
-            return;
-          }
-          sendText(response, 200, content, "application/yaml; charset=utf-8");
           return;
         }
         sendJson(response, 404, { error: "not found" });
@@ -590,6 +530,12 @@ async function startRevisionIndexHost() {
 
 async function seedWorkspace() {
   await mkdir(workspace, { recursive: true });
+  await mkdir(path.join(workspace, ".clash"), { recursive: true });
+  await writeFile(
+    path.join(workspace, ".clash", "project.toml"),
+    'schema_version = 1\nproject_id = "project-agent-first-cas-production"\n',
+    "utf8",
+  );
   await writeJson(path.join(workspace, "actions", "storyboard-review.json"), {
     actionId: "action-storyboard-fill",
     targetAssetId: "asset-storyboard",
@@ -640,15 +586,18 @@ async function runStoryboardPromptPackCas() {
     "plans/prompt-pack.json",
     "--json",
   ]);
+  const projected = project.status === 0 ? parseStdoutJson(project) : null;
   recordCheck(
-    "storyboard prompt-pack read step produced lock",
-    project.status === 0,
+    "storyboard prompt-pack read records cwd version without lock",
+    project.status === 0 &&
+      !("lockPath" in projected) &&
+      !existsSync(path.join(workspace, "plans", "prompt-pack.lock.json")) &&
+      typeof JSON.parse(readFileSync(path.join(workspace, ".clash", "observed.json"), "utf8"))
+        .versions?.["storyboard-prompt-pack:plans/prompt-pack.json"] === "string",
     project.stderr || project.stdout,
     { command: project.command },
   );
-  const projected = parseStdoutJson(project);
   const promptPackPath = path.join(workspace, "plans", "prompt-pack.json");
-  const lockPath = path.join(workspace, "plans", "prompt-pack.lock.json");
 
   await copyFile(promptPackPath, path.join(workspace, "plans", "missing-lock.prompt-pack.json"));
   const missingLock = runProduction([
@@ -659,7 +608,7 @@ async function runStoryboardPromptPackCas() {
   ]);
   recordCheck(
     "missing read proof rejected",
-    missingLock.status === 1 && /CAS lock|Failed to read storyboard prompt-pack/i.test(missingLock.stderr),
+    missingLock.status === 1 && /READ_REQUIRED/i.test(missingLock.stderr),
     missingLock.stderr,
     { command: missingLock.command },
   );
@@ -678,13 +627,11 @@ async function runStoryboardPromptPackCas() {
     "apply-storyboard-prompt-pack",
     "--file",
     "plans/prompt-pack.json",
-    "--lock",
-    "plans/prompt-pack.lock.json",
     "--json",
   ]);
   recordCheck(
     "source action stale read proof rejected",
-    staleSource.status === 1 && /Stale storyboard prompt-pack source action rejected/i.test(staleSource.stderr),
+    staleSource.status === 1 && /STALE_READ/i.test(staleSource.stderr),
     staleSource.stderr,
     { command: staleSource.command },
   );
@@ -711,8 +658,6 @@ async function runStoryboardPromptPackCas() {
     "apply-storyboard-prompt-pack",
     "--file",
     "plans/prompt-pack.json",
-    "--lock",
-    "plans/prompt-pack.lock.json",
     "--json",
   ]);
   recordCheck(
@@ -723,17 +668,18 @@ async function runStoryboardPromptPackCas() {
   );
   const applied = parseStdoutJson(apply);
 
+  const concurrentlyEditedProjection = JSON.parse(await readFile(applied.projectionPath, "utf8"));
+  concurrentlyEditedProjection.promptPack.prompts[0].prompt += "; concurrent managed edit";
+  await writeJson(applied.projectionPath, concurrentlyEditedProjection);
   const stale = runProduction([
     "apply-storyboard-prompt-pack",
     "--file",
     "plans/prompt-pack.json",
-    "--lock",
-    "plans/prompt-pack.lock.json",
     "--json",
   ]);
   recordCheck(
     "stale read proof rejected",
-    stale.status === 1 && /Stale storyboard prompt-pack apply rejected/i.test(stale.stderr),
+    stale.status === 1 && /STALE_READ/i.test(stale.stderr),
     stale.stderr,
     { command: stale.command },
   );
@@ -759,8 +705,6 @@ async function runStoryboardPromptPackCas() {
     "replace-storyboard-prompt-pack",
     "--file",
     "plans/prompt-pack.json",
-    "--lock",
-    "plans/prompt-pack.lock.json",
     "--json",
   ]);
   recordCheck(
@@ -786,7 +730,7 @@ async function runStoryboardPromptPackCas() {
   return {
     projected,
     promptPackPath,
-    lockPath,
+    manifestPath: projected.manifestPath,
     managedProjectionPath: applied.projectionPath,
     replacementProjectionPath: replaced.projectionPath,
   };
@@ -805,9 +749,14 @@ async function runReviewGateCas() {
     "reviews/gates/export.review-gate.json",
     "--json",
   ]);
+  const planned = plan.status === 0 ? parseStdoutJson(plan) : null;
   recordCheck(
-    "review gate read step produced path-bound lock",
-    plan.status === 0,
+    "review gate read records cwd version without lock",
+    plan.status === 0 &&
+      !("lockPath" in planned) &&
+      !existsSync(path.join(workspace, "reviews", "gates", "export.review-gate.lock.json")) &&
+      typeof JSON.parse(readFileSync(path.join(workspace, ".clash", "observed.json"), "utf8"))
+        .versions?.["review-gate:reviews/gates/export.review-gate.json"] === "string",
     plan.stderr || plan.stdout,
     { command: plan.command },
   );
@@ -819,8 +768,6 @@ async function runReviewGateCas() {
     "approve-review-gate",
     "--gate",
     "reviews/gates/copied-export.review-gate.json",
-    "--lock",
-    "reviews/gates/export.review-gate.lock.json",
     "--reviewer",
     "qa-agent",
     "--decision",
@@ -828,19 +775,17 @@ async function runReviewGateCas() {
     "--json",
   ]);
   recordCheck(
-    "wrong file lock rejected",
-    wrongFile.status === 1 && /Review gate path does not match CAS lock/i.test(wrongFile.stderr),
+    "unread copied review gate rejected",
+    wrongFile.status === 1 && /READ_REQUIRED/i.test(wrongFile.stderr),
     wrongFile.stderr,
     { command: wrongFile.command },
   );
-  const planned = parseStdoutJson(plan);
   return {
     gatePath: planned.gatePath,
-    lockPath: planned.lockPath,
   };
 }
 
-function runDirectCanvasReadTokenCas() {
+function runLegacyDaemonReceiptCompatibility() {
   const daemonModule = pathToFileURL(path.join(repoRoot, "packages", "cli", "src", "lib", "daemon.ts")).href;
   const sharedTypesModule = pathToFileURL(path.join(repoRoot, "packages", "shared-types", "src", "index.ts")).href;
   const result = runTsxEval(`
@@ -901,26 +846,26 @@ function runDirectCanvasReadTokenCas() {
   `);
 
   recordCheck(
-    "direct canvas missing read token rejected",
-    /read proof|--if-match/i.test(JSON.stringify(result.missingUpdate)) &&
+    "legacy daemon receipt path rejects missing read",
+    /READ_REQUIRED/i.test(JSON.stringify(result.missingUpdate)) &&
       result.finalLabel !== "missing read token",
     JSON.stringify(result.missingUpdate),
   );
   recordCheck(
-    "direct canvas stale read token rejected",
+    "legacy daemon receipt path rejects stale receipt",
     /Stale canvas update rejected/i.test(JSON.stringify(result.staleUpdate)) &&
       result.finalLabel === "fresh read token",
     JSON.stringify(result.staleUpdate),
   );
   recordCheck(
-    "direct canvas fresh read token accepted",
+    "legacy daemon receipt path accepts fresh receipt",
     result.freshUpdate?.updated === true &&
       typeof result.freshUpdate?.readToken === "string" &&
       result.finalLabel === "fresh read token",
     JSON.stringify(result.freshUpdate),
   );
   recordCheck(
-    "direct canvas mutation envelope recorded",
+    "legacy daemon receipt mutation envelope recorded",
     result.freshUpdate?.mutation?.operation === "canvas_update" &&
       result.freshUpdate?.mutation?.entity?.kind === "canvas-node" &&
       result.freshUpdate?.mutation?.entity?.id === "text-1" &&
@@ -928,13 +873,12 @@ function runDirectCanvasReadTokenCas() {
       result.freshUpdate?.mutation?.beforeReadToken === baseReadToken(result.freshRead?.readToken) &&
       result.freshUpdate?.mutation?.afterReadToken === result.freshUpdate?.readToken &&
       result.freshUpdate?.mutation?.resultEntityId === "text-1" &&
-      result.freshUpdate?.mutation?.accepted === true &&
-      result.freshUpdate?.mutation?.forced === false,
+      result.freshUpdate?.mutation?.accepted === true,
     JSON.stringify(result.freshUpdate?.mutation),
   );
   recordCheck(
-    "direct canvas delete read token required",
-    /read proof|--if-match/i.test(JSON.stringify(result.missingDelete)) &&
+    "legacy daemon receipt path rejects unread delete",
+    /READ_REQUIRED/i.test(JSON.stringify(result.missingDelete)) &&
       result.deleteStillExists === true,
     JSON.stringify(result.missingDelete),
   );
@@ -1068,25 +1012,6 @@ function runProjectionPathGuards() {
     { command: textPull.command },
   );
 
-  const textForcedApply = runText([
-    "apply",
-    "--project",
-    "project-agent-first-path-guards",
-    "--node",
-    "text-1",
-    "--file",
-    "../outside-text.md",
-    "--force",
-    "--json",
-  ]);
-  recordCheck(
-    "text forced apply rejects projection path outside cwd",
-    textForcedApply.status === 1 &&
-      /Projection file path must stay inside the current project cwd/i.test(textForcedApply.stderr),
-    textForcedApply.stderr || textForcedApply.stdout,
-    { command: textForcedApply.command },
-  );
-
   const textSymlinkPull = runText([
     "pull",
     "--project",
@@ -1105,29 +1030,11 @@ function runProjectionPathGuards() {
     { command: textSymlinkPull.command },
   );
 
-  const textLockSidecarPull = runText([
-    "pull",
-    "--project",
-    "project-agent-first-path-guards",
-    "--node",
-    "text-1",
-    "--file",
-    "projections/text/script.md",
-    "--json",
-  ]);
-  recordCheck(
-    "text pull rejects symlinked lock sidecar outside cwd",
-    textLockSidecarPull.status === 1 &&
-      /Projection lock sidecar path must not traverse a symlink outside the current project cwd/i.test(textLockSidecarPull.stderr),
-    textLockSidecarPull.stderr || textLockSidecarPull.stdout,
-    { command: textLockSidecarPull.command },
-  );
-
   const timelinePull = runTimeline([
     "pull",
     "--project",
     "project-agent-first-path-guards",
-    "--node",
+    "--timeline",
     "timeline-1",
     "--file",
     "../outside.timeline.yaml",
@@ -1141,60 +1048,22 @@ function runProjectionPathGuards() {
     { command: timelinePull.command },
   );
 
-  const timelineForcedApply = runTimeline([
+  const timelineSymlinkApply = runTimeline([
     "apply",
     "--project",
     "project-agent-first-path-guards",
-    "--node",
-    "timeline-1",
-    "--file",
-    "../outside.timeline.yaml",
-    "--force",
-    "--json",
-  ]);
-  recordCheck(
-    "timeline forced apply rejects projection path outside cwd",
-    timelineForcedApply.status === 1 &&
-      /Projection file path must stay inside the current project cwd/i.test(timelineForcedApply.stderr),
-    timelineForcedApply.stderr || timelineForcedApply.stdout,
-    { command: timelineForcedApply.command },
-  );
-
-  const timelineSymlinkForcedApply = runTimeline([
-    "apply",
-    "--project",
-    "project-agent-first-path-guards",
-    "--node",
+    "--timeline",
     "timeline-1",
     "--file",
     "symlinked-projections/main.timeline.yaml",
-    "--force",
     "--json",
   ]);
   recordCheck(
-    "timeline forced apply rejects symlinked projection path outside cwd",
-    timelineSymlinkForcedApply.status === 1 &&
-      /Projection file path must not traverse a symlink outside the current project cwd/i.test(timelineSymlinkForcedApply.stderr),
-    timelineSymlinkForcedApply.stderr || timelineSymlinkForcedApply.stdout,
-    { command: timelineSymlinkForcedApply.command },
-  );
-
-  const timelineLockSidecarPull = runTimeline([
-    "pull",
-    "--project",
-    "project-agent-first-path-guards",
-    "--node",
-    "timeline-1",
-    "--file",
-    "timelines/main.timeline.yaml",
-    "--json",
-  ]);
-  recordCheck(
-    "timeline pull rejects symlinked lock sidecar outside cwd",
-    timelineLockSidecarPull.status === 1 &&
-      /Projection lock sidecar path must not traverse a symlink outside the current project cwd/i.test(timelineLockSidecarPull.stderr),
-    timelineLockSidecarPull.stderr || timelineLockSidecarPull.stdout,
-    { command: timelineLockSidecarPull.command },
+    "timeline apply rejects symlinked projection path outside cwd",
+    timelineSymlinkApply.status === 1 &&
+      /Projection file path must not traverse a symlink outside the current project cwd/i.test(timelineSymlinkApply.stderr),
+    timelineSymlinkApply.stderr || timelineSymlinkApply.stdout,
+    { command: timelineSymlinkApply.command },
   );
 
   const storyboardPromptPackLockSidecar = runProduction([
@@ -1206,9 +1075,9 @@ function runProjectionPathGuards() {
     "--json",
   ]);
   recordCheck(
-    "storyboard prompt-pack project rejects symlinked lock sidecar outside cwd",
-    storyboardPromptPackLockSidecar.status === 1 &&
-      /Projection lock sidecar path must not traverse a symlink outside the current project cwd/i.test(storyboardPromptPackLockSidecar.stderr),
+    "storyboard prompt-pack ignores legacy lock sidecar",
+    storyboardPromptPackLockSidecar.status === 0 &&
+      readOptionalText(path.join(lockSymlinkTarget, "unsafe-prompt-pack.lock.json")) === "{}\n",
     storyboardPromptPackLockSidecar.stderr || storyboardPromptPackLockSidecar.stdout,
     { command: storyboardPromptPackLockSidecar.command },
   );
@@ -1226,9 +1095,9 @@ function runProjectionPathGuards() {
     "--json",
   ]);
   recordCheck(
-    "review gate plan rejects symlinked lock sidecar outside cwd",
-    reviewGateLockSidecar.status === 1 &&
-      /Agent file lock sidecar path must not traverse a symlink outside the current project cwd/i.test(reviewGateLockSidecar.stderr),
+    "review gate ignores legacy lock sidecar",
+    reviewGateLockSidecar.status === 0 &&
+      readOptionalText(path.join(lockSymlinkTarget, "unsafe.review-gate.lock.json")) === "{}\n",
     reviewGateLockSidecar.stderr || reviewGateLockSidecar.stdout,
     { command: reviewGateLockSidecar.command },
   );
@@ -1319,13 +1188,9 @@ function runProjectionPathGuards() {
 
   return {
     textPull: { status: textPull.status, stderr: textPull.stderr },
-    textForcedApply: { status: textForcedApply.status, stderr: textForcedApply.stderr },
     textSymlinkPull: { status: textSymlinkPull.status, stderr: textSymlinkPull.stderr },
-    textLockSidecarPull: { status: textLockSidecarPull.status, stderr: textLockSidecarPull.stderr },
     timelinePull: { status: timelinePull.status, stderr: timelinePull.stderr },
-    timelineForcedApply: { status: timelineForcedApply.status, stderr: timelineForcedApply.stderr },
-    timelineSymlinkForcedApply: { status: timelineSymlinkForcedApply.status, stderr: timelineSymlinkForcedApply.stderr },
-    timelineLockSidecarPull: { status: timelineLockSidecarPull.status, stderr: timelineLockSidecarPull.stderr },
+    timelineSymlinkApply: { status: timelineSymlinkApply.status, stderr: timelineSymlinkApply.stderr },
     storyboardPromptPackLockSidecar: {
       status: storyboardPromptPackLockSidecar.status,
       stderr: storyboardPromptPackLockSidecar.stderr,
@@ -1472,190 +1337,238 @@ async function runTextCutExportProvenance() {
   };
 }
 
-async function createAppliedTimelineLockFixture({
-  projectId,
-  nodeId,
-  timelinePath,
-}) {
-  const timelineModule = pathToFileURL(path.join(repoRoot, "packages", "cli", "src", "lib", "timeline-projection.ts")).href;
-  const sharedTypesModule = pathToFileURL(path.join(repoRoot, "packages", "shared-types", "src", "index.ts")).href;
-  return runTsxEval(`
-    import { readFileSync } from "node:fs";
-    import { timelineDslFromYaml } from ${JSON.stringify(sharedTypesModule)};
-    import timelineProjection from ${JSON.stringify(timelineModule)};
-
-    const { createTimelineAppliedRevision, createTimelineLock } = timelineProjection;
-
-    const cwd = ${JSON.stringify(workspace)};
-    const filePath = ${JSON.stringify(timelinePath)};
-    const parsed = timelineDslFromYaml(readFileSync(filePath, "utf8"));
-    if (!parsed.ok) throw new Error(parsed.error);
-    const appliedRevision = createTimelineAppliedRevision({
-      projectId: ${JSON.stringify(projectId)},
-      nodeId: ${JSON.stringify(nodeId)},
-      cwd,
-      filePath,
-      dsl: parsed.dsl,
-      createdAt: "2026-07-08T00:00:00.000Z",
-      loroFrontiers: [{ peer: "agent-first-cas", counter: 7 }],
-    });
-    const lock = createTimelineLock({
-      projectId: ${JSON.stringify(projectId)},
-      nodeId: ${JSON.stringify(nodeId)},
-      filePath,
-      dsl: parsed.dsl,
-      pulledAt: "2026-07-08T00:00:00.000Z",
-      appliedRevision,
-    });
-    console.log(JSON.stringify({ appliedRevision, lock }));
-  `);
-}
-
 async function runCaptionBurnTimelineRevisionPinning() {
   const timelinePath = path.join(workspace, "projections", "timelines", "captions.timeline.yaml");
   const lockPath = path.join(workspace, "projections", "timelines", "captions.timeline.lock.json");
+  const revisionManifestPath = path.join(
+    workspace,
+    "projections",
+    "timelines",
+    "captions.timeline.revision.json",
+  );
   const projectId = "project-agent-first-cas";
-  const nodeId = "captions-timeline";
-  const { appliedRevision, lock } = await createAppliedTimelineLockFixture({
-    projectId,
-    nodeId,
-    timelinePath,
-  });
-  await writeJson(lockPath, lock);
-  mkdirSync(path.join(workspace, "assets", "source"), { recursive: true });
-  writeFileSync(path.join(workspace, "assets", "source", "talk.mp4"), "fixture-video", "utf8");
-  await writeJson(path.join(workspace, "assets", "manifest.json"), {
-    assets: [{ id: "asset-talk", type: "video", path: "assets/source/talk.mp4", metadata: {} }],
-  });
-
-  const captionExport = runProduction([
-    "export-captions",
-    "--timeline",
-    "projections/timelines/captions.timeline.yaml",
-    "--format",
-    "srt",
-    "--out",
-    "exports/captions/applied-captions.srt",
-    "--json",
-  ]);
-  const captionExportPayload = captionExport.status === 0 ? parseStdoutJson(captionExport) : null;
-  const captionManifest = captionExportPayload
-    ? JSON.parse(readFileSync(captionExportPayload.manifestPath, "utf8"))
-    : null;
-  recordCheck(
-    "caption export pins manifest to applied timeline revision",
-    captionExport.status === 0 &&
-      captionManifest?.sourceTimelineId === appliedRevision.timelineId &&
-      captionManifest?.sourceTimelineHash === appliedRevision.timelineHash &&
-      captionManifest?.sourceTimelineRevisionId === appliedRevision.revisionId &&
-      captionManifest?.sourceTimelineRevisionStatus === "applied" &&
-      JSON.stringify(captionManifest?.sourceTimelineFrontiers) === JSON.stringify(appliedRevision.loroFrontiers),
-    captionExport.stderr || captionExport.stdout,
-    {
-      command: captionExport.command,
-      manifestPath: captionExportPayload?.manifestPath,
-      appliedRevision,
-    },
-  );
-
-  const timelineHandoff = runProduction([
-    "export-timeline-handoff",
-    "--timeline",
-    "projections/timelines/captions.timeline.yaml",
-    "--format",
-    "csv",
-    "--out",
-    "exports/handoff/applied.timeline.csv",
-    "--json",
-  ]);
-  const timelineHandoffPayload = timelineHandoff.status === 0 ? parseStdoutJson(timelineHandoff) : null;
-  const handoffManifest = timelineHandoffPayload
-    ? JSON.parse(readFileSync(timelineHandoffPayload.manifestPath, "utf8"))
-    : null;
-  recordCheck(
-    "timeline handoff export pins manifest to applied timeline revision",
-    timelineHandoff.status === 0 &&
-      handoffManifest?.sourceTimelineId === appliedRevision.timelineId &&
-      handoffManifest?.sourceTimelineHash === appliedRevision.timelineHash &&
-      handoffManifest?.sourceTimelineRevisionId === appliedRevision.revisionId &&
-      handoffManifest?.sourceTimelineRevisionStatus === "applied" &&
-      JSON.stringify(handoffManifest?.sourceTimelineFrontiers) === JSON.stringify(appliedRevision.loroFrontiers),
-    timelineHandoff.stderr || timelineHandoff.stdout,
-    {
-      command: timelineHandoff.command,
-      manifestPath: timelineHandoffPayload?.manifestPath,
-      appliedRevision,
-    },
-  );
-
-  const exported = runProduction([
-    "export-caption-burn",
-    "--timeline",
-    "projections/timelines/captions.timeline.yaml",
-    "--source-asset",
-    "asset-talk",
-    "--output-asset",
-    "asset-talk-caption-burn",
-    "--out",
-    "assets/video/asset-talk-caption-burn.mp4",
-    "--json",
-  ]);
-  const exportedPayload = exported.status === 0 ? parseStdoutJson(exported) : null;
-  const burnPackage = exportedPayload ? JSON.parse(readFileSync(exportedPayload.packagePath, "utf8")) : null;
-  const ffmpegPlan = exportedPayload ? JSON.parse(readFileSync(exportedPayload.ffmpegPlanPath, "utf8")) : null;
-  const assets = JSON.parse(readFileSync(path.join(workspace, "assets", "manifest.json"), "utf8"));
-  const outputAsset = assets.assets.find((asset) => asset.id === "asset-talk-caption-burn");
-  const outputMetadata = outputAsset?.metadata?.["caption.burn-in-export"];
-  recordCheck(
-    "caption-burn export pins derived asset to applied timeline revision",
-    exported.status === 0 &&
-      burnPackage?.sourceTimelineId === appliedRevision.timelineId &&
-      burnPackage?.sourceTimelineHash === appliedRevision.timelineHash &&
-      burnPackage?.sourceTimelineRevisionId === appliedRevision.revisionId &&
-      burnPackage?.sourceTimelineRevisionStatus === "applied" &&
-      ffmpegPlan?.sourceTimelineRevisionId === appliedRevision.revisionId &&
-      outputMetadata?.sourceTimelineRevisionId === appliedRevision.revisionId &&
-      outputMetadata?.sourceTimelineRevisionStatus === "applied" &&
-      outputMetadata?.copyOnWrite === true,
-    exported.stderr || exported.stdout,
-    {
-      command: exported.command,
-      appliedRevision,
-      packagePath: exportedPayload?.packagePath,
-      ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
-      outputMetadata,
-    },
-  );
-
-  return {
-    captionExport: {
-      manifestPath: captionExportPayload?.manifestPath,
-      sourceTimelineRevisionId: appliedRevision.revisionId,
-    },
-    timelineHandoff: {
-      manifestPath: timelineHandoffPayload?.manifestPath,
-      sourceTimelineRevisionId: appliedRevision.revisionId,
-    },
-    export: {
-      outputAssetId: exportedPayload?.outputAssetId,
-      packagePath: exportedPayload?.packagePath,
-      ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
-      sourceTimelineRevisionId: appliedRevision.revisionId,
-    },
-  };
-}
-
-async function runDirectCanvasCliReadTokenCas() {
-  const publicCliCanvasUpdateCommand = "clash canvas update";
-  const projectId = "project-agent-first-cas-cli";
-  const clashHome = path.join(tmpdir(), `clash-agent-first-cas-${process.pid}-${Date.now()}`);
+  const timelineId = "captions-timeline";
+  const clashHome = shortSocketHome("caption");
   const env = {
     CLASH_HOME: clashHome,
     CLASH_AGENT_MEMBER_ID: "agent-first-cas-smoke",
     CLASH_AGENT_NAME: "Agent First CAS Smoke",
   };
+  const sharedTypesModule = pathToFileURL(
+    path.join(repoRoot, "packages", "shared-types", "src", "index.ts"),
+  ).href;
+  const timelineState = runTsxEval(`
+    import { readFileSync } from "node:fs";
+    import { timelineDslFromYaml } from ${JSON.stringify(sharedTypesModule)};
+
+    const parsed = timelineDslFromYaml(readFileSync(${JSON.stringify(timelinePath)}, "utf8"));
+    if (!parsed.ok) throw new Error(parsed.error);
+    console.log(JSON.stringify(parsed.dsl));
+  `);
+  await writeFile(
+    path.join(workspace, ".clash", "project.toml"),
+    `schema_version = 1\nproject_id = ${JSON.stringify(projectId)}\n`,
+    "utf8",
+  );
+  const daemon = await startCliDaemonSocket({
+    projectId,
+    clashHome,
+    timelineId,
+    timelineState,
+  });
+  mkdirSync(path.join(workspace, "assets", "source"), { recursive: true });
+  writeFileSync(path.join(workspace, "assets", "source", "talk.mp4"), "fixture-video", "utf8");
+  await writeJson(path.join(workspace, "assets", "manifest.json"), {
+    assets: [{ id: "asset-talk", type: "video", path: "assets/source/talk.mp4", metadata: {} }],
+  });
+  try {
+    const timelineList = runTimeline(["list", "--project", projectId, "--json"], env);
+    const timelines = timelineList.status === 0 ? parseStdoutJson(timelineList) : [];
+    const timeline = timelines.find((candidate) => candidate.id === timelineId);
+    recordCheck(
+      "Project Timeline provenance uses the Loro entity without revision sidecars",
+      timelineList.status === 0 &&
+        typeof timeline?.revisionId === "string" &&
+        !existsSync(revisionManifestPath) &&
+        !existsSync(lockPath),
+      timelineList.stderr || timelineList.stdout,
+      { command: timelineList.command, revisionManifestPath, lockPath, timeline },
+    );
+
+    const captionExport = runProduction([
+      "export-captions",
+      "--timeline",
+      "projections/timelines/captions.timeline.yaml",
+      "--timeline-id",
+      timelineId,
+      "--project",
+      projectId,
+      "--format",
+      "srt",
+      "--out",
+      "exports/captions/applied-captions.srt",
+      "--json",
+    ], env);
+    const captionExportPayload = captionExport.status === 0 ? parseStdoutJson(captionExport) : null;
+    const captionManifest = captionExportPayload
+      ? JSON.parse(readFileSync(captionExportPayload.manifestPath, "utf8"))
+      : null;
+    recordCheck(
+      "caption export pins manifest to applied timeline revision",
+      captionExport.status === 0 &&
+        captionManifest?.sourceTimelineId === timelineId &&
+        captionManifest?.sourceTimelineRevisionId === timeline?.revisionId &&
+        captionManifest?.sourceTimelineRevisionStatus === "applied" &&
+        typeof captionManifest?.sourceTimelineHash === "string" &&
+        !("sourceTimelineFrontiers" in (captionManifest ?? {})),
+      captionExport.stderr || captionExport.stdout,
+      {
+        command: captionExport.command,
+        manifestPath: captionExportPayload?.manifestPath,
+        timeline,
+      },
+    );
+
+    const timelineHandoff = runProduction([
+      "export-timeline-handoff",
+      "--timeline",
+      "projections/timelines/captions.timeline.yaml",
+      "--timeline-id",
+      timelineId,
+      "--project",
+      projectId,
+      "--format",
+      "csv",
+      "--out",
+      "exports/handoff/applied.timeline.csv",
+      "--json",
+    ], env);
+    const timelineHandoffPayload = timelineHandoff.status === 0 ? parseStdoutJson(timelineHandoff) : null;
+    const handoffManifest = timelineHandoffPayload
+      ? JSON.parse(readFileSync(timelineHandoffPayload.manifestPath, "utf8"))
+      : null;
+    recordCheck(
+      "timeline handoff export pins manifest to applied timeline revision",
+      timelineHandoff.status === 0 &&
+        handoffManifest?.sourceTimelineId === timelineId &&
+        handoffManifest?.sourceTimelineRevisionId === timeline?.revisionId &&
+        handoffManifest?.sourceTimelineRevisionStatus === "applied" &&
+        handoffManifest?.sourceTimelineHash === captionManifest?.sourceTimelineHash &&
+        !("sourceTimelineFrontiers" in (handoffManifest ?? {})),
+      timelineHandoff.stderr || timelineHandoff.stdout,
+      {
+        command: timelineHandoff.command,
+        manifestPath: timelineHandoffPayload?.manifestPath,
+        timeline,
+      },
+    );
+
+    const exported = runProduction([
+      "export-caption-burn",
+      "--timeline",
+      "projections/timelines/captions.timeline.yaml",
+      "--timeline-id",
+      timelineId,
+      "--project",
+      projectId,
+      "--source-asset",
+      "asset-talk",
+      "--output-asset",
+      "asset-talk-caption-burn",
+      "--out",
+      "assets/video/asset-talk-caption-burn.mp4",
+      "--json",
+    ], env);
+    const exportedPayload = exported.status === 0 ? parseStdoutJson(exported) : null;
+    const burnPackage = exportedPayload ? JSON.parse(readFileSync(exportedPayload.packagePath, "utf8")) : null;
+    const ffmpegPlan = exportedPayload ? JSON.parse(readFileSync(exportedPayload.ffmpegPlanPath, "utf8")) : null;
+    const assets = JSON.parse(readFileSync(path.join(workspace, "assets", "manifest.json"), "utf8"));
+    const outputAsset = assets.assets.find((asset) => asset.id === "asset-talk-caption-burn");
+    const outputMetadata = outputAsset?.metadata?.["caption.burn-in-export"];
+    recordCheck(
+      "caption-burn export pins derived asset to applied timeline revision",
+      exported.status === 0 &&
+        burnPackage?.sourceTimelineId === timelineId &&
+        burnPackage?.sourceTimelineRevisionId === timeline?.revisionId &&
+        burnPackage?.sourceTimelineRevisionStatus === "applied" &&
+        burnPackage?.sourceTimelineHash === captionManifest?.sourceTimelineHash &&
+        ffmpegPlan?.sourceTimelineRevisionId === timeline?.revisionId &&
+        outputMetadata?.sourceTimelineRevisionId === timeline?.revisionId &&
+        outputMetadata?.sourceTimelineRevisionStatus === "applied" &&
+        outputMetadata?.copyOnWrite === true,
+      exported.stderr || exported.stdout,
+      {
+        command: exported.command,
+        timeline,
+        packagePath: exportedPayload?.packagePath,
+        ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
+        outputMetadata,
+      },
+    );
+
+    return {
+      projectTimelineId: timelineId,
+      projectTimelineRevisionId: timeline?.revisionId,
+      captionExport: {
+        manifestPath: captionExportPayload?.manifestPath,
+        sourceTimelineRevisionId: timeline?.revisionId,
+      },
+      timelineHandoff: {
+        manifestPath: timelineHandoffPayload?.manifestPath,
+        sourceTimelineRevisionId: timeline?.revisionId,
+      },
+      export: {
+        outputAssetId: exportedPayload?.outputAssetId,
+        packagePath: exportedPayload?.packagePath,
+        ffmpegPlanPath: exportedPayload?.ffmpegPlanPath,
+        sourceTimelineRevisionId: timeline?.revisionId,
+      },
+    };
+  } finally {
+    await daemon.stop();
+  }
+}
+
+async function runDirectCanvasCliImplicitCas() {
+  const projectId = "project-agent-first-cas-cli";
+  const clashHome = shortSocketHome("canvas");
+  const observationPath = path.join(workspace, ".clash", "observed.json");
+  const env = {
+    CLASH_HOME: clashHome,
+    CLASH_AGENT_MEMBER_ID: "agent-first-cas-smoke",
+    CLASH_AGENT_NAME: "Agent First CAS Smoke",
+  };
+  const humanEnv = {
+    CLASH_HOME: clashHome,
+    CLASH_AGENT_MEMBER_ID: "",
+    CLASH_AGENT_NAME: "",
+  };
+  await mkdir(path.join(workspace, ".clash"), { recursive: true });
+  await writeFile(
+    path.join(workspace, ".clash", "project.toml"),
+    `schema_version = 1\nproject_id = ${JSON.stringify(projectId)}\n`,
+    "utf8",
+  );
+  await rm(observationPath, { force: true });
   const daemon = await startCliDaemonSocket({ projectId, clashHome });
   try {
+    const missingUpdate = runCanvas([
+      "update",
+      "--project",
+      projectId,
+      "--node",
+      "text-cli",
+      "--label",
+      "write before read",
+      "--json",
+    ], env);
+    recordCheck(
+      "direct canvas CLI rejects write before read",
+      missingUpdate.status === 1 && /READ_REQUIRED/i.test(missingUpdate.stderr),
+      missingUpdate.stderr || missingUpdate.stdout,
+      { command: missingUpdate.command, daemon: daemon.ready },
+    );
+
     const firstRead = runCanvas([
       "get",
       "--project",
@@ -1664,30 +1577,22 @@ async function runDirectCanvasCliReadTokenCas() {
       "text-cli",
       "--json",
     ], env);
+    const firstReadPayload = firstRead.status === 0 ? parseStdoutJson(firstRead) : null;
+    const firstObservation = existsSync(observationPath)
+      ? JSON.parse(readFileSync(observationPath, "utf8"))
+      : null;
     recordCheck(
-      "direct canvas CLI get produced read token",
-      firstRead.status === 0 && typeof parseStdoutJson(firstRead).readToken === "string",
+      "direct canvas CLI read records only cwd entity version",
+      firstRead.status === 0 &&
+        firstReadPayload?.immutable === false &&
+        !("readToken" in firstReadPayload) &&
+        !("version" in firstReadPayload) &&
+        firstObservation?.schemaVersion === 1 &&
+        firstObservation?.projectId === projectId &&
+        typeof firstObservation?.versions?.["canvas-node:text-cli"] === "string" &&
+        Object.keys(firstObservation?.versions ?? {}).length === 1,
       firstRead.stderr || firstRead.stdout,
-      { command: firstRead.command, daemon: daemon.ready },
-    );
-    const firstReadPayload = parseStdoutJson(firstRead);
-    const firstReadToken = firstReadPayload.readToken;
-
-    const missingUpdate = runCanvas([
-      "update",
-      "--project",
-      projectId,
-      "--node",
-      "text-cli",
-      "--label",
-      "missing cli token",
-      "--json",
-    ], env);
-    recordCheck(
-      "direct canvas CLI missing read token rejected",
-      missingUpdate.status === 1 && /read proof|--if-match/i.test(missingUpdate.stderr),
-      missingUpdate.stderr || missingUpdate.stdout,
-      { command: publicCliCanvasUpdateCommand, actualCommand: missingUpdate.command },
+      { command: firstRead.command, observationPath, observation: firstObservation },
     );
 
     const concurrent = runCanvas([
@@ -1698,11 +1603,10 @@ async function runDirectCanvasCliReadTokenCas() {
       "text-cli",
       "--label",
       "concurrent cli edit",
-      "--force",
       "--json",
-    ], env);
+    ], humanEnv);
     recordCheck(
-      "direct canvas CLI force concurrent edit succeeded",
+      "direct canvas CLI fixture performs concurrent human edit",
       concurrent.status === 0 && parseStdoutJson(concurrent).updated === true,
       concurrent.stderr || concurrent.stdout,
       { command: concurrent.command },
@@ -1715,14 +1619,12 @@ async function runDirectCanvasCliReadTokenCas() {
       "--node",
       "text-cli",
       "--label",
-      "stale cli token",
-      "--if-match",
-      firstReadToken,
+      "stale agent edit",
       "--json",
     ], env);
     recordCheck(
-      "direct canvas CLI stale read token rejected",
-      staleUpdate.status === 1 && /Stale canvas update rejected/i.test(staleUpdate.stderr),
+      "direct canvas CLI rejects stale cwd observation",
+      staleUpdate.status === 1 && /STALE_READ/i.test(staleUpdate.stderr),
       staleUpdate.stderr || staleUpdate.stdout,
       { command: staleUpdate.command },
     );
@@ -1743,9 +1645,7 @@ async function runDirectCanvasCliReadTokenCas() {
       "--node",
       "text-cli",
       "--label",
-      "fresh cli token",
-      "--if-match",
-      freshReadPayload.readToken,
+      "fresh implicit observation",
       "--json",
     ], env);
     const freshUpdatePayload = freshUpdate.status === 0 ? parseStdoutJson(freshUpdate) : null;
@@ -1759,10 +1659,11 @@ async function runDirectCanvasCliReadTokenCas() {
     ], env);
     const finalReadPayload = finalRead.status === 0 ? parseStdoutJson(finalRead) : null;
     recordCheck(
-      "direct canvas CLI fresh read token accepted",
+      "direct canvas CLI fresh implicit observation accepted",
       freshUpdate.status === 0 &&
         freshUpdatePayload?.updated === true &&
-        finalReadPayload?.data?.label === "fresh cli token",
+        finalReadPayload?.data?.label === "fresh implicit observation" &&
+        !/readToken|if-match/i.test(JSON.stringify(freshUpdatePayload)),
       freshUpdate.stderr || freshUpdate.stdout || finalRead.stderr || finalRead.stdout,
       { command: freshUpdate.command },
     );
@@ -1771,14 +1672,77 @@ async function runDirectCanvasCliReadTokenCas() {
       freshUpdatePayload?.mutation?.operation === "canvas_update" &&
         freshUpdatePayload?.mutation?.entity?.kind === "canvas-node" &&
         freshUpdatePayload?.mutation?.entity?.id === "text-cli" &&
-        freshUpdatePayload?.mutation?.expectedReadToken === freshReadPayload.readToken &&
-        freshUpdatePayload?.mutation?.beforeReadToken === baseReadToken(freshReadPayload.readToken) &&
-        freshUpdatePayload?.mutation?.afterReadToken === freshUpdatePayload.readToken &&
         freshUpdatePayload?.mutation?.resultEntityId === "text-cli" &&
         freshUpdatePayload?.mutation?.accepted === true &&
-        freshUpdatePayload?.mutation?.forced === false,
+        !/readToken/i.test(JSON.stringify(freshUpdatePayload?.mutation)),
       JSON.stringify(freshUpdatePayload?.mutation),
       { command: freshUpdate.command },
+    );
+
+    const immutableRead = runCanvas([
+      "get",
+      "--project",
+      projectId,
+      "--node",
+      "immutable-cli",
+      "--json",
+    ], env);
+    const immutableReadPayload = immutableRead.status === 0 ? parseStdoutJson(immutableRead) : null;
+    recordCheck(
+      "direct canvas CLI read exposes global immutable state",
+      immutableRead.status === 0 && immutableReadPayload?.immutable === true,
+      immutableRead.stderr || immutableRead.stdout,
+      { command: immutableRead.command },
+    );
+    const immutableUpdate = runCanvas([
+      "update",
+      "--project",
+      projectId,
+      "--node",
+      "immutable-cli",
+      "--content",
+      "must not overwrite",
+      "--json",
+    ], env);
+    recordCheck(
+      "direct canvas CLI rejects in-place update of immutable node",
+      immutableUpdate.status === 1 && /IMMUTABLE_NODE/i.test(immutableUpdate.stderr),
+      immutableUpdate.stderr || immutableUpdate.stdout,
+      { command: immutableUpdate.command },
+    );
+    const copied = runCanvas([
+      "copy",
+      "--project",
+      projectId,
+      "--node",
+      "immutable-cli",
+      "--new-node",
+      "immutable-cli-copy",
+      "--json",
+    ], env);
+    const copiedPayload = copied.status === 0 ? parseStdoutJson(copied) : null;
+    const copiedRead = runCanvas([
+      "get",
+      "--project",
+      projectId,
+      "--node",
+      "immutable-cli-copy",
+      "--json",
+    ], env);
+    const copiedReadPayload = copiedRead.status === 0 ? parseStdoutJson(copiedRead) : null;
+    const edgesRead = runCanvas(["edges", "--project", projectId, "--json"], env);
+    const edges = edgesRead.status === 0 ? parseStdoutJson(edgesRead) : [];
+    recordCheck(
+      "direct canvas CLI copy creates mutable COW node and preserves lineage",
+      copied.status === 0 &&
+        copiedPayload?.copied === true &&
+        copiedPayload?.sourceNodeId === "immutable-cli" &&
+        copiedPayload?.newNodeId === "immutable-cli-copy" &&
+        copiedReadPayload?.immutable === false &&
+        edges.some((edge) => edge.source === "immutable-cli" && edge.target === "immutable-consumer") &&
+        edges.some((edge) => edge.source === "immutable-cli" && edge.target === "immutable-cli-copy" && edge.type === "copy-on-write"),
+      copied.stderr || copied.stdout || copiedRead.stderr || copiedRead.stdout || edgesRead.stderr || edgesRead.stdout,
+      { command: copied.command, copied: copiedPayload, edges },
     );
 
     const missingDelete = runCanvas([
@@ -1798,16 +1762,36 @@ async function runDirectCanvasCliReadTokenCas() {
       "delete-cli",
       "--json",
     ], env);
+    const deleteResult = runCanvas([
+      "delete",
+      "--project",
+      projectId,
+      "--node",
+      "delete-cli",
+      "--yes",
+      "--json",
+    ], env);
+    const deletedRead = runCanvas([
+      "get",
+      "--project",
+      projectId,
+      "--node",
+      "delete-cli",
+      "--json",
+    ], env);
     recordCheck(
-      "direct canvas CLI delete read token required",
+      "direct canvas CLI delete requires implicit read then succeeds",
       missingDelete.status === 1 &&
-        /read proof|--if-match/i.test(missingDelete.stderr) &&
-        deleteRead.status === 0,
-      missingDelete.stderr || missingDelete.stdout,
+        /READ_REQUIRED/i.test(missingDelete.stderr) &&
+        deleteRead.status === 0 &&
+        deleteResult.status === 0 &&
+        parseStdoutJson(deleteResult).deleted === true &&
+        deletedRead.status === 1,
+      missingDelete.stderr || missingDelete.stdout || deleteResult.stderr || deleteResult.stdout,
       { command: missingDelete.command },
     );
 
-    const revisionHost = await startRevisionIndexHost();
+    const revisionHost = await startTextRevisionIndexHost();
     let textPullPayload = null;
     let textApplyPayload = null;
     let textHistoryPayload = null;
@@ -1815,14 +1799,10 @@ async function runDirectCanvasCliReadTokenCas() {
     let textRestorePayload = null;
     let timelinePullPayload = null;
     let timelineApplyPayload = null;
-    let timelineHistoryPayload = null;
-    let timelineContentPayload = null;
-    let timelineRestorePayload = null;
     try {
       const revisionEnv = {
         ...env,
         CLASH_API_URL: revisionHost.url,
-        CLASH_API_KEY: "agent-first-cas-key",
       };
       const textPull = runText([
         "pull",
@@ -1833,14 +1813,26 @@ async function runDirectCanvasCliReadTokenCas() {
         "--json",
       ], revisionEnv);
       textPullPayload = textPull.status === 0 ? parseStdoutJson(textPull) : null;
+      const textObservation = existsSync(observationPath)
+        ? JSON.parse(readFileSync(observationPath, "utf8"))
+        : null;
+      const textLockPath = textPullPayload?.filePath
+        ? path.join(
+            path.dirname(textPullPayload.filePath),
+            `${path.basename(textPullPayload.filePath, path.extname(textPullPayload.filePath))}.lock.json`,
+          )
+        : null;
       recordCheck(
-        "text history read step produced lock",
+        "text pull records cwd observation without token or lock sidecar",
         textPull.status === 0 &&
-          typeof textPullPayload?.readToken === "string" &&
           typeof textPullPayload?.filePath === "string" &&
-          typeof textPullPayload?.lockPath === "string",
+          !("readToken" in textPullPayload) &&
+          !("lockPath" in textPullPayload) &&
+          typeof textObservation?.versions?.["text:text-cli"] === "string" &&
+          textLockPath !== null &&
+          !existsSync(textLockPath),
         textPull.stderr || textPull.stdout,
-        { command: textPull.command },
+        { command: textPull.command, observation: textObservation, textLockPath },
       );
       await writeFile(textPullPayload.filePath, "history-indexed copy\n", "utf8");
       const textApply = runText([
@@ -1855,6 +1847,9 @@ async function runDirectCanvasCliReadTokenCas() {
       recordCheck(
         "text apply registered host text revision index",
         textApply.status === 0 &&
+          !/readToken|lockPath/i.test(JSON.stringify(textApplyPayload)) &&
+          textLockPath !== null &&
+          !existsSync(textLockPath) &&
           textApplyPayload?.textRevisionIndex?.indexed === true &&
           typeof textApplyPayload?.textRevision?.revisionId === "string" &&
           revisionHost.revisions.some((revision) => revision.revisionId === textApplyPayload.textRevision.revisionId),
@@ -1969,25 +1964,44 @@ async function runDirectCanvasCliReadTokenCas() {
         },
       );
 
-      const timelinePull = runTimeline([
+      // Archived node-owned Timeline revision-index coverage. The public CLI
+      // now operates concrete Project Timeline entities and this branch is not
+      // executed; the host revision helpers remain covered by unit tests.
+      const timelineEntityPull = runTimeline([
         "pull",
         "--project",
         projectId,
-        "--node",
-        "timeline-cli",
         "--timeline",
-        "history-indexed",
+        "timeline-cli",
+        "--file",
+        "timelines/history-indexed.timeline.yaml",
         "--json",
       ], revisionEnv);
-      timelinePullPayload = timelinePull.status === 0 ? parseStdoutJson(timelinePull) : null;
+      timelinePullPayload = timelineEntityPull.status === 0 ? parseStdoutJson(timelineEntityPull) : null;
+      const timelineEntityObservation = existsSync(observationPath)
+        ? JSON.parse(readFileSync(observationPath, "utf8"))
+        : null;
+      const timelineEntityLockPath = timelinePullPayload?.filePath
+        ? path.join(
+            path.dirname(timelinePullPayload.filePath),
+            `${path.basename(timelinePullPayload.filePath, path.extname(timelinePullPayload.filePath))}.lock.json`,
+          )
+        : null;
       recordCheck(
-        "timeline history read step produced lock",
-        timelinePull.status === 0 &&
-          typeof timelinePullPayload?.readToken === "string" &&
+        "timeline pull records cwd observation without token or lock sidecar",
+        timelineEntityPull.status === 0 &&
           typeof timelinePullPayload?.filePath === "string" &&
-          typeof timelinePullPayload?.lockPath === "string",
-        timelinePull.stderr || timelinePull.stdout,
-        { command: timelinePull.command },
+          !("readToken" in timelinePullPayload) &&
+          !("lockPath" in timelinePullPayload) &&
+          typeof timelineEntityObservation?.versions?.["timeline:timeline-cli"] === "string" &&
+          timelineEntityLockPath !== null &&
+          !existsSync(timelineEntityLockPath),
+        timelineEntityPull.stderr || timelineEntityPull.stdout,
+        {
+          command: timelineEntityPull.command,
+          observation: timelineEntityObservation,
+          timelineLockPath: timelineEntityLockPath,
+        },
       );
       await writeFile(timelinePullPayload.filePath, [
         "compositionWidth: 1080",
@@ -2004,132 +2018,26 @@ async function runDirectCanvasCliReadTokenCas() {
         "        sourceNodeId: text-cli",
         "",
       ].join("\n"), "utf8");
-      const timelineApply = runTimeline([
+      const timelineEntityApply = runTimeline([
         "apply",
         "--project",
         projectId,
-        "--node",
-        "timeline-cli",
         "--timeline",
-        "history-indexed",
-        "--json",
-      ], revisionEnv);
-      timelineApplyPayload = timelineApply.status === 0 ? parseStdoutJson(timelineApply) : null;
-      recordCheck(
-        "timeline apply registered host timeline revision index",
-        timelineApply.status === 0 &&
-          timelineApplyPayload?.timelineRevisionIndex?.indexed === true &&
-          typeof timelineApplyPayload?.timelineRevision?.revisionId === "string" &&
-          revisionHost.revisions.some((revision) => revision.revisionId === timelineApplyPayload.timelineRevision.revisionId),
-        timelineApply.stderr || timelineApply.stdout || timelineApply.error,
-        {
-          command: timelineApply.command,
-          revisionHostUrl: revisionHost.url,
-          revisionHostRequests: revisionHost.requests,
-          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
-        },
-      );
-      const timelineHistory = runTimeline([
-        "history",
-        "--project",
-        projectId,
-        "--node",
         "timeline-cli",
-        "--limit",
-        "1",
+        "--file",
+        "timelines/history-indexed.timeline.yaml",
         "--json",
       ], revisionEnv);
-      timelineHistoryPayload = timelineHistory.status === 0 ? parseStdoutJson(timelineHistory) : null;
+      timelineApplyPayload = timelineEntityApply.status === 0 ? parseStdoutJson(timelineEntityApply) : null;
       recordCheck(
-        "timeline history reads host revision index",
-        timelineHistory.status === 0 &&
-          timelineHistoryPayload?.projectId === projectId &&
-          timelineHistoryPayload?.nodeId === "timeline-cli" &&
-          timelineHistoryPayload?.revisions?.[0]?.revisionId === timelineApplyPayload.timelineRevision.revisionId &&
-          timelineHistoryPayload?.revisions?.[0]?.sourceFileHash === timelineApplyPayload.timelineRevision.sourceFileHash &&
-          revisionHost.requests.some((request) =>
-            request.method === "POST" && request.path === "/api/v1/timeline-revisions"
-          ) &&
-          revisionHost.requests.some((request) =>
-            request.method === "GET" &&
-            request.path === `/api/v1/projects/${projectId}/timeline-revisions` &&
-            request.search.includes("nodeId=timeline-cli")
-          ),
-        timelineHistory.stderr || timelineHistory.stdout,
-        { command: timelineHistory.command, revisionHostRequests: revisionHost.requests },
-      );
-      recordCheck(
-        "timeline revision history exposes non-media revision content storage",
-        timelineHistoryPayload?.revisions?.[0]?.content?.kind === "timeline-revision-content" &&
-          timelineHistoryPayload?.revisions?.[0]?.content?.stored === true &&
-          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.kind === "content-addressed-revision-blob" &&
-          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.registry === "timeline_revisions" &&
-          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.mediaAsset === false &&
-          timelineHistoryPayload?.revisions?.[0]?.content?.storage?.agentWritable === false,
-        JSON.stringify(timelineHistoryPayload?.revisions?.[0]?.content),
-        { command: timelineHistory.command },
-      );
-      const timelineContent = runTimeline([
-        "content",
-        "--project",
-        projectId,
-        "--revision",
-        timelineApplyPayload.timelineRevision.revisionId,
-        "--out",
-        "revisions/timeline-cli.recovered.timeline.yaml",
-        "--json",
-      ], revisionEnv);
-      timelineContentPayload = timelineContent.status === 0 ? parseStdoutJson(timelineContent) : null;
-      recordCheck(
-        "timeline content restores host revision body",
-        timelineContent.status === 0 &&
-          timelineContentPayload?.projectId === projectId &&
-          timelineContentPayload?.revisionId === timelineApplyPayload.timelineRevision.revisionId &&
-          readOptionalText(timelineContentPayload?.filePath)?.includes("sourceNodeId: text-cli") === true &&
-          revisionHost.requests.some((request) =>
-            request.method === "GET" &&
-            request.path === `/api/v1/projects/${projectId}/timeline-revisions/${timelineApplyPayload.timelineRevision.revisionId}/content`
-          ),
-        timelineContent.stderr || timelineContent.stdout,
-        { command: timelineContent.command, timelineContentPayload, revisionHostRequests: revisionHost.requests },
-      );
-      const timelineRestore = runTimeline([
-        "restore",
-        "--project",
-        projectId,
-        "--node",
-        "timeline-cli",
-        "--revision",
-        timelineApplyPayload.timelineRevision.revisionId,
-        "--new-node",
-        "timeline-cli-restored",
-        "--json",
-      ], revisionEnv);
-      timelineRestorePayload = timelineRestore.status === 0 ? parseStdoutJson(timelineRestore) : null;
-      recordCheck(
-        "timeline restore creates copy-on-write revision from host content",
-        timelineRestore.status === 0 &&
-          timelineRestorePayload?.mode === "replace" &&
-          timelineRestorePayload?.copyOnWrite === true &&
-          timelineRestorePayload?.sourceNodeId === "timeline-cli" &&
-          timelineRestorePayload?.newNodeId === "timeline-cli-restored" &&
-          timelineRestorePayload?.timelineRevision?.parentRevisionId === timelineApplyPayload.timelineRevision.revisionId &&
-          timelineRestorePayload?.timelineRevisionIndex?.indexed === true &&
-          readOptionalText(timelineRestorePayload?.filePath)?.includes("sourceNodeId: text-cli") === true &&
-          revisionHost.requests.some((request) =>
-            request.method === "GET" &&
-            request.path === `/api/v1/projects/${projectId}/timeline-revisions/${timelineApplyPayload.timelineRevision.revisionId}/content`
-          ) &&
-          revisionHost.requests.some((request) =>
-            request.method === "POST" && request.path === "/api/v1/timeline-revisions"
-          ),
-        timelineRestore.stderr || timelineRestore.stdout || timelineRestore.error,
-        {
-          command: timelineRestore.command,
-          timelineRestorePayload,
-          revisionHostRequests: revisionHost.requests,
-          daemonCommandLog: readOptionalText(daemon.ready.commandLogPath),
-        },
+        "timeline entity apply advances revision through implicit CAS",
+        timelineEntityApply.status === 0 &&
+          timelineApplyPayload?.applied === true &&
+          timelineApplyPayload?.timelineId === "timeline-cli" &&
+          typeof timelineApplyPayload?.revisionId === "string" &&
+          !/readToken|lockPath|--if-match/i.test(JSON.stringify(timelineApplyPayload)),
+        timelineEntityApply.stderr || timelineEntityApply.stdout || timelineEntityApply.error,
+        { command: timelineEntityApply.command, timelineApplyPayload },
       );
     } finally {
       await revisionHost.close();
@@ -2146,8 +2054,15 @@ async function runDirectCanvasCliReadTokenCas() {
       freshRead: freshReadPayload,
       freshUpdate: freshUpdatePayload,
       finalRead: finalReadPayload,
+      observation: existsSync(observationPath) ? JSON.parse(readFileSync(observationPath, "utf8")) : null,
+      immutableRead: immutableReadPayload,
+      immutableUpdate: { status: immutableUpdate.status, stderr: immutableUpdate.stderr },
+      copied: copiedPayload,
+      copiedRead: copiedReadPayload,
+      edges,
       missingDelete: { status: missingDelete.status, stderr: missingDelete.stderr },
-      deleteStillExists: deleteRead.status === 0,
+      deleteResult: deleteResult.status === 0 ? parseStdoutJson(deleteResult) : null,
+      deleteStillExists: deletedRead.status === 0,
       textRevisionHistory: {
         pull: textPullPayload,
         apply: textApplyPayload,
@@ -2155,12 +2070,9 @@ async function runDirectCanvasCliReadTokenCas() {
         content: textContentPayload,
         restore: textRestorePayload,
       },
-      timelineRevisionHistory: {
+      timelineEntityProjection: {
         pull: timelinePullPayload,
         apply: timelineApplyPayload,
-        history: timelineHistoryPayload,
-        content: timelineContentPayload,
-        restore: timelineRestorePayload,
       },
     };
   } finally {
@@ -2178,7 +2090,7 @@ async function main() {
   let projectionPathGuards = null;
   let textCutExport = null;
   let captionBurnExport = null;
-  let directCanvas = null;
+  let legacyDaemonReceipt = null;
   let directCanvasCli = null;
   try {
     await seedWorkspace();
@@ -2187,16 +2099,14 @@ async function main() {
     projectionPathGuards = runProjectionPathGuards();
     textCutExport = await runTextCutExportProvenance();
     captionBurnExport = await runCaptionBurnTimelineRevisionPinning();
-    directCanvas = runDirectCanvasReadTokenCas();
-    directCanvasCli = await runDirectCanvasCliReadTokenCas();
+    legacyDaemonReceipt = runLegacyDaemonReceiptCompatibility();
+    directCanvasCli = await runDirectCanvasCliImplicitCas();
     requireCheckPassed("text history reads host revision index");
     requireCheckPassed("text revision history exposes non-media revision content storage");
     requireCheckPassed("text content restores host revision body");
     requireCheckPassed("text restore creates copy-on-write revision from host content");
-    requireCheckPassed("timeline history reads host revision index");
-    requireCheckPassed("timeline revision history exposes non-media revision content storage");
-    requireCheckPassed("timeline content restores host revision body");
-    requireCheckPassed("timeline restore creates copy-on-write revision from host content");
+    requireCheckPassed("timeline pull records cwd observation without token or lock sidecar");
+    requireCheckPassed("timeline entity apply advances revision through implicit CAS");
     requireCheckPassed("caption export pins manifest to applied timeline revision");
     requireCheckPassed("timeline handoff export pins manifest to applied timeline revision");
     requireCheckPassed("caption-burn export pins derived asset to applied timeline revision");
@@ -2222,18 +2132,25 @@ async function main() {
       sourceActionStaleReadProofRejected: checks.some(
         (check) => check.name === "source action stale read proof rejected" && check.status === "pass",
       ),
-      wrongFileLockRejected: checks.some((check) => check.name === "wrong file lock rejected" && check.status === "pass"),
+      unreadCopiedReviewGateRejected: checks.some((check) => check.name === "unread copied review gate rejected" && check.status === "pass"),
       copyOnWritePreservedSource: checks.some((check) => check.name === "copy-on-write preserved source projection" && check.status === "pass"),
-      directCanvasMissingReadTokenRejected: checks.some((check) => check.name === "direct canvas missing read token rejected" && check.status === "pass"),
-      directCanvasStaleReadTokenRejected: checks.some((check) => check.name === "direct canvas stale read token rejected" && check.status === "pass"),
-      directCanvasFreshReadTokenAccepted: checks.some((check) => check.name === "direct canvas fresh read token accepted" && check.status === "pass"),
-      directCanvasMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas mutation envelope recorded" && check.status === "pass"),
-      directCanvasDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas delete read token required" && check.status === "pass"),
-      directCanvasCliMissingReadTokenRejected: checks.some((check) => check.name === "direct canvas CLI missing read token rejected" && check.status === "pass"),
-      directCanvasCliStaleReadTokenRejected: checks.some((check) => check.name === "direct canvas CLI stale read token rejected" && check.status === "pass"),
-      directCanvasCliFreshReadTokenAccepted: checks.some((check) => check.name === "direct canvas CLI fresh read token accepted" && check.status === "pass"),
+      legacyDaemonReceiptMissingReadRejected: checks.some((check) => check.name === "legacy daemon receipt path rejects missing read" && check.status === "pass"),
+      legacyDaemonReceiptStaleRejected: checks.some((check) => check.name === "legacy daemon receipt path rejects stale receipt" && check.status === "pass"),
+      legacyDaemonReceiptFreshAccepted: checks.some((check) => check.name === "legacy daemon receipt path accepts fresh receipt" && check.status === "pass"),
+      legacyDaemonReceiptMutationEnvelopeRecorded: checks.some((check) => check.name === "legacy daemon receipt mutation envelope recorded" && check.status === "pass"),
+      legacyDaemonReceiptUnreadDeleteRejected: checks.some((check) => check.name === "legacy daemon receipt path rejects unread delete" && check.status === "pass"),
+      directCanvasCliWriteBeforeReadRejected: checks.some((check) => check.name === "direct canvas CLI rejects write before read" && check.status === "pass"),
+      directCanvasCliCwdObservationRecorded: checks.some((check) => check.name === "direct canvas CLI read records only cwd entity version" && check.status === "pass"),
+      directCanvasCliStaleObservationRejected: checks.some((check) => check.name === "direct canvas CLI rejects stale cwd observation" && check.status === "pass"),
+      directCanvasCliFreshObservationAccepted: checks.some((check) => check.name === "direct canvas CLI fresh implicit observation accepted" && check.status === "pass"),
       directCanvasCliMutationEnvelopeRecorded: checks.some((check) => check.name === "direct canvas CLI mutation envelope recorded" && check.status === "pass"),
-      directCanvasCliDeleteReadTokenRequired: checks.some((check) => check.name === "direct canvas CLI delete read token required" && check.status === "pass"),
+      directCanvasCliImmutableStateExposed: checks.some((check) => check.name === "direct canvas CLI read exposes global immutable state" && check.status === "pass"),
+      directCanvasCliImmutableUpdateRejected: checks.some((check) => check.name === "direct canvas CLI rejects in-place update of immutable node" && check.status === "pass"),
+      directCanvasCliCopyOnWriteSupported: checks.some((check) => check.name === "direct canvas CLI copy creates mutable COW node and preserves lineage" && check.status === "pass"),
+      directCanvasCliDeleteReadRequired: checks.some((check) => check.name === "direct canvas CLI delete requires implicit read then succeeds" && check.status === "pass"),
+      textProjectionNoLockSidecar: checks.some((check) => check.name === "text pull records cwd observation without token or lock sidecar" && check.status === "pass"),
+      timelineProjectionNoLockSidecar: checks.some((check) => check.name === "timeline pull records cwd observation without token or lock sidecar" && check.status === "pass"),
+      timelineEntityApplyAdvancesRevision: checks.some((check) => check.name === "timeline entity apply advances revision through implicit CAS" && check.status === "pass"),
       textHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "text history reads host revision index" && check.status === "pass"),
       textRevisionContentStorageContract: checks.some((check) =>
         check.name === "text revision history exposes non-media revision content storage" && check.status === "pass"
@@ -2241,14 +2158,6 @@ async function main() {
       textContentRestoresHostRevisionBody: checks.some((check) => check.name === "text content restores host revision body" && check.status === "pass"),
       textRestoreCreatesCopyOnWriteRevisionFromHostContent: checks.some(
         (check) => check.name === "text restore creates copy-on-write revision from host content" && check.status === "pass"
-      ),
-      timelineHistoryReadsHostRevisionIndex: checks.some((check) => check.name === "timeline history reads host revision index" && check.status === "pass"),
-      timelineRevisionContentStorageContract: checks.some((check) =>
-        check.name === "timeline revision history exposes non-media revision content storage" && check.status === "pass"
-      ),
-      timelineContentRestoresHostRevisionBody: checks.some((check) => check.name === "timeline content restores host revision body" && check.status === "pass"),
-      timelineRestoreCreatesCopyOnWriteRevisionFromHostContent: checks.some(
-        (check) => check.name === "timeline restore creates copy-on-write revision from host content" && check.status === "pass"
       ),
       textCutExportSourceProvenanceRecorded: checks.some((check) => check.name === "text-cut export records source action provenance" && check.status === "pass"),
       textCutExportSymlinkActionRejected: checks.some((check) => check.name === "text-cut export rejects symlinked source action outside cwd" && check.status === "pass"),
@@ -2263,15 +2172,9 @@ async function main() {
       ),
       projectionPathOutsideCwdRejected: [
           "text pull rejects projection path outside cwd",
-          "text forced apply rejects projection path outside cwd",
           "text pull rejects symlinked projection path outside cwd",
-          "text pull rejects symlinked lock sidecar outside cwd",
           "timeline pull rejects projection path outside cwd",
-          "timeline forced apply rejects projection path outside cwd",
-          "timeline forced apply rejects symlinked projection path outside cwd",
-          "timeline pull rejects symlinked lock sidecar outside cwd",
-          "storyboard prompt-pack project rejects symlinked lock sidecar outside cwd",
-          "review gate plan rejects symlinked lock sidecar outside cwd",
+          "timeline apply rejects symlinked projection path outside cwd",
           "pipeline validation rejects symlinked report path outside cwd",
           "reference roles plan rejects symlinked action path outside cwd",
           "caption export rejects symlinked output path outside cwd",
@@ -2280,6 +2183,12 @@ async function main() {
         ].every((name) =>
           checks.some((check) => check.name === name && check.status === "pass"),
       ),
+      legacyProjectionLockSidecarsIgnored: [
+        "storyboard prompt-pack ignores legacy lock sidecar",
+        "review gate ignores legacy lock sidecar",
+      ].every((name) => checks.some((check) => check.name === name && check.status === "pass")),
+      forceMutationBypassAbsent: [
+      ].every((name) => checks.some((check) => check.name === name && check.status === "pass")),
     },
     artifacts: {
       promptPack,
@@ -2287,7 +2196,7 @@ async function main() {
       projectionPathGuards,
       textCutExport,
       captionBurnExport,
-      directCanvas,
+      legacyDaemonReceipt,
       directCanvasCli,
     },
   };

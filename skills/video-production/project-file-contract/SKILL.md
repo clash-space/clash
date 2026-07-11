@@ -13,7 +13,7 @@ Editable:
 - `analysis/`
 - `plans/`
 - `storyboards/`
-- `projections/` through pull/apply locks
+- `projections/` through pull/apply cwd observations
 - `reviews/`
 
 Protected:

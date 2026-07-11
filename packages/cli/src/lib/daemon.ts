@@ -8,14 +8,17 @@ import { createServer, createConnection, type Server } from "node:net";
 import { existsSync, unlinkSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import WebSocket from "ws";
 import {
   agentReadReceiptToken,
+  DEFAULT_CANVAS_ID,
   LoroSyncClient,
-  Canvas,
   createMediaAssetCowNodeData,
   isMediaNodeType,
+  projectCanvasReadToken,
+  projectTimelineReadToken,
+  validateAgentObservation,
   validateAgentReadProof,
   type AgentReadReceiptProof,
   type LoroSyncClientOptions,
@@ -27,7 +30,7 @@ import {
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
-  canvasDownstreamTargets,
+  isCanvasNodeImmutable,
   validateCanvasBatchDelete,
   validateCanvasBatchDeleteReadProof,
   validateCanvasCheckpointPatch,
@@ -40,28 +43,12 @@ import {
   type CanvasReadProofEdgeLike,
 } from "./canvas-update-guardrails";
 import {
-  assertTimelineCas,
-  assertTimelineNotMaterializedReferenced,
-  createTimelineAppliedRevision,
-  createTimelineCowNodeData,
-  createTimelineLockFromHash,
-  normalizeTimelineDslForYaml,
-  readLoroRevisionMetadata,
-  timelineHash,
-  timelineReadToken,
-  type TimelineLock,
-  type TimelineRevisionActor,
-} from "./timeline-projection";
-import {
-  assertTextCas,
   assertTextNotReferenced,
   createTextAppliedRevision,
   createTextCowNodeData,
-  createTextLockFromHash,
   textHash,
   textReadToken,
   textContentFromNode,
-  type TextLock,
   type TextRevisionActor,
 } from "./text-projection";
 import {
@@ -83,12 +70,22 @@ export function daemonSocketDir(env: Record<string, string | undefined> = proces
   return join(resolveClashRoot(env), "sockets");
 }
 
-export function getSocketPath(projectId: string): string {
-  return join(daemonSocketDir(), `${projectId}.sock`);
+function daemonProjectKey(projectId: string): string {
+  return createHash("sha256").update(projectId).digest("hex").slice(0, 32);
 }
 
-function getPidPath(projectId: string): string {
-  return join(daemonSocketDir(), `${projectId}.pid`);
+export function getSocketPath(
+  projectId: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return join(daemonSocketDir(env), `${daemonProjectKey(projectId)}.sock`);
+}
+
+function getPidPath(
+  projectId: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return join(daemonSocketDir(env), `${daemonProjectKey(projectId)}.pid`);
 }
 
 /**
@@ -182,6 +179,80 @@ function verifyDaemonCanvasBatchDeleteReadReceipt(proof: AgentReadReceiptProof):
     proof.receipt === daemonCanvasBatchDeleteReadReceipt(proof.baseReadToken);
 }
 
+function daemonProjectCanvasReadReceipt(readToken: string): string {
+  return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
+    .update(`project-canvas:${readToken}`)
+    .digest("base64url");
+}
+
+function projectCanvasReceiptReadToken(canvas: Parameters<typeof projectCanvasReadToken>[0]): string {
+  const readToken = projectCanvasReadToken(canvas);
+  return agentReadReceiptToken({
+    readToken,
+    receipt: daemonProjectCanvasReadReceipt(readToken),
+  });
+}
+
+function verifyDaemonProjectCanvasReadReceipt(proof: AgentReadReceiptProof): boolean {
+  return proof.namespace === "canvas" &&
+    proof.receipt === daemonProjectCanvasReadReceipt(proof.baseReadToken);
+}
+
+function daemonProjectTimelineReadReceipt(readToken: string): string {
+  return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
+    .update(`project-timeline:${readToken}`)
+    .digest("base64url");
+}
+
+function projectTimelineReceiptReadToken(timeline: Parameters<typeof projectTimelineReadToken>[0]): string {
+  const readToken = projectTimelineReadToken(timeline);
+  return agentReadReceiptToken({
+    readToken,
+    receipt: daemonProjectTimelineReadReceipt(readToken),
+  });
+}
+
+function verifyDaemonProjectTimelineReadReceipt(proof: AgentReadReceiptProof): boolean {
+  return proof.namespace === "timeline" &&
+    proof.receipt === daemonProjectTimelineReadReceipt(proof.baseReadToken);
+}
+
+function validateDaemonProjectTimelineRead(options: {
+  cmd: Record<string, unknown>;
+  currentVersion: string;
+  operation: string;
+}) {
+  return typeof options.cmd.ifMatch === "string"
+    ? validateAgentReadProof({
+        actorClientType: typeof options.cmd.actorClientType === "string"
+          ? options.cmd.actorClientType
+          : undefined,
+        operation: options.operation,
+        currentReadToken: options.currentVersion,
+        expectedReadToken: options.cmd.ifMatch,
+        requireReceipt: true,
+        readReceiptVerifier: verifyDaemonProjectTimelineReadReceipt,
+        readCommandHint: "Run `clash timeline list --json` or `clash timeline pull --timeline <id>` first.",
+      })
+    : validateAgentObservation({
+        actorClientType: typeof options.cmd.actorClientType === "string"
+          ? options.cmd.actorClientType
+          : undefined,
+        operation: options.operation,
+        observedVersion: typeof options.cmd.observedVersion === "string"
+          ? options.cmd.observedVersion
+          : undefined,
+        currentVersion: options.currentVersion,
+      });
+}
+
+function guardError(guard: { ok: false; error: string; code?: string }): object {
+  return {
+    error: guard.error,
+    ...(guard.code ? { code: guard.code } : {}),
+  };
+}
+
 function daemonTextReadReceipt(readToken: string): string {
   return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
     .update(`text:${readToken}`)
@@ -205,66 +276,36 @@ function verifyDaemonTextReadReceipt(proof: AgentReadReceiptProof): boolean {
     proof.receipt === daemonTextReadReceipt(proof.baseReadToken);
 }
 
-function daemonTimelineReadReceipt(readToken: string): string {
-  return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
-    .update(`timeline:${readToken}`)
-    .digest("base64url");
-}
-
-function timelineNodeReceiptReadToken(options: {
-  projectId: string;
-  nodeId: string;
-  dsl: unknown;
-}): string {
-  const readToken = timelineReadToken({
-    projectId: options.projectId,
-    nodeId: options.nodeId,
-    dsl: normalizeTimelineDslForYaml(options.dsl),
-  });
-  return agentReadReceiptToken({
-    readToken,
-    receipt: daemonTimelineReadReceipt(readToken),
-  });
-}
-
-function verifyDaemonTimelineReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "timeline" &&
-    proof.receipt === daemonTimelineReadReceipt(proof.baseReadToken);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function listCanvasEdgesWithReceiptReadTokens(client: LoroSyncClient): { edges: CanvasReadProofEdgeLike[]; readToken: string } {
+function listCanvasEdgesWithVersion(client: LoroSyncClient): {
+  edges: CanvasReadProofEdgeLike[];
+  version: string;
+  readToken: string;
+} {
   const edges = listCanvasReadProofEdges(client);
+  const version = canvasEdgesReadToken(edges);
   return {
-    edges: edges.map((edge) => ({
-      ...edge,
-      readToken: canvasEdgeReceiptReadToken(edge),
-    })),
-    readToken: canvasEdgesReceiptReadToken(edges),
+    edges,
+    version,
+    readToken: agentReadReceiptToken({
+      readToken: version,
+      receipt: daemonCanvasEdgesReadReceipt(version),
+    }),
   };
 }
 
 function listCanvasReadProofEdges(client: LoroSyncClient): CanvasReadProofEdgeLike[] {
-  const edgesMap = client.doc.getMap("edges");
-  const edges: CanvasReadProofEdgeLike[] = [];
-  for (const [edgeId, rawEdge] of edgesMap.entries()) {
-    if (!isRecord(rawEdge)) continue;
-    const edge = rawEdge as Record<string, unknown>;
-    edges.push({
-      id: edgeId,
-      ...edge,
-    });
-  }
-  return edges;
+  return client.canvas.listEdges().map((edge) => ({ ...edge }));
 }
 
 function readCanvasBatchDeletePlan(client: LoroSyncClient, nodeIds: unknown): {
   nodeIds: string[];
   nodes: NonNullable<ReturnType<LoroSyncClient["readNode"]>>[];
   edges: CanvasReadProofEdgeLike[];
+  version: string;
   readToken: string;
 } | { error: string } {
   if (!Array.isArray(nodeIds)) return { error: "delete batch requires nodeIds" };
@@ -283,6 +324,7 @@ function readCanvasBatchDeletePlan(client: LoroSyncClient, nodeIds: unknown): {
     nodeIds: uniqueNodeIds,
     nodes,
     edges,
+    version: canvasBatchDeleteReadToken({ nodes, edges }),
     readToken: canvasBatchDeleteReceiptReadToken({ nodes, edges }),
   };
 }
@@ -473,15 +515,227 @@ export function handleCommandForTest(client: LoroSyncClient, cmd: any): object {
 
 function handleCommand(client: LoroSyncClient, cmd: any): object {
   const { action } = cmd;
+  const projectWorkspaceAction = action === "list_canvases" ||
+    action === "create_canvas" ||
+    action === "rename_canvas" ||
+    action === "delete_canvas" ||
+    action === "list_timelines" ||
+    action === "create_timeline" ||
+    action === "update_timeline_state" ||
+    action === "attach_timeline" ||
+    action === "detach_timeline" ||
+    action === "copy_timeline_action";
+  if (!projectWorkspaceAction) {
+    client.selectCanvas(
+      typeof cmd.canvasId === "string" && cmd.canvasId.trim()
+        ? cmd.canvasId
+        : DEFAULT_CANVAS_ID,
+    );
+  }
 
   switch (action) {
+    case "list_canvases": {
+      const canvases = client.listCanvases();
+      return {
+        canvases,
+        versions: Object.fromEntries(
+          canvases.map((canvas) => [canvas.id, projectCanvasReceiptReadToken(canvas)]),
+        ),
+      };
+    }
+
+    case "create_canvas": {
+      const result = client.createCanvas({ id: cmd.canvasId, name: cmd.name });
+      return result.ok
+        ? {
+            canvas: result.canvas,
+            version: projectCanvasReadToken(result.canvas),
+            readToken: projectCanvasReceiptReadToken(result.canvas),
+          }
+        : { error: result.error };
+    }
+
+    case "rename_canvas": {
+      const current = client.listCanvases().find((canvas) => canvas.id === cmd.canvasId);
+      if (!current) return { error: `Canvas ${cmd.canvasId} not found` };
+      const currentVersion = projectCanvasReadToken(current);
+      const guard = typeof cmd.ifMatch === "string"
+        ? validateAgentReadProof({
+            actorClientType: cmd.actorClientType,
+            operation: "Canvas rename",
+            currentReadToken: currentVersion,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonProjectCanvasReadReceipt,
+            readCommandHint: "Run `clash canvases list --json` first.",
+          })
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "renaming the Canvas",
+            observedVersion: cmd.observedVersion,
+            currentVersion,
+          });
+      if (!guard.ok) return guardError(guard);
+      const result = client.renameCanvas(cmd.canvasId, cmd.name);
+      return result.ok
+        ? {
+            canvas: result.canvas,
+            version: projectCanvasReadToken(result.canvas),
+            readToken: projectCanvasReceiptReadToken(result.canvas),
+          }
+        : { error: result.error };
+    }
+
+    case "delete_canvas": {
+      const current = client.listCanvases().find((canvas) => canvas.id === cmd.canvasId);
+      if (!current) return { error: `Canvas ${cmd.canvasId} not found` };
+      const currentVersion = projectCanvasReadToken(current);
+      const guard = typeof cmd.ifMatch === "string"
+        ? validateAgentReadProof({
+            actorClientType: cmd.actorClientType,
+            operation: "Canvas delete",
+            currentReadToken: currentVersion,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonProjectCanvasReadReceipt,
+            readCommandHint: "Run `clash canvases list --json` first.",
+          })
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "deleting the Canvas",
+            observedVersion: cmd.observedVersion,
+            currentVersion,
+          });
+      if (!guard.ok) return guardError(guard);
+      const result = client.deleteCanvas(cmd.canvasId);
+      return result.ok
+        ? { deleted: true, canvasId: result.canvasId }
+        : { error: result.error };
+    }
+
+    case "list_timelines": {
+      const timelines = client.listTimelines();
+      return {
+        timelines,
+        versions: Object.fromEntries(
+          timelines.map((timeline) => [timeline.id, projectTimelineReceiptReadToken(timeline)]),
+        ),
+      };
+    }
+
+    case "create_timeline": {
+      const result = client.createTimeline({
+        id: cmd.timelineId,
+        name: cmd.name,
+        state: cmd.state ?? { tracks: [] },
+      });
+      return result.ok
+        ? {
+            timeline: result.timeline,
+            version: projectTimelineReadToken(result.timeline),
+            readToken: projectTimelineReceiptReadToken(result.timeline),
+          }
+        : { error: result.error };
+    }
+
+    case "update_timeline_state": {
+      const current = client.listTimelines().find((timeline) => timeline.id === cmd.timelineId);
+      if (!current) return { error: `Timeline ${cmd.timelineId} not found` };
+      const guard = validateDaemonProjectTimelineRead({
+        cmd,
+        operation: "Timeline apply",
+        currentVersion: projectTimelineReadToken(current),
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.updateTimelineState(cmd.timelineId, cmd.state);
+      return result.ok
+        ? {
+            timeline: result.timeline,
+            version: projectTimelineReadToken(result.timeline),
+            readToken: projectTimelineReceiptReadToken(result.timeline),
+          }
+        : { error: result.error };
+    }
+
+    case "attach_timeline": {
+      const current = client.listTimelines().find((timeline) => timeline.id === cmd.timelineId);
+      if (!current) return { error: `Timeline ${cmd.timelineId} not found` };
+      const guard = validateDaemonProjectTimelineRead({
+        cmd,
+        operation: "Timeline attach",
+        currentVersion: projectTimelineReadToken(current),
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.attachTimeline({
+        timelineId: cmd.timelineId,
+        canvasId: cmd.canvasId,
+        actionNodeId: cmd.actionNodeId,
+        position: cmd.position ?? { x: 0, y: 0 },
+      });
+      return result.ok
+        ? {
+            timeline: result.timeline,
+            version: projectTimelineReadToken(result.timeline),
+            readToken: projectTimelineReceiptReadToken(result.timeline),
+          }
+        : { error: result.error };
+    }
+
+    case "detach_timeline": {
+      const current = client.listTimelines().find((timeline) => timeline.id === cmd.timelineId);
+      if (!current) return { error: `Timeline ${cmd.timelineId} not found` };
+      const guard = validateDaemonProjectTimelineRead({
+        cmd,
+        operation: "Timeline detach",
+        currentVersion: projectTimelineReadToken(current),
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.detachTimeline(cmd.timelineId);
+      return result.ok
+        ? {
+            timeline: result.timeline,
+            version: projectTimelineReadToken(result.timeline),
+            readToken: projectTimelineReceiptReadToken(result.timeline),
+          }
+        : { error: result.error };
+    }
+
+    case "copy_timeline_action": {
+      const current = client.listTimelines().find(
+        (timeline) => timeline.id === cmd.sourceTimelineId,
+      );
+      if (!current) return { error: `Timeline ${cmd.sourceTimelineId} not found` };
+      const sourceVersion = projectTimelineReadToken(current);
+      const guard = validateDaemonProjectTimelineRead({
+        cmd,
+        operation: "Timeline Action copy",
+        currentVersion: sourceVersion,
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.copyTimelineAction({
+        sourceTimelineId: cmd.sourceTimelineId,
+        targetCanvasId: cmd.targetCanvasId,
+        newTimelineId: cmd.newTimelineId,
+        newActionNodeId: cmd.newActionNodeId,
+        position: cmd.position ?? { x: 0, y: 0 },
+      });
+      return result.ok
+        ? {
+            timeline: result.timeline,
+            version: projectTimelineReadToken(result.timeline),
+            readToken: projectTimelineReceiptReadToken(result.timeline),
+            sourceVersion,
+          }
+        : { error: result.error };
+    }
+
     case "list": {
       const nodes = client.listNodes(cmd.type ?? undefined);
       return { nodes };
     }
 
     case "edges": {
-      return listCanvasEdgesWithReceiptReadTokens(client);
+      return listCanvasEdgesWithVersion(client);
     }
 
     case "batch_delete_plan": {
@@ -493,6 +747,11 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       if (!node) return { error: `Node not found: ${cmd.nodeId}` };
       const result: Record<string, unknown> = {
         node,
+        immutable: isCanvasNodeImmutable({
+          nodeId: cmd.nodeId,
+          edges: client.canvas.listEdges(),
+        }),
+        version: canvasNodeReadToken(node),
         readToken: canvasNodeReceiptReadToken(node),
       };
       if (typeof cmd.projectId === "string" && typeof cmd.nodeId === "string") {
@@ -501,13 +760,6 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
             projectId: cmd.projectId,
             nodeId: cmd.nodeId,
             content: textContentFromNode({ type: node.type, data: node.data as Record<string, unknown> }),
-          });
-        }
-        if (node.type === "video-editor") {
-          result.timelineReadToken = timelineNodeReceiptReadToken({
-            projectId: cmd.projectId,
-            nodeId: cmd.nodeId,
-            dsl: node.data?.timelineDsl,
           });
         }
       }
@@ -534,25 +786,42 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       const node = client.readNode(cmd.nodeId);
       if (!node) return { error: `Node not found: ${cmd.nodeId}` };
       const currentReadToken = canvasNodeReadToken(node);
-      const readProof = validateCanvasReadProof({
-        operation: "update",
-        actorClientType: cmd.actorClientType,
-        node,
-        expectedReadToken: cmd.ifMatch,
-        requireReceipt: true,
-        readReceiptVerifier: verifyDaemonCanvasReadReceipt,
-        force: cmd.force === true,
-      });
+      const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : undefined;
+      const readProof = typeof cmd.ifMatch === "string"
+        ? validateCanvasReadProof({
+            operation: "update",
+            actorClientType: cmd.actorClientType,
+            node,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonCanvasReadReceipt,
+          })
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "canvas update",
+            observedVersion,
+            currentVersion: currentReadToken,
+          });
       const hostMutation = validateHostMutationEnvelope({
         operation: "canvas_update",
         entity: { kind: "canvas-node", id: cmd.nodeId },
+        expectedHash: observedVersion,
+        currentHash: observedVersion ? currentReadToken : undefined,
         expectedReadToken: typeof cmd.ifMatch === "string" ? cmd.ifMatch : undefined,
-        currentReadToken,
-        force: cmd.force === true,
+        currentReadToken: typeof cmd.ifMatch === "string" ? currentReadToken : undefined,
         guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
       const edges = client.canvas.listEdges();
+      if (isCanvasNodeImmutable({ nodeId: cmd.nodeId, edges })) {
+        const error = "IMMUTABLE_NODE";
+        return {
+          code: error,
+          error,
+          entity: { kind: "canvas-node", id: cmd.nodeId },
+          mutation: hostMutationRejected(hostMutation.envelope, error),
+        };
+      }
       if (typeof updates.content === "string") {
         const contentGuard = validateCanvasContentPatch({
           nodeId: cmd.nodeId,
@@ -582,204 +851,68 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       const ok = client.updateNode(cmd.nodeId, updates);
       if (!ok) return { error: `Node not found: ${cmd.nodeId}` };
       const updatedNode = client.readNode(cmd.nodeId);
+      const version = updatedNode ? canvasNodeReadToken(updatedNode) : undefined;
       const afterReadToken = updatedNode ? canvasNodeReceiptReadToken(updatedNode) : undefined;
       return {
         updated: true,
         nodeId: cmd.nodeId,
+        ...(version ? { version } : {}),
         ...(afterReadToken ? { readToken: afterReadToken } : {}),
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: cmd.nodeId,
+          afterHash: observedVersion ? version : undefined,
           afterReadToken,
         }),
-        ...(cmd.force === true ? { forced: true } : {}),
       };
     }
 
-    case "timeline_cas_update": {
+    case "copy_node": {
       const node = client.readNode(cmd.nodeId);
       if (!node) return { error: `Node not found: ${cmd.nodeId}` };
-      const currentDsl = normalizeTimelineDslForYaml(node.data?.timelineDsl);
-      const beforeHash = timelineHash(currentDsl);
-      const beforeReadToken = timelineReadToken({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        timelineHash: beforeHash,
-      });
-      const lock: TimelineLock | null =
-        typeof cmd.expectedTimelineHash === "string"
-          ? createTimelineLockFromHash({
-              projectId: cmd.projectId,
-              nodeId: cmd.nodeId,
-              filePath: typeof cmd.expectedTimelineFilePath === "string" ? cmd.expectedTimelineFilePath : "",
-              timelineHash: cmd.expectedTimelineHash,
-              ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              pulledAt: "",
-            })
-          : null;
-      const cas = assertTimelineCas({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        lock,
-        currentDsl,
-        force: cmd.force === true,
-        ...(typeof cmd.expectedTimelineFilePath === "string" && typeof cmd.filePath === "string"
-          ? { filePath: cmd.filePath, cwd: typeof cmd.cwd === "string" ? cmd.cwd : undefined }
-          : {}),
-      });
-      const readProof = validateAgentReadProof({
-        actorClientType: cmd.actorClientType,
-        operation: "timeline apply",
-        currentReadToken: beforeReadToken,
-        expectedReadToken: lock?.readToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyDaemonTimelineReadReceipt,
-        force: cmd.force === true,
-        readCommandHint:
-          "Run `clash timeline pull --json` first and pass the lock readToken, or pass --force for an explicit overwrite.",
-      });
-      const actor = readTimelineRevisionActor(cmd.actor);
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "timeline_cas_update",
-        entity: { kind: "timeline", id: cmd.nodeId },
-        actor,
-        expectedHash: lock?.timelineHash,
-        currentHash: beforeHash,
-        expectedReadToken: lock?.readToken,
-        currentReadToken: beforeReadToken,
-        force: cmd.force === true,
-        guard: cas.ok ? readProof : cas,
-      });
-      if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
-      const reference = assertTimelineNotMaterializedReferenced({
-        nodeId: cmd.nodeId,
-        nodes: client.listNodes(),
-        edges: client.canvas.listEdges(),
-        force: cmd.force === true,
-      });
-      if (!reference.ok) return { error: reference.error, mutation: hostMutationRejected(hostMutation.envelope, reference.error) };
-      const ok = client.updateNode(cmd.nodeId, { timelineDsl: cmd.dsl });
-      if (!ok) return { error: `Node not found: ${cmd.nodeId}` };
-      const revisionMetadata = readLoroRevisionMetadata(client.doc);
-      const timelineRevision = typeof cmd.cwd === "string" && typeof cmd.filePath === "string"
-        ? createTimelineAppliedRevision({
-            projectId: cmd.projectId,
-            nodeId: cmd.nodeId,
-            cwd: cmd.cwd,
-            filePath: cmd.filePath,
-            dsl: cmd.dsl,
-            parentRevisionId: typeof cmd.parentRevisionId === "string" ? cmd.parentRevisionId : undefined,
-            actor,
-            ...revisionMetadata,
+      const currentReadToken = canvasNodeReadToken(node);
+      const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : undefined;
+      const readProof = typeof cmd.ifMatch === "string"
+        ? validateCanvasReadProof({
+            operation: "update",
+            actorClientType: cmd.actorClientType,
+            node,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonCanvasReadReceipt,
           })
-        : undefined;
-      const afterHash = timelineHash(normalizeTimelineDslForYaml(cmd.dsl));
-      const afterReadToken = timelineNodeReceiptReadToken({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        dsl: cmd.dsl,
-      });
-      return {
-        updated: true,
-        nodeId: cmd.nodeId,
-        timelineRevision,
-        readToken: afterReadToken,
-        mutation: hostMutationSucceeded(hostMutation.envelope, {
-          resultEntityId: cmd.nodeId,
-          afterHash,
-          afterReadToken,
-        }),
-        ...(cmd.force === true ? { forced: true } : {}),
-      };
-    }
-
-    case "timeline_cow_replace": {
-      const node = client.readNode(cmd.nodeId);
-      if (!node) return { error: `Node not found: ${cmd.nodeId}` };
-      if (node.type !== "video-editor") return { error: `Node ${cmd.nodeId} has type "${node.type}", expected "video-editor"` };
-      if (!cmd.dsl || typeof cmd.dsl !== "object") {
-        return { error: "timeline_cow_replace requires timeline dsl" };
-      }
-      const currentDsl = normalizeTimelineDslForYaml(node.data?.timelineDsl);
-      const beforeHash = timelineHash(currentDsl);
-      const beforeReadToken = timelineReadToken({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        timelineHash: beforeHash,
-      });
-      const lock: TimelineLock | null =
-        typeof cmd.expectedTimelineHash === "string"
-          ? createTimelineLockFromHash({
-              projectId: cmd.projectId,
-              nodeId: cmd.nodeId,
-              filePath: typeof cmd.expectedTimelineFilePath === "string" ? cmd.expectedTimelineFilePath : "",
-              timelineHash: cmd.expectedTimelineHash,
-              ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              pulledAt: "",
-            })
-          : null;
-      const cas = assertTimelineCas({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        lock,
-        currentDsl,
-        force: cmd.force === true,
-        ...(typeof cmd.expectedTimelineFilePath === "string" && typeof cmd.filePath === "string"
-          ? { filePath: cmd.filePath, cwd: typeof cmd.cwd === "string" ? cmd.cwd : undefined }
-          : {}),
-      });
-      const readProof = validateAgentReadProof({
-        actorClientType: cmd.actorClientType,
-        operation: "timeline replace",
-        currentReadToken: beforeReadToken,
-        expectedReadToken: lock?.readToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyDaemonTimelineReadReceipt,
-        force: cmd.force === true,
-        readCommandHint:
-          "Run `clash timeline pull --json` first and pass the lock readToken, or pass --force for an explicit overwrite.",
-      });
-      const actor = readTimelineRevisionActor(cmd.actor);
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "canvas copy",
+            observedVersion,
+            currentVersion: currentReadToken,
+          });
       const hostMutation = validateHostMutationEnvelope({
-        operation: "timeline_cow_replace",
-        entity: { kind: "timeline", id: cmd.nodeId },
-        actor,
-        expectedHash: lock?.timelineHash,
-        currentHash: beforeHash,
-        expectedReadToken: lock?.readToken,
-        currentReadToken: beforeReadToken,
-        force: cmd.force === true,
-        guard: cas.ok ? readProof : cas,
+        operation: "canvas_copy_node",
+        entity: { kind: "canvas-node", id: cmd.nodeId },
+        expectedHash: observedVersion,
+        currentHash: observedVersion ? currentReadToken : undefined,
+        expectedReadToken: typeof cmd.ifMatch === "string" ? cmd.ifMatch : undefined,
+        currentReadToken: typeof cmd.ifMatch === "string" ? currentReadToken : undefined,
+        guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
-      const newNodeId = typeof cmd.newNodeId === "string" && cmd.newNodeId.length > 0
-        ? cmd.newNodeId
+
+      const newNodeId = typeof cmd.newNodeId === "string" && cmd.newNodeId.trim()
+        ? cmd.newNodeId.trim()
         : crypto.randomUUID().slice(0, 8);
-      const revisionMetadata = readLoroRevisionMetadata(client.doc);
-      const timelineRevision = typeof cmd.cwd === "string" && typeof cmd.filePath === "string"
-        ? createTimelineAppliedRevision({
-            projectId: cmd.projectId,
-            nodeId: newNodeId,
-            cwd: cmd.cwd,
-            filePath: cmd.filePath,
-            dsl: cmd.dsl,
-            parentRevisionId: typeof cmd.parentRevisionId === "string" ? cmd.parentRevisionId : undefined,
-            actor,
-            ...revisionMetadata,
-          })
-        : undefined;
-      const data = createTimelineCowNodeData({
+      const data: Record<string, unknown> = {
+        ...(node.data as Record<string, unknown>),
+        copyOnWrite: true,
         sourceNodeId: cmd.nodeId,
-        sourceLabel: typeof node.data?.label === "string" ? node.data.label : undefined,
-        sourceDsl: currentDsl,
-        dsl: cmd.dsl,
-        label: typeof cmd.label === "string" ? cmd.label : undefined,
-        filePath: typeof cmd.filePath === "string" ? cmd.filePath : undefined,
-        timelineRevision,
-      });
+      };
+      for (const runtimeField of ["error", "hasRun", "pendingTask", "pendingTaskAt", "progress", "status", "taskId"]) {
+        delete data[runtimeField];
+      }
+
       try {
         client.canvas.createLinkedNode({
           nodeId: newNodeId,
-          nodeType: "video-editor",
+          nodeType: node.type,
           data,
           parentId: node.parent_id ?? null,
           sourceNodeId: cmd.nodeId,
@@ -790,29 +923,30 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         const message = error instanceof Error ? error.message : String(error);
         return { error: message, mutation: hostMutationRejected(hostMutation.envelope, message) };
       }
-      const afterHash = timelineHash(cmd.dsl);
-      const afterReadToken = timelineNodeReceiptReadToken({
-        projectId: cmd.projectId,
-        nodeId: newNodeId,
-        dsl: cmd.dsl,
-      });
+
+      const copiedNode = client.readNode(newNodeId);
+      if (!copiedNode) {
+        const error = `Copied node not found after creation: ${newNodeId}`;
+        return { error, mutation: hostMutationRejected(hostMutation.envelope, error) };
+      }
+      const version = canvasNodeReadToken(copiedNode);
+      const afterReadToken = canvasNodeReceiptReadToken(copiedNode);
       return {
-        replaced: true,
+        copied: true,
         copyOnWrite: true,
         sourceNodeId: cmd.nodeId,
         newNodeId,
         nodeId: newNodeId,
-        sourceTimelineHash: beforeHash,
-        timelineHash: afterHash,
-        timelineRevision,
+        node: copiedNode,
+        immutable: false,
         lineageEdge: { source: cmd.nodeId, target: newNodeId, type: "copy-on-write" },
+        version,
         readToken: afterReadToken,
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: newNodeId,
-          afterHash,
+          afterHash: observedVersion ? version : undefined,
           afterReadToken,
         }),
-        ...(cmd.force === true ? { forced: true } : {}),
       };
     }
 
@@ -832,56 +966,38 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         nodeId: cmd.nodeId,
         contentHash: beforeHash,
       });
-      const lock: TextLock | null =
-        typeof cmd.expectedContentHash === "string"
-          ? createTextLockFromHash({
-              projectId: cmd.projectId,
-              nodeId: cmd.nodeId,
-              filePath: typeof cmd.expectedTextFilePath === "string" ? cmd.expectedTextFilePath : "",
-              contentHash: cmd.expectedContentHash,
-              ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              pulledAt: "",
-            })
-          : null;
-      const cas = assertTextCas({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        lock,
-        currentContent,
-        force: cmd.force === true,
-        ...(typeof cmd.expectedTextFilePath === "string" && typeof cmd.filePath === "string"
-          ? { filePath: cmd.filePath, cwd: typeof cmd.cwd === "string" ? cmd.cwd : undefined }
-          : {}),
-      });
+      const expectedReadToken = typeof cmd.ifMatch === "string"
+        ? cmd.ifMatch
+        : typeof cmd.observedVersion === "string"
+          ? cmd.observedVersion
+          : undefined;
       const readProof = validateAgentReadProof({
         actorClientType: cmd.actorClientType,
         operation: "text apply",
         currentReadToken: beforeReadToken,
-        expectedReadToken: lock?.readToken,
+        expectedReadToken,
         requireReceipt: true,
         readReceiptVerifier: verifyDaemonTextReadReceipt,
-        force: cmd.force === true,
-        readCommandHint:
-          "Run `clash text pull --json` first and pass the lock readToken, or pass --force for an explicit overwrite.",
+        readCommandHint: "Run `clash text pull --json` first, then retry.",
       });
       const hostMutation = validateHostMutationEnvelope({
         operation: "text_cas_update",
         entity: { kind: "text", id: cmd.nodeId },
-        expectedHash: lock?.contentHash,
         currentHash: beforeHash,
-        expectedReadToken: lock?.readToken,
+        expectedReadToken,
         currentReadToken: beforeReadToken,
-        force: cmd.force === true,
-        guard: cas.ok ? readProof : cas,
+        guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
-      const reference = assertTextNotReferenced({
-        nodeId: cmd.nodeId,
-        nodes: client.listNodes(),
-        edges: client.canvas.listEdges(),
-        force: cmd.force === true,
-      });
-      if (!reference.ok) return { error: reference.error, mutation: hostMutationRejected(hostMutation.envelope, reference.error) };
+      if (isCanvasNodeImmutable({ nodeId: cmd.nodeId, edges: client.canvas.listEdges() })) {
+        const error = "IMMUTABLE_NODE";
+        return {
+          code: error,
+          error,
+          entity: { kind: "text", id: cmd.nodeId },
+          mutation: hostMutationRejected(hostMutation.envelope, error),
+        };
+      }
       const ok = client.updateNode(cmd.nodeId, { content: cmd.content });
       if (!ok) return { error: `Node not found: ${cmd.nodeId}` };
       const afterHash = textHash(cmd.content);
@@ -905,13 +1021,17 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         updated: true,
         nodeId: cmd.nodeId,
         textRevision,
+        version: textReadToken({
+          projectId: cmd.projectId,
+          nodeId: cmd.nodeId,
+          content: cmd.content,
+        }),
         readToken: afterReadToken,
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: cmd.nodeId,
           afterHash,
           afterReadToken,
         }),
-        ...(cmd.force === true ? { forced: true } : {}),
       };
     }
 
@@ -932,47 +1052,27 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         nodeId: cmd.nodeId,
         contentHash: beforeHash,
       });
-      const lock: TextLock | null =
-        typeof cmd.expectedContentHash === "string"
-          ? createTextLockFromHash({
-              projectId: cmd.projectId,
-              nodeId: cmd.nodeId,
-              filePath: typeof cmd.expectedTextFilePath === "string" ? cmd.expectedTextFilePath : "",
-              contentHash: cmd.expectedContentHash,
-              ...(typeof cmd.expectedReadToken === "string" ? { readToken: cmd.expectedReadToken } : {}),
-              pulledAt: "",
-            })
-          : null;
-      const cas = assertTextCas({
-        projectId: cmd.projectId,
-        nodeId: cmd.nodeId,
-        lock,
-        currentContent,
-        force: cmd.force === true,
-        ...(typeof cmd.expectedTextFilePath === "string" && typeof cmd.filePath === "string"
-          ? { filePath: cmd.filePath, cwd: typeof cmd.cwd === "string" ? cmd.cwd : undefined }
-          : {}),
-      });
+      const expectedReadToken = typeof cmd.ifMatch === "string"
+        ? cmd.ifMatch
+        : typeof cmd.observedVersion === "string"
+          ? cmd.observedVersion
+          : undefined;
       const readProof = validateAgentReadProof({
         actorClientType: cmd.actorClientType,
         operation: "text replace",
         currentReadToken: beforeReadToken,
-        expectedReadToken: lock?.readToken,
+        expectedReadToken,
         requireReceipt: true,
         readReceiptVerifier: verifyDaemonTextReadReceipt,
-        force: cmd.force === true,
-        readCommandHint:
-          "Run `clash text pull --json` first and pass the lock readToken, or pass --force for an explicit overwrite.",
+        readCommandHint: "Run `clash text pull --json` first, then retry.",
       });
       const hostMutation = validateHostMutationEnvelope({
         operation: "text_cow_replace",
         entity: { kind: "text", id: cmd.nodeId },
-        expectedHash: lock?.contentHash,
         currentHash: beforeHash,
-        expectedReadToken: lock?.readToken,
+        expectedReadToken,
         currentReadToken: beforeReadToken,
-        force: cmd.force === true,
-        guard: cas.ok ? readProof : cas,
+        guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
       const newNodeId = typeof cmd.newNodeId === "string" && cmd.newNodeId.length > 0
@@ -1028,13 +1128,17 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         contentHash: afterHash,
         textRevision,
         lineageEdge: { source: cmd.nodeId, target: newNodeId, type: "copy-on-write" },
+        version: textReadToken({
+          projectId: cmd.projectId,
+          nodeId: newNodeId,
+          content: cmd.content,
+        }),
         readToken: afterReadToken,
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: newNodeId,
           afterHash,
           afterReadToken,
         }),
-        ...(cmd.force === true ? { forced: true } : {}),
       };
     }
 
@@ -1042,21 +1146,29 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       const node = client.readNode(cmd.nodeId);
       if (!node) return { error: `Node not found: ${cmd.nodeId}` };
       const currentReadToken = canvasNodeReadToken(node);
-      const readProof = validateCanvasReadProof({
-        operation: "delete",
-        actorClientType: cmd.actorClientType,
-        node,
-        expectedReadToken: cmd.ifMatch,
-        requireReceipt: true,
-        readReceiptVerifier: verifyDaemonCanvasReadReceipt,
-        force: cmd.force === true,
-      });
+      const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : undefined;
+      const readProof = typeof cmd.ifMatch === "string"
+        ? validateCanvasReadProof({
+            operation: "delete",
+            actorClientType: cmd.actorClientType,
+            node,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonCanvasReadReceipt,
+          })
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "canvas delete",
+            observedVersion,
+            currentVersion: currentReadToken,
+          });
       const hostMutation = validateHostMutationEnvelope({
         operation: "canvas_delete",
         entity: { kind: "canvas-node", id: cmd.nodeId },
+        expectedHash: observedVersion,
+        currentHash: observedVersion ? currentReadToken : undefined,
         expectedReadToken: typeof cmd.ifMatch === "string" ? cmd.ifMatch : undefined,
-        currentReadToken,
-        force: cmd.force === true,
+        currentReadToken: typeof cmd.ifMatch === "string" ? currentReadToken : undefined,
         guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
@@ -1064,10 +1176,8 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       const deleteGuard = validateCanvasDelete({
         nodeId: cmd.nodeId,
         edges,
-        force: cmd.force === true,
       });
       if (!deleteGuard.ok) return { error: deleteGuard.error, mutation: hostMutationRejected(hostMutation.envelope, deleteGuard.error) };
-      const orphanedReferences = canvasDownstreamTargets(cmd.nodeId, edges);
       const ok = client.deleteNode(cmd.nodeId);
       if (!ok) return { error: `Node not found: ${cmd.nodeId}` };
       return {
@@ -1076,7 +1186,6 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: cmd.nodeId,
         }),
-        ...(cmd.force === true ? { forced: true, orphanedReferences } : {}),
       };
     }
 
@@ -1088,21 +1197,29 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         nodes: plan.nodes,
         edges: plan.edges,
       });
-      const readProof = validateCanvasBatchDeleteReadProof({
-        actorClientType: cmd.actorClientType,
-        nodes: plan.nodes,
-        edges: plan.edges,
-        expectedReadToken: cmd.ifMatch,
-        requireReceipt: true,
-        readReceiptVerifier: verifyDaemonCanvasBatchDeleteReadReceipt,
-        force: cmd.force === true,
-      });
+      const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : undefined;
+      const readProof = typeof cmd.ifMatch === "string"
+        ? validateCanvasBatchDeleteReadProof({
+            actorClientType: cmd.actorClientType,
+            nodes: plan.nodes,
+            edges: plan.edges,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonCanvasBatchDeleteReadReceipt,
+          })
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "canvas batch delete",
+            observedVersion,
+            currentVersion: currentReadToken,
+          });
       const hostMutation = validateHostMutationEnvelope({
         operation: "canvas_batch_delete",
         entity: { kind: "canvas-node-batch", id: batchId },
+        expectedHash: observedVersion,
+        currentHash: observedVersion ? currentReadToken : undefined,
         expectedReadToken: typeof cmd.ifMatch === "string" ? cmd.ifMatch : undefined,
-        currentReadToken,
-        force: cmd.force === true,
+        currentReadToken: typeof cmd.ifMatch === "string" ? currentReadToken : undefined,
         guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
@@ -1110,10 +1227,8 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
       const deleteGuard = validateCanvasBatchDelete({
         nodeIds: plan.nodeIds,
         edges: guardrailEdges,
-        force: cmd.force === true,
       });
       if (!deleteGuard.ok) return { error: deleteGuard.error, mutation: hostMutationRejected(hostMutation.envelope, deleteGuard.error) };
-      const orphanedReferences = plan.nodeIds.flatMap((nodeId) => canvasDownstreamTargets(nodeId, guardrailEdges));
       const result = client.deleteNodes(plan.nodeIds);
       if (result.deletedNodeIds.length === 0) return { error: `Node(s) not found: ${plan.nodeIds.join(", ")}` };
       return {
@@ -1124,7 +1239,6 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: batchId,
         }),
-        ...(cmd.force === true ? { forced: true, orphanedReferences } : {}),
       };
     }
 
@@ -1138,21 +1252,29 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         return { error: "asset_cow_replace requires assetId" };
       }
       const currentReadToken = canvasNodeReadToken(node);
-      const readProof = validateCanvasReadProof({
-        operation: "update",
-        actorClientType: cmd.actorClientType,
-        node,
-        expectedReadToken: cmd.ifMatch,
-        requireReceipt: true,
-        readReceiptVerifier: verifyDaemonCanvasReadReceipt,
-        force: cmd.force === true,
-      });
+      const observedVersion = typeof cmd.observedVersion === "string" ? cmd.observedVersion : undefined;
+      const readProof = typeof cmd.ifMatch === "string"
+        ? validateCanvasReadProof({
+            operation: "update",
+            actorClientType: cmd.actorClientType,
+            node,
+            expectedReadToken: cmd.ifMatch,
+            requireReceipt: true,
+            readReceiptVerifier: verifyDaemonCanvasReadReceipt,
+          })
+        : validateAgentObservation({
+            actorClientType: cmd.actorClientType,
+            operation: "canvas copy",
+            observedVersion,
+            currentVersion: currentReadToken,
+          });
       const hostMutation = validateHostMutationEnvelope({
         operation: "asset_cow_replace",
         entity: { kind: "media-node", id: cmd.nodeId },
+        expectedHash: observedVersion,
+        currentHash: observedVersion ? currentReadToken : undefined,
         expectedReadToken: typeof cmd.ifMatch === "string" ? cmd.ifMatch : undefined,
-        currentReadToken,
-        force: cmd.force === true,
+        currentReadToken: typeof cmd.ifMatch === "string" ? currentReadToken : undefined,
         guard: readProof,
       });
       if (!hostMutation.ok) return { error: hostMutation.error, mutation: hostMutation.mutation };
@@ -1182,6 +1304,7 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         return { error: message, mutation: hostMutationRejected(hostMutation.envelope, message) };
       }
       const newNode = client.readNode(newNodeId);
+      const version = newNode ? canvasNodeReadToken(newNode) : undefined;
       const afterReadToken = newNode ? canvasNodeReceiptReadToken(newNode) : undefined;
       return {
         replaced: true,
@@ -1192,12 +1315,13 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         sourceAssetId,
         assetId: cmd.assetId.trim(),
         lineageEdge: { source: cmd.nodeId, target: newNodeId, type: "copy-on-write" },
+        ...(version ? { version } : {}),
         ...(afterReadToken ? { readToken: afterReadToken } : {}),
         mutation: hostMutationSucceeded(hostMutation.envelope, {
           resultEntityId: newNodeId,
+          afterHash: observedVersion ? version : undefined,
           afterReadToken,
         }),
-        ...(cmd.force === true ? { forced: true } : {}),
       };
     }
 
@@ -1208,8 +1332,7 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
     }
 
     case "execute": {
-      const canvas = new Canvas(client.doc, () => {});
-      const r = canvas.execute(cmd.nodeId, () => crypto.randomUUID().slice(0, 8));
+      const r = client.canvas.execute(cmd.nodeId, () => crypto.randomUUID().slice(0, 8));
       if (r.error) return { error: r.error };
       // Echo `kind` so the CLI can pick the right log line. Both
       // pipelines also fill `childNodeId` so the agent can poll the
@@ -1254,22 +1377,6 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
     default:
       return { error: `Unknown action: ${action}` };
   }
-}
-
-function readTimelineRevisionActor(value: unknown): TimelineRevisionActor | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const actor = value as Partial<TimelineRevisionActor>;
-  if (
-    (actor.actorType !== "user" && actor.actorType !== "agent") ||
-    typeof actor.actorUserId !== "string"
-  ) {
-    return undefined;
-  }
-  return {
-    actorType: actor.actorType,
-    actorUserId: actor.actorUserId,
-    ...(typeof actor.actorAgentId === "string" ? { actorAgentId: actor.actorAgentId } : {}),
-  };
 }
 
 function readTextRevisionActor(value: unknown): TextRevisionActor | undefined {

@@ -6,9 +6,12 @@ import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rename, sta
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   buildProjectRecoveryPolicy,
+  PROJECT_TIMELINE_APPLY_COMMAND,
+  PROJECT_TIMELINE_FILE_PATTERN,
+  PROJECT_TIMELINE_PUBLIC_COMMANDS,
+  PROJECT_TIMELINE_PULL_COMMAND,
   type ProjectRecoveryPolicy,
 } from "@clash/shared-runtime";
-import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { isJsonMode, printJson } from "../lib/output";
 import {
   resolveProjectStatus,
@@ -238,17 +241,16 @@ export async function runStorageDoctor(options: {
     });
   }
   checks.push(await inspectTextRevisionBlobIntegrity(status));
-  checks.push(await inspectTimelineRevisionBlobIntegrity(status));
   checks.push(await inspectSecondaryCanvasReplica(status, cwd));
   checks.push(await inspectSecondaryCanvasRecovery(status));
 
   await pushPathCheck(checks, {
     id: "project-workspace",
-    path: status.projectWorkspaceRoot,
+    path: status.storage.workspace.root,
     kind: "directory",
     missingLevel: "warning",
-    existsMessage: "Project workspace root exists.",
-    missingMessage: "Project workspace root does not exist yet.",
+    existsMessage: "Current project reference and draft workspace exists.",
+    missingMessage: "Current project reference and draft workspace does not exist yet.",
   });
 
   await pushPathCheck(checks, {
@@ -355,8 +357,9 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     if (storage.workspace.role !== "agent-draft-and-projection-workspace") {
       problems.push("workspace role is not agent-draft-and-projection-workspace");
     }
-    if (storage.workspace.root !== status.projectWorkspaceRoot) {
-      problems.push("workspace root does not match projectWorkspaceRoot");
+    const expectedWorkspaceRoot = status.currentWorkspace.markerRoot ?? status.projectWorkspaceRoot;
+    if (storage.workspace.root !== expectedWorkspaceRoot) {
+      problems.push("workspace root does not match the current marker workspace");
     }
     if (storage.workspace.ownsCanonicalSnapshot !== false) {
       problems.push("workspace owns canonical snapshot");
@@ -380,8 +383,9 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
       expectedKind: "agent-editable-view-files",
       expectedPath: status.roots.timelines,
       expectedPathDescription: "timelines",
-      defaultFile: "main.timeline.yaml",
-      applyCommand: "clash timeline apply",
+      defaultFilePattern: PROJECT_TIMELINE_FILE_PATTERN,
+      pullCommand: PROJECT_TIMELINE_PULL_COMMAND,
+      applyCommand: PROJECT_TIMELINE_APPLY_COMMAND,
     });
     validateViewFilesContract(problems, status, {
       label: "timeline projection files",
@@ -389,7 +393,8 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
       expectedKind: "agent-editable-projection-files",
       expectedPath: join(status.roots.projections, "timelines"),
       expectedPathDescription: "projections/timelines",
-      applyCommand: "clash timeline apply",
+      defaultFilePattern: PROJECT_TIMELINE_FILE_PATTERN,
+      applyCommand: PROJECT_TIMELINE_APPLY_COMMAND,
     });
     if (storage.canonicalReplica.role !== "single-machine-project-replica") {
       problems.push("canonical replica role is not single-machine-project-replica");
@@ -410,17 +415,17 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
       problems,
       storage.canonicalReplica.metadata.localConfig,
     );
-    if (storage.canonicalReplica.canvas.agentWritable !== false) {
-      problems.push("canonical canvas replica is agent-writable");
+    if (storage.canonicalReplica.projectState.agentWritable !== false) {
+      problems.push("canonical Project state replica is agent-writable");
     }
-    if (storage.canonicalReplica.canvas.replicaRoot !== status.loro.replicaRoot) {
-      problems.push("canonical canvas replica root does not match loro.replicaRoot");
+    if (storage.canonicalReplica.projectState.replicaRoot !== status.loro.replicaRoot) {
+      problems.push("canonical Project state replica root does not match loro.replicaRoot");
     }
-    if (storage.canonicalReplica.canvas.snapshotPath !== status.loro.snapshotPath) {
-      problems.push("canonical canvas snapshot path does not match loro.snapshotPath");
+    if (storage.canonicalReplica.projectState.snapshotPath !== status.loro.snapshotPath) {
+      problems.push("canonical Project state snapshot path does not match loro.snapshotPath");
     }
-    if (storage.canonicalReplica.canvas.updatesLogPath !== status.loro.updatesLogPath) {
-      problems.push("canonical canvas updates log path does not match loro.updatesLogPath");
+    if (storage.canonicalReplica.projectState.updatesLogPath !== status.loro.updatesLogPath) {
+      problems.push("canonical Project state updates log path does not match loro.updatesLogPath");
     }
     const mediaAssets = storage.canonicalReplica.mediaAssets;
     if (!mediaAssets) {
@@ -456,18 +461,12 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
         path: join(status.localApiDataDir, "text-revision-blobs"),
         mediaType: "text/markdown",
       },
-      {
-        label: "timeline revision",
-        store: contentBlobs?.timelineRevisions,
-        path: join(status.localApiDataDir, "timeline-revision-blobs"),
-        mediaType: "application/yaml",
-      },
     ];
     const canonicalPaths = [
       { path: storage.canonicalReplica.metadata.path, role: "metadata" },
-      { path: storage.canonicalReplica.canvas.replicaRoot, role: "canvas" },
-      { path: storage.canonicalReplica.canvas.snapshotPath, role: "canvas" },
-      { path: storage.canonicalReplica.canvas.updatesLogPath, role: "canvas" },
+      { path: storage.canonicalReplica.projectState.replicaRoot, role: "project-state" },
+      { path: storage.canonicalReplica.projectState.snapshotPath, role: "project-state" },
+      { path: storage.canonicalReplica.projectState.updatesLogPath, role: "project-state" },
       ...(mediaAssets ? [{ path: mediaAssets.path, role: "media" }] : []),
     ];
     for (const expected of expectedContentBlobs) {
@@ -630,11 +629,11 @@ function validateContentModelContract(
     problems.push("missing content model contract");
     return;
   }
-  if (contentModel.role !== "agent-projections-with-host-indexed-revision-content") {
-    problems.push("content model role is not agent-projections-with-host-indexed-revision-content");
+  if (contentModel.role !== "agent-projections-over-host-owned-canonical-state") {
+    problems.push("content model role is not agent-projections-over-host-owned-canonical-state");
   }
 
-  validateContentModelEntry(problems, status, {
+  validateTextContentModelEntry(problems, status, {
     label: "text",
     entry: contentModel.textNodes,
     liveState: "loro-canvas-text-node-data",
@@ -650,30 +649,15 @@ function validateContentModelContract(
     registryBlobStore: "storage.canonicalReplica.contentBlobs.textRevisions",
     mediaBlobPath: storage.canonicalReplica.mediaAssets?.path,
   });
-  validateContentModelEntry(problems, status, {
-    label: "timeline",
-    entry: contentModel.timelines,
-    liveState: "loro-canvas-video-editor-node-data",
-    editableProjection: "storage.workspace.viewFiles.timelines",
-    projectionPath: storage.workspace.viewFiles?.timelines?.path,
-    applyCommand: "clash timeline apply",
-    replaceCommand: "clash timeline replace",
-    restoreCommand: "clash timeline restore",
-    historyCommand: "clash timeline history",
-    contentCommand: "clash timeline content",
-    revisionRegistry: "timeline_revisions",
-    revisionBlobPath: storage.canonicalReplica.contentBlobs?.timelineRevisions?.path,
-    registryBlobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
-    mediaBlobPath: storage.canonicalReplica.mediaAssets?.path,
-  });
+  validateTimelineContentModelEntry(problems, status, storage);
 }
 
-function validateContentModelEntry(
+function validateTextContentModelEntry(
   problems: string[],
   status: ProjectStatus,
   expected: {
-    label: "text" | "timeline";
-    entry: ProjectStatus["storage"]["contentModel"]["textNodes"] | ProjectStatus["storage"]["contentModel"]["timelines"] | undefined;
+    label: "text";
+    entry: ProjectStatus["storage"]["contentModel"]["textNodes"] | undefined;
     liveState: string;
     editableProjection: string;
     projectionPath?: string;
@@ -766,6 +750,83 @@ function validateContentModelEntry(
   }
 }
 
+function validateTimelineContentModelEntry(
+  problems: string[],
+  status: ProjectStatus,
+  storage: ProjectStatus["storage"],
+): void {
+  const entry = storage.contentModel?.timelines;
+  if (!entry) {
+    problems.push("missing timeline content model");
+    return;
+  }
+  if (entry.liveState !== "loro-project-timeline-entity") {
+    problems.push("timeline content model live state is wrong");
+  }
+  if (entry.timelineIdentity !== "timeline-id") {
+    problems.push("timeline content model identity is wrong");
+  }
+  if (entry.editableProjection !== "storage.workspace.viewFiles.timelines") {
+    problems.push("timeline content model editable projection is wrong");
+  }
+  const projectionPath = storage.workspace.viewFiles?.timelines?.path;
+  if (!projectionPath || entry.projectionPath !== projectionPath) {
+    problems.push("timeline content model projection path is wrong");
+  }
+  if (entry.projectionFilePattern !== PROJECT_TIMELINE_FILE_PATTERN) {
+    problems.push("timeline content model projection file pattern is wrong");
+  }
+  if (entry.pullCommand !== PROJECT_TIMELINE_PULL_COMMAND) {
+    problems.push("timeline content model pull command is wrong");
+  }
+  if (entry.applyCommand !== PROJECT_TIMELINE_APPLY_COMMAND) {
+    problems.push("timeline content model apply command is wrong");
+  }
+  if (
+    !Array.isArray(entry.publicCommands) ||
+    entry.publicCommands.length !== PROJECT_TIMELINE_PUBLIC_COMMANDS.length ||
+    entry.publicCommands.some((command, index) => command !== PROJECT_TIMELINE_PUBLIC_COMMANDS[index])
+  ) {
+    problems.push("timeline content model public commands are wrong");
+  }
+  const rawEntry = entry as unknown as Record<string, unknown>;
+  for (const removedField of [
+    "replaceCommand",
+    "restoreCommand",
+    "historyCommand",
+    "contentCommand",
+    "revisionRegistry",
+    "revisionBlobPath",
+    "contentRegistry",
+    "mediaAsset",
+  ]) {
+    if (removedField in rawEntry) {
+      problems.push(`timeline content model exposes removed ${removedField}`);
+    }
+  }
+  if (entry.casRequired !== true) {
+    problems.push("timeline content model does not require CAS");
+  }
+  if (entry.copyOnWriteWhenReferenced !== false) {
+    problems.push("timeline content model incorrectly requires copy-on-write for references");
+  }
+  if (entry.downstreamRendersPinRevision !== true) {
+    problems.push("timeline content model does not pin downstream renders to revisions");
+  }
+  if (entry.revisionAuthority !== "loro-project-history") {
+    problems.push("timeline content model revision authority is wrong");
+  }
+  if (entry.revisionIdentity !== "state-hash") {
+    problems.push("timeline content model revision identity is wrong");
+  }
+  if (entry.agentWritableCanonicalState !== false) {
+    problems.push("timeline content model marks canonical state agent-writable");
+  }
+  if (!status.editablePaths.some((editablePath) => isSameOrInside(entry.projectionPath, editablePath))) {
+    problems.push(`timeline content model projection path is not agent-editable: ${entry.projectionPath}`);
+  }
+}
+
 function validateWorkspacePathDeclarations(
   problems: string[],
   status: ProjectStatus,
@@ -775,7 +836,7 @@ function validateWorkspacePathDeclarations(
   const expectedEditablePaths = status.editablePaths;
   const workspaceProtectedPaths = workspace.protectedPaths;
   const expectedWorkspaceProtectedPaths = status.protectedPaths.filter((path) =>
-    isSameOrInside(path, status.projectWorkspaceRoot),
+    isSameOrInside(path, workspace.root),
   );
 
   for (const expected of expectedEditablePaths) {
@@ -787,7 +848,7 @@ function validateWorkspacePathDeclarations(
     if (!expectedEditablePaths.includes(editable)) {
       problems.push(`workspace editable paths include undeclared agent path: ${editable}`);
     }
-    if (!isSameOrInside(editable, status.projectWorkspaceRoot)) {
+    if (!isSameOrInside(editable, workspace.root)) {
       problems.push(`workspace editable path is outside project workspace: ${editable}`);
     }
   }
@@ -801,7 +862,7 @@ function validateWorkspacePathDeclarations(
     if (!expectedWorkspaceProtectedPaths.includes(protectedPath)) {
       problems.push(`workspace protected paths include undeclared workspace path: ${protectedPath}`);
     }
-    if (!isSameOrInside(protectedPath, status.projectWorkspaceRoot)) {
+    if (!isSameOrInside(protectedPath, workspace.root)) {
       problems.push(`workspace protected path is outside project workspace: ${protectedPath}`);
     }
   }
@@ -817,6 +878,7 @@ function validateViewFilesContract(
       path?: unknown;
       defaultFile?: unknown;
       defaultFilePattern?: unknown;
+      pullCommand?: unknown;
       applyCommand?: unknown;
       casRequired?: unknown;
       ownsCanonicalState?: unknown;
@@ -826,6 +888,7 @@ function validateViewFilesContract(
     expectedPathDescription: string;
     defaultFile?: string;
     defaultFilePattern?: string;
+    pullCommand?: string;
     applyCommand: string;
   },
 ): void {
@@ -845,6 +908,9 @@ function validateViewFilesContract(
   }
   if (options.defaultFilePattern !== undefined && contract.defaultFilePattern !== options.defaultFilePattern) {
     problems.push(`${options.label} default pattern is wrong`);
+  }
+  if (options.pullCommand !== undefined && contract.pullCommand !== options.pullCommand) {
+    problems.push(`${options.label} pull command is wrong`);
   }
   if (contract.applyCommand !== options.applyCommand) {
     problems.push(`${options.label} apply command is wrong`);
@@ -960,40 +1026,13 @@ function textRevisionBlobIntegrityOptions(status: ProjectStatus): RevisionBlobIn
   };
 }
 
-function timelineRevisionBlobIntegrityOptions(status: ProjectStatus): RevisionBlobIntegrityOptions {
-  return {
-    id: "timeline-revision-blob-integrity",
-    label: "Timeline revision content blobs",
-    root: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
-    extension: ".timeline.yaml",
-    expectedHashFromName(fileName) {
-      const match = /^([a-f0-9]{16})\.timeline\.yaml$/.exec(fileName);
-      return match?.[1] ?? null;
-    },
-    async contentHash(content) {
-      const parsed = timelineDslFromYaml(content);
-      if (!parsed.ok) {
-        throw new Error(`invalid timeline YAML: ${parsed.error}`);
-      }
-      return timelineDslHash(parsed.dsl);
-    },
-  };
-}
-
 async function inspectTextRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
   return inspectRevisionBlobIntegrity(textRevisionBlobIntegrityOptions(status));
 }
 
-async function inspectTimelineRevisionBlobIntegrity(status: ProjectStatus): Promise<StorageDoctorCheck> {
-  return inspectRevisionBlobIntegrity(timelineRevisionBlobIntegrityOptions(status));
-}
-
 async function repairRevisionBlobPermissions(status: ProjectStatus): Promise<StorageDoctorRepair[]> {
   const repairs: StorageDoctorRepair[] = [];
-  for (const options of [
-    textRevisionBlobIntegrityOptions(status),
-    timelineRevisionBlobIntegrityOptions(status),
-  ]) {
+  for (const options of [textRevisionBlobIntegrityOptions(status)]) {
     repairs.push(...await repairRevisionBlobPermissionsFor(options));
   }
   return repairs;
@@ -1928,7 +1967,7 @@ async function inspectAssetLinksRoot(assetLinksRoot: string): Promise<StorageDoc
 
 async function repairProjectWorkspace(status: ProjectStatus): Promise<StorageDoctorRepair[]> {
   const paths = [
-    { id: "project-workspace", path: status.projectWorkspaceRoot, message: "Created project workspace root." },
+    { id: "project-workspace", path: status.storage.workspace.root, message: "Created current project reference and draft workspace." },
     { id: "editable-drafts-root", path: status.roots.drafts, message: "Created editable drafts root." },
     { id: "editable-projections-root", path: status.roots.projections, message: "Created editable projections root." },
     { id: "editable-timelines-root", path: status.roots.timelines, message: "Created editable timeline view root." },
@@ -1992,24 +2031,6 @@ async function repairLocalSqliteSchema(sqlitePath: string): Promise<StorageDocto
       CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
 
-      CREATE TABLE IF NOT EXISTS timeline_revisions (
-        revision_id TEXT PRIMARY KEY NOT NULL,
-        timeline_id TEXT NOT NULL,
-        parent_revision_id TEXT,
-        project_id TEXT NOT NULL,
-        node_id TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        timeline_hash TEXT NOT NULL,
-        hash_algorithm TEXT NOT NULL,
-        source_file_path TEXT NOT NULL,
-        source_file_hash TEXT NOT NULL,
-        actor_json TEXT,
-        loro_frontiers_json TEXT,
-        loro_version_vector_json TEXT,
-        dependencies_json TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
     `);
     try {
       db.exec("ALTER TABLE asset_node_refs ADD COLUMN reference_role TEXT NOT NULL DEFAULT 'asset'");
@@ -2129,7 +2150,6 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
       entity_kind TEXT NOT NULL,
       entity_id TEXT NOT NULL,
       actor_client_type TEXT,
-      forced INTEGER NOT NULL,
       accepted INTEGER NOT NULL,
       reason TEXT,
       result_entity_id TEXT,
@@ -2233,7 +2253,6 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
     "entity_kind TEXT NOT NULL DEFAULT ''",
     "entity_id TEXT NOT NULL DEFAULT ''",
     "actor_client_type TEXT",
-    "forced INTEGER NOT NULL DEFAULT 0",
     "accepted INTEGER NOT NULL DEFAULT 0",
     "reason TEXT",
     "result_entity_id TEXT",
@@ -2242,6 +2261,7 @@ function ensureLocalSqliteCoreMetadataSchema(db: SqliteDatabase): void {
   ]) {
     ensureSqliteColumn(db, "mutation_audit", column);
   }
+  dropSqliteColumnIfPresent(db, "mutation_audit", "forced");
   db.exec(`
     CREATE INDEX IF NOT EXISTS project_owner_idx ON project(owner_id, updated_at);
     CREATE INDEX IF NOT EXISTS assets_user_idx ON assets(user_id, created_at);
@@ -2263,6 +2283,12 @@ function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition:
   } catch {
     // Column already exists, or the existing table is too incompatible for safe repair.
   }
+}
+
+function dropSqliteColumnIfPresent(db: SqliteDatabase, table: string, column: string): void {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all()
+    .some((row) => String(row.name ?? "") === column);
+  if (exists) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
 }
 
 function sqlitePrimaryKeyColumns(db: SqliteDatabase, table: string): string[] {
@@ -2644,26 +2670,6 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
       indexes: ["text_revisions_project_node_idx", "text_revisions_text_idx"],
     });
     inspectSqliteTableSchema(db, problems, {
-      table: "timeline_revisions",
-      columns: [
-        "revision_id",
-        "timeline_id",
-        "parent_revision_id",
-        "project_id",
-        "node_id",
-        "created_at",
-        "timeline_hash",
-        "hash_algorithm",
-        "source_file_path",
-        "source_file_hash",
-        "actor_json",
-        "loro_frontiers_json",
-        "loro_version_vector_json",
-        "dependencies_json",
-      ],
-      indexes: ["timeline_revisions_project_node_idx", "timeline_revisions_timeline_idx"],
-    });
-    inspectSqliteTableSchema(db, problems, {
       table: "runtime_session",
       columns: [
         "id",
@@ -2700,7 +2706,6 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
         "entity_kind",
         "entity_id",
         "actor_client_type",
-        "forced",
         "accepted",
         "reason",
         "result_entity_id",
@@ -2780,7 +2785,7 @@ async function inspectLocalSqliteSchema(sqlitePath: string): Promise<StorageDoct
       : {
           id: "local-sqlite-schema",
           level: "ok",
-          message: "Local SQLite schema supports core metadata, provider auth, asset reference indexing, and text/timeline revision indexing.",
+          message: "Local SQLite schema supports core metadata, provider auth, asset reference indexing, and text revision indexing.",
           path: sqlitePath,
         };
   } catch (error) {

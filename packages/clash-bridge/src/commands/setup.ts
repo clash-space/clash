@@ -82,7 +82,7 @@ interface SetupOpts {
   /** When true, skip launchd install (useful for dev / non-macOS). */
   noService?: boolean;
   /** Force a fresh OAuth even if credentials.json already exists. */
-  force?: boolean;
+  reauthorize?: boolean;
 }
 
 
@@ -102,7 +102,7 @@ export async function runSetup(opts: SetupOpts): Promise<void> {
 async function runSetupInner(opts: SetupOpts): Promise<void> {
   printBanner(`setup — register this machine with ${opts.serverUrl}`, PKG_VERSION);
 
-  // Fast path: if creds already exist (and the user didn't pass --force),
+  // Fast path: if credentials already exist and reauthorization was not requested,
   // probe the server first. This catches the "I deleted the runtime in the
   // console and re-ran setup" recovery flow — without the probe we'd happily
   // refresh the launchd plist and restart the daemon with a token the server
@@ -111,11 +111,11 @@ async function runSetupInner(opts: SetupOpts): Promise<void> {
   // Three probe outcomes:
   //   - ok          → original fast path (refresh service / exec daemon, exit)
   //   - invalid     → server forgot us; fall through to OAuth dance, same as
-  //                   if --force was passed. The stale creds get overwritten
+  //                   if --reauthorize was passed. The stale credentials get overwritten
   //                   below by writeCreds().
   //   - unreachable → can't tell; refresh service anyway (offline tolerance)
   //                   and warn that we couldn't verify.
-  if (!opts.force) {
+  if (!opts.reauthorize) {
     const existing = await readCreds();
     if (existing) {
       log.ok(`existing credentials found  ${c.dim(paths().credsFile)}`);
@@ -129,7 +129,7 @@ async function runSetupInner(opts: SetupOpts): Promise<void> {
         if (!probe.ok) {
           log.warn(`could not verify with server (${probe.detail}) — proceeding anyway`);
         } else {
-          log.hint(`runtime ${existing.runtimeId.slice(0, 8)}… (use --force to re-register)`);
+          log.hint(`runtime ${existing.runtimeId.slice(0, 8)}… (use --reauthorize to register again)`);
         }
         if (!opts.noService && currentPlatform() === "darwin") {
           await installLaunchd({ binaryPath: resolveDaemonBinary() });

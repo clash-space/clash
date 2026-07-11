@@ -44,7 +44,7 @@ export async function runHostStatus(options: {
     stdout(`Protocol: ${output.protocolVersion}`);
   } else {
     stdout("Host: inactive");
-    stdout("Open Desktop or run `clash host start`.");
+    stdout("Open Clash Desktop or start the local-api host.");
   }
 
   return output;

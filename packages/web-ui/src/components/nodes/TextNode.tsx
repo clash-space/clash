@@ -29,7 +29,6 @@ const TextNode = ({
   const revisionHistory = useRevisionHistory({
     projectId: loroSync?.projectId ?? null,
     nodeId: id,
-    kind: "text",
     limit: 5,
   });
 
@@ -156,7 +155,6 @@ const TextNode = ({
           }`}
         >
           <RevisionHistoryBadge
-            kind="text"
             nodeId={id}
             history={revisionHistory}
             className="absolute right-3 top-3 z-20"

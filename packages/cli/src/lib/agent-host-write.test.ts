@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { assertAgentHostWritePath } from "./agent-host-write";
 
-test("agent host write guard rejects no-host writes unless forced", () => {
+test("agent host write guard always rejects no-host writes", () => {
   const rejected = assertAgentHostWritePath({
     actorClientType: "agent",
     operation: "timeline apply",
@@ -11,21 +11,13 @@ test("agent host write guard rejects no-host writes unless forced", () => {
 
   assert.equal(rejected.ok, false);
   if (!rejected.ok) {
-    assert.match(rejected.error, /host-verified read receipt/);
+    assert.match(rejected.error, /local host.*cwd observation/);
     assert.match(rejected.error, /clash canvas connect/);
     assert.match(rejected.error, /clash timeline pull --json/);
-    assert.match(rejected.error, /--force/);
+    assert.doesNotMatch(rejected.error, /readToken|with that token/i);
+    assert.doesNotMatch(rejected.error, /--force/);
   }
 
-  assert.deepEqual(
-    assertAgentHostWritePath({
-      actorClientType: "agent",
-      operation: "timeline apply",
-      readCommand: "clash timeline pull --json",
-      force: true,
-    }),
-    { ok: true },
-  );
   assert.deepEqual(
     assertAgentHostWritePath({
       actorClientType: "cli",

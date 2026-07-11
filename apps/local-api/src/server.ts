@@ -79,15 +79,13 @@ export function createLocalAgentToolEnv({
   const binDir = join(dataDir, "agent-bin");
   mkdirSync(binDir, { recursive: true });
 
-  const apiKey = env.CLASH_API_KEY ?? "clsh_local_desktop";
-  const apiUrl = env.CLASH_API_URL ?? apiBaseUrl;
+  const apiUrl = apiBaseUrl;
   const cliEntry = resolveClashCliEntry(env);
   const shim = join(binDir, "clash");
   writeFileSync(
     shim,
     [
       "#!/bin/sh",
-      `export CLASH_API_KEY=${shellQuote(apiKey)}`,
       `export CLASH_API_URL=${shellQuote(apiUrl)}`,
       "export ELECTRON_RUN_AS_NODE=1",
       `if [ -n "$CLASH_CLI_NODE_PATH" ]; then`,
@@ -107,7 +105,6 @@ export function createLocalAgentToolEnv({
   chmodSync(shim, 0o755);
 
   return {
-    CLASH_API_KEY: apiKey,
     CLASH_API_URL: apiUrl,
     ...(env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {}),
     ...(env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {}),

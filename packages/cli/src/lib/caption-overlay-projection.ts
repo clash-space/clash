@@ -19,7 +19,6 @@ export type ProjectCaptionOverlayResult = {
   projected: true;
   sourceTimelinePath: string;
   timelineProjectionPath: string;
-  timelineLockPath: string;
   manifestPath: string;
   captionItems: number;
   cues: number;
@@ -53,7 +52,7 @@ export async function projectCaptionOverlayTimeline(
     throw new Error("Caption overlay projection requires structured timeline items with type: caption");
   }
 
-  const { casApply, lockPath: timelineLockPath } = timelineProjectionCasApply({
+  const { casApply } = timelineProjectionCasApply({
     cwd,
     filePath: timelineProjectionPath,
   });
@@ -89,7 +88,6 @@ export async function projectCaptionOverlayTimeline(
     projected: true,
     sourceTimelinePath,
     timelineProjectionPath,
-    timelineLockPath,
     manifestPath,
     captionItems: projection.stats.captionItems,
     cues: projection.stats.cues,

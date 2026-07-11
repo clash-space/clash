@@ -45,10 +45,6 @@ async function verifyJWT(token: string, secret: string): Promise<JWTPayload> {
 }
 
 function extractTokenFromRequest(request: Request): string | null {
-  const url = new URL(request.url);
-  const tokenFromQuery = url.searchParams.get('token');
-  if (tokenFromQuery) return tokenFromQuery;
-
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
 

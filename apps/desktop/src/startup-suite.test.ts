@@ -117,6 +117,7 @@ describe("desktop startup test suite", () => {
       required: string[];
       properties: {
         cas: unknown;
+        workspaceCli: unknown;
         paths: {
           required: string[];
           properties: Record<string, unknown>;
@@ -139,38 +140,46 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("restoredTimelines");
     expect(source).toContain("test:e2e:short-drama-timeline");
     expect(source).toContain("test:e2e:agent-first-cas");
+    expect(source).toContain("test:e2e:project-workspace-cli");
     expect(source).toContain("agentFirstCasReportPath");
+    expect(source).toContain("projectWorkspaceCliReportPath");
     expect(source).toContain("validateCasEvidence");
+    expect(source).toContain("validateWorkspaceCliEvidence");
+    expect(source).toContain("[desktop-agent-browser] history");
+    expect(source).toContain("[desktop-agent-browser] project status");
+    expect(source).toContain("Do not invent or normalize session IDs");
+    expect(source).toContain("validateStubRuntimeReport");
     expect(source).toContain("smoke.booleans");
     expect(source).toContain('if (report.status !== "pass")');
     expect(source).toContain("QA report status");
-    expect(casSmokeSource).toContain("runDirectCanvasCliReadTokenCas");
-    expect(casSmokeSource).toContain("clash canvas update");
+    expect(casSmokeSource).toContain("runDirectCanvasCliImplicitCas");
+    expect(casSmokeSource).toContain("runCanvas([");
     expect(casSmokeSource).toContain("CLASH_AGENT_MEMBER_ID");
-    expect(casSmokeSource).toContain("direct canvas CLI fresh read token accepted");
-    expect(casSmokeSource).toContain("direct canvas mutation envelope recorded");
+    expect(casSmokeSource).toContain("direct canvas CLI fresh implicit observation accepted");
+    expect(casSmokeSource).toContain("legacy daemon receipt mutation envelope recorded");
     expect(casSmokeSource).toContain("direct canvas CLI mutation envelope recorded");
 
     expect(schema.required).toContain("cas");
+    expect(schema.required).toContain("workspaceCli");
     expect(schema.properties.cas).toBeTruthy();
+    expect(schema.properties.workspaceCli).toBeTruthy();
     expect(JSON.stringify(schema.properties.cas)).toContain("missingReadProofRejected");
     expect(JSON.stringify(schema.properties.cas)).toContain("staleReadProofRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("wrongFileLockRejected");
     expect(JSON.stringify(schema.properties.cas)).toContain("copyOnWritePreservedSource");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasMissingReadTokenRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasStaleReadTokenRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasFreshReadTokenAccepted");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasMutationEnvelopeRecorded");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasDeleteReadTokenRequired");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliMissingReadTokenRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliStaleReadTokenRejected");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliFreshReadTokenAccepted");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliWriteBeforeReadRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliStaleObservationRejected");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliFreshObservationAccepted");
     expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliMutationEnvelopeRecorded");
-    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliDeleteReadTokenRequired");
+    expect(JSON.stringify(schema.properties.cas)).toContain("directCanvasCliDeleteReadRequired");
+    expect(JSON.stringify(schema.properties.cas)).toContain("textProjectionNoLockSidecar");
+    expect(JSON.stringify(schema.properties.cas)).toContain("timelineProjectionNoLockSidecar");
+    expect(JSON.stringify(schema.properties.cas)).toContain("timelineEntityApplyAdvancesRevision");
     expect(JSON.stringify(schema.properties.cas)).toContain("textHistoryReadsHostRevisionIndex");
     expect(JSON.stringify(schema.properties.cas)).toContain("textContentRestoresHostRevisionBody");
-    expect(JSON.stringify(schema.properties.cas)).toContain("timelineHistoryReadsHostRevisionIndex");
-    expect(JSON.stringify(schema.properties.cas)).toContain("timelineContentRestoresHostRevisionBody");
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("canvasScopesStayIsolated");
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("nativeTimelineApplyUsesEntityCas");
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("daemonRestartRecoversProjectState");
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("legacyJsonDatabaseAbsent");
 
     expect(schema.properties.paths.required).toEqual(
       expect.arrayContaining([
@@ -209,15 +218,16 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("agent-first-asset-receipt-smoke.mjs");
     expect(source).toContain("requiredChecks");
     expect(source).toContain("requiredBooleans");
-    expect(source).toContain("directCanvasCliFreshReadTokenAccepted");
+    expect(source).toContain("directCanvasCliFreshObservationAccepted");
     expect(source).toContain("textRestoreCreatesCopyOnWriteRevisionFromHostContent");
-    expect(source).toContain("timelineRestoreCreatesCopyOnWriteRevisionFromHostContent");
+    expect(source).toContain("timelineEntityApplyAdvancesRevision");
+    expect(source).toContain("project-workspace-cli");
     expect(source).toContain("localObsoleteProjectEndpointsRejected");
     expect(source).toContain("audioTranscriptionAuditRecorded");
     expect(source).toContain("projectUpdateAuditRecorded");
     expect(source).toContain("projectDeleteAuditRecorded");
     expect(source).toContain("textRevisionIndexAuditRecorded");
-    expect(source).toContain("timelineRevisionIndexAuditRecorded");
+    expect(source).toContain("timelineRevisionIndexRemoved");
     expect(source).toContain("legacyLocalRoomReadRemoved");
     expect(source).toContain("legacyLocalRoomWriteRemoved");
     expect(source).toContain("legacyLocalRoomSyncRemoved");
@@ -266,6 +276,47 @@ describe("desktop startup test suite", () => {
     );
   });
 
+  it("reads terminal output and final answers from current Codex ACP events", async () => {
+    const helpers = (await import(
+      new URL("../e2e/real-codex-transcript.mjs", import.meta.url).href
+    )) as {
+      terminalOutputsFromEvents: (events: unknown[]) => string[];
+      finalAnswerTextFromEvents: (events: unknown[]) => string;
+    };
+    const cwd = "/Users/test/.clash/projects/project-1";
+    const events = [
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Checking." },
+        _meta: { codex: { phase: "commentary" } },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        rawOutput: { formatted_output: `${cwd}\n`, exit_code: 0 },
+        _meta: { terminal_output: { data: `${cwd}\n`, terminal_id: "exec-1" } },
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: cwd.slice(0, 20) },
+        _meta: { codex: { phase: "final_answer" } },
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: cwd.slice(20) },
+        _meta: { codex: { phase: "final_answer" } },
+      },
+    ];
+
+    expect(helpers.terminalOutputsFromEvents(events)).toEqual([`${cwd}\n`]);
+    expect(helpers.finalAnswerTextFromEvents(events)).toBe(cwd);
+    expect(helpers.terminalOutputsFromEvents([{ rawOutput: "/legacy/cwd\n" }])).toEqual([
+      "/legacy/cwd\n",
+    ]);
+    expect(helpers.finalAnswerTextFromEvents([{ type: "text", text: "/legacy/cwd" }])).toBe(
+      "/legacy/cwd",
+    );
+  });
+
   it("keeps the real Codex E2E out of stub mode", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
 
@@ -303,6 +354,30 @@ describe("desktop startup test suite", () => {
     expect(source).not.toContain("CLASH_LOCAL_ACP_MOCK");
   });
 
+  it("starts every desktop UI smoke with an isolated Miniflare state directory", () => {
+    const source = readText("e2e/agent-browser-smoke.mjs");
+    const helperSource = readText("e2e/startup-shared.mjs");
+
+    expect(source).toContain("startVite({ webPort, logs: webLogs })");
+    expect(source).not.toContain('spawn("pnpm", ["--dir", webDir, "exec", "vite"');
+    expect(helperSource).toContain("CLASH_WEB_E2E_PERSIST_STATE: persistStateDir");
+    expect(helperSource).toContain('rm(persistStateDir, { recursive: true, force: true })');
+  });
+
+  it("keeps a permanent narrow-window project chrome check", () => {
+    const source = readText("e2e/agent-browser-smoke.mjs");
+
+    expect(source).toContain('agentBrowser(["set", "viewport", "720", "900"])');
+    expect(source).toContain("narrowLayoutScreenshot");
+    expect(source).toContain("sidebarWidth");
+    expect(source).toContain("selectedTabWidth");
+    expect(source).toContain("toolbarRailWidth");
+    expect(source).toContain("Canvas tools");
+    expect(source).toContain("toolbarRailWidth < 46");
+    expect(source).toContain("toolbarRailWidth > 50");
+    expect(source).toContain("horizontalOverflow");
+  });
+
   it("submits the real Codex prompt with a scoped composer submit helper", () => {
     const source = readText("e2e/real-codex-agent-browser.mjs");
     const helperSource = readText("e2e/startup-shared.mjs");
@@ -327,6 +402,134 @@ describe("desktop startup test suite", () => {
     expect(source).not.toContain('execCommand("insertText"');
   });
 
+  it("recovers an Electron agent-browser session that falls back to about:blank", async () => {
+    const { recoverAgentBrowserTarget } = (await import(
+      new URL("../e2e/startup-shared.mjs", import.meta.url).href
+    )) as {
+      recoverAgentBrowserTarget: (
+        agentBrowser: (args: string[], options?: { allowFailure?: boolean }) => string,
+        options: {
+          cdpPort: number;
+          expectedUrlPrefix: string;
+          maxAttempts?: number;
+        },
+      ) => string;
+    };
+    const calls: string[][] = [];
+    let href = "about:blank";
+    const agentBrowser = (args: string[]) => {
+      calls.push(args);
+      if (args[0] === "close") return "";
+      if (args[0] === "connect") {
+        href = "http://127.0.0.1:49870/projects/project-one";
+        return "";
+      }
+      if (args[0] === "eval") return JSON.stringify(href);
+      throw new Error(`Unexpected agent-browser command: ${args.join(" ")}`);
+    };
+
+    expect(recoverAgentBrowserTarget(agentBrowser, {
+      cdpPort: 49970,
+      expectedUrlPrefix: "http://127.0.0.1:49870/",
+      maxAttempts: 2,
+    })).toBe("http://127.0.0.1:49870/projects/project-one");
+    expect(calls).toEqual([
+      ["close"],
+      ["connect", "49970"],
+      ["eval", "location.href"],
+    ]);
+  });
+
+  it("reattaches the stub Electron target after a session-creating submit", () => {
+    const source = readText("e2e/agent-browser-smoke.mjs");
+    const sendPromptSource = source.slice(
+      source.indexOf("async function sendPrompt"),
+      source.indexOf("async function fetchJson"),
+    );
+    const submitIndex = sendPromptSource.indexOf("clickComposerSubmitButton(agentBrowser)");
+    const recoverIndex = sendPromptSource.indexOf("recoverAgentBrowserTarget(agentBrowser");
+    const assertionIndex = sendPromptSource.indexOf("await waitForEval(");
+
+    expect(submitIndex).toBeGreaterThanOrEqual(0);
+    expect(recoverIndex).toBeGreaterThan(submitIndex);
+    expect(assertionIndex).toBeGreaterThan(recoverIndex);
+  });
+
+  it("reports exact stub session ids and persistence provenance", async () => {
+    const { runtimeSessionPathObservation } = (await import(
+      new URL("../e2e/startup-shared.mjs", import.meta.url).href
+    )) as {
+      runtimeSessionPathObservation: (input: {
+        session: { id: string; threadId?: string; title?: string; projectId?: string };
+        projectId: string;
+        apiOrigin: string;
+        dataDir: string;
+        messageCount: number;
+      }) => Record<string, unknown>;
+    };
+
+    expect(runtimeSessionPathObservation({
+      session: {
+        id: "session-row-one",
+        threadId: "thread-one",
+        title: "Storyboard pass",
+        projectId: "project-one",
+      },
+      projectId: "project-one",
+      apiOrigin: "http://127.0.0.1:49920",
+      dataDir: "/tmp/clash-e2e-data",
+      messageCount: 2,
+    })).toEqual({
+      id: "thread-one",
+      projectId: "project-one",
+      title: "Storyboard pass",
+      messageCount: 2,
+      apiPath: "http://127.0.0.1:49920/api/v1/local-sessions/thread-one/messages",
+      storagePath: "/tmp/clash-e2e-data/local.sqlite",
+      cwdPath: null,
+    });
+  });
+
+  it("rejects placeholder session paths in stub Codex QA reports", async () => {
+    const { validateStubRuntimeReport } = (await import(
+      new URL("../e2e/qa-agent-report-validation.mjs", import.meta.url).href
+    )) as {
+      validateStubRuntimeReport: (report: Record<string, unknown>) => void;
+    };
+    const validSession = (id: string, phase: "created" | "history") => ({
+      kind: "session",
+      phase,
+      id,
+      apiPath: `http://127.0.0.1:49920/api/v1/local-sessions/${id}/messages`,
+      storagePath: "/tmp/clash-e2e-data/local.sqlite",
+      cwdPath: null,
+    });
+    const baseReport = {
+      paths: {
+        createdSessions: [
+          validSession("session-one", "created"),
+          validSession("session-two", "created"),
+        ],
+        restoredSessions: [validSession("session-one", "history")],
+        projectStatuses: [{
+          runtimeRoot: "/tmp/clash-e2e-data/projects/project-one/runtime",
+          protectedPaths: ["/tmp/clash-e2e-data/projects/project-one/runtime"],
+        }],
+      },
+    };
+
+    expect(() => validateStubRuntimeReport(baseReport)).not.toThrow();
+    expect(() => validateStubRuntimeReport({
+      paths: {
+        ...baseReport.paths,
+        createdSessions: [
+          validSession("stub-acp-session-1", "created"),
+          validSession("stub-acp-session-2", "created"),
+        ],
+      },
+    })).toThrow(/placeholder session id/i);
+  });
+
   it("opens stub session history with the shared pointer helper and waits for the menu role", () => {
     const source = readText("e2e/agent-browser-smoke.mjs");
 
@@ -349,6 +552,8 @@ describe("desktop startup test suite", () => {
 
     expect(source).toContain("/.clash/projects/");
     expect(source).not.toContain("/.clash/agent/");
+    expect(source).toContain("reply exactly DONE");
+    expect(source).not.toContain("answer with only the path");
   });
 
   it("verifies real Codex project cwd materializes the v1 editable roots", () => {

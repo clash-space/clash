@@ -9,7 +9,10 @@ import { cp } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import { productionCommand } from "./production";
-import { assertTimelineCas, createTimelineAppliedRevision, createTimelineLock, parseTimelineFileForApply } from "./timeline";
+import {
+  createTimelineSourceProvenance,
+  timelineHash,
+} from "../lib/timeline-projection";
 import { applyProductionMetadataAction, applyProductionMetadataProjection } from "../lib/production-actions";
 import { renderMgProductionProjection } from "../lib/mg-production";
 import { exportMgSnapshotAsset } from "../lib/mg-snapshot-export";
@@ -18,6 +21,8 @@ import { analyzeWavBeatAction } from "../lib/audio-beat-analysis";
 import { exportTextCutMedia } from "../lib/text-cut-media-export";
 import { planReferenceReviewAction } from "../lib/reference-review-plan";
 import { planStoryboardConsistencyAction } from "../lib/storyboard-plan";
+import { projectStoryboardPromptPack } from "../lib/storyboard-prompt-pack-projection";
+import { writeProjectMarker } from "../lib/project-context";
 
 function expectedTimelineCasApply(filePath: string) {
   return {
@@ -25,14 +30,11 @@ function expectedTimelineCasApply(filePath: string) {
     mutation: "projection-only",
     applyCommand: "clash timeline apply",
     filePath,
-    lockPath: "timelines/main.timeline.lock.json",
-    lockRequired: true,
-    lockSource: "fresh-canvas-pull",
-    nodeIdPlaceholder: "<video-editor-node-id>",
-    requiredRuntimeArgs: ["--node <video-editor-node-id>"],
+    timelineIdPlaceholder: "<timeline-id>",
+    requiredRuntimeArgs: ["--timeline <timeline-id>"],
     pullCommand: "clash timeline pull",
-    pullArgs: ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-    applyArgs: ["--node", "<video-editor-node-id>", "--file", filePath, "--lock", "timelines/main.timeline.lock.json"],
+    pullArgs: ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+    applyArgs: ["--timeline", "<timeline-id>", "--file", filePath],
   };
 }
 
@@ -93,6 +95,49 @@ test("registers a top-level production command for action-driven media workflows
     "project-storyboard-timeline",
     "verify-storyboard-timeline",
   ]);
+  for (const commandName of ["apply-metadata-projection", "approve-review-gate", "apply-storyboard-prompt-pack", "replace-storyboard-prompt-pack"]) {
+    const command = productionCommand.commands.find((candidate) => candidate.name() === commandName);
+    assert.ok(command);
+    assert.equal(command.options.some((option) => option.long === "--lock"), false);
+  }
+  for (const commandName of ["export-captions", "export-caption-burn", "export-timeline-handoff"]) {
+    const command = productionCommand.commands.find((candidate) => candidate.name() === commandName);
+    assert.ok(command);
+    assert.ok(command.options.some((option) => option.long === "--timeline-id"));
+  }
+});
+
+test("Timeline export provenance can be pinned directly to a Project Timeline revision", () => {
+  const dsl = { tracks: [] };
+  const hash = timelineHash(dsl);
+  const provenance = createTimelineSourceProvenance({
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/timelines/episode.timeline.yaml",
+    dsl,
+    timelineRevision: {
+      timelineId: "episode",
+      revisionId: "timeline-revision-v1:episode-1",
+      timelineHash: hash,
+    },
+  });
+
+  assert.deepEqual(provenance, {
+    sourceTimelineId: "episode",
+    sourceTimelinePath: "timelines/episode.timeline.yaml",
+    sourceTimelineHash: hash,
+    sourceTimelineRevisionId: "timeline-revision-v1:episode-1",
+    sourceTimelineRevisionStatus: "applied",
+  });
+  assert.throws(() => createTimelineSourceProvenance({
+    cwd: "/tmp/project",
+    filePath: "/tmp/project/timelines/episode.timeline.yaml",
+    dsl,
+    timelineRevision: {
+      timelineId: "episode",
+      revisionId: "timeline-revision-v1:stale",
+      timelineHash: "0000000000000000",
+    },
+  }), /does not match Project Timeline revision/);
 });
 
 test("marketplace production actions point at registered CLI commands and contract tests", async () => {
@@ -279,35 +324,20 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
 
   assert.equal(result.targetAssetId, "asset-song");
   assert.equal(result.metadataPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.json"));
-  assert.equal(result.metadataLockPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"));
+  assert.equal(result.metadataManifestPath, join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.manifest.json"));
   assert.equal(result.timelineProjectionPath, join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.json"));
-  assert.deepEqual(result.projectionLockPaths, [
-    join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"),
-    join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.lock.json"),
-  ]);
-  const metadataLock = JSON.parse(
-    await readFile(result.metadataLockPath, "utf8"),
+  assert.match(result.version, /^asset-metadata-v1:/);
+  const metadataManifest = JSON.parse(
+    await readFile(result.metadataManifestPath, "utf8"),
   );
-  assert.equal(metadataLock.kind, "clash.asset.metadata.lock");
-  assert.equal(metadataLock.projectionKind, "asset-metadata");
-  assert.deepEqual(metadataLock.entity, { kind: "asset", id: "asset-song" });
-  assert.equal(metadataLock.metadataKind, "audio.beat-analysis");
-  assert.equal(metadataLock.filePath, "projections/metadata/asset-song.audio.beat-analysis.json");
-  assert.equal(metadataLock.contentHash.length, 16);
-  assert.equal(metadataLock.contentHash, metadataLock.metadataHash);
-  assert.equal(metadataLock.sourceActionPath, "actions/beat-fill.json");
-  assert.match(metadataLock.sourceActionHash, /^[a-f0-9]{16}$/);
-  const hintsLock = JSON.parse(
-    await readFile(join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.lock.json"), "utf8"),
-  );
-  assert.equal(hintsLock.kind, "clash.asset.metadata.projection.lock");
-  assert.equal(hintsLock.projectionKind, "audio-beat-hints");
-  assert.deepEqual(hintsLock.entity, { kind: "asset", id: "asset-song" });
-  assert.equal(hintsLock.metadataKind, "audio.beat-analysis");
-  assert.equal(hintsLock.filePath, "projections/timeline-hints/asset-song.beat-hints.json");
-  assert.equal(hintsLock.sourceMetadataPath, "projections/metadata/asset-song.audio.beat-analysis.json");
-  assert.match(hintsLock.sourceMetadataHash, /^[a-f0-9]{16}$/);
-  assert.match(hintsLock.sourceActionHash, /^[a-f0-9]{16}$/);
+  assert.equal(metadataManifest.kind, "clash.asset.metadata.manifest");
+  assert.equal(metadataManifest.metadataKind, "audio.beat-analysis");
+  assert.equal(metadataManifest.metadataPath, "projections/metadata/asset-song.audio.beat-analysis.json");
+  assert.match(metadataManifest.baseMetadataHash, /^[a-f0-9]{16}$/);
+  assert.equal(metadataManifest.sourceActionPath, "actions/beat-fill.json");
+  assert.match(metadataManifest.sourceActionHash, /^[a-f0-9]{16}$/);
+  assert.equal(existsSync(join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json")), false);
+  assert.equal(existsSync(join(cwd, "projections", "timeline-hints", "asset-song.beat-hints.lock.json")), false);
   const assets = JSON.parse(await readFile(assetsPath, "utf8"));
   assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 128);
   const hints = JSON.parse(await readFile(result.timelineProjectionPath!, "utf8"));
@@ -329,7 +359,7 @@ test("applies MV beat metadata to an audio asset and writes timeline edit hints"
   ]);
 });
 
-test("rejects symlinked asset metadata lock sidecars that resolve outside cwd", async () => {
+test("metadata projection ignores legacy lock sidecars", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-metadata-lock-"));
   const assetsPath = join(cwd, "assets", "manifest.json");
   const actionPath = join(cwd, "actions", "beat-fill.json");
@@ -358,15 +388,52 @@ test("rejects symlinked asset metadata lock sidecars that resolve outside cwd", 
     join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.lock.json"),
   );
 
+  await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
+  assert.equal(await readFile(join(outside, "asset-song.audio.beat-analysis.lock.json"), "utf8"), "{}\n");
+  const assets = JSON.parse(await readFile(assetsPath, "utf8"));
+  assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 128);
+});
+
+test("rejects symlinked metadata provenance manifests before mutating assets", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-metadata-manifest-path-"));
+  const outside = await mkdtemp(join(tmpdir(), "clash-production-metadata-manifest-outside-"));
+  const assetsPath = join(cwd, "assets", "manifest.json");
+  const actionPath = join(cwd, "actions", "beat-fill.json");
+  await writeJson(assetsPath, {
+    assets: [{ id: "asset-song", type: "audio", metadata: {} }],
+  });
+  await writeJson(actionPath, {
+    actionId: "action-beat-fill",
+    targetAssetId: "asset-song",
+    metadataKind: "audio.beat-analysis",
+    producer: "qa-fixture",
+    metadata: {
+      kind: "audio.beat-analysis",
+      bpm: 128,
+      fps: 30,
+      beats: [{ frame: 0, timeSeconds: 0, confidence: 0.99, downbeat: true }],
+      sections: [{ id: "intro", startFrame: 0, endFrame: 30, label: "intro" }],
+    },
+  });
+  const outsideManifest = join(outside, "asset-song.audio.beat-analysis.manifest.json");
+  await writeFile(outsideManifest, "outside\n", "utf8");
+  await mkdir(join(cwd, "projections", "metadata"), { recursive: true });
+  await symlink(
+    outsideManifest,
+    join(cwd, "projections", "metadata", "asset-song.audio.beat-analysis.manifest.json"),
+  );
+
   await assert.rejects(
     () => applyProductionMetadataAction({ cwd, actionPath, assetsPath }),
-    /Projection lock sidecar path must not traverse a symlink outside the current project cwd/,
+    /Projection file path must not traverse a symlink outside the current project cwd/,
   );
+
+  assert.equal(await readFile(outsideManifest, "utf8"), "outside\n");
   const assets = JSON.parse(await readFile(assetsPath, "utf8"));
   assert.deepEqual(assets.assets[0].metadata, {});
 });
 
-test("applies edited asset metadata projection through CAS and refreshes the lock", async () => {
+test("applies edited asset metadata projection through implicit CAS and refreshes observation version", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-metadata-apply-"));
   const assetsPath = join(cwd, "assets", "manifest.json");
   const actionPath = join(cwd, "actions", "beat-fill.json");
@@ -387,7 +454,7 @@ test("applies edited asset metadata projection through CAS and refreshes the loc
     },
   });
   const initial = await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
-  const beforeLock = JSON.parse(await readFile(initial.metadataLockPath, "utf8"));
+  const beforeManifest = JSON.parse(await readFile(initial.metadataManifestPath, "utf8"));
   await writeJson(initial.metadataPath, {
     kind: "audio.beat-analysis",
     bpm: 132,
@@ -400,18 +467,19 @@ test("applies edited asset metadata projection through CAS and refreshes the loc
     cwd,
     filePath: initial.metadataPath,
     assetsPath,
+    expectedVersion: initial.version,
   });
 
   assert.equal(applied.targetAssetId, "asset-song");
   assert.equal(applied.metadataKind, "audio.beat-analysis");
-  assert.equal(applied.beforeMetadataHash, beforeLock.contentHash);
+  assert.equal(applied.beforeMetadataHash, beforeManifest.baseMetadataHash);
   assert.notEqual(applied.afterMetadataHash, applied.beforeMetadataHash);
-  assert.equal(applied.lockPath, initial.metadataLockPath);
+  assert.equal(applied.metadataManifestPath, initial.metadataManifestPath);
+  assert.match(applied.version, /^asset-metadata-v1:/);
   const assets = JSON.parse(await readFile(assetsPath, "utf8"));
   assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 132);
-  const afterLock = JSON.parse(await readFile(initial.metadataLockPath, "utf8"));
-  assert.equal(afterLock.contentHash, applied.afterMetadataHash);
-  assert.equal(afterLock.metadataHash, applied.afterMetadataHash);
+  const afterManifest = JSON.parse(await readFile(initial.metadataManifestPath, "utf8"));
+  assert.equal(afterManifest.baseMetadataHash, applied.afterMetadataHash);
 });
 
 test("rejects edited asset metadata projection when the manifest changed after pull", async () => {
@@ -447,8 +515,13 @@ test("rejects edited asset metadata projection when the manifest changed after p
   await writeJson(assetsPath, manifest);
 
   await assert.rejects(
-    () => applyProductionMetadataProjection({ cwd, filePath: initial.metadataPath, assetsPath }),
-    /stale asset metadata apply rejected/i,
+    () => applyProductionMetadataProjection({
+      cwd,
+      filePath: initial.metadataPath,
+      assetsPath,
+      expectedVersion: initial.version,
+    }),
+    /STALE_READ/i,
   );
   const assets = JSON.parse(await readFile(assetsPath, "utf8"));
   assert.equal(assets.assets[0].metadata["audio.beat-analysis"].bpm, 140);
@@ -721,20 +794,13 @@ test("writes short-drama/image storyboard metadata as an agent-readable projecti
   const result = await applyProductionMetadataAction({ cwd, actionPath, assetsPath });
 
   assert.equal(result.timelineProjectionPath, undefined);
-  assert.ok(result.projectionLockPaths.includes(
-    join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.lock.json"),
-  ));
   const storyboard = JSON.parse(
     await readFile(join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.json"), "utf8"),
   );
-  const storyboardLock = JSON.parse(
-    await readFile(join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.lock.json"), "utf8"),
+  assert.equal(
+    existsSync(join(cwd, "projections", "storyboards", "asset-storyboard.storyboard.lock.json")),
+    false,
   );
-  assert.equal(storyboardLock.kind, "clash.asset.metadata.projection.lock");
-  assert.equal(storyboardLock.projectionKind, "image-storyboard");
-  assert.deepEqual(storyboardLock.entity, { kind: "asset", id: "asset-storyboard" });
-  assert.equal(storyboardLock.filePath, "projections/storyboards/asset-storyboard.storyboard.json");
-  assert.equal(storyboardLock.metadataKind, "image.storyboard-consistency");
   assert.deepEqual(storyboard.characters[0].requiredViews, ["front", "side", "back"]);
   assert.equal(storyboard.panels[0].assetId, "asset-panel-1");
   assert.equal(storyboard.panels[0].path, "assets/storyboards/panel-1.png");
@@ -755,6 +821,7 @@ test("runs production apply-metadata as a black-box CLI command over fixtures", 
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-cli-"));
   const fixtureRoot = new URL("../../../../examples/production-actions/", import.meta.url);
   await cp(fixtureRoot, cwd, { recursive: true });
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-production-cli" });
   const cliEntry = new URL("../index.ts", import.meta.url);
   const require = createRequire(import.meta.url);
   const tsxLoader = require.resolve("tsx");
@@ -780,17 +847,15 @@ test("runs production apply-metadata as a black-box CLI command over fixtures", 
   const payload = JSON.parse(child.stdout);
   assert.equal(payload.metadataKind, "talking-head.analysis");
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/asset-talk\.caption\.timeline\.yaml$/);
-  assert.deepEqual(
-    payload.projectionLockPaths.map((path: string) => path.slice(path.indexOf("projections/"))),
-    [
-      "projections/metadata/asset-talk.talking-head.analysis.lock.json",
-      "projections/media-cuts/asset-talk.transcript-cut-plan.lock.json",
-    ],
-  );
+  assert.match(payload.metadataManifestPath, /projections\/metadata\/asset-talk\.talking-head\.analysis\.manifest\.json$/);
+  assert.equal("version" in payload, false);
+  assert.equal("projectionLockPaths" in payload, false);
   assert.ok(existsSync(payload.timelineProjectionPath));
-  for (const lockPath of payload.projectionLockPaths) {
-    assert.ok(existsSync(lockPath), `expected projection lock to exist: ${lockPath}`);
-  }
+  assert.equal(existsSync(join(cwd, "projections", "metadata", "asset-talk.talking-head.analysis.lock.json")), false);
+  assert.equal(existsSync(join(cwd, "projections", "media-cuts", "asset-talk.transcript-cut-plan.lock.json")), false);
+  const beforeObserved = JSON.parse(await readFile(join(cwd, ".clash", "observed.json"), "utf8"));
+  const observationKey = "asset-metadata:projections/metadata/asset-talk.talking-head.analysis.json";
+  assert.match(beforeObserved.versions[observationKey], /^asset-metadata-v1:/);
 
   const metadata = JSON.parse(await readFile(payload.metadataPath, "utf8"));
   metadata.words.push({ id: "w3", text: "again", startFrame: 28, endFrame: 40 });
@@ -815,7 +880,11 @@ test("runs production apply-metadata as a black-box CLI command over fixtures", 
   const appliedPayload = JSON.parse(applyEdited.stdout);
   assert.equal(appliedPayload.applied, true);
   assert.equal(appliedPayload.targetAssetId, "asset-talk");
+  assert.equal("version" in appliedPayload, false);
   assert.notEqual(appliedPayload.afterMetadataHash, appliedPayload.beforeMetadataHash);
+  const afterObserved = JSON.parse(await readFile(join(cwd, ".clash", "observed.json"), "utf8"));
+  assert.match(afterObserved.versions[observationKey], /^asset-metadata-v1:/);
+  assert.notEqual(afterObserved.versions[observationKey], beforeObserved.versions[observationKey]);
   const editedAssets = JSON.parse(await readFile(join(cwd, "assets", "manifest.json"), "utf8"));
   const editedTalkAsset = editedAssets.assets.find((asset: any) => asset.id === "asset-talk");
   assert.equal(editedTalkAsset.metadata["talking-head.analysis"].words.at(-1).text, "again");
@@ -880,7 +949,7 @@ test("renders an MG spec into self-contained HTML, manifest, and timeline YAML p
   assert.equal(result.htmlPath, join(cwd, "projections", "mg", "agent-cwd-lower-third", "index.html"));
   assert.equal(result.manifestPath, join(cwd, "projections", "mg", "agent-cwd-lower-third", "timeline-manifest.json"));
   assert.equal(result.timelineProjectionPath, join(cwd, "projections", "timelines", "agent-cwd-lower-third.mg.timeline.yaml"));
-  assert.equal(result.timelineLockPath, join(cwd, "timelines", "main.timeline.lock.json"));
+  assert.equal("timelineLockPath" in result, false);
   const html = await readFile(result.htmlPath, "utf8");
   assert.match(html, /window\.__CLASH_MG__/);
   assert.match(html, /id="frame-scrubber"/);
@@ -911,20 +980,6 @@ test("renders an MG spec into self-contained HTML, manifest, and timeline YAML p
   if (!parsedTimeline.ok) return;
   assert.equal(parsedTimeline.dsl.tracks[0].role, "overlay");
   assert.equal(parsedTimeline.dsl.tracks[0].items[0].type, "composition");
-  assert.equal(existsSync(result.timelineLockPath), false, "render-mg must not mint a fake CAS lock");
-  const parsedForApply = parseTimelineFileForApply(await readFile(result.timelineProjectionPath, "utf8"));
-  assert.equal(parsedForApply.ok, true);
-  if (!parsedForApply.ok) return;
-  const cas = assertTimelineCas({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    lock: null,
-    currentDsl: parsedForApply.dsl,
-    force: false,
-  });
-  assert.equal(cas.ok, false);
-  if (cas.ok) return;
-  assert.match(cas.error, /Missing timeline CAS lock/);
 });
 
 test("runs production render-mg as a black-box CLI command over the MG fixture", async () => {
@@ -960,12 +1015,12 @@ test("runs production render-mg as a black-box CLI command over the MG fixture",
   const payload = JSON.parse(child.stdout);
   assert.match(payload.htmlPath, /projections\/mg\/lower-third\/index\.html$/);
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/cwd-principle-lower-third\.mg\.timeline\.yaml$/);
-  assert.match(payload.timelineLockPath, /timelines\/main\.timeline\.lock\.json$/);
+  assert.equal("timelineLockPath" in payload, false);
   assert.ok(existsSync(payload.htmlPath));
   assert.ok(existsSync(payload.timelineProjectionPath));
-  assert.equal(existsSync(payload.timelineLockPath), false, "render-mg reports the required lock but does not create one");
   const manifest = JSON.parse(await readFile(payload.manifestPath, "utf8"));
-  assert.equal(manifest.casApply.lockRequired, true);
+  assert.equal("lockPath" in manifest.casApply, false);
+  assert.equal(manifest.casApply.applyArgs.includes("--lock"), false);
   assert.deepEqual(
     manifest.casApply,
     expectedTimelineCasApply("projections/timelines/cwd-principle-lower-third.mg.timeline.yaml"),
@@ -1207,8 +1262,7 @@ test("projects an already rendered Remotion composition into a CAS-required time
   assert.equal(payload.runtime, "remotion");
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/react-chart\.composition\.timeline\.yaml$/);
   assert.match(payload.manifestPath, /projections\/timelines\/react-chart\.composition\.timeline-manifest\.json$/);
-  assert.match(payload.timelineLockPath, /timelines\/main\.timeline\.lock\.json$/);
-  assert.equal(existsSync(payload.timelineLockPath), false, "composition projection command must not mint a fake CAS lock");
+  assert.equal("timelineLockPath" in payload, false);
 
   const parsedTimeline = timelineDslFromYaml(await readFile(payload.timelineProjectionPath, "utf8"));
   assert.equal(parsedTimeline.ok, true);
@@ -1249,6 +1303,7 @@ test("projects an already rendered Remotion composition into a CAS-required time
 
 test("runs production review gates with explicit approval and stale-write protection", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-review-gate" });
   await writeJson(join(cwd, "pipeline.manifest.json"), {
     schemaVersion: 1,
     projectKind: "tvc",
@@ -1316,7 +1371,10 @@ test("runs production review gates with explicit approval and stale-write protec
   assert.equal(pending.status, 0, pending.stderr);
   const pendingPayload = JSON.parse(pending.stdout);
   assert.equal(pendingPayload.status, "pending-review");
-  assert.ok(existsSync(join(cwd, "reviews", "gates", "export.review-gate.lock.json")));
+  assert.equal("lockPath" in pendingPayload, false);
+  assert.equal(existsSync(join(cwd, "reviews", "gates", "export.review-gate.lock.json")), false);
+  const observed = JSON.parse(await readFile(join(cwd, ".clash", "observed.json"), "utf8"));
+  assert.match(observed.versions["review-gate:reviews/gates/export.review-gate.json"], /^review-gate-v1:/);
 
   const staleGate = JSON.parse(await readFile(join(cwd, "reviews", "gates", "export.review-gate.json"), "utf8"));
   staleGate.decisionLog.push("external edit before approval");
@@ -1334,7 +1392,7 @@ test("runs production review gates with explicit approval and stale-write protec
     "--json",
   ]);
   assert.equal(stale.status, 1);
-  assert.match(stale.stderr, /stale review gate/i);
+  assert.match(stale.stderr, /STALE_READ/i);
 
   const repaired = runCli([
     "plan-review-gate",
@@ -1356,20 +1414,18 @@ test("runs production review gates with explicit approval and stale-write protec
     join(cwd, "reviews", "gates", "export.review-gate.json"),
     join(cwd, "reviews", "gates", "copied-export.review-gate.json"),
   );
-  const mismatchedLock = runCli([
+  const unreadCopy = runCli([
     "approve-review-gate",
     "--gate",
     "reviews/gates/copied-export.review-gate.json",
-    "--lock",
-    "reviews/gates/export.review-gate.lock.json",
     "--reviewer",
     "qa-agent",
     "--decision",
     "approve",
     "--json",
   ]);
-  assert.equal(mismatchedLock.status, 1);
-  assert.match(mismatchedLock.stderr, /Review gate path does not match CAS lock/);
+  assert.equal(unreadCopy.status, 1);
+  assert.match(unreadCopy.stderr, /READ_REQUIRED/);
 
   const approved = runCli([
     "approve-review-gate",
@@ -1395,6 +1451,7 @@ test("runs production review gates with explicit approval and stale-write protec
 
 test("review gate planning rejects symlinked gate paths that resolve outside cwd", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-path-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-review-gate-path" });
   await writeJson(join(cwd, "pipeline.manifest.json"), {
     schemaVersion: 1,
     projectKind: "tvc",
@@ -1434,8 +1491,9 @@ test("review gate planning rejects symlinked gate paths that resolve outside cwd
   assert.equal(await readFile(outsideGatePath, "utf8"), "outside\n");
 });
 
-test("review gate planning rejects symlinked lock sidecars that resolve outside cwd", async () => {
+test("review gate planning ignores legacy lock sidecars", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-lock-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-review-gate-lock" });
   await writeJson(join(cwd, "pipeline.manifest.json"), {
     schemaVersion: 1,
     projectKind: "tvc",
@@ -1472,13 +1530,14 @@ test("review gate planning rejects symlinked lock sidecars that resolve outside 
     { cwd, encoding: "utf8" },
   );
 
-  assert.equal(planned.status, 1);
-  assert.match(planned.stderr, /Agent file lock sidecar path must not traverse a symlink outside the current project cwd/);
-  assert.equal(existsSync(join(cwd, "reviews", "gates", "export.review-gate.json")), false);
+  assert.equal(planned.status, 0, planned.stderr);
+  assert.equal(await readFile(join(outside, "export.review-gate.lock.json"), "utf8"), "{}\n");
+  assert.equal(existsSync(join(cwd, "reviews", "gates", "export.review-gate.json")), true);
 });
 
-test("review gate approval rejects explicit symlinked lock sidecars that resolve outside cwd", async () => {
+test("review gate approval exposes no explicit lock option", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-review-gate-approve-lock-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-review-gate-approve" });
   await writeJson(join(cwd, "pipeline.manifest.json"), {
     schemaVersion: 1,
     projectKind: "tvc",
@@ -1507,11 +1566,7 @@ test("review gate approval rejects explicit symlinked lock sidecars that resolve
   await mkdir(outside, { recursive: true });
   await mkdir(join(cwd, "reviews", "gates"), { recursive: true });
   const outsideLockPath = join(outside, "approve.review-gate.lock.json");
-  await writeFile(
-    outsideLockPath,
-    await readFile(join(cwd, "reviews", "gates", "export.review-gate.lock.json"), "utf8"),
-    "utf8",
-  );
+  await writeFile(outsideLockPath, "{}\n", "utf8");
   await symlink(outsideLockPath, join(cwd, "reviews", "gates", "approve.review-gate.lock.json"));
 
   const approved = runCli([
@@ -1528,7 +1583,7 @@ test("review gate approval rejects explicit symlinked lock sidecars that resolve
   ]);
 
   assert.equal(approved.status, 1);
-  assert.match(approved.stderr, /Agent file lock sidecar path must not traverse a symlink outside the current project cwd/);
+  assert.match(approved.stderr, /unknown option '--lock'/i);
   const gate = JSON.parse(await readFile(join(cwd, "reviews", "gates", "export.review-gate.json"), "utf8"));
   assert.equal(gate.status, "pending-review");
 });
@@ -2713,10 +2768,9 @@ test("projects a derived overlay asset into a CAS-required timeline view", async
   assert.equal(payload.derivedAssetId, "asset-logo-callout");
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/asset-logo-callout\.derived-overlay\.timeline\.yaml$/);
   assert.match(payload.manifestPath, /projections\/timelines\/asset-logo-callout\.derived-overlay\.timeline-manifest\.json$/);
-  assert.match(payload.timelineLockPath, /timelines\/main\.timeline\.lock\.json$/);
+  assert.equal("timelineLockPath" in payload, false);
   assert.ok(existsSync(payload.timelineProjectionPath));
   assert.ok(existsSync(payload.manifestPath));
-  assert.equal(existsSync(payload.timelineLockPath), false, "projection command must not mint a fake CAS lock");
 
   const parsedTimeline = timelineDslFromYaml(await readFile(payload.timelineProjectionPath, "utf8"));
   assert.equal(parsedTimeline.ok, true);
@@ -2745,19 +2799,6 @@ test("projects a derived overlay asset into a CAS-required timeline view", async
   );
   assert.equal(manifest.timelineItems[0].type, "derived-overlay");
 
-  const parsedForApply = parseTimelineFileForApply(await readFile(payload.timelineProjectionPath, "utf8"));
-  assert.equal(parsedForApply.ok, true);
-  if (!parsedForApply.ok) return;
-  const cas = assertTimelineCas({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    lock: null,
-    currentDsl: parsedForApply.dsl,
-    force: false,
-  });
-  assert.equal(cas.ok, false);
-  if (cas.ok) return;
-  assert.match(cas.error, /Missing timeline CAS lock/);
 });
 
 test("runs production export-mg-video as a black-box CLI command and registers a playable overlay asset", async () => {
@@ -3337,7 +3378,7 @@ test("runs production export-captions from structured caption timeline to SRT, V
     sourceTimelineId: "timeline:projections/timelines/asset-talk.caption.timeline.yaml",
     sourceTimelinePath: "projections/timelines/asset-talk.caption.timeline.yaml",
     sourceTimelineHash: captionTimelineHash,
-    sourceTimelineRevisionId: `tlrev-${captionTimelineHash}`,
+    sourceTimelineRevisionId: `draft-${captionTimelineHash}`,
     sourceTimelineRevisionStatus: "draft-file",
   });
   assert.equal(manifest.sourceTimelinePath, "projections/timelines/asset-talk.caption.timeline.yaml");
@@ -3379,41 +3420,6 @@ test("runs production export-captions from structured caption timeline to SRT, V
   assert.equal(assManifest.format, "ass");
   assert.equal(assManifest.outputPath, "exports/captions/talk.ass");
 
-  const appliedRevision = createTimelineAppliedRevision({
-    projectId: "project-1",
-    nodeId: "caption-editor-1",
-    cwd,
-    filePath: timelinePath,
-    dsl: parsedCaptionTimeline.dsl,
-    createdAt: "2026-07-08T00:00:00.000Z",
-    loroFrontiers: [{ peer: "caption-export", counter: 3 }],
-  });
-  await writeJson(join(cwd, "projections", "timelines", "asset-talk.caption.timeline.lock.json"), createTimelineLock({
-    projectId: "project-1",
-    nodeId: "caption-editor-1",
-    filePath: timelinePath,
-    dsl: parsedCaptionTimeline.dsl,
-    pulledAt: "2026-07-08T00:00:00.000Z",
-    appliedRevision,
-  }));
-  const applied = runExport("srt", "exports/captions/talk-applied.srt");
-  assert.equal(applied.status, 0, applied.stderr);
-  const appliedManifest = JSON.parse(await readFile(join(cwd, "exports", "captions", "talk-applied.caption-export.json"), "utf8"));
-  assert.deepEqual({
-    sourceTimelineId: appliedManifest.sourceTimelineId,
-    sourceTimelinePath: appliedManifest.sourceTimelinePath,
-    sourceTimelineHash: appliedManifest.sourceTimelineHash,
-    sourceTimelineRevisionId: appliedManifest.sourceTimelineRevisionId,
-    sourceTimelineRevisionStatus: appliedManifest.sourceTimelineRevisionStatus,
-    sourceTimelineFrontiers: appliedManifest.sourceTimelineFrontiers,
-  }, {
-    sourceTimelineId: appliedRevision.timelineId,
-    sourceTimelinePath: "projections/timelines/asset-talk.caption.timeline.yaml",
-    sourceTimelineHash: appliedRevision.timelineHash,
-    sourceTimelineRevisionId: appliedRevision.revisionId,
-    sourceTimelineRevisionStatus: "applied",
-    sourceTimelineFrontiers: [{ peer: "caption-export", counter: 3 }],
-  });
 });
 
 test("caption export rejects symlinked output paths that resolve outside cwd", async () => {
@@ -3702,11 +3708,10 @@ test("projects structured captions into a CAS-required timeline overlay manifest
   const payload = JSON.parse(child.stdout);
   assert.equal(payload.projected, true);
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/asset-talk\.caption-overlay\.timeline\.yaml$/);
-  assert.match(payload.timelineLockPath, /timelines\/main\.timeline\.lock\.json$/);
+  assert.equal("timelineLockPath" in payload, false);
   assert.match(payload.manifestPath, /projections\/timelines\/asset-talk\.caption-overlay\.timeline-manifest\.json$/);
   assert.ok(existsSync(payload.timelineProjectionPath));
   assert.ok(existsSync(payload.manifestPath));
-  assert.equal(existsSync(payload.timelineLockPath), false, "projection command must not mint a fake CAS lock");
 
   const parsedTimeline = timelineDslFromYaml(await readFile(payload.timelineProjectionPath, "utf8"));
   assert.equal(parsedTimeline.ok, true);
@@ -3737,19 +3742,6 @@ test("projects structured captions into a CAS-required timeline overlay manifest
   assert.equal(manifest.rendering.burnInRequires, "clash production export-caption-burn");
   assert.equal(manifest.timelineItems[0].type, "caption");
 
-  const parsedForApply = parseTimelineFileForApply(await readFile(payload.timelineProjectionPath, "utf8"));
-  assert.equal(parsedForApply.ok, true);
-  if (!parsedForApply.ok) return;
-  const cas = assertTimelineCas({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    lock: null,
-    currentDsl: parsedForApply.dsl,
-    force: false,
-  });
-  assert.equal(cas.ok, false);
-  if (cas.ok) return;
-  assert.match(cas.error, /Missing timeline CAS lock/);
 });
 
 test("rejects caption overlay projection when caption items lack structured cue lineage", async () => {
@@ -3903,7 +3895,7 @@ test("exports structured captions as a non-destructive caption-burn derived asse
     sourceTimelineId: "timeline:projections/timelines/asset-talk.caption.timeline.yaml",
     sourceTimelinePath: "projections/timelines/asset-talk.caption.timeline.yaml",
     sourceTimelineHash: expectedTimelineHash,
-    sourceTimelineRevisionId: `tlrev-${expectedTimelineHash}`,
+    sourceTimelineRevisionId: `draft-${expectedTimelineHash}`,
     sourceTimelineRevisionStatus: "draft-file",
   };
 
@@ -3969,53 +3961,6 @@ test("exports structured captions as a non-destructive caption-burn derived asse
     sourceToOutputMaps: 1,
   });
 
-  const appliedRevision = createTimelineAppliedRevision({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    cwd,
-    filePath: timelinePath,
-    dsl: parsedTimeline.dsl,
-    createdAt: "2026-07-06T00:00:00.000Z",
-    loroFrontiers: [{ peer: "1", counter: 8 }],
-  });
-  await writeJson(join(cwd, "projections", "timelines", "asset-talk.caption.timeline.lock.json"), createTimelineLock({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    filePath: timelinePath,
-    dsl: parsedTimeline.dsl,
-    pulledAt: "2026-07-06T00:00:00.000Z",
-    appliedRevision,
-  }));
-
-  const appliedChild = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "export-caption-burn",
-      "--timeline",
-      "projections/timelines/asset-talk.caption.timeline.yaml",
-      "--source-asset",
-      "asset-talk-source",
-      "--output-asset",
-      "asset-talk-caption-burn-applied",
-      "--out",
-      "assets/video/asset-talk-caption-burn-applied.mp4",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-  assert.equal(appliedChild.status, 0, appliedChild.stderr);
-  const appliedPackage = JSON.parse(
-    await readFile(join(cwd, "projections", "caption-burn", "asset-talk-caption-burn-applied.caption-burn.json"), "utf8"),
-  );
-  assert.equal(appliedPackage.sourceTimelineId, "timeline:project-1:editor-1");
-  assert.equal(appliedPackage.sourceTimelineHash, appliedRevision.timelineHash);
-  assert.equal(appliedPackage.sourceTimelineRevisionId, appliedRevision.revisionId);
-  assert.equal(appliedPackage.sourceTimelineRevisionStatus, "applied");
-  assert.deepEqual(appliedPackage.sourceTimelineFrontiers, [{ peer: "1", counter: 8 }]);
 });
 
 test("caption-burn export rejects symlinked sidecar paths that resolve outside cwd", async () => {
@@ -4220,7 +4165,7 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
     sourceTimelineId: "timeline:projections/timelines/episode.timeline.yaml",
     sourceTimelinePath: "projections/timelines/episode.timeline.yaml",
     sourceTimelineHash: handoffTimelineHash,
-    sourceTimelineRevisionId: `tlrev-${handoffTimelineHash}`,
+    sourceTimelineRevisionId: `draft-${handoffTimelineHash}`,
     sourceTimelineRevisionStatus: "draft-file",
   });
   assert.equal(manifest.sourceTimelinePath, "projections/timelines/episode.timeline.yaml");
@@ -4228,58 +4173,6 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
   assert.deepEqual(manifest.itemTypes, { caption: 1, composition: 1, video: 1 });
   assert.deepEqual(manifest.outputs, ["exports/handoff/episode.timeline.csv"]);
 
-  const appliedRevision = createTimelineAppliedRevision({
-    projectId: "project-1",
-    nodeId: "timeline-editor-1",
-    cwd,
-    filePath: timelinePath,
-    dsl: parsedHandoffTimeline.dsl,
-    createdAt: "2026-07-08T00:00:00.000Z",
-    loroFrontiers: [{ peer: "handoff-export", counter: 5 }],
-  });
-  await writeJson(join(cwd, "projections", "timelines", "episode.timeline.lock.json"), createTimelineLock({
-    projectId: "project-1",
-    nodeId: "timeline-editor-1",
-    filePath: timelinePath,
-    dsl: parsedHandoffTimeline.dsl,
-    pulledAt: "2026-07-08T00:00:00.000Z",
-    appliedRevision,
-  }));
-  const appliedChild = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "export-timeline-handoff",
-      "--timeline",
-      "projections/timelines/episode.timeline.yaml",
-      "--format",
-      "csv",
-      "--out",
-      "exports/handoff/episode-applied.timeline.csv",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-  assert.equal(appliedChild.status, 0, appliedChild.stderr);
-  const appliedManifest = JSON.parse(await readFile(join(cwd, "exports", "handoff", "episode-applied.timeline.handoff.json"), "utf8"));
-  assert.deepEqual({
-    sourceTimelineId: appliedManifest.sourceTimelineId,
-    sourceTimelinePath: appliedManifest.sourceTimelinePath,
-    sourceTimelineHash: appliedManifest.sourceTimelineHash,
-    sourceTimelineRevisionId: appliedManifest.sourceTimelineRevisionId,
-    sourceTimelineRevisionStatus: appliedManifest.sourceTimelineRevisionStatus,
-    sourceTimelineFrontiers: appliedManifest.sourceTimelineFrontiers,
-  }, {
-    sourceTimelineId: appliedRevision.timelineId,
-    sourceTimelinePath: "projections/timelines/episode.timeline.yaml",
-    sourceTimelineHash: appliedRevision.timelineHash,
-    sourceTimelineRevisionId: appliedRevision.revisionId,
-    sourceTimelineRevisionStatus: "applied",
-    sourceTimelineFrontiers: [{ peer: "handoff-export", counter: 5 }],
-  });
 });
 
 test("timeline handoff export rejects symlinked output paths that resolve outside cwd", async () => {
@@ -4915,10 +4808,9 @@ test("projects MV beat metadata and visual clips into a CAS-required timeline vi
   assert.equal(payload.cuts, 2);
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/asset-song\.mv-beat-cut\.timeline\.yaml$/);
   assert.match(payload.manifestPath, /projections\/timelines\/asset-song\.mv-beat-cut\.timeline-manifest\.json$/);
-  assert.match(payload.timelineLockPath, /timelines\/main\.timeline\.lock\.json$/);
+  assert.equal("timelineLockPath" in payload, false);
   assert.ok(existsSync(payload.timelineProjectionPath));
   assert.ok(existsSync(payload.manifestPath));
-  assert.equal(existsSync(payload.timelineLockPath), false, "MV projection command must not mint a fake CAS lock");
 
   const parsedTimeline = timelineDslFromYaml(await readFile(payload.timelineProjectionPath, "utf8"));
   assert.equal(parsedTimeline.ok, true);
@@ -4999,19 +4891,6 @@ test("projects MV beat metadata and visual clips into a CAS-required timeline vi
     ["drop", "asset-shot-b", 60, 120, "drop", 0.87, false, "local-rms-phrase-heuristic"],
   ]);
 
-  const parsedForApply = parseTimelineFileForApply(await readFile(payload.timelineProjectionPath, "utf8"));
-  assert.equal(parsedForApply.ok, true);
-  if (!parsedForApply.ok) return;
-  const cas = assertTimelineCas({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    lock: null,
-    currentDsl: parsedForApply.dsl,
-    force: false,
-  });
-  assert.equal(cas.ok, false);
-  if (cas.ok) return;
-  assert.match(cas.error, /Missing timeline CAS lock/);
 });
 
 test("runs production verify-mv-beat-sync and blocks incomplete beat metadata", async () => {
@@ -6970,6 +6849,7 @@ test("runs production plan-storyboard-review then applies storyboard projection"
 
 test("projects and applies storyboard prompt packs with CAS stale-write protection", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-storyboard-prompt-pack-cli-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-storyboard-prompt-pack" });
   await writeJson(join(cwd, "actions", "storyboard-review.json"), {
     actionId: "action-storyboard-fill",
     targetAssetId: "asset-storyboard",
@@ -7029,19 +6909,21 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   assert.equal(projected.storyboardAssetId, "asset-storyboard");
   assert.equal(projected.prompts, 1);
   assert.match(projected.promptPackPath, /plans\/prompt-pack\.json$/);
-  assert.match(projected.lockPath, /plans\/prompt-pack\.lock\.json$/);
+  assert.equal("lockPath" in projected, false);
+  assert.equal("version" in projected, false);
   assert.match(projected.manifestPath, /projections\/storyboards\/asset-storyboard\.prompt-pack-manifest\.json$/);
   assert.ok(existsSync(projected.promptPackPath));
-  assert.ok(existsSync(projected.lockPath));
+  assert.equal(existsSync(join(cwd, "plans", "prompt-pack.lock.json")), false);
 
   const promptPack = JSON.parse(await readFile(projected.promptPackPath, "utf8"));
   assert.equal(promptPack.kind, "clash.storyboard.prompt-pack");
-  const lock = JSON.parse(await readFile(projected.lockPath, "utf8"));
-  assert.equal(lock.kind, "clash.storyboard.prompt-pack.lock");
-  assert.equal(lock.projectionKind, "storyboard-prompt-pack");
-  assert.deepEqual(lock.entity, { kind: "storyboard-asset", id: "asset-storyboard" });
-  assert.equal(lock.contentHash, lock.promptPackHash);
-  assert.match(lock.contentHash, /^[a-f0-9]{16}$/);
+  const manifest = JSON.parse(await readFile(projected.manifestPath, "utf8"));
+  assert.equal(manifest.kind, "clash.storyboard.prompt-pack.manifest");
+  assert.equal(manifest.promptPackPath, "plans/prompt-pack.json");
+  assert.match(manifest.basePromptPackHash, /^[a-f0-9]{16}$/);
+  assert.match(manifest.sourceActionHash, /^[a-f0-9]{16}$/);
+  const observed = JSON.parse(await readFile(join(cwd, ".clash", "observed.json"), "utf8"));
+  assert.match(observed.versions["storyboard-prompt-pack:plans/prompt-pack.json"], /^storyboard-prompt-pack-v1:/);
   promptPack.prompts[0].prompt += "; close-up emotional hook";
   await writeJson(projected.promptPackPath, promptPack);
   await writeJson(join(cwd, "plans", "other-prompt-pack.json"), promptPack);
@@ -7056,38 +6938,12 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
       "apply-storyboard-prompt-pack",
       "--file",
       "plans/other-prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
   );
   assert.equal(mismatchedFile.status, 1);
-  assert.match(mismatchedFile.stderr, /Projection file path does not match storyboard prompt-pack CAS lock/);
-
-  const tamperedLock = {
-    ...lock,
-    entity: { kind: "storyboard-asset", id: "other-storyboard" },
-  };
-  await writeJson(join(cwd, "plans", "tampered-prompt-pack.lock.json"), tamperedLock);
-  const mismatchedEntity = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "apply-storyboard-prompt-pack",
-      "--file",
-      "plans/prompt-pack.json",
-      "--lock",
-      "plans/tampered-prompt-pack.lock.json",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-  assert.equal(mismatchedEntity.status, 1);
-  assert.match(mismatchedEntity.stderr, /Invalid storyboard prompt-pack lock file/);
+  assert.match(mismatchedFile.stderr, /READ_REQUIRED/);
 
   const apply = spawnSync(
     process.execPath,
@@ -7099,8 +6955,6 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
       "apply-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
@@ -7112,15 +6966,10 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   const projection = JSON.parse(await readFile(applied.projectionPath, "utf8"));
   assert.equal(projection.kind, "clash.storyboard.prompt-pack.projection");
   assert.match(projection.promptPack.prompts[0].prompt, /close-up emotional hook/);
-  assert.deepEqual(projection.casApply, {
-    target: "storyboard-prompt-pack",
-    mutation: "managed-projection",
-    applyCommand: "clash production apply-storyboard-prompt-pack",
-    filePath: "plans/prompt-pack.json",
-    lockPath: "plans/prompt-pack.lock.json",
-    lockRequired: true,
-  });
+  assert.equal("casApply" in projection, false);
 
+  projection.promptPack.prompts[0].prompt += "; concurrent managed edit";
+  await writeJson(applied.projectionPath, projection);
   const stale = spawnSync(
     process.execPath,
     [
@@ -7131,14 +6980,12 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
       "apply-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
   );
   assert.equal(stale.status, 1);
-  assert.match(stale.stderr, /Stale storyboard prompt-pack apply rejected/);
+  assert.match(stale.stderr, /STALE_READ/);
 
   const reproject = spawnSync(
     process.execPath,
@@ -7171,8 +7018,6 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
       "replace-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
@@ -7193,8 +7038,7 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
     replacementProjectionPath,
     rewireRequiredForDownstream: true,
     rewireCommand: "clash production apply-storyboard-prompt-pack",
-    rewireArgs: ["--file", "plans/prompt-pack.json", "--lock", "plans/prompt-pack.lock.json"],
-    reason: "copy-on-write replacement is staged as a separate projection; existing downstream references stay on the managed prompt-pack until explicitly rewired",
+    rewireArgs: ["--file", "plans/prompt-pack.json"],
   });
   assert.ok(existsSync(replaced.projectionPath));
   const replacement = JSON.parse(await readFile(replaced.projectionPath, "utf8"));
@@ -7208,7 +7052,7 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
   const managedAfterReplace = JSON.parse(await readFile(applied.projectionPath, "utf8"));
   assert.doesNotMatch(managedAfterReplace.promptPack.prompts[0].prompt, /alternate tense close-up/);
 
-  const overwriteManaged = spawnSync(
+  const concurrentApply = spawnSync(
     process.execPath,
     [
       "--import",
@@ -7218,12 +7062,14 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
       "apply-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--force",
       "--json",
     ],
     { cwd, encoding: "utf8" },
   );
-  assert.equal(overwriteManaged.status, 0, overwriteManaged.stderr);
+  assert.equal(concurrentApply.status, 0, concurrentApply.stderr);
+  const concurrentlyManaged = JSON.parse(await readFile(applied.projectionPath, "utf8"));
+  concurrentlyManaged.promptPack.prompts[0].prompt += "; later canonical edit";
+  await writeJson(applied.projectionPath, concurrentlyManaged);
 
   const staleReplace = spawnSync(
     process.execPath,
@@ -7235,18 +7081,17 @@ test("projects and applies storyboard prompt packs with CAS stale-write protecti
       "replace-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
   );
   assert.equal(staleReplace.status, 1);
-  assert.match(staleReplace.stderr, /Stale storyboard prompt-pack replace rejected/);
+  assert.match(staleReplace.stderr, /STALE_READ/);
 });
 
-test("rejects symlinked storyboard prompt-pack lock sidecars that resolve outside cwd", async () => {
+test("storyboard prompt-pack projection ignores legacy lock sidecars", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-storyboard-lock-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-storyboard-legacy-lock" });
   await writeJson(join(cwd, "actions", "storyboard-review.json"), {
     actionId: "action-storyboard-fill",
     targetAssetId: "asset-storyboard",
@@ -7292,12 +7137,50 @@ test("rejects symlinked storyboard prompt-pack lock sidecars that resolve outsid
     { cwd, encoding: "utf8" },
   );
 
-  assert.equal(project.status, 1);
-  assert.match(project.stderr, /Projection lock sidecar path must not traverse a symlink outside the current project cwd/);
+  assert.equal(project.status, 0, project.stderr);
+  assert.equal(await readFile(join(outside, "prompt-pack.lock.json"), "utf8"), "{}\n");
+});
+
+test("storyboard prompt-pack rejects symlinked provenance manifests before writing projections", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-storyboard-manifest-path-"));
+  const outside = await mkdtemp(join(tmpdir(), "clash-production-storyboard-manifest-outside-"));
+  const actionPath = join(cwd, "actions", "storyboard-review.json");
+  await writeJson(actionPath, {
+    actionId: "action-storyboard-fill",
+    targetAssetId: "asset-storyboard",
+    metadataKind: "image.storyboard-consistency",
+    producer: "qa-fixture",
+    metadata: {
+      kind: "image.storyboard-consistency",
+      characters: [],
+      scenes: [{ id: "store-night", referenceAssetIds: [], prompt: "night convenience store aisle" }],
+      panels: [{ id: "panel-1", sceneId: "store-night", characterIds: [], assetId: "asset-panel-1" }],
+    },
+  });
+  const outsideManifest = join(outside, "asset-storyboard.prompt-pack-manifest.json");
+  await writeFile(outsideManifest, "outside\n", "utf8");
+  await mkdir(join(cwd, "projections", "storyboards"), { recursive: true });
+  await symlink(
+    outsideManifest,
+    join(cwd, "projections", "storyboards", "asset-storyboard.prompt-pack-manifest.json"),
+  );
+
+  await assert.rejects(
+    () => projectStoryboardPromptPack({
+      cwd,
+      actionPath,
+      outPath: "plans/prompt-pack.json",
+    }),
+    /Agent file path must not traverse a symlink outside the current project cwd/,
+  );
+
+  assert.equal(await readFile(outsideManifest, "utf8"), "outside\n");
+  assert.equal(existsSync(join(cwd, "plans", "prompt-pack.json")), false);
 });
 
 test("storyboard prompt-pack apply rejects when the source action changed after projection", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-storyboard-prompt-pack-source-cas-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-storyboard-source-cas" });
   const actionPath = join(cwd, "actions", "storyboard-review.json");
   await writeJson(actionPath, {
     actionId: "action-storyboard-fill",
@@ -7333,8 +7216,8 @@ test("storyboard prompt-pack apply rejects when the source action changed after 
   );
   assert.equal(project.status, 0, project.stderr);
   const projected = JSON.parse(project.stdout);
-  const lock = JSON.parse(await readFile(projected.lockPath, "utf8"));
-  assert.match(lock.sourceActionHash, /^[a-f0-9]{16}$/);
+  const manifest = JSON.parse(await readFile(projected.manifestPath, "utf8"));
+  assert.match(manifest.sourceActionHash, /^[a-f0-9]{16}$/);
 
   const changedAction = JSON.parse(await readFile(actionPath, "utf8"));
   changedAction.metadata.panels.push({
@@ -7355,19 +7238,18 @@ test("storyboard prompt-pack apply rejects when the source action changed after 
       "apply-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
   );
 
   assert.equal(apply.status, 1);
-  assert.match(apply.stderr, /Stale storyboard prompt-pack source action rejected/);
+  assert.match(apply.stderr, /STALE_READ/);
 });
 
-test("storyboard prompt-pack apply rejects locks with stripped source action proof", async () => {
+test("storyboard prompt-pack apply rejects manifests with stripped source action proof", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-storyboard-prompt-pack-tampered-lock-"));
+  await writeProjectMarker(cwd, { schemaVersion: 1, projectId: "project-storyboard-tampered-manifest" });
   const actionPath = join(cwd, "actions", "storyboard-review.json");
   await writeJson(actionPath, {
     actionId: "action-storyboard-fill",
@@ -7404,10 +7286,10 @@ test("storyboard prompt-pack apply rejects locks with stripped source action pro
   assert.equal(project.status, 0, project.stderr);
   const projected = JSON.parse(project.stdout);
 
-  const lock = JSON.parse(await readFile(projected.lockPath, "utf8"));
-  delete lock.sourceActionPath;
-  delete lock.sourceActionHash;
-  await writeJson(projected.lockPath, lock);
+  const manifest = JSON.parse(await readFile(projected.manifestPath, "utf8"));
+  delete manifest.sourceActionPath;
+  delete manifest.sourceActionHash;
+  await writeJson(projected.manifestPath, manifest);
 
   const changedAction = JSON.parse(await readFile(actionPath, "utf8"));
   changedAction.metadata.panels.push({
@@ -7428,15 +7310,13 @@ test("storyboard prompt-pack apply rejects locks with stripped source action pro
       "apply-storyboard-prompt-pack",
       "--file",
       "plans/prompt-pack.json",
-      "--lock",
-      "plans/prompt-pack.lock.json",
       "--json",
     ],
     { cwd, encoding: "utf8" },
   );
 
   assert.equal(apply.status, 1);
-  assert.match(apply.stderr, /Invalid storyboard prompt-pack lock file/);
+  assert.match(apply.stderr, /READ_REQUIRED.*Invalid storyboard prompt-pack manifest/i);
 });
 
 test("projects storyboard panel assets into a CAS-required timeline view", async () => {
@@ -7514,10 +7394,9 @@ test("projects storyboard panel assets into a CAS-required timeline view", async
   assert.equal(payload.panels, 2);
   assert.match(payload.timelineProjectionPath, /projections\/timelines\/asset-storyboard\.storyboard\.timeline\.yaml$/);
   assert.match(payload.manifestPath, /projections\/timelines\/asset-storyboard\.storyboard\.timeline-manifest\.json$/);
-  assert.match(payload.timelineLockPath, /timelines\/main\.timeline\.lock\.json$/);
+  assert.equal("timelineLockPath" in payload, false);
   assert.ok(existsSync(payload.timelineProjectionPath));
   assert.ok(existsSync(payload.manifestPath));
-  assert.equal(existsSync(payload.timelineLockPath), false, "storyboard projection command must not mint a fake CAS lock");
 
   const parsedTimeline = timelineDslFromYaml(await readFile(payload.timelineProjectionPath, "utf8"));
   assert.equal(parsedTimeline.ok, true);
@@ -7554,19 +7433,6 @@ test("projects storyboard panel assets into a CAS-required timeline view", async
     ["panel-2", "asset-panel-2", 45, 45],
   ]);
 
-  const parsedForApply = parseTimelineFileForApply(await readFile(payload.timelineProjectionPath, "utf8"));
-  assert.equal(parsedForApply.ok, true);
-  if (!parsedForApply.ok) return;
-  const cas = assertTimelineCas({
-    projectId: "project-1",
-    nodeId: "editor-1",
-    lock: null,
-    currentDsl: parsedForApply.dsl,
-    force: false,
-  });
-  assert.equal(cas.ok, false);
-  if (cas.ok) return;
-  assert.match(cas.error, /Missing timeline CAS lock/);
 });
 
 test("runs production verify-storyboard-timeline and blocks low-consistency panels", async () => {

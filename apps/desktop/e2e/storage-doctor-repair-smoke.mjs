@@ -318,7 +318,14 @@ async function main() {
     "doctor repair reports host-owned fixes",
     repairReport.ok === true &&
       repairReport.repaired === true &&
-      repairReport.repairs?.some((item) => item.id === "project-workspace") &&
+      [
+        "editable-drafts-root",
+        "editable-projections-root",
+        "editable-timelines-root",
+        "editable-sessions-root",
+        "editable-asset-links-root",
+        "protected-runtime-root",
+      ].every((id) => repairReport.repairs?.some((item) => item.id === id)) &&
       repairReport.repairs?.some((item) => item.id === "local-sqlite-schema"),
     JSON.stringify({ repaired: repairReport.repaired, repairs: repairReport.repairs }),
   );
@@ -654,14 +661,16 @@ async function main() {
       status?.collaboration?.syncPolicy?.mirror?.revisionContent?.mediaAsset === false &&
       status?.collaboration?.syncPolicy?.mirror?.revisionContent?.agentWritable === false &&
       status?.collaboration?.syncPolicy?.mirror?.revisionContent?.registries?.includes("text_revisions") === true &&
-      status?.collaboration?.syncPolicy?.mirror?.revisionContent?.registries?.includes("timeline_revisions") === true &&
+      status?.collaboration?.syncPolicy?.mirror?.revisionContent?.registries?.includes("timeline_revisions") === false &&
       status?.collaboration?.syncPolicy?.excluded?.rawAgentTraces?.syncDefault === "local-only" &&
       status?.collaboration?.syncPolicy?.excluded?.localRuntimeSecrets?.syncDefault === "local-only",
     JSON.stringify(status?.collaboration?.syncPolicy),
   );
   recordCheck(
-    "canonical canvas path is protected and outside editable workspace roots",
+    "canonical Project state path is protected and outside editable workspace roots",
     typeof status?.loro?.snapshotPath === "string" &&
+      status?.storage?.canonicalReplica?.projectState?.snapshotPath === status.loro.snapshotPath &&
+      !("canvas" in status.storage.canonicalReplica) &&
       repairReport.status.protectedPaths.includes(status.loro.snapshotPath) &&
       !isInside(status.loro.snapshotPath, status.projectWorkspaceRoot),
     JSON.stringify({
@@ -675,6 +684,7 @@ async function main() {
   const textViewFiles = status?.storage?.workspace?.viewFiles?.texts;
   const timelineViewFiles = status?.storage?.workspace?.viewFiles?.timelines;
   const timelineProjectionFiles = status?.storage?.workspace?.viewFiles?.timelineProjections;
+  const agentWorkspaceRoot = status?.storage?.workspace?.root;
   const localSecrets = status?.storage?.localSecrets;
   recordCheck(
     "machine-local config is a SQLite table, not agent-editable JSON sidecars",
@@ -735,7 +745,8 @@ async function main() {
   recordCheck(
     "text projection view files are editable but not canonical text revision content",
     textViewFiles?.kind === "agent-editable-projection-files" &&
-      textViewFiles.path === path.join(status.projectWorkspaceRoot, "projections", "text") &&
+      agentWorkspaceRoot === workspace &&
+      textViewFiles.path === path.join(agentWorkspaceRoot, "projections", "text") &&
       textViewFiles.defaultFilePattern === "<node-id>.md" &&
       textViewFiles.applyCommand === "clash text apply" &&
       textViewFiles.casRequired === true &&
@@ -749,16 +760,19 @@ async function main() {
   );
   recordCheck(
     "timeline view files are editable views but not canonical timeline state",
-    timelineViewFiles?.kind === "agent-editable-view-files" &&
-      timelineViewFiles.path === path.join(status.projectWorkspaceRoot, "timelines") &&
-      timelineViewFiles.defaultFile === "main.timeline.yaml" &&
-      timelineViewFiles.applyCommand === "clash timeline apply" &&
+      timelineViewFiles?.kind === "agent-editable-view-files" &&
+      agentWorkspaceRoot === workspace &&
+      timelineViewFiles.path === path.join(agentWorkspaceRoot, "timelines") &&
+      timelineViewFiles.defaultFilePattern === "<timeline-id>.timeline.yaml" &&
+      timelineViewFiles.pullCommand === "clash timeline pull --timeline <id>" &&
+      timelineViewFiles.applyCommand === "clash timeline apply --timeline <id>" &&
       timelineViewFiles.casRequired === true &&
       timelineViewFiles.ownsCanonicalState === false &&
       !repairReport.status.protectedPaths.includes(timelineViewFiles.path) &&
       timelineProjectionFiles?.kind === "agent-editable-projection-files" &&
-      timelineProjectionFiles.path === path.join(status.projectWorkspaceRoot, "projections", "timelines") &&
-      timelineProjectionFiles.applyCommand === "clash timeline apply" &&
+      timelineProjectionFiles.path === path.join(agentWorkspaceRoot, "projections", "timelines") &&
+      timelineProjectionFiles.defaultFilePattern === "<timeline-id>.timeline.yaml" &&
+      timelineProjectionFiles.applyCommand === "clash timeline apply --timeline <id>" &&
       timelineProjectionFiles.casRequired === true &&
       timelineProjectionFiles.ownsCanonicalState === false &&
       !repairReport.status.protectedPaths.includes(timelineProjectionFiles.path),
@@ -787,11 +801,10 @@ async function main() {
     }),
   );
   const textRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.textRevisions;
-  const timelineRevisionBlobs = status?.storage?.canonicalReplica?.contentBlobs?.timelineRevisions;
   const contentModel = status?.storage?.contentModel;
   recordCheck(
-    "text and timeline content model separates projections from non-media revision blobs",
-    contentModel?.role === "agent-projections-with-host-indexed-revision-content" &&
+    "text revisions and Timeline Loro history have distinct storage authority",
+    contentModel?.role === "agent-projections-over-host-owned-canonical-state" &&
       contentModel?.textNodes?.liveState === "loro-canvas-text-node-data" &&
       contentModel.textNodes.editableProjection === "storage.workspace.viewFiles.texts" &&
       contentModel.textNodes.projectionPath === textViewFiles?.path &&
@@ -810,28 +823,38 @@ async function main() {
       contentModel.textNodes.contentRegistry?.mediaAssetTable === false &&
       contentModel.textNodes.mediaAsset === false &&
       contentModel.textNodes.agentWritableCanonicalState === false &&
-      contentModel?.timelines?.liveState === "loro-canvas-video-editor-node-data" &&
+      contentModel?.timelines?.liveState === "loro-project-timeline-entity" &&
+      contentModel.timelines.timelineIdentity === "timeline-id" &&
       contentModel.timelines.editableProjection === "storage.workspace.viewFiles.timelines" &&
       contentModel.timelines.projectionPath === timelineViewFiles?.path &&
-      contentModel.timelines.applyCommand === "clash timeline apply" &&
-      contentModel.timelines.replaceCommand === "clash timeline replace" &&
-      contentModel.timelines.restoreCommand === "clash timeline restore" &&
-      contentModel.timelines.historyCommand === "clash timeline history" &&
-      contentModel.timelines.contentCommand === "clash timeline content" &&
+      contentModel.timelines.projectionFilePattern === "<timeline-id>.timeline.yaml" &&
+      contentModel.timelines.pullCommand === "clash timeline pull --timeline <id>" &&
+      contentModel.timelines.applyCommand === "clash timeline apply --timeline <id>" &&
+      JSON.stringify(contentModel.timelines.publicCommands) === JSON.stringify([
+        "clash timeline list",
+        "clash timeline create --id <id> --name <name>",
+        "clash timeline attach --timeline <id> --canvas <id> --node <action-node-id>",
+        "clash timeline detach --timeline <id>",
+        "clash timeline copy --timeline <id> --canvas <id> --new-timeline <id> --new-node <action-node-id>",
+        "clash timeline pull --timeline <id>",
+        "clash timeline apply --timeline <id>",
+      ]) &&
       contentModel.timelines.casRequired === true &&
-      contentModel.timelines.copyOnWriteWhenReferenced === true &&
-      contentModel.timelines.revisionRegistry === "timeline_revisions" &&
-      contentModel.timelines.revisionBlobPath === timelineRevisionBlobs?.path &&
-      contentModel.timelines.contentRegistry?.kind === "sqlite-non-media-revision-registry" &&
-      contentModel.timelines.contentRegistry?.table === "timeline_revisions" &&
-      contentModel.timelines.contentRegistry?.blobStore === "storage.canonicalReplica.contentBlobs.timelineRevisions" &&
-      contentModel.timelines.contentRegistry?.mediaAssetTable === false &&
-      contentModel.timelines.mediaAsset === false &&
+      contentModel.timelines.copyOnWriteWhenReferenced === false &&
+      contentModel.timelines.downstreamRendersPinRevision === true &&
+      !("replaceCommand" in contentModel.timelines) &&
+      !("restoreCommand" in contentModel.timelines) &&
+      !("historyCommand" in contentModel.timelines) &&
+      !("contentCommand" in contentModel.timelines) &&
+      contentModel.timelines.revisionAuthority === "loro-project-history" &&
+      contentModel.timelines.revisionIdentity === "state-hash" &&
+      !("revisionRegistry" in contentModel.timelines) &&
+      !("revisionBlobPath" in contentModel.timelines) &&
+      !("contentRegistry" in contentModel.timelines) &&
+      !("mediaAsset" in contentModel.timelines) &&
       contentModel.timelines.agentWritableCanonicalState === false &&
       contentModel.textNodes.revisionBlobPath !== mediaAssets?.path &&
-      contentModel.timelines.revisionBlobPath !== mediaAssets?.path &&
       repairReport.status.protectedPaths.includes(contentModel.textNodes.revisionBlobPath) &&
-      repairReport.status.protectedPaths.includes(contentModel.timelines.revisionBlobPath) &&
       !repairReport.status.protectedPaths.includes(contentModel.textNodes.projectionPath) &&
       !repairReport.status.protectedPaths.includes(contentModel.timelines.projectionPath),
     JSON.stringify({
@@ -839,13 +862,12 @@ async function main() {
       textViewFiles,
       timelineViewFiles,
       textRevisionBlobs,
-      timelineRevisionBlobs,
       mediaAssets,
       protectedPaths: status?.protectedPaths,
     }),
   );
   recordCheck(
-    "revision content blob roots are protected and outside editable workspace roots",
+    "text revision content blob root is protected and outside editable workspace roots",
     textRevisionBlobs?.kind === "content-addressed-files" &&
       textRevisionBlobs.path === path.join(clashHome, "local-api", "text-revision-blobs") &&
       textRevisionBlobs.mediaType === "text/markdown" &&
@@ -853,64 +875,37 @@ async function main() {
       textRevisionBlobs.agentWritable === false &&
       repairReport.status.protectedPaths.includes(textRevisionBlobs.path) &&
       !isInside(textRevisionBlobs.path, status.projectWorkspaceRoot) &&
-      timelineRevisionBlobs?.kind === "content-addressed-files" &&
-      timelineRevisionBlobs.path === path.join(clashHome, "local-api", "timeline-revision-blobs") &&
-      timelineRevisionBlobs.mediaType === "application/yaml" &&
-      timelineRevisionBlobs.immutable === true &&
-      timelineRevisionBlobs.agentWritable === false &&
-      repairReport.status.protectedPaths.includes(timelineRevisionBlobs.path) &&
-      !isInside(timelineRevisionBlobs.path, status.projectWorkspaceRoot),
+      !("timelineRevisions" in status.storage.canonicalReplica.contentBlobs),
     JSON.stringify({
       textRevisionBlobs,
-      timelineRevisionBlobs,
       projectWorkspaceRoot: status?.projectWorkspaceRoot,
       protectedPaths: status?.protectedPaths,
     }),
   );
   const tamperedTextBlob = path.join(textRevisionBlobs.path, "12", "1234567890abcdef.md");
-  const tamperedTimelineBlob = path.join(timelineRevisionBlobs.path, "12", "1234567890abcdef.timeline.yaml");
   await mkdir(path.dirname(tamperedTextBlob), { recursive: true });
-  await mkdir(path.dirname(tamperedTimelineBlob), { recursive: true });
   await writeFile(tamperedTextBlob, "tampered text body", { encoding: "utf8", mode: 0o644 });
-  await writeFile(
-    tamperedTimelineBlob,
-    [
-      "fps: 30",
-      "durationInFrames: 30",
-      "tracks:",
-      "  - id: v1",
-      "    name: Video",
-      "    items: []",
-      "",
-    ].join("\n"),
-    { encoding: "utf8", mode: 0o644 },
-  );
   const tamperedRevisionBlobs = runCli(["doctor", "storage", "--json"]);
   recordCheck(
-    "doctor storage detects tampered revision content blobs",
+    "doctor storage detects tampered text revision content blobs",
     tamperedRevisionBlobs.status === 1,
     tamperedRevisionBlobs.stderr || tamperedRevisionBlobs.stdout,
     { command: tamperedRevisionBlobs.command },
   );
   const tamperedRevisionBlobReport = parseStdoutJson(tamperedRevisionBlobs);
   recordCheck(
-    "doctor tampered revision blob report is parseable and path-specific",
+    "doctor tampered text revision blob report is parseable and path-specific",
     tamperedRevisionBlobReport.ok === false &&
       checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.level === "error" &&
       checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.path === tamperedTextBlob &&
       checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.message?.includes("hash mismatch") === true &&
       checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity")?.message?.includes("writable") === true &&
-      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.level === "error" &&
-      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.path === tamperedTimelineBlob &&
-      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.message?.includes("hash mismatch") === true &&
-      checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity")?.message?.includes("writable") === true,
+      !checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity"),
     JSON.stringify({
       text: checkById(tamperedRevisionBlobReport, "text-revision-blob-integrity"),
-      timeline: checkById(tamperedRevisionBlobReport, "timeline-revision-blob-integrity"),
     }),
   );
   await rm(textRevisionBlobs.path, { recursive: true, force: true });
-  await rm(timelineRevisionBlobs.path, { recursive: true, force: true });
 
   for (const targetPath of [
     status.roots.drafts,
@@ -951,9 +946,6 @@ async function main() {
       { type: "table", name: "text_revisions" },
       { type: "index", name: "text_revisions_project_node_idx" },
       { type: "index", name: "text_revisions_text_idx" },
-      { type: "table", name: "timeline_revisions" },
-      { type: "index", name: "timeline_revisions_project_node_idx" },
-      { type: "index", name: "timeline_revisions_timeline_idx" },
       { type: "table", name: "runtime_session" },
       { type: "index", name: "runtime_session_project_idx" },
       { type: "table", name: "agent_member" },
@@ -1099,24 +1091,20 @@ async function main() {
   );
   const forgedMarkerStatusResult = runCli(["project", "status", "--json"]);
   recordCheck(
-    "project marker cannot grant cloud or shared capability",
-    forgedMarkerStatusResult.status === 0,
+    "project marker rejects removed collaboration fields",
+    forgedMarkerStatusResult.status === 2 && /unsupported TOML section.*\[sync\]/i.test(forgedMarkerStatusResult.stderr),
     forgedMarkerStatusResult.stderr || forgedMarkerStatusResult.stdout,
     { command: forgedMarkerStatusResult.command },
   );
-  const forgedMarkerStatus = parseStdoutJson(forgedMarkerStatusResult);
-  recordCheck(
-    "forged marker collaboration state is ignored",
-    forgedMarkerStatus?.mode === "local" &&
-      forgedMarkerStatus?.syncMode === "local-only" &&
-      forgedMarkerStatus?.collaboration?.mode === "local-only" &&
-      forgedMarkerStatus?.collaboration?.webOpenable === false &&
-      forgedMarkerStatus?.collaboration?.cloudProjectRoom === "disabled",
-    JSON.stringify({
-      mode: forgedMarkerStatus?.mode,
-      syncMode: forgedMarkerStatus?.syncMode,
-      collaboration: forgedMarkerStatus?.collaboration,
-    }),
+  await writeFile(
+    markerPath,
+    [
+      "schema_version = 1",
+      `project_id = ${JSON.stringify(projectId)}`,
+      'store = "managed"',
+      "",
+    ].join("\n"),
+    "utf8",
   );
 
   writeProductReplicationConfig(status.localSqlitePath, {
@@ -1135,8 +1123,8 @@ async function main() {
     "cloud-sync pending status is not web-openable",
     cloudSyncStatus?.mode === "local" &&
       cloudSyncStatus?.syncMode === "cloud-sync" &&
-      cloudSyncStatus?.projectWorkspaceRoot === forgedMarkerStatus?.projectWorkspaceRoot &&
-      cloudSyncStatus?.loro?.replicaRoot === forgedMarkerStatus?.loro?.replicaRoot &&
+      cloudSyncStatus?.projectWorkspaceRoot === status?.projectWorkspaceRoot &&
+      cloudSyncStatus?.loro?.replicaRoot === status?.loro?.replicaRoot &&
       cloudSyncStatus?.collaboration?.mode === "synced" &&
       cloudSyncStatus?.collaboration?.webOpenable === false &&
       cloudSyncStatus?.collaboration?.roomAuthority === "local" &&
@@ -1155,7 +1143,7 @@ async function main() {
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.requirement === "revision-content" &&
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.mediaAsset === false &&
       cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.contentKinds?.includes("text-revision-content") === true &&
-      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.contentKinds?.includes("timeline-revision-content") === true,
+      cloudSyncStatus?.collaboration?.syncPolicy?.mirror?.revisionContent?.contentKinds?.includes("timeline-revision-content") === false,
     JSON.stringify(cloudSyncStatus?.collaboration?.syncPolicy),
   );
   recordCheck(
@@ -1206,7 +1194,8 @@ async function main() {
       readyCloudSyncStatus?.syncMode === "cloud-sync" &&
       readyCloudSyncStatus?.projectWorkspaceRoot === cloudSyncStatus?.projectWorkspaceRoot &&
       readyCloudSyncStatus?.loro?.replicaRoot === cloudSyncStatus?.loro?.replicaRoot &&
-      readyCloudSyncStatus?.storage?.workspace?.root === cloudSyncStatus?.storage?.workspace?.root &&
+      cloudSyncStatus?.storage?.workspace?.root === workspace &&
+      readyCloudSyncStatus?.storage?.workspace?.root === readyCloudSyncWorkspace &&
       readyCloudSyncStatus?.collaboration?.mode === "synced" &&
       readyCloudSyncStatus?.collaboration?.webOpenable === true &&
       readyCloudSyncStatus?.collaboration?.multiUser === false &&

@@ -36,7 +36,14 @@ import type {
   AwarenessBroadcastMessage,
   AwarenessPeer,
 } from "@clash/shared-types";
-import { Canvas, CustomActionDefinitionSchema } from "@clash/shared-types";
+import {
+  Canvas,
+  canvasGraphReconciliationChanged,
+  CustomActionDefinitionSchema,
+  listNodeOwnedEdges,
+  reconcileCanvasGraph,
+  reconcileProjectTimelineOwnership,
+} from "@clash/shared-types";
 
 /**
  * Extended client identity persisted on the WebSocket via serializeAttachment.
@@ -273,14 +280,24 @@ export class ProjectRoom extends DurableObject<Env> {
     this.nextSeq = state.nextSeq;
     this.updatesSinceCompact = state.nextSeq - state.snapshotSeq;
 
+    const repairVersion = this.doc.version();
+    const graphRepair = reconcileCanvasGraph(this.doc);
+    const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+    const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+      timelineRepair.removedActionNodeIds.length > 0 ||
+      timelineRepair.detachedTimelineIds.length > 0;
+    const repairUpdate = workspaceRepaired
+      ? this.doc.export({ mode: "update", from: repairVersion })
+      : null;
+
     // Subscribe to LOCAL commits (taskPoll / orphan recovery / HTTP /update-node).
     // Imports from client WebSockets are persisted explicitly in
     // processMessageQueue — Loro's subscribeLocalUpdates does NOT fire for
     // imported updates, by design.
-    if (this.unsubscribeLocalUpdates) this.unsubscribeLocalUpdates();
-    this.unsubscribeLocalUpdates = this.doc.subscribeLocalUpdates((update) => {
-      void this.persistAndMaybeCompact(update);
-    });
+    this.installLocalUpdatePersistence();
+    if (repairUpdate?.byteLength) {
+      await this.persistAndMaybeCompact(repairUpdate);
+    }
 
     if (enableTaskPolling) {
       // Schedule first alarm for task polling. Persistence is event-driven now,
@@ -298,6 +315,13 @@ export class ProjectRoom extends DurableObject<Env> {
    * commits (via subscribeLocalUpdates) and remote imports (called
    * from processMessageQueue after doc.import).
    */
+  private installLocalUpdatePersistence(): void {
+    this.unsubscribeLocalUpdates?.();
+    this.unsubscribeLocalUpdates = this.doc.subscribeLocalUpdates((update) => {
+      void this.persistAndMaybeCompact(update);
+    });
+  }
+
   private async persistAndMaybeCompact(update: Uint8Array): Promise<void> {
     const tag = `[room proj=${this.projectId.slice(-6)}]`;
     try {
@@ -1055,17 +1079,36 @@ export class ProjectRoom extends DurableObject<Env> {
             }
           }
 
-          this.doc.import(msg.data);
+          this.unsubscribeLocalUpdates?.();
+          this.unsubscribeLocalUpdates = null;
+          let repairUpdate: Uint8Array | null = null;
+          try {
+            this.doc.import(msg.data);
+            const repairVersion = this.doc.version();
+            const graphRepair = reconcileCanvasGraph(this.doc);
+            const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+            const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+              timelineRepair.removedActionNodeIds.length > 0 ||
+              timelineRepair.detachedTimelineIds.length > 0;
+            if (workspaceRepaired) {
+              this.doc.commit({ origin: "sys:workspace-reconcile" });
+              repairUpdate = this.doc.export({ mode: "update", from: repairVersion });
+            }
+            // Import and deterministic repair are persisted explicitly and in
+            // order. Keep the subscription detached through these awaits so a
+            // queued normalization callback cannot duplicate the repair log.
+            await this.persistAndMaybeCompact(msg.data);
 
-          // Persist this remote update — subscribeLocalUpdates does NOT fire
-          // for imports, so this is the only persistence hook for client-
-          // or remote-persistence-originated changes. Append-only, so it's
-          // safe to do unconditionally.
-          await this.persistAndMaybeCompact(msg.data);
-
-          // Broadcast to all other clients FIRST so they have the base state
-          // before receiving any derived updates from processPendingNodes.
-          this.broadcastBinary(msg.data, msg.sender);
+            // Broadcast to all other clients FIRST so they have the base state
+            // before receiving any derived updates from processPendingNodes.
+            this.broadcastBinary(msg.data, msg.sender);
+            if (repairUpdate?.byteLength) {
+              await this.persistAndMaybeCompact(repairUpdate);
+              this.broadcastBinary(repairUpdate);
+            }
+          } finally {
+            this.installLocalUpdatePersistence();
+          }
 
           if (!shouldRunRealtimeEffects || !msg.sender || !nodesBefore) {
             msg.resolve?.();
@@ -1428,7 +1471,9 @@ export class ProjectRoom extends DurableObject<Env> {
         if (this.initPromise) await this.initPromise;
 
         const nodes = this.doc.getMap("nodes").toJSON() as Record<string, any>;
-        const edges = this.doc.getMap("edges").toJSON() as Record<string, any>;
+        const edges = Object.fromEntries(
+          listNodeOwnedEdges(this.doc).map(({ id, ...edge }) => [id, edge]),
+        );
         const projectMeta = (() => {
           try { return this.doc.getMap("projectMeta").toJSON(); } catch { return null; }
         })();

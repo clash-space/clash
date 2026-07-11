@@ -7,8 +7,8 @@ description: Use when the user wants to list, switch, create, inspect, or delete
 
 Clash organizes work into projects. Each project has its own canvas (graph
 of nodes representing scenes / assets / generated content). The `clash`
-CLI is pre-authenticated for you (CLASH_API_KEY env var); you don't need
-to ask the user to log in.
+CLI talks to the loopback local host; local project commands do not need
+cloud login or a local API token.
 
 ## Listing projects
 
@@ -24,7 +24,7 @@ match case-insensitively; ask only when the match is ambiguous.
 ## Inspecting a project
 
 ```bash
-clash projects get <project-id> --json
+clash projects get --id <project-id> --json
 ```
 
 Returns the same shape as a list entry. Use this when the user wants to
@@ -33,7 +33,7 @@ know the description / created date of a specific project.
 ## Creating
 
 ```bash
-clash projects create "<name>" --description "<one-line>" --json
+clash projects create --name "<name>" --description "<one-line>" --json
 ```
 
 Returns the new project's id + name. Confirm with the user before doing
@@ -42,12 +42,18 @@ this — project creation is cheap but accumulates in their dashboard.
 ## Deleting
 
 ```bash
-clash projects delete <project-id>
+clash project get --id <project-id> --json
+clash projects delete --id <project-id> --yes --json
+clash project get --id <project-id> --include-deleted --json
+clash project restore <project-id> --json
 ```
 
-**Confirm explicitly with the user** before running. Deleting a project
-removes the canvas, asset references, and history. Quote the project's
-name back to them in the confirmation prompt.
+**Confirm explicitly with the user** before running delete. Local project
+delete is a recoverable soft-delete: the project is hidden from active lists
+and new sessions are blocked, but persisted session/message history is retained.
+Quote the project's name back to the user in the confirmation prompt. The CLI
+requires `--yes` as the machine-readable confirmation flag. The preceding
+`get` records the project observation used by delete/restore CAS.
 
 ## Conventions
 

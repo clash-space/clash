@@ -4,17 +4,15 @@ export type AgentHostWriteResult =
 
 export function assertAgentHostWritePath(options: {
   actorClientType?: string;
-  force?: boolean;
   operation: string;
   readCommand: string;
 }): AgentHostWriteResult {
-  if (options.force || options.actorClientType !== "agent") return { ok: true };
+  if (options.actorClientType !== "agent") return { ok: true };
   return {
     ok: false,
     error:
-      `Agent ${options.operation} requires a host-verified read receipt. ` +
+      `Agent ${options.operation} requires the local host to verify the cwd observation. ` +
       "Start `clash canvas connect` or use the local-api host, " +
-      `run \`${options.readCommand}\` to get a receipt-bearing readToken, ` +
-      "then retry the write with that token. Pass --force only for an explicit overwrite.",
+      `run \`${options.readCommand}\`, then retry the write.`,
   };
 }

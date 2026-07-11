@@ -10,17 +10,12 @@ export type PendingRenderTimelineDsl = Pick<
 
 export const DEFAULT_RENDER_DURATION_IN_FRAMES = 150;
 
-export interface PendingRenderAppliedTimelineRevision {
-  timelineId: string;
-  revisionId: string;
-  timelineHash: string;
-  loroFrontiers?: unknown;
-  loroVersionVector?: unknown;
-}
-
 export interface PendingRenderTimelineProvenance {
   sourceTimelineNodeId?: string;
-  appliedRevision?: PendingRenderAppliedTimelineRevision | null;
+  timelineRevision?: {
+    timelineId: string;
+    revisionId: string;
+  };
 }
 
 export function getTimelineDurationInFrames(
@@ -40,63 +35,27 @@ export function getTimelineDurationInFrames(
   return maxEndFrame > 0 ? maxEndFrame : fallback;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-export function readPendingRenderAppliedTimelineRevision(
-  nodeData: unknown,
-): PendingRenderAppliedTimelineRevision | null {
-  if (!isRecord(nodeData)) return null;
-  const candidate = isRecord(nodeData.appliedRevision)
-    ? nodeData.appliedRevision
-    : isRecord(nodeData.timelineRevision)
-      ? nodeData.timelineRevision
-      : null;
-  if (!candidate) return null;
-  if (
-    typeof candidate.timelineId !== "string" ||
-    typeof candidate.revisionId !== "string" ||
-    typeof candidate.timelineHash !== "string"
-  ) {
-    return null;
-  }
-  return {
-    timelineId: candidate.timelineId,
-    revisionId: candidate.revisionId,
-    timelineHash: candidate.timelineHash,
-    ...(candidate.loroFrontiers !== undefined ? { loroFrontiers: candidate.loroFrontiers } : {}),
-    ...(candidate.loroVersionVector !== undefined ? { loroVersionVector: candidate.loroVersionVector } : {}),
-  };
-}
-
 async function timelineProvenanceData(
   timelineDsl: PendingRenderTimelineDsl,
   options?: PendingRenderTimelineProvenance,
 ) {
-  const appliedRevision = options?.appliedRevision;
-  if (!appliedRevision) {
+  const timelineRevision = options?.timelineRevision;
+  if (timelineRevision) {
     return {
       ...(options?.sourceTimelineNodeId ? { sourceTimelineNodeId: options.sourceTimelineNodeId } : {}),
-      ...(options?.sourceTimelineNodeId
-        ? {
-            sourceTimelineHash: await timelineDslHash(timelineDsl),
-            sourceTimelineRevisionStatus: "draft-canvas",
-          }
-        : {}),
+      sourceTimelineId: timelineRevision.timelineId,
+      sourceTimelineRevisionId: timelineRevision.revisionId,
+      sourceTimelineHash: await timelineDslHash(timelineDsl),
+      sourceTimelineRevisionStatus: "applied",
     };
   }
   return {
     ...(options?.sourceTimelineNodeId ? { sourceTimelineNodeId: options.sourceTimelineNodeId } : {}),
-    sourceTimelineId: appliedRevision.timelineId,
-    sourceTimelineRevisionId: appliedRevision.revisionId,
-    sourceTimelineHash: appliedRevision.timelineHash,
-    sourceTimelineRevisionStatus: "applied",
-    ...(appliedRevision.loroFrontiers !== undefined
-      ? { sourceTimelineFrontiers: appliedRevision.loroFrontiers }
-      : {}),
-    ...(appliedRevision.loroVersionVector !== undefined
-      ? { sourceTimelineVersionVector: appliedRevision.loroVersionVector }
+    ...(options?.sourceTimelineNodeId
+      ? {
+          sourceTimelineHash: await timelineDslHash(timelineDsl),
+          sourceTimelineRevisionStatus: "draft-canvas",
+        }
       : {}),
   };
 }

@@ -67,14 +67,12 @@ describe("auth", () => {
   // ─── extractTokenFromRequest (tested via authenticateRequest) ───
 
   describe("extractTokenFromRequest", () => {
-    it("extracts token from query param ?token=xxx", async () => {
+    it("rejects query-string credentials", async () => {
       const token = await signJWT({ sub: "user-1", projectId: "proj-1" }, JWT_SECRET);
       const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
       const env = makeEnv();
 
-      const result = await authenticateRequest(request, env, "proj-1");
-      expect(result.userId).toBe("user-1");
-      expect(result.projectId).toBe("proj-1");
+      await expect(authenticateRequest(request, env, "proj-1")).rejects.toThrow("Unauthorized");
     });
 
     it("extracts token from Authorization: Bearer header", async () => {
@@ -102,7 +100,9 @@ describe("auth", () => {
   describe("JWT verification", () => {
     it("valid token → returns userId + projectId", async () => {
       const token = await signJWT({ sub: "user-1", projectId: "proj-1" }, JWT_SECRET);
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const env = makeEnv();
 
       const result = await authenticateRequest(request, env, "proj-1");
@@ -117,7 +117,9 @@ describe("auth", () => {
         .setExpirationTime(Math.floor(Date.now() / 1000) - 3600) // 1 hour ago
         .sign(key);
 
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const env = makeEnv();
 
       await expect(authenticateRequest(request, env, "proj-1")).rejects.toThrow();
@@ -125,7 +127,9 @@ describe("auth", () => {
 
     it("wrong secret → throws", async () => {
       const token = await signJWT({ sub: "user-1", projectId: "proj-1" }, "wrong-secret");
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const env = makeEnv();
 
       await expect(authenticateRequest(request, env, "proj-1")).rejects.toThrow();
@@ -138,7 +142,9 @@ describe("auth", () => {
         .setExpirationTime("1h")
         .sign(key);
 
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const env = makeEnv();
 
       await expect(authenticateRequest(request, env, "proj-1")).rejects.toThrow(
@@ -153,7 +159,9 @@ describe("auth", () => {
         .setExpirationTime("1h")
         .sign(key);
 
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const env = makeEnv();
 
       await expect(authenticateRequest(request, env, "proj-1")).rejects.toThrow(
@@ -163,7 +171,9 @@ describe("auth", () => {
 
     it("projectId mismatch → throws", async () => {
       const token = await signJWT({ sub: "user-1", projectId: "other-project" }, JWT_SECRET);
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`);
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const env = makeEnv();
 
       await expect(authenticateRequest(request, env, "proj-1")).rejects.toThrow(
@@ -251,8 +261,8 @@ describe("auth", () => {
       fetchSpy.mockResolvedValueOnce(new Response("", { status: 401 }));
 
       const token = await signJWT({ sub: "user-1", projectId: "proj-1" }, JWT_SECRET);
-      const request = new Request(`http://localhost/sync/proj-1?token=${token}`, {
-        headers: { cookie: "session=invalid" },
+      const request = new Request("http://localhost/sync/proj-1", {
+        headers: { cookie: "session=invalid", Authorization: `Bearer ${token}` },
       });
       const env = makeEnv();
 

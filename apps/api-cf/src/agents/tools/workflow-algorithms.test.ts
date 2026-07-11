@@ -28,6 +28,8 @@ type NodeShape = { id: string; type: string; data?: Record<string, unknown>; par
 function n(shape: NodeShape): NodeInfo {
   return {
     id: shape.id,
+    canvas_id: "main",
+    upstream: [],
     type: shape.type,
     data: shape.data ?? {},
     parent_id: shape.parent_id ?? null,

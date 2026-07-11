@@ -23,16 +23,17 @@ function readSelectionGroupButtonSource() {
 }
 
 describe("ProjectEditor toolbar primitives", () => {
-  it("uses the shared Radix toggle primitive for canvas mode instead of a hand-rolled toggle button", () => {
+  it("uses Radix Toolbar for roving focus and single-select canvas modes", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
-    const toggleSource = readSource("packages/web-ui/src/components/ui/toggle.tsx");
 
-    expect(toggleSource).toContain("TogglePrimitive.Root");
-    expect(editorSource).toContain("./ui/toggle");
-    expect(editorSource).toContain("<Toggle");
-    expect(editorSource).toContain("pressed={canvasMode === 'hand'}");
-    expect(editorSource).toContain("onPressedChange={(pressed) => setCanvasMode(pressed ? 'hand' : 'select')}");
-    expect(editorSource).not.toContain("onClick={() => setCanvasMode(prev => prev === 'select' ? 'hand' : 'select')}");
+    expect(editorSource).toContain("import { Toolbar } from 'radix-ui'");
+    expect(editorSource).toContain('<Toolbar.Root');
+    expect(editorSource).toContain('orientation="vertical"');
+    expect(editorSource).toContain('<Toolbar.ToggleGroup');
+    expect(editorSource).toContain('type="single"');
+    expect(editorSource).toContain('<Toolbar.ToggleItem value="select" asChild>');
+    expect(editorSource).toContain('<Toolbar.ToggleItem value="hand" asChild>');
+    expect(editorSource).not.toContain('role="group"');
   });
 
   it("uses the shared tooltip primitive for canvas toolbar icon buttons instead of browser title attributes", () => {
@@ -69,11 +70,12 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(buttonSource).not.toContain("onMouseDown={(e) => e.stopPropagation()}");
   });
 
-  it("only removes asset refs for nodes whose Loro delete was accepted", () => {
+  it("only removes asset refs when the atomic Loro delete batch was accepted", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
 
-    expect(editorSource).toContain("const persistedDeletedNodes = deletedNodes.filter(node => loroSync.removeNode(node.id));");
-    expect(editorSource).toContain("const deletedIds = new Set(persistedDeletedNodes.map(n => n.id));");
+    expect(editorSource).toContain("const persistedDeletedNodes = loroSync.removeNodes(deletedNodes.map((node) => node.id))");
+    expect(editorSource).toContain("? deletedNodes");
+    expect(editorSource).toContain("const deletedIds = new Set(persistedDeletedNodes.map((n) => n.id));");
     expect(editorSource).toContain("persistedDeletedNodes\n                .map");
   });
 

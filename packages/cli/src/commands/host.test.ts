@@ -61,3 +61,16 @@ it("host status emits stable inactive JSON", async () => {
   expect(output).toEqual({ status: "inactive" });
   expect(JSON.parse(lines.join("\n"))).toEqual(output);
 });
+
+it("host status does not advertise an unimplemented start command", async () => {
+  const runDir = await mkdtemp(join(tmpdir(), "clash-host-status-"));
+  const lines: string[] = [];
+
+  await runHostStatus({
+    runDir,
+    stdout: (line) => lines.push(line),
+  });
+
+  expect(lines.join("\n")).toContain("Open Clash Desktop or start the local-api host.");
+  expect(lines.join("\n")).not.toContain("clash host start");
+});

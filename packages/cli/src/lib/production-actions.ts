@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   AssetMetadataFillActionSchema,
   applyAssetMetadataFill,
@@ -21,14 +21,8 @@ import {
   timelineDslToYaml,
 } from "@clash/shared-types";
 import {
-  assertProjectionLockFilePath,
-  createProjectionLock,
   hashProjectionContent,
-  parseProjectionLock,
-  type ProjectionLock,
   resolveProjectionFilePathInsideCwd,
-  resolveProjectionLockPathInsideCwd,
-  resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
 
 type ProductionAssetManifestAsset = {
@@ -56,8 +50,8 @@ export type ApplyProductionMetadataActionResult = {
   metadataKind: string;
   assetsPath: string;
   metadataPath: string;
-  metadataLockPath: string;
-  projectionLockPaths: string[];
+  metadataManifestPath: string;
+  version: string;
   timelineProjectionPath?: string;
   transcriptCutPlanPath?: string;
   transcriptProjectionPath?: string;
@@ -66,22 +60,22 @@ export type ApplyProductionMetadataActionResult = {
   rightsLedgerPath?: string;
 };
 
-type AssetMetadataProjectionLock = ProjectionLock & {
+type AssetMetadataProjectionManifest = {
+  schemaVersion: 1;
+  kind: "clash.asset.metadata.manifest";
   targetAssetId: string;
   metadataKind: string;
-  metadataHash?: string;
-  sourceActionPath?: string;
-  sourceActionHash?: string;
-  appliedFromProjection?: boolean;
-  previousMetadataHash?: string;
+  metadataPath: string;
+  baseMetadataHash: string;
+  sourceActionPath: string;
+  sourceActionHash: string;
 };
 
 export type ApplyProductionMetadataProjectionOptions = {
   cwd: string;
   filePath: string;
   assetsPath?: string;
-  lockPath?: string;
-  force?: boolean;
+  expectedVersion: string;
 };
 
 export type ApplyProductionMetadataProjectionResult = {
@@ -90,10 +84,10 @@ export type ApplyProductionMetadataProjectionResult = {
   metadataKind: string;
   assetsPath: string;
   metadataPath: string;
-  lockPath: string;
+  metadataManifestPath: string;
   beforeMetadataHash: string;
   afterMetadataHash: string;
-  forced: boolean;
+  version: string;
 };
 
 export async function applyProductionMetadataAction(
@@ -118,7 +112,7 @@ export async function applyProductionMetadataAction(
       `${targetAssetFileStem}.${metadataKindFileStem}.json`,
     ),
   });
-  const metadataLockPath = resolveProjectionLockPathInsideCwd({ filePath: metadataPath, cwd });
+  const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
   const manifest = parseAssetManifest(await readFile(assetsPath, "utf8"), assetsPath);
   const assetIndex = manifest.assets.findIndex((asset) => asset.id === action.targetAssetId);
   if (assetIndex < 0) {
@@ -130,15 +124,17 @@ export async function applyProductionMetadataAction(
   await writeJson(assetsPath, manifest);
 
   await writeJson(metadataPath, action.metadata);
-  await writeJson(metadataLockPath, createAssetMetadataLock({
-    cwd,
+  const metadataManifest: AssetMetadataProjectionManifest = {
+    schemaVersion: 1,
+    kind: "clash.asset.metadata.manifest",
     targetAssetId: action.targetAssetId,
     metadataKind: action.metadataKind,
-    metadata: action.metadata,
-    metadataPath,
-    actionPath,
-    action,
-  }));
+    metadataPath: toProjectPath(cwd, metadataPath),
+    baseMetadataHash: productionMetadataHash(action.metadata),
+    sourceActionPath: toProjectPath(cwd, actionPath),
+    sourceActionHash: productionMetadataHash(action),
+  };
+  await writeJson(metadataManifestPath, metadataManifest);
 
   const result: ApplyProductionMetadataActionResult = {
     applied: true,
@@ -146,31 +142,21 @@ export async function applyProductionMetadataAction(
     metadataKind: action.metadataKind,
     assetsPath,
     metadataPath,
-    metadataLockPath,
-    projectionLockPaths: [metadataLockPath],
+    metadataManifestPath,
+    version: assetMetadataObservationVersion(
+      metadataManifest,
+      metadataManifest.baseMetadataHash,
+      metadataManifest.sourceActionHash,
+    ),
   };
 
   const writeDerivedProjectionJson = async (
     projectionPath: string,
-    projectionKind: string,
+    _projectionKind: string,
     value: Record<string, unknown>,
   ): Promise<void> => {
     const safeProjectionPath = resolveProjectionFilePathInsideCwd({ filePath: projectionPath, cwd });
     await writeJson(safeProjectionPath, value);
-    const lockPath = resolveProjectionLockPathInsideCwd({ filePath: safeProjectionPath, cwd });
-    await writeJson(lockPath, createAssetMetadataProjectionLock({
-      cwd,
-      targetAssetId: action.targetAssetId,
-      metadataKind: action.metadataKind,
-      metadata: action.metadata,
-      metadataPath,
-      projectionKind,
-      projection: value,
-      projectionPath: safeProjectionPath,
-      actionPath,
-      action,
-    }));
-    result.projectionLockPaths.push(lockPath);
   };
 
   switch (action.metadata.kind) {
@@ -565,74 +551,76 @@ export async function applyProductionMetadataProjection(
 ): Promise<ApplyProductionMetadataProjectionResult> {
   const cwd = options.cwd;
   const metadataPath = resolveLocalPath(cwd, options.filePath, "metadata projection");
-  const lockPath = options.lockPath
-    ? resolveProjectionLockSidecarPathInsideCwd({ lockPath: options.lockPath, cwd })
-    : resolveProjectionLockPathInsideCwd({ filePath: metadataPath, cwd });
+  const metadataManifestPath = assetMetadataManifestPath(cwd, metadataPath);
   const assetsPath = resolveLocalPath(cwd, options.assetsPath ?? join("assets", "manifest.json"), "asset manifest");
-  const lock = parseAssetMetadataProjectionLock(await readFile(lockPath, "utf8"));
-  const filePathResult = assertProjectionLockFilePath({
-    label: "asset metadata",
-    lockFilePath: lock.filePath,
-    filePath: metadataPath,
-    cwd,
-    force: options.force,
-    readCommand: "clash production apply-metadata",
-    writeVerb: "Apply",
-  });
-  if (!filePathResult.ok) throw new Error(filePathResult.error);
+  const metadataManifest = await readAssetMetadataManifest(metadataManifestPath);
+  if (metadataManifest.metadataPath !== toProjectPath(cwd, metadataPath)) {
+    throw new Error("READ_REQUIRED: This metadata file was not projected from the current cwd path.");
+  }
 
   const metadata = ProductionMetadataSchema.parse(
     JSON.parse(await readFile(metadataPath, "utf8")),
   );
-  if (metadata.kind !== lock.metadataKind) {
-    throw new Error(`metadata kind mismatch: ${metadata.kind} does not match lock ${lock.metadataKind}`);
+  if (metadata.kind !== metadataManifest.metadataKind) {
+    throw new Error(`metadata kind mismatch: ${metadata.kind} does not match manifest ${metadataManifest.metadataKind}`);
   }
   const manifest = parseAssetManifest(await readFile(assetsPath, "utf8"), assetsPath);
-  const assetIndex = manifest.assets.findIndex((asset) => asset.id === lock.targetAssetId);
+  const assetIndex = manifest.assets.findIndex((asset) => asset.id === metadataManifest.targetAssetId);
   if (assetIndex < 0) {
-    throw new Error(`Asset ${lock.targetAssetId} not found in ${assetsPath}`);
+    throw new Error(`Asset ${metadataManifest.targetAssetId} not found in ${assetsPath}`);
   }
 
-  const currentMetadata = manifest.assets[assetIndex].metadata?.[lock.metadataKind];
+  const currentMetadata = manifest.assets[assetIndex].metadata?.[metadataManifest.metadataKind];
   const beforeMetadataHash = productionMetadataHash(currentMetadata ?? null);
-  if (!options.force && beforeMetadataHash !== lock.contentHash) {
+  const sourceActionPath = resolveLocalPath(cwd, metadataManifest.sourceActionPath, "source action");
+  const sourceAction = AssetMetadataFillActionSchema.parse(JSON.parse(await readFile(sourceActionPath, "utf8")));
+  const currentSourceActionHash = productionMetadataHash(sourceAction);
+  const currentVersion = assetMetadataObservationVersion(
+    metadataManifest,
+    beforeMetadataHash,
+    currentSourceActionHash,
+  );
+  if (!options.expectedVersion) {
+    throw new Error("READ_REQUIRED: Run `clash production apply-metadata` before applying the metadata projection.");
+  }
+  if (options.expectedVersion !== currentVersion) {
     throw new Error(
-      `Stale asset metadata apply rejected. Manifest metadata hash is ${beforeMetadataHash}, ` +
-      `but lock was pulled from ${lock.contentHash}. Run \`clash production apply-metadata\` again and merge, or pass --force to intentionally overwrite.`,
+      "STALE_READ: Asset metadata or its source action changed after it was read. " +
+      "Run `clash production apply-metadata` again and reconcile before applying.",
     );
   }
 
   const afterMetadataHash = productionMetadataHash(metadata);
   manifest.assets[assetIndex] = applyAssetMetadataFill(manifest.assets[assetIndex], {
     actionId: `metadata-projection-apply:${afterMetadataHash}`,
-    targetAssetId: lock.targetAssetId,
-    metadataKind: lock.metadataKind,
+    targetAssetId: metadataManifest.targetAssetId,
+    metadataKind: metadataManifest.metadataKind,
     metadata,
     producer: "clash production apply-metadata-projection",
     createdAt: new Date().toISOString(),
   });
   await writeJson(assetsPath, manifest);
-  await writeJson(lockPath, createAppliedAssetMetadataLock({
-    cwd,
-    targetAssetId: lock.targetAssetId,
-    metadataKind: lock.metadataKind,
-    metadataPath,
-    metadataHash: afterMetadataHash,
-    previousMetadataHash: beforeMetadataHash,
-    sourceActionPath: lock.sourceActionPath,
-    sourceActionHash: lock.sourceActionHash,
-  }));
+  const nextMetadataManifest: AssetMetadataProjectionManifest = {
+    ...metadataManifest,
+    baseMetadataHash: afterMetadataHash,
+    sourceActionHash: currentSourceActionHash,
+  };
+  await writeJson(metadataManifestPath, nextMetadataManifest);
 
   return {
     applied: true,
-    targetAssetId: lock.targetAssetId,
-    metadataKind: lock.metadataKind,
+    targetAssetId: metadataManifest.targetAssetId,
+    metadataKind: metadataManifest.metadataKind,
     assetsPath,
     metadataPath,
-    lockPath,
+    metadataManifestPath,
     beforeMetadataHash,
     afterMetadataHash,
-    forced: Boolean(options.force),
+    version: assetMetadataObservationVersion(
+      nextMetadataManifest,
+      afterMetadataHash,
+      currentSourceActionHash,
+    ),
   };
 }
 
@@ -987,118 +975,62 @@ function preflightProductionMetadataGeneratedAssetPaths(metadata: ProductionMeta
   }
 }
 
-function createAssetMetadataLock(options: {
-  cwd: string;
-  targetAssetId: string;
-  metadataKind: string;
-  metadata: ProductionMetadata;
-  metadataPath: string;
-  actionPath: string;
-  action: unknown;
-}) {
-  const metadataHash = productionMetadataHash(options.metadata);
-  return createProjectionLock({
-    kind: "clash.asset.metadata.lock",
-    projectionKind: "asset-metadata",
-    entity: { kind: "asset", id: options.targetAssetId },
-    filePath: toProjectPath(options.cwd, options.metadataPath),
-    contentHash: metadataHash,
-    extra: {
-      targetAssetId: options.targetAssetId,
-      metadataKind: options.metadataKind,
-      metadataHash,
-      sourceActionPath: toProjectPath(options.cwd, options.actionPath),
-      sourceActionHash: productionMetadataHash(options.action),
-    },
+function assetMetadataManifestPath(cwd: string, metadataPath: string): string {
+  const extension = extname(metadataPath);
+  return resolveProjectionFilePathInsideCwd({
+    cwd,
+    filePath: join(dirname(metadataPath), `${basename(metadataPath, extension)}.manifest.json`),
   });
 }
 
-function createAssetMetadataProjectionLock(options: {
-  cwd: string;
-  targetAssetId: string;
-  metadataKind: string;
-  metadata: ProductionMetadata;
-  metadataPath: string;
-  projectionKind: string;
-  projection: Record<string, unknown>;
-  projectionPath: string;
-  actionPath: string;
-  action: unknown;
-}) {
-  const projectionHash = productionMetadataHash(options.projection);
-  return createProjectionLock({
-    kind: "clash.asset.metadata.projection.lock",
-    projectionKind: options.projectionKind,
-    entity: { kind: "asset", id: options.targetAssetId },
-    filePath: toProjectPath(options.cwd, options.projectionPath),
-    contentHash: projectionHash,
-    extra: {
-      targetAssetId: options.targetAssetId,
-      metadataKind: options.metadataKind,
-      projectionHash,
-      sourceMetadataPath: toProjectPath(options.cwd, options.metadataPath),
-      sourceMetadataHash: productionMetadataHash(options.metadata),
-      sourceActionPath: toProjectPath(options.cwd, options.actionPath),
-      sourceActionHash: productionMetadataHash(options.action),
-    },
-  });
-}
-
-function createAppliedAssetMetadataLock(options: {
-  cwd: string;
-  targetAssetId: string;
-  metadataKind: string;
-  metadataPath: string;
-  metadataHash: string;
-  previousMetadataHash: string;
-  sourceActionPath?: string;
-  sourceActionHash?: string;
-}) {
-  return createProjectionLock({
-    kind: "clash.asset.metadata.lock",
-    projectionKind: "asset-metadata",
-    entity: { kind: "asset", id: options.targetAssetId },
-    filePath: toProjectPath(options.cwd, options.metadataPath),
-    contentHash: options.metadataHash,
-    extra: {
-      targetAssetId: options.targetAssetId,
-      metadataKind: options.metadataKind,
-      metadataHash: options.metadataHash,
-      previousMetadataHash: options.previousMetadataHash,
-      ...(options.sourceActionPath ? { sourceActionPath: options.sourceActionPath } : {}),
-      ...(options.sourceActionHash ? { sourceActionHash: options.sourceActionHash } : {}),
-      appliedFromProjection: true,
-    },
-  });
-}
-
-function parseAssetMetadataProjectionLock(raw: string): AssetMetadataProjectionLock {
-  const value = JSON.parse(raw) as Partial<AssetMetadataProjectionLock>;
-  const lock = parseProjectionLock(value, {
-    kind: "clash.asset.metadata.lock",
-    projectionKind: "asset-metadata",
-    entityKind: "asset",
-  }) as AssetMetadataProjectionLock;
-  if (
-    typeof value.targetAssetId !== "string" ||
-    value.targetAssetId.length === 0 ||
-    value.targetAssetId !== lock.entity.id ||
-    typeof value.metadataKind !== "string" ||
-    value.metadataKind.length === 0 ||
-    (value.metadataHash !== undefined && typeof value.metadataHash !== "string") ||
-    (value.sourceActionPath !== undefined && typeof value.sourceActionPath !== "string") ||
-    (value.sourceActionHash !== undefined && typeof value.sourceActionHash !== "string")
-  ) {
-    throw new Error("Invalid asset metadata projection lock file");
+async function readAssetMetadataManifest(manifestPath: string): Promise<AssetMetadataProjectionManifest> {
+  let value: unknown;
+  try {
+    value = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `READ_REQUIRED: Run \`clash production apply-metadata\` before writing. ` +
+      `${error instanceof Error ? error.message : String(error)}`,
+    );
   }
-  return {
-    ...lock,
-    targetAssetId: value.targetAssetId,
-    metadataKind: value.metadataKind,
-    ...(value.metadataHash !== undefined ? { metadataHash: value.metadataHash } : {}),
-    ...(value.sourceActionPath !== undefined ? { sourceActionPath: value.sourceActionPath } : {}),
-    ...(value.sourceActionHash !== undefined ? { sourceActionHash: value.sourceActionHash } : {}),
-  };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
+  }
+  const manifest = value as Partial<AssetMetadataProjectionManifest>;
+  if (
+    manifest.schemaVersion !== 1 ||
+    manifest.kind !== "clash.asset.metadata.manifest" ||
+    typeof manifest.targetAssetId !== "string" ||
+    typeof manifest.metadataKind !== "string" ||
+    typeof manifest.metadataPath !== "string" ||
+    typeof manifest.baseMetadataHash !== "string" ||
+    typeof manifest.sourceActionPath !== "string" ||
+    typeof manifest.sourceActionHash !== "string"
+  ) {
+    throw new Error("READ_REQUIRED: Invalid asset metadata manifest");
+  }
+  return manifest as AssetMetadataProjectionManifest;
+}
+
+function assetMetadataObservationVersion(
+  manifest: AssetMetadataProjectionManifest,
+  baseMetadataHash: string,
+  currentSourceActionHash: string,
+): string {
+  const hash = productionMetadataHash({
+    targetAssetId: manifest.targetAssetId,
+    metadataKind: manifest.metadataKind,
+    metadataPath: manifest.metadataPath,
+    baseMetadataHash,
+    sourceActionPath: manifest.sourceActionPath,
+    sourceActionHash: currentSourceActionHash,
+  });
+  return `asset-metadata-v1:${hash}`;
+}
+
+export function productionMetadataObservationId(options: { cwd: string; filePath: string }): string {
+  const metadataPath = resolveLocalPath(options.cwd, options.filePath, "metadata projection");
+  return toProjectPath(options.cwd, metadataPath);
 }
 
 function productionMetadataHash(value: unknown): string {

@@ -46,7 +46,7 @@ describe("node modal primitives", () => {
     },
   );
 
-  it("surfaces host-indexed text and timeline revision history on canvas nodes", () => {
+  it("surfaces host-indexed text revisions without duplicating Loro timeline history", () => {
     const textSource = readNodeSource("TextNode.tsx");
     const timelineSource = readNodeSource("VideoEditorNode.tsx");
     const badgeSource = readNodeSource("RevisionHistoryBadge.tsx");
@@ -54,29 +54,25 @@ describe("node modal primitives", () => {
     expect(textSource).toContain("@clash/web-ui/hooks/useRevisionHistory");
     expect(textSource).toContain("./RevisionHistoryBadge");
     expect(textSource).toContain("<RevisionHistoryBadge");
-    expect(textSource).toContain("kind: \"text\"");
     expect(textSource).toContain("nodeId={id}");
     expect(textSource).toContain("history={revisionHistory}");
 
-    expect(timelineSource).toContain("@clash/web-ui/hooks/useRevisionHistory");
-    expect(timelineSource).toContain("./RevisionHistoryBadge");
-    expect(timelineSource).toContain("<RevisionHistoryBadge");
-    expect(timelineSource).toContain("kind: 'timeline'");
-    expect(timelineSource).toContain("nodeId={id}");
-    expect(timelineSource).toContain("history={revisionHistory}");
+    expect(timelineSource).not.toContain("@clash/web-ui/hooks/useRevisionHistory");
+    expect(timelineSource).not.toContain("./RevisionHistoryBadge");
 
     expect(badgeSource).toContain("Text revision history");
-    expect(badgeSource).toContain("Timeline revision history");
-    expect(badgeSource).toContain("clash ${kind} content --revision");
-    expect(badgeSource).toContain("clash ${kind} restore --node");
-    expect(badgeSource).toContain("timeline.yaml");
+    expect(badgeSource).toContain("clash text content --revision");
+    expect(badgeSource).toContain("clash text restore --node");
+    expect(badgeSource).not.toContain("clash timeline");
+    expect(badgeSource).not.toContain("timeline.yaml");
   });
 
   it("pins rendered video nodes to the source timeline revision when available", () => {
     const timelineSource = readNodeSource("VideoEditorNode.tsx");
 
-    expect(timelineSource).toContain("readPendingRenderAppliedTimelineRevision");
+    expect(timelineSource).toContain("listProjectTimelines");
     expect(timelineSource).toContain("sourceTimelineNodeId: id");
-    expect(timelineSource).toContain("appliedRevision: readPendingRenderAppliedTimelineRevision");
+    expect(timelineSource).toContain("timelineRevision:");
+    expect(timelineSource).toContain("revisionId: timeline.revisionId");
   });
 });

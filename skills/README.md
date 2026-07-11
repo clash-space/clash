@@ -28,7 +28,7 @@ marketplace can be reviewed, versioned, and tested like product code.
 - `actions` in `registry.json` are host bindings for discoverable local CLI
   production primitives. They do not make a skill Clash-only; they describe how
   Clash can trigger the same portable workflow, which artifacts it expects, and
-  where explicit apply commands and CAS lock sidecars are required.
+  where explicit apply commands and cwd-observation CAS are required.
 - Each action should also name the contract tests that prove the trigger command
   and produced artifacts are real, so the marketplace cannot drift away from
   executable system capability.

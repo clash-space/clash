@@ -1,92 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  assertProjectionLockFilePath,
-  createProjectionLock,
+  assertProjectionFilePathInsideCwd,
   hashProjectionContent,
-  parseProjectionLock,
-  resolveProjectionLockPath,
 } from "./projection-cas";
 
-test("projection CAS helper hashes content and resolves default lock sidecars", () => {
+test("projection CAS has no legacy lock-sidecar API", () => {
+  const source = readFileSync(new URL("./projection-cas.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /ProjectionLock|createProjectionLock|parseProjectionLock|resolveProjectionLock|assertProjectionLock/);
+});
+
+test("projection CAS helper hashes content", () => {
   assert.match(hashProjectionContent("first draft"), /^[a-f0-9]{16}$/);
   assert.equal(hashProjectionContent("first draft"), hashProjectionContent("first draft"));
   assert.notEqual(hashProjectionContent("first draft"), hashProjectionContent("second draft"));
-  assert.equal(
-    resolveProjectionLockPath("/tmp/project/projections/text/script.md"),
-    "/tmp/project/projections/text/script.lock.json",
-  );
-  assert.equal(
-    resolveProjectionLockPath("/tmp/project/timelines/main.timeline.yaml"),
-    "/tmp/project/timelines/main.timeline.lock.json",
-  );
-});
-
-test("projection CAS helper enforces lock file path binding", () => {
-  assert.deepEqual(
-    assertProjectionLockFilePath({
-      label: "text",
-      lockFilePath: "projections/text/script.md",
-      filePath: "/tmp/project/projections/text/script.md",
-      cwd: "/tmp/project",
-      readCommand: "clash text pull",
-      writeVerb: "Apply",
-    }),
-    { ok: true },
-  );
-
-  const result = assertProjectionLockFilePath({
-    label: "timeline",
-    lockFilePath: "/tmp/project/timelines/main.timeline.yaml",
-    filePath: "/tmp/project/timelines/other.timeline.yaml",
-    cwd: "/tmp/project",
-    readCommand: "clash timeline pull",
-    writeVerb: "Apply",
-  });
-
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.match(result.error, /Projection file path does not match timeline CAS lock/);
-    assert.match(result.error, /Apply file is/);
-    assert.match(result.error, /clash timeline pull/);
-  }
-
-  assert.deepEqual(
-    assertProjectionLockFilePath({
-      label: "timeline",
-      lockFilePath: "/tmp/project/timelines/main.timeline.yaml",
-      filePath: "/tmp/project/timelines/other.timeline.yaml",
-      cwd: "/tmp/project",
-      readCommand: "clash timeline pull",
-      writeVerb: "Apply",
-      force: true,
-    }),
-    { ok: true },
-  );
-
-  assert.deepEqual(
-    assertProjectionLockFilePath({
-      label: "text",
-      lockFilePath: "/tmp/project/..drafts/script.md",
-      filePath: "/tmp/project/..drafts/script.md",
-      cwd: "/tmp/project",
-      readCommand: "clash text pull",
-      writeVerb: "Apply",
-    }),
-    { ok: true },
-  );
 });
 
 test("projection CAS helper keeps projection files inside the current project cwd", () => {
-  const outside = assertProjectionLockFilePath({
-    label: "text",
-    lockFilePath: "/tmp/other-project/projections/text/script.md",
+  const outside = assertProjectionFilePathInsideCwd({
     filePath: "/tmp/other-project/projections/text/script.md",
     cwd: "/tmp/project",
-    readCommand: "clash text pull",
     writeVerb: "Apply",
   });
 
@@ -95,12 +31,9 @@ test("projection CAS helper keeps projection files inside the current project cw
     assert.match(outside.error, /Projection file path must stay inside the current project cwd/);
   }
 
-  const traversal = assertProjectionLockFilePath({
-    label: "timeline",
-    lockFilePath: "../other-project/timelines/main.timeline.yaml",
+  const traversal = assertProjectionFilePathInsideCwd({
     filePath: "../other-project/timelines/main.timeline.yaml",
     cwd: "/tmp/project",
-    readCommand: "clash timeline pull",
     writeVerb: "Apply",
   });
 
@@ -109,18 +42,16 @@ test("projection CAS helper keeps projection files inside the current project cw
     assert.match(traversal.error, /Projection file path must stay inside the current project cwd/);
   }
 
-  const forced = assertProjectionLockFilePath({
-    label: "timeline",
+  const outsideWithoutLock = assertProjectionFilePathInsideCwd({
     filePath: "/tmp/other-project/timelines/main.timeline.yaml",
     cwd: "/tmp/project",
-    readCommand: "clash timeline pull",
     writeVerb: "Apply",
-    force: true,
   });
 
-  assert.equal(forced.ok, false);
-  if (!forced.ok) {
-    assert.match(forced.error, /Projection file path must stay inside the current project cwd/);
+  assert.equal(outsideWithoutLock.ok, false);
+  if (!outsideWithoutLock.ok) {
+    assert.match(outsideWithoutLock.error, /Projection file path must stay inside the current project cwd/);
+    assert.doesNotMatch(outsideWithoutLock.error, /--force/);
   }
 });
 
@@ -133,12 +64,9 @@ test("projection CAS helper rejects symlinked projection parents that resolve ou
   symlinkSync(outside, join(cwd, "projections"), "dir");
 
   const filePath = join(cwd, "projections", "text", "script.md");
-  const result = assertProjectionLockFilePath({
-    label: "text",
-    lockFilePath: filePath,
+  const result = assertProjectionFilePathInsideCwd({
     filePath,
     cwd,
-    readCommand: "clash text pull",
     writeVerb: "Apply",
   });
 
@@ -146,49 +74,4 @@ test("projection CAS helper rejects symlinked projection parents that resolve ou
   if (!result.ok) {
     assert.match(result.error, /Projection file path must not traverse a symlink outside the current project cwd/);
   }
-});
-
-test("projection CAS helper creates and parses generic lock identity", () => {
-  const lock = createProjectionLock({
-    kind: "clash.text.lock",
-    projectionKind: "text",
-    projectId: "project-1",
-    entity: { kind: "text-node", id: "text-1" },
-    filePath: "projections/text/text-1.md",
-    contentHash: "1234567890abcdef",
-    readToken: "text-v1:1234567890abcdef:receipt:host",
-    pulledAt: "2026-07-07T00:00:00.000Z",
-    extra: { nodeId: "text-1" },
-  });
-
-  assert.deepEqual(lock, {
-    schemaVersion: 1,
-    kind: "clash.text.lock",
-    projectionKind: "text",
-    projectId: "project-1",
-    entity: { kind: "text-node", id: "text-1" },
-    nodeId: "text-1",
-    filePath: "projections/text/text-1.md",
-    contentHash: "1234567890abcdef",
-    readToken: "text-v1:1234567890abcdef:receipt:host",
-    hashAlgorithm: "sha256-64",
-    pulledAt: "2026-07-07T00:00:00.000Z",
-  });
-
-  assert.deepEqual(parseProjectionLock(lock, {
-    kind: "clash.text.lock",
-    projectionKind: "text",
-    entityKind: "text-node",
-    entityId: "text-1",
-  }), lock);
-
-  assert.throws(
-    () => parseProjectionLock(lock, {
-      kind: "clash.text.lock",
-      projectionKind: "text",
-      entityKind: "text-node",
-      entityId: "other-text",
-    }),
-    /Invalid projection lock file/,
-  );
 });

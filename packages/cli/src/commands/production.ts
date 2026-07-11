@@ -3,13 +3,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Command } from "commander";
 import { AssetMetadataFillActionSchema } from "@clash/shared-types";
-import { applyProductionMetadataAction, applyProductionMetadataProjection } from "../lib/production-actions";
+import { applyProductionMetadataAction, applyProductionMetadataProjection, productionMetadataObservationId } from "../lib/production-actions";
 import { validatePipelineManifest } from "../lib/pipeline-manifest-validation";
 import { renderMgProductionProjection } from "../lib/mg-production";
 import { verifyMgPreview } from "../lib/mg-preview-verification";
 import { planCompositionRoute } from "../lib/composition-route-plan";
 import { projectCompositionTimeline } from "../lib/composition-timeline-projection";
-import { approveReviewStageGate, parseReviewGateDecision, planReviewStageGate } from "../lib/review-stage-gate";
+import { approveReviewStageGate, parseReviewGateDecision, planReviewStageGate, reviewGateObservationId } from "../lib/review-stage-gate";
 import { planDryRunCostGate } from "../lib/dry-run-cost-gate";
 import { planReferenceRolesAction } from "../lib/reference-roles-plan";
 import { planProductLogoQaAction } from "../lib/product-logo-qa-plan";
@@ -44,7 +44,7 @@ import { planReferenceNonCopyingQaAction } from "../lib/reference-noncopying-qa"
 import { verifyReferenceIsolation } from "../lib/reference-isolation-verification";
 import { planStoryboardConsistencyAction } from "../lib/storyboard-plan";
 import { planStoryboardConsistencyQaAction } from "../lib/storyboard-consistency-qa";
-import { applyStoryboardPromptPack, projectStoryboardPromptPack, replaceStoryboardPromptPack } from "../lib/storyboard-prompt-pack-projection";
+import { applyStoryboardPromptPack, projectStoryboardPromptPack, replaceStoryboardPromptPack, storyboardPromptPackObservationId } from "../lib/storyboard-prompt-pack-projection";
 import { projectStoryboardTimeline } from "../lib/storyboard-timeline-projection";
 import { verifyStoryboardTimeline } from "../lib/storyboard-timeline-verification";
 import {
@@ -53,10 +53,86 @@ import {
   type DerivedOverlayMediaType,
 } from "../lib/derived-overlay-projection";
 import { isJsonMode, printJson } from "../lib/output";
+import { resolveCanvasProjectContext } from "./canvas";
+import { readTimelineEntityForProjection } from "./timeline";
+import {
+  normalizeTimelineDslForYaml,
+  timelineHash,
+  type ProjectTimelineRevisionRef,
+} from "../lib/timeline-projection";
+
+async function resolveProjectTimelineRevision(options: {
+  timelineId?: string;
+  project?: string;
+}): Promise<ProjectTimelineRevisionRef | undefined> {
+  const timelineId = options.timelineId?.trim();
+  if (!timelineId) return undefined;
+  const context = await resolveCanvasProjectContext({ project: options.project });
+  const timeline = await readTimelineEntityForProjection(context, timelineId);
+  return {
+    timelineId: timeline.id,
+    revisionId: timeline.revisionId,
+    timelineHash: timelineHash(normalizeTimelineDslForYaml(timeline.state)),
+  };
+}
 import { resolveAgentFilePathInsideCwd } from "../lib/projection-cas";
+import { isAgentInvocation, publicAgentCommandResult } from "../lib/agent-worktree-observation";
+import { findProjectMarker, resolveProjectContext, type ResolvedProjectContext } from "../lib/project-context";
+import { recordWorktreeObservation, requireWorktreeObservation } from "../lib/worktree-observations";
 
 export const productionCommand = new Command("production")
   .description("Run local production actions that fill asset metadata and emit timeline/view projections");
+
+async function productionObservationContext(cwd: string): Promise<ResolvedProjectContext & { workspaceRoot: string }> {
+  const context = await resolveProjectContext({ cwd });
+  if (!context.workspaceRoot) {
+    throw new Error("Run this command from a cwd linked through .clash/project.toml.");
+  }
+  return context as ResolvedProjectContext & { workspaceRoot: string };
+}
+
+async function optionalProductionObservationContext(
+  cwd: string,
+): Promise<(ResolvedProjectContext & { workspaceRoot: string }) | undefined> {
+  const markerPath = await findProjectMarker(cwd);
+  if (!markerPath) {
+    if (isAgentInvocation()) {
+      throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+    }
+    return undefined;
+  }
+  return productionObservationContext(cwd);
+}
+
+async function recordProductionObservation(options: {
+  context: ResolvedProjectContext & { workspaceRoot: string };
+  entityKind: string;
+  entityId: string;
+  revision: string;
+}): Promise<void> {
+  await recordWorktreeObservation({
+    workspaceRoot: options.context.workspaceRoot,
+    projectId: options.context.projectId,
+    entityKind: options.entityKind,
+    entityId: options.entityId,
+    revision: options.revision,
+  });
+}
+
+async function requireProductionObservation(options: {
+  context: ResolvedProjectContext & { workspaceRoot: string };
+  entityKind: string;
+  entityId: string;
+}): Promise<string> {
+  const observation = await requireWorktreeObservation({
+    workspaceRoot: options.context.workspaceRoot,
+    projectId: options.context.projectId,
+    entityKind: options.entityKind,
+    entityId: options.entityId,
+  });
+  if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
+  return observation.revision;
+}
 
 productionCommand
   .command("apply-metadata")
@@ -68,22 +144,30 @@ productionCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await optionalProductionObservationContext(cwd);
       const result = await applyProductionMetadataAction({
-        cwd: process.cwd(),
+        cwd,
         actionPath: options.action,
         assetsPath: options.assets,
       });
+      if (context) {
+        const entityId = productionMetadataObservationId({ cwd, filePath: result.metadataPath });
+        await recordProductionObservation({
+          context,
+          entityKind: "asset-metadata",
+          entityId,
+          revision: result.version,
+        });
+      }
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`applied ${result.metadataKind} to ${result.targetAssetId}`);
       console.log(`metadata: ${result.metadataPath}`);
-      console.log(`metadata lock: ${result.metadataLockPath}`);
+      console.log(`metadata manifest: ${result.metadataManifestPath}`);
       if (result.timelineProjectionPath) console.log(`projection: ${result.timelineProjectionPath}`);
-      for (const lockPath of result.projectionLockPaths.filter((lockPath) => lockPath !== result.metadataLockPath)) {
-        console.log(`projection lock: ${lockPath}`);
-      }
       if (result.blockedReason) console.log(`blocked: ${result.blockedReason}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -95,29 +179,39 @@ productionCommand
   .command("apply-metadata-projection")
   .description("Apply an edited asset metadata projection JSON back to assets/manifest.json with CAS.")
   .requiredOption("--file <path>", "Asset metadata projection JSON file")
-  .option("--lock <path>", "Asset metadata projection lock path")
   .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
-  .option("--force", "Apply even when the asset metadata lock is stale")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await productionObservationContext(cwd);
+      const entityId = productionMetadataObservationId({ cwd, filePath: options.file });
+      const expectedVersion = await requireProductionObservation({
+        context,
+        entityKind: "asset-metadata",
+        entityId,
+      });
       const result = await applyProductionMetadataProjection({
-        cwd: process.cwd(),
+        cwd,
         filePath: options.file,
-        lockPath: options.lock,
         assetsPath: options.assets,
-        force: Boolean(options.force),
+        expectedVersion,
+      });
+      await recordProductionObservation({
+        context,
+        entityKind: "asset-metadata",
+        entityId,
+        revision: result.version,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`applied ${result.metadataKind} to ${result.targetAssetId}`);
       console.log(`metadata: ${result.metadataPath}`);
-      console.log(`metadata lock: ${result.lockPath}`);
+      console.log(`metadata manifest: ${result.metadataManifestPath}`);
       console.log(`before hash: ${result.beforeMetadataHash}`);
       console.log(`after hash: ${result.afterMetadataHash}`);
-      if (result.forced) console.log("forced: true");
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -182,7 +276,6 @@ productionCommand
       console.log(`html: ${result.htmlPath}`);
       console.log(`manifest: ${result.manifestPath}`);
       console.log(`projection: ${result.timelineProjectionPath}`);
-      console.log(`timeline lock required: ${result.timelineLockPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -282,7 +375,6 @@ productionCommand
       console.log(`runtime: ${result.runtime}`);
       console.log(`timeline: ${result.timelineProjectionPath}`);
       console.log(`manifest: ${result.manifestPath}`);
-      console.log(`timeline lock required: ${result.timelineLockPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -292,7 +384,7 @@ productionCommand
 productionCommand
   .command("plan-review-gate")
   .description(
-    "Plan a local review/stage gate over required artifacts, writing a gate file plus path-bound CAS lock."
+    "Plan a local review/stage gate and record its version for implicit cwd CAS."
   )
   .requiredOption("--pipeline <path>", "Pipeline manifest JSON file")
   .requiredOption("--stage <name>", "Pipeline stage to gate")
@@ -301,21 +393,29 @@ productionCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await productionObservationContext(cwd);
       const result = await planReviewStageGate({
-        cwd: process.cwd(),
+        cwd,
         pipelinePath: options.pipeline,
         stage: options.stage,
         requiredArtifactPaths: options.artifact,
         outPath: options.out,
       });
+      const entityId = reviewGateObservationId({ cwd, gatePath: result.gatePath });
+      await recordProductionObservation({
+        context,
+        entityKind: "review-gate",
+        entityId,
+        revision: result.version,
+      });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`planned review gate for ${result.stage}`);
       console.log(`status: ${result.status}`);
       console.log(`gate: ${result.gatePath}`);
-      console.log(`lock: ${result.lockPath}`);
       if (result.blockedReasons.length > 0) console.log(`blocked: ${result.blockedReasons.join("; ")}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -326,32 +426,44 @@ productionCommand
 productionCommand
   .command("approve-review-gate")
   .description(
-    "Approve or request changes on a review gate, guarded by the gate path and hash CAS lock."
+    "Approve or request changes on a review gate with implicit cwd observation CAS."
   )
   .requiredOption("--gate <path>", "Review gate JSON file")
-  .option("--lock <path>", "Review gate lock path; defaults to sibling .lock.json")
   .requiredOption("--reviewer <name>", "Reviewer identity")
   .requiredOption("--decision <decision>", "Review decision: approve or request-changes", parseReviewGateDecision)
   .option("--note <text>", "Review note")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await productionObservationContext(cwd);
+      const entityId = reviewGateObservationId({ cwd, gatePath: options.gate });
+      const expectedVersion = await requireProductionObservation({
+        context,
+        entityKind: "review-gate",
+        entityId,
+      });
       const result = await approveReviewStageGate({
-        cwd: process.cwd(),
+        cwd,
         gatePath: options.gate,
-        lockPath: options.lock,
+        expectedVersion,
         reviewer: options.reviewer,
         decision: options.decision,
         note: options.note,
       });
+      await recordProductionObservation({
+        context,
+        entityKind: "review-gate",
+        entityId,
+        revision: result.version,
+      });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`${result.decision} review gate for ${result.stage}`);
       console.log(`status: ${result.status}`);
       console.log(`gate: ${result.gatePath}`);
-      console.log(`lock: ${result.lockPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -754,7 +866,6 @@ productionCommand
       console.log(`source asset: ${result.sourceAssetId}`);
       console.log(`timeline: ${result.timelineProjectionPath}`);
       console.log(`manifest: ${result.manifestPath}`);
-      console.log(`timeline lock required: ${result.timelineLockPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -909,6 +1020,8 @@ productionCommand
     "Export structured caption timeline items to SRT, VTT, or ASS sidecar files."
   )
   .requiredOption("--timeline <path>", "Timeline YAML file containing type: caption items")
+  .option("--timeline-id <id>", "Project Timeline ID for applied revision provenance")
+  .option("--project <id>", "Project ID (defaults to cwd marker)")
   .requiredOption("--out <path>", "Caption output path, usually .srt, .vtt, or .ass")
   .option("--format <format>", "Caption output format: srt, vtt, or ass", parseCaptionExportFormat)
   .option("--manifest <path>", "Caption export manifest path")
@@ -916,6 +1029,7 @@ productionCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const timelineRevision = await resolveProjectTimelineRevision(options);
       const result = await exportCaptionFile({
         cwd: process.cwd(),
         timelinePath: options.timeline,
@@ -923,6 +1037,7 @@ productionCommand
         manifestPath: options.manifest,
         format: options.format,
         fps: options.fps,
+        timelineRevision,
       });
       if (isJsonMode(options)) {
         printJson(result);
@@ -961,7 +1076,6 @@ productionCommand
       console.log(`projected ${result.captionItems} caption item(s)`);
       console.log(`projection: ${result.timelineProjectionPath}`);
       console.log(`manifest: ${result.manifestPath}`);
-      console.log(`timeline lock required: ${result.timelineLockPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -974,6 +1088,8 @@ productionCommand
     "Export structured caption timeline items as a non-destructive caption-burn derived asset plan or rendered video."
   )
   .requiredOption("--timeline <path>", "Timeline YAML file containing type: caption items")
+  .option("--timeline-id <id>", "Project Timeline ID for applied revision provenance")
+  .option("--project <id>", "Project ID (defaults to cwd marker)")
   .requiredOption("--source-asset <id>", "Source video asset id in assets/manifest.json")
   .requiredOption("--output-asset <id>", "Output derived video or caption-burn plan asset id")
   .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
@@ -986,6 +1102,10 @@ productionCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      if (options.render === true && !options.timelineId?.trim()) {
+        throw new Error("Rendered caption burn requires --timeline-id so the output pins a Project Timeline revision.");
+      }
+      const timelineRevision = await resolveProjectTimelineRevision(options);
       const result = await exportCaptionBurn({
         cwd: process.cwd(),
         timelinePath: options.timeline,
@@ -998,6 +1118,7 @@ productionCommand
         ffmpegPlanPath: options.ffmpegPlan,
         render: options.render === true,
         ffmpegPath: options.ffmpeg,
+        timelineRevision,
       });
       if (isJsonMode(options)) {
         printJson(result);
@@ -1020,6 +1141,8 @@ productionCommand
     "Export a timeline YAML view to a CSV handoff for external NLE review."
   )
   .requiredOption("--timeline <path>", "Timeline YAML file to hand off")
+  .option("--timeline-id <id>", "Project Timeline ID for applied revision provenance")
+  .option("--project <id>", "Project ID (defaults to cwd marker)")
   .requiredOption("--out <path>", "CSV handoff output path")
   .option("--format <format>", "Timeline handoff format: csv", parseTimelineHandoffFormat)
   .option("--manifest <path>", "Timeline handoff manifest path")
@@ -1027,6 +1150,7 @@ productionCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const timelineRevision = await resolveProjectTimelineRevision(options);
       const result = await exportTimelineHandoff({
         cwd: process.cwd(),
         timelinePath: options.timeline,
@@ -1034,6 +1158,7 @@ productionCommand
         manifestPath: options.manifest,
         format: options.format,
         fps: options.fps,
+        timelineRevision,
       });
       if (isJsonMode(options)) {
         printJson(result);
@@ -1232,7 +1357,6 @@ productionCommand
       console.log(`projected MV beat cuts for ${result.targetAssetId}`);
       console.log(`timeline: ${result.timelineProjectionPath}`);
       console.log(`manifest: ${result.manifestPath}`);
-      console.log(`timeline lock required: ${result.timelineLockPath}`);
       console.log(`cuts: ${result.cuts}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -1887,7 +2011,7 @@ productionCommand
 productionCommand
   .command("project-storyboard-prompt-pack")
   .description(
-    "Project storyboard metadata into an editable CAS-locked prompt pack for image/video generation."
+    "Project storyboard metadata into an editable prompt pack and record its cwd observation version."
   )
   .requiredOption("--action <path>", "Storyboard AssetMetadataFillAction JSON file")
   .option("--out <path>", "Editable prompt-pack JSON path", "plans/prompt-pack.json")
@@ -1897,21 +2021,29 @@ productionCommand
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await productionObservationContext(cwd);
       const result = await projectStoryboardPromptPack({
-        cwd: process.cwd(),
+        cwd,
         actionPath: options.action,
         outPath: options.out,
         stylePrompt: options.style,
         negativePrompt: options.negative,
         modelHint: options.model,
       });
+      const entityId = storyboardPromptPackObservationId({ cwd, filePath: result.promptPackPath });
+      await recordProductionObservation({
+        context,
+        entityKind: "storyboard-prompt-pack",
+        entityId,
+        revision: result.version,
+      });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`projected storyboard prompt pack for ${result.storyboardAssetId}`);
       console.log(`prompt pack: ${result.promptPackPath}`);
-      console.log(`lock: ${result.lockPath}`);
       console.log(`manifest: ${result.manifestPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -1925,19 +2057,30 @@ productionCommand
     "Apply an edited storyboard prompt pack into managed projections with CAS stale-write protection."
   )
   .requiredOption("--file <path>", "Editable prompt-pack JSON path")
-  .option("--lock <path>", "CAS lock path; defaults to prompt-pack sidecar")
-  .option("--force", "Bypass CAS and intentionally overwrite the managed prompt-pack projection")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await productionObservationContext(cwd);
+      const entityId = storyboardPromptPackObservationId({ cwd, filePath: options.file });
+      const expectedVersion = await requireProductionObservation({
+        context,
+        entityKind: "storyboard-prompt-pack",
+        entityId,
+      });
       const result = await applyStoryboardPromptPack({
-        cwd: process.cwd(),
+        cwd,
         filePath: options.file,
-        lockPath: options.lock,
-        force: options.force === true,
+        expectedVersion,
+      });
+      await recordProductionObservation({
+        context,
+        entityKind: "storyboard-prompt-pack",
+        entityId,
+        revision: result.version,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`applied storyboard prompt pack for ${result.storyboardAssetId}`);
@@ -1954,19 +2097,30 @@ productionCommand
     "Create a copy-on-write storyboard prompt-pack projection with CAS stale-write protection."
   )
   .requiredOption("--file <path>", "Editable prompt-pack JSON path")
-  .option("--lock <path>", "CAS lock path; defaults to prompt-pack sidecar")
-  .option("--force", "Bypass CAS and intentionally fork from the current managed prompt-pack projection")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     try {
+      const cwd = process.cwd();
+      const context = await productionObservationContext(cwd);
+      const entityId = storyboardPromptPackObservationId({ cwd, filePath: options.file });
+      const expectedVersion = await requireProductionObservation({
+        context,
+        entityKind: "storyboard-prompt-pack",
+        entityId,
+      });
       const result = await replaceStoryboardPromptPack({
-        cwd: process.cwd(),
+        cwd,
         filePath: options.file,
-        lockPath: options.lock,
-        force: options.force === true,
+        expectedVersion,
+      });
+      await recordProductionObservation({
+        context,
+        entityKind: "storyboard-prompt-pack",
+        entityId,
+        revision: result.version,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAgentCommandResult(result));
         return;
       }
       console.log(`replaced storyboard prompt pack for ${result.storyboardAssetId}`);
@@ -1985,7 +2139,7 @@ productionCommand
 productionCommand
   .command("project-storyboard-timeline")
   .description(
-    "Project storyboard panel assets into a CAS-required image timeline view."
+    "Project storyboard panel assets into an image timeline view with implicit apply CAS."
   )
   .requiredOption("--action <path>", "Storyboard AssetMetadataFillAction JSON file")
   .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
@@ -2006,7 +2160,6 @@ productionCommand
       console.log(`projected storyboard timeline for ${result.storyboardAssetId}`);
       console.log(`timeline: ${result.timelineProjectionPath}`);
       console.log(`manifest: ${result.manifestPath}`);
-      console.log(`timeline lock required: ${result.timelineLockPath}`);
       console.log(`panels: ${result.panels}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));

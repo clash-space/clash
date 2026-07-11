@@ -44,6 +44,12 @@ assert(
   "claude-agent-acp wrapper still points into app.asar node_modules",
 );
 await access(
+  path.join(acpNodeDir, "codex-acp", "node_modules", "@agentclientprotocol", "codex-acp", "dist", "index.js"),
+  constants.R_OK,
+).catch((error) => {
+  failures.push(`packaged Codex agent bundle is missing dist/index.js: ${error.message}`);
+});
+await access(
   path.join(acpNodeDir, "claude-agent-acp", "node_modules", "@agentclientprotocol", "claude-agent-acp", "dist", "index.js"),
   constants.R_OK,
 ).catch((error) => {

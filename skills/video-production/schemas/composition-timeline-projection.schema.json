@@ -79,29 +79,26 @@
     },
     "casApply": {
       "type": "object",
-      "required": ["target", "mutation", "applyCommand", "filePath", "lockPath", "lockRequired", "lockSource", "nodeIdPlaceholder", "requiredRuntimeArgs", "pullCommand", "pullArgs", "applyArgs"],
+      "required": ["target", "mutation", "applyCommand", "filePath", "timelineIdPlaceholder", "requiredRuntimeArgs", "pullCommand", "pullArgs", "applyArgs"],
       "properties": {
         "target": { "const": "timeline" },
         "mutation": { "const": "projection-only" },
         "applyCommand": { "const": "clash timeline apply" },
         "filePath": { "type": "string" },
-        "lockPath": { "type": "string" },
-        "lockRequired": { "const": true },
-        "lockSource": { "const": "fresh-canvas-pull" },
-        "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+        "timelineIdPlaceholder": { "const": "<timeline-id>" },
         "requiredRuntimeArgs": {
           "type": "array",
-          "contains": { "const": "--node <video-editor-node-id>" }
+          "contains": { "const": "--timeline <timeline-id>" }
         },
         "pullCommand": { "const": "clash timeline pull" },
         "pullArgs": {
           "type": "array",
-          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "prefixItems": [{ "const": "--timeline" }, { "const": "<timeline-id>" }],
           "items": { "type": "string" }
         },
         "applyArgs": {
           "type": "array",
-          "prefixItems": [{ "const": "--node" }, { "const": "<video-editor-node-id>" }],
+          "prefixItems": [{ "const": "--timeline" }, { "const": "<timeline-id>" }],
           "items": { "type": "string" }
         }
       }

@@ -108,6 +108,26 @@ class ConfiguredProbeAgent extends AuthRequiredProbeAgent {
   }
 }
 
+class ReportedAuthProbeAgent extends ConfiguredProbeAgent {
+  override async initialize(_params: InitializeRequest): Promise<InitializeResponse> {
+    this.calls.push("initialize");
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      authMethods: [
+        { id: "api-key", name: "API Key" },
+        { id: "chat-gpt", name: "ChatGPT" },
+      ],
+      agentCapabilities: { promptCapabilities: {} },
+    };
+  }
+
+  async extMethod(method: string): Promise<Record<string, unknown>> {
+    this.calls.push(`extMethod:${method}`);
+    if (method === "authentication/status") return { type: "chat-gpt" };
+    return {};
+  }
+}
+
 class SessionConfigProbeAgent extends AuthRequiredProbeAgent {
   override async newSession(_params: NewSessionRequest): Promise<NewSessionResponse> {
     this.calls.push("newSession");
@@ -349,6 +369,25 @@ describe("probeAgentAuthStatus", () => {
     });
 
     expect(calls).toEqual(["initialize", "newSession"]);
+  });
+
+  it("uses the agent-reported auth status instead of the first advertised method", async () => {
+    const calls: string[] = [];
+    await expect(probeAgentAuthStatus({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-probe-test",
+      spawner: connectProbeAgent(() => new ReportedAuthProbeAgent(calls)),
+    })).resolves.toEqual({
+      status: "configured",
+      methodId: "chat-gpt",
+      methodName: "ChatGPT",
+      methods: [
+        { id: "api-key", name: "API Key", type: "agent" },
+        { id: "chat-gpt", name: "ChatGPT", type: "agent" },
+      ],
+    });
+
+    expect(calls).toEqual(["initialize", "extMethod:authentication/status", "newSession"]);
   });
 
   it("reports needs-auth when a session succeeds with unauthenticated diagnostics", async () => {

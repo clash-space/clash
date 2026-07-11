@@ -16,6 +16,7 @@ it("teaches agents to use the project working tree without a status preflight", 
     expect(contract).toMatch(/working tree/i);
     expect(contract).not.toContain("clash project status --json");
     expect(contract).not.toMatch(/status payload as (?:the|your) (?:local )?filesystem/i);
+    expect(contract).not.toMatch(/pre-authenticated|CLASH_API_KEY|lock sidecar carries read proof/i);
   }
 });
 
@@ -31,4 +32,6 @@ it("pins the local-first project invariants for repository coding agents", async
   expect(repositoryContract).toMatch(/cloud.*replicator/is);
   expect(repositoryContract).toMatch(/apply.*CAS.*copy-on-write/is);
   expect(repositoryContract).toMatch(/status.*diagnostic/is);
+  expect(repositoryContract).toMatch(/force.*not.*privilege/is);
+  expect(repositoryContract).not.toMatch(/force\s*\/\s*admin|force-admin/is);
 });

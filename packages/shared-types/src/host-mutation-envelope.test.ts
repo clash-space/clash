@@ -15,7 +15,6 @@ describe("host mutation envelope", () => {
       currentHash: "hash-before",
       expectedReadToken: "node-v1:before",
       currentReadToken: "node-v1:before",
-      force: false,
       guard: { ok: true },
     });
 
@@ -36,7 +35,6 @@ describe("host mutation envelope", () => {
       afterHash: "hash-after",
       afterReadToken: "node-v1:after",
       resultEntityId: "text-1",
-      forced: false,
       accepted: true,
     });
   });
@@ -47,7 +45,6 @@ describe("host mutation envelope", () => {
       entity: { kind: "text", id: "script" },
       expectedHash: "hash-before",
       currentHash: "hash-current",
-      force: true,
       guard: { ok: false, error: "Stale text apply rejected" },
     });
 
@@ -59,7 +56,6 @@ describe("host mutation envelope", () => {
       entity: { kind: "text", id: "script" },
       expectedHash: "hash-before",
       beforeHash: "hash-current",
-      forced: true,
       accepted: false,
       error: "Stale text apply rejected",
     });
@@ -68,7 +64,6 @@ describe("host mutation envelope", () => {
       entity: { kind: "text", id: "script" },
       expectedHash: "hash-before",
       beforeHash: "hash-current",
-      forced: true,
       accepted: false,
       error: "checkpoint referenced",
     });

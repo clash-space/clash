@@ -21,6 +21,7 @@ import {
   waitForEval,
   waitForHttp,
 } from "./startup-shared.mjs";
+import { terminalOutputsFromEvents } from "./real-codex-transcript.mjs";
 
 if (process.env.CLASH_E2E_REAL_CODEX !== "1") {
   throw new Error("Refusing to run the real Codex resume E2E without CLASH_E2E_REAL_CODEX=1");
@@ -131,13 +132,15 @@ async function waitForPersistedPwdOutput(apiPort, projectId, minimumOutputs) {
         if (!sessionId || session?.type !== "runtime") continue;
         const messagesRes = await fetch(`http://127.0.0.1:${apiPort}/api/v1/local-sessions/${encodeURIComponent(sessionId)}/messages`);
         const messagesJson = messagesRes.ok ? await messagesRes.json() : null;
-        const serialized = JSON.stringify(messagesJson);
-        const pathCount = serialized.split(expectedPathFragment).length - 1;
-        const stdoutCount = serialized.split('"stdout"').length - 1;
-        if (pathCount >= minimumOutputs && stdoutCount >= minimumOutputs) {
-          return { sessionId, expectedPathFragment, pathCount, stdoutCount };
+        const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+        const outputCount = messages
+          .flatMap((message) => terminalOutputsFromEvents(message?.events))
+          .filter((output) => output.includes(expectedPathFragment))
+          .length;
+        if (outputCount >= minimumOutputs) {
+          return { sessionId, expectedPathFragment, outputCount };
         }
-        lastState = { sessionId, messagesStatus: messagesRes.status, pathCount, stdoutCount };
+        lastState = { sessionId, messagesStatus: messagesRes.status, outputCount };
       }
       lastState = { sessionsStatus: sessionsRes.status, sessions: sessions.map((session) => ({
         id: session?.id,

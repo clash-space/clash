@@ -1,41 +1,63 @@
 ---
 name: timeline-editing
-description: Use when the user wants to edit a VideoEditorNode's timeline — cut/trim/split a clip, reorder items, add a media asset to a track, change fps or composition size. Round-trip the timeline through a YAML file on disk using `clash canvas timeline pull / push`.
+description: Use when the user wants to cut, trim, split, reorder, or add media to a Project Timeline, or change its fps or composition size. Round-trip the Timeline through timelines/<id>.timeline.yaml with public `clash timeline list`, `pull`, and `apply` commands.
 ---
 
-# Timeline editing — edit-on-disk for VideoEditorNode
+# Project Timeline editing
 
-A **VideoEditorNode** (type `video-editor` on the canvas) owns a
-`timelineDsl` blob — a tracks/items DSL that the React editor renders
-into a playable composition. To edit it, **pull it as YAML, edit the
-file with your normal Read/Edit tools, push it back**.
+A Timeline is a project-scoped entity with its own id, revision, owner,
+and tracks/items state. A Timeline Action on a canvas points to that
+entity; the canvas node is not the editable timeline itself.
 
-Why YAML, not JSON: the timeline-yaml format is the agent-facing surface
-the rest of the system has standardized on. It supports relative
-references like `from: prev` and `from: <id>+15`, the parser is strict
-(typos like `start`/`end` instead of `from`/`durationInFrames` fail
-loudly with a clear error message), and a round-trip preserves
-authoring style.
+Edit the agent-facing YAML projection with normal file tools, then apply
+it back through the public Timeline command. Do not update a Timeline
+Action's nested data to change tracks or items.
 
-## Workflow
+## Find the Timeline id
+
+List Project Timelines when the user names a timeline or when you need
+to discover what is available:
 
 ```bash
-# 1. Find the editor node (or take it from the user's mention).
-clash canvas list --type video-editor --json
-
-# 2. Pull the current timeline to disk as YAML.
-clash canvas timeline pull --node <video-editor-id> -o timeline.yaml
-
-# 3. Edit timeline.yaml with Read/Edit (treat it as any other file).
-
-# 4. Push it back.
-clash canvas timeline push --node <video-editor-id> -i timeline.yaml
+clash timeline list --json
 ```
 
-`--project` is optional — `CLASH_PROJECT_ID` is set in your env and
-the CLI uses it by default.
+The result includes each Timeline's `id`, `name`, and owner. Use the
+Timeline `id` for `--timeline`.
 
-## DSL shape
+When the user starts from a Timeline Action on the canvas, inspect that
+node and read `data.timelineId`:
+
+```bash
+clash canvas get --node <timeline-action-node-id> --json
+```
+
+Do not substitute the Timeline Action node id for `data.timelineId`.
+
+## Pull, edit, apply
+
+Use one stable projection path per Timeline:
+
+```bash
+# 1. Read the current Project Timeline revision into the working tree.
+clash timeline pull --timeline <id> --file timelines/<id>.timeline.yaml --json
+
+# 2. Edit timelines/<id>.timeline.yaml with normal file tools.
+
+# 3. Validate and apply the edited projection.
+clash timeline apply --timeline <id> --file timelines/<id>.timeline.yaml --json
+```
+
+The managed cwd already resolves the project. Do not add `--project`
+unless the user explicitly asks to target a different project.
+
+Pull records the current Timeline observation. Apply uses that read
+proof and rejects a stale write if the Timeline changed concurrently.
+On a conflict, pull the same Timeline again, merge the user's current
+state into the YAML file, and retry apply. Leave `.clash/observed.json`
+and other product-owned state alone.
+
+## YAML shape
 
 ```yaml
 compositionWidth: 1920
@@ -50,154 +72,84 @@ tracks:
         type: image
         from: 0
         durationInFrames: 150
-        sourceNodeId: abc12345    # canvas asset node id
-        assetId: asset_xyz        # D1 asset row id (optional)
+        sourceNodeId: abc12345
+        assetId: asset_xyz
       - id: shot-B
         type: image
-        from: prev                # = previous item's end
+        from: prev
         durationInFrames: 150
         sourceNodeId: def67890
 ```
 
-### Required item fields
+### Item fields
 
-- **`id`** (string): stable identifier for the item. Used as the
-  target id for `from: <id>+N` references in OTHER items.
-- **`type`** (string): one of `video`, `audio`, `image`, `text`,
-  `solid`, `sticker`, `transition`.
-- **`from`** (number OR string expression): when the item starts on
-  its track, in frames.
-  - **number**: absolute frame index. `from: 0` = beginning.
-  - **`prev`**: the previous item on the same track (its `from +
-    durationInFrames`). Best for "back-to-back" placement — the value
-    auto-updates if you change earlier items.
-  - **`prev+N`** / **`prev-N`**: previous item's end ± N frames.
-    Negative for overlap; positive for a gap.
-  - **`<item-id>+N`** / **`<item-id>-N`**: relative to another named
-    item's end. Useful for syncing audio to a specific video clip
-    regardless of intervening edits.
-  - On `push`, all expressions are resolved to absolute frames and
-    stored alongside the original expression as `fromExpr` (memo).
-    A subsequent `pull` brings the expression back so your edits keep
-    their authoring intent.
-- **`durationInFrames`** (positive number): how many frames the item
-  occupies. **NOT `start`/`end`** — the editor reads `from` +
-  `durationInFrames` and ignores `start`/`end`. The validator will
-  reject items missing a valid `durationInFrames`.
+- **`id`**: stable item identifier. Other items can target it with a
+  relative `from` expression.
+- **`type`**: `video`, `audio`, `image`, `text`, `solid`, `sticker`, or
+  `transition`.
+- **`from`**: absolute frame number or a relative expression:
+  - `prev` starts at the previous item end on the same track.
+  - `prev+N` and `prev-N` add a gap or overlap.
+  - `<item-id>+N` and `<item-id>-N` are relative to a named item end.
+- **`durationInFrames`**: positive item length in frames. Use `from`
+  plus `durationInFrames`, not `start` and `end`.
+- **`sourceNodeId`**: canvas media node supplying image, video, or
+  audio input.
+- **`assetId`**: optional project asset id copied from the source node's
+  `data.assetId` when present.
 
-### Required composition fields (top level)
+### Composition fields
 
-- **`fps`**, **`compositionWidth`**, **`compositionHeight`**:
-  numbers. Frame rate + frame size of the rendered output.
-- **`durationInFrames`**: total timeline length. Should be ≥ the max
-  `from + durationInFrames` across all items, or trailing content
-  gets clipped.
+- **`fps`**, **`compositionWidth`**, and **`compositionHeight`** are
+  numeric.
+- **`durationInFrames`** is the full Timeline length. Keep it at least
+  as large as the latest item end so the result is not clipped.
 
-### Media references
-
-- **`sourceNodeId`** (string): points at a canvas media node (image
-  / video / audio). The editor pulls `src` + dimensions from that
-  node at render time. Don't bake a URL into the item — it gets
-  stripped on load anyway.
-- **`assetId`** (string, optional): the D1 asset row id. Copy from
-  the source node's `data.assetId` when present. Skip if the source
-  is a pending generation node with no asset yet.
-
-Frames vs seconds: convert with `fps`. 5 seconds @ 30 fps = 150
+Frames convert to seconds through `fps`; five seconds at 30 fps is 150
 frames.
 
-## Finding things to put on the timeline
+## Find media inputs
 
-Most edits start with "drop this asset on the timeline". Use the
-canvas list to find candidates and copy their ids:
+Use canvas reads to find real source nodes:
 
 ```bash
-clash canvas list --type image --json    # image_gen completed → image node
+clash canvas list --type image --json
 clash canvas list --type video --json
 clash canvas list --type audio --json
 ```
 
-For each result, `id` is the `sourceNodeId` to use in an item;
-`data.assetId` (if present) is the `assetId`.
+Copy a result's `id` into `sourceNodeId`. Copy `data.assetId` when it is
+present. Never fabricate either identifier or embed a transient `src`
+URL in the Timeline item.
 
-## Common operations
+## Common edits
 
-- **Cut a clip at frame N (relative to the item's `from`)**: for an
-  existing item `{ id: A, from: F, durationInFrames: D }`, lower D to
-  `N - F`, then add a sibling `{ id: A2, from: A, durationInFrames: D
-  - (N - F), sourceNodeId: (same), ... }`. Using `from: A` keeps the
-  split connected if you move A later.
-- **Reorder** by rewriting `from`s (or by using `prev` chains so
-  reordering "just works" — flip the order in the items array and
-  every `from: prev` realigns).
-- **Trim**: shorten `durationInFrames`. For pre-roll trim on
-  video/audio (start clip later inside its source media), use
-  `sourceStartInFrames` — that's a different field from `from`.
-- **Add a clip**: append a new item with a fresh `id`, `sourceNodeId`
-  from `clash canvas list`, and `from: prev` for back-to-back
-  placement.
-- **Delete**: remove the item from `items`. Also drop any
-  `transition` item that references it via `fromItemId`/`toItemId`.
-- **Resize composition**: bump `compositionWidth` /
-  `compositionHeight`. Item frame positions don't change.
+- **Cut**: shorten the existing item at the cut frame, then add a sibling
+  for the remainder with the same media reference.
+- **Trim**: change `durationInFrames`; for source pre-roll on video or
+  audio, change `sourceStartInFrames` instead of `from`.
+- **Reorder**: reorder items and update `from`, or keep a `prev` chain so
+  adjacent items realign automatically.
+- **Add**: append an item with a fresh id, a real `sourceNodeId`, and an
+  intentional `from` value.
+- **Delete**: remove the item and any transition that names it through
+  `fromItemId` or `toItemId`.
+- **Resize**: update `compositionWidth` and `compositionHeight`; item
+  frame positions do not change automatically.
 
-## Validation
+## Validate and render
 
-`push` runs the shared timeline-yaml parser, which catches:
+Apply validates YAML structure, required fields, numeric composition
+values, and timeline references before advancing the Project Timeline
+revision. Fix validation errors in the existing projection rather than
+re-emitting the whole file.
 
-- YAML parse errors (with line + column).
-- Missing `tracks`, items without `id` / `type` /
-  `durationInFrames`.
-- Items typoed with `start`/`end` instead of `from`/`durationInFrames`
-  (they fail the "valid `durationInFrames`" check).
-- Wrong types on top-level numerics (`fps`, etc.).
-- Items that reference an `<id>+N` target that doesn't exist (the
-  resolver falls back to 0 silently — verify with a `pull` if the
-  positions look surprising).
-
-If you get an error, re-`pull` to reset and retry the edit
-incrementally with `Edit` rather than re-emitting the whole file.
-
-## What `push` does besides writing the DSL
-
-For every unique `sourceNodeId` referenced by items in the timeline,
-`push` also makes sure there's a default canvas edge from that source
-node → the editor node. This keeps the canvas graph view honest:
-"this editor consumes these media nodes" is now a visible line, not
-just an implicit data reference. The edge insertion is idempotent —
-pushing the same timeline twice does not duplicate edges.
-
-## Rendering the assembled timeline
+If `clash timeline list --json` shows a canvas-owned Timeline, its owner
+identifies the Timeline Action node. Execute that node to render:
 
 ```bash
-clash canvas execute --node <video-editor-id>
+clash canvas execute --node <timeline-action-node-id> --json
 ```
 
-`execute` is overloaded: on an action-badge it spawns generation, on
-a video-editor it spawns the render. Either way it creates a pending
-child node downstream of the source — the server's NodeProcessor
-poll picks up `data.status === "pending"` plus a `timelineDsl` and
-ships the render to the render-server. Track the new render-video
-node's status with:
-
-```bash
-clash canvas get --node <render-video-id> --json
-```
-
-You don't need to poll — once the render finishes, `data.status`
-flips to `completed` and `data.src` points at the rendered file.
-
-## Don'ts
-
-- Don't write `start`/`end` (the buggy v0 of this skill taught those
-  — they don't work, the editor reads `from`/`durationInFrames`).
-- Don't write `trackId` on items — track ownership is positional
-  (the item lives in its track's `items` array).
-- Don't write `src` URLs into items — stripped on load, breaks the
-  reference-only contract.
-- Don't fabricate `sourceNodeId` — always copy from `clash canvas
-  list` output.
-- Don't mass-rewrite if a small Edit will do; agents tend to
-  re-emit the whole file and lose the user's manual tweaks. Prefer
-  targeted Edits.
-- Don't `push` mid-edit. One pull → all edits → one push.
+Keep edits targeted: one pull, all related file edits, then one apply.
+Use only the public Project Timeline edit surface for Timeline state.

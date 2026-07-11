@@ -215,8 +215,9 @@ Current evidence:
 
 Reason:
 
-- Local CLI/agent auth should use the local runtime and provider/OAuth setup,
-  not cloud API token issuance.
+- Local CLI/agent project operations use the loopback runtime without a token.
+  Provider/OAuth setup authorizes external generation providers, not local
+  Project access.
 
 ### Local installed action/skill mutations
 

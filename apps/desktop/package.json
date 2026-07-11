@@ -12,7 +12,7 @@
     "pack:dir": "pnpm prepare:pack && electron-builder --dir --config electron-builder.yml",
     "pack:dmg": "pnpm prepare:pack && electron-builder --mac dmg --config electron-builder.yml --publish never",
     "prepare:harnesses": "node scripts/prepare-acp-harnesses.mjs",
-    "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build && node scripts/prepare-clash-cli.mjs",
+    "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build && pnpm prepare:harnesses && node scripts/prepare-clash-cli.mjs",
     "start": "pnpm --filter @master-clash/local-api build && pnpm build && electron .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
@@ -23,6 +23,7 @@
     "test:e2e:asset-receipts": "tsx e2e/agent-first-asset-receipt-smoke.mjs",
     "test:e2e:agent-first-cas": "node e2e/agent-first-cas-smoke.mjs",
     "test:e2e:qa-agent": "node e2e/qa-agent-codex.mjs",
+    "test:e2e:project-workspace-cli": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && tsx e2e/project-workspace-cli-smoke.ts",
     "test:e2e:short-drama-timeline": "node e2e/short-drama-timeline-smoke.mjs",
     "test:e2e:storage-doctor-repair": "node e2e/storage-doctor-repair-smoke.mjs",
     "test:startup": "pnpm test:startup:static && pnpm test:startup:api && pnpm test:startup:ui",
@@ -41,6 +42,8 @@
     "@master-clash/local-api": "workspace:*"
   },
   "devDependencies": {
+    "@agentclientprotocol/claude-agent-acp": "^0.47.0",
+    "@agentclientprotocol/codex-acp": "^1.1.2",
     "@types/node": "^22.13.0",
     "electron": "^42.3.2",
     "electron-builder": "^26.8.1",

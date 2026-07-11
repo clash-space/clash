@@ -1,676 +1,118 @@
 # Agent-First Local v1 Code Audit
 
-Last updated: 2026-07-07
-
-## Purpose
-
-Ground the local/agent-first product principles in the current repo state.
-
-This audit is intentionally narrower than the architecture docs. It answers:
-
-- what is already aligned,
-- what is still only partially implemented,
-- what should be restricted rather than generalized,
-- what is remote compatibility and should not be deleted during local cleanup.
-
-Companion docs:
-
-- `agent-first-local-v1-principles.md`
-- `agent-first-local-v1-traceability-matrix.md`
-- `agent-first-local-v1-api-surface-inventory.md`
-- `agent-first-local-v1-remote-compatibility-boundary.md`
-- `agent-first-local-v1-cli-cas-audit.md`
-- `agent-first-local-v1-implementation-plan.md`
-- `agent-first-local-v1-blackbox-e2e-spec.md`
-- `local-project-storage-layout-spec.md`
-- `agent-file-projection-cas-spec.md`
-
-## Summary
-
-The repo is already moving toward the right v1 shape:
-
-- local Loro replica is file-backed under the app data root,
-- project cwd is stable under `${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>`,
-- project cwd now materializes first-pass editable roots and a protected
-  runtime root,
-- `.clash/project.toml` is a project reference marker,
-- local variables/action-secret endpoints are intentionally not exposed,
-- timeline pull/apply has CAS,
-- cloud still has ProjectRoom, room messages, and remote user variables.
-
-The main v1 gaps are:
-
-- local-api metadata now writes to `local.sqlite`, and provider credential /
-  OAuth token payloads are encrypted before SQLite persistence,
-- local-api mutating routes now use queued `db.update` read-modify-write for
-  project, provider, OAuth, session, and asset metadata writes; regression
-  tests cover concurrent create/update requests that previously lost writes,
-- agent cwd currently points at the canonical project root with first-pass
-  editable/protected root checks, but not a full workspace migration model,
-- timeline has projection CAS plus explicit first-pass COW replacement through
-  `clash timeline pull/apply/replace`; successful apply/replace registers
-  `clash.timeline.revision` milestones and local-api stores supplied YAML bodies
-  as immutable timeline revision blobs readable through the host API; `clash
-  timeline history` and `clash timeline content --revision <id> [--out <path>]`
-  expose index and body recovery without direct SQLite access; caption export,
-  timeline handoff export, and caption-burn export pin manifests, derived
-  packages, ffmpeg plans, and asset metadata to the applied timeline revision id
-  when the source timeline lock carries one,
-- text nodes now have first-pass Markdown projection CAS plus explicit COW
-  replacement through `clash text pull/apply/replace`; successful apply/replace
-  records `clash.text.revision` milestones with source path, content hash,
-  parent revision, and actor attribution, and local-api indexes those revisions
-  in SQLite `text_revisions`; workflow text generation now records host text
-  revision metadata, stores the generated Markdown body as an immutable text
-  revision blob, and writes sanitized audit evidence, while explicit apply
-  stores supplied Markdown bodies through the same protected content path only
-  after revision metadata is accepted, so rejected same-id metadata conflicts
-  do not leave orphan immutable blobs; accepted bodies remain readable through
-  the host API; `clash text
-  history` reads that index through the host API, and `clash text content
-  --revision <id> [--out <path>]` retrieves immutable revision Markdown without
-  opening SQLite; `RevisionHistoryBadge` now gives text/timeline revisions a
-  visual restore affordance that copies the standard `clash ... restore --mode
-  replace` command and emits a `clash:revision-restore-request` payload;
-  desktop `ChatbotCopilot` listens for valid requests and forwards the explicit
-  CLI/CAS restore command to the selected local runtime agent with a guardrail
-  prompt, without directly mutating canvas, snapshot, or SQLite. Conflict
-  recovery, stronger direct action-runner/confirmation UX, canonical
-  file-backed text mode, and sync policy are still future work,
-- shared projection path resolution now keeps text/timeline projection files
-  inside the current agent/project cwd and rejects symlinked parents that
-  resolve outside it, and applies the same cwd/realpath guard to generated
-  lock sidecars and explicit `--lock` paths; `--force` does not bypass that
-  boundary,
-- local asset storage paths now share a local-api realpath guard for blob
-  upload/read, workflow-generated asset writes, local blob imports, and GC
-  deletion,
-- local-api now rejects legacy local room endpoints with 404; cloud room remains
-  remote/shared compatibility only,
-- local-first CLI no longer registers `vars`; remote worker secrets are described
-  as hosted/remote Settings instead of local provider auth,
-- generic `clash canvas update` remains a direct patch/admin path rather than
-  projection apply; it now blocks projection/provenance fields, text feeding
-  materialized downstream state, fulfilled referenced media `assetId`
-  replacement, materialized downstream action checkpoint semantic fields, and
-  batch deletes that would orphan downstream references outside the deleted set.
-  Agent CLI/daemon direct update/delete also require a `readToken` from
-  `canvas get --json` through `--if-match`, unless explicitly forced.
-  Fulfilled media replacement now has a first-pass explicit
-  `clash canvas replace-asset` COW path; storyboard prompt-pack replacement now
-  has a first-pass explicit `clash production replace-storyboard-prompt-pack`
-  path. Prompt-pack locks now require source action path/hash proof and reject
-  locks with stripped source proof; COW prompt-pack replacements also write and
-  return a `referencePolicy` declaring that existing downstream references stay
-  on the managed projection until an explicit apply rewires it. Text, timeline,
-  storyboard prompt-pack, primary asset metadata, editable metadata apply, and
-  `apply-metadata` JSON-derived projection locks share a generic projection
-  identity envelope while keeping legacy sidecar parsing where applicable.
-  Generated and explicit production projection lock sidecars now use the shared
-  cwd/realpath guard, review/stage gate JSON plus lock sidecars use the same
-  agent-file cwd/realpath boundary, production QA/report/action-plan/receipt
-  outputs use that boundary before writing agent-facing evidence, and asset
-  metadata projection lock rejection happens before manifest mutation. Broader
-  storyboard host/UI integration, recovery UX, host-issued receipt paths, and
-  adoption of the generic lock envelope by future non-JSON/editor projections
-  remain pending.
-- talking-head text-cut media export now records source action path/hash in the
-  CLI result, ffmpeg plan, media-cut package, and output asset metadata. Its
-  source action input is checked through the cwd plus realpath boundary before
-  parsing, so a symlink in the agent cwd cannot make a rendered export depend on
-  an out-of-project action file.
-
-## Evidence Snapshot
-
-### Local SQLite Product Metadata
-
-`apps/local-api/src/app.ts` still uses an in-memory route DTO shape `LocalDb`
-with:
-
-- `projects`
-- `assets`
-- `assetRefs`
-- `sessions`
-- `agentMembers`
-- `sessionMessages`
-- `providerAccounts`
-- `providerOAuth`
-
-`createDb(dataDir)` now routes non-provider metadata through
-`apps/local-api/src/local-metadata-store.ts`, backed by `<dataDir>/local.sqlite`.
-Project rows, assets, asset refs, runtime sessions, agent members, and local
-session messages are stored as SQLite rows. Field-level JSON remains only for
-structured columns such as asset metadata, asset sources, and message events.
-The metadata/provider schema bootstraps upgrade old partial core metadata,
-asset/text/timeline projection tables, and provider/OAuth tables before
-local-api route reads or writes, while storage doctor validates and repairs the
-same provider/OAuth table/key shape without inspecting secret values. A
-partially initialized `local.sqlite` therefore does not require a separate
-doctor repair before the API can restart for core metadata or provider auth
-reads.
-`GET /api/v1/agents` now returns derived built-in local agents without inserting
-`agent_member` rows; write paths that need ownership records seed them inside
-explicit runtime-session or room-message mutations.
-
-Provider account and OAuth state route through
-`apps/local-api/src/local-provider-store.ts`:
-
-- canonical new writes go to `<dataDir>/local.sqlite`,
-- credentials, supported models, model priorities, and OAuth records are stored
-  as rows rather than one JSON blob,
-- provider credential values and OAuth access/refresh/user/device codes are
-  stored as `enc:v1:` AES-256-GCM payloads with row/field AAD,
-- local secret-key resolution prefers explicit environment keys, then macOS
-  Keychain for real local data dirs, with a `0600` machine-local key file only
-  for test/temp/fallback paths.
-
-The local product metadata contract is SQLite-only:
-
-- if SQLite does not exist yet, routes start from an empty local metadata state,
-- after a metadata write, `local_migration.metadata-sqlite-v1` marks SQLite as
-  authoritative,
-- audit-only metadata writes use the same marker path, so a rejected-only local
-  action cannot create an unmarked SQLite metadata database,
-- new project/session/asset/provider writes go to SQLite-backed product
-  metadata,
-- immutable text/timeline revision ids are checked and inserted inside
-  `BEGIN IMMEDIATE` SQLite write transactions, so same-id metadata conflicts
-  cannot degrade into last-writer-wins replacement,
-- accepted and rejected text/timeline revision index attempts write sanitized
-  `mutation_audit` rows, so failed agent apply attempts stay inspectable without
-  making revision blobs or SQLite directly agent-editable,
-- conformance scripts auto-detect desktop local-api state only by
-  `local.sqlite`.
-
-Conclusion:
-
-- Do not document product metadata storage as an agent-editable surface.
-- Do not add route, processor, doctor, status, or conformance writes to broad
-  product-state files.
-- Do not bypass `local-provider-store` for provider credential/OAuth writes;
-  direct SQL would bypass encryption and migration handling.
-- Do not reintroduce `db.load()` followed by `db.save(state)` in request
-  handlers. Route writes must go through `db.update()` or a narrower store
-  transaction so concurrent local API requests cannot overwrite each other.
-
-### Project cwd and marker
-
-`packages/clash-bridge/src/lib/session-cwd.ts` writes:
-
-```text
-.clash/project.toml
-schema_version = 1
-project_id = "<project-id>"
-workspace_id = "managed:<opaque-id>"
-store = "managed"
-```
-
-The marker is a project/workspace reference only. Replication state is stored
-inside the product; legacy marker `[sync]` tables are ignored.
-
-It also creates:
-
-```text
-drafts/
-projections/text/
-projections/timelines/
-projections/storyboards/
-projections/prompts/
-projections/metadata/
-assets/links/
-sessions/
-runtime/
-```
-
-The same file says v1 does not auto-migrate old cwd layouts into a hidden
-archive directory and that project cwd creation is explicit and stable under
-`${CLASH_HOME:-~/.clash}/projects/<encodedProjectId>`.
-
-Conclusion:
-
-- This matches the principle that cwd is a reference/draft surface.
-- The unresolved question is whether the agent cwd should be the canonical
-  project root or a draft workspace that references it.
-- If canonical root remains the alpha default, protected directories must be
-  documented and apply commands must be the mutation boundary.
-- A real E2E bug was found where TypeScript source created the roots but
-  desktop executed stale `@clash-space/bridge/dist` code. The desktop real
-  Codex scripts now build the bridge before launching Electron, and real E2E
-  asserts the OS-level cwd layout.
-
-### Loro snapshot
-
-Local Loro persistence uses `snapshot.bin` plus an update log. Architecture docs
-already identify the snapshot as an internal persistence artifact.
-
-`apps/local-api/src/loro/file-replica-store.ts` now supports compacting a
-covering snapshot and truncating update records that are included in that
-snapshot. `LocalLoroRoom` appends updates first for crash recovery, then
-periodically compacts by update count or byte threshold so a long-running
-project does not retain one update-log record per edit indefinitely.
-
-Conclusion:
-
-- Do not expose `snapshot.bin` as an editable product file.
-- All canvas edits must go through host mutation APIs or typed CLI commands.
-- Loro update logs are CRDT persistence internals. User-visible revision rows
-  should remain milestone indexes, not every operation.
-
-### Timeline CAS
-
-`packages/cli/src/lib/timeline-projection.ts` implements:
-
-- timeline YAML normalization,
-- semantic timeline hash,
-- `clash.timeline.lock`,
-- stale apply rejection,
-- `--force` bypass.
-
-`packages/cli/src/lib/daemon.ts` implements `timeline_cas_update`, which
-validates the expected timeline hash in the running daemon path.
-
-Conclusion:
-
-- Timeline has the right v1 pattern.
-- Text, timeline, storyboard prompt-pack, primary asset metadata, editable
-  metadata apply, and `apply-metadata` JSON-derived projections now use a
-  generic projection lock identity shape (`projectionKind`, `entity`,
-  `contentHash`) instead of only projection-specific fields, and production
-  projection lock sidecars share the same cwd/realpath guard used by
-  text/timeline sidecars. Review/stage gate JSON, sidecar locks, production
-  QA/report/action-plan outputs, and receipts also use the shared agent-file
-  cwd/realpath guard because they can approve or justify downstream work even
-  though they are not canonical projections.
-- Remaining non-JSON storyboard/editor projection families should adopt that
-  envelope rather than copying one-off lock formats.
-
-Spec: `agent-file-projection-cas-spec.md`.
-
-### Generic canvas update
-
-`packages/cli/src/commands/canvas.ts` still has `clash canvas update` with:
-
-- `--label`
-- `--content`
-- `--asset-id`
-- arbitrary `--data key=value`
-
-It updates via daemon action `update` or a one-shot `client.updateNode`.
-Both paths now share the `@clash/shared-types` canvas update guardrail through
-the CLI compatibility re-export at
-`packages/cli/src/lib/canvas-update-guardrails.ts`. Web UI
-`useLoroSync.updateNode` also calls the shared guardrail before committing a
-local node patch.
-Agent CLI direct updates additionally require `--if-match <readToken>` from a
-fresh `clash canvas get --json`; the daemon validates the token again before
-mutating.
-
-Current first-pass limits:
-
-- `data.timelineDsl` is rejected; timeline writes must use projection apply.
-- `data.actorType`, `data.actorUserId`, and `data.actorAgentId` are rejected;
-  runtime provenance cannot be patched through canvas update.
-- `content` patches to text nodes whose outgoing canvas references feed
-  materialized downstream state are rejected in both daemon and one-shot paths;
-  text feeding only unmaterialized action drafts remains editable.
-- `assetId` replacement on fulfilled media nodes with outgoing canvas edges is
-  rejected in both daemon and one-shot paths; first fulfillment of pending media
-  nodes is still allowed.
-- `clash canvas replace-asset`, daemon `asset_cow_replace`, and local-api
-  `/api/v1/assets/replace` create a new image/video/audio node with
-  copy-on-write lineage, keep old downstream references attached to the old
-  media node, and record sanitized local mutation audit evidence for accepted
-  local-api replacements plus agent read-proof/CAS rejections.
-- semantic patches to materialized downstream action checkpoints are rejected
-  in both daemon and one-shot paths. This covers action/model/prompt/output
-  fields such as `prompt`, `modelId`, `modelParams`, `customActionId`,
-  `assetId`, `status`, `content`, and pending/error provider state. Downstream
-  `draft`/`idle` placeholders remain editable before adoption/run.
-- agent direct `update`/`delete` requires a node `readToken`; stale tokens are
-  rejected host-side before mutation unless the caller explicitly passes
-  `--force`.
-- Web UI nested `data` patches are normalized through the same helper, so
-  referenced action-badge prompt/model/reference edits do not persist as blind
-  in-place Loro writes.
-- Web UI `removeNode`, `removeNodes`, `addEdge`, `updateEdge`, `removeEdge`,
-  and daemon `ensure_edge` also use shared guardrails for referenced-node
-  deletes, atomic closed-subgraph batch deletes, and materialized checkpoint
-  lineage mutation. Existing agent edge add/update/delete writes now also
-  require graph or edge read tokens from `clash canvas edges --json`, except
-  same-patch create-and-consume edges that connect a newly created node. Agent
-  batch deletion now has a formal graph-aware read-proof contract through
-  `clash canvas delete-plan --node <id> --node <id> --json` followed by
-  `clash canvas delete-batch --if-match <readToken> --yes`; daemon writes
-  require the host-issued receipt and Web `removeNodes` rejects missing/stale
-  batch tokens before mutating Loro.
-- Web UI asset-ref cleanup only runs for nodes whose Loro deletion was accepted,
-  so a guard-rejected delete no longer removes the project asset reference while
-  the node is restored.
-- Local API asset-ref deletion now requires `projectId` and only removes that
-  project reference; it no longer treats a missing project id as "delete all
-  refs for this asset".
-- Empty updates are rejected consistently in daemon and one-shot paths.
-
-Conclusion:
-
-- This command is useful as a direct patch/admin operation.
-- It is not safe as the future file-projection apply path.
-- It should not be used for text/timeline/storyboard read-edit-apply workflows.
-- Text content feeding materialized downstream state, materialized downstream
-  action checkpoint semantic fields, and downstream-referenced node deletes are
-  now rejected by default across CLI/daemon/Web UI. Web UI atomic batch delete
-  allows closed-subgraph deletion, rejects external downstream orphaning, and
-  accepts agent batch delete only with a matching graph-aware batch token from
-  `canvas delete-plan`. Web UI and daemon `ensure_edge` also block checkpoint
-  lineage edge add/update/delete while allowing draft-placeholder lineage edits.
-  Existing Web/runtime edge add/update/delete requires matching graph/edge read
-  tokens for agent writes; local-api `GET /api/v1/projects/:projectId/canvas/edges`
-  plus `POST`/`PATCH`/`DELETE /api/v1/projects/:projectId/canvas/edges/:edgeId`
-  now mirrors the same receipt-bearing graph/per-edge CAS for HTTP actions.
-  Edge writes and local-api media COW replacement use
-  `FileReplicaStore.updateSnapshotAtomic`, so recover, read-proof validation,
-  mutation, and snapshot save run inside the same per-project write queue.
-  Specialized COW/replace workflows and force/recovery UX still need deeper
-  protection.
-
-Required limit:
-
-```text
-Any command that reads a current entity, lets an agent edit a file, then writes
-back must use CAS. Direct patch commands may exist, but must not bypass
-immutability rules for referenced content.
-```
-
-### Variables and action secrets
-
-Local-api tests assert these local endpoints return 404:
-
-- `/api/settings/variables`
-- `/api/settings/action-secrets`
-- `/api/v1/vars`
-- `/api/v1/action-secrets`
-
-Local-api also keeps hosted API token mutations unavailable locally:
-
-- `POST /api/settings/tokens`
-- `DELETE /api/settings/tokens/:id`
-
-Local-api also keeps hosted installed action/skill mutations unavailable
-locally:
-
-- `POST /api/settings/actions`
-- `DELETE /api/settings/actions/:id`
-- `POST /api/settings/skills`
-- `DELETE /api/settings/skills/:id`
-
-Cloud still has:
-
-- `user_variable` table,
-- `/api/v1/vars`,
-- worker-action secret injection,
-- web settings variable UI.
-
-Local-first CLI no longer includes a vars command. Local-provider copy points
-users to provider account setup, while remote worker action secrets are managed
-in hosted/remote Settings. Local `/api/v1/vars` remains unavailable.
-
-Conclusion:
-
-- Do not delete remote variables while remote worker actions still use them.
-- Do not reintroduce local variables/action secrets as the local v1 auth model.
-- Do not present hosted API token issuance as the local desktop auth path.
-- Do not present hosted installed action/skill rows as local custom action or
-  local skill management.
-- Keep CLI/help mode-aware:
-  - local mode: provider accounts/OAuth/local runtime setup,
-  - remote worker mode: hosted/remote Settings for secrets,
-  - shared mode: explicit remote-secret boundary.
-
-Required limit:
-
-```text
-Only remote worker-action compatibility may use user variables. Local custom
-actions use local-api auth/runtime setup, not action secrets.
-```
-
-### Room
-
-Current facts:
-
-- Local-first CLI no longer registers `room`.
-- local-api returns 404 for legacy `/api/v1/projects/:id/room/*` routes.
-- Web UI hooks and cloud routes may still use hosted project room semantics.
-- Cloud schema has `room_message`.
-- A focused local-api contract test covers the removed local room read, write,
-  sync, and conflict-recovery paths.
-
-Conclusion:
-
-- Room should not be deleted as a product concept.
-- Local persistence/routing baseline is implemented.
-- Remaining local v1 work is sync policy, route parity, and UI/live behavior
-  coverage.
-
-Required limit:
-
-```text
-Room is project-visible conversation. It is not raw ACP trace and not a
-projection file.
-```
-
-### Archive
-
-Current `archive` references are mainly:
-
-- ACP registry install archive URLs,
-- checksum/extract/install flow for local ACP registry binaries,
-- a comment saying v1 does not auto-migrate old cwd layouts into a hidden
-  archive directory.
-
-Conclusion:
-
-- There is no broad project "archive storage" concept to migrate.
-- ACP registry archives are remote install artifacts and should not be removed
-  as part of local storage cleanup.
-- If old-project migration returns later, name it explicitly as migration
-  backup, not archive-as-product-state.
-
-## Restrictions To Add Before v1
-
-### Restrict local DB editing
-
-- Do not document `local.sqlite` as agent-editable.
-- Provide admin/debug export/import commands if needed.
-- Keep product mutations behind API/store methods.
-
-### Restrict projection writes
-
-- File apply requires a lock unless `--force`.
-- Host validates CAS, not only CLI.
-- Stdin apply requires `--lock` or `--force`.
-- Lock must match project, entity, projection type, and file path. Timeline,
-  text, and storyboard prompt-pack apply now reject mismatched lock identities
-  or file paths before writing projections; prompt-pack apply/replace also
-  reject locks missing source storyboard action proof.
-
-### Restrict action writes
-
-- Agent action writes that are semantically `read host state -> write host state`
-  must use the same receipt-bearing read-token contract as file projections.
-- Local audio model install now requires a receipt-bearing
-  `GET /api/v1/local/audio` token before the model install hook is invoked;
-  ordinary non-agent UI calls remain compatible.
-- Local harness install/install-adapter/upgrade/uninstall/authenticate now
-  requires a receipt-bearing `GET /api/v1/local/harnesses` token before the local
-  ACP adapter is invoked; ordinary non-agent UI calls remain compatible.
-- Provider OAuth restart of an existing row and completion now require a
-  receipt-bearing `GET /api/v1/provider-oauth` token for agent calls before the
-  OAuth driver is invoked; ordinary non-agent UI start/complete remains
-  compatible, and first-time start of a missing row remains a create path.
-- The audio read token hashes the public ASR setup state, including install
-  availability, so a successful install can make old install tokens stale.
-- The harness read token hashes a stable harness projection, including installed
-  and version/source fields, so an install can make an old uninstall token stale.
-- Provider OAuth read tokens hash pending/authorized status and token metadata
-  without exposing secrets, so a completed OAuth flow makes the pending receipt
-  stale.
-
-### Restrict direct node patching
-
-- `canvas update --data` should not be the agent-first way to edit structured
-  entities.
-- Projection-owned and runtime-owned fields are blocked first.
-- For fields that feed materialized downstream checkpoints, require projection
-  apply or explicit copy-on-write/versioned replacement.
-
-### Restrict local secrets
-
-- No provider credentials, OAuth tokens, ACP auth state, or local action keys in
-  projection files.
-- No local action-secret compatibility endpoints.
-- Use encrypted local SQLite or OS keychain-backed storage.
-
-### Restrict room/traces
-
-- Room messages can sync.
-- Raw ACP traces, tool logs, local paths, and scratch context stay local by
-  default.
-- Projection apply should not auto-post raw diffs to room.
-
-### Restrict cloud labels
-
-- Local-only projects are not web-openable.
-- `Synced` means canvas, asset metadata, and revision content have actual sync
-  paths.
-- Local-only custom actions are unavailable when the owner's machine is offline.
-
-## Near-Term Implementation Order
-
-1. SQLite-only local store with data-dir contract regression tests.
-2. Generic projection lock/hash/path library.
-3. Text node Markdown pull/apply/replace with copy-on-write.
-4. Mode-aware CLI help for vars/provider auth.
-5. Clear local-only unsupported errors for legacy room endpoints.
-6. Direct `canvas update` guardrails for materialized checkpoint references.
-7. Asset link/projection policy and GC rules.
-8. Real Codex ACP black-box path test for spawned agent cwd.
-
-## E2E Evidence
-
-Current deterministic coverage includes:
-
-- focused unit/type tests for CLI, bridge, local-api, remotion timeline, web UI,
-  shared model routing, and desktop startup,
-- `apps/desktop/e2e/agent-browser-smoke.mjs`, now failing on forbidden React
-  renderer lifecycle warnings,
-- `apps/desktop/e2e/short-drama-timeline-smoke.mjs`, which creates and restores
-  a deterministic 9:16 short-drama timeline,
-- `apps/desktop/e2e/qa-agent-codex.mjs`, which launches a nested Codex QA
-  agent and requires a schema-valid JSON report.
-
-Latest stub-agent QA report:
-
-```text
-.tmp/qa-agent-codex/2026-07-05T06-36-57-683Z/qa-report.json
-```
-
-Latest real Codex ACP QA report:
-
-```text
-.tmp/qa-agent-codex/2026-07-05T07-04-03-855Z/qa-report.json
-```
-
-Latest real Codex ACP resume artifacts:
-
-```text
-.tmp/real-codex-resume/
-```
-
-Latest direct real Codex ACP layout run:
-
-```text
-.tmp/real-codex-layout/
-```
-
-Latest direct real Codex ACP resume layout run:
-
-```text
-.tmp/real-codex-layout-resume/
-```
-
-Latest local-api receipt smoke:
-
-```text
-.tmp/agent-first-asset-receipts/2026-07-09T10-23-50-675Z/agent-first-asset-receipt-report.json
-```
-
-Latest full agent-first local v1 gate:
-
-```text
-.tmp/agent-first-local-v1-gate/2026-07-09T10-23-34-739Z/agent-first-local-v1-gate-report.json
-```
-
-Latest storage doctor repair smoke:
-
-```text
-.tmp/storage-doctor-repair/2026-07-09T10-23-45-422Z/storage-doctor-repair-report.json
-```
-
-Conclusion:
-
-- Stub ACP black-box paths are passing.
-- Real Codex ACP desktop path is passing and records spawned agent cwd under
-  `~/.clash/projects/<encodedProjectId>`.
-- Storage doctor repairs workspace roots, SQLite schema, revision blob
-  permissions, and recovery inventory while keeping SQLite as the only local
-  metadata store.
-- The latest real Codex ACP QA report records project
-  `55647743-1c58-4a8e-af4a-52fcdd69bfbf`, persisted runtime session
-  `58286658-8c52-417d-8c39-c5794bb3664a`, direct ACP runtime session
-  `acp-1783235078122-1`, and cwd
-  `/Users/xiaoyang/.clash/projects/55647743-1c58-4a8e-af4a-52fcdd69bfbf`.
-- Real Codex ACP resume path is passing: one session survives restart and
-  records two `pwd` tool outputs under the same project cwd.
-- The direct real Codex layout runs verify that `drafts`, `projections/text`,
-  `projections/timelines`, `assets/links`, `sessions`, and `runtime` exist in
-  the actual spawned agent cwd before the test can pass.
-- Session rows and local transcript messages now store in `local.sqlite`;
-  direct real Codex layout runs remain the end-to-end evidence for cwd shape.
-- Timeline create/restore smoke is passing in both QA harness targets.
-- Local-api package tests are passing with 302 tests, and the receipt smoke is
-  passing with 201 checks, including route-level partial SQLite migration
-  recovery plus read-only
-  derived agent views, provider model test action sanitized mutation audit evidence, local audio
-  model install, local audio transcription action mutation records, SQLite
-  `local_config` persistence for local sync/audio/harness settings, local harness
-  install, provider OAuth restart/complete
-  missing/bare/current receipt handling, missing-target CAS rejection,
-  deleted-row stale rejection, and stale
-  action rejection. Agent runtime-session attach now requires the session
-  read receipt before invoking the local ACP attach hook. Asset reference-index
-  refresh now records an accepted host metadata mutation. It also covers immutable
-  asset import: same-id different content is rejected and must use a new asset id
-  plus COW replacement. Asset blob uploads write sanitized audit evidence;
-  asset blob upload/read reject symlinked roots and parents, and
-  workflow-generated asset writes record sanitized audit evidence and reject symlinked parents outside local asset
-  storage. Custom action
-  binary checkpoint outputs now reject same
-  task/output reruns with different content before overwriting the checkpoint
-  file. Focused Web/CLI/shared-type tests now cover graph/edge read-token CAS
-  for runtime ACP edge add/update/delete plus `clash canvas edges --json`.
-  Legacy local room endpoints are removed from local v1 and return 404.
-
-## What Not To Delete
-
-Do not delete these remote/cloud surfaces while making local v1 cleaner:
-
-- cloud ProjectRoom,
-- cloud `room_message`,
-- cloud `user_variable` compatibility for worker actions,
-- remote action secret injection,
-- ACP registry archive installation,
-- cloud D1 provider/account tables,
-- web shared-project UX.
-
-Instead, make the local path explicit and prevent remote-only mechanisms from
-being presented as the local default.
+Last updated: 2026-07-10
+
+## Scope
+
+Audit the current repository against the local/agent-first product contract in
+`AGENTS.md`, `agent-first-local-v1-principles.md`, and
+`agent-file-projection-cas-spec.md`.
+
+## Aligned
+
+### Project and cwd
+
+- `.clash/project.toml` is a project pointer rather than mutable project state.
+- `.clash/observed.json` stores only per-entity semantic versions.
+- Observation writes are atomic and scoped to one agent cwd.
+- Normal commands do not require `project status` as a preflight.
+
+### Persistence
+
+- Loro remains canonical for collaborative canvas state/history.
+- SQLite owns relational metadata, config, provider accounts, OAuth state,
+  sessions, asset references, and revision indexes.
+- Media and applied text revision bodies use immutable, content-addressed
+  storage. Timeline revisions live only in the Project Loro replica.
+- Broad mutable JSON database state is not part of the local architecture.
+
+### Agent mutation contract
+
+- CLI reads record cwd observations.
+- Mutations check read presence and compare the observed/current semantic
+  version before changing canonical state.
+- Public command syntax and JSON do not expose internal receipt fields.
+- There is no overwrite/force bypass.
+- Shared canvas guardrails are used by CLI, daemon, local API, and Web paths.
+
+### Immutable/COW behavior
+
+- Any downstream edge makes a canvas node immutable as a whole.
+- Reads expose `immutable`.
+- In-place writes fail with `IMMUTABLE_NODE`.
+- `clash canvas copy` provides the uniform node-level COW action.
+- Media, text, and storyboard prompt-pack typed replacements preserve source
+  lineage and leave existing downstream references pinned. Timeline Action copy
+  creates a distinct Project Timeline identity.
+
+### Editable projections
+
+- Text: Markdown pull/edit/apply/replace.
+- Timeline: Project-scoped create/list/attach/detach/copy plus YAML pull/edit/apply.
+- Storyboard prompt packs: JSON project/edit/apply/replace.
+- Review gates: plan/edit/approve with path-bound observation.
+- Asset metadata: action apply/materialize/edit/apply with source provenance.
+- Projection and output paths use cwd/realpath/symlink containment guards.
+- Current projection workflows do not create lock sidecars.
+
+### Revision provenance
+
+- Applied text revisions are indexed by the host with immutable bodies.
+- Timeline apply advances the Timeline revision atomically inside Loro; there is
+  no sibling revision manifest, SQLite Timeline table, or Timeline blob store.
+- Caption export, caption burn, and NLE handoff pin the matching Project Timeline
+  revision ID and semantic hash.
+
+### Local/cloud boundary
+
+- Local-only, synced, and shared modes use the same local replica and mutation
+  semantics.
+- Cloud code remains valid replication/collaboration infrastructure.
+- Cwd files, raw agent traces, secrets, and local runtime paths are not
+  implicitly admitted to cloud sync.
+- Host receipts remain an internal transport detail behind cwd observations.
+
+## Restricted By Design
+
+- Agents cannot edit `snapshot.bin`, SQLite, Loro blobs, canonical media blobs,
+  revision blobs, credentials, or runtime secrets.
+- Direct canvas updates cannot patch timeline/provenance-owned fields.
+- A copied file is not automatically an observed product entity.
+- Local custom actions depend on the local runtime; they do not become remote
+  workers or require a project secret.
+- Offline storage recovery remains support tooling, not a normal mutation API.
+
+## Remaining Risks
+
+1. **Adapter coverage**: every new read/mutation family must use the shared cwd
+   observation adapter; one-off implementations can reintroduce blind writes.
+2. **Transport parity**: daemon, local API, Web, and cloud paths must preserve
+   the same immutable/COW rules while retaining their own auth/admission logic.
+3. **Observation invalidation**: project relink and entity deletion must not
+   leave observations that can target a different identity.
+4. **Revision provenance**: new exporters must pin the exact source revision,
+   not only the latest node or asset ID.
+5. **Path containment**: new production planners/exporters need the shared
+   realpath guard before any partial canonical write.
+6. **Concurrency**: SQLite read-modify-write paths need serialized update APIs
+   and deterministic concurrent-write tests.
+7. **Recovery separation**: support-only raw-replica restore commands must stay
+   out of agent skills and normal command guidance.
+
+## Evidence
+
+- Shared observation unit tests.
+- Canvas guardrail and daemon command tests.
+- Canvas/text/timeline/project/asset/model CLI tests.
+- Local API observed-version, internal receipt, and no-cloud-auth tests.
+- Production metadata, review gate, prompt-pack, and timeline provenance tests.
+- Skill registry/schema tests and multi-category production artifact E2E.
+- Real CLI subprocess E2E covering missing read, stale read, re-read, immutable
+  rejection, COW lineage, projection apply, revision pinning, and local no-auth.
+
+## Decision
+
+The v1 architecture is coherent when the cwd is treated as an agent-owned
+working tree and Clash product state is changed only through explicit host
+actions. New work should extend this contract rather than adding another local
+store, project directory, lock format, or privileged mutation mode.

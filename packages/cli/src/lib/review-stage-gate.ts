@@ -1,11 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  resolveAgentFileLockSidecarPathInsideCwd,
-  resolveAgentFilePathInsideCwd,
-} from "./projection-cas";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
 export type ReviewGateStatus = "blocked" | "pending-review" | "approved" | "changes-requested";
 export type ReviewGateDecision = "approve" | "request-changes";
@@ -42,14 +39,6 @@ export type ReviewStageGate = {
   updatedAt: string;
 };
 
-export type ReviewStageGateLock = {
-  schemaVersion: 1;
-  kind: "clash.review.stage-gate.lock";
-  filePath: string;
-  gateHash: string;
-  updatedAt: string;
-};
-
 export type PlanReviewStageGateOptions = {
   cwd: string;
   pipelinePath: string;
@@ -64,14 +53,14 @@ export type PlanReviewStageGateResult = {
   projectKind: string;
   stage: string;
   gatePath: string;
-  lockPath: string;
+  version: string;
   blockedReasons: string[];
 };
 
 export type ApproveReviewStageGateOptions = {
   cwd: string;
   gatePath: string;
-  lockPath?: string;
+  expectedVersion: string;
   reviewer: string;
   decision: ReviewGateDecision;
   note?: string;
@@ -82,7 +71,7 @@ export type ApproveReviewStageGateResult = {
   status: ReviewGateStatus;
   stage: string;
   gatePath: string;
-  lockPath: string;
+  version: string;
   reviewer: string;
   decision: ReviewGateDecision;
 };
@@ -135,19 +124,14 @@ export async function planReviewStageGate(
     createdAt: now,
     updatedAt: now,
   };
-  const lockPath = resolveAgentFileLockSidecarPathInsideCwd({
-    cwd,
-    lockPath: reviewGateLockPath(gatePath),
-    writeVerb: "Review gate",
-  });
-  await writeGateAndLock(cwd, gatePath, lockPath, gate);
+  const version = await writeGate(gatePath, gate);
   return {
     planned: true,
     status: gate.status,
     projectKind: gate.projectKind,
     stage,
     gatePath,
-    lockPath,
+    version,
     blockedReasons,
   };
 }
@@ -161,27 +145,13 @@ export async function approveReviewStageGate(
     filePath: resolveProjectPath(cwd, options.gatePath, "review gate"),
     writeVerb: "Review gate",
   });
-  const lockPath = resolveAgentFileLockSidecarPathInsideCwd({
-    cwd,
-    lockPath: options.lockPath
-      ? resolveProjectPath(cwd, options.lockPath, "review gate lock")
-      : reviewGateLockPath(gatePath),
-    writeVerb: "Review gate",
-  });
   const gateText = await readFile(gatePath, "utf8");
-  const lock = parseReviewGateLock(JSON.parse(await readFile(lockPath, "utf8")));
-  const gateProjectPath = toProjectComparablePath(cwd, gatePath);
-  const lockProjectPath = toProjectComparablePath(cwd, lock.filePath);
-  if (lockProjectPath !== gateProjectPath) {
-    throw new Error(
-      `Review gate path does not match CAS lock. ` +
-      `Approve gate is ${gateProjectPath}, but lock was pulled for ${lock.filePath}. ` +
-      "Run `clash production plan-review-gate` for this gate, or use the matching lock.",
-    );
+  const currentVersion = reviewGateVersion(gateText);
+  if (!options.expectedVersion) {
+    throw new Error("READ_REQUIRED: Plan or read the review gate before approving it.");
   }
-  const currentHash = sha256(gateText);
-  if (lock.gateHash !== currentHash) {
-    throw new Error("stale review gate: gate file hash does not match lock; re-plan or re-read before approving");
+  if (options.expectedVersion !== currentVersion) {
+    throw new Error("STALE_READ: The review gate changed after it was read. Plan or read it again before approving.");
   }
   const gate = parseReviewStageGate(JSON.parse(gateText));
   const reviewer = requireNonEmpty(options.reviewer, "reviewer");
@@ -208,13 +178,13 @@ export async function approveReviewStageGate(
     ],
     updatedAt: now,
   };
-  await writeGateAndLock(cwd, gatePath, lockPath, updatedGate);
+  const version = await writeGate(gatePath, updatedGate);
   return {
     approved: options.decision === "approve",
     status: updatedGate.status,
     stage: updatedGate.stage,
     gatePath,
-    lockPath,
+    version,
     reviewer,
     decision: options.decision,
   };
@@ -250,20 +220,6 @@ function parseReviewStageGate(input: unknown): ReviewStageGate {
     gatePolicy: parseGatePolicy(record.gatePolicy),
     decisionLog: parseStringArray(record.decisionLog, "decisionLog"),
     createdAt: requireNonEmpty(record.createdAt, "createdAt"),
-    updatedAt: requireNonEmpty(record.updatedAt, "updatedAt"),
-  };
-}
-
-function parseReviewGateLock(input: unknown): ReviewStageGateLock {
-  if (!input || typeof input !== "object") {
-    throw new Error("review gate lock must be an object");
-  }
-  const record = input as Record<string, unknown>;
-  return {
-    schemaVersion: 1,
-    kind: "clash.review.stage-gate.lock",
-    filePath: requireNonEmpty(record.filePath, "filePath"),
-    gateHash: requireNonEmpty(record.gateHash, "gateHash"),
     updatedAt: requireNonEmpty(record.updatedAt, "updatedAt"),
   };
 }
@@ -359,29 +315,28 @@ function requireNonEmpty(value: unknown, label: string): string {
   return value.trim();
 }
 
-function reviewGateLockPath(gatePath: string): string {
-  const ext = extname(gatePath);
-  return join(dirname(gatePath), `${basename(gatePath, ext)}.lock.json`);
-}
-
-async function writeGateAndLock(
-  cwd: string,
+async function writeGate(
   gatePath: string,
-  lockPath: string,
   gate: ReviewStageGate,
-): Promise<void> {
+): Promise<string> {
   const gateText = `${JSON.stringify(gate, null, 2)}\n`;
   await mkdir(dirname(gatePath), { recursive: true });
   await writeFile(gatePath, gateText, "utf8");
-  const lock: ReviewStageGateLock = {
-    schemaVersion: 1,
-    kind: "clash.review.stage-gate.lock",
-    filePath: toProjectPath(cwd, gatePath),
-    gateHash: sha256(gateText),
-    updatedAt: gate.updatedAt,
-  };
-  await mkdir(dirname(lockPath), { recursive: true });
-  await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, "utf8");
+  return reviewGateVersion(gateText);
+}
+
+export function reviewGateObservationId(options: { cwd: string; gatePath: string }): string {
+  const cwd = resolve(options.cwd);
+  const gatePath = resolveAgentFilePathInsideCwd({
+    cwd,
+    filePath: resolveProjectPath(cwd, options.gatePath, "review gate"),
+    writeVerb: "Review gate",
+  });
+  return toProjectPath(cwd, gatePath);
+}
+
+function reviewGateVersion(gateText: string): string {
+  return `review-gate-v1:${sha256(gateText).slice(0, 16)}`;
 }
 
 function sha256(value: string): string {
@@ -409,11 +364,6 @@ function isInsideOrEqual(parent: string, child: string): boolean {
 
 function toProjectPath(cwd: string, absolutePath: string): string {
   return relative(cwd, absolutePath).split(sep).join("/");
-}
-
-function toProjectComparablePath(cwd: string, path: string): string {
-  const absolutePath = isAbsolute(path) ? resolve(path) : resolve(cwd, path);
-  return toProjectPath(cwd, absolutePath);
 }
 
 function safeSlug(value: string): string {

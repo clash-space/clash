@@ -126,6 +126,49 @@ export function evalJson(agentBrowser, expression) {
   return parseEvalOutput(agentBrowser(["eval", expression]));
 }
 
+export function recoverAgentBrowserTarget(agentBrowser, {
+  cdpPort,
+  expectedUrlPrefix,
+  maxAttempts = 8,
+}) {
+  let lastHref = "about:blank";
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    agentBrowser(["close"], { allowFailure: true });
+    agentBrowser(["connect", String(cdpPort)], { allowFailure: true });
+    try {
+      lastHref = evalJson(agentBrowser, "location.href");
+      if (typeof lastHref === "string" && lastHref.startsWith(expectedUrlPrefix)) {
+        return lastHref;
+      }
+    } catch {
+      lastHref = "unavailable";
+    }
+    if (attempt + 1 < maxAttempts) sleepSync(250);
+  }
+  throw new Error(
+    `Could not recover Electron agent-browser target at ${expectedUrlPrefix}; last URL: ${lastHref}`,
+  );
+}
+
+export function runtimeSessionPathObservation({
+  session,
+  projectId,
+  apiOrigin,
+  dataDir,
+  messageCount,
+}) {
+  const id = session.threadId || session.id;
+  return {
+    id,
+    projectId: session.projectId || projectId,
+    title: session.title || "",
+    messageCount,
+    apiPath: `${apiOrigin}/api/v1/local-sessions/${encodeURIComponent(id)}/messages`,
+    storagePath: path.join(dataDir, "local.sqlite"),
+    cwdPath: null,
+  };
+}
+
 export async function waitForEval(agentBrowser, expression, label, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   let lastValue;
@@ -297,9 +340,15 @@ export function clickComposerSubmitButton(agentBrowser) {
 
 export async function startVite({ webPort, logs }) {
   const viteBin = path.join(repoRoot, "node_modules", ".bin", process.platform === "win32" ? "vite.cmd" : "vite");
+  const persistStateDir = path.join(repoRoot, ".tmp", "desktop-vite-state", String(webPort));
+  await rm(persistStateDir, { recursive: true, force: true });
+  await mkdir(persistStateDir, { recursive: true });
   const web = spawn(viteBin, ["--host", "127.0.0.1", "--port", String(webPort)], {
     cwd: webDir,
-    env: process.env,
+    env: {
+      ...process.env,
+      CLASH_WEB_E2E_PERSIST_STATE: persistStateDir,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   web.stdout.on("data", (buf) => {

@@ -13,13 +13,13 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
-function packageRoot(packageName) {
-  return dirname(require.resolve(`${packageName}/package.json`));
+function packageRoot(packageName, packageRequire = require) {
+  return dirname(packageRequire.resolve(`${packageName}/package.json`));
 }
 
-function packageBinPath(packageName, binName) {
-  const root = packageRoot(packageName);
-  const pkg = require(`${packageName}/package.json`);
+function packageBinPath(packageName, binName, packageRequire = require) {
+  const root = packageRoot(packageName, packageRequire);
+  const pkg = packageRequire(`${packageName}/package.json`);
   const bin = typeof pkg.bin === "string"
     ? pkg.bin
     : pkg.bin?.[binName] ?? (Object.keys(pkg.bin ?? {}).length === 1 ? Object.values(pkg.bin)[0] : undefined);
@@ -29,41 +29,6 @@ function packageBinPath(packageName, binName) {
 
 function packageNodeModulesDir(packageName) {
   return dirname(dirname(packageRoot(packageName)));
-}
-
-function codexNativePackageName(platform = process.platform, arch = process.arch) {
-  const platformPackages = {
-    darwin: {
-      arm64: "@zed-industries/codex-acp-darwin-arm64",
-      x64: "@zed-industries/codex-acp-darwin-x64",
-    },
-    linux: {
-      arm64: "@zed-industries/codex-acp-linux-arm64",
-      x64: "@zed-industries/codex-acp-linux-x64",
-    },
-    win32: {
-      arm64: "@zed-industries/codex-acp-win32-arm64",
-      x64: "@zed-industries/codex-acp-win32-x64",
-    },
-  };
-  const packageName = platformPackages[platform]?.[arch];
-  if (!packageName) throw new Error(`Unsupported Codex ACP platform: ${platform}/${arch}`);
-  return packageName;
-}
-
-export function renderCodexAcpWrapper({ packagedNativePath, devNativePath }) {
-  return [
-    "#!/bin/sh",
-    "set -eu",
-    "DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)",
-    "RESOURCES_DIR=$(CDPATH= cd -- \"$DIR/..\" && pwd)",
-    `PACKAGED_NATIVE="${packagedNativePath}"`,
-    "if [ -x \"$PACKAGED_NATIVE\" ]; then",
-    "  exec \"$PACKAGED_NATIVE\" \"$@\"",
-    "fi",
-    `exec ${shellQuote(devNativePath)} "$@"`,
-    "",
-  ].join("\n");
 }
 
 export function renderNodeAcpWrapper({ packagedScriptPath, devScriptPath }) {
@@ -92,26 +57,34 @@ export function renderNodeAcpWrapper({ packagedScriptPath, devScriptPath }) {
 }
 
 export async function prepareAcpHarnesses({ outputDir = join(desktopRoot, "build", "acp-bin") } = {}) {
-  const codexNativePackage = codexNativePackageName();
-  const codexNativeBin = packageBinPath(codexNativePackage, process.platform === "win32" ? "codex-acp.exe" : "codex-acp");
+  const codexAgentScript = packageBinPath("@agentclientprotocol/codex-acp", "codex-acp");
+  const codexAgentNodeModules = packageNodeModulesDir("@agentclientprotocol/codex-acp");
   const claudeAgentScript = packageBinPath("@agentclientprotocol/claude-agent-acp", "claude-agent-acp");
   const claudeAgentNodeModules = packageNodeModulesDir("@agentclientprotocol/claude-agent-acp");
   const resourceBuildDir = dirname(outputDir);
+  const codexAgentBundleDir = join(resourceBuildDir, "acp-node", "codex-acp");
   const claudeAgentBundleDir = join(resourceBuildDir, "acp-node", "claude-agent-acp");
 
   await rm(outputDir, { recursive: true, force: true });
+  await rm(codexAgentBundleDir, { recursive: true, force: true });
   await rm(claudeAgentBundleDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
+  await mkdir(codexAgentBundleDir, { recursive: true });
   await mkdir(claudeAgentBundleDir, { recursive: true });
+  await cp(codexAgentNodeModules, join(codexAgentBundleDir, "node_modules"), {
+    recursive: true,
+    dereference: true,
+    force: true,
+  });
   await cp(claudeAgentNodeModules, join(claudeAgentBundleDir, "node_modules"), {
     recursive: true,
     dereference: true,
     force: true,
   });
 
-  const codexWrapper = renderCodexAcpWrapper({
-    packagedNativePath: `$RESOURCES_DIR/app.asar.unpacked/node_modules/${codexNativePackage}/bin/${process.platform === "win32" ? "codex-acp.exe" : "codex-acp"}`,
-    devNativePath: codexNativeBin,
+  const codexWrapper = renderNodeAcpWrapper({
+    packagedScriptPath: "$RESOURCES_DIR/acp-node/codex-acp/node_modules/@agentclientprotocol/codex-acp/dist/index.js",
+    devScriptPath: codexAgentScript,
   });
   const claudeAgentWrapper = renderNodeAcpWrapper({
     packagedScriptPath: "$RESOURCES_DIR/acp-node/claude-agent-acp/node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js",

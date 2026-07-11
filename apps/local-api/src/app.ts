@@ -1,4 +1,12 @@
-import { chmod, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { Hono } from "hono";
@@ -20,13 +28,14 @@ import {
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
-  canvasDownstreamTargets,
   createMediaAssetCowNodeData,
   hostMutationRejected,
   hostMutationSucceeded,
   isMediaNodeType,
   invalidProviderModelFilters,
+  ensureCanvasGraphIdentity,
   listModelCatalogEntries,
+  listNodeOwnedEdges,
   listProviderModelSupport,
   MOCK_MODEL_CARDS,
   MODEL_CARDS,
@@ -40,8 +49,6 @@ import {
   ProviderOAuthIdSchema,
   sessionReadToken,
   TextAppliedRevisionSchema,
-  TimelineAppliedRevisionSchema,
-  timelineDslFromYaml,
   validateCanvasBatchDelete,
   validateCanvasBatchDeleteReadProof,
   validateCanvasEdgeAdd,
@@ -52,7 +59,8 @@ import {
   validateCanvasReadProof,
   validateCanvasDelete,
   validateCanvasNodePatch,
-  validateAgentReadProof,
+  validateAgentReadProof as validateLegacyAgentReadProof,
+  validateAgentObservation,
   validateHostMutationEnvelope,
   type AgentReadReceiptProof,
   type CanvasReadProofEdgeLike,
@@ -64,9 +72,6 @@ import {
   type ModelKind,
   type HostMutationRecord,
   type TextAppliedRevision,
-  type TimelineAppliedRevision,
-  type TimelineRevisionContentDescriptor,
-  type TimelineRevisionHistoryEntry,
 } from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import {
@@ -123,7 +128,6 @@ import {
   type LocalMetadataDb,
   type LocalMutationAuditFilter,
   type LocalMutationAuditRecord,
-  type LocalTimelineRevisionFilter,
   type LocalTextRevisionFilter,
   type LocalMetadataProject as LocalProject,
   type LocalMetadataProjectAsset as LocalProjectAsset,
@@ -243,7 +247,10 @@ export interface LocalAcpCustomAgentServer {
   env?: Record<string, string>;
 }
 
-export type LocalAcpAgentServersConfig = Record<string, LocalAcpCustomAgentServer>;
+export type LocalAcpAgentServersConfig = Record<
+  string,
+  LocalAcpCustomAgentServer
+>;
 
 export interface LocalAcpResumeSession {
   id: string;
@@ -262,11 +269,23 @@ export interface LocalAcpSessionMessage {
 }
 
 export interface LocalAcpSessionMessageStore {
-  appendUserPrompt(sessionId: string, message: LocalAcpSessionMessage): Promise<void> | void;
-  appendAgentEvent(sessionId: string, message: LocalAcpSessionMessage): Promise<void> | void;
+  appendUserPrompt(
+    sessionId: string,
+    message: LocalAcpSessionMessage,
+  ): Promise<void> | void;
+  appendAgentEvent(
+    sessionId: string,
+    message: LocalAcpSessionMessage,
+  ): Promise<void> | void;
   markTurnComplete?(sessionId: string, turnId: string): Promise<void> | void;
-  appendTurnError?(sessionId: string, turnId: string | null, message: string): Promise<void> | void;
-  listSessionMessages(sessionId: string): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
+  appendTurnError?(
+    sessionId: string,
+    turnId: string | null,
+    message: string,
+  ): Promise<void> | void;
+  listSessionMessages(
+    sessionId: string,
+  ): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
 }
 
 export interface LocalAcpCreateSessionParams {
@@ -278,8 +297,14 @@ export interface LocalAcpCreateSessionParams {
   permissionMode?: string;
   projectId?: string;
   resumeAcpSessionId?: string;
-  onReady?: (event: { sessionId: string; acpSessionId?: string }) => Promise<void> | void;
-  onError?: (event: { sessionId: string; message: string }) => Promise<void> | void;
+  onReady?: (event: {
+    sessionId: string;
+    acpSessionId?: string;
+  }) => Promise<void> | void;
+  onError?: (event: {
+    sessionId: string;
+    message: string;
+  }) => Promise<void> | void;
 }
 
 export interface LocalAcpAttachSessionParams extends LocalAcpCreateSessionParams {
@@ -288,12 +313,26 @@ export interface LocalAcpAttachSessionParams extends LocalAcpCreateSessionParams
 
 export interface LocalAcpAdapter {
   warmup?(): Promise<void> | void;
-  listRuntimes(opts?: { probe?: boolean | "auth" | "config" | "none"; refresh?: boolean }): Promise<{ runtimes: LocalAcpRuntime[] }>;
-  createSession(params: LocalAcpCreateSessionParams): Promise<{ session_id: string }>;
-  attachSession?(params: LocalAcpAttachSessionParams): Promise<{ session_id: string }>;
-  listResumeSessions(runtimeId: string): Promise<{ sessions: LocalAcpResumeSession[] }>;
-  listHarnesses?(opts?: { probe?: boolean | "auth" | "config" | "none"; refresh?: boolean }): Promise<{ harnesses: LocalAcpHarness[] }>;
-  updateHarnesses?(enabledIds: string[]): Promise<{ harnesses: LocalAcpHarness[] }>;
+  listRuntimes(opts?: {
+    probe?: boolean | "auth" | "config" | "none";
+    refresh?: boolean;
+  }): Promise<{ runtimes: LocalAcpRuntime[] }>;
+  createSession(
+    params: LocalAcpCreateSessionParams,
+  ): Promise<{ session_id: string }>;
+  attachSession?(
+    params: LocalAcpAttachSessionParams,
+  ): Promise<{ session_id: string }>;
+  listResumeSessions(
+    runtimeId: string,
+  ): Promise<{ sessions: LocalAcpResumeSession[] }>;
+  listHarnesses?(opts?: {
+    probe?: boolean | "auth" | "config" | "none";
+    refresh?: boolean;
+  }): Promise<{ harnesses: LocalAcpHarness[] }>;
+  updateHarnesses?(
+    enabledIds: string[],
+  ): Promise<{ harnesses: LocalAcpHarness[] }>;
   listAgentServers?(): Promise<{ agent_servers: LocalAcpAgentServersConfig }>;
   updateAgentServers?(servers: LocalAcpAgentServersConfig): Promise<{
     agent_servers: LocalAcpAgentServersConfig;
@@ -303,8 +342,13 @@ export interface LocalAcpAdapter {
   installHarnessAdapter?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
   upgradeHarness?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
   uninstallHarness?(id: string): Promise<{ harnesses: LocalAcpHarness[] }>;
-  authenticateHarness?(id: string, options?: { methodId?: string }): Promise<{ harnesses: LocalAcpHarness[] }>;
-  listSessionMessages?(sessionId: string): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
+  authenticateHarness?(
+    id: string,
+    options?: { methodId?: string },
+  ): Promise<{ harnesses: LocalAcpHarness[] }>;
+  listSessionMessages?(
+    sessionId: string,
+  ): Promise<{ messages: LocalAcpSessionMessage[] } | null>;
   setSessionMessageStore?(store: LocalAcpSessionMessageStore): void;
   pushRoomMention?(
     projectId: string,
@@ -330,8 +374,12 @@ function formatLocalAcpSessionError(error: unknown): string {
   if (message === "No enabled local agent harness found") {
     return "No enabled local agent found. Enable an agent in Settings > Runtimes, or install one from Clash.";
   }
-  if (message.startsWith("Local agent harness is not enabled or unavailable:")) {
-    const id = message.slice("Local agent harness is not enabled or unavailable:".length).trim();
+  if (
+    message.startsWith("Local agent harness is not enabled or unavailable:")
+  ) {
+    const id = message
+      .slice("Local agent harness is not enabled or unavailable:".length)
+      .trim();
     return `Local agent ${id} is not enabled or available. Enable it in Settings > Runtimes, install it, or choose another agent.`;
   }
   return message || "Failed to create local session";
@@ -339,101 +387,6 @@ function formatLocalAcpSessionError(error: unknown): string {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function stableJsonForTimelineHash(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJsonForTimelineHash).join(",")}]`;
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value as object)
-      .filter((key) => key !== "fromExpr")
-      .sort();
-    return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${stableJsonForTimelineHash((value as Record<string, unknown>)[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function timelineRevisionSemanticHash(content: string): string {
-  const parsed = timelineDslFromYaml(content);
-  if (!parsed.ok) {
-    throw new Error(`Invalid timeline revision content: ${parsed.error}`);
-  }
-  return createHash("sha256").update(stableJsonForTimelineHash(parsed.dsl)).digest("hex").slice(0, 16);
-}
-
-function timelineRevisionContentBlobPath(dataDir: string, timelineHash: string): string {
-  if (!/^[a-f0-9]{16}$/.test(timelineHash)) {
-    throw new Error("Invalid timeline revision hash");
-  }
-  return join(dataDir, "timeline-revision-blobs", timelineHash.slice(0, 2), `${timelineHash}.timeline.yaml`);
-}
-
-function timelineRevisionContentUrl(revision: TimelineAppliedRevision): string {
-  return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/timeline-revisions/${encodeURIComponent(revision.revisionId)}/content`;
-}
-
-function timelineRevisionContentDescriptor(
-  revision: TimelineAppliedRevision,
-  options: { stored?: true } = {},
-): TimelineRevisionContentDescriptor & { stored?: true } {
-  return {
-    kind: "timeline-revision-content",
-    ...(options.stored ? { stored: true } : {}),
-    timelineHash: revision.timelineHash,
-    mediaType: "application/yaml",
-    url: timelineRevisionContentUrl(revision),
-    immutable: true,
-    storage: {
-      kind: "content-addressed-revision-blob",
-      registry: "timeline_revisions",
-      mediaAsset: false,
-      agentWritable: false,
-    },
-  };
-}
-
-async function storeTimelineRevisionContentBlob(
-  dataDir: string,
-  revision: TimelineAppliedRevision,
-  content: string,
-) {
-  if (timelineRevisionSemanticHash(content) !== revision.timelineHash) {
-    throw new Error("timeline revision timelineHash does not match content");
-  }
-  const path = timelineRevisionContentBlobPath(dataDir, revision.timelineHash);
-  const existing = await readFile(path, "utf8").catch((error: unknown) => {
-    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
-    throw error;
-  });
-  if (existing !== null) {
-    if (existing !== content) {
-      throw new Error("timeline revision content blob already exists with different content");
-    }
-    await chmod(path, 0o444).catch(() => undefined);
-    return {
-      ...timelineRevisionContentDescriptor(revision, { stored: true }),
-    };
-  }
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, content, { encoding: "utf8", mode: 0o444 });
-  await chmod(path, 0o444).catch(() => undefined);
-  return {
-    ...timelineRevisionContentDescriptor(revision, { stored: true }),
-  };
-}
-
-async function withTimelineRevisionContentDescriptor(
-  dataDir: string,
-  revision: TimelineAppliedRevision,
-): Promise<TimelineRevisionHistoryEntry> {
-  const path = timelineRevisionContentBlobPath(dataDir, revision.timelineHash);
-  const fileStat = await stat(path).catch(() => null);
-  if (!fileStat?.isFile()) return revision;
-  return {
-    ...revision,
-    content: timelineRevisionContentDescriptor(revision, { stored: true }),
-  };
 }
 
 async function preflightTextRevisionContentBlob(
@@ -446,29 +399,18 @@ async function preflightTextRevisionContentBlob(
   }
   const path = textRevisionContentBlobPath(dataDir, revision.contentHash);
   const existing = await readFile(path, "utf8").catch((error: unknown) => {
-    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
+    if (
+      error &&
+      typeof error === "object" &&
+      (error as { code?: unknown }).code === "ENOENT"
+    )
+      return null;
     throw error;
   });
   if (existing !== null && existing !== content) {
-    throw new Error("text revision content blob already exists with different content");
-  }
-}
-
-async function preflightTimelineRevisionContentBlob(
-  dataDir: string,
-  revision: TimelineAppliedRevision,
-  content: string,
-): Promise<void> {
-  if (timelineRevisionSemanticHash(content) !== revision.timelineHash) {
-    throw new Error("timeline revision timelineHash does not match content");
-  }
-  const path = timelineRevisionContentBlobPath(dataDir, revision.timelineHash);
-  const existing = await readFile(path, "utf8").catch((error: unknown) => {
-    if (error && typeof error === "object" && (error as { code?: unknown }).code === "ENOENT") return null;
-    throw error;
-  });
-  if (existing !== null && existing !== content) {
-    throw new Error("timeline revision content blob already exists with different content");
+    throw new Error(
+      "text revision content blob already exists with different content",
+    );
   }
 }
 
@@ -476,7 +418,6 @@ function localMutationEnvelope(operation: string, kind: string, id: string) {
   return {
     operation,
     entity: { kind, id },
-    forced: false,
   };
 }
 
@@ -494,7 +435,12 @@ const PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 
 type ProjectCanvasAssetNodeRef = Pick<
   LocalMetadataAssetNodeRef,
-  "assetId" | "projectId" | "nodeId" | "nodeType" | "fieldPath" | "referenceRole"
+  | "assetId"
+  | "projectId"
+  | "nodeId"
+  | "nodeType"
+  | "fieldPath"
+  | "referenceRole"
 >;
 
 function refreshAssetReferenceProjectionState(
@@ -504,24 +450,35 @@ function refreshAssetReferenceProjectionState(
 ): void {
   const observedAt = Math.floor(Date.now() / 1000);
   const currentAssetIds = new Set(current.assets.map((asset) => asset.id));
-  const existingRefKeys = new Set(current.assetRefs.map((ref) => `${ref.assetId}\0${ref.projectId}`));
+  const existingRefKeys = new Set(
+    current.assetRefs.map((ref) => `${ref.assetId}\0${ref.projectId}`),
+  );
   const scannedProjectIds = new Set(projectIds);
   const nextAssetNodeRefs = new Map<string, LocalMetadataAssetNodeRef>();
   for (const ref of projectedCanvasAssetRefs) {
     const refKey = `${ref.assetId}\0${ref.projectId}`;
     if (!currentAssetIds.has(ref.assetId)) continue;
     if (!existingRefKeys.has(refKey)) {
-      current.assetRefs.unshift({ assetId: ref.assetId, projectId: ref.projectId, importedAt: observedAt });
+      current.assetRefs.unshift({
+        assetId: ref.assetId,
+        projectId: ref.projectId,
+        importedAt: observedAt,
+      });
       existingRefKeys.add(refKey);
     }
-    nextAssetNodeRefs.set(`${ref.projectId}\0${ref.nodeId}\0${ref.fieldPath}\0${ref.assetId}`, {
-      ...ref,
-      observedAt,
-    });
+    nextAssetNodeRefs.set(
+      `${ref.projectId}\0${ref.nodeId}\0${ref.fieldPath}\0${ref.assetId}`,
+      {
+        ...ref,
+        observedAt,
+      },
+    );
   }
   current.assetNodeRefs = [
     ...nextAssetNodeRefs.values(),
-    ...current.assetNodeRefs.filter((ref) => !scannedProjectIds.has(ref.projectId)),
+    ...current.assetNodeRefs.filter(
+      (ref) => !scannedProjectIds.has(ref.projectId),
+    ),
   ];
 }
 
@@ -538,11 +495,16 @@ function truncateProjectName(prompt: string): string {
 }
 
 function agentTemplateTitle(agentTemplateId: string): string {
-  return BUILTIN_AGENT_TEMPLATES.find((template) => template.id === agentTemplateId)?.label ?? agentTemplateId;
+  return (
+    BUILTIN_AGENT_TEMPLATES.find((template) => template.id === agentTemplateId)
+      ?.label ?? agentTemplateId
+  );
 }
 
 function initialRuntimeSessionTitle(agentTemplateId?: string): string {
-  return agentTemplateId ? agentTemplateTitle(agentTemplateId) : DEFAULT_RUNTIME_SESSION_TITLE;
+  return agentTemplateId
+    ? agentTemplateTitle(agentTemplateId)
+    : DEFAULT_RUNTIME_SESSION_TITLE;
 }
 
 function publicLocalSession(session: LocalSession) {
@@ -554,8 +516,12 @@ function publicLocalSession(session: LocalSession) {
     type: session.type ?? "cloud",
     ...(session.runtimeId ? { runtimeId: session.runtimeId } : {}),
     ...(session.agentId ? { agentId: session.agentId } : {}),
-    ...(session.agentTemplateId ? { agentTemplateId: session.agentTemplateId } : {}),
-    ...(session.permissionMode ? { permissionMode: session.permissionMode } : {}),
+    ...(session.agentTemplateId
+      ? { agentTemplateId: session.agentTemplateId }
+      : {}),
+    ...(session.permissionMode
+      ? { permissionMode: session.permissionMode }
+      : {}),
     ...(session.acpSessionId ? { acpSessionId: session.acpSessionId } : {}),
     ...(session.status ? { status: session.status } : {}),
     createdAt: session.createdAt,
@@ -582,7 +548,9 @@ async function projectRecoveryPolicy(
   );
 }
 
-async function localSyncReadState(syncConfig: LocalSyncConfigStore): Promise<LocalSyncConfigReadState> {
+async function localSyncReadState(
+  syncConfig: LocalSyncConfigStore,
+): Promise<LocalSyncConfigReadState> {
   if (syncConfig.getReadState) return syncConfig.getReadState();
   return {
     ...(await syncConfig.getPublicConfig()),
@@ -611,7 +579,9 @@ function localSyncConfigReadProjection(readState: LocalSyncConfigReadState) {
   };
 }
 
-async function localAudioReadState(audioConfig: LocalAudioConfigStore): Promise<LocalAudioConfigReadState> {
+async function localAudioReadState(
+  audioConfig: LocalAudioConfigStore,
+): Promise<LocalAudioConfigReadState> {
   if (audioConfig.getReadState) return audioConfig.getReadState();
   return {
     ...(await audioConfig.getPublicConfig()),
@@ -626,7 +596,9 @@ function publicLocalAudioConfig(readState: LocalAudioConfigReadState) {
   };
 }
 
-function localAudioReceiptReadToken(readState: LocalAudioConfigReadState): string {
+function localAudioReceiptReadToken(
+  readState: LocalAudioConfigReadState,
+): string {
   return localConfigReceiptReadToken({
     id: "audio",
     config: { asr: readState.asr },
@@ -646,7 +618,9 @@ async function updateRuntimeSession(
   patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
 ) {
   await db.update((state) => {
-    const session = state.sessions.find((candidate) => candidate.id === sessionId);
+    const session = state.sessions.find(
+      (candidate) => candidate.id === sessionId,
+    );
     if (!session) return;
     Object.assign(session, patch, { updatedAt: nowIso() });
   });
@@ -671,12 +645,16 @@ async function finalizeRuntimeSessionId(
   patch?: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
 ): Promise<void> {
   await db.update((state) => {
-    const session = state.sessions.find((candidate) => candidate.id === temporarySessionId);
+    const session = state.sessions.find(
+      (candidate) => candidate.id === temporarySessionId,
+    );
     if (!session) return;
     session.id = finalSessionId;
     Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
     state.sessionMessages = state.sessionMessages.map((message) =>
-      message.session_id === temporarySessionId ? { ...message, session_id: finalSessionId } : message
+      message.session_id === temporarySessionId
+        ? { ...message, session_id: finalSessionId }
+        : message,
     );
   });
 }
@@ -732,77 +710,89 @@ function createDb(dataDir: string) {
     };
   }
 
-  async function update<T>(mutate: (db: LocalDb) => T | Promise<T>): Promise<T> {
-    const task = writeQueue.catch(() => undefined).then(async () => {
-      const [metadata, providerAccounts, providerOAuth] = await Promise.all([
-        metadataStore.load(),
-        providerStore.loadProviderAccounts(),
-        providerStore.loadProviderOAuth(),
-      ]);
-      const normalized: LocalDb = {
-        ...metadata,
-        providerAccounts,
-        providerOAuth,
-      };
-      const result = await mutate(normalized);
-      await metadataStore.save({
-        projects: normalized.projects,
-        assets: normalized.assets,
-        assetRefs: normalized.assetRefs,
-        assetNodeRefs: normalized.assetNodeRefs,
-        sessions: normalized.sessions,
-        agentMembers: normalized.agentMembers,
-        sessionMessages: normalized.sessionMessages,
+  async function update<T>(
+    mutate: (db: LocalDb) => T | Promise<T>,
+  ): Promise<T> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(async () => {
+        const [metadata, providerAccounts, providerOAuth] = await Promise.all([
+          metadataStore.load(),
+          providerStore.loadProviderAccounts(),
+          providerStore.loadProviderOAuth(),
+        ]);
+        const normalized: LocalDb = {
+          ...metadata,
+          providerAccounts,
+          providerOAuth,
+        };
+        const result = await mutate(normalized);
+        await metadataStore.save({
+          projects: normalized.projects,
+          assets: normalized.assets,
+          assetRefs: normalized.assetRefs,
+          assetNodeRefs: normalized.assetNodeRefs,
+          sessions: normalized.sessions,
+          agentMembers: normalized.agentMembers,
+          sessionMessages: normalized.sessionMessages,
+        });
+        await providerStore.saveProviderAccounts(normalized.providerAccounts);
+        await providerStore.saveProviderOAuth(normalized.providerOAuth);
+        return result;
       });
-      await providerStore.saveProviderAccounts(normalized.providerAccounts);
-      await providerStore.saveProviderOAuth(normalized.providerOAuth);
-      return result;
-    });
-    writeQueue = task.then(() => undefined, () => undefined);
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
     return task;
   }
 
-  async function appendMutationAudit(record: LocalMutationAuditRecord): Promise<void> {
-    const task = writeQueue.catch(() => undefined).then(() => metadataStore.appendMutationAudit(record));
-    writeQueue = task.then(() => undefined, () => undefined);
+  async function appendMutationAudit(
+    record: LocalMutationAuditRecord,
+  ): Promise<void> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(() => metadataStore.appendMutationAudit(record));
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
     return task;
   }
 
-  async function listMutationAudit(filter: LocalMutationAuditFilter = {}): Promise<LocalMutationAuditRecord[]> {
+  async function listMutationAudit(
+    filter: LocalMutationAuditFilter = {},
+  ): Promise<LocalMutationAuditRecord[]> {
     await writeQueue.catch(() => undefined);
     return metadataStore.listMutationAudit(filter);
   }
 
-  async function upsertTextRevision(revision: TextAppliedRevision): Promise<TextAppliedRevision> {
-    const task = writeQueue.catch(() => undefined).then(() => metadataStore.upsertTextRevision(revision));
-    writeQueue = task.then(() => undefined, () => undefined);
+  async function upsertTextRevision(
+    revision: TextAppliedRevision,
+  ): Promise<TextAppliedRevision> {
+    const task = writeQueue
+      .catch(() => undefined)
+      .then(() => metadataStore.upsertTextRevision(revision));
+    writeQueue = task.then(
+      () => undefined,
+      () => undefined,
+    );
     return task;
   }
 
-  async function listTextRevisions(filter: LocalTextRevisionFilter): Promise<TextAppliedRevision[]> {
+  async function listTextRevisions(
+    filter: LocalTextRevisionFilter,
+  ): Promise<TextAppliedRevision[]> {
     await writeQueue.catch(() => undefined);
     return metadataStore.listTextRevisions(filter);
   }
 
-  async function getTextRevision(projectId: string, revisionId: string): Promise<TextAppliedRevision | null> {
+  async function getTextRevision(
+    projectId: string,
+    revisionId: string,
+  ): Promise<TextAppliedRevision | null> {
     await writeQueue.catch(() => undefined);
     return metadataStore.getTextRevision(projectId, revisionId);
-  }
-
-  async function upsertTimelineRevision(revision: TimelineAppliedRevision): Promise<TimelineAppliedRevision> {
-    const task = writeQueue.catch(() => undefined).then(() => metadataStore.upsertTimelineRevision(revision));
-    writeQueue = task.then(() => undefined, () => undefined);
-    return task;
-  }
-
-  async function listTimelineRevisions(filter: LocalTimelineRevisionFilter): Promise<TimelineAppliedRevision[]> {
-    await writeQueue.catch(() => undefined);
-    return metadataStore.listTimelineRevisions(filter);
-  }
-
-  async function getTimelineRevision(projectId: string, revisionId: string): Promise<TimelineAppliedRevision | null> {
-    await writeQueue.catch(() => undefined);
-    return metadataStore.getTimelineRevision(projectId, revisionId);
   }
 
   return {
@@ -813,13 +803,12 @@ function createDb(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
-    upsertTimelineRevision,
-    listTimelineRevisions,
-    getTimelineRevision,
   };
 }
 
-function sanitizeMutationForAudit(mutation: HostMutationRecord): Record<string, unknown> {
+function sanitizeMutationForAudit(
+  mutation: HostMutationRecord,
+): Record<string, unknown> {
   const {
     expectedReadToken: _expectedReadToken,
     beforeReadToken: _beforeReadToken,
@@ -843,7 +832,6 @@ function mutationAuditRecord(options: {
     operation: options.mutation.operation,
     entity: options.mutation.entity,
     actorClientType: options.actorClientType ?? null,
-    forced: options.mutation.forced,
     accepted: options.mutation.accepted,
     reason: options.reason,
     resultEntityId: options.mutation.resultEntityId ?? null,
@@ -885,7 +873,9 @@ function appendPersistedSessionMessage(
   }
 }
 
-function extractUserPromptTitle(message: LocalAcpSessionMessage): string | null {
+function extractUserPromptTitle(
+  message: LocalAcpSessionMessage,
+): string | null {
   if (message.sender_kind !== "user") return null;
   for (const event of message.events) {
     if (
@@ -901,7 +891,9 @@ function extractUserPromptTitle(message: LocalAcpSessionMessage): string | null 
   return null;
 }
 
-function extractSessionInfoTitle(message: LocalAcpSessionMessage): string | null {
+function extractSessionInfoTitle(
+  message: LocalAcpSessionMessage,
+): string | null {
   for (const event of message.events) {
     if (!event || typeof event !== "object") continue;
     const typed = event as {
@@ -910,12 +902,17 @@ function extractSessionInfoTitle(message: LocalAcpSessionMessage): string | null
       title?: unknown;
       sessionInfo?: { title?: unknown };
     };
-    if (typed.type !== "session_info_update" && typed.sessionUpdate !== "session_info_update") continue;
-    const title = typeof typed.title === "string"
-      ? typed.title
-      : typeof typed.sessionInfo?.title === "string"
-        ? typed.sessionInfo.title
-        : "";
+    if (
+      typed.type !== "session_info_update" &&
+      typed.sessionUpdate !== "session_info_update"
+    )
+      continue;
+    const title =
+      typeof typed.title === "string"
+        ? typed.title
+        : typeof typed.sessionInfo?.title === "string"
+          ? typed.sessionInfo.title
+          : "";
     const trimmed = title.trim();
     if (trimmed) return truncateProjectName(trimmed);
   }
@@ -927,7 +924,9 @@ function patchSessionAfterMessage(
   sessionId: string,
   message: LocalAcpSessionMessage,
 ): void {
-  const session = state.sessions.find((candidate) => candidate.id === sessionId);
+  const session = state.sessions.find(
+    (candidate) => candidate.id === sessionId,
+  );
   if (!session) return;
   const sessionInfoTitle = extractSessionInfoTitle(message);
   const promptTitle = extractUserPromptTitle(message);
@@ -935,11 +934,10 @@ function patchSessionAfterMessage(
     session.title = sessionInfoTitle;
   } else if (
     promptTitle &&
-    (
-      !session.title ||
+    (!session.title ||
       session.title === DEFAULT_RUNTIME_SESSION_TITLE ||
-      (!!session.agentTemplateId && session.title === agentTemplateTitle(session.agentTemplateId))
-    )
+      (!!session.agentTemplateId &&
+        session.title === agentTemplateTitle(session.agentTemplateId)))
   ) {
     session.title = promptTitle;
   }
@@ -954,7 +952,11 @@ async function listPersistedLocalSessionMessages(
   const rows = state.sessionMessages
     .filter((message) => message.session_id === sessionId)
     .sort((a, b) => a.created_at - b.created_at);
-  if (rows.length === 0 && !state.sessions.some((session) => session.id === sessionId)) return null;
+  if (
+    rows.length === 0 &&
+    !state.sessions.some((session) => session.id === sessionId)
+  )
+    return null;
   return {
     messages: rows.map(({ session_id: _sessionId, ...message }) => ({
       ...message,
@@ -966,16 +968,24 @@ async function listPersistedLocalSessionMessages(
 function createLocalSessionMessageStore(
   db: ReturnType<typeof createDb>,
 ): LocalAcpSessionMessageStore {
-  async function append(sessionId: string, message: LocalAcpSessionMessage): Promise<void> {
+  async function append(
+    sessionId: string,
+    message: LocalAcpSessionMessage,
+  ): Promise<void> {
     await db.update((state) => {
       appendPersistedSessionMessage(state, sessionId, message);
       patchSessionAfterMessage(state, sessionId, message);
     });
   }
 
-  async function touch(sessionId: string, patch?: Partial<Pick<LocalSession, "status">>): Promise<void> {
+  async function touch(
+    sessionId: string,
+    patch?: Partial<Pick<LocalSession, "status">>,
+  ): Promise<void> {
     await db.update((state) => {
-      const session = state.sessions.find((candidate) => candidate.id === sessionId);
+      const session = state.sessions.find(
+        (candidate) => candidate.id === sessionId,
+      );
       if (session) Object.assign(session, patch ?? {}, { updatedAt: nowIso() });
     });
   }
@@ -997,8 +1007,14 @@ function createLocalSessionMessageStore(
           events: [{ type: "promptError", error: message }],
           created_at: at,
         });
-        const session = state.sessions.find((candidate) => candidate.id === sessionId);
-        if (session) Object.assign(session, { status: "error" as const, updatedAt: nowIso() });
+        const session = state.sessions.find(
+          (candidate) => candidate.id === sessionId,
+        );
+        if (session)
+          Object.assign(session, {
+            status: "error" as const,
+            updatedAt: nowIso(),
+          });
       });
     },
     listSessionMessages(sessionId) {
@@ -1012,50 +1028,67 @@ function isAssetKind(value: unknown): value is AssetKind {
 }
 
 function optionalBodyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
 function isSafeProjectRelativePath(value: string): boolean {
-  if (!value || value.startsWith("/") || /^[A-Za-z]:/.test(value) || value.includes("\\")) return false;
+  if (
+    !value ||
+    value.startsWith("/") ||
+    /^[A-Za-z]:/.test(value) ||
+    value.includes("\\")
+  )
+    return false;
   const parts = value.split("/");
-  return parts.every((part) => part.length > 0 && part !== "." && part !== "..");
+  return parts.every(
+    (part) => part.length > 0 && part !== "." && part !== "..",
+  );
 }
 
-function parseTextRevisionForIndex(value: unknown): { ok: true; revision: TextAppliedRevision } | { ok: false; error: string } {
+function parseTextRevisionForIndex(
+  value: unknown,
+): { ok: true; revision: TextAppliedRevision } | { ok: false; error: string } {
   const parsed = TextAppliedRevisionSchema.safeParse(value);
   if (!parsed.success) return { ok: false, error: "Invalid text revision" };
   const revision = parsed.data;
-  if (!/^[a-f0-9]{16}$/.test(revision.contentHash) || !/^[a-f0-9]{16}$/.test(revision.sourceFileHash)) {
-    return { ok: false, error: "Text revision hashes must be sha256-64 hex strings" };
+  if (
+    !/^[a-f0-9]{16}$/.test(revision.contentHash) ||
+    !/^[a-f0-9]{16}$/.test(revision.sourceFileHash)
+  ) {
+    return {
+      ok: false,
+      error: "Text revision hashes must be sha256-64 hex strings",
+    };
   }
   if (revision.sourceFileHash !== revision.contentHash) {
-    return { ok: false, error: "Text revision source file hash must match content hash" };
+    return {
+      ok: false,
+      error: "Text revision source file hash must match content hash",
+    };
   }
   if (!isSafeProjectRelativePath(revision.sourceFilePath)) {
-    return { ok: false, error: "Text revision source file path must be project-relative" };
-  }
-  return { ok: true, revision };
-}
-
-function parseTimelineRevisionForIndex(value: unknown): { ok: true; revision: TimelineAppliedRevision } | { ok: false; error: string } {
-  const parsed = TimelineAppliedRevisionSchema.safeParse(value);
-  if (!parsed.success) return { ok: false, error: "Invalid timeline revision" };
-  const revision = parsed.data;
-  if (!/^[a-f0-9]{16}$/.test(revision.timelineHash) || !/^[a-f0-9]{16}$/.test(revision.sourceFileHash)) {
-    return { ok: false, error: "Timeline revision hashes must be sha256-64 hex strings" };
-  }
-  if (revision.sourceFileHash !== revision.timelineHash) {
-    return { ok: false, error: "Timeline revision source file hash must match timeline hash" };
-  }
-  if (!isSafeProjectRelativePath(revision.sourceFilePath)) {
-    return { ok: false, error: "Timeline revision source file path must be project-relative" };
+    return {
+      ok: false,
+      error: "Text revision source file path must be project-relative",
+    };
   }
   return { ok: true, revision };
 }
 
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()))];
+  return [
+    ...new Set(
+      value
+        .filter(
+          (item): item is string =>
+            typeof item === "string" && item.trim().length > 0,
+        )
+        .map((item) => item.trim()),
+    ),
+  ];
 }
 
 async function collectProjectCanvasAssetRefs(
@@ -1076,12 +1109,13 @@ async function collectProjectCanvasAssetRefs(
       });
     }
   }
-  return refs.sort((left, right) => (
-    left.projectId.localeCompare(right.projectId)
-    || left.nodeId.localeCompare(right.nodeId)
-    || left.fieldPath.localeCompare(right.fieldPath)
-    || left.assetId.localeCompare(right.assetId)
-  ));
+  return refs.sort(
+    (left, right) =>
+      left.projectId.localeCompare(right.projectId) ||
+      left.nodeId.localeCompare(right.nodeId) ||
+      left.fieldPath.localeCompare(right.fieldPath) ||
+      left.assetId.localeCompare(right.assetId),
+  );
 }
 
 function canvasNodeType(value: unknown): string {
@@ -1096,7 +1130,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 async function discoverProjectReplicaIds(dataDir: string): Promise<string[]> {
   try {
-    const entries = await readdir(join(dataDir, "projects"), { withFileTypes: true, encoding: "utf8" });
+    const entries = await readdir(join(dataDir, "projects"), {
+      withFileTypes: true,
+      encoding: "utf8",
+    });
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) => {
@@ -1109,7 +1146,12 @@ async function discoverProjectReplicaIds(dataDir: string): Promise<string[]> {
       .filter((projectId) => projectId.length > 0)
       .sort();
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       return [];
     }
     throw error;
@@ -1124,15 +1166,31 @@ function collectAssetNodeRefsFromValue(
 ): void {
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      collectAssetNodeRefsFromValue(item, refs, context, `${fieldPath}[${index}]`);
+      collectAssetNodeRefsFromValue(
+        item,
+        refs,
+        context,
+        `${fieldPath}[${index}]`,
+      );
     });
     return;
   }
   if (!value || typeof value !== "object") return;
-  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, nested] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
     const nestedPath = fieldPath ? `${fieldPath}.${key}` : key;
-    if (isAssetReferenceKey(key) && typeof nested === "string" && nested.trim()) {
-      refs.push({ ...context, assetId: nested.trim(), fieldPath: nestedPath, referenceRole: inferAssetReferenceRole(key) });
+    if (
+      isAssetReferenceKey(key) &&
+      typeof nested === "string" &&
+      nested.trim()
+    ) {
+      refs.push({
+        ...context,
+        assetId: nested.trim(),
+        fieldPath: nestedPath,
+        referenceRole: inferAssetReferenceRole(key),
+      });
     } else if (isAssetReferenceListKey(key) && Array.isArray(nested)) {
       nested.forEach((item, index) => {
         if (typeof item === "string" && item.trim()) {
@@ -1163,7 +1221,8 @@ function normalizeAssetReferenceKey(key: string): string {
 
 function inferAssetReferenceRole(key: string): string {
   const normalized = normalizeAssetReferenceKey(key);
-  if (normalized.startsWith("requiredreferenceasset")) return "required-reference";
+  if (normalized.startsWith("requiredreferenceasset"))
+    return "required-reference";
   if (normalized.startsWith("referenceasset")) return "reference";
   if (normalized.startsWith("sourceasset")) return "source";
   if (normalized.startsWith("derivedasset")) return "derived";
@@ -1172,9 +1231,10 @@ function inferAssetReferenceRole(key: string): string {
 }
 
 function json(data: unknown, status = 200): Response {
-  const body = JSON.stringify(data).replace(/[\u007f-\uffff]/g, (char) => (
-    `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
-  ));
+  const body = JSON.stringify(data).replace(
+    /[\u007f-\uffff]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
   return new Response(body, {
     status,
     headers: {
@@ -1190,7 +1250,8 @@ function toProjectAsset(
   if (asset.kind !== "image" && asset.kind !== "video") return null;
   if (asset.kind === "video" && !asset.coverR2Key) return null;
 
-  const previewKey = asset.kind === "video" ? asset.coverR2Key! : asset.srcR2Key;
+  const previewKey =
+    asset.kind === "video" ? asset.coverR2Key! : asset.srcR2Key;
   return {
     id: asset.id,
     url: `/assets/${previewKey}`,
@@ -1204,7 +1265,23 @@ function requestOrigin(c: { req: { url: string } }): string {
   return new URL(c.req.url).origin;
 }
 
-function localAssetUrl(c: { req: { url: string } }, storageKey: string): string {
+function isAllowedLocalBrowserOrigin(origin: string): boolean {
+  const normalized = origin.trim().replace(/\/$/, "");
+  if (normalized === "clash://app") return true;
+  try {
+    const url = new URL(normalized);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase();
+    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function localAssetUrl(
+  c: { req: { url: string } },
+  storageKey: string,
+): string {
   return `${requestOrigin(c)}/assets/${storageKey}`;
 }
 
@@ -1230,7 +1307,10 @@ function withSignedAssetUrls<T extends Asset>(
   };
 }
 
-function projectPreviewAssets(project: LocalProject, state: LocalDb): LocalProjectAsset[] {
+function projectPreviewAssets(
+  project: LocalProject,
+  state: LocalDb,
+): LocalProjectAsset[] {
   const assetsById = new Map(state.assets.map((asset) => [asset.id, asset]));
   const refs = [
     ...state.assetRefs.filter((ref) => ref.projectId === project.id),
@@ -1275,19 +1355,29 @@ function activeProjects(state: LocalDb): LocalProject[] {
   return state.projects.filter(isActiveProject);
 }
 
-function findActiveProject(state: LocalDb, projectId: string, ownerId?: string): LocalProject | undefined {
-  return state.projects.find((candidate) =>
-    candidate.id === projectId &&
+function findActiveProject(
+  state: LocalDb,
+  projectId: string,
+  ownerId?: string,
+): LocalProject | undefined {
+  return state.projects.find(
+    (candidate) =>
+      candidate.id === projectId &&
       (!ownerId || candidate.ownerId === ownerId) &&
-      isActiveProject(candidate)
+      isActiveProject(candidate),
   );
 }
 
 function isDeletedKnownProject(state: LocalDb, projectId: string): boolean {
-  return state.projects.some((candidate) => candidate.id === projectId && isDeletedProject(candidate));
+  return state.projects.some(
+    (candidate) => candidate.id === projectId && isDeletedProject(candidate),
+  );
 }
 
-function deleteProjectFromState(state: LocalDb, projectId: string): LocalProject | null {
+function deleteProjectFromState(
+  state: LocalDb,
+  projectId: string,
+): LocalProject | null {
   const project = findActiveProject(state, projectId);
   if (!project) return null;
   const deletedAt = nowIso();
@@ -1296,8 +1386,13 @@ function deleteProjectFromState(state: LocalDb, projectId: string): LocalProject
   return project;
 }
 
-function restoreProjectInState(state: LocalDb, projectId: string): LocalProject | null {
-  const project = state.projects.find((candidate) => candidate.id === projectId && isDeletedProject(candidate));
+function restoreProjectInState(
+  state: LocalDb,
+  projectId: string,
+): LocalProject | null {
+  const project = state.projects.find(
+    (candidate) => candidate.id === projectId && isDeletedProject(candidate),
+  );
   if (!project) return null;
   project.deletedAt = null;
   project.updatedAt = nowIso();
@@ -1315,7 +1410,9 @@ function canPurgeProject(project: LocalProject, nowMs = Date.now()): boolean {
 }
 
 function purgeProjectFromState(state: LocalDb, projectId: string) {
-  const project = state.projects.find((candidate) => candidate.id === projectId && isDeletedProject(candidate));
+  const project = state.projects.find(
+    (candidate) => candidate.id === projectId && isDeletedProject(candidate),
+  );
   if (!project) return null;
   const sessionIds = new Set(
     state.sessions
@@ -1326,19 +1423,36 @@ function purgeProjectFromState(state: LocalDb, projectId: string) {
     projects: 1,
     projectPreviewAssets: project.assets.length,
     sessions: sessionIds.size,
-    sessionMessages: state.sessionMessages.filter((message) => sessionIds.has(message.session_id)).length,
-    assetRowsUnlinked: state.assets.filter((asset) => asset.projectId === projectId).length,
-    assetRefs: state.assetRefs.filter((ref) => ref.projectId === projectId).length,
-    assetNodeRefs: state.assetNodeRefs.filter((ref) => ref.projectId === projectId).length,
+    sessionMessages: state.sessionMessages.filter((message) =>
+      sessionIds.has(message.session_id),
+    ).length,
+    assetRowsUnlinked: state.assets.filter(
+      (asset) => asset.projectId === projectId,
+    ).length,
+    assetRefs: state.assetRefs.filter((ref) => ref.projectId === projectId)
+      .length,
+    assetNodeRefs: state.assetNodeRefs.filter(
+      (ref) => ref.projectId === projectId,
+    ).length,
   };
-  state.projects = state.projects.filter((candidate) => candidate.id !== projectId);
-  state.sessions = state.sessions.filter((session) => session.projectId !== projectId);
-  state.sessionMessages = state.sessionMessages.filter((message) => !sessionIds.has(message.session_id));
+  state.projects = state.projects.filter(
+    (candidate) => candidate.id !== projectId,
+  );
+  state.sessions = state.sessions.filter(
+    (session) => session.projectId !== projectId,
+  );
+  state.sessionMessages = state.sessionMessages.filter(
+    (message) => !sessionIds.has(message.session_id),
+  );
   state.assets = state.assets.map((asset) =>
     asset.projectId === projectId ? { ...asset, projectId: undefined } : asset,
   );
-  state.assetRefs = state.assetRefs.filter((ref) => ref.projectId !== projectId);
-  state.assetNodeRefs = state.assetNodeRefs.filter((ref) => ref.projectId !== projectId);
+  state.assetRefs = state.assetRefs.filter(
+    (ref) => ref.projectId !== projectId,
+  );
+  state.assetNodeRefs = state.assetNodeRefs.filter(
+    (ref) => ref.projectId !== projectId,
+  );
   return { project, counts };
 }
 
@@ -1369,9 +1483,13 @@ function projectReceiptReadToken(project: LocalProject): string {
   });
 }
 
-function verifyLocalApiProjectReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "project" &&
-    proof.receipt === localApiProjectReadReceipt(proof.baseReadToken);
+function verifyLocalApiProjectReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "project" &&
+    proof.receipt === localApiProjectReadReceipt(proof.baseReadToken)
+  );
 }
 
 function localApiSessionReadReceipt(readToken: string): string {
@@ -1388,9 +1506,13 @@ function sessionReceiptReadToken(session: LocalSession): string {
   });
 }
 
-function verifyLocalApiSessionReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "session" &&
-    proof.receipt === localApiSessionReadReceipt(proof.baseReadToken);
+function verifyLocalApiSessionReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "session" &&
+    proof.receipt === localApiSessionReadReceipt(proof.baseReadToken)
+  );
 }
 
 function localApiLocalConfigReadReceipt(readToken: string): string {
@@ -1399,7 +1521,11 @@ function localApiLocalConfigReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
-function localConfigReceiptReadToken(config: { id: string; config: unknown; updatedAt: string }): string {
+function localConfigReceiptReadToken(config: {
+  id: string;
+  config: unknown;
+  updatedAt: string;
+}): string {
   const readToken = localConfigReadToken({
     id: config.id,
     config: config.config,
@@ -1411,9 +1537,13 @@ function localConfigReceiptReadToken(config: { id: string; config: unknown; upda
   });
 }
 
-function verifyLocalApiLocalConfigReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "local-config" &&
-    proof.receipt === localApiLocalConfigReadReceipt(proof.baseReadToken);
+function verifyLocalApiLocalConfigReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "local-config" &&
+    proof.receipt === localApiLocalConfigReadReceipt(proof.baseReadToken)
+  );
 }
 
 const LOCAL_RUNTIME_CONFIG_READ_VERSION = "local-runtime-config-v1";
@@ -1434,9 +1564,15 @@ function localHarnessReadProjection(result: LocalHarnessesResponse) {
         ...(harness.installed === true ? { installed: true } : {}),
         ...(harness.installable === true ? { installable: true } : {}),
         ...(harness.updateAvailable === true ? { updateAvailable: true } : {}),
-        ...(harness.installedVersion ? { installedVersion: harness.installedVersion } : {}),
-        ...(harness.latestVersion ? { latestVersion: harness.latestVersion } : {}),
-        ...(harness.installSource ? { installSource: harness.installSource } : {}),
+        ...(harness.installedVersion
+          ? { installedVersion: harness.installedVersion }
+          : {}),
+        ...(harness.latestVersion
+          ? { latestVersion: harness.latestVersion }
+          : {}),
+        ...(harness.installSource
+          ? { installSource: harness.installSource }
+          : {}),
         ...(harness.downloadUrl ? { downloadUrl: harness.downloadUrl } : {}),
         ...(harness.downloadKind ? { downloadKind: harness.downloadKind } : {}),
         ...(harness.homepage ? { homepage: harness.homepage } : {}),
@@ -1445,7 +1581,9 @@ function localHarnessReadProjection(result: LocalHarnessesResponse) {
   };
 }
 
-function localHarnessesReceiptReadToken(result: LocalHarnessesResponse): string {
+function localHarnessesReceiptReadToken(
+  result: LocalHarnessesResponse,
+): string {
   return localConfigReceiptReadToken({
     id: "local-harnesses",
     config: localHarnessReadProjection(result),
@@ -1453,7 +1591,9 @@ function localHarnessesReceiptReadToken(result: LocalHarnessesResponse): string 
   });
 }
 
-function localAgentServersReceiptReadToken(result: LocalAgentServersResponse): string {
+function localAgentServersReceiptReadToken(
+  result: LocalAgentServersResponse,
+): string {
   return localConfigReceiptReadToken({
     id: "local-agent-servers",
     config: { agent_servers: result.agent_servers },
@@ -1467,7 +1607,9 @@ function localApiProviderAccountReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
-function providerAccountReceiptReadToken(account: ProviderAccountAvailability): string {
+function providerAccountReceiptReadToken(
+  account: ProviderAccountAvailability,
+): string {
   const readToken = providerAccountReadToken(account);
   return agentReadReceiptToken({
     readToken,
@@ -1475,9 +1617,13 @@ function providerAccountReceiptReadToken(account: ProviderAccountAvailability): 
   });
 }
 
-function verifyLocalApiProviderAccountReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "provider-account" &&
-    proof.receipt === localApiProviderAccountReadReceipt(proof.baseReadToken);
+function verifyLocalApiProviderAccountReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "provider-account" &&
+    proof.receipt === localApiProviderAccountReadReceipt(proof.baseReadToken)
+  );
 }
 
 function localApiProviderAccountsReadReceipt(readToken: string): string {
@@ -1486,7 +1632,9 @@ function localApiProviderAccountsReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
-function providerAccountsReceiptReadToken(accounts: ProviderAccountAvailability[]): string {
+function providerAccountsReceiptReadToken(
+  accounts: ProviderAccountAvailability[],
+): string {
   const readToken = providerAccountsReadToken(accounts);
   return agentReadReceiptToken({
     readToken,
@@ -1494,9 +1642,13 @@ function providerAccountsReceiptReadToken(accounts: ProviderAccountAvailability[
   });
 }
 
-function verifyLocalApiProviderAccountsReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "provider-accounts" &&
-    proof.receipt === localApiProviderAccountsReadReceipt(proof.baseReadToken);
+function verifyLocalApiProviderAccountsReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "provider-accounts" &&
+    proof.receipt === localApiProviderAccountsReadReceipt(proof.baseReadToken)
+  );
 }
 
 function providerOAuthBaseReadToken(record: LocalProviderOAuthRecord): string {
@@ -1512,7 +1664,9 @@ function localApiProviderOAuthReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
-function providerOAuthReceiptReadToken(record: LocalProviderOAuthRecord): string {
+function providerOAuthReceiptReadToken(
+  record: LocalProviderOAuthRecord,
+): string {
   const readToken = providerOAuthBaseReadToken(record);
   return agentReadReceiptToken({
     readToken,
@@ -1520,9 +1674,13 @@ function providerOAuthReceiptReadToken(record: LocalProviderOAuthRecord): string
   });
 }
 
-function verifyLocalApiProviderOAuthReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "provider-oauth" &&
-    proof.receipt === localApiProviderOAuthReadReceipt(proof.baseReadToken);
+function verifyLocalApiProviderOAuthReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "provider-oauth" &&
+    proof.receipt === localApiProviderOAuthReadReceipt(proof.baseReadToken)
+  );
 }
 
 function publicProviderOAuthWithReadReceipt(record: LocalProviderOAuthRecord) {
@@ -1532,14 +1690,18 @@ function publicProviderOAuthWithReadReceipt(record: LocalProviderOAuthRecord) {
   };
 }
 
-function publicProviderAccountsWithReadReceipts(accounts: ProviderAccountAvailability[]): ProviderAccountAvailability[] {
+function publicProviderAccountsWithReadReceipts(
+  accounts: ProviderAccountAvailability[],
+): ProviderAccountAvailability[] {
   return accounts.map((account) => ({
     ...account,
     readToken: providerAccountReceiptReadToken(account),
   }));
 }
 
-function publicModelProvidersResponse(accounts: ProviderAccountAvailability[]): {
+function publicModelProvidersResponse(
+  accounts: ProviderAccountAvailability[],
+): {
   providers: ProviderAccountAvailability[];
   readToken: string;
 } {
@@ -1573,7 +1735,9 @@ function localApiCanvasBatchDeleteReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
-function canvasNodeReceiptReadToken(node: Parameters<typeof canvasNodeReadToken>[0]): string {
+function canvasNodeReceiptReadToken(
+  node: Parameters<typeof canvasNodeReadToken>[0],
+): string {
   const readToken = canvasNodeReadToken(node);
   return agentReadReceiptToken({
     readToken,
@@ -1581,12 +1745,18 @@ function canvasNodeReceiptReadToken(node: Parameters<typeof canvasNodeReadToken>
   });
 }
 
-function verifyLocalApiCanvasReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "node" &&
-    proof.receipt === localApiCanvasReadReceipt(proof.baseReadToken);
+function verifyLocalApiCanvasReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "node" &&
+    proof.receipt === localApiCanvasReadReceipt(proof.baseReadToken)
+  );
 }
 
-function canvasEdgeReceiptReadToken(edge: Parameters<typeof canvasEdgeReadToken>[0]): string {
+function canvasEdgeReceiptReadToken(
+  edge: Parameters<typeof canvasEdgeReadToken>[0],
+): string {
   const readToken = canvasEdgeReadToken(edge);
   return agentReadReceiptToken({
     readToken,
@@ -1594,7 +1764,9 @@ function canvasEdgeReceiptReadToken(edge: Parameters<typeof canvasEdgeReadToken>
   });
 }
 
-function canvasEdgesReceiptReadToken(edges: Iterable<CanvasReadProofEdgeLike>): string {
+function canvasEdgesReceiptReadToken(
+  edges: Iterable<CanvasReadProofEdgeLike>,
+): string {
   const readToken = canvasEdgesReadToken(edges);
   return agentReadReceiptToken({
     readToken,
@@ -1602,17 +1774,27 @@ function canvasEdgesReceiptReadToken(edges: Iterable<CanvasReadProofEdgeLike>): 
   });
 }
 
-function verifyLocalApiCanvasEdgeReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "edge" &&
-    proof.receipt === localApiCanvasEdgeReadReceipt(proof.baseReadToken);
+function verifyLocalApiCanvasEdgeReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "edge" &&
+    proof.receipt === localApiCanvasEdgeReadReceipt(proof.baseReadToken)
+  );
 }
 
-function verifyLocalApiCanvasEdgesReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "edges" &&
-    proof.receipt === localApiCanvasEdgesReadReceipt(proof.baseReadToken);
+function verifyLocalApiCanvasEdgesReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "edges" &&
+    proof.receipt === localApiCanvasEdgesReadReceipt(proof.baseReadToken)
+  );
 }
 
-function canvasBatchDeleteReceiptReadToken(options: Parameters<typeof canvasBatchDeleteReadToken>[0]): string {
+function canvasBatchDeleteReceiptReadToken(
+  options: Parameters<typeof canvasBatchDeleteReadToken>[0],
+): string {
   const readToken = canvasBatchDeleteReadToken(options);
   return agentReadReceiptToken({
     readToken,
@@ -1620,19 +1802,19 @@ function canvasBatchDeleteReceiptReadToken(options: Parameters<typeof canvasBatc
   });
 }
 
-function verifyLocalApiCanvasBatchDeleteReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "canvas-batch-delete" &&
-    proof.receipt === localApiCanvasBatchDeleteReadReceipt(proof.baseReadToken);
+function verifyLocalApiCanvasBatchDeleteReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "canvas-batch-delete" &&
+    proof.receipt === localApiCanvasBatchDeleteReadReceipt(proof.baseReadToken)
+  );
 }
 
 function listCanvasReadProofEdges(doc: LoroDoc): CanvasReadProofEdgeLike[] {
-  const edgesMap = doc.getMap("edges");
-  const edges: CanvasReadProofEdgeLike[] = [];
-  for (const [edgeId, rawEdge] of edgesMap.entries()) {
-    if (!isRecord(rawEdge)) continue;
-    edges.push({ ...rawEdge, id: edgeId });
-  }
-  return edges.sort((left, right) => left.id.localeCompare(right.id));
+  return listNodeOwnedEdges(doc).map(
+    (edge) => ({ ...edge }) as CanvasReadProofEdgeLike,
+  );
 }
 
 function listCanvasEdgesWithReadReceipts(doc: LoroDoc): {
@@ -1641,18 +1823,37 @@ function listCanvasEdgesWithReadReceipts(doc: LoroDoc): {
 } {
   const edges = listCanvasReadProofEdges(doc);
   return {
-    edges: edges.map((edge) => ({ ...edge, readToken: canvasEdgeReceiptReadToken(edge) })),
+    edges: edges.map((edge) => ({
+      ...edge,
+      readToken: canvasEdgeReceiptReadToken(edge),
+    })),
     readToken: canvasEdgesReceiptReadToken(edges),
   };
 }
 
-function readCanvasEdge(doc: LoroDoc, edgeId: string): CanvasReadProofEdgeLike | null {
-  const rawEdge = doc.getMap("edges").get(edgeId);
-  if (!isRecord(rawEdge)) return null;
-  return { ...rawEdge, id: edgeId };
+function readCanvasEdge(
+  doc: LoroDoc,
+  edgeId: string,
+): CanvasReadProofEdgeLike | null {
+  return (
+    listCanvasReadProofEdges(doc).find((edge) => edge.id === edgeId) ?? null
+  );
 }
 
-function canvasEdgeResponse(edge: CanvasReadProofEdgeLike): CanvasReadProofEdgeLike & { readToken: string } {
+function edgeCanvas(doc: LoroDoc, edge: CanvasReadProofEdgeLike): Canvas {
+  if (typeof edge.target !== "string")
+    throw new Error("Edge target is required");
+  const rawTarget = doc.getMap("nodes").get(edge.target);
+  if (!isRecord(rawTarget))
+    throw new Error(`Target node not found: ${edge.target}`);
+  const canvasId =
+    typeof rawTarget.canvasId === "string" ? rawTarget.canvasId : "main";
+  return new Canvas(doc, () => {}, canvasId);
+}
+
+function canvasEdgeResponse(
+  edge: CanvasReadProofEdgeLike,
+): CanvasReadProofEdgeLike & { readToken: string } {
   return { ...edge, readToken: canvasEdgeReceiptReadToken(edge) };
 }
 
@@ -1660,11 +1861,25 @@ function normalizeCanvasBatchDeleteNodeIds(nodeIds: string[]): string[] {
   return [...new Set(nodeIds.map((nodeId) => nodeId.trim()).filter(Boolean))];
 }
 
-function readCanvasBatchDeletePlan(doc: LoroDoc, nodeIds: string[]):
-  | { ok: true; nodeIds: string[]; nodes: NonNullable<ReturnType<Canvas["readNode"]>>[]; edges: CanvasReadProofEdgeLike[]; readToken: string }
+function readCanvasBatchDeletePlan(
+  doc: LoroDoc,
+  nodeIds: string[],
+):
+  | {
+      ok: true;
+      nodeIds: string[];
+      nodes: NonNullable<ReturnType<Canvas["readNode"]>>[];
+      edges: CanvasReadProofEdgeLike[];
+      readToken: string;
+    }
   | { ok: false; error: string; status: 400 | 404 } {
   const uniqueNodeIds = normalizeCanvasBatchDeleteNodeIds(nodeIds);
-  if (uniqueNodeIds.length === 0) return { ok: false, error: "delete batch requires at least one node id", status: 400 };
+  if (uniqueNodeIds.length === 0)
+    return {
+      ok: false,
+      error: "delete batch requires at least one node id",
+      status: 400,
+    };
   const canvas = new Canvas(doc, () => {});
   const nodes: NonNullable<ReturnType<Canvas["readNode"]>>[] = [];
   const missing: string[] = [];
@@ -1673,7 +1888,12 @@ function readCanvasBatchDeletePlan(doc: LoroDoc, nodeIds: string[]):
     if (!node) missing.push(nodeId);
     else nodes.push(node);
   }
-  if (missing.length > 0) return { ok: false, error: `Node(s) not found: ${missing.join(", ")}`, status: 404 };
+  if (missing.length > 0)
+    return {
+      ok: false,
+      error: `Node(s) not found: ${missing.join(", ")}`,
+      status: 404,
+    };
   const edges = listCanvasReadProofEdges(doc);
   return {
     ok: true,
@@ -1698,7 +1918,9 @@ function readCanvasGuardrailNodes(doc: LoroDoc): CanvasUpdateNodeWithIdLike[] {
   return nodes;
 }
 
-function canvasGuardrailEdges(edges: Iterable<CanvasReadProofEdgeLike>): CanvasUpdateEdgeLike[] {
+function canvasGuardrailEdges(
+  edges: Iterable<CanvasReadProofEdgeLike>,
+): CanvasUpdateEdgeLike[] {
   return [...edges]
     .map((edge) => ({
       source: typeof edge.source === "string" ? edge.source : "",
@@ -1707,13 +1929,14 @@ function canvasGuardrailEdges(edges: Iterable<CanvasReadProofEdgeLike>): CanvasU
     .filter((edge) => edge.source.length > 0 && edge.target.length > 0);
 }
 
-function canvasEdgePatchFromBody(body: Record<string, unknown>): Record<string, unknown> {
+function canvasEdgePatchFromBody(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(body)) {
     if (
       key === "actorClientType" ||
       key === "ifMatch" ||
-      key === "force" ||
       key === "id" ||
       key === "readToken"
     ) {
@@ -1724,13 +1947,14 @@ function canvasEdgePatchFromBody(body: Record<string, unknown>): Record<string, 
   return patch;
 }
 
-function canvasNodeDataPatchFromBody(body: Record<string, unknown>):
-  | { ok: true; patch: Record<string, unknown> }
-  | { ok: false; error: string } {
+function canvasNodeDataPatchFromBody(
+  body: Record<string, unknown>,
+): { ok: true; patch: Record<string, unknown> } | { ok: false; error: string } {
   const patch: Record<string, unknown> = {};
   const nestedData = body.data;
   if (nestedData !== undefined) {
-    if (!isRecord(nestedData)) return { ok: false, error: "Invalid node data patch" };
+    if (!isRecord(nestedData))
+      return { ok: false, error: "Invalid node data patch" };
     for (const [key, value] of Object.entries(nestedData)) {
       if (value !== undefined) patch[key] = value;
     }
@@ -1740,7 +1964,6 @@ function canvasNodeDataPatchFromBody(body: Record<string, unknown>):
     if (
       key === "actorClientType" ||
       key === "ifMatch" ||
-      key === "force" ||
       key === "id" ||
       key === "nodeId" ||
       key === "projectId" ||
@@ -1770,8 +1993,10 @@ function assetReceiptReadToken(asset: Asset): string {
 }
 
 function verifyLocalApiAssetReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "asset" &&
-    proof.receipt === localApiAssetReadReceipt(proof.baseReadToken);
+  return (
+    proof.namespace === "asset" &&
+    proof.receipt === localApiAssetReadReceipt(proof.baseReadToken)
+  );
 }
 
 type AssetRefReadTarget = {
@@ -1794,9 +2019,13 @@ function assetRefReceiptReadToken(ref: AssetRefReadTarget): string {
   });
 }
 
-function verifyLocalApiAssetRefReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "asset-ref" &&
-    proof.receipt === localApiAssetRefReadReceipt(proof.baseReadToken);
+function verifyLocalApiAssetRefReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "asset-ref" &&
+    proof.receipt === localApiAssetRefReadReceipt(proof.baseReadToken)
+  );
 }
 
 type AssetGarbageCollectionScope = {
@@ -1820,16 +2049,25 @@ function localApiAssetGcReadReceipt(readToken: string): string {
     .digest("base64url");
 }
 
-function assetGarbageCollectionReadToken(plan: Pick<
-  AssetGarbageCollectionPlan,
-  "deletedAssets" | "deletedBlobKeys" | "protectedAssets" | "protectedProjectIds"
->): string {
+function assetGarbageCollectionReadToken(
+  plan: Pick<
+    AssetGarbageCollectionPlan,
+    | "deletedAssets"
+    | "deletedBlobKeys"
+    | "protectedAssets"
+    | "protectedProjectIds"
+  >,
+): string {
   return agentReadToken({
     namespace: "asset-gc",
     subject: {
       deletedAssets: plan.deletedAssets
         .map((asset) => ({ id: asset.id, srcR2Key: asset.srcR2Key }))
-        .sort((left, right) => left.id.localeCompare(right.id) || left.srcR2Key.localeCompare(right.srcR2Key)),
+        .sort(
+          (left, right) =>
+            left.id.localeCompare(right.id) ||
+            left.srcR2Key.localeCompare(right.srcR2Key),
+        ),
       deletedBlobKeys: [...plan.deletedBlobKeys].sort(),
       protectedAssets: [...plan.protectedAssets].sort(),
       protectedProjectIds: [...plan.protectedProjectIds].sort(),
@@ -1837,7 +2075,9 @@ function assetGarbageCollectionReadToken(plan: Pick<
   });
 }
 
-function assetGarbageCollectionReceiptReadToken(plan: AssetGarbageCollectionPlan): string {
+function assetGarbageCollectionReceiptReadToken(
+  plan: AssetGarbageCollectionPlan,
+): string {
   const readToken = assetGarbageCollectionReadToken(plan);
   return agentReadReceiptToken({
     readToken,
@@ -1845,21 +2085,25 @@ function assetGarbageCollectionReceiptReadToken(plan: AssetGarbageCollectionPlan
   });
 }
 
-function verifyLocalApiAssetGcReadReceipt(proof: AgentReadReceiptProof): boolean {
-  return proof.namespace === "asset-gc" &&
-    proof.receipt === localApiAssetGcReadReceipt(proof.baseReadToken);
+function verifyLocalApiAssetGcReadReceipt(
+  proof: AgentReadReceiptProof,
+): boolean {
+  return (
+    proof.namespace === "asset-gc" &&
+    proof.receipt === localApiAssetGcReadReceipt(proof.baseReadToken)
+  );
 }
 
 type ProjectWritePreconditions = {
   actorClientType?: string;
   expectedReadToken?: string;
-  force: boolean;
+  observedVersion?: string;
 };
 
 type ProjectWriteBody = {
   actorClientType?: unknown;
   ifMatch?: unknown;
-  force?: unknown;
+  observedVersion?: unknown;
 };
 
 type SnapshotWriteRouteResult = {
@@ -1872,15 +2116,36 @@ function requestProjectWritePreconditions(
   c: { req: { header(name: string): string | undefined } },
   body: ProjectWriteBody = {},
 ): ProjectWritePreconditions {
+  const observedVersion =
+    normalizeString(body.observedVersion) ??
+    normalizeString(c.req.header("x-clash-observed-version"));
   return {
-    actorClientType: normalizeString(body.actorClientType) ??
+    actorClientType:
+      normalizeString(body.actorClientType) ??
       normalizeString(c.req.header("x-clash-client-type")) ??
       normalizeString(c.req.header("x-clash-actor-client-type")),
-    expectedReadToken: normalizeString(body.ifMatch) ??
+    expectedReadToken:
+      normalizeString(body.ifMatch) ??
       normalizeIfMatchHeader(c.req.header("x-clash-if-match")) ??
       normalizeIfMatchHeader(c.req.header("if-match")),
-    force: body.force === true || normalizeString(c.req.header("x-clash-force")) === "true",
+    ...(observedVersion ? { observedVersion } : {}),
   };
+}
+
+function validateAgentReadProof(
+  options: Parameters<typeof validateLegacyAgentReadProof>[0] & {
+    observedVersion?: string;
+  },
+) {
+  if (options.observedVersion !== undefined) {
+    return validateAgentObservation({
+      actorClientType: options.actorClientType,
+      operation: options.operation,
+      observedVersion: options.observedVersion,
+      currentVersion: options.currentReadToken,
+    });
+  }
+  return validateLegacyAgentReadProof(options);
 }
 
 async function resolveAssetGarbageCollectionScope(
@@ -1888,13 +2153,17 @@ async function resolveAssetGarbageCollectionScope(
   body: { protectedAssetIds?: unknown; projectIds?: unknown },
 ): Promise<AssetGarbageCollectionScope> {
   const requestedProjectIds = stringArray(body.projectIds).sort();
-  const protectedProjectIds = requestedProjectIds.length > 0
-    ? requestedProjectIds
-    : await discoverProjectReplicaIds(dataDir);
+  const protectedProjectIds =
+    requestedProjectIds.length > 0
+      ? requestedProjectIds
+      : await discoverProjectReplicaIds(dataDir);
   return {
     explicitProtectedAssetIds: stringArray(body.protectedAssetIds).sort(),
     protectedProjectIds,
-    canvasAssetRefs: await collectProjectCanvasAssetRefs(dataDir, protectedProjectIds),
+    canvasAssetRefs: await collectProjectCanvasAssetRefs(
+      dataDir,
+      protectedProjectIds,
+    ),
   };
 }
 
@@ -1905,13 +2174,22 @@ function buildAssetGarbageCollectionPlan(
   const referencedAssetIds = new Set(state.assetRefs.map((ref) => ref.assetId));
   const protectedAssetIds = new Set(scope.explicitProtectedAssetIds);
   const knownAssetIds = new Set(state.assets.map((asset) => asset.id));
-  const projectedCanvasAssetRefs = scope.canvasAssetRefs.filter((ref) => knownAssetIds.has(ref.assetId));
+  const projectedCanvasAssetRefs = scope.canvasAssetRefs.filter((ref) =>
+    knownAssetIds.has(ref.assetId),
+  );
   for (const ref of scope.canvasAssetRefs) {
     protectedAssetIds.add(ref.assetId);
   }
   const orphanedAssets = state.assets
-    .filter((asset) => !referencedAssetIds.has(asset.id) && !protectedAssetIds.has(asset.id))
-    .sort((left, right) => left.id.localeCompare(right.id) || left.srcR2Key.localeCompare(right.srcR2Key));
+    .filter(
+      (asset) =>
+        !referencedAssetIds.has(asset.id) && !protectedAssetIds.has(asset.id),
+    )
+    .sort(
+      (left, right) =>
+        left.id.localeCompare(right.id) ||
+        left.srcR2Key.localeCompare(right.srcR2Key),
+    );
   const orphanedIds = new Set(orphanedAssets.map((asset) => asset.id));
   const liveStorageKeys = new Set(
     state.assets
@@ -1923,7 +2201,10 @@ function buildAssetGarbageCollectionPlan(
     .filter((key) => isLocalBlobStorageKey(key) && !liveStorageKeys.has(key))
     .sort();
   return {
-    deletedAssets: orphanedAssets.map((asset) => ({ id: asset.id, srcR2Key: asset.srcR2Key })),
+    deletedAssets: orphanedAssets.map((asset) => ({
+      id: asset.id,
+      srcR2Key: asset.srcR2Key,
+    })),
     protectedAssets: [...protectedAssetIds].sort(),
     protectedProjectIds: scope.protectedProjectIds,
     deletedBlobKeys,
@@ -1941,20 +2222,18 @@ function validateAssetGarbageCollectionMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "asset garbage collection",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiAssetGcReadReceipt,
-    force: options.preconditions.force,
     readCommandHint:
-      "Run `clash assets gc --dry-run --json` first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+      "Run `clash assets gc --dry-run --json` first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "asset_gc",
     entity: { kind: "asset-store", id: "local" },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -1965,27 +2244,25 @@ function validateProjectReadMutation(options: {
   preconditions: ProjectWritePreconditions;
 }) {
   const currentReadToken = projectReadToken(options.project);
-  const readCommand = options.operation === "restore" || options.operation === "purge"
-    ? `clash project get --id ${options.project.id} --include-deleted --json`
-    : `clash project get --id ${options.project.id} --json`;
+  const readCommand =
+    options.operation === "restore" || options.operation === "purge"
+      ? `clash project get --id ${options.project.id} --include-deleted --json`
+      : `clash project get --id ${options.project.id} --json`;
   const guard = validateAgentReadProof({
     actorClientType: options.preconditions.actorClientType,
     operation: `project ${options.operation}`,
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiProjectReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      `Run \`${readCommand}\` first and pass its ` +
-      "`readToken` with --if-match, or pass --force for an explicit overwrite.",
+    readCommandHint: `Run \`${readCommand}\` first, then retry.`,
   });
   return validateHostMutationEnvelope({
     operation: `project_${options.operation}`,
     entity: { kind: "project", id: options.project.id },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2003,20 +2280,17 @@ function validateSessionReadMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: readOperation,
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiSessionReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      `Read /api/v1/sessions?projectId=${encodeURIComponent(options.session.projectId)} first and pass its ` +
-      "`readToken` with --if-match, or pass --force for an explicit overwrite.",
+    readCommandHint: `Read /api/v1/sessions?projectId=${encodeURIComponent(options.session.projectId)} first, then retry.`,
   });
   return validateHostMutationEnvelope({
     operation: options.mutationOperation ?? `session_${options.operation}`,
     entity: { kind: "session", id: options.session.id },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2034,20 +2308,17 @@ function validateLocalSyncConfigMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "local sync config update",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiLocalConfigReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/local/sync first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/local/sync first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "local_sync_config_update",
     entity: { kind: "local-config", id: "sync" },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2067,20 +2338,17 @@ function validateLocalAudioConfigMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "local audio config update",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiLocalConfigReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/local/audio first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/local/audio first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "local_audio_config_update",
     entity: { kind: "local-config", id: "audio" },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2100,20 +2368,17 @@ function validateLocalAudioInstallMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "local audio model install",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiLocalConfigReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/local/audio first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/local/audio first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "local_audio_model_install",
     entity: { kind: "local-config", id: "audio" },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2131,20 +2396,17 @@ function validateLocalHarnessesConfigMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "local harness enablement update",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiLocalConfigReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/local/harnesses first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/local/harnesses first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "local_harness_enablement_update",
     entity: { kind: "local-harness-config", id: "enabled" },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2165,20 +2427,17 @@ function validateLocalHarnessActionMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: `local harness ${options.action}`,
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiLocalConfigReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/local/harnesses first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/local/harnesses first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: options.operation,
     entity: { kind: "local-harness", id: options.harnessId },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2196,20 +2455,17 @@ function validateLocalAgentServersConfigMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "local agent servers update",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiLocalConfigReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/local/agent-servers first and pass its `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/local/agent-servers first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "local_agent_servers_update",
     entity: { kind: "local-harness-config", id: "agent-servers" },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2224,20 +2480,17 @@ function validateProviderAccountsReadMutation(options: {
     actorClientType: options.preconditions.actorClientType,
     operation: "provider accounts update",
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiProviderAccountsReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/model-providers first and pass its top-level `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/model-providers first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: "provider_accounts_update",
     entity: { kind: "provider-accounts", id: options.userId },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2247,30 +2500,29 @@ function validateProviderAccountReadMutation(options: {
   operation: "delete";
   preconditions: ProjectWritePreconditions;
 }) {
-  const accountId = options.account.id ?? providerAccountKey({
-    providerId: options.account.providerId,
-    upstreamId: options.account.upstreamId,
-    region: options.account.region,
-  });
+  const accountId =
+    options.account.id ??
+    providerAccountKey({
+      providerId: options.account.providerId,
+      upstreamId: options.account.upstreamId,
+      region: options.account.region,
+    });
   const currentReadToken = providerAccountReadToken(options.account);
   const guard = validateAgentReadProof({
     actorClientType: options.preconditions.actorClientType,
     operation: `provider account ${options.operation}`,
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiProviderAccountReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/model-providers first and pass the provider's `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/model-providers first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: `provider_account_${options.operation}`,
     entity: { kind: "provider-account", id: accountId },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2280,26 +2532,26 @@ function validateProviderOAuthReadMutation(options: {
   operation: "start" | "complete" | "delete";
   preconditions: ProjectWritePreconditions;
 }) {
-  const entityId = providerOAuthEntityId(options.record.providerId, options.record.accountId);
+  const entityId = providerOAuthEntityId(
+    options.record.providerId,
+    options.record.accountId,
+  );
   const currentReadToken = providerOAuthBaseReadToken(options.record);
   const guard = validateAgentReadProof({
     actorClientType: options.preconditions.actorClientType,
     operation: `provider OAuth ${options.operation}`,
     currentReadToken,
+    observedVersion: options.preconditions.observedVersion,
     expectedReadToken: options.preconditions.expectedReadToken,
     requireReceipt: true,
     readReceiptVerifier: verifyLocalApiProviderOAuthReadReceipt,
-    force: options.preconditions.force,
-    readCommandHint:
-      "Read /api/v1/provider-oauth first and pass the provider OAuth record's `readToken` with --if-match, " +
-      "or pass --force for an explicit overwrite.",
+    readCommandHint: "Read /api/v1/provider-oauth first, then retry.",
   });
   return validateHostMutationEnvelope({
     operation: `provider_oauth_${options.operation}`,
     entity: { kind: "provider-oauth", id: entityId },
     expectedReadToken: options.preconditions.expectedReadToken,
     currentReadToken,
-    force: options.preconditions.force,
     guard,
   });
 }
@@ -2311,7 +2563,9 @@ function normalizeString(value: unknown): string | undefined {
 function normalizeIfMatchHeader(value: unknown): string | undefined {
   const trimmed = normalizeString(value);
   if (!trimmed) return undefined;
-  const withoutWeakPrefix = trimmed.startsWith("W/") ? trimmed.slice(2).trim() : trimmed;
+  const withoutWeakPrefix = trimmed.startsWith("W/")
+    ? trimmed.slice(2).trim()
+    : trimmed;
   if (withoutWeakPrefix.startsWith('"') && withoutWeakPrefix.endsWith('"')) {
     return withoutWeakPrefix.slice(1, -1);
   }
@@ -2328,14 +2582,20 @@ function publicProviderOAuth(record: LocalProviderOAuthRecord) {
     providerId: record.providerId,
     ...(record.accountId ? { accountId: record.accountId } : {}),
     status: record.status,
-    ...(record.verificationUri ? { verificationUri: record.verificationUri } : {}),
+    ...(record.verificationUri
+      ? { verificationUri: record.verificationUri }
+      : {}),
     ...(record.userCode ? { userCode: record.userCode } : {}),
     ...(record.deviceCode ? { deviceCode: record.deviceCode } : {}),
     ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
-    ...(record.intervalSeconds !== undefined ? { intervalSeconds: record.intervalSeconds } : {}),
+    ...(record.intervalSeconds !== undefined
+      ? { intervalSeconds: record.intervalSeconds }
+      : {}),
     ...(record.accountLabel ? { accountLabel: record.accountLabel } : {}),
     ...(record.error ? { error: record.error } : {}),
-    hasAccessToken: typeof record.accessToken === "string" && record.accessToken.trim().length > 0,
+    hasAccessToken:
+      typeof record.accessToken === "string" &&
+      record.accessToken.trim().length > 0,
   };
 }
 
@@ -2351,10 +2611,11 @@ function upsertProviderOAuth(
 ): LocalProviderOAuthRecord {
   const now = nowIso();
   const accountId = patch.accountId;
-  const existing = state.providerOAuth.find((record) =>
-    record.userId === userId &&
-    record.providerId === providerId &&
-    (record.accountId ?? "") === (accountId ?? "")
+  const existing = state.providerOAuth.find(
+    (record) =>
+      record.userId === userId &&
+      record.providerId === providerId &&
+      (record.accountId ?? "") === (accountId ?? ""),
   );
   if (existing) {
     Object.assign(existing, patch, { updatedAt: now });
@@ -2382,12 +2643,17 @@ function providerOAuthMatches(
   providerId: ProviderOAuthId,
   accountId?: string,
 ): boolean {
-  return record.userId === userId &&
+  return (
+    record.userId === userId &&
     record.providerId === providerId &&
-    (record.accountId ?? "") === (accountId ?? "");
+    (record.accountId ?? "") === (accountId ?? "")
+  );
 }
 
-function builtinLocalAgentMembers(userId: string, createdAt: number): LocalAgentMember[] {
+function builtinLocalAgentMembers(
+  userId: string,
+  createdAt: number,
+): LocalAgentMember[] {
   return BUILTIN_AGENT_TEMPLATES.map((template) => ({
     id: `local-${template.id}`,
     user_id: userId,
@@ -2399,13 +2665,24 @@ function builtinLocalAgentMembers(userId: string, createdAt: number): LocalAgent
   }));
 }
 
-function localAgentMembersForRead(state: LocalDb, userId: string): LocalAgentMember[] {
-  return state.agentMembers.length > 0 ? state.agentMembers : builtinLocalAgentMembers(userId, 0);
+function localAgentMembersForRead(
+  state: LocalDb,
+  userId: string,
+): LocalAgentMember[] {
+  return state.agentMembers.length > 0
+    ? state.agentMembers
+    : builtinLocalAgentMembers(userId, 0);
 }
 
-function seedLocalAgentMembers(state: LocalDb, userId: string): LocalAgentMember[] {
+function seedLocalAgentMembers(
+  state: LocalDb,
+  userId: string,
+): LocalAgentMember[] {
   if (state.agentMembers.length > 0) return state.agentMembers;
-  state.agentMembers = builtinLocalAgentMembers(userId, Math.floor(Date.now() / 1000));
+  state.agentMembers = builtinLocalAgentMembers(
+    userId,
+    Math.floor(Date.now() / 1000),
+  );
   return state.agentMembers;
 }
 
@@ -2419,7 +2696,8 @@ async function localRuntimeSummary(options: LocalApiOptions): Promise<{
   }
   try {
     const { runtimes } = await options.localAcp.listRuntimes();
-    const runtime = runtimes.find((row) => row.id === LOCAL_RUNTIME_ID) ?? runtimes[0];
+    const runtime =
+      runtimes.find((row) => row.id === LOCAL_RUNTIME_ID) ?? runtimes[0];
     return {
       label: runtime?.hostname ?? "Local Desktop",
       status: runtime?.status ?? "offline",
@@ -2459,50 +2737,52 @@ interface ModelProviderTestInputSummary {
 
 type ModelProviderTestOutputSummary =
   | {
-    shape: "image";
-    provider?: string;
-    endpoint?: string;
-    requestId?: string;
-    url?: string;
-    contentType: string;
-    width?: number;
-    height?: number;
-  }
+      shape: "image";
+      provider?: string;
+      endpoint?: string;
+      requestId?: string;
+      url?: string;
+      contentType: string;
+      width?: number;
+      height?: number;
+    }
   | {
-    shape: "video";
-    provider?: string;
-    endpoint?: string;
-    requestId?: string;
-    url?: string;
-    contentType: string;
-    width?: number;
-    height?: number;
-    durationMs?: number;
-  }
+      shape: "video";
+      provider?: string;
+      endpoint?: string;
+      requestId?: string;
+      url?: string;
+      contentType: string;
+      width?: number;
+      height?: number;
+      durationMs?: number;
+    }
   | {
-    shape: "audio";
-    provider?: string;
-    endpoint?: string;
-    requestId?: string;
-    url?: string;
-    contentType: string;
-    durationMs?: number;
-    transcript?: string;
-  }
+      shape: "audio";
+      provider?: string;
+      endpoint?: string;
+      requestId?: string;
+      url?: string;
+      contentType: string;
+      durationMs?: number;
+      transcript?: string;
+    }
   | {
-    shape: "text";
-    provider?: string;
-    endpoint?: string;
-    text: string;
-  }
+      shape: "text";
+      provider?: string;
+      endpoint?: string;
+      text: string;
+    }
   | {
-    shape: "asr";
-    provider?: string;
-    endpoint?: string;
-    transcript?: string;
-  };
+      shape: "asr";
+      provider?: string;
+      endpoint?: string;
+      transcript?: string;
+    };
 
-function providerTestInputSummary(input: ModelProviderTestInputSummary): ModelProviderTestInputSummary {
+function providerTestInputSummary(
+  input: ModelProviderTestInputSummary,
+): ModelProviderTestInputSummary {
   return {
     shape: input.shape,
     model: input.model,
@@ -2514,7 +2794,11 @@ function providerTestInputSummary(input: ModelProviderTestInputSummary): ModelPr
 
 function providerTestMediaOutput(
   shape: "image" | "video" | "audio",
-  result: Awaited<ReturnType<ReturnType<typeof createMockExternalAigcService>["generateImage"]>>,
+  result: Awaited<
+    ReturnType<
+      ReturnType<typeof createMockExternalAigcService>["generateImage"]
+    >
+  >,
 ): ModelProviderTestOutputSummary {
   return {
     shape,
@@ -2525,22 +2809,33 @@ function providerTestMediaOutput(
     contentType: result.contentType,
     ...(typeof result.width === "number" ? { width: result.width } : {}),
     ...(typeof result.height === "number" ? { height: result.height } : {}),
-    ...(typeof result.durationMs === "number" ? { durationMs: result.durationMs } : {}),
+    ...(typeof result.durationMs === "number"
+      ? { durationMs: result.durationMs }
+      : {}),
     ...(result.transcript ? { transcript: result.transcript } : {}),
   };
 }
 
 function displayModelName(modelId: string): string {
-  return [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((model) => model.id === modelId)?.name ?? modelId;
+  return (
+    [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((model) => model.id === modelId)
+      ?.name ?? modelId
+  );
 }
 
-function displayProviderName(account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">): string {
+function displayProviderName(
+  account: Pick<
+    LocalProviderAccountConfig,
+    "providerId" | "upstreamId" | "region"
+  >,
+): string {
   if (account.providerId === "mock") return "Mock provider";
   if (account.providerId === "official" && account.upstreamId) {
     if (account.upstreamId === "openai") return "OpenAI";
     if (account.upstreamId === "anthropic") return "Anthropic";
     if (account.upstreamId === "google-ai-studio") return "Google AI Studio";
-    if (account.upstreamId === "google-agent-platform") return "Google Cloud Agent Platform";
+    if (account.upstreamId === "google-agent-platform")
+      return "Google Cloud Agent Platform";
     return account.upstreamId;
   }
   const names: Record<string, string> = {
@@ -2559,10 +2854,14 @@ function displayProviderName(account: Pick<LocalProviderAccountConfig, "provider
     : account.providerId;
 }
 
-function configuredCredentialKeys(account: Pick<LocalProviderAccountConfig, "credentials">): Set<string> {
+function configuredCredentialKeys(
+  account: Pick<LocalProviderAccountConfig, "credentials">,
+): Set<string> {
   return new Set(
     Object.entries(account.credentials ?? {})
-      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+      .filter(
+        ([, value]) => typeof value === "string" && value.trim().length > 0,
+      )
       .map(([key]) => key),
   );
 }
@@ -2578,35 +2877,50 @@ function routeProviderId(route: ModelUpstreamRoute): string {
   ) {
     return "official";
   }
-  if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+  if (
+    route.upstreamId === "fal" ||
+    route.upstreamId === "kie" ||
+    route.upstreamId === "replicate" ||
+    route.upstreamId === "mock"
+  ) {
     return route.upstreamId;
   }
   return "custom";
 }
 
 function modelRoutesForProviderAccount(
-  account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">,
+  account: Pick<
+    LocalProviderAccountConfig,
+    "providerId" | "upstreamId" | "region"
+  >,
   modelId: string,
 ): ModelUpstreamRoute[] {
-  return MODEL_UPSTREAM_ROUTES.filter((route) =>
-    route.modelCode === modelId &&
-    routeProviderId(route) === account.providerId &&
-    (!account.upstreamId || route.upstreamId === account.upstreamId) &&
-    (route.region ?? "") === (account.region ?? "")
+  return MODEL_UPSTREAM_ROUTES.filter(
+    (route) =>
+      route.modelCode === modelId &&
+      routeProviderId(route) === account.providerId &&
+      (!account.upstreamId || route.upstreamId === account.upstreamId) &&
+      (route.region ?? "") === (account.region ?? ""),
   );
 }
 
 function providerTestStubForAccount(
-  account: Pick<LocalProviderAccountConfig, "providerId" | "upstreamId" | "region">,
+  account: Pick<
+    LocalProviderAccountConfig,
+    "providerId" | "upstreamId" | "region"
+  >,
   modelId: string,
   route?: ModelUpstreamRoute,
 ): ProviderConformanceStub | undefined {
-  return createProviderConformanceStubs({ includeMock: account.providerId === "mock" }).find((stub) =>
-    stub.providerId === account.providerId &&
-    (!account.upstreamId || stub.upstreamId === account.upstreamId) &&
-    (stub.region ?? "") === (account.region ?? "") &&
-    stub.modelId === modelId &&
-    (!route || stub.apiShape === route.apiShape)
+  return createProviderConformanceStubs({
+    includeMock: account.providerId === "mock",
+  }).find(
+    (stub) =>
+      stub.providerId === account.providerId &&
+      (!account.upstreamId || stub.upstreamId === account.upstreamId) &&
+      (stub.region ?? "") === (account.region ?? "") &&
+      stub.modelId === modelId &&
+      (!route || stub.apiShape === route.apiShape),
   );
 }
 
@@ -2623,26 +2937,40 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     fal: falMock,
     origin: "http://local-provider-test",
   });
-  const syncConfig = options.syncConfig ?? createLocalSyncConfigStore({
-    dataDir: options.dataDir,
-    env: options.syncEnv ?? process.env,
-  });
-  const audioConfig = options.audioConfig ?? createLocalAudioConfigStore({
-    dataDir: options.dataDir,
-  });
+  const syncConfig =
+    options.syncConfig ??
+    createLocalSyncConfigStore({
+      dataDir: options.dataDir,
+      env: options.syncEnv ?? process.env,
+    });
+  const audioConfig =
+    options.audioConfig ??
+    createLocalAudioConfigStore({
+      dataDir: options.dataDir,
+    });
   const app = new Hono();
+
+  app.use("*", async (c, next) => {
+    const origin = c.req.header("origin");
+    if (origin && !isAllowedLocalBrowserOrigin(origin)) {
+      return c.json({ error: "origin not allowed" }, 403);
+    }
+    await next();
+  });
 
   app.use(
     "*",
     cors({
-      origin: (origin) => origin || "http://127.0.0.1",
-      credentials: true,
-      allowHeaders: ["content-type", "authorization"],
+      origin: (origin) => origin && isAllowedLocalBrowserOrigin(origin) ? origin : "http://127.0.0.1",
+      allowHeaders: ["content-type"],
       allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+      credentials: true,
     }),
   );
 
-  app.use("/api/v1/projects/:id/room/*", async (c) => c.json({ error: "not found" }, 404));
+  app.use("/api/v1/projects/:id/room/*", async (c) =>
+    c.json({ error: "not found" }, 404),
+  );
 
   app.get("/health", (c) =>
     c.json({
@@ -2667,57 +2995,87 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/settings/tokens", (c) => c.json([]));
   app.get("/api/v1/model-providers", async (c) => {
     const state = await db.load();
-    return c.json(publicModelProvidersResponse(
-      publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
-    ));
+    return c.json(
+      publicModelProvidersResponse(
+        publicProviderAccounts(
+          state.providerAccounts,
+          userId,
+          state.providerOAuth,
+        ),
+      ),
+    );
   });
   app.patch("/api/v1/model-providers", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { providers?: unknown } & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      providers?: unknown;
+    } & ProjectWriteBody;
     const incoming = Array.isArray(body.providers)
       ? body.providers.map(normalizeProviderAccountInput)
       : [];
     if (incoming.length === 0 || incoming.some((provider) => !provider)) {
-      return c.json({
-        error: "Invalid providers",
-        mutation: hostMutationRejected({
-          operation: "provider_accounts_update",
-          entity: { kind: "provider-accounts", id: userId },
-          forced: false,
-        }, "Invalid providers"),
-      }, 400);
+      return c.json(
+        {
+          error: "Invalid providers",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_accounts_update",
+              entity: { kind: "provider-accounts", id: userId },
+            },
+            "Invalid providers",
+          ),
+        },
+        400,
+      );
     }
-    const invalidProviders = invalidProviderModelFilters(incoming.filter((provider) => !!provider));
+    const invalidProviders = invalidProviderModelFilters(
+      incoming.filter((provider) => !!provider),
+    );
     if (invalidProviders.length > 0) {
-      return c.json({
-        error: "Invalid provider model filters",
-        invalidProviders,
-        mutation: hostMutationRejected({
-          operation: "provider_accounts_update",
-          entity: { kind: "provider-accounts", id: userId },
-          forced: false,
-        }, "Invalid provider model filters"),
-      }, 400);
+      return c.json(
+        {
+          error: "Invalid provider model filters",
+          invalidProviders,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_accounts_update",
+              entity: { kind: "provider-accounts", id: userId },
+            },
+            "Invalid provider model filters",
+          ),
+        },
+        400,
+      );
     }
     const envelope = {
       operation: "provider_accounts_update",
       entity: { kind: "provider-accounts", id: userId },
-      forced: false,
     };
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const beforeState = needsReadProof ? await db.load() : null;
     const beforeProviders = beforeState
-      ? publicProviderAccounts(beforeState.providerAccounts, userId, beforeState.providerOAuth)
+      ? publicProviderAccounts(
+          beforeState.providerAccounts,
+          userId,
+          beforeState.providerOAuth,
+        )
       : [];
     const hostMutation = needsReadProof
-      ? validateProviderAccountsReadMutation({ userId, accounts: beforeProviders, preconditions })
+      ? validateProviderAccountsReadMutation({
+          userId,
+          accounts: beforeProviders,
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     const providers = await db.update((state) => {
       const now = nowIso();
@@ -2742,21 +3100,29 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         });
       }
       state.providerAccounts = [
-        ...state.providerAccounts.filter((account) => account.userId !== userId),
+        ...state.providerAccounts.filter(
+          (account) => account.userId !== userId,
+        ),
         ...existing.values(),
       ];
-      return publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth);
+      return publicProviderAccounts(
+        state.providerAccounts,
+        userId,
+        state.providerOAuth,
+      );
     });
     const response = publicModelProvidersResponse(providers);
     const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
       resultEntityId: userId,
       ...(hostMutation ? { afterReadToken: response.readToken } : {}),
     });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "provider accounts update",
-    }));
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider accounts update",
+      }),
+    );
     return c.json({
       ...response,
       mutation,
@@ -2765,101 +3131,161 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.delete("/api/v1/model-providers/:accountId", async (c) => {
     const accountId = stringBodyField(c.req.param("accountId"));
     if (!accountId) {
-      return c.json({
-        error: "Provider account not found",
-        mutation: hostMutationRejected({
-          operation: "provider_account_delete",
-          entity: { kind: "provider-account", id: "" },
-          forced: false,
-        }, "Provider account not found"),
-      }, 404);
+      return c.json(
+        {
+          error: "Provider account not found",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_account_delete",
+              entity: { kind: "provider-account", id: "" },
+            },
+            "Provider account not found",
+          ),
+        },
+        404,
+      );
     }
     const preconditions = requestProjectWritePreconditions(c);
     const beforeState = await db.load();
-    const beforeProviders = publicProviderAccounts(beforeState.providerAccounts, userId, beforeState.providerOAuth);
-    const beforeAccount = beforeProviders.find((account) => account.id === accountId);
+    const beforeProviders = publicProviderAccounts(
+      beforeState.providerAccounts,
+      userId,
+      beforeState.providerOAuth,
+    );
+    const beforeAccount = beforeProviders.find(
+      (account) => account.id === accountId,
+    );
     if (!beforeAccount) {
-      return c.json({
-        error: "Provider account not found",
-        mutation: hostMutationRejected({
-          operation: "provider_account_delete",
-          entity: { kind: "provider-account", id: accountId },
-          forced: false,
-        }, "Provider account not found"),
-      }, 404);
+      return c.json(
+        {
+          error: "Provider account not found",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_account_delete",
+              entity: { kind: "provider-account", id: accountId },
+            },
+            "Provider account not found",
+          ),
+        },
+        404,
+      );
     }
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = needsReadProof
-      ? validateProviderAccountReadMutation({ account: beforeAccount, operation: "delete", preconditions })
+      ? validateProviderAccountReadMutation({
+          account: beforeAccount,
+          operation: "delete",
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     const deleted = await db.update((state) => {
       const beforeAccounts = state.providerAccounts.length;
       const beforeOAuth = state.providerOAuth.length;
-      state.providerAccounts = state.providerAccounts.filter((account) =>
-        !((account.userId ?? userId) === userId && account.id === accountId)
+      state.providerAccounts = state.providerAccounts.filter(
+        (account) =>
+          !((account.userId ?? userId) === userId && account.id === accountId),
       );
-      state.providerOAuth = state.providerOAuth.filter((record) =>
-        !((record.userId ?? userId) === userId && record.accountId === accountId)
+      state.providerOAuth = state.providerOAuth.filter(
+        (record) =>
+          !(
+            (record.userId ?? userId) === userId &&
+            record.accountId === accountId
+          ),
       );
-      return state.providerAccounts.length !== beforeAccounts || state.providerOAuth.length !== beforeOAuth;
+      return (
+        state.providerAccounts.length !== beforeAccounts ||
+        state.providerOAuth.length !== beforeOAuth
+      );
     });
     if (!deleted) {
-      return c.json({
-        error: "Provider account not found",
-        mutation: hostMutationRejected({
-          operation: "provider_account_delete",
-          entity: { kind: "provider-account", id: accountId },
-          forced: false,
-        }, "Provider account not found"),
-      }, 404);
+      return c.json(
+        {
+          error: "Provider account not found",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_account_delete",
+              entity: { kind: "provider-account", id: accountId },
+            },
+            "Provider account not found",
+          ),
+        },
+        404,
+      );
     }
-    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
-      operation: "provider_account_delete",
-      entity: { kind: "provider-account", id: accountId },
-      forced: false,
-    }, {
-      resultEntityId: accountId,
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "provider account delete",
-    }));
+    const mutation = hostMutationSucceeded(
+      hostMutation?.envelope ?? {
+        operation: "provider_account_delete",
+        entity: { kind: "provider-account", id: accountId },
+      },
+      {
+        resultEntityId: accountId,
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider account delete",
+      }),
+    );
     return c.json({
       ok: true,
       mutation,
     });
   });
   app.post("/api/v1/model-providers/test", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { provider?: unknown; modelId?: unknown; live?: unknown } & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      provider?: unknown;
+      modelId?: unknown;
+      live?: unknown;
+    } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const provider = normalizeProviderAccountInput(body.provider);
-    const rawProvider = body.provider && typeof body.provider === "object"
-      ? body.provider as Record<string, unknown>
-      : {};
-    const rawModelId = typeof body.modelId === "string" && body.modelId.trim() ? body.modelId.trim() : "";
+    const rawProvider =
+      body.provider && typeof body.provider === "object"
+        ? (body.provider as Record<string, unknown>)
+        : {};
+    const rawModelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : "";
     const modelId = normalizeModelId(rawModelId) ?? rawModelId;
     if (!provider || !modelId) {
       const message = "provider and modelId are required";
-      const envelope = localMutationEnvelope("provider_model_test", "provider-test", "unknown");
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 400);
+      const envelope = localMutationEnvelope(
+        "provider_model_test",
+        "provider-test",
+        "unknown",
+      );
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        400,
+      );
     }
 
     const state = await db.load();
-    const stored = state.providerAccounts.find((account) =>
-      account.userId === userId && providerAccountKey(account) === providerAccountKey(provider)
+    const stored = state.providerAccounts.find(
+      (account) =>
+        account.userId === userId &&
+        providerAccountKey(account) === providerAccountKey(provider),
     );
-    const enabled = rawProvider.enabled === false ? false : stored?.enabled ?? provider.enabled;
+    const enabled =
+      rawProvider.enabled === false
+        ? false
+        : (stored?.enabled ?? provider.enabled);
     const account: LocalProviderAccountConfig = {
       ...provider,
       ...stored,
@@ -2870,11 +3296,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       },
       userId,
     };
-    const providerSupports = listProviderModelSupport({ includeMock: account.providerId === "mock" });
-    const support = providerSupports.find((row) =>
-      row.providerId === account.providerId &&
-      (!account.upstreamId || row.upstreamId === account.upstreamId) &&
-      (row.region ?? "") === (account.region ?? "")
+    const providerSupports = listProviderModelSupport({
+      includeMock: account.providerId === "mock",
+    });
+    const support = providerSupports.find(
+      (row) =>
+        row.providerId === account.providerId &&
+        (!account.upstreamId || row.upstreamId === account.upstreamId) &&
+        (row.region ?? "") === (account.region ?? ""),
     );
     const modelName = displayModelName(modelId);
     const live = body.live === true;
@@ -2890,12 +3319,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       `${account.providerId}:${modelId}`,
     );
     const providerTestResponse = async (result: ModelProviderTestResult) => {
-      const mutation = hostMutationSucceeded(envelope, { resultEntityId: envelope.entity.id });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "provider model test",
-      }));
+      const mutation = hostMutationSucceeded(envelope, {
+        resultEntityId: envelope.entity.id,
+      });
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "provider model test",
+        }),
+      );
       return c.json({
         ...result,
         mutation,
@@ -2909,7 +3342,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         message: `${displayProviderName(account)} is disabled for ${modelName}.`,
       } satisfies ModelProviderTestResult);
     }
-    const supportedModelEntries = support?.models.filter((model) => model.id === modelId) ?? [];
+    const supportedModelEntries =
+      support?.models.filter((model) => model.id === modelId) ?? [];
     if (!support || supportedModelEntries.length === 0) {
       return providerTestResponse({
         ok: false,
@@ -2920,7 +3354,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     if (
       account.supportedModelIds?.length &&
-      !account.supportedModelIds.map((id) => normalizeModelId(id) ?? id.trim()).includes(modelId)
+      !account.supportedModelIds
+        .map((id) => normalizeModelId(id) ?? id.trim())
+        .includes(modelId)
     ) {
       return providerTestResponse({
         ok: false,
@@ -2932,23 +3368,34 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
     const credentialKeys = configuredCredentialKeys(account);
     const routeRequirements = modelRoutesForProviderAccount(account, modelId);
-    const requirementCandidates = routeRequirements.length > 0
-      ? routeRequirements.map((route) => ({
-        requiredCredentials: route.requiredCredentials ?? [],
-        requiredOAuth: route.requiredOAuth ?? [],
-      }))
-      : supportedModelEntries.map((model) => ({
-        requiredCredentials: "requiredCredentials" in model ? model.requiredCredentials : support.requiredCredentials,
-        requiredOAuth: "requiredOAuth" in model ? model.requiredOAuth : support.requiredOAuth,
-      }));
+    const requirementCandidates =
+      routeRequirements.length > 0
+        ? routeRequirements.map((route) => ({
+            requiredCredentials: route.requiredCredentials ?? [],
+            requiredOAuth: route.requiredOAuth ?? [],
+          }))
+        : supportedModelEntries.map((model) => ({
+            requiredCredentials:
+              "requiredCredentials" in model
+                ? model.requiredCredentials
+                : support.requiredCredentials,
+            requiredOAuth:
+              "requiredOAuth" in model
+                ? model.requiredOAuth
+                : support.requiredOAuth,
+          }));
     const credentialChecks = requirementCandidates.map((candidate) => ({
       candidate,
-      missingCredentials: candidate.requiredCredentials.filter((credential) => !credentialKeys.has(credential)),
+      missingCredentials: candidate.requiredCredentials.filter(
+        (credential) => !credentialKeys.has(credential),
+      ),
     }));
-    const credentialReadyChecks = credentialChecks.filter((check) => check.missingCredentials.length === 0);
+    const credentialReadyChecks = credentialChecks.filter(
+      (check) => check.missingCredentials.length === 0,
+    );
     if (credentialReadyChecks.length === 0) {
-      const bestCredentialCheck = [...credentialChecks].sort((a, b) =>
-        a.missingCredentials.length - b.missingCredentials.length
+      const bestCredentialCheck = [...credentialChecks].sort(
+        (a, b) => a.missingCredentials.length - b.missingCredentials.length,
       )[0];
       return providerTestResponse({
         ok: false,
@@ -2958,16 +3405,28 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       } satisfies ModelProviderTestResult);
     }
 
-    const testedAccount = publicProviderAccounts([account], userId, state.providerOAuth)
-      .find((candidate) => providerAccountKey(candidate) === providerAccountKey(account));
+    const testedAccount = publicProviderAccounts(
+      [account],
+      userId,
+      state.providerOAuth,
+    ).find(
+      (candidate) =>
+        providerAccountKey(candidate) === providerAccountKey(account),
+    );
     const availableOAuth = new Set(testedAccount?.availableOAuth ?? []);
     const oauthChecks = credentialReadyChecks.map((check) => ({
       ...check,
-      missingOAuth: check.candidate.requiredOAuth.filter((providerId) => !availableOAuth.has(providerId)),
+      missingOAuth: check.candidate.requiredOAuth.filter(
+        (providerId) => !availableOAuth.has(providerId),
+      ),
     }));
-    const oauthReadyCheck = oauthChecks.find((check) => check.missingOAuth.length === 0);
+    const oauthReadyCheck = oauthChecks.find(
+      (check) => check.missingOAuth.length === 0,
+    );
     if (!oauthReadyCheck) {
-      const bestOAuthCheck = [...oauthChecks].sort((a, b) => a.missingOAuth.length - b.missingOAuth.length)[0];
+      const bestOAuthCheck = [...oauthChecks].sort(
+        (a, b) => a.missingOAuth.length - b.missingOAuth.length,
+      )[0];
       return providerTestResponse({
         ok: false,
         ...baseResult,
@@ -2977,7 +3436,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     if (account.providerId === "mock" || live) {
-      const model = [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find((candidate) => candidate.id === modelId);
+      const model = [...MODEL_CARDS, ...MOCK_MODEL_CARDS].find(
+        (candidate) => candidate.id === modelId,
+      );
       const taskId = `provider-test-${modelId}`;
       const prompt = `Provider test for ${modelName}`;
       const shape = model?.kind ?? supportedModelEntries[0]?.kind ?? "image";
@@ -2993,49 +3454,74 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         shape,
         model: modelId,
         prompt,
-        ...(shape === "image" || shape === "video" ? { aspectRatio: "16:9" } : {}),
-        ...(shape === "video" || shape === "audio" ? { duration: shape === "video" ? 4 : 5 } : {}),
+        ...(shape === "image" || shape === "video"
+          ? { aspectRatio: "16:9" }
+          : {}),
+        ...(shape === "video" || shape === "audio"
+          ? { duration: shape === "video" ? 4 : 5 }
+          : {}),
       });
-      const readyRoute = routeRequirements.find((route) =>
-        (route.requiredCredentials ?? []).every((credential) => credentialKeys.has(credential)) &&
-        (route.requiredOAuth ?? []).every((providerId) => availableOAuth.has(providerId))
+      const readyRoute = routeRequirements.find(
+        (route) =>
+          (route.requiredCredentials ?? []).every((credential) =>
+            credentialKeys.has(credential),
+          ) &&
+          (route.requiredOAuth ?? []).every((providerId) =>
+            availableOAuth.has(providerId),
+          ),
       );
       const recorder = options.providerTestRecordingPath
-        ? await createJsonlProviderTestRecorder(options.providerTestRecordingPath)
+        ? await createJsonlProviderTestRecorder(
+            options.providerTestRecordingPath,
+          )
         : undefined;
       const recordingStub = recorder
         ? providerTestStubForAccount(account, modelId, readyRoute)
         : undefined;
-      const liveFetch = recorder && recordingStub
-        ? createProviderTestRecordingFetch({
-          fetch: options.providerTestFetch ?? fetch,
-          recorder,
-          stub: recordingStub,
-        })
-        : options.providerTestFetch ?? fetch;
-      const testAigc = account.providerId === "mock"
-        ? providerTestAigc
-        : createMockExternalAigcService({
-          fal: falMock,
-          origin: "http://local-provider-test",
-          providerAccounts: async () => [{
-            ...account,
-            configuredCredentials: [...credentialKeys],
-            availableOAuth: [...availableOAuth],
-            weight: account.weight ?? 10_000,
-          }],
-          fetch: liveFetch,
-          openAiBaseUrl: options.providerTestOpenAiBaseUrl ?? process.env.OPENAI_BASE_URL,
-          anthropicBaseUrl: options.providerTestAnthropicBaseUrl ?? process.env.ANTHROPIC_BASE_URL,
-          falQueueBaseUrl: options.providerTestFalQueueBaseUrl ?? process.env.CLASH_FAL_QUEUE_URL,
-          googleAiStudioBaseUrl: options.providerTestGoogleAiStudioBaseUrl,
-          kieBaseUrl: options.providerTestKieBaseUrl,
-          replicateBaseUrl: options.providerTestReplicateBaseUrl,
-        });
+      const liveFetch =
+        recorder && recordingStub
+          ? createProviderTestRecordingFetch({
+              fetch: options.providerTestFetch ?? fetch,
+              recorder,
+              stub: recordingStub,
+            })
+          : (options.providerTestFetch ?? fetch);
+      const testAigc =
+        account.providerId === "mock"
+          ? providerTestAigc
+          : createMockExternalAigcService({
+              fal: falMock,
+              origin: "http://local-provider-test",
+              providerAccounts: async () => [
+                {
+                  ...account,
+                  configuredCredentials: [...credentialKeys],
+                  availableOAuth: [...availableOAuth],
+                  weight: account.weight ?? 10_000,
+                },
+              ],
+              fetch: liveFetch,
+              openAiBaseUrl:
+                options.providerTestOpenAiBaseUrl ??
+                process.env.OPENAI_BASE_URL,
+              anthropicBaseUrl:
+                options.providerTestAnthropicBaseUrl ??
+                process.env.ANTHROPIC_BASE_URL,
+              falQueueBaseUrl:
+                options.providerTestFalQueueBaseUrl ??
+                process.env.CLASH_FAL_QUEUE_URL,
+              googleAiStudioBaseUrl: options.providerTestGoogleAiStudioBaseUrl,
+              kieBaseUrl: options.providerTestKieBaseUrl,
+              replicateBaseUrl: options.providerTestReplicateBaseUrl,
+            });
       const providerName = displayProviderName(account);
       try {
         if (shape === "text") {
-          const result = await testAigc.generateText({ taskId, prompt, model: modelId });
+          const result = await testAigc.generateText({
+            taskId,
+            prompt,
+            model: modelId,
+          });
           const output: ModelProviderTestOutputSummary = {
             shape: "text",
             ...(result.provider ? { provider: result.provider } : {}),
@@ -3046,7 +3532,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             ok: true,
             ...baseResult,
             ...(result.provider ? { provider: result.provider } : {}),
-            ...(result.modelEndpoint ? { modelEndpoint: result.modelEndpoint } : {}),
+            ...(result.modelEndpoint
+              ? { modelEndpoint: result.modelEndpoint }
+              : {}),
             input: testInput,
             output,
             message: result.modelEndpoint
@@ -3055,19 +3543,41 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           } satisfies ModelProviderTestResult);
         }
 
-        const mediaShape = shape === "video" || shape === "audio" ? shape : "image";
-        const result = mediaShape === "video"
-          ? await testAigc.generateVideo({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio, duration: testInput.duration })
-          : mediaShape === "audio"
-            ? await testAigc.generateAudio({ taskId, prompt, model: modelId, duration: testInput.duration })
-            : await testAigc.generateImage({ taskId, prompt, model: modelId, aspectRatio: testInput.aspectRatio });
+        const mediaShape =
+          shape === "video" || shape === "audio" ? shape : "image";
+        const result =
+          mediaShape === "video"
+            ? await testAigc.generateVideo({
+                taskId,
+                prompt,
+                model: modelId,
+                aspectRatio: testInput.aspectRatio,
+                duration: testInput.duration,
+              })
+            : mediaShape === "audio"
+              ? await testAigc.generateAudio({
+                  taskId,
+                  prompt,
+                  model: modelId,
+                  duration: testInput.duration,
+                })
+              : await testAigc.generateImage({
+                  taskId,
+                  prompt,
+                  model: modelId,
+                  aspectRatio: testInput.aspectRatio,
+                });
         const output = providerTestMediaOutput(mediaShape, result);
         return providerTestResponse({
           ok: true,
           ...baseResult,
           ...(result.provider ? { provider: result.provider } : {}),
-          ...("requestId" in result && result.requestId ? { requestId: result.requestId } : {}),
-          ...(result.modelEndpoint ? { modelEndpoint: result.modelEndpoint } : {}),
+          ...("requestId" in result && result.requestId
+            ? { requestId: result.requestId }
+            : {}),
+          ...(result.modelEndpoint
+            ? { modelEndpoint: result.modelEndpoint }
+            : {}),
           input: testInput,
           output,
           message: result.modelEndpoint
@@ -3095,10 +3605,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return c.json({
       providers: state.providerOAuth
         .filter((record) => record.userId === userId)
-        .sort((a, b) => (
-          a.providerId.localeCompare(b.providerId) ||
-          (a.accountId ?? "").localeCompare(b.accountId ?? "")
-        ))
+        .sort(
+          (a, b) =>
+            a.providerId.localeCompare(b.providerId) ||
+            (a.accountId ?? "").localeCompare(b.accountId ?? ""),
+        )
         .map(publicProviderOAuthWithReadReceipt),
     });
   });
@@ -3106,25 +3617,41 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const rawProviderId = c.req.param("providerId");
     const providerId = parseProviderOAuthId(rawProviderId);
     if (!providerId) {
-      return c.json({
-        error: "Unsupported OAuth provider",
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_start",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(rawProviderId) },
-          forced: false,
-        }, "Unsupported OAuth provider"),
-      }, 404);
+      return c.json(
+        {
+          error: "Unsupported OAuth provider",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_start",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(rawProviderId),
+              },
+            },
+            "Unsupported OAuth provider",
+          ),
+        },
+        404,
+      );
     }
     const driver = options.providerOAuth?.[providerId];
     if (!driver) {
-      return c.json({
-        error: "OAuth provider is not configured",
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_start",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId) },
-          forced: false,
-        }, "OAuth provider is not configured"),
-      }, 501);
+      return c.json(
+        {
+          error: "OAuth provider is not configured",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_start",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(providerId),
+              },
+            },
+            "OAuth provider is not configured",
+          ),
+        },
+        501,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       accountId?: unknown;
@@ -3135,32 +3662,47 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const preconditions = requestProjectWritePreconditions(c, body);
     const beforeState = await db.load();
     const beforeRecord = beforeState.providerOAuth.find((record) =>
-      providerOAuthMatches(record, userId, providerId, accountId)
+      providerOAuthMatches(record, userId, providerId, accountId),
     );
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const hostMutation = beforeRecord && needsReadProof
-      ? validateProviderOAuthReadMutation({ record: beforeRecord, operation: "start", preconditions })
-      : null;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const hostMutation =
+      beforeRecord && needsReadProof
+        ? validateProviderOAuthReadMutation({
+            record: beforeRecord,
+            operation: "start",
+            preconditions,
+          })
+        : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
-    if (!beforeRecord && preconditions.expectedReadToken && !preconditions.force) {
+    if (!beforeRecord && preconditions.expectedReadToken) {
       const message =
-        "Provider OAuth record not found. Read /api/v1/provider-oauth first and pass the provider OAuth record's `readToken` with --if-match, " +
-        "or pass --force for an explicit overwrite.";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_start",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, message),
-      }, 409);
+        "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_start",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(providerId, accountId),
+              },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            message,
+          ),
+        },
+        409,
+      );
     }
     const started = await driver.start();
     const record = await db.update((state) => {
@@ -3180,19 +3722,26 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     });
     const readToken = providerOAuthReceiptReadToken(record);
-    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
-      operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-      forced: preconditions.force,
-    }, {
-      resultEntityId: providerOAuthEntityId(providerId, accountId),
-      ...(hostMutation ? { afterReadToken: readToken } : {}),
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "provider OAuth start",
-    }));
+    const mutation = hostMutationSucceeded(
+      hostMutation?.envelope ?? {
+        operation: "provider_oauth_start",
+        entity: {
+          kind: "provider-oauth",
+          id: providerOAuthEntityId(providerId, accountId),
+        },
+      },
+      {
+        resultEntityId: providerOAuthEntityId(providerId, accountId),
+        ...(hostMutation ? { afterReadToken: readToken } : {}),
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider OAuth start",
+      }),
+    );
     return c.json({
       ...publicProviderOAuth(record),
       ...(hostMutation ? { readToken } : {}),
@@ -3203,25 +3752,41 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const rawProviderId = c.req.param("providerId");
     const providerId = parseProviderOAuthId(rawProviderId);
     if (!providerId) {
-      return c.json({
-        error: "Unsupported OAuth provider",
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_complete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(rawProviderId) },
-          forced: false,
-        }, "Unsupported OAuth provider"),
-      }, 404);
+      return c.json(
+        {
+          error: "Unsupported OAuth provider",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_complete",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(rawProviderId),
+              },
+            },
+            "Unsupported OAuth provider",
+          ),
+        },
+        404,
+      );
     }
     const driver = options.providerOAuth?.[providerId];
     if (!driver) {
-      return c.json({
-        error: "OAuth provider is not configured",
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_complete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId) },
-          forced: false,
-        }, "OAuth provider is not configured"),
-      }, 501);
+      return c.json(
+        {
+          error: "OAuth provider is not configured",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_complete",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(providerId),
+              },
+            },
+            "OAuth provider is not configured",
+          ),
+        },
+        501,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       accountId?: unknown;
@@ -3230,48 +3795,70 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const accountId = stringBodyField(body.accountId);
     const preconditions = requestProjectWritePreconditions(c, body);
     const initialState = await db.load();
-    const existing = initialState.providerOAuth.find((record) => providerOAuthMatches(record, userId, providerId, accountId));
+    const existing = initialState.providerOAuth.find((record) =>
+      providerOAuthMatches(record, userId, providerId, accountId),
+    );
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const hostMutation = existing && needsReadProof
-      ? validateProviderOAuthReadMutation({
-        record: existing,
-        operation: "complete",
-        preconditions,
-      })
-      : null;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const hostMutation =
+      existing && needsReadProof
+        ? validateProviderOAuthReadMutation({
+            record: existing,
+            operation: "complete",
+            preconditions,
+          })
+        : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
-    if (!existing && needsReadProof && !preconditions.force) {
+    if (!existing && needsReadProof) {
       const message =
-        "Provider OAuth record not found. Read /api/v1/provider-oauth first and pass the provider OAuth record's `readToken` with --if-match, " +
-        "or pass --force for an explicit overwrite.";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_complete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, message),
-      }, 409);
+        "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_complete",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(providerId, accountId),
+              },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            message,
+          ),
+        },
+        409,
+      );
     }
-    const deviceCode = typeof body.deviceCode === "string" && body.deviceCode.trim()
-      ? body.deviceCode.trim()
-      : existing?.deviceCode;
+    const deviceCode =
+      typeof body.deviceCode === "string" && body.deviceCode.trim()
+        ? body.deviceCode.trim()
+        : existing?.deviceCode;
     if (!deviceCode) {
-      return c.json({
-        error: "deviceCode is required",
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_complete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-          forced: false,
-        }, "deviceCode is required"),
-      }, 400);
+      return c.json(
+        {
+          error: "deviceCode is required",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_complete",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(providerId, accountId),
+              },
+            },
+            "deviceCode is required",
+          ),
+        },
+        400,
+      );
     }
     let completed: ProviderOAuthTokenResult;
     try {
@@ -3288,23 +3875,35 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           error: message,
         });
       });
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
-        operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-        forced: preconditions.force,
-      }, {
-        resultEntityId: providerOAuthEntityId(providerId, accountId),
-        ...(hostMutation ? { afterReadToken: providerOAuthReceiptReadToken(record) } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "provider OAuth complete",
-      }));
-      return c.json({
-        error: message,
-        mutation,
-      }, 502);
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? {
+          operation: "provider_oauth_complete",
+          entity: {
+            kind: "provider-oauth",
+            id: providerOAuthEntityId(providerId, accountId),
+          },
+        },
+        {
+          resultEntityId: providerOAuthEntityId(providerId, accountId),
+          ...(hostMutation
+            ? { afterReadToken: providerOAuthReceiptReadToken(record) }
+            : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "provider OAuth complete",
+        }),
+      );
+      return c.json(
+        {
+          error: message,
+          mutation,
+        },
+        502,
+      );
     }
     const record = await db.update((state) => {
       return upsertProviderOAuth(state, userId, providerId, {
@@ -3323,19 +3922,26 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     });
     const readToken = providerOAuthReceiptReadToken(record);
-    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
-      operation: "provider_oauth_complete",
-      entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-      forced: preconditions.force,
-    }, {
-      resultEntityId: providerOAuthEntityId(providerId, accountId),
-      ...(hostMutation ? { afterReadToken: readToken } : {}),
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "provider OAuth complete",
-    }));
+    const mutation = hostMutationSucceeded(
+      hostMutation?.envelope ?? {
+        operation: "provider_oauth_complete",
+        entity: {
+          kind: "provider-oauth",
+          id: providerOAuthEntityId(providerId, accountId),
+        },
+      },
+      {
+        resultEntityId: providerOAuthEntityId(providerId, accountId),
+        ...(hostMutation ? { afterReadToken: readToken } : {}),
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider OAuth complete",
+      }),
+    );
     return c.json({
       ...publicProviderOAuth(record),
       ...(hostMutation ? { readToken } : {}),
@@ -3346,61 +3952,94 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const rawProviderId = c.req.param("providerId");
     const providerId = parseProviderOAuthId(rawProviderId);
     if (!providerId) {
-      return c.json({
-        error: "Unsupported OAuth provider",
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_delete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(rawProviderId) },
-          forced: false,
-        }, "Unsupported OAuth provider"),
-      }, 404);
+      return c.json(
+        {
+          error: "Unsupported OAuth provider",
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_delete",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(rawProviderId),
+              },
+            },
+            "Unsupported OAuth provider",
+          ),
+        },
+        404,
+      );
     }
     const accountId = stringBodyField(c.req.query("accountId"));
     const preconditions = requestProjectWritePreconditions(c);
     const beforeState = await db.load();
     const beforeRecord = beforeState.providerOAuth.find((record) =>
-      providerOAuthMatches(record, userId, providerId, accountId)
+      providerOAuthMatches(record, userId, providerId, accountId),
     );
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const hostMutation = beforeRecord && needsReadProof
-      ? validateProviderOAuthReadMutation({ record: beforeRecord, operation: "delete", preconditions })
-      : null;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const hostMutation =
+      beforeRecord && needsReadProof
+        ? validateProviderOAuthReadMutation({
+            record: beforeRecord,
+            operation: "delete",
+            preconditions,
+          })
+        : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
-    if (!beforeRecord && needsReadProof && !preconditions.force) {
+    if (!beforeRecord && needsReadProof) {
       const message =
-        "Provider OAuth record not found. Read /api/v1/provider-oauth first and pass the provider OAuth record's `readToken` with --if-match, " +
-        "or pass --force for an explicit overwrite.";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "provider_oauth_delete",
-          entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, message),
-      }, 409);
+        "Provider OAuth record not found. Read /api/v1/provider-oauth first, then retry.";
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "provider_oauth_delete",
+              entity: {
+                kind: "provider-oauth",
+                id: providerOAuthEntityId(providerId, accountId),
+              },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            message,
+          ),
+        },
+        409,
+      );
     }
     await db.update((state) => {
-      state.providerOAuth = state.providerOAuth.filter((record) => !providerOAuthMatches(record, userId, providerId, accountId));
+      state.providerOAuth = state.providerOAuth.filter(
+        (record) =>
+          !providerOAuthMatches(record, userId, providerId, accountId),
+      );
     });
-    const mutation = hostMutationSucceeded(hostMutation?.envelope ?? {
-      operation: "provider_oauth_delete",
-      entity: { kind: "provider-oauth", id: providerOAuthEntityId(providerId, accountId) },
-      forced: false,
-    }, {
-      resultEntityId: providerOAuthEntityId(providerId, accountId),
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "provider OAuth delete",
-    }));
+    const mutation = hostMutationSucceeded(
+      hostMutation?.envelope ?? {
+        operation: "provider_oauth_delete",
+        entity: {
+          kind: "provider-oauth",
+          id: providerOAuthEntityId(providerId, accountId),
+        },
+      },
+      {
+        resultEntityId: providerOAuthEntityId(providerId, accountId),
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "provider OAuth delete",
+      }),
+    );
     return c.json({
       ok: true,
       mutation,
@@ -3410,173 +4049,248 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const state = await db.load();
     return c.json({
       models: listModelCatalogEntries({
-        configuredProviders: publicProviderAccounts(state.providerAccounts, userId, state.providerOAuth),
+        configuredProviders: publicProviderAccounts(
+          state.providerAccounts,
+          userId,
+          state.providerOAuth,
+        ),
       }),
     });
   });
-  app.get("/api/marketplace/registry", (c) => c.json({ version: 1, actions: [], skills: [] }));
-  app.get("/api/v1/local/sync", async (c) => c.json(publicLocalSyncConfig(await localSyncReadState(syncConfig))));
+  app.get("/api/marketplace/registry", (c) =>
+    c.json({ version: 1, actions: [], skills: [] }),
+  );
+  app.get("/api/v1/local/sync", async (c) =>
+    c.json(publicLocalSyncConfig(await localSyncReadState(syncConfig))),
+  );
   app.patch("/api/v1/local/sync", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const envelope = {
       operation: "local_sync_config_update",
       entity: { kind: "local-config", id: "sync" },
-      forced: false,
     };
     const preconditions = requestProjectWritePreconditions(c, body);
     const beforeReadState = await localSyncReadState(syncConfig);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = needsReadProof
-      ? validateLocalSyncConfigMutation({ readState: beforeReadState, preconditions })
+      ? validateLocalSyncConfigMutation({
+          readState: beforeReadState,
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       await syncConfig.updateFromRequest(body);
       const readState = await localSyncReadState(syncConfig);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: "sync",
-        ...(hostMutation
-          ? {
-              afterReadToken: localConfigReceiptReadToken({
-                id: "sync",
-                config: localSyncConfigReadProjection(readState),
-                updatedAt: readState.updated_at,
-              }),
-            }
-          : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local sync config update",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: "sync",
+          ...(hostMutation
+            ? {
+                afterReadToken: localConfigReceiptReadToken({
+                  id: "sync",
+                  config: localSyncConfigReadProjection(readState),
+                  updatedAt: readState.updated_at,
+                }),
+              }
+            : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local sync config update",
+        }),
+      );
       return c.json({
         ...publicLocalSyncConfig(readState),
         mutation,
       });
     } catch (error) {
       if (error instanceof LocalSyncConfigError) {
-        return c.json({
-          error: error.message,
-          mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, error.message),
-        }, error.status as 400);
+        return c.json(
+          {
+            error: error.message,
+            mutation: hostMutationRejected(
+              hostMutation?.envelope ?? envelope,
+              error.message,
+            ),
+          },
+          error.status as 400,
+        );
       }
       throw error;
     }
   });
-  app.get("/api/v1/local/audio", async (c) => c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))));
+  app.get("/api/v1/local/audio", async (c) =>
+    c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))),
+  );
   app.patch("/api/v1/local/audio", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const envelope = {
       operation: "local_audio_config_update",
       entity: { kind: "local-config", id: "audio" },
-      forced: false,
     };
     const preconditions = requestProjectWritePreconditions(c, body);
     const beforeReadState = await localAudioReadState(audioConfig);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = needsReadProof
-      ? validateLocalAudioConfigMutation({ readState: beforeReadState, preconditions })
+      ? validateLocalAudioConfigMutation({
+          readState: beforeReadState,
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       await audioConfig.updateFromRequest(body);
       const readState = await localAudioReadState(audioConfig);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: "audio",
-        ...(hostMutation
-          ? {
-              afterReadToken: localAudioReceiptReadToken(readState),
-            }
-          : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local audio config update",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: "audio",
+          ...(hostMutation
+            ? {
+                afterReadToken: localAudioReceiptReadToken(readState),
+              }
+            : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local audio config update",
+        }),
+      );
       return c.json({
         ...publicLocalAudioConfig(readState),
         mutation,
       });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {
-        return c.json({
-          error: error.message,
-          mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, error.message),
-        }, error.status as 400);
+        return c.json(
+          {
+            error: error.message,
+            mutation: hostMutationRejected(
+              hostMutation?.envelope ?? envelope,
+              error.message,
+            ),
+          },
+          error.status as 400,
+        );
       }
       throw error;
     }
   });
   app.post("/api/v1/local/audio/install", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    > &
+      ProjectWriteBody;
     const envelope = {
       operation: "local_audio_model_install",
       entity: { kind: "local-config", id: "audio" },
-      forced: false,
     };
     const preconditions = requestProjectWritePreconditions(c, body);
     const beforeReadState = await localAudioReadState(audioConfig);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
     const hostMutation = needsReadProof
-      ? validateLocalAudioInstallMutation({ readState: beforeReadState, preconditions })
+      ? validateLocalAudioInstallMutation({
+          readState: beforeReadState,
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       await audioConfig.installBuiltin({ model: body.asr_model });
       const readState = await localAudioReadState(audioConfig);
       const readToken = localAudioReceiptReadToken(readState);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: "audio",
-        ...(hostMutation ? { afterReadToken: readToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local audio model install",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: "audio",
+          ...(hostMutation ? { afterReadToken: readToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local audio model install",
+        }),
+      );
       return c.json({
         ...publicLocalAudioConfig(readState),
         mutation,
       });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {
-        return c.json({
-          error: error.message,
-          mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, error.message),
-        }, error.status as 400);
+        return c.json(
+          {
+            error: error.message,
+            mutation: hostMutationRejected(
+              hostMutation?.envelope ?? envelope,
+              error.message,
+            ),
+          },
+          error.status as 400,
+        );
       }
       throw error;
     }
   });
   app.post("/api/v1/local/audio/transcriptions", async (c) => {
-    const envelope = localMutationEnvelope("local_audio_transcription", "local-action", "audio-transcription");
+    const envelope = localMutationEnvelope(
+      "local_audio_transcription",
+      "local-action",
+      "audio-transcription",
+    );
     const form = await c.req.formData();
     const file = form.get("file");
     if (!file || typeof file === "string") {
-      return c.json({
-        error: "Missing file",
-        mutation: hostMutationRejected(envelope, "Missing file"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing file",
+          mutation: hostMutationRejected(envelope, "Missing file"),
+        },
+        400,
+      );
     }
     const language = form.get("language");
     try {
@@ -3584,21 +4298,28 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         file,
         language: typeof language === "string" ? language : null,
       });
-      const mutation = hostMutationSucceeded(envelope, { resultEntityId: "audio-transcription" });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        reason: "local audio transcription",
-      }));
+      const mutation = hostMutationSucceeded(envelope, {
+        resultEntityId: "audio-transcription",
+      });
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          reason: "local audio transcription",
+        }),
+      );
       return c.json({
         ...result,
         mutation,
       });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {
-        return c.json({
-          error: error.message,
-          mutation: hostMutationRejected(envelope, error.message),
-        }, error.status as 400);
+        return c.json(
+          {
+            error: error.message,
+            mutation: hostMutationRejected(envelope, error.message),
+          },
+          error.status as 400,
+        );
       }
       throw error;
     }
@@ -3630,38 +4351,58 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/runtimes", async (c) => {
     if (!options.localAcp) return json({ runtimes: [] });
     const rawProbe = c.req.query("probe");
-    const probe = rawProbe === "1" || rawProbe === "true"
-      ? true
-      : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none"
-        ? rawProbe
-        : false;
-    const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
+    const probe =
+      rawProbe === "1" || rawProbe === "true"
+        ? true
+        : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none"
+          ? rawProbe
+          : false;
+    const refresh =
+      c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
     return json(await options.localAcp.listRuntimes({ probe, refresh }));
   });
 
   app.get("/api/v1/local/harnesses", async (c) => {
     if (!options.localAcp?.listHarnesses) {
       const result = { harnesses: [] };
-      return c.json({ ...result, readToken: localHarnessesReceiptReadToken(result) });
+      return c.json({
+        ...result,
+        readToken: localHarnessesReceiptReadToken(result),
+      });
     }
     const rawProbe = c.req.query("probe");
-    const probe = rawProbe === "1" || rawProbe === "true"
-      ? "auth"
-      : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none"
-        ? rawProbe
-        : false;
-    const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
+    const probe =
+      rawProbe === "1" || rawProbe === "true"
+        ? "auth"
+        : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none"
+          ? rawProbe
+          : false;
+    const refresh =
+      c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
     const result = await options.localAcp.listHarnesses({ probe, refresh });
-    return c.json({ ...result, readToken: localHarnessesReceiptReadToken(result) });
+    return c.json({
+      ...result,
+      readToken: localHarnessesReceiptReadToken(result),
+    });
   });
 
   app.put("/api/v1/local/harnesses", async (c) => {
-    const envelope = localMutationEnvelope("local_harness_enablement_update", "local-harness-config", "enabled");
+    const envelope = localMutationEnvelope(
+      "local_harness_enablement_update",
+      "local-harness-config",
+      "enabled",
+    );
     if (!options.localAcp?.updateHarnesses) {
-      return c.json({
-        error: "Local harness settings unavailable",
-        mutation: hostMutationRejected(envelope, "Local harness settings unavailable"),
-      }, 404);
+      return c.json(
+        {
+          error: "Local harness settings unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local harness settings unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       enabled_harness_ids?: unknown;
@@ -3669,37 +4410,51 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const beforeResult = needsReadProof && options.localAcp.listHarnesses
-      ? await options.localAcp.listHarnesses()
-      : { harnesses: [] };
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const beforeResult =
+      needsReadProof && options.localAcp.listHarnesses
+        ? await options.localAcp.listHarnesses()
+        : { harnesses: [] };
     const hostMutation = needsReadProof
-      ? validateLocalHarnessesConfigMutation({ result: beforeResult, preconditions })
+      ? validateLocalHarnessesConfigMutation({
+          result: beforeResult,
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     const rawIds = Array.isArray(body.enabled_harness_ids)
       ? body.enabled_harness_ids
       : Array.isArray(body.enabledHarnessIds)
         ? body.enabledHarnessIds
         : [];
-    const enabledIds = rawIds.filter((id): id is string => typeof id === "string");
+    const enabledIds = rawIds.filter(
+      (id): id is string => typeof id === "string",
+    );
     try {
       const result = await options.localAcp.updateHarnesses(enabledIds);
       const readToken = localHarnessesReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: "enabled",
-        ...(hostMutation ? { afterReadToken: readToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local harness enablement update",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: "enabled",
+          ...(hostMutation ? { afterReadToken: readToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local harness enablement update",
+        }),
+      );
       return c.json({
         ...result,
         readToken,
@@ -3707,29 +4462,51 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            hostMutation?.envelope ?? envelope,
+            message,
+          ),
+        },
+        400,
+      );
     }
   });
 
   app.get("/api/v1/local/agent-servers", async (c) => {
     if (!options.localAcp?.listAgentServers) {
       const result = { agent_servers: {} };
-      return c.json({ ...result, readToken: localAgentServersReceiptReadToken(result) });
+      return c.json({
+        ...result,
+        readToken: localAgentServersReceiptReadToken(result),
+      });
     }
     const result = await options.localAcp.listAgentServers();
-    return c.json({ ...result, readToken: localAgentServersReceiptReadToken(result) });
+    return c.json({
+      ...result,
+      readToken: localAgentServersReceiptReadToken(result),
+    });
   });
 
   app.put("/api/v1/local/agent-servers", async (c) => {
-    const envelope = localMutationEnvelope("local_agent_servers_update", "local-harness-config", "agent-servers");
+    const envelope = localMutationEnvelope(
+      "local_agent_servers_update",
+      "local-harness-config",
+      "agent-servers",
+    );
     if (!options.localAcp?.updateAgentServers) {
-      return c.json({
-        error: "Custom agent server settings unavailable",
-        mutation: hostMutationRejected(envelope, "Custom agent server settings unavailable"),
-      }, 404);
+      return c.json(
+        {
+          error: "Custom agent server settings unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Custom agent server settings unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       agent_servers?: unknown;
@@ -3738,31 +4515,45 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const rawServers = body.agent_servers ?? body.agentServers ?? {};
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const beforeResult = needsReadProof && options.localAcp.listAgentServers
-      ? await options.localAcp.listAgentServers()
-      : { agent_servers: {} };
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const beforeResult =
+      needsReadProof && options.localAcp.listAgentServers
+        ? await options.localAcp.listAgentServers()
+        : { agent_servers: {} };
     const hostMutation = needsReadProof
-      ? validateLocalAgentServersConfigMutation({ result: beforeResult, preconditions })
+      ? validateLocalAgentServersConfigMutation({
+          result: beforeResult,
+          preconditions,
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
-      const result = await options.localAcp.updateAgentServers(rawServers as LocalAcpAgentServersConfig);
+      const result = await options.localAcp.updateAgentServers(
+        rawServers as LocalAcpAgentServersConfig,
+      );
       const readToken = localAgentServersReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: "agent-servers",
-        ...(hostMutation ? { afterReadToken: readToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local agent servers update",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: "agent-servers",
+          ...(hostMutation ? { afterReadToken: readToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local agent servers update",
+        }),
+      );
       return c.json({
         ...result,
         readToken,
@@ -3770,58 +4561,86 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            hostMutation?.envelope ?? envelope,
+            message,
+          ),
+        },
+        400,
+      );
     }
   });
 
   app.post("/api/v1/local/harnesses/:harnessId/install", async (c) => {
     const harnessId = c.req.param("harnessId");
-    const envelope = localMutationEnvelope("local_harness_install", "local-harness", harnessId);
-    if (!options.localAcp?.installHarness && !options.localAcp?.installHarnessAdapter) {
-      return c.json({
-        error: "Local agent install unavailable",
-        mutation: hostMutationRejected(envelope, "Local agent install unavailable"),
-      }, 404);
+    const envelope = localMutationEnvelope(
+      "local_harness_install",
+      "local-harness",
+      harnessId,
+    );
+    if (
+      !options.localAcp?.installHarness &&
+      !options.localAcp?.installHarnessAdapter
+    ) {
+      return c.json(
+        {
+          error: "Local agent install unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local agent install unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const beforeResult = needsReadProof && options.localAcp.listHarnesses
-      ? await options.localAcp.listHarnesses()
-      : { harnesses: [] };
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const beforeResult =
+      needsReadProof && options.localAcp.listHarnesses
+        ? await options.localAcp.listHarnesses()
+        : { harnesses: [] };
     const hostMutation = needsReadProof
       ? validateLocalHarnessActionMutation({
-        result: beforeResult,
-        preconditions,
-        operation: "local_harness_install",
-        harnessId,
-        action: "install",
-      })
+          result: beforeResult,
+          preconditions,
+          operation: "local_harness_install",
+          harnessId,
+          action: "install",
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       const result = options.localAcp.installHarness
         ? await options.localAcp.installHarness(harnessId)
         : await options.localAcp.installHarnessAdapter!(harnessId);
       const afterReadToken = localHarnessesReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: harnessId,
-        ...(hostMutation ? { afterReadToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local harness install",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: harnessId,
+          ...(hostMutation ? { afterReadToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local harness install",
+        }),
+      );
       return c.json({
         ...result,
         readToken: afterReadToken,
@@ -3829,58 +4648,86 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            hostMutation?.envelope ?? envelope,
+            message,
+          ),
+        },
+        400,
+      );
     }
   });
 
   app.post("/api/v1/local/harnesses/:harnessId/install-adapter", async (c) => {
     const harnessId = c.req.param("harnessId");
-    const envelope = localMutationEnvelope("local_harness_install", "local-harness", harnessId);
-    if (!options.localAcp?.installHarness && !options.localAcp?.installHarnessAdapter) {
-      return c.json({
-        error: "Local agent install unavailable",
-        mutation: hostMutationRejected(envelope, "Local agent install unavailable"),
-      }, 404);
+    const envelope = localMutationEnvelope(
+      "local_harness_install",
+      "local-harness",
+      harnessId,
+    );
+    if (
+      !options.localAcp?.installHarness &&
+      !options.localAcp?.installHarnessAdapter
+    ) {
+      return c.json(
+        {
+          error: "Local agent install unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local agent install unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const beforeResult = needsReadProof && options.localAcp.listHarnesses
-      ? await options.localAcp.listHarnesses()
-      : { harnesses: [] };
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const beforeResult =
+      needsReadProof && options.localAcp.listHarnesses
+        ? await options.localAcp.listHarnesses()
+        : { harnesses: [] };
     const hostMutation = needsReadProof
       ? validateLocalHarnessActionMutation({
-        result: beforeResult,
-        preconditions,
-        operation: "local_harness_install",
-        harnessId,
-        action: "install",
-      })
+          result: beforeResult,
+          preconditions,
+          operation: "local_harness_install",
+          harnessId,
+          action: "install",
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       const result = options.localAcp.installHarness
         ? await options.localAcp.installHarness(harnessId)
         : await options.localAcp.installHarnessAdapter!(harnessId);
       const afterReadToken = localHarnessesReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: harnessId,
-        ...(hostMutation ? { afterReadToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local harness install",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: harnessId,
+          ...(hostMutation ? { afterReadToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local harness install",
+        }),
+      );
       return c.json({
         ...result,
         readToken: afterReadToken,
@@ -3888,56 +4735,81 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            hostMutation?.envelope ?? envelope,
+            message,
+          ),
+        },
+        400,
+      );
     }
   });
 
   app.post("/api/v1/local/harnesses/:harnessId/upgrade", async (c) => {
     const harnessId = c.req.param("harnessId");
-    const envelope = localMutationEnvelope("local_harness_upgrade", "local-harness", harnessId);
+    const envelope = localMutationEnvelope(
+      "local_harness_upgrade",
+      "local-harness",
+      harnessId,
+    );
     if (!options.localAcp?.upgradeHarness) {
-      return c.json({
-        error: "Local agent upgrade unavailable",
-        mutation: hostMutationRejected(envelope, "Local agent upgrade unavailable"),
-      }, 404);
+      return c.json(
+        {
+          error: "Local agent upgrade unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local agent upgrade unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const beforeResult = needsReadProof && options.localAcp.listHarnesses
-      ? await options.localAcp.listHarnesses()
-      : { harnesses: [] };
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const beforeResult =
+      needsReadProof && options.localAcp.listHarnesses
+        ? await options.localAcp.listHarnesses()
+        : { harnesses: [] };
     const hostMutation = needsReadProof
       ? validateLocalHarnessActionMutation({
-        result: beforeResult,
-        preconditions,
-        operation: "local_harness_upgrade",
-        harnessId,
-        action: "upgrade",
-      })
+          result: beforeResult,
+          preconditions,
+          operation: "local_harness_upgrade",
+          harnessId,
+          action: "upgrade",
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       const result = await options.localAcp.upgradeHarness(harnessId);
       const afterReadToken = localHarnessesReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: harnessId,
-        ...(hostMutation ? { afterReadToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local harness upgrade",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: harnessId,
+          ...(hostMutation ? { afterReadToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local harness upgrade",
+        }),
+      );
       return c.json({
         ...result,
         readToken: afterReadToken,
@@ -3945,56 +4817,81 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            hostMutation?.envelope ?? envelope,
+            message,
+          ),
+        },
+        400,
+      );
     }
   });
 
   app.delete("/api/v1/local/harnesses/:harnessId/install", async (c) => {
     const harnessId = c.req.param("harnessId");
-    const envelope = localMutationEnvelope("local_harness_uninstall", "local-harness", harnessId);
+    const envelope = localMutationEnvelope(
+      "local_harness_uninstall",
+      "local-harness",
+      harnessId,
+    );
     if (!options.localAcp?.uninstallHarness) {
-      return c.json({
-        error: "Local agent uninstall unavailable",
-        mutation: hostMutationRejected(envelope, "Local agent uninstall unavailable"),
-      }, 404);
+      return c.json(
+        {
+          error: "Local agent uninstall unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local agent uninstall unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const needsReadProof =
-      !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-    const beforeResult = needsReadProof && options.localAcp.listHarnesses
-      ? await options.localAcp.listHarnesses()
-      : { harnesses: [] };
+      !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+    const beforeResult =
+      needsReadProof && options.localAcp.listHarnesses
+        ? await options.localAcp.listHarnesses()
+        : { harnesses: [] };
     const hostMutation = needsReadProof
       ? validateLocalHarnessActionMutation({
-        result: beforeResult,
-        preconditions,
-        operation: "local_harness_uninstall",
-        harnessId,
-        action: "uninstall",
-      })
+          result: beforeResult,
+          preconditions,
+          operation: "local_harness_uninstall",
+          harnessId,
+          action: "uninstall",
+        })
       : null;
     if (hostMutation && !hostMutation.ok) {
-      return c.json({
-        error: hostMutation.error,
-        mutation: hostMutation.mutation,
-      }, 409);
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
     }
     try {
       const result = await options.localAcp.uninstallHarness(harnessId);
       const afterReadToken = localHarnessesReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: harnessId,
-        ...(hostMutation ? { afterReadToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local harness uninstall",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: harnessId,
+          ...(hostMutation ? { afterReadToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local harness uninstall",
+        }),
+      );
       return c.json({
         ...result,
         readToken: afterReadToken,
@@ -4002,21 +4899,37 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(hostMutation?.envelope ?? envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            hostMutation?.envelope ?? envelope,
+            message,
+          ),
+        },
+        400,
+      );
     }
   });
 
   app.post("/api/v1/local/harnesses/:harnessId/authenticate", async (c) => {
     const harnessId = c.req.param("harnessId");
-    const envelope = localMutationEnvelope("local_harness_authenticate", "local-harness", harnessId);
+    const envelope = localMutationEnvelope(
+      "local_harness_authenticate",
+      "local-harness",
+      harnessId,
+    );
     if (!options.localAcp?.authenticateHarness) {
-      return c.json({
-        error: "Local harness auth unavailable",
-        mutation: hostMutationRejected(envelope, "Local harness auth unavailable"),
-      }, 404);
+      return c.json(
+        {
+          error: "Local harness auth unavailable",
+          mutation: hostMutationRejected(
+            envelope,
+            "Local harness auth unavailable",
+          ),
+        },
+        404,
+      );
     }
     try {
       const body = (await c.req.json().catch(() => ({}))) as {
@@ -4025,44 +4938,54 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       } & ProjectWriteBody;
       const preconditions = requestProjectWritePreconditions(c, body);
       const needsReadProof =
-        !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
-      const beforeResult = needsReadProof && options.localAcp.listHarnesses
-        ? await options.localAcp.listHarnesses()
-        : { harnesses: [] };
+        !!preconditions.actorClientType || !!preconditions.expectedReadToken;
+      const beforeResult =
+        needsReadProof && options.localAcp.listHarnesses
+          ? await options.localAcp.listHarnesses()
+          : { harnesses: [] };
       const hostMutation = needsReadProof
         ? validateLocalHarnessActionMutation({
-          result: beforeResult,
-          preconditions,
-          operation: "local_harness_authenticate",
-          harnessId,
-          action: "authenticate",
-        })
+            result: beforeResult,
+            preconditions,
+            operation: "local_harness_authenticate",
+            harnessId,
+            action: "authenticate",
+          })
         : null;
       if (hostMutation && !hostMutation.ok) {
-        return c.json({
-          error: hostMutation.error,
-          mutation: hostMutation.mutation,
-        }, 409);
+        return c.json(
+          {
+            error: hostMutation.error,
+            mutation: hostMutation.mutation,
+          },
+          409,
+        );
       }
-      const methodId = typeof body.method_id === "string" && body.method_id.length > 0
-        ? body.method_id
-        : typeof body.methodId === "string" && body.methodId.length > 0
-          ? body.methodId
-          : undefined;
+      const methodId =
+        typeof body.method_id === "string" && body.method_id.length > 0
+          ? body.method_id
+          : typeof body.methodId === "string" && body.methodId.length > 0
+            ? body.methodId
+            : undefined;
       const result = await options.localAcp.authenticateHarness(
         harnessId,
         methodId ? { methodId } : undefined,
       );
       const afterReadToken = localHarnessesReceiptReadToken(result);
-      const mutation = hostMutationSucceeded(hostMutation?.envelope ?? envelope, {
-        resultEntityId: harnessId,
-        ...(hostMutation ? { afterReadToken } : {}),
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "local harness authenticate",
-      }));
+      const mutation = hostMutationSucceeded(
+        hostMutation?.envelope ?? envelope,
+        {
+          resultEntityId: harnessId,
+          ...(hostMutation ? { afterReadToken } : {}),
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "local harness authenticate",
+        }),
+      );
       return c.json({
         ...result,
         readToken: afterReadToken,
@@ -4070,23 +4993,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 500);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        500,
+      );
     }
   });
 
   app.post("/api/v1/runtimes/:runtimeId/sessions", async (c) => {
     if (!options.localAcp) {
-      return c.json({
-        error: "Local agent runtime unavailable",
-        mutation: hostMutationRejected({
-          operation: "runtime_session_create",
-          entity: { kind: "session", id: "" },
-          forced: false,
-        }, "Local agent runtime unavailable"),
-      }, 404);
+      return c.json(
+        {
+          error: "Local agent runtime unavailable",
+          mutation: hostMutationRejected(
+            {
+              operation: "runtime_session_create",
+              entity: { kind: "session", id: "" },
+            },
+            "Local agent runtime unavailable",
+          ),
+        },
+        404,
+      );
     }
     const body = (await c.req.json().catch(() => ({}))) as {
       agent_template_id?: string;
@@ -4103,42 +5034,60 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const permissionMode = body.permission_mode?.trim() || undefined;
     let agentId: string | undefined = requestedAgentId;
     if (agentMemberId) {
-      const agentMembers = await db.update((state) => seedLocalAgentMembers(state, userId));
+      const agentMembers = await db.update((state) =>
+        seedLocalAgentMembers(state, userId),
+      );
       const member = agentMembers.find((row) => row.id === agentMemberId);
       if (!member) {
-        return c.json({
-          error: "agent member not found",
-          mutation: hostMutationRejected({
-            operation: "runtime_session_create",
-            entity: { kind: "session", id: "" },
-            forced: false,
-          }, "agent member not found"),
-        }, 404);
+        return c.json(
+          {
+            error: "agent member not found",
+            mutation: hostMutationRejected(
+              {
+                operation: "runtime_session_create",
+                entity: { kind: "session", id: "" },
+              },
+              "agent member not found",
+            ),
+          },
+          404,
+        );
       }
       if (member.runtime_id !== c.req.param("runtimeId")) {
-        return c.json({
-          error: "agent member belongs to a different runtime",
-          mutation: hostMutationRejected({
-            operation: "runtime_session_create",
-            entity: { kind: "session", id: "" },
-            forced: false,
-          }, "agent member belongs to a different runtime"),
-        }, 400);
+        return c.json(
+          {
+            error: "agent member belongs to a different runtime",
+            mutation: hostMutationRejected(
+              {
+                operation: "runtime_session_create",
+                entity: { kind: "session", id: "" },
+              },
+              "agent member belongs to a different runtime",
+            ),
+          },
+          400,
+        );
       }
       agentTemplateId = member.template_id;
       agentId = requestedAgentId ?? member.agent_id ?? undefined;
     }
     if (!agentTemplateId && !agentId) {
-      return c.json({
-        error: "Missing agent_id",
-        mutation: hostMutationRejected({
-          operation: "runtime_session_create",
-          entity: { kind: "session", id: "" },
-          forced: false,
-        }, "Missing agent_id"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing agent_id",
+          mutation: hostMutationRejected(
+            {
+              operation: "runtime_session_create",
+              entity: { kind: "session", id: "" },
+            },
+            "Missing agent_id",
+          ),
+        },
+        400,
+      );
     }
-    const sessionContextId = agentTemplateId ?? DEFAULT_RUNTIME_SESSION_CONTEXT_ID;
+    const sessionContextId =
+      agentTemplateId ?? DEFAULT_RUNTIME_SESSION_CONTEXT_ID;
 
     const localSessionId = body.project_id ? crypto.randomUUID() : undefined;
     if (body.project_id && localSessionId) {
@@ -4159,7 +5108,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
 
     try {
-      const pendingSessionPatches = new Map<string, Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>>();
+      const pendingSessionPatches = new Map<
+        string,
+        Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>
+      >();
       const rememberRuntimeSessionPatch = async (
         sessionId: string,
         patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
@@ -4178,44 +5130,52 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         ...(agentId ? { agentId } : {}),
         ...(permissionMode ? { permissionMode } : {}),
         ...(body.project_id ? { projectId: body.project_id } : {}),
-        ...(body.resume_session_id ? { resumeAcpSessionId: body.resume_session_id } : {}),
+        ...(body.resume_session_id
+          ? { resumeAcpSessionId: body.resume_session_id }
+          : {}),
         ...(body.project_id
           ? {
-              onReady: async (event: { sessionId: string; acpSessionId?: string }) => {
+              onReady: async (event: {
+                sessionId: string;
+                acpSessionId?: string;
+              }) => {
                 await rememberRuntimeSessionPatch(event.sessionId, {
-                  ...(event.acpSessionId ? { acpSessionId: event.acpSessionId } : {}),
+                  ...(event.acpSessionId
+                    ? { acpSessionId: event.acpSessionId }
+                    : {}),
                   status: "active",
                 });
               },
               onError: async (event: { sessionId: string }) => {
-                await rememberRuntimeSessionPatch(event.sessionId, { status: "error" });
+                await rememberRuntimeSessionPatch(event.sessionId, {
+                  status: "error",
+                });
               },
             }
           : {}),
       });
       if (body.project_id && localSessionId) {
-        await finalizeRuntimeSessionId(
-          db,
-          localSessionId,
-          created.session_id,
-          {
-            ...pendingSessionPatches.get(localSessionId),
-            ...pendingSessionPatches.get(created.session_id),
-          },
-        );
+        await finalizeRuntimeSessionId(db, localSessionId, created.session_id, {
+          ...pendingSessionPatches.get(localSessionId),
+          ...pendingSessionPatches.get(created.session_id),
+        });
       }
-      const mutation = hostMutationSucceeded({
-        operation: "runtime_session_create",
-        entity: { kind: "session", id: created.session_id },
-        forced: false,
-      }, {
-        resultEntityId: created.session_id,
-      });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "runtime session create",
-      }));
+      const mutation = hostMutationSucceeded(
+        {
+          operation: "runtime_session_create",
+          entity: { kind: "session", id: created.session_id },
+        },
+        {
+          resultEntityId: created.session_id,
+        },
+      );
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "runtime session create",
+        }),
+      );
       return c.json({
         ...created,
         mutation,
@@ -4223,135 +5183,181 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     } catch (error) {
       const message = formatLocalAcpSessionError(error);
       if (localSessionId) {
-        await sessionMessageStore.appendTurnError?.(localSessionId, null, message);
+        await sessionMessageStore.appendTurnError?.(
+          localSessionId,
+          null,
+          message,
+        );
       }
       console.error("[local-api] local ACP session create failed:", message);
       const envelope = {
         operation: "runtime_session_create",
         entity: { kind: "session", id: localSessionId ?? "" },
-        forced: false,
       };
       if (localSessionId) {
-        const mutation = hostMutationSucceeded(envelope, { resultEntityId: localSessionId });
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "runtime session create",
-        }));
-        return c.json({
-          error: message,
-          session_id: localSessionId,
-          mutation,
-        }, 503);
+        const mutation = hostMutationSucceeded(envelope, {
+          resultEntityId: localSessionId,
+        });
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "runtime session create",
+          }),
+        );
+        return c.json(
+          {
+            error: message,
+            session_id: localSessionId,
+            mutation,
+          },
+          503,
+        );
       }
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 503);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        503,
+      );
     }
   });
 
   app.get("/api/v1/runtimes/:runtimeId/local-sessions/scan", async (c) => {
     if (!options.localAcp) return c.json({ sessions: [] });
-    return c.json(await options.localAcp.listResumeSessions(c.req.param("runtimeId")));
+    return c.json(
+      await options.localAcp.listResumeSessions(c.req.param("runtimeId")),
+    );
   });
 
   app.get("/api/v1/local-sessions/:sessionId/messages", async (c) => {
     const sessionId = c.req.param("sessionId");
     const persisted = await sessionMessageStore.listSessionMessages(sessionId);
     if (persisted) return c.json(persisted);
-    if (!options.localAcp?.listSessionMessages) return c.json({ error: "not found" }, 404);
+    if (!options.localAcp?.listSessionMessages)
+      return c.json({ error: "not found" }, 404);
     const history = await options.localAcp.listSessionMessages(sessionId);
     return history ? c.json(history) : c.json({ error: "not found" }, 404);
   });
 
-		  app.post("/api/v1/local-sessions/:sessionId/_attach", async (c) => {
-		    const sessionId = c.req.param("sessionId");
-		    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
-		    const preconditions = requestProjectWritePreconditions(c, body);
-		    if (!options.localAcp?.attachSession) {
-		      return c.json({
-		        error: "local ACP attach is not available",
-        mutation: hostMutationRejected({
-          operation: "runtime_session_attach",
-          entity: { kind: "session", id: sessionId },
-          forced: false,
-        }, "local ACP attach is not available"),
-      }, 501);
+  app.post("/api/v1/local-sessions/:sessionId/_attach", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
+    const preconditions = requestProjectWritePreconditions(c, body);
+    if (!options.localAcp?.attachSession) {
+      return c.json(
+        {
+          error: "local ACP attach is not available",
+          mutation: hostMutationRejected(
+            {
+              operation: "runtime_session_attach",
+              entity: { kind: "session", id: sessionId },
+            },
+            "local ACP attach is not available",
+          ),
+        },
+        501,
+      );
     }
     const state = await db.load();
-    const session = state.sessions.find((candidate) => candidate.id === sessionId);
+    const session = state.sessions.find(
+      (candidate) => candidate.id === sessionId,
+    );
     if (!session || (session.type ?? "cloud") !== "runtime") {
-      return c.json({
-        error: "runtime session not found",
-        mutation: hostMutationRejected({
-          operation: "runtime_session_attach",
-          entity: { kind: "session", id: sessionId },
-          forced: false,
-        }, "runtime session not found"),
-      }, 404);
+      return c.json(
+        {
+          error: "runtime session not found",
+          mutation: hostMutationRejected(
+            {
+              operation: "runtime_session_attach",
+              entity: { kind: "session", id: sessionId },
+            },
+            "runtime session not found",
+          ),
+        },
+        404,
+      );
     }
     if (!session.runtimeId) {
-      return c.json({
-        error: "runtime session is missing runtimeId",
-        mutation: hostMutationRejected({
-          operation: "runtime_session_attach",
-          entity: { kind: "session", id: sessionId },
-          forced: false,
-        }, "runtime session is missing runtimeId"),
-      }, 409);
+      return c.json(
+        {
+          error: "runtime session is missing runtimeId",
+          mutation: hostMutationRejected(
+            {
+              operation: "runtime_session_attach",
+              entity: { kind: "session", id: sessionId },
+            },
+            "runtime session is missing runtimeId",
+          ),
+        },
+        409,
+      );
     }
-		    if (!session.agentId && !session.agentTemplateId) {
-		      return c.json({
-		        error: "runtime session is missing agent identity",
-        mutation: hostMutationRejected({
-          operation: "runtime_session_attach",
-          entity: { kind: "session", id: sessionId },
-          forced: false,
-        }, "runtime session is missing agent identity"),
-		      }, 409);
-		    }
+    if (!session.agentId && !session.agentTemplateId) {
+      return c.json(
+        {
+          error: "runtime session is missing agent identity",
+          mutation: hostMutationRejected(
+            {
+              operation: "runtime_session_attach",
+              entity: { kind: "session", id: sessionId },
+            },
+            "runtime session is missing agent identity",
+          ),
+        },
+        409,
+      );
+    }
 
-		    const requiresReadProofEnvelope = preconditions.actorClientType === "agent" ||
-		      Boolean(preconditions.expectedReadToken) ||
-		      preconditions.force;
-		    const hostMutation = requiresReadProofEnvelope
-		      ? validateSessionReadMutation({
-		          session,
-		          operation: "attach",
-		          mutationOperation: "runtime_session_attach",
-		          readOperation: "runtime session attach",
-		          preconditions,
-		        })
-		      : null;
-		    if (hostMutation && !hostMutation.ok) {
-		      return c.json({
-		        error: hostMutation.error,
-		        mutation: hostMutation.mutation,
-		      }, 409);
-		    }
-		    const attachEnvelope = hostMutation?.envelope ?? {
-		      operation: "runtime_session_attach",
-		      entity: { kind: "session", id: sessionId },
-		      forced: false,
-		    };
+    const requiresReadProofEnvelope =
+      preconditions.actorClientType === "agent" ||
+      Boolean(preconditions.expectedReadToken);
+    const hostMutation = requiresReadProofEnvelope
+      ? validateSessionReadMutation({
+          session,
+          operation: "attach",
+          mutationOperation: "runtime_session_attach",
+          readOperation: "runtime session attach",
+          preconditions,
+        })
+      : null;
+    if (hostMutation && !hostMutation.ok) {
+      return c.json(
+        {
+          error: hostMutation.error,
+          mutation: hostMutation.mutation,
+        },
+        409,
+      );
+    }
+    const attachEnvelope = hostMutation?.envelope ?? {
+      operation: "runtime_session_attach",
+      entity: { kind: "session", id: sessionId },
+    };
 
-		    const rememberRuntimeSessionPatch = async (
-		      patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
+    const rememberRuntimeSessionPatch = async (
+      patch: Partial<Pick<LocalSession, "acpSessionId" | "status" | "title">>,
     ) => {
       await updateRuntimeSession(db, sessionId, patch);
     };
 
-		    try {
-		      await rememberRuntimeSessionPatch({ status: "starting" });
-		      const attached = await options.localAcp.attachSession({
+    try {
+      await rememberRuntimeSessionPatch({ status: "starting" });
+      const attached = await options.localAcp.attachSession({
         sessionId,
         runtimeId: session.runtimeId,
-        ...(session.agentTemplateId ? { agentTemplateId: session.agentTemplateId } : {}),
+        ...(session.agentTemplateId
+          ? { agentTemplateId: session.agentTemplateId }
+          : {}),
         ...(session.agentId ? { agentId: session.agentId } : {}),
-        ...(session.permissionMode ? { permissionMode: session.permissionMode } : {}),
+        ...(session.permissionMode
+          ? { permissionMode: session.permissionMode }
+          : {}),
         projectId: session.projectId,
-        ...(session.acpSessionId ? { resumeAcpSessionId: session.acpSessionId } : {}),
+        ...(session.acpSessionId
+          ? { resumeAcpSessionId: session.acpSessionId }
+          : {}),
         onReady: async (event: { acpSessionId?: string }) => {
           await rememberRuntimeSessionPatch({
             ...(event.acpSessionId ? { acpSessionId: event.acpSessionId } : {}),
@@ -4361,53 +5367,70 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         onError: async () => {
           await rememberRuntimeSessionPatch({ status: "error" });
         },
-		      });
-		      const afterSession = hostMutation
-		        ? (await db.load()).sessions.find((candidate) => candidate.id === sessionId)
-		        : undefined;
-		      const afterReadToken = afterSession ? sessionReceiptReadToken(afterSession) : undefined;
-		      const mutation = hostMutationSucceeded(attachEnvelope, {
-		        resultEntityId: attached.session_id,
-		        afterReadToken,
-		      });
-		      await db.appendMutationAudit(mutationAuditRecord({
-		        mutation,
-		        actorClientType: preconditions.actorClientType,
-		        reason: "runtime session attach",
-		      }));
-		      return c.json({
-		        ...attached,
-		        mutation,
-		      });
-		    } catch (error) {
-		      const message = formatLocalAcpSessionError(error);
-		      console.error("[local-api] local ACP session attach failed:", message);
-		      await rememberRuntimeSessionPatch({ status: "error" });
-		      const afterSession = hostMutation
-		        ? (await db.load()).sessions.find((candidate) => candidate.id === sessionId)
-		        : undefined;
-		      const afterReadToken = afterSession ? sessionReceiptReadToken(afterSession) : undefined;
-		      const mutation = hostMutationSucceeded(attachEnvelope, {
-		        resultEntityId: sessionId,
-		        afterReadToken,
-		      });
-		      await db.appendMutationAudit(mutationAuditRecord({
-		        mutation,
-		        actorClientType: preconditions.actorClientType,
-		        reason: "runtime session attach",
-		      }));
-		      return c.json({
-		        error: message,
-		        session_id: sessionId,
-		        mutation,
-		      }, 503);
-		    }
+      });
+      const afterSession = hostMutation
+        ? (await db.load()).sessions.find(
+            (candidate) => candidate.id === sessionId,
+          )
+        : undefined;
+      const afterReadToken = afterSession
+        ? sessionReceiptReadToken(afterSession)
+        : undefined;
+      const mutation = hostMutationSucceeded(attachEnvelope, {
+        resultEntityId: attached.session_id,
+        afterReadToken,
+      });
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "runtime session attach",
+        }),
+      );
+      return c.json({
+        ...attached,
+        mutation,
+      });
+    } catch (error) {
+      const message = formatLocalAcpSessionError(error);
+      console.error("[local-api] local ACP session attach failed:", message);
+      await rememberRuntimeSessionPatch({ status: "error" });
+      const afterSession = hostMutation
+        ? (await db.load()).sessions.find(
+            (candidate) => candidate.id === sessionId,
+          )
+        : undefined;
+      const afterReadToken = afterSession
+        ? sessionReceiptReadToken(afterSession)
+        : undefined;
+      const mutation = hostMutationSucceeded(attachEnvelope, {
+        resultEntityId: sessionId,
+        afterReadToken,
+      });
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "runtime session attach",
+        }),
+      );
+      return c.json(
+        {
+          error: message,
+          session_id: sessionId,
+          mutation,
+        },
+        503,
+      );
+    }
   });
 
   app.get("/api/v1/projects", async (c) => {
     const state = await db.load();
     return c.json({
-      projects: activeProjects(state).map((project) => toV1Project(project, state)),
+      projects: activeProjects(state).map((project) =>
+        toV1Project(project, state),
+      ),
     });
   });
 
@@ -4435,58 +5458,82 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return next;
     });
     const readToken = projectReceiptReadToken(project);
-    const mutation = hostMutationSucceeded({
-      operation: "project_create",
-      entity: { kind: "project", id: project.id },
-      forced: false,
-    }, {
-      resultEntityId: project.id,
-      afterReadToken: readToken,
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "v1 project create",
-    }));
-    return c.json({
-      id: project.id,
-      name: project.name,
-      description: project.description,
-      readToken,
-      mutation,
-    }, 201);
-  });
-
-	  app.get("/api/v1/projects/:id/status", async (c) => {
-	    const projectId = c.req.param("id");
-	    const state = await db.load();
-	    const project = findActiveProject(state, projectId, userId);
-	    if (!project) return c.json({ error: "not found" }, 404);
-    const sync = await syncConfig.getPublicConfig();
-    return c.json(buildProjectStatus(
-      { projectId, source: "explicit" },
+    const mutation = hostMutationSucceeded(
       {
-        clashRoot,
-        localApiDataDir,
-        replicationState: { mode: sync.mode, capabilities: sync.capabilities },
+        operation: "project_create",
+        entity: { kind: "project", id: project.id },
       },
-    ));
+      {
+        resultEntityId: project.id,
+        afterReadToken: readToken,
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "v1 project create",
+      }),
+    );
+    return c.json(
+      {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        readToken,
+        mutation,
+      },
+      201,
+    );
   });
 
-	  app.post("/api/v1/text-revisions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown; content?: unknown };
+  app.get("/api/v1/projects/:id/status", async (c) => {
+    const projectId = c.req.param("id");
+    const state = await db.load();
+    const project = findActiveProject(state, projectId, userId);
+    if (!project) return c.json({ error: "not found" }, 404);
+    const sync = await syncConfig.getPublicConfig();
+    return c.json(
+      buildProjectStatus(
+        { projectId, source: "explicit" },
+        {
+          clashRoot,
+          localApiDataDir,
+          replicationState: {
+            mode: sync.mode,
+            capabilities: sync.capabilities,
+          },
+        },
+      ),
+    );
+  });
+
+  app.post("/api/v1/text-revisions", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      revision?: unknown;
+      content?: unknown;
+    };
     const parsed = parseTextRevisionForIndex(body.revision);
     const envelope = {
       operation: "text_revision_index",
-      entity: { kind: "text", id: parsed.ok ? `${parsed.revision.projectId}:${parsed.revision.nodeId}` : "" },
-      forced: false,
+      entity: {
+        kind: "text",
+        id: parsed.ok
+          ? `${parsed.revision.projectId}:${parsed.revision.nodeId}`
+          : "",
+      },
     };
-    const rejectTextRevision = async (message: string, status: 400 | 409 | 500) => {
+    const rejectTextRevision = async (
+      message: string,
+      status: 400 | 409 | 500,
+    ) => {
       const mutation = hostMutationRejected(envelope, message);
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        reason: "text revision rejected",
-      }));
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          reason: "text revision rejected",
+        }),
+      );
       return c.json({ error: message, mutation }, status);
     };
     if (!parsed.ok) {
@@ -4495,23 +5542,39 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const content = typeof body.content === "string" ? body.content : undefined;
     if (content !== undefined) {
       try {
-        await preflightTextRevisionContentBlob(options.dataDir, parsed.revision, content);
+        await preflightTextRevisionContentBlob(
+          options.dataDir,
+          parsed.revision,
+          content,
+        );
       } catch (error) {
         const message = errorMessage(error);
-        return rejectTextRevision(message, message.includes("already exists with different content") ? 409 : 400);
+        return rejectTextRevision(
+          message,
+          message.includes("already exists with different content") ? 409 : 400,
+        );
       }
     }
 
     try {
       const revision = await db.upsertTextRevision(parsed.revision);
-      const contentRecord = content === undefined
-        ? undefined
-        : await storeTextRevisionContentBlob(options.dataDir, parsed.revision, content);
-      const mutation = hostMutationSucceeded(envelope, { resultEntityId: revision.revisionId });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        reason: "text revision indexed",
-      }));
+      const contentRecord =
+        content === undefined
+          ? undefined
+          : await storeTextRevisionContentBlob(
+              options.dataDir,
+              parsed.revision,
+              content,
+            );
+      const mutation = hostMutationSucceeded(envelope, {
+        resultEntityId: revision.revisionId,
+      });
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          reason: "text revision indexed",
+        }),
+      );
       return c.json({
         revision,
         ...(contentRecord ? { content: contentRecord } : {}),
@@ -4519,7 +5582,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       });
     } catch (error) {
       const message = errorMessage(error);
-      return rejectTextRevision(message, message.includes("already exists with different metadata") ? 409 : 500);
+      return rejectTextRevision(
+        message,
+        message.includes("already exists with different metadata") ? 409 : 500,
+      );
     }
   });
 
@@ -4531,140 +5597,80 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       limit: Number.isFinite(limit) ? limit : undefined,
     });
     const entries = await Promise.all(
-      revisions.map((revision) => withTextRevisionContentDescriptor(options.dataDir, revision)),
+      revisions.map((revision) =>
+        withTextRevisionContentDescriptor(options.dataDir, revision),
+      ),
     );
     return c.json({ revisions: entries });
   });
 
-  app.get("/api/v1/projects/:projectId/text-revisions/:revisionId/content", async (c) => {
-    const revision = await db.getTextRevision(c.req.param("projectId"), c.req.param("revisionId"));
-    if (!revision) return c.json({ error: "text revision not found" }, 404);
-    let content: string;
-    try {
-      content = await readFile(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
-    } catch {
-      return c.json({ error: "text revision content not found" }, 404);
-    }
-    if (textRevisionContentHash(content) !== revision.contentHash) {
-      return c.json({ error: "text revision content blob hash mismatch" }, 409);
-    }
-    return new Response(content, {
-      headers: {
-        "content-type": "text/markdown; charset=utf-8",
-        "cache-control": "public, max-age=31536000, immutable",
-        "x-clash-content-hash": revision.contentHash,
-      },
-    });
-  });
-
-  app.post("/api/v1/timeline-revisions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { revision?: unknown; content?: unknown };
-    const parsed = parseTimelineRevisionForIndex(body.revision);
-    const envelope = {
-      operation: "timeline_revision_index",
-      entity: { kind: "timeline", id: parsed.ok ? `${parsed.revision.projectId}:${parsed.revision.nodeId}` : "" },
-      forced: false,
-    };
-    const rejectTimelineRevision = async (message: string, status: 400 | 409 | 500) => {
-      const mutation = hostMutationRejected(envelope, message);
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        reason: "timeline revision rejected",
-      }));
-      return c.json({ error: message, mutation }, status);
-    };
-    if (!parsed.ok) {
-      return rejectTimelineRevision(parsed.error, 400);
-    }
-    const content = typeof body.content === "string" ? body.content : undefined;
-    if (content !== undefined) {
+  app.get(
+    "/api/v1/projects/:projectId/text-revisions/:revisionId/content",
+    async (c) => {
+      const revision = await db.getTextRevision(
+        c.req.param("projectId"),
+        c.req.param("revisionId"),
+      );
+      if (!revision) return c.json({ error: "text revision not found" }, 404);
+      let content: string;
       try {
-        await preflightTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
-      } catch (error) {
-        const message = errorMessage(error);
-        return rejectTimelineRevision(message, message.includes("already exists with different content") ? 409 : 400);
+        content = await readFile(
+          textRevisionContentBlobPath(options.dataDir, revision.contentHash),
+          "utf8",
+        );
+      } catch {
+        return c.json({ error: "text revision content not found" }, 404);
       }
-    }
-
-    try {
-      const revision = await db.upsertTimelineRevision(parsed.revision);
-      const contentRecord = content === undefined
-        ? undefined
-        : await storeTimelineRevisionContentBlob(options.dataDir, parsed.revision, content);
-      const mutation = hostMutationSucceeded(envelope, { resultEntityId: revision.revisionId });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        reason: "timeline revision indexed",
-      }));
-      return c.json({
-        revision,
-        ...(contentRecord ? { content: contentRecord } : {}),
-        mutation,
+      if (textRevisionContentHash(content) !== revision.contentHash) {
+        return c.json(
+          { error: "text revision content blob hash mismatch" },
+          409,
+        );
+      }
+      return new Response(content, {
+        headers: {
+          "content-type": "text/markdown; charset=utf-8",
+          "cache-control": "public, max-age=31536000, immutable",
+          "x-clash-content-hash": revision.contentHash,
+        },
       });
-    } catch (error) {
-      const message = errorMessage(error);
-      return rejectTimelineRevision(message, message.includes("already exists with different metadata") ? 409 : 500);
-    }
-  });
-
-  app.get("/api/v1/projects/:projectId/timeline-revisions", async (c) => {
-    const limit = Number(c.req.query("limit"));
-    const revisions = await db.listTimelineRevisions({
-      projectId: c.req.param("projectId"),
-      nodeId: normalizeString(c.req.query("nodeId")),
-      limit: Number.isFinite(limit) ? limit : undefined,
-    });
-    const entries = await Promise.all(
-      revisions.map((revision) => withTimelineRevisionContentDescriptor(options.dataDir, revision)),
-    );
-    return c.json({ revisions: entries });
-  });
-
-  app.get("/api/v1/projects/:projectId/timeline-revisions/:revisionId/content", async (c) => {
-    const revision = await db.getTimelineRevision(c.req.param("projectId"), c.req.param("revisionId"));
-    if (!revision) return c.json({ error: "timeline revision not found" }, 404);
-    let content: string;
-    try {
-      content = await readFile(timelineRevisionContentBlobPath(options.dataDir, revision.timelineHash), "utf8");
-    } catch {
-      return c.json({ error: "timeline revision content not found" }, 404);
-    }
-    if (timelineRevisionSemanticHash(content) !== revision.timelineHash) {
-      return c.json({ error: "timeline revision content blob hash mismatch" }, 409);
-    }
-    return new Response(content, {
-      headers: {
-        "content-type": "application/yaml; charset=utf-8",
-        "cache-control": "public, max-age=31536000, immutable",
-        "x-clash-timeline-hash": revision.timelineHash,
-      },
-    });
-  });
+    },
+  );
 
   app.get("/api/v1/projects/:id", async (c) => {
     const state = await db.load();
-    const includeDeleted = normalizeString(c.req.query("includeDeleted")) === "true";
+    const includeDeleted =
+      normalizeString(c.req.query("includeDeleted")) === "true";
     const project = includeDeleted
       ? state.projects.find((candidate) => candidate.id === c.req.param("id"))
       : findActiveProject(state, c.req.param("id"));
-    return project ? c.json(toV1Project(project, state)) : c.json({ error: "Project not found" }, 404);
+    return project
+      ? c.json(toV1Project(project, state))
+      : c.json({ error: "Project not found" }, 404);
   });
 
   app.patch("/api/v1/projects/:id", async (c) => {
     const projectId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as { name?: string } & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      name?: string;
+    } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const name = body.name?.trim();
     if (!name) {
-      return c.json({
-        error: "name is required",
-        mutation: hostMutationRejected({
-          operation: "project_update",
-          entity: { kind: "project", id: projectId },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, "name is required"),
-      }, 400);
+      return c.json(
+        {
+          error: "name is required",
+          mutation: hostMutationRejected(
+            {
+              operation: "project_update",
+              entity: { kind: "project", id: projectId },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            "name is required",
+          ),
+        },
+        400,
+      );
     }
     const result = await db.update((state) => {
       const project = findActiveProject(state, projectId);
@@ -4673,12 +5679,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 404 as const,
           body: {
             error: "Project not found",
-            mutation: hostMutationRejected({
-              operation: "project_update",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Project not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "project_update",
+                entity: { kind: "project", id: projectId },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "Project not found",
+            ),
           },
         };
       }
@@ -4710,13 +5718,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         },
       };
     });
-    const mutation = (result.body as { mutation?: HostMutationRecord }).mutation;
+    const mutation = (result.body as { mutation?: HostMutationRecord })
+      .mutation;
     if (mutation?.accepted === true) {
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType: preconditions.actorClientType,
-        reason: "project update",
-      }));
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType: preconditions.actorClientType,
+          reason: "project update",
+        }),
+      );
     }
     return c.json(result.body, result.status);
   });
@@ -4740,127 +5751,147 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.patch("/api/v1/projects/:projectId/canvas/nodes/:nodeId", async (c) => {
     const projectId = c.req.param("projectId");
     const nodeId = c.req.param("nodeId");
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    > &
+      ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const envelope = {
       operation: "canvas_update",
       entity: { kind: "canvas-node", id: nodeId },
       expectedReadToken: preconditions.expectedReadToken,
-      forced: preconditions.force,
     };
     const parsedPatch = canvasNodeDataPatchFromBody(body);
     if (!parsedPatch.ok) {
-      return c.json({
-        error: parsedPatch.error,
-        mutation: hostMutationRejected(envelope, parsedPatch.error),
-      }, 400);
+      return c.json(
+        {
+          error: parsedPatch.error,
+          mutation: hostMutationRejected(envelope, parsedPatch.error),
+        },
+        400,
+      );
     }
     const patch = parsedPatch.patch;
     if (Object.keys(patch).length === 0) {
       const message = "Provide at least one node data field to update";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        400,
+      );
     }
 
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const canvas = new Canvas(doc, () => {});
-      const node = canvas.readNode(nodeId);
-      if (!node) {
-        const message = `Node not found: ${nodeId}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(envelope, message),
-            },
-          },
-        };
-      }
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const canvas = new Canvas(doc, () => {});
+          const node = canvas.readNode(nodeId);
+          if (!node) {
+            const message = `Node not found: ${nodeId}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(envelope, message),
+                },
+              },
+            };
+          }
 
-      const currentReadToken = canvasNodeReadToken(node);
-      const readProof = validateCanvasReadProof({
-        operation: "update",
-        actorClientType: preconditions.actorClientType,
-        node,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
-        force: preconditions.force,
-      });
-      const edges = canvasGuardrailEdges(listCanvasReadProofEdges(doc));
-      const patchGuard = validateCanvasNodePatch({
-        nodeId,
-        node: { type: node.type, data: node.data as Record<string, unknown> },
-        nodes: readCanvasGuardrailNodes(doc),
-        edges,
-        patch,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "canvas_update",
-        entity: { kind: "canvas-node", id: nodeId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        force: preconditions.force,
-        guard: readProof.ok ? patchGuard : readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
-
-      const ok = canvas.updateNode(nodeId, patch);
-      if (!ok) {
-        const message = `Node not found: ${nodeId}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(hostMutation.envelope, message),
-            },
-          },
-        };
-      }
-      const updatedNode = canvas.readNode(nodeId);
-      const afterReadToken = updatedNode ? canvasNodeReceiptReadToken(updatedNode) : undefined;
-      return {
-        value: {
-          status: 200 as const,
-          body: {
-            updated: true,
+          const currentReadToken = canvasNodeReadToken(node);
+          const readProof = validateCanvasReadProof({
+            operation: "update",
+            actorClientType: preconditions.actorClientType,
+            node,
+            expectedReadToken: preconditions.expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
+          });
+          const edges = canvasGuardrailEdges(listCanvasReadProofEdges(doc));
+          const patchGuard = validateCanvasNodePatch({
             nodeId,
-            ...(updatedNode ? { node: updatedNode } : {}),
-            ...(afterReadToken ? { readToken: afterReadToken } : {}),
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: nodeId,
-              afterReadToken,
-            }),
-            ...(preconditions.force ? { forced: true } : {}),
-          },
+            node: {
+              type: node.type,
+              data: node.data as Record<string, unknown>,
+            },
+            nodes: readCanvasGuardrailNodes(doc),
+            edges,
+            patch,
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "canvas_update",
+            entity: { kind: "canvas-node", id: nodeId },
+            expectedReadToken: preconditions.expectedReadToken,
+            currentReadToken,
+            guard: readProof.ok ? patchGuard : readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
+
+          const ok = canvas.updateNode(nodeId, patch);
+          if (!ok) {
+            const message = `Node not found: ${nodeId}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(
+                    hostMutation.envelope,
+                    message,
+                  ),
+                },
+              },
+            };
+          }
+          const updatedNode = canvas.readNode(nodeId);
+          const afterReadToken = updatedNode
+            ? canvasNodeReceiptReadToken(updatedNode)
+            : undefined;
+          return {
+            value: {
+              status: 200 as const,
+              body: {
+                updated: true,
+                nodeId,
+                ...(updatedNode ? { node: updatedNode } : {}),
+                ...(afterReadToken ? { readToken: afterReadToken } : {}),
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: nodeId,
+                  afterReadToken,
+                }),
+              },
+            },
+          };
         },
-      };
-    });
+      );
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "canvas node update",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "canvas node update",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -4875,99 +5906,103 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       operation: "canvas_delete",
       entity: { kind: "canvas-node", id: nodeId },
       expectedReadToken: preconditions.expectedReadToken,
-      forced: preconditions.force,
     };
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const canvas = new Canvas(doc, () => {});
-      const node = canvas.readNode(nodeId);
-      if (!node) {
-        const message = `Node not found: ${nodeId}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(envelope, message),
-            },
-          },
-        };
-      }
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const canvas = new Canvas(doc, () => {});
+          const node = canvas.readNode(nodeId);
+          if (!node) {
+            const message = `Node not found: ${nodeId}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(envelope, message),
+                },
+              },
+            };
+          }
 
-      const currentReadToken = canvasNodeReadToken(node);
-      const readProof = validateCanvasReadProof({
-        operation: "delete",
-        actorClientType: preconditions.actorClientType,
-        node,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
-        force: preconditions.force,
-      });
-      const edges = canvasGuardrailEdges(listCanvasReadProofEdges(doc));
-      const deleteGuard = validateCanvasDelete({
-        nodeId,
-        edges,
-        force: preconditions.force,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "canvas_delete",
-        entity: { kind: "canvas-node", id: nodeId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        force: preconditions.force,
-        guard: readProof.ok ? deleteGuard : readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
-
-      const orphanedReferences = canvasDownstreamTargets(nodeId, edges);
-      const ok = canvas.deleteNode(nodeId);
-      if (!ok) {
-        const message = `Node not found: ${nodeId}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(hostMutation.envelope, message),
-            },
-          },
-        };
-      }
-      return {
-        value: {
-          status: 200 as const,
-          body: {
-            deleted: true,
+          const currentReadToken = canvasNodeReadToken(node);
+          const readProof = validateCanvasReadProof({
+            operation: "delete",
+            actorClientType: preconditions.actorClientType,
+            node,
+            expectedReadToken: preconditions.expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
+          });
+          const edges = canvasGuardrailEdges(listCanvasReadProofEdges(doc));
+          const deleteGuard = validateCanvasDelete({
             nodeId,
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: nodeId,
-            }),
-            ...(preconditions.force ? { forced: true, orphanedReferences } : {}),
-          },
+            edges,
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "canvas_delete",
+            entity: { kind: "canvas-node", id: nodeId },
+            expectedReadToken: preconditions.expectedReadToken,
+            currentReadToken,
+            guard: readProof.ok ? deleteGuard : readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
+
+          ensureCanvasGraphIdentity(doc);
+          const ok = canvas.deleteNode(nodeId);
+          if (!ok) {
+            const message = `Node not found: ${nodeId}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(
+                    hostMutation.envelope,
+                    message,
+                  ),
+                },
+              },
+            };
+          }
+          return {
+            value: {
+              status: 200 as const,
+              body: {
+                deleted: true,
+                nodeId,
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: nodeId,
+                }),
+              },
+            },
+          };
         },
-      };
-    });
+      );
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "canvas node delete",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "canvas node delete",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -4975,7 +6010,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/v1/projects/:projectId/canvas/delete-plan", async (c) => {
     const projectId = c.req.param("projectId");
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const nodeIds = stringArray(body.nodeIds);
     const doc = await replicaStore.recover(projectId);
     const plan = readCanvasBatchDeletePlan(doc, nodeIds);
@@ -4991,115 +6029,131 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/v1/projects/:projectId/canvas/delete-batch", async (c) => {
     const projectId = c.req.param("projectId");
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
-    const nodeIds = normalizeCanvasBatchDeleteNodeIds(stringArray(body.nodeIds));
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    > &
+      ProjectWriteBody;
+    const nodeIds = normalizeCanvasBatchDeleteNodeIds(
+      stringArray(body.nodeIds),
+    );
     const batchId = nodeIds.join(",");
     const preconditions = requestProjectWritePreconditions(c, body);
     const envelope = {
       operation: "canvas_batch_delete",
       entity: { kind: "canvas-node-batch", id: batchId },
       expectedReadToken: preconditions.expectedReadToken,
-      forced: preconditions.force,
     };
     if (nodeIds.length === 0) {
       const message = "delete batch requires at least one node id";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        400,
+      );
     }
 
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const plan = readCanvasBatchDeletePlan(doc, nodeIds);
-      if (!plan.ok) {
-        return {
-          save: false,
-          value: {
-            status: plan.status,
-            body: {
-              error: plan.error,
-              mutation: hostMutationRejected(envelope, plan.error),
-            },
-          },
-        };
-      }
-      const currentReadToken = canvasBatchDeleteReadToken({ nodes: plan.nodes, edges: plan.edges });
-      const readProof = validateCanvasBatchDeleteReadProof({
-        actorClientType: preconditions.actorClientType,
-        nodes: plan.nodes,
-        edges: plan.edges,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasBatchDeleteReadReceipt,
-        force: preconditions.force,
-      });
-      const guardrailEdges = canvasGuardrailEdges(plan.edges);
-      const deleteGuard = validateCanvasBatchDelete({
-        nodeIds: plan.nodeIds,
-        edges: guardrailEdges,
-        force: preconditions.force,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "canvas_batch_delete",
-        entity: { kind: "canvas-node-batch", id: batchId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        force: preconditions.force,
-        guard: readProof.ok ? deleteGuard : readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
-
-      const orphanedReferences = plan.nodeIds.flatMap((nodeId) => canvasDownstreamTargets(nodeId, guardrailEdges));
-      const canvas = new Canvas(doc, () => {});
-      const deleteResult = canvas.deleteNodes(plan.nodeIds);
-      if (deleteResult.deletedNodeIds.length === 0) {
-        const message = `Node(s) not found: ${plan.nodeIds.join(", ")}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(hostMutation.envelope, message),
-            },
-          },
-        };
-      }
-      return {
-        value: {
-          status: 200 as const,
-          body: {
-            deleted: true,
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const plan = readCanvasBatchDeletePlan(doc, nodeIds);
+          if (!plan.ok) {
+            return {
+              save: false,
+              value: {
+                status: plan.status,
+                body: {
+                  error: plan.error,
+                  mutation: hostMutationRejected(envelope, plan.error),
+                },
+              },
+            };
+          }
+          const currentReadToken = canvasBatchDeleteReadToken({
+            nodes: plan.nodes,
+            edges: plan.edges,
+          });
+          const readProof = validateCanvasBatchDeleteReadProof({
+            actorClientType: preconditions.actorClientType,
+            nodes: plan.nodes,
+            edges: plan.edges,
+            expectedReadToken: preconditions.expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasBatchDeleteReadReceipt,
+          });
+          const guardrailEdges = canvasGuardrailEdges(plan.edges);
+          const deleteGuard = validateCanvasBatchDelete({
             nodeIds: plan.nodeIds,
-            deletedNodeIds: [...deleteResult.deletedNodeIds].sort(),
-            deletedEdgeIds: [...deleteResult.deletedEdgeIds].sort(),
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: batchId,
-            }),
-            ...(preconditions.force ? { forced: true, orphanedReferences } : {}),
-          },
+            edges: guardrailEdges,
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "canvas_batch_delete",
+            entity: { kind: "canvas-node-batch", id: batchId },
+            expectedReadToken: preconditions.expectedReadToken,
+            currentReadToken,
+            guard: readProof.ok ? deleteGuard : readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
+
+          ensureCanvasGraphIdentity(doc);
+          const canvas = new Canvas(doc, () => {});
+          const deleteResult = canvas.deleteNodes(plan.nodeIds);
+          if (deleteResult.deletedNodeIds.length === 0) {
+            const message = `Node(s) not found: ${plan.nodeIds.join(", ")}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(
+                    hostMutation.envelope,
+                    message,
+                  ),
+                },
+              },
+            };
+          }
+          return {
+            value: {
+              status: 200 as const,
+              body: {
+                deleted: true,
+                nodeIds: plan.nodeIds,
+                deletedNodeIds: [...deleteResult.deletedNodeIds].sort(),
+                deletedEdgeIds: [...deleteResult.deletedEdgeIds].sort(),
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: batchId,
+                }),
+              },
+            },
+          };
         },
-      };
-    });
+      );
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "canvas batch delete",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "canvas batch delete",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5117,107 +6171,135 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.post("/api/v1/projects/:projectId/canvas/edges/:edgeId", async (c) => {
     const projectId = c.req.param("projectId");
     const edgeId = c.req.param("edgeId");
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    > &
+      ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const envelope = {
       operation: "canvas_add_edge",
       entity: { kind: "canvas-edge", id: edgeId },
       expectedReadToken: preconditions.expectedReadToken,
-      forced: preconditions.force,
     };
     const patch = canvasEdgePatchFromBody(body);
     const source = normalizeString(patch.source);
     const target = normalizeString(patch.target);
     if (!source || !target) {
-      return c.json({
-        error: "Missing edge source or target",
-        mutation: hostMutationRejected(envelope, "Missing edge source or target"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing edge source or target",
+          mutation: hostMutationRejected(
+            envelope,
+            "Missing edge source or target",
+          ),
+        },
+        400,
+      );
     }
 
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const existing = readCanvasEdge(doc, edgeId);
-      const currentEdges = listCanvasReadProofEdges(doc);
-      const currentReadToken = canvasEdgesReadToken(currentEdges);
-      if (existing && !preconditions.force) {
-        const message = `Edge already exists: ${edgeId}`;
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected({
-                ...envelope,
-                beforeReadToken: currentReadToken,
-              }, message),
-            },
-          },
-        };
-      }
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const existing = readCanvasEdge(doc, edgeId);
+          const currentEdges = listCanvasReadProofEdges(doc);
+          const currentReadToken = canvasEdgesReadToken(currentEdges);
+          if (existing) {
+            const message = `Edge already exists: ${edgeId}`;
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(
+                    {
+                      ...envelope,
+                      beforeReadToken: currentReadToken,
+                    },
+                    message,
+                  ),
+                },
+              },
+            };
+          }
 
-      const readProof = validateCanvasEdgesReadProof({
-        operation: "add",
-        actorClientType: preconditions.actorClientType,
-        edges: currentEdges,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasEdgesReadReceipt,
-        force: preconditions.force,
-      });
-      const edgeGuard = validateCanvasEdgeAdd({
-        edge: { source, target },
-        nodes: readCanvasGuardrailNodes(doc),
-        edges: canvasGuardrailEdges(currentEdges),
-        force: preconditions.force,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "canvas_add_edge",
-        entity: { kind: "canvas-edge", id: edgeId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        force: preconditions.force,
-        guard: readProof.ok ? edgeGuard : readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
+          const readProof = validateCanvasEdgesReadProof({
+            operation: "add",
+            actorClientType: preconditions.actorClientType,
+            edges: currentEdges,
+            expectedReadToken: preconditions.expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasEdgesReadReceipt,
+          });
+          const edgeGuard = validateCanvasEdgeAdd({
+            edge: { source, target },
+            nodes: readCanvasGuardrailNodes(doc),
+            edges: canvasGuardrailEdges(currentEdges),
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "canvas_add_edge",
+            entity: { kind: "canvas-edge", id: edgeId },
+            expectedReadToken: preconditions.expectedReadToken,
+            currentReadToken,
+            guard: readProof.ok ? edgeGuard : readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
 
-      doc.getMap("edges").set(edgeId, { ...patch, source, target });
-      const edge = readCanvasEdge(doc, edgeId);
-      const afterReadToken = canvasEdgesReceiptReadToken(listCanvasReadProofEdges(doc));
-      return {
-        value: {
-          status: 200 as const,
-          body: {
-            edge: edge ? canvasEdgeResponse(edge) : undefined,
-            readToken: afterReadToken,
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: edgeId,
-              afterReadToken,
-            }),
-            ...(preconditions.force ? { forced: true } : {}),
-          },
+          const canvas = edgeCanvas(doc, { id: edgeId, source, target });
+          canvas.insertEdge(
+            edgeId,
+            source,
+            target,
+            typeof patch.type === "string" ? patch.type : "default",
+            typeof patch.sourceHandle === "string"
+              ? patch.sourceHandle
+              : undefined,
+            typeof patch.targetHandle === "string"
+              ? patch.targetHandle
+              : undefined,
+          );
+          const edge = readCanvasEdge(doc, edgeId);
+          const afterReadToken = canvasEdgesReceiptReadToken(
+            listCanvasReadProofEdges(doc),
+          );
+          return {
+            value: {
+              status: 200 as const,
+              body: {
+                edge: edge ? canvasEdgeResponse(edge) : undefined,
+                readToken: afterReadToken,
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: edgeId,
+                  afterReadToken,
+                }),
+              },
+            },
+          };
         },
-      };
-    });
+      );
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "canvas edge add",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "canvas edge add",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5226,117 +6308,148 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.patch("/api/v1/projects/:projectId/canvas/edges/:edgeId", async (c) => {
     const projectId = c.req.param("projectId");
     const edgeId = c.req.param("edgeId");
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown> & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    > &
+      ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const envelope = {
       operation: "canvas_update_edge",
       entity: { kind: "canvas-edge", id: edgeId },
       expectedReadToken: preconditions.expectedReadToken,
-      forced: preconditions.force,
     };
     const patch = canvasEdgePatchFromBody(body);
-    if (Object.prototype.hasOwnProperty.call(patch, "source") && !normalizeString(patch.source)) {
-      return c.json({
-        error: "Invalid edge source",
-        mutation: hostMutationRejected(envelope, "Invalid edge source"),
-      }, 400);
-    }
-    if (Object.prototype.hasOwnProperty.call(patch, "target") && !normalizeString(patch.target)) {
-      return c.json({
-        error: "Invalid edge target",
-        mutation: hostMutationRejected(envelope, "Invalid edge target"),
-      }, 400);
-    }
-
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const existing = readCanvasEdge(doc, edgeId);
-      if (!existing) {
-        const message = `Edge not found: ${edgeId}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(envelope, message),
-            },
-          },
-        };
-      }
-      const currentReadToken = canvasEdgeReadToken(existing);
-      const currentEdges = listCanvasReadProofEdges(doc);
-      const readProof = validateCanvasEdgeReadProof({
-        operation: "update",
-        actorClientType: preconditions.actorClientType,
-        edge: existing,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasEdgeReadReceipt,
-        force: preconditions.force,
-      });
-      const existingEndpoint = typeof existing.source === "string" && typeof existing.target === "string"
-        ? { source: existing.source, target: existing.target }
-        : null;
-      const edgeGuard = validateCanvasEdgePatch({
-        existingEdge: existingEndpoint,
-        patch,
-        nodes: readCanvasGuardrailNodes(doc),
-        edges: canvasGuardrailEdges(currentEdges),
-        force: preconditions.force,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "canvas_update_edge",
-        entity: { kind: "canvas-edge", id: edgeId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        force: preconditions.force,
-        guard: readProof.ok ? edgeGuard : readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
-
-      const { id: _id, readToken: _readToken, ...persistedExisting } = existing as Record<string, unknown>;
-      doc.getMap("edges").set(edgeId, {
-        ...persistedExisting,
-        ...patch,
-        ...(Object.prototype.hasOwnProperty.call(patch, "source") ? { source: normalizeString(patch.source) } : {}),
-        ...(Object.prototype.hasOwnProperty.call(patch, "target") ? { target: normalizeString(patch.target) } : {}),
-      });
-      const updated = readCanvasEdge(doc, edgeId);
-      const afterReadToken = updated ? canvasEdgeReceiptReadToken(updated) : undefined;
-      return {
-        value: {
-          status: 200 as const,
-          body: {
-            edge: updated ? canvasEdgeResponse(updated) : undefined,
-            ...(afterReadToken ? { readToken: afterReadToken } : {}),
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: edgeId,
-              afterReadToken,
-            }),
-            ...(preconditions.force ? { forced: true } : {}),
-          },
+    if (
+      Object.prototype.hasOwnProperty.call(patch, "source") &&
+      !normalizeString(patch.source)
+    ) {
+      return c.json(
+        {
+          error: "Invalid edge source",
+          mutation: hostMutationRejected(envelope, "Invalid edge source"),
         },
-      };
-    });
+        400,
+      );
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(patch, "target") &&
+      !normalizeString(patch.target)
+    ) {
+      return c.json(
+        {
+          error: "Invalid edge target",
+          mutation: hostMutationRejected(envelope, "Invalid edge target"),
+        },
+        400,
+      );
+    }
+
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const existing = readCanvasEdge(doc, edgeId);
+          if (!existing) {
+            const message = `Edge not found: ${edgeId}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(envelope, message),
+                },
+              },
+            };
+          }
+          const currentReadToken = canvasEdgeReadToken(existing);
+          const currentEdges = listCanvasReadProofEdges(doc);
+          const readProof = validateCanvasEdgeReadProof({
+            operation: "update",
+            actorClientType: preconditions.actorClientType,
+            edge: existing,
+            expectedReadToken: preconditions.expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasEdgeReadReceipt,
+          });
+          const existingEndpoint =
+            typeof existing.source === "string" &&
+            typeof existing.target === "string"
+              ? { source: existing.source, target: existing.target }
+              : null;
+          const edgeGuard = validateCanvasEdgePatch({
+            existingEdge: existingEndpoint,
+            patch,
+            nodes: readCanvasGuardrailNodes(doc),
+            edges: canvasGuardrailEdges(currentEdges),
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "canvas_update_edge",
+            entity: { kind: "canvas-edge", id: edgeId },
+            expectedReadToken: preconditions.expectedReadToken,
+            currentReadToken,
+            guard: readProof.ok ? edgeGuard : readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
+
+          ensureCanvasGraphIdentity(doc);
+          const canvas = edgeCanvas(doc, existing);
+          canvas.updateEdge(edgeId, {
+            ...(Object.prototype.hasOwnProperty.call(patch, "source")
+              ? { source: normalizeString(patch.source) }
+              : {}),
+            ...(Object.prototype.hasOwnProperty.call(patch, "target")
+              ? { target: normalizeString(patch.target) }
+              : {}),
+            ...(typeof patch.type === "string" ? { type: patch.type } : {}),
+            ...(typeof patch.sourceHandle === "string"
+              ? { sourceHandle: patch.sourceHandle }
+              : {}),
+            ...(typeof patch.targetHandle === "string"
+              ? { targetHandle: patch.targetHandle }
+              : {}),
+          });
+          const updated = readCanvasEdge(doc, edgeId);
+          const afterReadToken = updated
+            ? canvasEdgeReceiptReadToken(updated)
+            : undefined;
+          return {
+            value: {
+              status: 200 as const,
+              body: {
+                edge: updated ? canvasEdgeResponse(updated) : undefined,
+                ...(afterReadToken ? { readToken: afterReadToken } : {}),
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: edgeId,
+                  afterReadToken,
+                }),
+              },
+            },
+          };
+        },
+      );
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "canvas edge update",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "canvas edge update",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5351,91 +6464,98 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       operation: "canvas_delete_edge",
       entity: { kind: "canvas-edge", id: edgeId },
       expectedReadToken: preconditions.expectedReadToken,
-      forced: preconditions.force,
     };
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const existing = readCanvasEdge(doc, edgeId);
-      if (!existing) {
-        const message = `Edge not found: ${edgeId}`;
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(envelope, message),
-            },
-          },
-        };
-      }
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const existing = readCanvasEdge(doc, edgeId);
+          if (!existing) {
+            const message = `Edge not found: ${edgeId}`;
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(envelope, message),
+                },
+              },
+            };
+          }
 
-      const currentReadToken = canvasEdgeReadToken(existing);
-      const currentEdges = listCanvasReadProofEdges(doc);
-      const readProof = validateCanvasEdgeReadProof({
-        operation: "delete",
-        actorClientType: preconditions.actorClientType,
-        edge: existing,
-        expectedReadToken: preconditions.expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasEdgeReadReceipt,
-        force: preconditions.force,
-      });
-      const existingEndpoint = typeof existing.source === "string" && typeof existing.target === "string"
-        ? { source: existing.source, target: existing.target }
-        : { source: "", target: "" };
-      const deleteGuard = validateCanvasEdgeDelete({
-        edge: existingEndpoint,
-        nodes: readCanvasGuardrailNodes(doc),
-        edges: canvasGuardrailEdges(currentEdges),
-        force: preconditions.force,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "canvas_delete_edge",
-        entity: { kind: "canvas-edge", id: edgeId },
-        expectedReadToken: preconditions.expectedReadToken,
-        currentReadToken,
-        force: preconditions.force,
-        guard: readProof.ok ? deleteGuard : readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
+          const currentReadToken = canvasEdgeReadToken(existing);
+          const currentEdges = listCanvasReadProofEdges(doc);
+          const readProof = validateCanvasEdgeReadProof({
+            operation: "delete",
+            actorClientType: preconditions.actorClientType,
+            edge: existing,
+            expectedReadToken: preconditions.expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasEdgeReadReceipt,
+          });
+          const existingEndpoint =
+            typeof existing.source === "string" &&
+            typeof existing.target === "string"
+              ? { source: existing.source, target: existing.target }
+              : { source: "", target: "" };
+          const deleteGuard = validateCanvasEdgeDelete({
+            edge: existingEndpoint,
+            nodes: readCanvasGuardrailNodes(doc),
+            edges: canvasGuardrailEdges(currentEdges),
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "canvas_delete_edge",
+            entity: { kind: "canvas-edge", id: edgeId },
+            expectedReadToken: preconditions.expectedReadToken,
+            currentReadToken,
+            guard: readProof.ok ? deleteGuard : readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
 
-      doc.getMap("edges").delete(edgeId);
-      const afterReadToken = canvasEdgesReceiptReadToken(listCanvasReadProofEdges(doc));
-      return {
-        value: {
-          status: 200 as const,
-          body: {
-            deleted: true,
-            edgeId,
-            readToken: afterReadToken,
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: edgeId,
-              afterReadToken,
-            }),
-            ...(preconditions.force ? { forced: true } : {}),
-          },
+          ensureCanvasGraphIdentity(doc);
+          const canvas = edgeCanvas(doc, existing);
+          canvas.deleteEdge(edgeId);
+          const afterReadToken = canvasEdgesReceiptReadToken(
+            listCanvasReadProofEdges(doc),
+          );
+          return {
+            value: {
+              status: 200 as const,
+              body: {
+                deleted: true,
+                edgeId,
+                readToken: afterReadToken,
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: edgeId,
+                  afterReadToken,
+                }),
+              },
+            },
+          };
         },
-      };
-    });
+      );
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "canvas edge delete",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "canvas edge delete",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5453,12 +6573,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 404 as const,
           body: {
             error: "Project not found",
-            mutation: hostMutationRejected({
-              operation: "project_delete",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Project not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "project_delete",
+                entity: { kind: "project", id: projectId },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "Project not found",
+            ),
           },
         };
       }
@@ -5479,7 +6601,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 404 as const,
           body: {
             error: "Project not found",
-            mutation: hostMutationRejected(hostMutation.envelope, "Project not found"),
+            mutation: hostMutationRejected(
+              hostMutation.envelope,
+              "Project not found",
+            ),
           },
         };
       }
@@ -5503,11 +6628,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "project soft delete",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "project soft delete",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5519,18 +6646,23 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const preconditions = requestProjectWritePreconditions(c, body);
     const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
     const result = await db.update((state) => {
-      const project = state.projects.find((candidate) => candidate.id === projectId && isDeletedProject(candidate));
+      const project = state.projects.find(
+        (candidate) =>
+          candidate.id === projectId && isDeletedProject(candidate),
+      );
       if (!project) {
         return {
           status: 404 as const,
           body: {
             error: "Project recovery point not found",
-            mutation: hostMutationRejected({
-              operation: "project_restore",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Project recovery point not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "project_restore",
+                entity: { kind: "project", id: projectId },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "Project recovery point not found",
+            ),
           },
         };
       }
@@ -5551,7 +6683,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 404 as const,
           body: {
             error: "Project recovery point not found",
-            mutation: hostMutationRejected(hostMutation.envelope, "Project recovery point not found"),
+            mutation: hostMutationRejected(
+              hostMutation.envelope,
+              "Project recovery point not found",
+            ),
           },
         };
       }
@@ -5573,11 +6708,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "project restore",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "project restore",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5585,35 +6722,49 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.delete("/api/v1/projects/:id/purge", async (c) => {
     const projectId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody & { confirm?: unknown };
+    const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody & {
+      confirm?: unknown;
+    };
     const preconditions = requestProjectWritePreconditions(c, body);
     const recoveryPolicy = await projectRecoveryPolicy(syncConfig);
-    const purgedRecoveryPolicy = { ...recoveryPolicy, localRestoreAllowed: false };
+    const purgedRecoveryPolicy = {
+      ...recoveryPolicy,
+      localRestoreAllowed: false,
+    };
     if (body.confirm !== "purge") {
-      return c.json({
-        error: "confirm must be \"purge\"",
-        mutation: hostMutationRejected({
-          operation: "project_purge",
-          entity: { kind: "project", id: projectId },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, "confirm must be \"purge\""),
-      }, 400);
+      return c.json(
+        {
+          error: 'confirm must be "purge"',
+          mutation: hostMutationRejected(
+            {
+              operation: "project_purge",
+              entity: { kind: "project", id: projectId },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            'confirm must be "purge"',
+          ),
+        },
+        400,
+      );
     }
 
     const result = await db.update((state) => {
-      const project = state.projects.find((candidate) => candidate.id === projectId);
+      const project = state.projects.find(
+        (candidate) => candidate.id === projectId,
+      );
       if (!project) {
         return {
           status: 404 as const,
           body: {
             error: "Project recovery point not found",
-            mutation: hostMutationRejected({
-              operation: "project_purge",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Project recovery point not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "project_purge",
+                entity: { kind: "project", id: projectId },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "Project recovery point not found",
+            ),
           },
         };
       }
@@ -5622,12 +6773,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 409 as const,
           body: {
             error: "Project must be deleted before purge",
-            mutation: hostMutationRejected({
-              operation: "project_purge",
-              entity: { kind: "project", id: projectId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "Project must be deleted before purge"),
+            mutation: hostMutationRejected(
+              {
+                operation: "project_purge",
+                entity: { kind: "project", id: projectId },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "Project must be deleted before purge",
+            ),
           },
         };
       }
@@ -5643,8 +6796,8 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         };
       }
       const purgeAfter = projectPurgeAfter(project);
-      if (!preconditions.force && !canPurgeProject(project)) {
-        const message = `Project purge is delayed until ${purgeAfter}; pass force for an explicit admin purge.`;
+      if (!canPurgeProject(project)) {
+        const message = `Project purge is delayed until ${purgeAfter}.`;
         return {
           status: 409 as const,
           body: {
@@ -5662,7 +6815,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 404 as const,
           body: {
             error: "Project recovery point not found",
-            mutation: hostMutationRejected(hostMutation.envelope, "Project recovery point not found"),
+            mutation: hostMutationRejected(
+              hostMutation.envelope,
+              "Project recovery point not found",
+            ),
           },
         };
       }
@@ -5686,11 +6842,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       await replicaStore.deleteReplica(projectId);
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "project purge",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "project purge",
+          }),
+        );
       }
       return c.json({ ...result.body, replicaDeleted: true }, result.status);
     }
@@ -5710,32 +6868,45 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/sessions", async (c) => {
     const state = await db.load();
     const projectId = c.req.query("projectId");
-    const activeProjectIds = new Set(activeProjects(state).map((project) => project.id));
+    const activeProjectIds = new Set(
+      activeProjects(state).map((project) => project.id),
+    );
     return c.json({
       sessions: projectId
-        ? (
-            isDeletedKnownProject(state, projectId)
-              ? []
-              : state.sessions.filter((s) => s.projectId === projectId)
+        ? (isDeletedKnownProject(state, projectId)
+            ? []
+            : state.sessions.filter((s) => s.projectId === projectId)
           ).map(publicLocalSession)
         : state.sessions
-            .filter((session) => !isDeletedKnownProject(state, session.projectId) || activeProjectIds.has(session.projectId))
+            .filter(
+              (session) =>
+                !isDeletedKnownProject(state, session.projectId) ||
+                activeProjectIds.has(session.projectId),
+            )
             .map(publicLocalSession),
     });
   });
 
   app.post("/api/v1/sessions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string; title?: string } & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      projectId?: string;
+      title?: string;
+    } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     if (!body.projectId) {
-      return c.json({
-        error: "Missing projectId",
-        mutation: hostMutationRejected({
-          operation: "session_create",
-          entity: { kind: "session", id: "" },
-          forced: false,
-        }, "Missing projectId"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing projectId",
+          mutation: hostMutationRejected(
+            {
+              operation: "session_create",
+              entity: { kind: "session", id: "" },
+            },
+            "Missing projectId",
+          ),
+        },
+        400,
+      );
     }
     const created = await db.update((state) => {
       if (isDeletedKnownProject(state, body.projectId!)) {
@@ -5757,27 +6928,36 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return { ok: true as const, session };
     });
     if (!created.ok) {
-      return c.json({
-        error: created.error,
-        mutation: hostMutationRejected({
-          operation: "session_create",
-          entity: { kind: "session", id: "" },
-          forced: false,
-        }, created.error),
-      }, 409);
+      return c.json(
+        {
+          error: created.error,
+          mutation: hostMutationRejected(
+            {
+              operation: "session_create",
+              entity: { kind: "session", id: "" },
+            },
+            created.error,
+          ),
+        },
+        409,
+      );
     }
-    const mutation = hostMutationSucceeded({
-      operation: "session_create",
-      entity: { kind: "session", id: created.session.id },
-      forced: false,
-    }, {
-      resultEntityId: created.session.id,
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "session create",
-    }));
+    const mutation = hostMutationSucceeded(
+      {
+        operation: "session_create",
+        entity: { kind: "session", id: created.session.id },
+      },
+      {
+        resultEntityId: created.session.id,
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "session create",
+      }),
+    );
     return c.json({
       threadId: created.session.id,
       title: created.session.title,
@@ -5788,46 +6968,61 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.delete("/api/v1/sessions", async (c) => {
     const threadId = c.req.query("threadId");
     if (!threadId) {
-      return c.json({
-        error: "Missing threadId",
-        mutation: hostMutationRejected({
-          operation: "session_delete",
-          entity: { kind: "session", id: "" },
-          forced: false,
-        }, "Missing threadId"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing threadId",
+          mutation: hostMutationRejected(
+            {
+              operation: "session_delete",
+              entity: { kind: "session", id: "" },
+            },
+            "Missing threadId",
+          ),
+        },
+        400,
+      );
     }
 
     const preconditions = requestProjectWritePreconditions(c);
     const result = await db.update((state) => {
-      const session = state.sessions.find((candidate) => candidate.id === threadId);
+      const session = state.sessions.find(
+        (candidate) => candidate.id === threadId,
+      );
       if (!session) {
         return {
           status: 404 as const,
           body: {
             error: "Not found",
-            mutation: hostMutationRejected({
-              operation: "session_delete",
-              entity: { kind: "session", id: threadId },
-              forced: false,
-            }, "Not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "session_delete",
+                entity: { kind: "session", id: threadId },
+              },
+              "Not found",
+            ),
           },
         };
       }
-      if (!preconditions.actorClientType && !preconditions.expectedReadToken && !preconditions.force) {
-        state.sessions = state.sessions.filter((session) => session.id !== threadId);
-        state.sessionMessages = state.sessionMessages.filter((message) => message.session_id !== threadId);
+      if (!preconditions.actorClientType && !preconditions.expectedReadToken) {
+        state.sessions = state.sessions.filter(
+          (session) => session.id !== threadId,
+        );
+        state.sessionMessages = state.sessionMessages.filter(
+          (message) => message.session_id !== threadId,
+        );
         return {
           status: 200 as const,
           body: {
             ok: true,
-            mutation: hostMutationSucceeded({
-              operation: "session_delete",
-              entity: { kind: "session", id: threadId },
-              forced: false,
-            }, {
-              resultEntityId: threadId,
-            }),
+            mutation: hostMutationSucceeded(
+              {
+                operation: "session_delete",
+                entity: { kind: "session", id: threadId },
+              },
+              {
+                resultEntityId: threadId,
+              },
+            ),
           },
         };
       }
@@ -5845,8 +7040,12 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           },
         };
       }
-      state.sessions = state.sessions.filter((session) => session.id !== threadId);
-      state.sessionMessages = state.sessionMessages.filter((message) => message.session_id !== threadId);
+      state.sessions = state.sessions.filter(
+        (session) => session.id !== threadId,
+      );
+      state.sessionMessages = state.sessionMessages.filter(
+        (message) => message.session_id !== threadId,
+      );
       return {
         status: 200 as const,
         body: {
@@ -5860,11 +7059,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "session delete",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "session delete",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -5882,15 +7083,20 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.post("/assets/sign-batch", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { keys?: unknown };
     const keys = Array.isArray(body.keys)
-      ? body.keys.filter((key): key is string => typeof key === "string" && key.length > 0)
+      ? body.keys.filter(
+          (key): key is string => typeof key === "string" && key.length > 0,
+        )
       : [];
     const exp = signedUrlExp();
-    return c.json({ urls: keys.map((key) => ({ key, url: localAssetUrl(c, key), exp })) });
+    return c.json({
+      urls: keys.map((key) => ({ key, url: localAssetUrl(c, key), exp })),
+    });
   });
 
   app.post("/api/custom-action/upload", async (c) => {
     const form = await c.req.formData();
-    const actorClientType = normalizeString(c.req.header("x-clash-client-type")) ??
+    const actorClientType =
+      normalizeString(c.req.header("x-clash-client-type")) ??
       normalizeString(c.req.header("x-clash-actor-client-type")) ??
       normalizeString(form.get("actorClientType"));
     const projectId = String(form.get("projectId") ?? "");
@@ -5898,24 +7104,41 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const nodeId = String(form.get("nodeId") ?? "");
     const outputType = String(form.get("outputType") ?? "image");
     const outputIndexRaw = form.get("outputIndex");
-    const outputIndex = outputIndexRaw == null ? 0 : Number.parseInt(String(outputIndexRaw), 10) || 0;
+    const outputIndex =
+      outputIndexRaw == null
+        ? 0
+        : Number.parseInt(String(outputIndexRaw), 10) || 0;
     const indexSuffix = outputIndex > 0 ? `-${outputIndex}` : "";
     const resultId = taskId ? `${taskId}${indexSuffix}` : "";
-    const envelope = localMutationEnvelope("custom_action_upload", "custom-action-result", resultId);
+    const envelope = localMutationEnvelope(
+      "custom_action_upload",
+      "custom-action-result",
+      resultId,
+    );
     if (!projectId || !taskId || !nodeId) {
-      return c.json({
-        error: "Missing required fields: projectId, taskId, nodeId",
-        mutation: hostMutationRejected(envelope, "Missing required fields: projectId, taskId, nodeId"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing required fields: projectId, taskId, nodeId",
+          mutation: hostMutationRejected(
+            envelope,
+            "Missing required fields: projectId, taskId, nodeId",
+          ),
+        },
+        400,
+      );
     }
 
     if (outputType === "text") {
-      const mutation = hostMutationSucceeded(envelope, { resultEntityId: resultId });
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType,
-        reason: "custom action upload",
-      }));
+      const mutation = hostMutationSucceeded(envelope, {
+        resultEntityId: resultId,
+      });
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType,
+          reason: "custom action upload",
+        }),
+      );
       return c.json({
         success: true,
         storageKey: null,
@@ -5926,13 +7149,24 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
     const file = form.get("file");
     if (!file || typeof file === "string") {
-      return c.json({
-        error: "Missing file for image/video/audio output",
-        mutation: hostMutationRejected(envelope, "Missing file for image/video/audio output"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing file for image/video/audio output",
+          mutation: hostMutationRejected(
+            envelope,
+            "Missing file for image/video/audio output",
+          ),
+        },
+        400,
+      );
     }
 
-    const kind = outputType === "video" ? "video" : outputType === "audio" ? "audio" : "image";
+    const kind =
+      outputType === "video"
+        ? "video"
+        : outputType === "audio"
+          ? "audio"
+          : "image";
     const ext = kind === "video" ? ".mp4" : kind === "audio" ? ".mp3" : ".png";
     const storageKey = `projects/${sanitizeFileName(projectId)}/custom/${sanitizeFileName(taskId)}${indexSuffix}${ext}`;
     let path: string;
@@ -5940,30 +7174,46 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       path = await assetPathForWrite(options.dataDir, storageKey);
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        400,
+      );
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const contentHash = sha256Hex(bytes);
     const assetId = outputIndex > 0 ? `${taskId}${indexSuffix}` : taskId;
     const existingState = await db.load();
-    const existingAsset = existingState.assets.find((item) => item.id === assetId);
+    const existingAsset = existingState.assets.find(
+      (item) => item.id === assetId,
+    );
     if (existingAsset) {
-      const metadata = existingAsset.metadata && typeof existingAsset.metadata === "object" && !Array.isArray(existingAsset.metadata)
-        ? existingAsset.metadata as Record<string, unknown>
-        : {};
-      const existingContentHash = typeof metadata.contentHash === "string" ? metadata.contentHash : undefined;
-      const checkpointConflict = existingAsset.kind !== kind ||
+      const metadata =
+        existingAsset.metadata &&
+        typeof existingAsset.metadata === "object" &&
+        !Array.isArray(existingAsset.metadata)
+          ? (existingAsset.metadata as Record<string, unknown>)
+          : {};
+      const existingContentHash =
+        typeof metadata.contentHash === "string"
+          ? metadata.contentHash
+          : undefined;
+      const checkpointConflict =
+        existingAsset.kind !== kind ||
         existingAsset.srcR2Key !== storageKey ||
         existingContentHash !== contentHash;
       if (checkpointConflict) {
-        const message = "Custom action output already exists with different checkpoint content. Use a new task id/output index or create an explicit replacement.";
-        return c.json({
-          error: message,
-          mutation: hostMutationRejected(envelope, message),
-        }, 409);
+        const message =
+          "Custom action output already exists with different checkpoint content. Use a new task id/output index or create an explicit replacement.";
+        return c.json(
+          {
+            error: message,
+            mutation: hostMutationRejected(envelope, message),
+          },
+          409,
+        );
       }
     }
     await writeFile(path, bytes);
@@ -5976,7 +7226,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       kind,
       srcR2Key: storageKey,
       coverR2Key: null,
-      metadata: { bytes: bytes.byteLength, contentType: file.type || contentTypeForPath(storageKey), contentHash },
+      metadata: {
+        bytes: bytes.byteLength,
+        contentType: file.type || contentTypeForPath(storageKey),
+        contentHash,
+      },
       sourceModel: "custom-action",
       sourcePrompt: null,
       sourceTaskId: taskId,
@@ -5993,15 +7247,21 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ];
       state.assetRefs = [
         { assetId: asset.id, projectId, importedAt: at },
-        ...state.assetRefs.filter((ref) => !(ref.assetId === asset.id && ref.projectId === projectId)),
+        ...state.assetRefs.filter(
+          (ref) => !(ref.assetId === asset.id && ref.projectId === projectId),
+        ),
       ];
     });
-    const mutation = hostMutationSucceeded(envelope, { resultEntityId: assetId });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType,
-      reason: "custom action upload",
-    }));
+    const mutation = hostMutationSucceeded(envelope, {
+      resultEntityId: assetId,
+    });
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType,
+        reason: "custom action upload",
+      }),
+    );
     return c.json({
       success: true,
       storageKey,
@@ -6014,33 +7274,51 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const form = await c.req.formData();
     const file = form.get("file");
     if (!file || typeof file === "string") {
-      const envelope = localMutationEnvelope("asset_blob_upload", "asset-blob", "");
-      return c.json({
-        error: "Missing file",
-        mutation: hostMutationRejected(envelope, "Missing file"),
-      }, 400);
+      const envelope = localMutationEnvelope(
+        "asset_blob_upload",
+        "asset-blob",
+        "",
+      );
+      return c.json(
+        {
+          error: "Missing file",
+          mutation: hostMutationRejected(envelope, "Missing file"),
+        },
+        400,
+      );
     }
 
     const storageKey = `uploads/${crypto.randomUUID().slice(0, 8)}-${sanitizeFileName(file.name)}`;
-    const envelope = localMutationEnvelope("asset_blob_upload", "asset-blob", storageKey);
+    const envelope = localMutationEnvelope(
+      "asset_blob_upload",
+      "asset-blob",
+      storageKey,
+    );
     let path: string;
     try {
       path = await assetPathForWrite(options.dataDir, storageKey);
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        400,
+      );
     }
     await writeFile(path, new Uint8Array(await file.arrayBuffer()));
     const preconditions = requestProjectWritePreconditions(c);
-    const mutation = hostMutationSucceeded(envelope, { resultEntityId: storageKey });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "asset blob upload",
-    }));
+    const mutation = hostMutationSucceeded(envelope, {
+      resultEntityId: storageKey,
+    });
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "asset blob upload",
+      }),
+    );
     return c.json({
       storageKey,
       mutation,
@@ -6053,7 +7331,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.text("Not found", 404);
     }
     try {
-      const bytes = await readFile(await assetPathForRead(options.dataDir, storageKey, clashRoot));
+      const bytes = await readFile(
+        await assetPathForRead(options.dataDir, storageKey, clashRoot),
+      );
       return new Response(bytes, {
         headers: {
           "content-type": contentTypeForPath(storageKey),
@@ -6073,34 +7353,52 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       srcR2Key?: string;
       coverR2Key?: string | null;
     } & ProjectWriteBody;
-    const actorClientType = optionalBodyString(body.actorClientType) ??
+    const actorClientType =
+      optionalBodyString(body.actorClientType) ??
       normalizeString(c.req.header("x-clash-client-type")) ??
       normalizeString(c.req.header("x-clash-actor-client-type"));
-    if (!body.projectId || !body.kind || typeof body.srcR2Key !== "string" || !body.srcR2Key) {
-      return c.json({
-        error: "Missing projectId, kind, or srcR2Key",
-        mutation: hostMutationRejected({
-          operation: "asset_create",
-          entity: { kind: "asset", id: "" },
-          forced: false,
-        }, "Missing projectId, kind, or srcR2Key"),
-      }, 400);
+    if (
+      !body.projectId ||
+      !body.kind ||
+      typeof body.srcR2Key !== "string" ||
+      !body.srcR2Key
+    ) {
+      return c.json(
+        {
+          error: "Missing projectId, kind, or srcR2Key",
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_create",
+              entity: { kind: "asset", id: "" },
+            },
+            "Missing projectId, kind, or srcR2Key",
+          ),
+        },
+        400,
+      );
     }
     let srcR2Key: string;
     let coverR2Key: string | null;
     try {
       srcR2Key = normalizeAssetStorageKey(body.srcR2Key);
-      coverR2Key = body.coverR2Key ? normalizeAssetStorageKey(body.coverR2Key) : null;
+      coverR2Key = body.coverR2Key
+        ? normalizeAssetStorageKey(body.coverR2Key)
+        : null;
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "asset_create",
-          entity: { kind: "asset", id: "" },
-          forced: false,
-        }, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_create",
+              entity: { kind: "asset", id: "" },
+            },
+            message,
+          ),
+        },
+        400,
+      );
     }
     const projectId = body.projectId;
     const at = Math.floor(Date.now() / 1000);
@@ -6129,18 +7427,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         importedAt: at,
       });
     });
-    const mutation = hostMutationSucceeded({
-      operation: "asset_create",
-      entity: { kind: "asset", id: asset.id },
-      forced: false,
-    }, {
-      resultEntityId: asset.id,
-    });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType,
-      reason: "asset create",
-    }));
+    const mutation = hostMutationSucceeded(
+      {
+        operation: "asset_create",
+        entity: { kind: "asset", id: asset.id },
+      },
+      {
+        resultEntityId: asset.id,
+      },
+    );
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType,
+        reason: "asset create",
+      }),
+    );
     return c.json({
       id: asset.id,
       srcR2Key: asset.srcR2Key,
@@ -6162,31 +7464,47 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       contentType?: unknown;
       originalName?: unknown;
     } & ProjectWriteBody;
-    const actorClientType = optionalBodyString(body.actorClientType) ??
+    const actorClientType =
+      optionalBodyString(body.actorClientType) ??
       normalizeString(c.req.header("x-clash-client-type")) ??
       normalizeString(c.req.header("x-clash-actor-client-type"));
     const projectId = optionalBodyString(body.projectId);
     const contentHash = optionalBodyString(body.contentHash);
     const localBlobKey = optionalBodyString(body.localBlobKey);
-    if (!projectId || !isAssetKind(body.kind) || !contentHash || !localBlobKey) {
-      return c.json({
-        error: "Missing projectId, kind, contentHash, or localBlobKey",
-        mutation: hostMutationRejected({
-          operation: "asset_import",
-          entity: { kind: "asset", id: "" },
-          forced: false,
-        }, "Missing projectId, kind, contentHash, or localBlobKey"),
-      }, 400);
+    if (
+      !projectId ||
+      !isAssetKind(body.kind) ||
+      !contentHash ||
+      !localBlobKey
+    ) {
+      return c.json(
+        {
+          error: "Missing projectId, kind, contentHash, or localBlobKey",
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_import",
+              entity: { kind: "asset", id: "" },
+            },
+            "Missing projectId, kind, contentHash, or localBlobKey",
+          ),
+        },
+        400,
+      );
     }
     if (!/^[a-f0-9]{64}$/.test(contentHash)) {
-      return c.json({
-        error: "Invalid contentHash",
-        mutation: hostMutationRejected({
-          operation: "asset_import",
-          entity: { kind: "asset", id: "" },
-          forced: false,
-        }, "Invalid contentHash"),
-      }, 400);
+      return c.json(
+        {
+          error: "Invalid contentHash",
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_import",
+              entity: { kind: "asset", id: "" },
+            },
+            "Invalid contentHash",
+          ),
+        },
+        400,
+      );
     }
 
     let srcR2Key: string;
@@ -6194,31 +7512,41 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       srcR2Key = normalizeLocalBlobStorageKey(localBlobKey);
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "asset_import",
-          entity: { kind: "asset", id: "" },
-          forced: false,
-        }, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_import",
+              entity: { kind: "asset", id: "" },
+            },
+            message,
+          ),
+        },
+        400,
+      );
     }
 
-    const assetId = optionalBodyString(body.assetId) ?? `local:sha256:${contentHash}`;
+    const assetId =
+      optionalBodyString(body.assetId) ?? `local:sha256:${contentHash}`;
     const envelope = {
       operation: "asset_import",
       entity: { kind: "asset", id: assetId },
-      forced: false,
     };
     let fileInfo: Awaited<ReturnType<typeof stat>>;
     try {
-      fileInfo = await stat(await assetPathForRead(options.dataDir, srcR2Key, clashRoot));
+      fileInfo = await stat(
+        await assetPathForRead(options.dataDir, srcR2Key, clashRoot),
+      );
       if (!fileInfo.isFile()) throw new Error("Local blob is not a file");
     } catch {
-      return c.json({
-        error: "Local blob not found",
-        mutation: hostMutationRejected(envelope, "Local blob not found"),
-      }, 404);
+      return c.json(
+        {
+          error: "Local blob not found",
+          mutation: hostMutationRejected(envelope, "Local blob not found"),
+        },
+        404,
+      );
     }
 
     const at = Math.floor(Date.now() / 1000);
@@ -6230,11 +7558,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       srcR2Key,
       coverR2Key: null,
       metadata: {
-        bytes: typeof body.bytes === "number" && Number.isFinite(body.bytes) ? Math.floor(body.bytes) : fileInfo.size,
-        contentType: optionalBodyString(body.contentType) ?? contentTypeForPath(srcR2Key),
+        bytes:
+          typeof body.bytes === "number" && Number.isFinite(body.bytes)
+            ? Math.floor(body.bytes)
+            : fileInfo.size,
+        contentType:
+          optionalBodyString(body.contentType) ?? contentTypeForPath(srcR2Key),
         contentHash,
         localBlobKey,
-        ...(optionalBodyString(body.originalName) ? { originalName: optionalBodyString(body.originalName) } : {}),
+        ...(optionalBodyString(body.originalName)
+          ? { originalName: optionalBodyString(body.originalName) }
+          : {}),
       },
       sourceModel: "local-import",
       sourcePrompt: null,
@@ -6249,15 +7583,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const importResult = await db.update((state) => {
       const existing = state.assets.find((item) => item.id === asset.id);
       if (existing) {
-        const metadata = existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
-          ? existing.metadata as Record<string, unknown>
-          : {};
-        const existingContentHash = typeof metadata.contentHash === "string" ? metadata.contentHash : undefined;
-        const existingLocalBlobKey = typeof metadata.localBlobKey === "string" ? metadata.localBlobKey : undefined;
-        const immutableConflict = existing.kind !== asset.kind ||
+        const metadata =
+          existing.metadata &&
+          typeof existing.metadata === "object" &&
+          !Array.isArray(existing.metadata)
+            ? (existing.metadata as Record<string, unknown>)
+            : {};
+        const existingContentHash =
+          typeof metadata.contentHash === "string"
+            ? metadata.contentHash
+            : undefined;
+        const existingLocalBlobKey =
+          typeof metadata.localBlobKey === "string"
+            ? metadata.localBlobKey
+            : undefined;
+        const immutableConflict =
+          existing.kind !== asset.kind ||
           existing.srcR2Key !== asset.srcR2Key ||
-          (existingContentHash !== undefined && existingContentHash !== contentHash) ||
-          (existingLocalBlobKey !== undefined && existingLocalBlobKey !== localBlobKey);
+          (existingContentHash !== undefined &&
+            existingContentHash !== contentHash) ||
+          (existingLocalBlobKey !== undefined &&
+            existingLocalBlobKey !== localBlobKey);
         if (immutableConflict) {
           return { status: "conflict" as const };
         }
@@ -6266,26 +7612,34 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       }
       state.assetRefs = [
         { assetId: asset.id, projectId, importedAt: at },
-        ...state.assetRefs.filter((ref) => !(ref.assetId === asset.id && ref.projectId === projectId)),
+        ...state.assetRefs.filter(
+          (ref) => !(ref.assetId === asset.id && ref.projectId === projectId),
+        ),
       ];
       return { status: "ok" as const, asset: existing ?? asset };
     });
     if (importResult.status === "conflict") {
-      const message = "Asset id already exists with different immutable content. Import the new blob as a new asset id and use copy-on-write replacement.";
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected(envelope, message),
-      }, 409);
+      const message =
+        "Asset id already exists with different immutable content. Import the new blob as a new asset id and use copy-on-write replacement.";
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(envelope, message),
+        },
+        409,
+      );
     }
 
     const mutation = hostMutationSucceeded(envelope, {
       resultEntityId: asset.id,
     });
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType,
-      reason: "asset import",
-    }));
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType,
+        reason: "asset import",
+      }),
+    );
     return c.json({
       id: importResult.asset.id,
       srcR2Key: importResult.asset.srcR2Key,
@@ -6304,200 +7658,236 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       actorClientType?: unknown;
       newNodeId?: unknown;
       label?: unknown;
-      force?: unknown;
     };
     const projectId = optionalBodyString(body.projectId);
     const nodeId = optionalBodyString(body.nodeId);
     const assetId = optionalBodyString(body.assetId);
-    const force = body.force === true || normalizeString(c.req.header("x-clash-force")) === "true";
-    const expectedReadToken = optionalBodyString(body.ifMatch) ??
+    const expectedReadToken =
+      optionalBodyString(body.ifMatch) ??
       normalizeIfMatchHeader(c.req.header("x-clash-if-match")) ??
       normalizeIfMatchHeader(c.req.header("if-match"));
-    const actorClientType = optionalBodyString(body.actorClientType) ??
+    const actorClientType =
+      optionalBodyString(body.actorClientType) ??
       normalizeString(c.req.header("x-clash-client-type")) ??
       normalizeString(c.req.header("x-clash-actor-client-type"));
     const envelope = {
       operation: "asset_cow_replace",
       entity: { kind: "media-node", id: nodeId ?? "" },
       expectedReadToken,
-      forced: force,
     };
 
     if (!projectId || !nodeId || !assetId) {
-      return c.json({
-        error: "Missing projectId, nodeId, or assetId",
-        mutation: hostMutationRejected(envelope, "Missing projectId, nodeId, or assetId"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing projectId, nodeId, or assetId",
+          mutation: hostMutationRejected(
+            envelope,
+            "Missing projectId, nodeId, or assetId",
+          ),
+        },
+        400,
+      );
     }
 
     const state = await db.load();
     const asset = state.assets.find((item) => item.id === assetId);
     if (!asset) {
-      return c.json({
-        error: "asset not found",
-        mutation: hostMutationRejected(envelope, "asset not found"),
-      }, 404);
+      return c.json(
+        {
+          error: "asset not found",
+          mutation: hostMutationRejected(envelope, "asset not found"),
+        },
+        404,
+      );
     }
 
-    const result = await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(projectId, async (doc) => {
-      const canvas = new Canvas(doc, () => {});
-      const node = canvas.readNode(nodeId);
-      if (!node) {
-        return {
-          save: false,
-          value: {
-            status: 404 as const,
-            body: {
-              error: `Node not found: ${nodeId}`,
-              mutation: hostMutationRejected(envelope, `Node not found: ${nodeId}`),
-            },
-          },
-        };
-      }
-      if (!isMediaNodeType(node.type)) {
-        const message = `Node ${nodeId} has type "${node.type}", expected image, video, or audio`;
-        return {
-          save: false,
-          value: {
-            status: 400 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(envelope, message),
-            },
-          },
-        };
-      }
-      if (asset.kind !== node.type) {
-        const message = `Asset ${assetId} has kind "${asset.kind}", expected ${node.type}`;
-        return {
-          save: false,
-          value: {
-            status: 400 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(envelope, message),
-            },
-          },
-        };
-      }
+    const result =
+      await replicaStore.updateSnapshotAtomic<SnapshotWriteRouteResult>(
+        projectId,
+        async (doc) => {
+          const canvas = new Canvas(doc, () => {});
+          const node = canvas.readNode(nodeId);
+          if (!node) {
+            return {
+              save: false,
+              value: {
+                status: 404 as const,
+                body: {
+                  error: `Node not found: ${nodeId}`,
+                  mutation: hostMutationRejected(
+                    envelope,
+                    `Node not found: ${nodeId}`,
+                  ),
+                },
+              },
+            };
+          }
+          if (!isMediaNodeType(node.type)) {
+            const message = `Node ${nodeId} has type "${node.type}", expected image, video, or audio`;
+            return {
+              save: false,
+              value: {
+                status: 400 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(envelope, message),
+                },
+              },
+            };
+          }
+          if (asset.kind !== node.type) {
+            const message = `Asset ${assetId} has kind "${asset.kind}", expected ${node.type}`;
+            return {
+              save: false,
+              value: {
+                status: 400 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(envelope, message),
+                },
+              },
+            };
+          }
 
-      const currentReadToken = canvasNodeReadToken(node);
-      const readProof = validateCanvasReadProof({
-        operation: "update",
-        actorClientType,
-        node,
-        expectedReadToken,
-        requireReceipt: true,
-        readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
-        force,
-      });
-      const hostMutation = validateHostMutationEnvelope({
-        operation: "asset_cow_replace",
-        entity: { kind: "media-node", id: nodeId },
-        expectedReadToken,
-        currentReadToken,
-        force,
-        guard: readProof,
-      });
-      if (!hostMutation.ok) {
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: hostMutation.error,
-              mutation: hostMutation.mutation,
-            },
-          },
-        };
-      }
+          const currentReadToken = canvasNodeReadToken(node);
+          const readProof = validateCanvasReadProof({
+            operation: "update",
+            actorClientType,
+            node,
+            expectedReadToken,
+            requireReceipt: true,
+            readReceiptVerifier: verifyLocalApiCanvasReadReceipt,
+          });
+          const hostMutation = validateHostMutationEnvelope({
+            operation: "asset_cow_replace",
+            entity: { kind: "media-node", id: nodeId },
+            expectedReadToken,
+            currentReadToken,
+            guard: readProof,
+          });
+          if (!hostMutation.ok) {
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: hostMutation.error,
+                  mutation: hostMutation.mutation,
+                },
+              },
+            };
+          }
 
-      const newNodeId = optionalBodyString(body.newNodeId) ?? crypto.randomUUID().slice(0, 8);
-      const sourceAssetId = typeof node.data?.assetId === "string" ? node.data.assetId : undefined;
-      const data = createMediaAssetCowNodeData({
-        sourceNodeId: nodeId,
-        sourceLabel: typeof node.data?.label === "string" ? node.data.label : undefined,
-        sourceAssetId,
-        assetId,
-        label: optionalBodyString(body.label),
-      });
-
-      try {
-        canvas.createLinkedNode({
-          nodeId: newNodeId,
-          nodeType: node.type,
-          data,
-          parentId: node.parent_id ?? null,
-          sourceNodeId: nodeId,
-          edgeId: `${nodeId}-${newNodeId}`,
-          edgeType: "copy-on-write",
-        });
-      } catch (error) {
-        const message = errorMessage(error);
-        return {
-          save: false,
-          value: {
-            status: 409 as const,
-            body: {
-              error: message,
-              mutation: hostMutationRejected(hostMutation.envelope, message),
-            },
-          },
-        };
-      }
-
-      const newNode = canvas.readNode(newNodeId);
-      const afterReadToken = newNode ? canvasNodeReceiptReadToken(newNode) : undefined;
-      const importedAt = Math.floor(Date.now() / 1000);
-      return {
-        value: {
-          status: 200 as const,
-          assetRef: { assetId, projectId, importedAt },
-          body: {
-            replaced: true,
-            copyOnWrite: true,
+          const newNodeId =
+            optionalBodyString(body.newNodeId) ??
+            crypto.randomUUID().slice(0, 8);
+          const sourceAssetId =
+            typeof node.data?.assetId === "string"
+              ? node.data.assetId
+              : undefined;
+          const data = createMediaAssetCowNodeData({
             sourceNodeId: nodeId,
-            newNodeId,
-            nodeId: newNodeId,
+            sourceLabel:
+              typeof node.data?.label === "string"
+                ? node.data.label
+                : undefined,
             sourceAssetId,
             assetId,
-            lineageEdge: { source: nodeId, target: newNodeId, type: "copy-on-write" },
-            ...(afterReadToken ? { readToken: afterReadToken } : {}),
-            mutation: hostMutationSucceeded(hostMutation.envelope, {
-              resultEntityId: newNodeId,
-              afterReadToken,
-            }),
-            ...(force ? { forced: true } : {}),
-          },
+            label: optionalBodyString(body.label),
+          });
+
+          try {
+            canvas.createLinkedNode({
+              nodeId: newNodeId,
+              nodeType: node.type,
+              data,
+              parentId: node.parent_id ?? null,
+              sourceNodeId: nodeId,
+              edgeId: `${nodeId}-${newNodeId}`,
+              edgeType: "copy-on-write",
+            });
+          } catch (error) {
+            const message = errorMessage(error);
+            return {
+              save: false,
+              value: {
+                status: 409 as const,
+                body: {
+                  error: message,
+                  mutation: hostMutationRejected(
+                    hostMutation.envelope,
+                    message,
+                  ),
+                },
+              },
+            };
+          }
+
+          const newNode = canvas.readNode(newNodeId);
+          const afterReadToken = newNode
+            ? canvasNodeReceiptReadToken(newNode)
+            : undefined;
+          const importedAt = Math.floor(Date.now() / 1000);
+          return {
+            value: {
+              status: 200 as const,
+              assetRef: { assetId, projectId, importedAt },
+              body: {
+                replaced: true,
+                copyOnWrite: true,
+                sourceNodeId: nodeId,
+                newNodeId,
+                nodeId: newNodeId,
+                sourceAssetId,
+                assetId,
+                lineageEdge: {
+                  source: nodeId,
+                  target: newNodeId,
+                  type: "copy-on-write",
+                },
+                ...(afterReadToken ? { readToken: afterReadToken } : {}),
+                mutation: hostMutationSucceeded(hostMutation.envelope, {
+                  resultEntityId: newNodeId,
+                  afterReadToken,
+                }),
+              },
+            },
+          };
         },
-      };
-    });
+      );
     if (result.status === 200 && result.assetRef) {
       const assetRef = result.assetRef;
       await db.update((current) => {
         current.assetRefs = [
           assetRef,
-          ...current.assetRefs.filter((ref) => !(ref.assetId === assetId && ref.projectId === projectId)),
+          ...current.assetRefs.filter(
+            (ref) => !(ref.assetId === assetId && ref.projectId === projectId),
+          ),
         ];
       });
     }
     const mutation = result.body.mutation as HostMutationRecord | undefined;
     if (mutation?.accepted === true) {
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType,
-        reason: "asset copy-on-write replacement",
-      }));
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType,
+          reason: "asset copy-on-write replacement",
+        }),
+      );
     } else if (
       mutation?.accepted === false &&
       actorClientType === "agent" &&
-      (mutation.expectedReadToken !== undefined || mutation.beforeReadToken !== undefined)
+      (mutation.expectedReadToken !== undefined ||
+        mutation.beforeReadToken !== undefined)
     ) {
-      await db.appendMutationAudit(mutationAuditRecord({
-        mutation,
-        actorClientType,
-        reason: "asset copy-on-write replacement rejected",
-      }));
+      await db.appendMutationAudit(
+        mutationAuditRecord({
+          mutation,
+          actorClientType,
+          reason: "asset copy-on-write replacement rejected",
+        }),
+      );
     }
     return c.json(result.body, result.status);
   });
@@ -6509,7 +7899,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       projectIds?: unknown;
     } & ProjectWriteBody;
     const dryRun = body.dryRun !== false;
-    const scope = await resolveAssetGarbageCollectionScope(options.dataDir, body);
+    const scope = await resolveAssetGarbageCollectionScope(
+      options.dataDir,
+      body,
+    );
 
     if (dryRun) {
       const plan = buildAssetGarbageCollectionPlan(await db.load(), scope);
@@ -6520,20 +7913,25 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         protectedProjectIds: plan.protectedProjectIds,
         deletedBlobKeys: plan.deletedBlobKeys,
         readToken: assetGarbageCollectionReceiptReadToken(plan),
-        mutation: hostMutationSucceeded({
-          operation: "asset_gc",
-          entity: { kind: "asset-store", id: "local" },
-          forced: false,
-        }, {
-          resultEntityId: "local",
-        }),
+        mutation: hostMutationSucceeded(
+          {
+            operation: "asset_gc",
+            entity: { kind: "asset-store", id: "local" },
+          },
+          {
+            resultEntityId: "local",
+          },
+        ),
       });
     }
 
     const preconditions = requestProjectWritePreconditions(c, body);
     const result = await db.update((current) => {
       const plan = buildAssetGarbageCollectionPlan(current, scope);
-      const hostMutation = validateAssetGarbageCollectionMutation({ plan, preconditions });
+      const hostMutation = validateAssetGarbageCollectionMutation({
+        plan,
+        preconditions,
+      });
       if (!hostMutation.ok) {
         return {
           status: 409 as const,
@@ -6541,8 +7939,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           body: { error: hostMutation.error, mutation: hostMutation.mutation },
         };
       }
-      refreshAssetReferenceProjectionState(current, plan.protectedProjectIds, plan.projectedCanvasAssetRefs);
-      current.assets = current.assets.filter((asset) => !plan.orphanedIds.has(asset.id));
+      refreshAssetReferenceProjectionState(
+        current,
+        plan.protectedProjectIds,
+        plan.projectedCanvasAssetRefs,
+      );
+      current.assets = current.assets.filter(
+        (asset) => !plan.orphanedIds.has(asset.id),
+      );
       return {
         status: 200 as const,
         blobKeys: plan.deletedBlobKeys,
@@ -6560,15 +7964,19 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     });
     if (result.status === 200) {
       for (const key of result.blobKeys) {
-        await rm(await assetPathForDelete(options.dataDir, key, clashRoot), { force: true });
+        await rm(await assetPathForDelete(options.dataDir, key, clashRoot), {
+          force: true,
+        });
       }
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "asset garbage collection",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "asset garbage collection",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
@@ -6578,7 +7986,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const state = await db.load();
     const asset = state.assets.find((a) => a.id === c.req.param("id"));
     return asset
-      ? c.json({ ...withSignedAssetUrls(c, asset), readToken: assetReceiptReadToken(asset) })
+      ? c.json({
+          ...withSignedAssetUrls(c, asset),
+          readToken: assetReceiptReadToken(asset),
+        })
       : c.json({ error: "not found" }, 404);
   });
 
@@ -6587,12 +7998,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const projectId = c.req.query("projectId");
     const state = await db.load();
     const references = state.assetNodeRefs
-      .filter((ref) => ref.assetId === assetId && (!projectId || ref.projectId === projectId))
-      .sort((left, right) => (
-        left.projectId.localeCompare(right.projectId)
-        || left.nodeId.localeCompare(right.nodeId)
-        || left.fieldPath.localeCompare(right.fieldPath)
-      ))
+      .filter(
+        (ref) =>
+          ref.assetId === assetId &&
+          (!projectId || ref.projectId === projectId),
+      )
+      .sort(
+        (left, right) =>
+          left.projectId.localeCompare(right.projectId) ||
+          left.nodeId.localeCompare(right.nodeId) ||
+          left.fieldPath.localeCompare(right.fieldPath),
+      )
       .map((ref) => ({
         assetId: ref.assetId,
         projectId: ref.projectId,
@@ -6606,19 +8022,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
 
   app.post("/api/v1/assets/:id/references/refresh", async (c) => {
     const assetId = c.req.param("id");
-    const body = (await c.req.json().catch(() => ({}))) as { projectIds?: unknown } & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      projectIds?: unknown;
+    } & ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     const requestedProjectIds = stringArray(body.projectIds);
-    const protectedProjectIds = requestedProjectIds.length > 0
-      ? requestedProjectIds
-      : await discoverProjectReplicaIds(options.dataDir);
-    const canvasAssetRefs = await collectProjectCanvasAssetRefs(options.dataDir, protectedProjectIds);
+    const protectedProjectIds =
+      requestedProjectIds.length > 0
+        ? requestedProjectIds
+        : await discoverProjectReplicaIds(options.dataDir);
+    const canvasAssetRefs = await collectProjectCanvasAssetRefs(
+      options.dataDir,
+      protectedProjectIds,
+    );
     const result = await db.update((current) => {
-      const asset = current.assets.find((candidate) => candidate.id === assetId);
+      const asset = current.assets.find(
+        (candidate) => candidate.id === assetId,
+      );
       const needsReadProof =
-        !!preconditions.actorClientType || !!preconditions.expectedReadToken || preconditions.force;
+        !!preconditions.actorClientType || !!preconditions.expectedReadToken;
       let hostMutation:
-        | { ok: true; envelope: Parameters<typeof hostMutationSucceeded>[0]; afterReadToken?: string }
+        | {
+            ok: true;
+            envelope: Parameters<typeof hostMutationSucceeded>[0];
+            afterReadToken?: string;
+          }
         | { ok: false; status: 404 | 409; body: unknown };
       if (needsReadProof) {
         if (!asset) {
@@ -6626,12 +8054,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             status: 404 as const,
             body: {
               error: "asset not found",
-              mutation: hostMutationRejected({
-                operation: "asset_references_refresh",
-                entity: { kind: "asset", id: assetId },
-                expectedReadToken: preconditions.expectedReadToken,
-                forced: preconditions.force,
-              }, "asset not found"),
+              mutation: hostMutationRejected(
+                {
+                  operation: "asset_references_refresh",
+                  entity: { kind: "asset", id: assetId },
+                  expectedReadToken: preconditions.expectedReadToken,
+                },
+                "asset not found",
+              ),
             },
           };
         }
@@ -6640,47 +8070,60 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           actorClientType: preconditions.actorClientType,
           operation: "asset references refresh",
           currentReadToken,
+          observedVersion: preconditions.observedVersion,
           expectedReadToken: preconditions.expectedReadToken,
           requireReceipt: true,
           readReceiptVerifier: verifyLocalApiAssetReadReceipt,
-          force: preconditions.force,
-          readCommandHint:
-            `Run \`clash asset get --asset ${assetId} --json\` first and pass its ` +
-            "`readToken` with --if-match, or pass --force for an explicit refresh.",
+          readCommandHint: `Run \`clash asset get --asset ${assetId} --json\` first, then retry.`,
         });
         const validated = validateHostMutationEnvelope({
           operation: "asset_references_refresh",
           entity: { kind: "asset", id: assetId },
           expectedReadToken: preconditions.expectedReadToken,
           currentReadToken,
-          force: preconditions.force,
           guard,
         });
         hostMutation = validated.ok
-          ? { ok: true, envelope: validated.envelope, afterReadToken: assetReceiptReadToken(asset) }
-          : { ok: false, status: 409 as const, body: { error: validated.error, mutation: validated.mutation } };
+          ? {
+              ok: true,
+              envelope: validated.envelope,
+              afterReadToken: assetReceiptReadToken(asset),
+            }
+          : {
+              ok: false,
+              status: 409 as const,
+              body: { error: validated.error, mutation: validated.mutation },
+            };
       } else {
         hostMutation = {
           ok: true,
           envelope: {
             operation: "asset_references_refresh",
             entity: { kind: "asset", id: assetId },
-            forced: false,
           },
         };
       }
       if (!hostMutation.ok) return hostMutation;
       const knownAssetIds = new Set(current.assets.map((asset) => asset.id));
-      const projectedCanvasAssetRefs = canvasAssetRefs.filter((ref) => knownAssetIds.has(ref.assetId));
-      refreshAssetReferenceProjectionState(current, protectedProjectIds, projectedCanvasAssetRefs);
+      const projectedCanvasAssetRefs = canvasAssetRefs.filter((ref) =>
+        knownAssetIds.has(ref.assetId),
+      );
+      refreshAssetReferenceProjectionState(
+        current,
+        protectedProjectIds,
+        projectedCanvasAssetRefs,
+      );
       const projectFilter = new Set(protectedProjectIds);
       const references = current.assetNodeRefs
-        .filter((ref) => ref.assetId === assetId && projectFilter.has(ref.projectId))
-        .sort((left, right) => (
-          left.projectId.localeCompare(right.projectId)
-          || left.nodeId.localeCompare(right.nodeId)
-          || left.fieldPath.localeCompare(right.fieldPath)
-        ))
+        .filter(
+          (ref) => ref.assetId === assetId && projectFilter.has(ref.projectId),
+        )
+        .sort(
+          (left, right) =>
+            left.projectId.localeCompare(right.projectId) ||
+            left.nodeId.localeCompare(right.nodeId) ||
+            left.fieldPath.localeCompare(right.fieldPath),
+        )
         .map((ref) => ({
           assetId: ref.assetId,
           projectId: ref.projectId,
@@ -6697,7 +8140,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         status: 200 as const,
         body: {
           assetId,
-          ...(hostMutation.afterReadToken ? { readToken: hostMutation.afterReadToken } : {}),
+          ...(hostMutation.afterReadToken
+            ? { readToken: hostMutation.afterReadToken }
+            : {}),
           refreshed: true,
           protectedProjectIds,
           references,
@@ -6709,11 +8154,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.json(result.body, result.status);
     }
     const mutation = result.body.mutation;
-    await db.appendMutationAudit(mutationAuditRecord({
-      mutation,
-      actorClientType: preconditions.actorClientType,
-      reason: "asset reference refresh",
-    }));
+    await db.appendMutationAudit(
+      mutationAuditRecord({
+        mutation,
+        actorClientType: preconditions.actorClientType,
+        reason: "asset reference refresh",
+      }),
+    );
     return c.json(result.body);
   });
 
@@ -6737,7 +8184,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       return c.json({ error: "Missing projectId" }, 400);
     }
     const state = await db.load();
-    const ref = state.assetRefs.find((candidate) => candidate.assetId === assetId && candidate.projectId === projectId);
+    const ref = state.assetRefs.find(
+      (candidate) =>
+        candidate.assetId === assetId && candidate.projectId === projectId,
+    );
     if (!ref) {
       return c.json({ error: "asset ref not found" }, 404);
     }
@@ -6755,29 +8205,39 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const body = (await c.req.json().catch(() => ({}))) as ProjectWriteBody;
     const preconditions = requestProjectWritePreconditions(c, body);
     if (!projectId) {
-      return c.json({
-        error: "Missing projectId",
-        mutation: hostMutationRejected({
-          operation: "asset_ref_delete",
-          entity: { kind: "asset-ref", id: `${assetId}:` },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, "Missing projectId"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing projectId",
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_ref_delete",
+              entity: { kind: "asset-ref", id: `${assetId}:` },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            "Missing projectId",
+          ),
+        },
+        400,
+      );
     }
     const result = await db.update((state) => {
-      const ref = state.assetRefs.find((candidate) => candidate.assetId === assetId && candidate.projectId === projectId);
+      const ref = state.assetRefs.find(
+        (candidate) =>
+          candidate.assetId === assetId && candidate.projectId === projectId,
+      );
       if (!ref) {
         return {
           status: 404 as const,
           body: {
             error: "asset ref not found",
-            mutation: hostMutationRejected({
-              operation: "asset_ref_delete",
-              entity: { kind: "asset-ref", id: `${assetId}:${projectId}` },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "asset ref not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "asset_ref_delete",
+                entity: { kind: "asset-ref", id: `${assetId}:${projectId}` },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "asset ref not found",
+            ),
           },
         };
       }
@@ -6786,20 +8246,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         actorClientType: preconditions.actorClientType,
         operation: "asset-ref delete",
         currentReadToken,
+        observedVersion: preconditions.observedVersion,
         expectedReadToken: preconditions.expectedReadToken,
         requireReceipt: true,
         readReceiptVerifier: verifyLocalApiAssetRefReadReceipt,
-        force: preconditions.force,
-        readCommandHint:
-          `Run \`clash asset ref get --asset ${assetId} --project ${projectId} --json\` first and pass its ` +
-          "`readToken` with --if-match, or pass --force for an explicit overwrite.",
+        readCommandHint: `Run \`clash asset ref get --asset ${assetId} --project ${projectId} --json\` first, then retry.`,
       });
       const hostMutation = validateHostMutationEnvelope({
         operation: "asset_ref_delete",
         entity: { kind: "asset-ref", id: `${assetId}:${projectId}` },
         expectedReadToken: preconditions.expectedReadToken,
         currentReadToken,
-        force: preconditions.force,
         guard,
       });
       if (!hostMutation.ok) {
@@ -6825,45 +8282,59 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "asset ref delete",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "asset ref delete",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);
   });
 
   app.patch("/api/v1/assets/:id/cover", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { coverR2Key?: string } & ProjectWriteBody;
+    const body = (await c.req.json().catch(() => ({}))) as {
+      coverR2Key?: string;
+    } & ProjectWriteBody;
     const assetId = c.req.param("id");
     const preconditions = requestProjectWritePreconditions(c, body);
     if (!body.coverR2Key) {
-      return c.json({
-        error: "Missing coverR2Key",
-        mutation: hostMutationRejected({
-          operation: "asset_cover_update",
-          entity: { kind: "asset", id: assetId },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, "Missing coverR2Key"),
-      }, 400);
+      return c.json(
+        {
+          error: "Missing coverR2Key",
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_cover_update",
+              entity: { kind: "asset", id: assetId },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            "Missing coverR2Key",
+          ),
+        },
+        400,
+      );
     }
     let coverR2Key: string;
     try {
       coverR2Key = normalizeAssetStorageKey(body.coverR2Key);
     } catch (error) {
       const message = errorMessage(error);
-      return c.json({
-        error: message,
-        mutation: hostMutationRejected({
-          operation: "asset_cover_update",
-          entity: { kind: "asset", id: assetId },
-          expectedReadToken: preconditions.expectedReadToken,
-          forced: preconditions.force,
-        }, message),
-      }, 400);
+      return c.json(
+        {
+          error: message,
+          mutation: hostMutationRejected(
+            {
+              operation: "asset_cover_update",
+              entity: { kind: "asset", id: assetId },
+              expectedReadToken: preconditions.expectedReadToken,
+            },
+            message,
+          ),
+        },
+        400,
+      );
     }
     const result = await db.update((state) => {
       const asset = state.assets.find((a) => a.id === assetId);
@@ -6872,12 +8343,14 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
           status: 404 as const,
           body: {
             error: "not found",
-            mutation: hostMutationRejected({
-              operation: "asset_cover_update",
-              entity: { kind: "asset", id: assetId },
-              expectedReadToken: preconditions.expectedReadToken,
-              forced: preconditions.force,
-            }, "not found"),
+            mutation: hostMutationRejected(
+              {
+                operation: "asset_cover_update",
+                entity: { kind: "asset", id: assetId },
+                expectedReadToken: preconditions.expectedReadToken,
+              },
+              "not found",
+            ),
           },
         };
       }
@@ -6886,20 +8359,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         actorClientType: preconditions.actorClientType,
         operation: "asset update",
         currentReadToken,
+        observedVersion: preconditions.observedVersion,
         expectedReadToken: preconditions.expectedReadToken,
         requireReceipt: true,
         readReceiptVerifier: verifyLocalApiAssetReadReceipt,
-        force: preconditions.force,
-        readCommandHint:
-          `Run \`clash asset get --asset ${assetId} --json\` first and pass its ` +
-          "`readToken` with --if-match, or pass --force for an explicit overwrite.",
+        readCommandHint: `Run \`clash asset get --asset ${assetId} --json\` first, then retry.`,
       });
       const hostMutation = validateHostMutationEnvelope({
         operation: "asset_cover_update",
         entity: { kind: "asset", id: assetId },
         expectedReadToken: preconditions.expectedReadToken,
         currentReadToken,
-        force: preconditions.force,
         guard,
       });
       if (!hostMutation.ok) {
@@ -6926,11 +8396,13 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     if (result.status === 200) {
       const mutation = result.body.mutation as HostMutationRecord | undefined;
       if (mutation?.accepted === true) {
-        await db.appendMutationAudit(mutationAuditRecord({
-          mutation,
-          actorClientType: preconditions.actorClientType,
-          reason: "asset cover update",
-        }));
+        await db.appendMutationAudit(
+          mutationAuditRecord({
+            mutation,
+            actorClientType: preconditions.actorClientType,
+            reason: "asset cover update",
+          }),
+        );
       }
     }
     return c.json(result.body, result.status);

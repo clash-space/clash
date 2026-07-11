@@ -7,6 +7,9 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
+const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
+  ? resolve(process.env.CLASH_WEB_E2E_PERSIST_STATE)
+  : resolve(repoRoot, ".wrangler/state");
 
 // Pure Vite SPA. index.html is the entry; main.tsx mounts a
 // createBrowserRouter-based React app. No SSR at any layer.
@@ -29,7 +32,7 @@ export default defineConfig(async ({ command, isPreview }) => {
             // ../../.wrangler/state). Without this each worker gets its own
             // miniflare D1 -> Better Auth verification rows written by web
             // don't exist when api-cf reads them, breaking Google OAuth.
-            persistState: { path: resolve(repoRoot, ".wrangler/state") },
+            persistState: { path: persistStatePath },
             auxiliaryWorkers: [{ configPath: "../api-cf/wrangler.toml" }],
           }),
         ]

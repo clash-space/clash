@@ -83,14 +83,11 @@ function timelineCasApply(filePath) {
     mutation: "projection-only",
     applyCommand: "clash timeline apply",
     filePath,
-    lockPath: "timelines/main.timeline.lock.json",
-    lockRequired: true,
-    lockSource: "fresh-canvas-pull",
-    nodeIdPlaceholder: "<video-editor-node-id>",
-    requiredRuntimeArgs: ["--node <video-editor-node-id>"],
+    timelineIdPlaceholder: "<timeline-id>",
+    requiredRuntimeArgs: ["--timeline <timeline-id>"],
     pullCommand: "clash timeline pull",
-    pullArgs: ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-    applyArgs: ["--node", "<video-editor-node-id>", "--file", filePath, "--lock", "timelines/main.timeline.lock.json"],
+    pullArgs: ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+    applyArgs: ["--timeline", "<timeline-id>", "--file", filePath],
   };
 }
 
@@ -817,7 +814,7 @@ async function main() {
         label: "MV timeline projection declares fresh-pull CAS apply",
         required: true,
         status: "pass",
-        expected: "projection manifest has fresh-canvas-pull CAS with explicit --node arg",
+        expected: "projection manifest has Project Timeline pull/apply CAS with explicit --timeline arg",
         actual: "fresh-pull CAS present",
       },
       {
@@ -978,11 +975,11 @@ async function main() {
       },
       {
         id: "manifest.cas-fresh-pull",
-        label: "Timeline apply uses fresh-pull CAS",
+        label: "Timeline apply uses implicit cwd CAS",
         required: true,
         status: "pass",
-        expected: "fresh-canvas-pull lock with explicit --node runtime arg",
-        actual: "fresh-pull CAS present",
+        expected: "pull then apply with implicit cwd observation and explicit --timeline runtime arg",
+        actual: "implicit cwd CAS present",
       },
       {
         id: "implementation.first-party-license-safe",
@@ -1387,7 +1384,7 @@ async function main() {
     sourceTimelineId: "timeline:projections/timelines/asset-talking-head-source.caption.timeline.yaml",
     sourceTimelinePath: "projections/timelines/asset-talking-head-source.caption.timeline.yaml",
     sourceTimelineHash: "8e5248d4b93c2f11",
-    sourceTimelineRevisionId: "tlrev-8e5248d4b93c2f11",
+    sourceTimelineRevisionId: "draft-8e5248d4b93c2f11",
     sourceTimelineRevisionStatus: "draft-file",
     format: "ass",
     outputPath: "exports/captions/asset-talking-head-clean.ass",
@@ -1541,7 +1538,7 @@ async function main() {
     sourceTimelineId: "timeline:projections/timelines/asset-talking-head-source.caption.timeline.yaml",
     sourceTimelinePath: "projections/timelines/asset-talking-head-source.caption.timeline.yaml",
     sourceTimelineHash: "8e5248d4b93c2f11",
-    sourceTimelineRevisionId: "tlrev-8e5248d4b93c2f11",
+    sourceTimelineRevisionId: "draft-8e5248d4b93c2f11",
     sourceTimelineRevisionStatus: "draft-file",
     sourcePath: "assets/video/talking-head-clean.mp4",
     captionSidecarPath: "exports/captions/asset-talking-head-clean.burn-in.ass",
@@ -1573,7 +1570,7 @@ async function main() {
     sourceTimelineId: "timeline:projections/timelines/asset-talking-head-source.caption.timeline.yaml",
     sourceTimelinePath: "projections/timelines/asset-talking-head-source.caption.timeline.yaml",
     sourceTimelineHash: "8e5248d4b93c2f11",
-    sourceTimelineRevisionId: "tlrev-8e5248d4b93c2f11",
+    sourceTimelineRevisionId: "draft-8e5248d4b93c2f11",
     sourceTimelineRevisionStatus: "draft-file",
     format: "csv",
     outputPath: "exports/handoff/asset-talking-head-clean.timeline.csv",
@@ -2218,7 +2215,7 @@ async function main() {
         label: "Storyboard timeline projection declares fresh-pull CAS",
         required: true,
         status: "pass",
-        expected: "projection manifest has fresh-canvas-pull CAS with explicit --node arg",
+        expected: "projection manifest has Project Timeline pull/apply CAS with explicit --timeline arg",
         actual: "fresh-pull CAS present",
       },
       {
@@ -2298,8 +2295,6 @@ async function main() {
       mutation: "managed-projection",
       applyCommand: "clash production apply-storyboard-prompt-pack",
       filePath: "plans/prompt-pack.json",
-      lockPath: "plans/prompt-pack.lock.json",
-      lockRequired: true,
     },
   }, "storyboard-prompt-pack-projection");
 

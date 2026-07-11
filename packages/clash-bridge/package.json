@@ -48,7 +48,6 @@
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.47.0",
     "@agentclientprotocol/sdk": "^0.28.1",
-    "@zed-industries/codex-acp": "^0.16.0",
     "@clash/shared-runtime": "workspace:*",
     "ws": "^8.18.0"
   },

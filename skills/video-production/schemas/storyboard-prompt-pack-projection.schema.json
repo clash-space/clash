@@ -55,14 +55,12 @@
     "appliedAt": { "type": "string" },
     "casApply": {
       "type": "object",
-      "required": ["target", "mutation", "applyCommand", "filePath", "lockPath", "lockRequired"],
+      "required": ["target", "mutation", "applyCommand", "filePath"],
       "properties": {
         "target": { "const": "storyboard-prompt-pack" },
         "mutation": { "const": "managed-projection" },
         "applyCommand": { "const": "clash production apply-storyboard-prompt-pack" },
-        "filePath": { "type": "string" },
-        "lockPath": { "type": "string" },
-        "lockRequired": { "const": true }
+        "filePath": { "type": "string" }
       }
     }
   }

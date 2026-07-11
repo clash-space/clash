@@ -51,7 +51,6 @@ export type ProjectCompositionTimelineResult = {
   compositionId: string;
   runtime: "remotion";
   timelineProjectionPath: string;
-  timelineLockPath: string;
   manifestPath: string;
 };
 
@@ -110,7 +109,7 @@ export async function projectCompositionTimeline(
     "timelines",
     `${safeSlug(route.compositionId)}.composition.timeline.yaml`,
   );
-  const { casApply, lockPath: timelineLockPath } = timelineProjectionCasApply({
+  const { casApply } = timelineProjectionCasApply({
     cwd,
     filePath: timelineProjectionPath,
   });
@@ -162,7 +161,6 @@ export async function projectCompositionTimeline(
     compositionId: route.compositionId,
     runtime: "remotion",
     timelineProjectionPath,
-    timelineLockPath,
     manifestPath,
   };
 }

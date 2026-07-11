@@ -6,6 +6,11 @@
  */
 
 import { LoroDoc } from 'loro-crdt';
+import {
+  Canvas,
+  deleteNodeUpstreamRef,
+  listNodeOwnedEdges,
+} from '@clash/shared-types';
 
 /**
  * Update specific data fields of a node and broadcast the change
@@ -113,9 +118,27 @@ export function updateEdge(
 ): void {
   try {
     const versionBefore = doc.version();
-    const edgesMap = doc.getMap('edges');
+    const source = typeof edgeData.source === 'string' ? edgeData.source : '';
+    const target = typeof edgeData.target === 'string' ? edgeData.target : '';
+    if (!source || !target) throw new Error('Edge source and target are required');
 
-    edgesMap.set(edgeId, edgeData);
+    const previous = listNodeOwnedEdges(doc).find((edge) => edge.id === edgeId);
+    if (previous) {
+      const rawPreviousTarget = doc.getMap('nodes').get(previous.target);
+      deleteNodeUpstreamRef(doc, previous.target, edgeId, rawPreviousTarget);
+    }
+    const rawTarget = doc.getMap('nodes').get(target) as Record<string, any> | undefined;
+    const canvasId = typeof rawTarget?.canvasId === 'string' ? rawTarget.canvasId : 'main';
+    const canvas = new Canvas(doc, () => {}, canvasId);
+    canvas.insertEdge(
+      edgeId,
+      source,
+      target,
+      typeof edgeData.type === 'string' ? edgeData.type : 'default',
+      typeof edgeData.sourceHandle === 'string' ? edgeData.sourceHandle : undefined,
+      typeof edgeData.targetHandle === 'string' ? edgeData.targetHandle : undefined,
+    );
+    doc.getMap('edges').delete(edgeId);
 
     const update = doc.export({
       mode: 'update',

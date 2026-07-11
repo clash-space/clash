@@ -52,13 +52,13 @@ test("project purge command exposes confirmation and deleted-project CAS", () =>
   assert.match(projectsSource, /\.command\("purge"\)/);
   assert.match(projectPurgeSource, /\/api\/v1\/projects\/\$\{encodeURIComponent\(projectId\)\}\/purge/);
   assert.match(projectPurgeSource, /\.option\("--yes"/);
-  assert.match(projectPurgeSource, /\.option\("--if-match <readToken>"/);
-  assert.match(projectPurgeSource, /\.option\("--force"/);
+  assert.doesNotMatch(projectPurgeSource, /\.option\("--if-match/);
+  assert.doesNotMatch(projectPurgeSource, /\.option\("--force"/);
   assert.match(projectPurgeSource, /requireDestructiveConfirmation\([\s\S]+project recovery point \$\{projectId\}/);
   assert.match(projectPurgeSource, /confirm: "purge"/);
   assert.match(projectPurgeSource, /projectWriteHeaders\(\{/);
-  assert.match(projectPurgeSource, /ifMatch: options\.ifMatch/);
-  assert.match(projectPurgeSource, /force: options\.force === true/);
+  assert.match(projectPurgeSource, /observedVersion/);
+  assert.doesNotMatch(projectPurgeSource, /force: options\.force === true/);
 });
 
 test("project restore command exposes the local recovery endpoint", () => {
@@ -70,26 +70,27 @@ test("project restore command exposes the local recovery endpoint", () => {
   assert.match(projectGetSource, /\.option\("--include-deleted"/);
   assert.match(projectGetSource, /includeDeleted=true/);
   assert.match(projectRestoreSource, /\/api\/v1\/projects\/\$\{encodeURIComponent\(projectId\)\}\/restore/);
-  assert.match(projectRestoreSource, /\.option\("--if-match <readToken>"/);
-  assert.match(projectRestoreSource, /\.option\("--force"/);
+  assert.doesNotMatch(projectRestoreSource, /\.option\("--if-match/);
+  assert.doesNotMatch(projectRestoreSource, /\.option\("--force"/);
   assert.match(projectRestoreSource, /projectWriteHeaders\(\{/);
-  assert.match(projectRestoreSource, /ifMatch: options\.ifMatch/);
-  assert.match(projectRestoreSource, /force: options\.force === true/);
+  assert.match(projectRestoreSource, /observedVersion/);
+  assert.doesNotMatch(projectRestoreSource, /force: options\.force === true/);
 });
 
-test("project get and delete expose read-token CAS for agent writes", () => {
+test("project get and delete use implicit cwd observation CAS for agent writes", () => {
   const projectsSource = commandSource("projects.ts");
   const projectGetSource = commandBlock(projectsSource, "get", "delete");
   const projectDeleteSource = commandBlock(projectsSource, "delete", "restore");
 
-  assert.match(projectGetSource, /readToken/);
-  assert.match(projectGetSource, /Read token:/);
-  assert.match(projectDeleteSource, /\.option\("--if-match <readToken>"/);
-  assert.match(projectDeleteSource, /\.option\("--force"/);
+  assert.match(projectGetSource, /recordAgentObservation/);
+  assert.doesNotMatch(projectGetSource, /Read token:/);
+  assert.doesNotMatch(projectDeleteSource, /\.option\("--if-match/);
+  assert.doesNotMatch(projectDeleteSource, /\.option\("--force"/);
   assert.match(projectDeleteSource, /projectWriteHeaders\(\{/);
   assert.match(projectsSource, /CLASH_AGENT_MEMBER_ID/);
   assert.match(projectsSource, /"x-clash-client-type"\] = "agent"/);
-  assert.match(projectsSource, /"x-clash-if-match"\] = options\.ifMatch\.trim\(\)/);
+  assert.match(projectsSource, /observed\.includes\(":receipt:"\)/);
+  assert.match(projectsSource, /"x-clash-if-match" : "x-clash-observed-version"/);
 });
 
 test("project destructive commands surface cloud recovery policy hints", () => {
@@ -105,8 +106,8 @@ test("project destructive commands surface cloud recovery policy hints", () => {
   assert.match(projectPurgeSource, /projectRecoveryPolicyHint/);
 });
 
-test("canvas delete exposes explicit --force for downstream references", () => {
-  const canvasSource = commandSource("canvas.ts");
-
-  assert.match(canvasSource, /\.command\("delete"\)[\s\S]+\.option\("--force"/);
+test("agent-first mutation commands expose no force bypass", () => {
+  for (const file of ["actions.ts", "assets.ts", "canvas.ts", "models.ts", "production.ts", "projects.ts", "text.ts", "timeline.ts"]) {
+    assert.doesNotMatch(commandSource(file), /\.option\("--force"/, `${file} exposes --force`);
+  }
 });

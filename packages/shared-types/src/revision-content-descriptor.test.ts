@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  TextRevisionContentDescriptorSchema,
-  TimelineRevisionContentDescriptorSchema,
-} from "./index";
+import { TextRevisionContentDescriptorSchema } from "./index";
 
 describe("revision content descriptors", () => {
   it("marks text revision content as host-indexed revision storage, not media assets", () => {
@@ -25,32 +22,6 @@ describe("revision content descriptors", () => {
       stored: true,
       storage: {
         registry: "text_revisions",
-        mediaAsset: false,
-        agentWritable: false,
-      },
-    });
-  });
-
-  it("marks timeline revision content as host-indexed revision storage, not media assets", () => {
-    expect(
-      TimelineRevisionContentDescriptorSchema.parse({
-        kind: "timeline-revision-content",
-        stored: true,
-        timelineHash: "1234567890abcdef",
-        mediaType: "application/yaml",
-        url: "/api/v1/projects/project/timeline-revisions/tlrev-1/content",
-        immutable: true,
-        storage: {
-          kind: "content-addressed-revision-blob",
-          registry: "timeline_revisions",
-          mediaAsset: false,
-          agentWritable: false,
-        },
-      }),
-    ).toMatchObject({
-      stored: true,
-      storage: {
-        registry: "timeline_revisions",
         mediaAsset: false,
         agentWritable: false,
       },

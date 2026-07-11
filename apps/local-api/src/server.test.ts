@@ -151,13 +151,14 @@ describe("local API server configuration", () => {
     });
 
     expect(env.CLASH_API_URL).toBe("http://127.0.0.1:49397");
-    expect(env.CLASH_API_KEY).toBe("clsh_local_desktop");
+    expect(env).not.toHaveProperty("CLASH_API_KEY");
     expect(env.PATH?.split(":")[0]).toBe(join(dataDir, "agent-bin"));
 
     const shim = join(dataDir, "agent-bin", "clash");
     await expect(stat(shim)).resolves.toMatchObject({ mode: expect.any(Number) });
     const shimText = await readFile(shim, "utf8");
     expect(shimText).toContain("CLASH_API_URL");
+    expect(shimText).not.toContain("CLASH_API_KEY");
     expect(shimText).toContain("command -v node");
     expect(shimText).toContain("ELECTRON_RUN_AS_NODE=1");
   });

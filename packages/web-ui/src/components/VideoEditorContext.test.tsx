@@ -4,13 +4,52 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { VideoEditorProvider, useVideoEditor } from "./VideoEditorContext";
 
-const { mockLoroSync, mockAutoInsertNode, mockEditorState } = vi.hoisted(() => ({
+const { mockLoroSync, mockTimeline, mockAutoInsertNode, mockEditorState } = vi.hoisted(() => {
+  const mockTimeline = {
+    storage: "mergeable" as "mergeable" | "legacy",
+    name: "Timeline",
+    owner: { kind: "canvas-action", canvasId: "main", actionNodeId: "editor-node-1" },
+    revision: {
+      revisionId: "timeline-revision-v1:after-apply",
+      state: { tracks: [] } as unknown,
+    },
+    get(field: string) {
+      return (this as Record<string, unknown>)[field];
+    },
+    readRecord() {
+      return this.storage === "mergeable"
+        ? this
+        : {
+            name: this.name,
+            owner: this.owner,
+            revisionId: this.revision.revisionId,
+            state: this.revision.state,
+          };
+    },
+  };
+  return {
+  mockTimeline,
   mockLoroSync: {
     connected: true,
+    doc: {
+      getMap: (name: string) => ({
+        get: (id: string) => name === "nodes" && id === "editor-node-1"
+          ? { data: { timelineId: "timeline-1" } }
+          : name === "timelines" && id === "timeline-1"
+            ? mockTimeline.readRecord()
+            : undefined,
+      }),
+    },
     addNode: vi.fn(),
     addEdge: vi.fn(),
     updateNode: vi.fn(),
-    applyTimelineDsl: vi.fn(() => true),
+    applyTimelineDsl: vi.fn((_nodeId: string, timelineDsl: unknown) => {
+      mockTimeline.revision = {
+        state: timelineDsl,
+        revisionId: "timeline-revision-v1:after-apply",
+      };
+      return true;
+    }),
     sendSideband: vi.fn(),
   },
   mockAutoInsertNode: vi.fn(() => ({
@@ -45,7 +84,8 @@ const { mockLoroSync, mockAutoInsertNode, mockEditorState } = vi.hoisted(() => (
     fps: 30,
     durationInFrames: 300,
   } as any,
-}));
+};
+});
 
 vi.mock("@master-clash/remotion-ui", () => ({
   Editor: (props: any) => {
@@ -97,6 +137,11 @@ describe("VideoEditorProvider", () => {
     mockLoroSync.applyTimelineDsl.mockClear();
     mockLoroSync.sendSideband.mockClear();
     mockAutoInsertNode.mockClear();
+    mockTimeline.storage = "mergeable";
+    mockTimeline.revision = {
+      revisionId: "timeline-revision-v1:before-apply",
+      state: { tracks: [] },
+    };
     vi.spyOn(Date, "now").mockReturnValue(1700000000000);
     vi.spyOn(window, "alert").mockImplementation(() => undefined);
   });
@@ -153,11 +198,12 @@ describe("VideoEditorProvider", () => {
     expect(createdNode.height).toBe(281);
     expect(createdNode.data.sourceTimelineNodeId).toBe("editor-node-1");
     expect(createdNode.data.sourceTimelineHash).toMatch(/^[a-f0-9]{16}$/);
-    expect(createdNode.data.sourceTimelineRevisionStatus).toBe("draft-canvas");
-    expect(createdNode.data).not.toHaveProperty("sourceTimelineRevisionId");
+    expect(createdNode.data.sourceTimelineId).toBe("timeline-1");
+    expect(createdNode.data.sourceTimelineRevisionId).toBe("timeline-revision-v1:after-apply");
+    expect(createdNode.data.sourceTimelineRevisionStatus).toBe("applied");
   });
 
-  it("pins exported render nodes to the applied timeline revision on the editor node", async () => {
+  it("pins the Project Timeline revision independently of node-local data", async () => {
     render(
       <VideoEditorProvider
         nodes={[
@@ -165,15 +211,7 @@ describe("VideoEditorProvider", () => {
             id: "editor-node-1",
             type: "video-editor",
             position: { x: 0, y: 0 },
-            data: {
-              appliedRevision: {
-                timelineId: "timeline:timelines/main.timeline.yaml",
-                revisionId: "tlrev-web-export",
-                timelineHash: "timeline-hash-web",
-                loroFrontiers: [{ peer: "local", counter: 12 }],
-                loroVersionVector: { local: 12 },
-              },
-            },
+            data: { label: "Editor" },
           } as any,
         ]}
         edges={[]}
@@ -192,12 +230,40 @@ describe("VideoEditorProvider", () => {
     const [, createdNode] = mockLoroSync.addNode.mock.calls[0];
     expect(createdNode.data).toMatchObject({
       sourceTimelineNodeId: "editor-node-1",
-      sourceTimelineId: "timeline:timelines/main.timeline.yaml",
-      sourceTimelineRevisionId: "tlrev-web-export",
-      sourceTimelineHash: "timeline-hash-web",
+      sourceTimelineId: "timeline-1",
+      sourceTimelineRevisionId: "timeline-revision-v1:after-apply",
       sourceTimelineRevisionStatus: "applied",
-      sourceTimelineFrontiers: [{ peer: "local", counter: 12 }],
-      sourceTimelineVersionVector: { local: 12 },
+    });
+  });
+
+  it("continues to read a legacy plain-object Project Timeline revision", async () => {
+    mockTimeline.storage = "legacy";
+    render(
+      <VideoEditorProvider
+        nodes={[
+          {
+            id: "editor-node-1",
+            type: "video-editor",
+            position: { x: 0, y: 0 },
+            data: {},
+          } as any,
+        ]}
+        edges={[]}
+      >
+        <Harness />
+      </VideoEditorProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Open"));
+    await waitFor(() => expect(screen.getByTestId("mock-editor")).toBeTruthy());
+    fireEvent.click(screen.getByText("Export"));
+
+    await waitFor(() => expect(mockLoroSync.addNode).toHaveBeenCalledTimes(1));
+    const [, createdNode] = mockLoroSync.addNode.mock.calls[0];
+    expect(createdNode.data).toMatchObject({
+      sourceTimelineId: "timeline-1",
+      sourceTimelineRevisionId: "timeline-revision-v1:after-apply",
+      sourceTimelineRevisionStatus: "applied",
     });
   });
 

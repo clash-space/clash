@@ -10,9 +10,9 @@ import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import {
     buildPendingRenderVideoNodePayload,
     getTimelineDurationInFrames,
-    readPendingRenderAppliedTimelineRevision,
 } from '@clash/web-ui/lib/pendingRenderVideo';
 import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
+import { readProjectTimeline } from '@clash/shared-types';
 
 // ─── Timeline item persistence contract ─────────────────────────────────────
 // Items persisted in Loro reference their canvas source by `sourceNodeId`.
@@ -28,6 +28,20 @@ import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
 /** Prepare tracks for persistence: reference-only, no `src` baked in. */
 function tracksForPersistence(tracks: Track[]): Track[] {
     return stripSrcFromTracks(tracks);
+}
+
+function readProjectTimelineRevision(
+    loroSync: ReturnType<typeof useOptionalLoroSyncContext>,
+    actionNodeId: string,
+): { timelineId: string; revisionId: string } | null {
+    if (!loroSync?.doc) return null;
+    const actionNode = loroSync.doc.getMap('nodes').get(actionNodeId) as any;
+    const timelineId = typeof actionNode?.data?.timelineId === 'string'
+        ? actionNode.data.timelineId
+        : undefined;
+    if (!timelineId) return null;
+    const timeline = readProjectTimeline(loroSync.doc, timelineId);
+    return timeline ? { timelineId, revisionId: timeline.revisionId } : null;
 }
 
 const Editor = lazy(() =>
@@ -217,6 +231,13 @@ export function VideoEditorProvider({
             return;
         }
 
+        if (!loroSync.applyTimelineDsl(editorNodeId, finalDsl)) return;
+        const timelineRevision = readProjectTimelineRevision(loroSync, editorNodeId);
+        if (!timelineRevision) {
+            console.error('[VideoEditorContext] Cannot export: Timeline Action has no Project Timeline revision');
+            return;
+        }
+
         // Create a new video node with the rendered content
         const newVideoNodeId = `video-${Date.now()}`;
         const currentNodes = nodes || [];
@@ -224,7 +245,7 @@ export function VideoEditorProvider({
         const editorNode = currentNodes.find(n => n.id === editorNodeId);
         const pendingVideoNode = await buildPendingRenderVideoNodePayload(finalDsl, {
             sourceTimelineNodeId: editorNodeId,
-            appliedRevision: readPendingRenderAppliedTimelineRevision(editorNode?.data),
+            timelineRevision,
         });
 
         // Use autoInsertNode for precise client-side layout

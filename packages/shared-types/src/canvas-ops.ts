@@ -17,8 +17,17 @@ import {
   RF_NODE_TYPE,
   buildPendingAssetNode,
   buildGenerationPayload,
+  type UpstreamRef,
 } from "./canvas";
 import { MODEL_CARDS, type ModelCard } from "./models";
+import { ensureProjectCanvas, readProjectTimeline } from "./project-workspace";
+import {
+  clearNodeUpstreamRefs,
+  deleteNodeUpstreamRef,
+  listNodeOwnedEdges,
+  readNodeUpstreamRefs,
+  upsertNodeUpstreamRef,
+} from "./node-upstreams";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -26,6 +35,8 @@ export type BroadcastFn = (data: Uint8Array) => void;
 
 export interface NodeInfo {
   id: string;
+  canvas_id: string;
+  upstream: UpstreamRef[];
   type: string;
   data: Record<string, unknown>;
   parent_id: string | null;
@@ -53,6 +64,13 @@ export interface ExecuteGenerationResult {
   assetNodeType: string;
   position: { x: number; y: number };
   error: string | null;
+}
+
+export interface CanvasEdgeInfo extends LayoutEdge {
+  id: string;
+  type: string;
+  sourceHandle?: string;
+  targetHandle?: string;
 }
 
 /**
@@ -88,10 +106,16 @@ function randomIdPart(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function parseLoroNode(nodeId: string, raw: Record<string, any>): NodeInfo {
+function parseLoroNode(
+  nodeId: string,
+  raw: Record<string, any>,
+  upstream: UpstreamRef[],
+): NodeInfo {
   const data = raw.data ?? {};
   return {
     id: nodeId,
+    canvas_id: typeof raw.canvasId === "string" ? raw.canvasId : "main",
+    upstream,
     type: raw.type ?? "text",
     data: typeof data === "object" ? { ...data } : {},
     parent_id: raw.parentId ?? raw.parent_id ?? null,
@@ -121,6 +145,7 @@ export class Canvas {
   constructor(
     private readonly doc: LoroDoc,
     private readonly broadcast: BroadcastFn,
+    private readonly canvasId = "main",
   ) {}
 
   // ── Read ─────────────────────────────────────────────
@@ -129,7 +154,12 @@ export class Canvas {
     const nodesMap = this.doc.getMap("nodes");
     let nodes: NodeInfo[] = [];
     for (const [id, raw] of nodesMap.entries()) {
-      nodes.push(parseLoroNode(id, raw as Record<string, any>));
+      const node = parseLoroNode(
+        id,
+        raw as Record<string, any>,
+        readNodeUpstreamRefs(this.doc, id, raw),
+      );
+      if (node.canvas_id === this.canvasId) nodes.push(node);
     }
     if (nodeType) nodes = nodes.filter((n) => n.type === nodeType);
     if (parentId) nodes = nodes.filter((n) => n.parent_id === parentId);
@@ -140,7 +170,12 @@ export class Canvas {
     const nodesMap = this.doc.getMap("nodes");
     const raw = nodesMap.get(nodeId) as Record<string, any> | undefined;
     if (!raw) return null;
-    return parseLoroNode(nodeId, raw);
+    const node = parseLoroNode(
+      nodeId,
+      raw,
+      readNodeUpstreamRefs(this.doc, nodeId, raw),
+    );
+    return node.canvas_id === this.canvasId ? node : null;
   }
 
   searchNodes(query: string, nodeTypes?: string[] | null): NodeInfo[] {
@@ -167,14 +202,8 @@ export class Canvas {
     return error ? { status, error } : { status };
   }
 
-  listEdges(): LayoutEdge[] {
-    const edgesMap = this.doc.getMap("edges");
-    const edges: LayoutEdge[] = [];
-    for (const [, raw] of edgesMap.entries()) {
-      const r = raw as Record<string, any>;
-      if (r.source && r.target) edges.push({ source: r.source, target: r.target });
-    }
-    return edges;
+  listEdges(): CanvasEdgeInfo[] {
+    return listNodeOwnedEdges(this.doc, this.canvasId);
   }
 
   /** Lookup a marketplace custom-action definition from the Loro doc's
@@ -203,8 +232,10 @@ export class Canvas {
     position: { x: number; y: number },
   ): void {
     const versionBefore = this.doc.version();
+    this.ensureWritableCanvas();
     const nodesMap = this.doc.getMap("nodes");
     nodesMap.set(nodeId, {
+      canvasId: this.canvasId,
       type: nodeType,
       data,
       parentId: parentId ?? undefined,
@@ -219,12 +250,68 @@ export class Canvas {
     source: string,
     target: string,
     edgeType: string | null = "default",
+    sourceHandle?: string,
+    targetHandle?: string,
   ): void {
+    const sourceNode = this.readNode(source);
+    const targetNode = this.readNode(target);
+    if (!sourceNode) throw new Error(`Source node ${source} not found in canvas ${this.canvasId}`);
+    if (!targetNode) throw new Error(`Target node ${target} not found in canvas ${this.canvasId}`);
+
     const versionBefore = this.doc.version();
-    const edgesMap = this.doc.getMap("edges");
-    edgesMap.set(edgeId, { source, target, type: edgeType ?? undefined });
+    const raw = this.doc.getMap("nodes").get(target) as Record<string, unknown>;
+    upsertNodeUpstreamRef(this.doc, target, {
+      nodeId: source,
+      edgeId,
+      type: edgeType ?? "default",
+      ...(sourceHandle ? { sourceHandle } : {}),
+      ...(targetHandle ? { targetHandle } : {}),
+    }, raw);
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
+  }
+
+  updateEdge(
+    edgeId: string,
+    patch: Partial<Omit<CanvasEdgeInfo, "id">>,
+  ): boolean {
+    const existing = this.listEdges().find((edge) => edge.id === edgeId);
+    if (!existing) return false;
+    const source = patch.source ?? existing.source;
+    const target = patch.target ?? existing.target;
+    if (!this.readNode(source)) throw new Error(`Source node ${source} not found in canvas ${this.canvasId}`);
+    if (!this.readNode(target)) throw new Error(`Target node ${target} not found in canvas ${this.canvasId}`);
+
+    const versionBefore = this.doc.version();
+    const nodesMap = this.doc.getMap("nodes");
+    const previousTarget = nodesMap.get(existing.target) as Record<string, unknown>;
+    deleteNodeUpstreamRef(this.doc, existing.target, edgeId, previousTarget);
+    const nextTarget = nodesMap.get(target) as Record<string, unknown>;
+    upsertNodeUpstreamRef(this.doc, target, {
+      nodeId: source,
+      edgeId,
+      type: patch.type ?? existing.type,
+      ...(patch.sourceHandle ?? existing.sourceHandle
+        ? { sourceHandle: patch.sourceHandle ?? existing.sourceHandle }
+        : {}),
+      ...(patch.targetHandle ?? existing.targetHandle
+        ? { targetHandle: patch.targetHandle ?? existing.targetHandle }
+        : {}),
+    }, nextTarget);
+    const update = this.doc.export({ mode: "update", from: versionBefore });
+    this.broadcast(update);
+    return true;
+  }
+
+  deleteEdge(edgeId: string): boolean {
+    const existing = this.listEdges().find((edge) => edge.id === edgeId);
+    if (!existing) return false;
+    const versionBefore = this.doc.version();
+    const raw = this.doc.getMap("nodes").get(existing.target) as Record<string, unknown>;
+    deleteNodeUpstreamRef(this.doc, existing.target, edgeId, raw);
+    const update = this.doc.export({ mode: "update", from: versionBefore });
+    this.broadcast(update);
+    return true;
   }
 
   updateNode(nodeId: string, updates: Record<string, unknown>): boolean {
@@ -239,13 +326,8 @@ export class Canvas {
   }
 
   deleteNode(nodeId: string): boolean {
-    const nodesMap = this.doc.getMap("nodes");
-    if (!nodesMap.get(nodeId)) return false;
-    const versionBefore = this.doc.version();
-    nodesMap.delete(nodeId);
-    const update = this.doc.export({ mode: "update", from: versionBefore });
-    this.broadcast(update);
-    return true;
+    if (!this.readNode(nodeId)) return false;
+    return this.deleteNodes([nodeId]).deletedNodeIds.length === 1;
   }
 
   deleteNodes(nodeIds: string[]): { deletedNodeIds: string[]; deletedEdgeIds: string[] } {
@@ -253,8 +335,7 @@ export class Canvas {
     if (uniqueNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
 
     const nodesMap = this.doc.getMap("nodes");
-    const edgesMap = this.doc.getMap("edges");
-    const deletedNodeIds = uniqueNodeIds.filter((nodeId) => Boolean(nodesMap.get(nodeId)));
+    const deletedNodeIds = uniqueNodeIds.filter((nodeId) => Boolean(this.readNode(nodeId)));
     if (deletedNodeIds.length === 0) return { deletedNodeIds: [], deletedEdgeIds: [] };
 
     const deletedSet = new Set(deletedNodeIds);
@@ -262,6 +343,8 @@ export class Canvas {
     for (const [key, value] of nodesMap.entries()) {
       const raw = value as Record<string, any> | undefined;
       if (!raw || typeof raw !== "object") continue;
+      const nodeCanvasId = typeof raw.canvasId === "string" ? raw.canvasId : "main";
+      if (nodeCanvasId !== this.canvasId) continue;
       if (typeof raw.parentId === "string" && deletedSet.has(raw.parentId) && !deletedSet.has(key)) {
         const { parentId: _parentId, extent: _extent, ...rest } = raw;
         nodesMap.set(key, rest);
@@ -269,13 +352,18 @@ export class Canvas {
     }
 
     const deletedEdgeIds: string[] = [];
-    for (const [edgeId, rawEdge] of edgesMap.entries()) {
-      const edge = rawEdge as Record<string, any> | undefined;
-      if (!edge || typeof edge !== "object") continue;
-      if (deletedSet.has(edge.source) || deletedSet.has(edge.target)) {
-        edgesMap.delete(edgeId);
-        deletedEdgeIds.push(edgeId);
+    for (const [targetId, value] of nodesMap.entries()) {
+      const raw = value as Record<string, any> | undefined;
+      if (!raw || typeof raw !== "object") continue;
+      const nodeCanvasId = typeof raw.canvasId === "string" ? raw.canvasId : "main";
+      if (nodeCanvasId !== this.canvasId) continue;
+      const upstream = readNodeUpstreamRefs(this.doc, targetId, raw);
+      for (const ref of upstream) {
+        const remove = deletedSet.has(targetId) || deletedSet.has(ref.nodeId);
+        if (remove) deletedEdgeIds.push(ref.edgeId);
+        if (remove) deleteNodeUpstreamRef(this.doc, targetId, ref.edgeId, raw);
       }
+      if (deletedSet.has(targetId)) clearNodeUpstreamRefs(this.doc, targetId, raw);
     }
     for (const nodeId of deletedNodeIds) nodesMap.delete(nodeId);
 
@@ -294,10 +382,23 @@ export class Canvas {
     parentId?: string | null,
     assetId?: string | null,
   ): CreateNodeResult {
-    if (this.readNode(nodeId)) {
+    const canvases = this.doc.getMap("canvases");
+    if (!canvases.get(this.canvasId) && !(this.canvasId === "main" && canvases.size === 0)) {
       return {
         node_id: null,
-        error: `Node ${nodeId} already exists`,
+        error: `Canvas ${this.canvasId} not found`,
+        proposal: null,
+        asset_id: null,
+      };
+    }
+    const existingRaw = this.doc.getMap("nodes").get(nodeId) as Record<string, unknown> | undefined;
+    if (existingRaw) {
+      const existingCanvasId = typeof existingRaw.canvasId === "string" ? existingRaw.canvasId : "main";
+      return {
+        node_id: null,
+        error: existingCanvasId === this.canvasId
+          ? `Node ${nodeId} already exists`
+          : `Node ${nodeId} already exists in canvas ${existingCanvasId}`,
         proposal: null,
         asset_id: null,
       };
@@ -398,9 +499,6 @@ export class Canvas {
     const edgeId = opts.edgeId ?? `${sourceNodeId}-${nodeId}`;
     const edgeType = opts.edgeType ?? "default";
 
-    // Insert edge first so autoInsertNode can find the reference
-    this.insertEdge(edgeId, sourceNodeId, nodeId, edgeType);
-
     // Calculate position
     const existingNodes = this.listNodes().map(toLayoutNode);
     const virtualNode: LayoutNode = {
@@ -410,10 +508,16 @@ export class Canvas {
       parentId: parentId ?? undefined,
       data,
     };
-    const result = autoInsertNode(nodeId, [...existingNodes, virtualNode], this.listEdges());
+    const result = autoInsertNode(
+      nodeId,
+      [...existingNodes, virtualNode],
+      [...this.listEdges(), { source: sourceNodeId, target: nodeId }],
+    );
 
-    // Insert node + push siblings
+    // The downstream node owns the relationship, so it must exist before
+    // insertEdge can append its canonical upstream reference.
     this.insertNode(nodeId, nodeType, data, parentId, result.position);
+    this.insertEdge(edgeId, sourceNodeId, nodeId, edgeType);
     if (result.pushedNodes.size > 0) {
       this.batchUpdatePositions(result.pushedNodes);
     }
@@ -643,10 +747,26 @@ export class Canvas {
     if (!node) {
       return { renderNodeId: "", position: { x: 0, y: 0 }, error: `Node ${editorNodeId} not found` };
     }
-    // Loose match on type — UI uses "video-editor"; we accept any node
-    // that carries a `timelineDsl` blob, since that's the actual
-    // contract the render dispatcher reads.
-    const timelineDsl = (node.data ?? {}).timelineDsl as
+    const timelineId = typeof node.data?.timelineId === "string" ? node.data.timelineId : undefined;
+    if (!timelineId) {
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Timeline Action ${editorNodeId} must reference a Project Timeline`,
+      };
+    }
+    const timeline = readProjectTimeline(this.doc, timelineId);
+    if (!timeline ||
+      timeline.owner.kind !== "canvas-action" ||
+      timeline.owner.canvasId !== this.canvasId ||
+      timeline.owner.actionNodeId !== editorNodeId) {
+      return {
+        renderNodeId: "",
+        position: { x: 0, y: 0 },
+        error: `Timeline ${timelineId} is not owned by action ${editorNodeId} in canvas ${this.canvasId}`,
+      };
+    }
+    const timelineDsl = timeline.state as
       | { tracks?: Array<{ items?: Array<{ from?: number; durationInFrames?: number }> }>; compositionWidth?: number; compositionHeight?: number; fps?: number; durationInFrames?: number }
       | undefined;
     if (!timelineDsl || typeof timelineDsl !== "object") {
@@ -689,6 +809,8 @@ export class Canvas {
       label: "Rendered Video",
       status: TaskStatus.Pending,
       timelineDsl: { ...timelineDsl, durationInFrames: renderDurationInFrames },
+      ...(timelineId ? { sourceTimelineId: timelineId } : {}),
+      sourceTimelineRevisionId: timeline.revisionId,
       pendingTask: null,
       naturalWidth,
       naturalHeight,
@@ -718,5 +840,15 @@ export class Canvas {
     }
     const update = this.doc.export({ mode: "update", from: versionBefore });
     this.broadcast(update);
+  }
+
+  private ensureWritableCanvas(): void {
+    const canvases = this.doc.getMap("canvases");
+    if (canvases.get(this.canvasId)) return;
+    if (this.canvasId === "main" && canvases.size === 0) {
+      ensureProjectCanvas(this.doc, this.canvasId);
+      return;
+    }
+    throw new Error(`Canvas ${this.canvasId} not found`);
   }
 }

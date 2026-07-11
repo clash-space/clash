@@ -2,7 +2,7 @@
 ClashAgent — connects to ProjectRoom via WebSocket and executes custom actions.
 
 Protocol:
-1. Connect to ws://<server>/sync/<projectId>?token=<token>
+1. Connect to ws://<server>/sync/<projectId> with Authorization: Bearer <token>
 2. Receive initial Loro CRDT snapshot (binary)
 3. Send register_custom_actions text message
 4. Monitor incoming Loro updates for new entries in the 'tasks' map
@@ -19,7 +19,7 @@ import logging
 import os
 import time
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote
 
 import aiohttp
 
@@ -95,7 +95,7 @@ class ClashAgent:
             )
 
         self._session = aiohttp.ClientSession()
-        ws_url = f"{self.server_url}/sync/{self.project_id}?{urlencode({'token': self.token})}"
+        ws_url = f"{self.server_url}/sync/{quote(self.project_id, safe='')}"
 
         logger.info(
             "Connecting to %s (runtime_id=%s…)",
@@ -105,6 +105,7 @@ class ClashAgent:
         self._ws = await self._session.ws_connect(
             ws_url,
             headers={
+                "Authorization": f"Bearer {self.token}",
                 "x-client-type": "cli",
                 # Server validates this against the runtime table; the
                 # WS upgrade returns 403 if the runtime doesn't exist or

@@ -180,20 +180,18 @@
                     "clash timeline apply"
                   ]
                 },
-                "lockSource": { "const": "fresh-canvas-pull" },
-                "lockPathPattern": { "type": "string" },
-                "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+                "timelineIdPlaceholder": { "const": "<timeline-id>" },
                 "requiredRuntimeArgs": {
                   "type": "array",
                   "items": { "type": "string" },
-                  "contains": { "const": "--node <video-editor-node-id>" }
+                  "contains": { "const": "--timeline <timeline-id>" }
                 },
                 "pullCommand": { "const": "clash timeline pull" },
                 "pullArgsPattern": {
                   "type": "array",
                   "prefixItems": [
-                    { "const": "--node" },
-                    { "const": "<video-editor-node-id>" },
+                    { "const": "--timeline" },
+                    { "const": "<timeline-id>" },
                     { "const": "--file" },
                     { "const": "timelines/main.timeline.yaml" }
                   ],
@@ -203,15 +201,13 @@
                 "applyArgsPattern": {
                   "type": "array",
                   "prefixItems": [
-                    { "const": "--node" },
-                    { "const": "<video-editor-node-id>" },
+                    { "const": "--timeline" },
+                    { "const": "<timeline-id>" },
                     { "const": "--file" },
-                    { "type": "string" },
-                    { "const": "--lock" },
-                    { "const": "timelines/main.timeline.lock.json" }
+                    { "type": "string" }
                   ],
-                  "minItems": 6,
-                  "maxItems": 6
+                  "minItems": 4,
+                  "maxItems": 4
                 }
               },
               "allOf": [
@@ -226,9 +222,7 @@
                     "required": [
                       "casRequired",
                       "applyCommand",
-                      "lockSource",
-                      "lockPathPattern",
-                      "nodeIdPlaceholder",
+                      "timelineIdPlaceholder",
                       "requiredRuntimeArgs",
                       "pullCommand",
                       "pullArgsPattern",
@@ -237,11 +231,9 @@
                     "properties": {
                       "casRequired": { "const": true },
                       "applyCommand": { "const": "clash timeline apply" },
-                      "lockSource": { "const": "fresh-canvas-pull" },
-                      "lockPathPattern": { "const": "timelines/main.timeline.lock.json" },
-                      "nodeIdPlaceholder": { "const": "<video-editor-node-id>" },
+                      "timelineIdPlaceholder": { "const": "<timeline-id>" },
                       "requiredRuntimeArgs": {
-                        "contains": { "const": "--node <video-editor-node-id>" }
+                        "contains": { "const": "--timeline <timeline-id>" }
                       },
                       "pullCommand": { "const": "clash timeline pull" }
                     }

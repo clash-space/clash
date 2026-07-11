@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { LoroDoc } from "loro-crdt";
+import { Canvas } from "@clash/shared-types";
 
 const mocks = vi.hoisted(() => ({
   processPendingNodes: vi.fn(),
@@ -121,6 +122,44 @@ describe("ProjectRoom Loro remote persistence", () => {
     const mirrored = new LoroDoc();
     mirrored.import(new Uint8Array(await snapshotRes.arrayBuffer()));
     expect((mirrored.getMap("nodes").get("n1") as any).data.label).toBe("Remote mirrored");
+  });
+
+  it("persists and broadcasts a repair update after an imported orphan edge", async () => {
+    const { room, data, ws } = createRoom();
+    const source = new LoroDoc();
+    source.getMap("nodes").set("target", { canvasId: "main", type: "image_gen", data: {} });
+    source.getMap("nodeUpstreams").ensureMergeableMap("target").set("orphan", {
+      nodeId: "missing-source",
+      edgeId: "orphan",
+      type: "default",
+    });
+    source.getMap("edgeIdentity").set("orphan", { target: "target" });
+    const update = source.export({ mode: "snapshot" });
+
+    const updateRes = await room.fetch(new Request("https://room/loro/project/updates", {
+      method: "POST",
+      headers: {
+        "x-internal-loro": "true",
+        "x-loro-project-id": "project",
+        "content-type": "application/octet-stream",
+      },
+      body: update,
+    }));
+
+    expect(updateRes.status).toBe(204);
+    expect(data.get("loro:next-seq")).toBe(2);
+    expect(ws.send).toHaveBeenCalledTimes(2);
+
+    const snapshotRes = await room.fetch(new Request("https://room/loro/project/snapshot", {
+      headers: {
+        "x-internal-loro": "true",
+        "x-loro-project-id": "project",
+      },
+    }));
+    const mirrored = new LoroDoc();
+    mirrored.import(new Uint8Array(await snapshotRes.arrayBuffer()));
+    expect(new Canvas(mirrored, () => {}, "main").listEdges()).toEqual([]);
+    expect(mirrored.getMap("edgeIdentity").get("orphan")).toEqual({ deleted: true });
   });
 
   it("rejects remote persistence requests without the internal header", async () => {

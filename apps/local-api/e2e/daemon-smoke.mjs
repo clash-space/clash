@@ -583,18 +583,21 @@ async function exerciseCliModelProviders(origin, createLocalAgentToolEnv) {
   const falProvider = configured.find((provider) => provider.providerId === "fal" && provider.upstreamId === "fal");
   assert(falProvider?.weight === 75, "agent CLI model provider set stores fal weight", configured);
 
-  const providersEnvelope = JSON.parse(await runClashCli([
+  const providers = JSON.parse(await runClashCli([
     "models",
     "providers",
     "--json",
   ], env));
-  const providers = providersEnvelope.providers;
-  assert(Array.isArray(providers), "agent CLI model providers returns a providers array", providersEnvelope);
-  assert(typeof providersEnvelope.readToken === "string" && providersEnvelope.readToken.length > 0, "agent CLI model providers returns a read token", providersEnvelope);
+  assert(Array.isArray(providers), "agent CLI model providers returns an array", providers);
+  assert(
+    providers.every((provider) => provider.readToken === undefined),
+    "agent CLI model providers hides internal read receipts",
+    providers,
+  );
   assert(
     providers.some((provider) => provider.providerId === "fal" && provider.configuredCredentials?.includes("apiKey")),
     "agent CLI model providers lists configured fal credentials",
-    providersEnvelope,
+    providers,
   );
 
   const available = JSON.parse(await runClashCli([

@@ -23,26 +23,21 @@ const timelineDsl: PendingRenderTimelineDsl = {
 };
 
 describe("buildPendingRenderVideoNodePayload", () => {
-  it("pins rendered videos to the applied timeline revision provenance", async () => {
+  it("pins rendered videos to the Project Timeline's current revision", async () => {
     const payload = await buildPendingRenderVideoNodePayload(timelineDsl, {
       sourceTimelineNodeId: "editor-1",
-      appliedRevision: {
-        timelineId: "timeline:timelines/main.timeline.yaml",
-        revisionId: "tlrev-applied-1",
-        timelineHash: "timeline-hash-1",
-        loroFrontiers: [{ peer: "local", counter: 7 }],
-        loroVersionVector: { local: 7 },
+      timelineRevision: {
+        timelineId: "timeline-1",
+        revisionId: "timeline-revision-v1:abc",
       },
     });
 
     expect(payload.data).toMatchObject({
       sourceTimelineNodeId: "editor-1",
-      sourceTimelineId: "timeline:timelines/main.timeline.yaml",
-      sourceTimelineRevisionId: "tlrev-applied-1",
-      sourceTimelineHash: "timeline-hash-1",
+      sourceTimelineId: "timeline-1",
+      sourceTimelineRevisionId: "timeline-revision-v1:abc",
+      sourceTimelineHash: await timelineDslHash(timelineDsl),
       sourceTimelineRevisionStatus: "applied",
-      sourceTimelineFrontiers: [{ peer: "local", counter: 7 }],
-      sourceTimelineVersionVector: { local: 7 },
     });
   });
 

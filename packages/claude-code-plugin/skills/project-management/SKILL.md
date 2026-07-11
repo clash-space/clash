@@ -7,8 +7,8 @@ description: Use when the user wants to list, switch, create, inspect, or delete
 
 Clash organizes work into projects. Each project has its own canvas (graph
 of nodes representing scenes / assets / generated content). The `clash`
-CLI is pre-authenticated for you (CLASH_API_KEY env var); you don't need
-to ask the user to log in.
+CLI talks to the loopback local host; local project commands do not need
+cloud login or a local API token.
 
 ## Listing projects
 
@@ -43,9 +43,9 @@ this — project creation is cheap but accumulates in their dashboard.
 
 ```bash
 clash project get --id <project-id> --json
-clash projects delete --id <project-id> --if-match <readToken> --yes --json
+clash projects delete --id <project-id> --yes --json
 clash project get --id <project-id> --include-deleted --json
-clash project restore <project-id> --if-match <readToken> --json
+clash project restore <project-id> --json
 ```
 
 **Confirm explicitly with the user** before running delete. Local project
@@ -54,7 +54,8 @@ and new sessions are blocked, but persisted session/message history is retained
 until an explicit purge policy exists. Quote the project's name back to the
 user in the confirmation prompt. The CLI requires `--yes` as the
 machine-readable confirmation flag. Use `restore` when the user asks to undo a
-local deletion.
+local deletion. The preceding `get` records the project version in the cwd;
+delete and restore perform read-presence and stale-version checks implicitly.
 
 ## Conventions
 

@@ -39,9 +39,9 @@ function seedDoc(nodes: SeedNode[], edges: SeedEdge[]): LoroDoc {
       position: n.position ?? { x: 0, y: 0 },
     });
   }
-  const edgesMap = doc.getMap("edges");
+  const canvas = new Canvas(doc, () => {});
   for (const e of edges) {
-    edgesMap.set(e.id, { source: e.source, target: e.target, type: e.type ?? "default" });
+    canvas.insertEdge(e.id, e.source, e.target, e.type ?? "default");
   }
   return doc;
 }

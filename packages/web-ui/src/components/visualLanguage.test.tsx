@@ -355,20 +355,18 @@ describe("visual language surfaces", () => {
 
     expect(projectSource).not.toMatch(/aria-label="Clash home"|<Link to="\/"/);
     expect(projectSource).toMatch(/id="editor-header"/);
-    expect(projectSource).toMatch(/absolute left-9 top-4/);
+    expect(projectSource).toMatch(/clash-project-sidebar-header/);
+    expect(projectSource).not.toMatch(/id="editor-header" className="absolute/);
     expect(projectSource).toMatch(/clash-project-return-button/);
-    expect(projectSource).toMatch(/projectTitleInputWidthCh/);
-    expect(projectSource).toMatch(/width: `\$\{projectTitleInputWidthCh\}ch`/);
+    expect(projectSource).toMatch(/<form className="min-w-0 flex-1"/);
+    expect(projectSource).toMatch(/clash-project-name-input h-8 w-full/);
     expect(projectSource).toMatch(/id="project-top-actions"/);
-    expect(projectSource).toMatch(/absolute top-4 z-20/);
+    expect(projectSource).toMatch(/absolute top-3 z-20/);
     expect(projectSource).toMatch(/const topActionsRight = isSidebarCollapsed \? 24 : sidebarWidth \+ 32/);
     expect(projectSource).toMatch(/style=\{\{ right: topActionsRight \}\}/);
     expect(projectSource).toMatch(/animate=\{\{ right: topActionsRight \}\}/);
-    expect(projectSource).toMatch(/resolveProjectShareAdmission/);
-    expect(projectSource).toMatch(/shareGate: projectShareGate/);
-    expect(projectSource).toMatch(/runtimePersistence: runtimeCapabilities\.loro\.persistence/);
-    expect(projectSource).toMatch(/\{projectShareAdmission\.visible && \(/);
-    expect(projectSource).toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
+    expect(projectSource).not.toMatch(/resolveProjectShareAdmission|resolveProjectWebAdmission/);
+    expect(projectSource).not.toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
     expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
     expect(copilotSource).toMatch(/clash-copilot-launcher/);
@@ -414,7 +412,7 @@ describe("visual language surfaces", () => {
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?border-radius:\s*28px/);
     const panelShellRule = cssSource.match(/\.clash-copilot-panel-shell\s*\{[\s\S]*?\}/)?.[0] ?? "";
-    const toolbarSurfaceRule = cssSource.match(/\.clash-canvas-toolbar-surface,\s*\n\.clash-canvas-menu-surface\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const toolbarSurfaceRule = cssSource.match(/\.clash-canvas-toolbar-surface,[\s\S]*?\.clash-canvas-menu-surface\s*\{[\s\S]*?\}/)?.[0] ?? "";
     const promptQueueRule = cssSource.match(/\.clash-runtime-prompt-queue\s*\{[\s\S]*?\}/)?.[0] ?? "";
     expect(panelShellRule).toMatch(/background:\s*rgba\(255, 254, 253, 0\.96\)/);
     expect(panelShellRule).not.toMatch(/linear-gradient|radial-gradient|background-size/);
@@ -428,9 +426,9 @@ describe("visual language surfaces", () => {
     );
     expect(railSource).toMatch(/COPILOT_RAIL_SLOT_CLASS/);
     expect(railSource).toMatch(/clash-copilot-rail-slot flex h-8 w-8 shrink-0 -translate-x-1 items-center justify-center/);
-    expect(toolbarSurfaceRule).toMatch(/background:\s*rgba\(255, 254, 253, 0\.94\)/);
+    expect(toolbarSurfaceRule).toMatch(/background:\s*rgba\(255, 254, 252, 0\.97\)/);
     expect(toolbarSurfaceRule).not.toMatch(/linear-gradient|radial-gradient|background-size/);
-    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface::before,\s*\n\.clash-canvas-menu-surface::before\s*\{[\s\S]*?content:\s*none;/);
+    expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface::before,[\s\S]*?\.clash-canvas-menu-surface::before\s*\{[\s\S]*?content:\s*none;/);
     expect(cssSource).toMatch(/\.clash-copilot-resize-handle::before/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
     expect(cssSource).toMatch(/\.clash-project-return-button,\s*\n\.clash-project-name-input\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/);

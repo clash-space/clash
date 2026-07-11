@@ -170,8 +170,8 @@ set `reviewRequired: true`.
 ```
 
 `project-mv-beat-cuts` maps beat sections to these clips, writes a
-`clash.mv.beat-cut.timeline-projection` manifest, and reports the required
-timeline lock path. It never creates a fake CAS lock.
+`clash.mv.beat-cut.timeline-projection` manifest, and records the required
+Timeline pull/apply contract. It creates no lock sidecar.
 `verify-mv-beat-sync` writes `clash.mv.beat-sync-verification` QA that proves
 the beat metadata has downbeats, section cut-density and review confidence, and
 that the MV projection covers those sections through fresh-pull timeline CAS.

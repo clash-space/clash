@@ -221,9 +221,9 @@ adds concrete contracts and preview/runtime support:
   without mutating canvas state. `clash production render-mg` turns an
   agent-authored MG `spec.json` into a self-contained HTML preview, overlay
   manifest, and timeline YAML projection, also without mutating canvas state.
-  The manifest records the required `clash timeline apply` CAS boundary and
-  lock sidecar path, and tests assert that `render-mg` does not mint a fake
-  lock.
+  The manifest records the required `clash timeline pull/apply` boundary;
+  cwd observation state supplies CAS implicitly and the skill does not mint
+  write authority.
   `clash production export-mg-snapshots` exports deterministic SVG frames into
   `assets/overlays/*` and registers an `overlay-snapshot-sequence` asset in
   `assets/manifest.json`. `clash production export-mg-video` exports a playable

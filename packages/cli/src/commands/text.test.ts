@@ -1,21 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  assertTextCas,
   assertTextNotReferenced,
   createTextAppliedRevision,
-  createTextLock,
   fetchTextRevisionHistory,
-  parseTextLock,
   registerTextRevisionIndex,
   resolveTextFilePath,
-  resolveTextLockPath,
   restoreTextRevisionContent,
   textHash,
+  textReadToken,
   textCommand,
   textContentFromNode,
 } from "./text";
@@ -41,9 +38,17 @@ test("registers a top-level text command for agent-editable text files", () => {
   assert.match(textSource, /import \{[^}]*resolveCanvasPresenceOptions[^}]*\} from "\.\/canvas"/s);
   assert.match(textSource, /\.\.\.resolveCanvasPresenceOptions\(\)/);
   assert.match(textSource, /actorClientType: resolveCanvasPresenceOptions\(\)\.clientType/);
-  assert.match(textSource, /readToken: node\.readToken/);
-  assert.match(textSource, /readToken: result\.readToken/);
+  assert.match(textSource, /recordWorktreeObservation/);
+  assert.match(textSource, /requireWorktreeObservation/);
+  assert.match(textSource, /observedVersion/);
   assert.match(textSource, /assertAgentHostWritePath/);
+  assert.doesNotMatch(textSource, /TextLock|createTextLock|parseTextLock|resolveTextLockPath|assertTextCas|expectedContentHash|expectedTextFilePath|expectedReadToken/);
+  assert.doesNotMatch(daemonSource, /TextLock|createTextLockFromHash|expectedContentHash|expectedTextFilePath/);
+  for (const commandName of ["apply", "replace", "restore"]) {
+    const command = textCommand.commands.find((candidate) => candidate.name() === commandName);
+    assert.ok(command);
+    assert.equal(command.options.some((option) => option.long === "--lock"), false);
+  }
 });
 
 test("rejects text apply when the text node has downstream references", () => {
@@ -109,33 +114,10 @@ test("rejects text apply through materialized action checkpoint references", () 
   }
 });
 
-test("allows explicit force when text apply rewrites a materialized checkpoint reference", () => {
-  assert.deepEqual(
-    assertTextNotReferenced({
-      nodeId: "script",
-      nodes: [
-        { id: "script", type: "text", data: { content: "draft" } },
-        { id: "action", type: "action-badge", data: { actionType: "image-gen" } },
-        { id: "output", type: "image", data: { status: "completed", assetId: "asset-output" } },
-      ],
-      edges: [
-        { source: "script", target: "action" },
-        { source: "action", target: "output" },
-      ],
-      force: true,
-    }),
-    { ok: true },
-  );
-});
-
 test("resolves the default agent-editable text file path under the cwd", () => {
   assert.equal(
     resolveTextFilePath({ cwd: "/tmp/project", nodeId: "Node 1/Script" }),
     "/tmp/project/projections/text/node-1-script.md",
-  );
-  assert.equal(
-    resolveTextLockPath({ cwd: "/tmp/project", nodeId: "Node 1/Script" }),
-    "/tmp/project/projections/text/node-1-script.lock.json",
   );
   assert.throws(
     () => resolveTextFilePath({ cwd: "/tmp/project", file: "../outside.md", nodeId: "text_node" }),
@@ -144,22 +126,6 @@ test("resolves the default agent-editable text file path under the cwd", () => {
   assert.throws(
     () => resolveTextFilePath({ cwd: "/tmp/project", file: "/tmp/other-project/script.md", nodeId: "text_node" }),
     /Projection file path must stay inside the current project cwd/,
-  );
-});
-
-test("rejects symlinked text lock sidecars that resolve outside cwd", () => {
-  const root = mkdtempSync(join(tmpdir(), "clash-text-lock-"));
-  const cwd = join(root, "project");
-  const outside = join(root, "outside");
-  const textDir = join(cwd, "projections", "text");
-  mkdirSync(textDir, { recursive: true });
-  mkdirSync(outside, { recursive: true });
-  writeFileSync(join(outside, "script.lock.json"), "{}\n", "utf8");
-  symlinkSync(join(outside, "script.lock.json"), join(textDir, "script.lock.json"));
-
-  assert.throws(
-    () => resolveTextLockPath({ cwd, file: join(textDir, "script.md"), nodeId: "script" }),
-    /Projection lock sidecar path must not traverse a symlink outside the current project cwd/,
   );
 });
 
@@ -172,40 +138,6 @@ test("extracts text content from a canvas node", () => {
     textContentFromNode({ type: "text", data: { content: 123 } }),
     "",
   );
-});
-
-test("creates and parses a text CAS lock", () => {
-  const lock = createTextLock({
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    content: "first draft",
-    pulledAt: "2026-07-05T00:00:00.000Z",
-  });
-
-  assert.equal(lock.schemaVersion, 1);
-  assert.equal(lock.kind, "clash.text.lock");
-  assert.equal(lock.projectionKind, "text");
-  assert.deepEqual(lock.entity, { kind: "text-node", id: "text_node" });
-  assert.equal(lock.hashAlgorithm, "sha256-64");
-  assert.equal(lock.contentHash.length, 16);
-  assert.match(lock.readToken ?? "", /^text-v1:[a-f0-9]{16}$/);
-  assert.deepEqual(parseTextLock(JSON.stringify(lock)), lock);
-});
-
-test("text CAS lock preserves a host-issued read receipt when pull came through the daemon", () => {
-  const readToken = "text-v1:1234567890abcdef:receipt:host-issued";
-  const lock = createTextLock({
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    content: "first draft",
-    readToken,
-    pulledAt: "2026-07-05T00:00:00.000Z",
-  });
-
-  assert.equal(lock.readToken, readToken);
-  assert.deepEqual(parseTextLock(JSON.stringify(lock)), lock);
 });
 
 test("creates text applied revision milestones for file-backed text edits", () => {
@@ -232,15 +164,6 @@ test("creates text applied revision milestones for file-backed text edits", () =
   assert.equal(revision.sourceFileHash, textHash("versioned copy"));
   assert.deepEqual(revision.actor, { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" });
 
-  const lock = createTextLock({
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    content: "versioned copy",
-    appliedRevision: revision,
-    pulledAt: "2026-07-07T00:00:00.000Z",
-  });
-  assert.deepEqual(parseTextLock(JSON.stringify(lock)).appliedRevision, revision);
 });
 
 test("registers text revisions through the host index API when available", async () => {
@@ -369,7 +292,6 @@ test("restores text revision content through a read-before-write copy-on-write r
     readNode: async () => ({
       type: "text",
       data: { content: "current body\n" },
-      readToken: "text-read-token",
     }),
     replace: async (projectId, nodeId, content, cas) => {
       replaceCalls.push({ projectId, nodeId, content, cas });
@@ -389,7 +311,7 @@ test("restores text revision content through a read-before-write copy-on-write r
         newNodeId: "text_node_copy",
         contentHash: textHash(content),
         textRevision,
-        readToken: "restored-read-token",
+        version: textReadToken({ projectId, nodeId: "text_node_copy", content }),
       };
     },
     register: async () => ({ indexed: true }),
@@ -405,115 +327,20 @@ test("restores text revision content through a read-before-write copy-on-write r
   assert.equal(replaceCall.projectId, "project_text");
   assert.equal(replaceCall.nodeId, "text_node");
   assert.equal(replaceCall.content, "restored body\n");
-  assert.equal(replaceCall.cas.lock.contentHash, textHash("current body\n"));
-  assert.equal(replaceCall.cas.lock.readToken, "text-read-token");
-  assert.equal(replaceCall.cas.parentRevisionId, revisionId);
-  const refreshedLock = parseTextLock(readFileSync(result.lockPath, "utf8"));
-  assert.equal(refreshedLock.contentHash, textHash("restored body\n"));
-  assert.equal(refreshedLock.appliedRevision?.parentRevisionId, revisionId);
-});
-
-test("parses legacy text CAS locks into the generic projection envelope", () => {
-  const legacyLock = {
-    schemaVersion: 1,
-    kind: "clash.text.lock",
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    contentHash: "1234567890abcdef",
-    hashAlgorithm: "sha256-64",
-    pulledAt: "2026-07-05T00:00:00.000Z",
-  };
-
-  assert.deepEqual(parseTextLock(JSON.stringify(legacyLock)), {
-    ...legacyLock,
-    projectionKind: "text",
-    entity: { kind: "text-node", id: "text_node" },
-  });
-});
-
-test("rejects text CAS locks with mismatched generic entity identity", () => {
-  const lock = createTextLock({
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    content: "first draft",
-    pulledAt: "2026-07-05T00:00:00.000Z",
-  });
-
-  assert.throws(
-    () => parseTextLock(JSON.stringify({
-      ...lock,
-      entity: { kind: "text-node", id: "other_text_node" },
-    })),
-    /Invalid projection lock file/,
+  assert.equal("lock" in replaceCall.cas, false);
+  assert.equal(
+    replaceCall.cas.observedVersion,
+    textReadToken({ projectId: "project_text", nodeId: "text_node", content: "current body\n" }),
   );
+  assert.equal(replaceCall.cas.parentRevisionId, revisionId);
+  assert.equal("lockPath" in result, false);
+  assert.equal(result.contentHash, textHash("restored body\n"));
 });
 
-test("text apply refreshes the lock sidecar after a successful apply", () => {
+test("text apply refreshes the cwd observation after a successful apply", () => {
   const source = readFileSync(new URL("./text.ts", import.meta.url), "utf8");
 
-  assert.match(source, /createTextLock/);
-  assert.match(source, /writeFileSync\(lockPath, JSON\.stringify\(refreshedLock/);
-  assert.match(source, /contentHash: refreshedLock\.contentHash/);
-});
-
-test("rejects text apply when the canvas content changed after pull", () => {
-  const lock = createTextLock({
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    content: "first draft",
-    pulledAt: "2026-07-05T00:00:00.000Z",
-  });
-
-  const stale = assertTextCas({
-    projectId: "project_text",
-    nodeId: "text_node",
-    lock,
-    currentContent: "changed elsewhere",
-  });
-  assert.equal(stale.ok, false);
-  if (!stale.ok) assert.match(stale.error, /Stale text apply rejected/);
-
-  assert.deepEqual(
-    assertTextCas({
-      projectId: "project_text",
-      nodeId: "text_node",
-      lock,
-      currentContent: "first draft",
-    }),
-    { ok: true },
-  );
-  assert.deepEqual(
-    assertTextCas({
-      projectId: "project_text",
-      nodeId: "text_node",
-      lock,
-      currentContent: "changed elsewhere",
-      force: true,
-    }),
-    { ok: true },
-  );
-});
-
-test("rejects text apply when the Markdown file does not match the lock", () => {
-  const lock = createTextLock({
-    projectId: "project_text",
-    nodeId: "text_node",
-    filePath: "/tmp/project/projections/text/text-node.md",
-    content: "first draft",
-    pulledAt: "2026-07-05T00:00:00.000Z",
-  });
-
-  const result = assertTextCas({
-    projectId: "project_text",
-    nodeId: "text_node",
-    lock,
-    currentContent: "first draft",
-    filePath: "/tmp/project/projections/text/other-node.md",
-  });
-
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.match(result.error, /Projection file path does not match text CAS lock/);
+  assert.match(source, /await recordTextObservation\(/);
+  assert.match(source, /result\.version \?\? textReadToken/);
+  assert.match(source, /contentHash: textHash\(content\)/);
 });

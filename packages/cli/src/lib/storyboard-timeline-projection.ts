@@ -14,7 +14,6 @@ export type ProjectStoryboardTimelineResult = {
   projected: true;
   storyboardAssetId: string;
   timelineProjectionPath: string;
-  timelineLockPath: string;
   manifestPath: string;
   panels: number;
 };
@@ -65,7 +64,7 @@ export async function projectStoryboardTimeline(
     "timelines",
     `${safeSlug(action.targetAssetId)}.storyboard.timeline.yaml`,
   );
-  const { casApply, lockPath: timelineLockPath } = timelineProjectionCasApply({
+  const { casApply } = timelineProjectionCasApply({
     cwd,
     filePath: timelineProjectionPath,
   });
@@ -116,7 +115,6 @@ export async function projectStoryboardTimeline(
     projected: true,
     storyboardAssetId: action.targetAssetId,
     timelineProjectionPath,
-    timelineLockPath,
     manifestPath,
     panels: panels.length,
   };

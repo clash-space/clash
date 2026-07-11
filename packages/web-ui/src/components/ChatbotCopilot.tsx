@@ -66,12 +66,12 @@ interface ChatbotCopilotProps {
     onCollapseChange: (collapsed: boolean) => void;
     selectedNodes?: RFNode[];
     onAddNode?: (type: string, extraData?: any) => string;
-    onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
-    onAddEdge?: (params: RFEdge | RFConnection, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
-    onUpdateEdge?: (edgeId: string, patch: Record<string, unknown>, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
-    onRemoveEdge?: (edgeId: string, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
-    onApplyTimeline?: (nodeId: string, timelineDsl: unknown, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
-    onUpdateNode?: (nodeId: string, updates: Partial<RFNode>, options?: { actorClientType?: string; ifMatch?: string; force?: boolean }) => void;
+    onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
+    onAddEdge?: (params: RFEdge | RFConnection, options?: { actorClientType?: string; ifMatch?: string }) => void;
+    onUpdateEdge?: (edgeId: string, patch: Record<string, unknown>, options?: { actorClientType?: string; ifMatch?: string }) => void;
+    onRemoveEdge?: (edgeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
+    onApplyTimeline?: (nodeId: string, timelineDsl: unknown, options?: { actorClientType?: string; ifMatch?: string }) => void;
+    onUpdateNode?: (nodeId: string, updates: Partial<RFNode>, options?: { actorClientType?: string; ifMatch?: string }) => void;
     findNodeIdByName?: (name: string) => string | undefined;
     nodes?: RFNode[];
     edges?: RFEdge[];
@@ -328,16 +328,15 @@ function permissionModeOption(modeId: string | null | undefined): { permissionMo
 function isRevisionRestoreRequest(value: unknown): value is RevisionRestoreRequest {
     if (!value || typeof value !== 'object') return false;
     const request = value as Record<string, unknown>;
-    const kind = request.kind;
     const command = typeof request.command === 'string' ? request.command.trim() : '';
     return (
-        (kind === 'text' || kind === 'timeline') &&
+        request.kind === 'text' &&
         typeof request.nodeId === 'string' &&
         request.nodeId.trim().length > 0 &&
         typeof request.revisionId === 'string' &&
         request.revisionId.trim().length > 0 &&
         request.mode === 'replace' &&
-        command.startsWith(`clash ${kind} restore `)
+        command.startsWith('clash text restore ')
     );
 }
 
@@ -1194,11 +1193,11 @@ export default function ChatbotCopilot({
     useEffect(() => {
         if (chatMode !== 'runtime' || (!onAddNode && !onRemoveNode && !onAddEdge && !onUpdateEdge && !onRemoveEdge && !onApplyTimeline)) return;
 
-        const pendingNodeDeletes: Array<{ nodeId: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
-        const pendingEdges: Array<{ id: string; source: string; target: string; type?: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
-        const pendingEdgeUpdates: Array<{ id: string; patch: Record<string, unknown>; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
-        const pendingEdgeDeletes: Array<{ id: string; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
-        const pendingTimelineApplies: Array<{ nodeId: string; dsl: unknown; ifMatch?: string; force?: boolean; requiresReadProof: boolean }> = [];
+        const pendingNodeDeletes: Array<{ nodeId: string; ifMatch?: string; requiresReadProof: boolean }> = [];
+        const pendingEdges: Array<{ id: string; source: string; target: string; type?: string; ifMatch?: string; requiresReadProof: boolean }> = [];
+        const pendingEdgeUpdates: Array<{ id: string; patch: Record<string, unknown>; ifMatch?: string; requiresReadProof: boolean }> = [];
+        const pendingEdgeDeletes: Array<{ id: string; ifMatch?: string; requiresReadProof: boolean }> = [];
+        const pendingTimelineApplies: Array<{ nodeId: string; dsl: unknown; ifMatch?: string; requiresReadProof: boolean }> = [];
 
         for (const message of clashRt.messages) {
             for (const part of message.parts) {
@@ -1216,7 +1215,6 @@ export default function ChatbotCopilot({
                         pendingEdges.push({
                             ...patchEdge,
                             ifMatch: operation.ifMatch,
-                            force: operation.force,
                             requiresReadProof: !createdNodeIdsInPatch.has(patchEdge.source) && !createdNodeIdsInPatch.has(patchEdge.target),
                         });
                         continue;
@@ -1230,7 +1228,6 @@ export default function ChatbotCopilot({
                         pendingEdgeUpdates.push({
                             ...operation.edge,
                             ifMatch: operation.ifMatch,
-                            force: operation.force,
                             requiresReadProof: !createdEdgeIdsInPatch.has(operation.edge.id),
                         });
                         continue;
@@ -1244,7 +1241,6 @@ export default function ChatbotCopilot({
                         pendingEdgeDeletes.push({
                             id: edgeId,
                             ifMatch: operation.ifMatch,
-                            force: operation.force,
                             requiresReadProof: !createdEdgeIdsInPatch.has(edgeId),
                         });
                         continue;
@@ -1270,7 +1266,6 @@ export default function ChatbotCopilot({
                         pendingNodeDeletes.push({
                             nodeId,
                             ifMatch: operation.ifMatch,
-                            force: operation.force,
                             requiresReadProof: !createdNodeIdsInPatch.has(nodeId),
                         });
                         continue;
@@ -1316,11 +1311,8 @@ export default function ChatbotCopilot({
                                 ? {
                                     actorClientType: 'agent',
                                     ifMatch: deletion.ifMatch,
-                                    force: deletion.force,
                                 }
-                                : deletion.force
-                                    ? { force: true }
-                                    : undefined,
+                                : undefined,
                         );
                     }
                 }
@@ -1335,11 +1327,8 @@ export default function ChatbotCopilot({
                             ? {
                                 actorClientType: 'agent',
                                 ifMatch: patchEdge.ifMatch,
-                                force: patchEdge.force,
                             }
-                            : patchEdge.force
-                                ? { force: true }
-                                : undefined);
+                            : undefined);
                     }
                 }
                 if (onUpdateEdge) {
@@ -1351,11 +1340,8 @@ export default function ChatbotCopilot({
                                 ? {
                                     actorClientType: 'agent',
                                     ifMatch: edgeUpdate.ifMatch,
-                                    force: edgeUpdate.force,
                                 }
-                                : edgeUpdate.force
-                                    ? { force: true }
-                                    : undefined,
+                                : undefined,
                         );
                     }
                 }
@@ -1367,11 +1353,8 @@ export default function ChatbotCopilot({
                                 ? {
                                     actorClientType: 'agent',
                                     ifMatch: edgeDelete.ifMatch,
-                                    force: edgeDelete.force,
                                 }
-                                : edgeDelete.force
-                                    ? { force: true }
-                                    : undefined,
+                                : undefined,
                         );
                     }
                 }
@@ -1384,11 +1367,8 @@ export default function ChatbotCopilot({
                                 ? {
                                     actorClientType: 'agent',
                                     ifMatch: apply.ifMatch,
-                                    force: apply.force,
                                 }
-                                : apply.force
-                                    ? { force: true }
-                                    : undefined,
+                                : undefined,
                         );
                     }
                 }

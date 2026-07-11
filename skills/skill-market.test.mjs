@@ -177,7 +177,7 @@ test("first-party skill marketplace registry is self-contained and installable",
   assert.equal(capabilityById.get("review.stage-gates")?.status, "partial");
   assert.match(
     capabilityById.get("review.stage-gates")?.description ?? "",
-    /path-bound hash lock|wrong-file/i,
+    /path-bound cwd observation|wrong-file/i,
   );
   assert.equal(capabilityById.get("workflow.dry-run-cost-gate")?.status, "partial");
   assert.match(
@@ -349,13 +349,6 @@ test("first-party skill marketplace registry is self-contained and installable",
         forbiddenInternalSurfacePattern,
         `${action.id} output ${output.pathPattern} must stay on public artifact paths`,
       );
-      if (output.lockPathPattern) {
-        assert.doesNotMatch(
-          output.lockPathPattern,
-          forbiddenInternalSurfacePattern,
-          `${action.id} lock sidecar must stay on public artifact paths`,
-        );
-      }
       if (output.schema) {
         assert.ok(
           existsSync(path.join(repoRoot, "skills", "video-production", "schemas", `${output.schema}.schema.json`)),
@@ -369,24 +362,16 @@ test("first-party skill marketplace registry is self-contained and installable",
           "clash timeline apply",
           `${action.id} projection outputs must name the explicit timeline apply command`,
         );
+        assert.equal("lockSource" in output, false, `${action.id} must not expose a CAS lock source`);
+        assert.equal("lockPathPattern" in output, false, `${action.id} must not expose a CAS lock path`);
         assert.equal(
-          output.lockSource,
-          "fresh-canvas-pull",
-          `${action.id} projection outputs must say the CAS lock comes from a fresh canvas pull`,
-        );
-        assert.equal(
-          output.lockPathPattern,
-          "timelines/main.timeline.lock.json",
-          `${action.id} projection outputs must not advertise projection-sidecar locks for timeline apply`,
-        );
-        assert.equal(
-          output.nodeIdPlaceholder,
-          "<video-editor-node-id>",
+          output.timelineIdPlaceholder,
+          "<timeline-id>",
           `${action.id} projection outputs must disclose the required timeline node id placeholder`,
         );
         assert.deepEqual(
           output.requiredRuntimeArgs,
-          ["--node <video-editor-node-id>"],
+          ["--timeline <timeline-id>"],
           `${action.id} projection outputs must disclose required runtime args`,
         );
         assert.equal(
@@ -396,13 +381,13 @@ test("first-party skill marketplace registry is self-contained and installable",
         );
         assert.deepEqual(
           output.pullArgsPattern,
-          ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
+          ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
           `${action.id} projection outputs must describe fresh-pull args`,
         );
         assert.deepEqual(
           output.applyArgsPattern,
-          ["--node", "<video-editor-node-id>", "--file", output.pathPattern, "--lock", "timelines/main.timeline.lock.json"],
-          `${action.id} projection outputs must describe apply args with the projection file and fresh lock`,
+          ["--timeline", "<timeline-id>", "--file", output.pathPattern],
+          `${action.id} projection outputs must describe apply args without a manual CAS token`,
         );
       }
       if (output.kind === "metadata") {
@@ -537,10 +522,12 @@ test("agent-facing project docs expose recoverable project delete and restore", 
   for (const docs of [commands, projectSkill]) {
     assert.match(docs, /clash projects get --id <project-id> --json/);
     assert.match(docs, /clash projects create --name/);
-    assert.match(docs, /clash projects delete --id <project-id> --if-match <readToken> --yes/);
+    assert.match(docs, /clash projects delete --id <project-id> --yes/);
     assert.match(docs, /clash project get --id <project-id> --include-deleted --json/);
-    assert.match(docs, /clash project restore <project-id> --if-match <readToken>/);
+    assert.match(docs, /clash project restore <project-id> --json/);
     assert.match(docs, /soft-delete|recoverable|restore/i);
+    assert.match(docs, /implicitly|automatically/i);
+    assert.doesNotMatch(docs, /readToken|--if-match|--force/);
     assert.doesNotMatch(docs, /removes the canvas, asset references, and history/i);
     assert.doesNotMatch(docs, /clash projects get <project-id>/);
     assert.doesNotMatch(docs, /clash projects create "<name>"/);
@@ -555,30 +542,32 @@ test("agent-facing canvas docs use current option-based CLI syntax", async () =>
   assert.match(canvasSkill, /clash canvas get --project <project-id> --node <node-id> --json/);
   assert.match(canvasSkill, /clash canvas search --project <project-id> --query "<text>" --json/);
   assert.match(canvasSkill, /clash canvas add --project <project-id> --type text --label "<label>" --content "<text>" --json/);
-  assert.match(canvasSkill, /clash canvas update --project <project-id> --node <node-id> --if-match <readToken>/);
-  assert.match(canvasSkill, /clash canvas replace-asset --project <project-id> --node <media-node-id> --asset <asset-id> --if-match <readToken> --json/);
-  assert.match(canvasSkill, /clash canvas delete --project <project-id> --node <node-id> --if-match <readToken> --yes --json/);
-  assert.match(canvasSkill, /readToken/);
+  assert.match(canvasSkill, /clash canvas update --project <project-id> --node <node-id>/);
+  assert.match(canvasSkill, /clash canvas replace-asset --project <project-id> --node <media-node-id> --asset <asset-id> --json/);
+  assert.match(canvasSkill, /clash canvas delete --project <project-id> --node <node-id> --yes --json/);
+  assert.match(canvasSkill, /observed node version|cwd observation/i);
+  assert.doesNotMatch(canvasSkill, /readToken|--if-match|--force/);
   assert.doesNotMatch(canvasSkill, /clash canvas connect <project-id>/);
   assert.doesNotMatch(canvasSkill, /clash canvas get <node-id>/);
   assert.doesNotMatch(canvasSkill, /clash canvas update <node-id>/);
   assert.doesNotMatch(canvasSkill, /clash canvas delete <node-id>/);
 });
 
-test("clash command reference exposes canvas read-token direct patch CAS", async () => {
+test("clash command reference exposes implicit cwd-observation direct patch CAS", async () => {
   const commands = await readFile(clashCommandsReferencePath, "utf8");
 
   assert.match(commands, /clash canvas get --project <id> --node <node-id> --json/);
-  assert.match(commands, /readToken/);
-  assert.match(commands, /clash canvas update --project <id> --node <id> --if-match <readToken>/);
-  assert.match(commands, /clash canvas delete --project <id> --node <id> --if-match <readToken> --yes --json/);
-  assert.match(commands, /agent.*direct.*write/i);
+  assert.match(commands, /\.clash\/observed\.json/);
+  assert.match(commands, /clash canvas update --project <id> --node <id>/);
+  assert.match(commands, /clash canvas delete --project <id> --node <id> --yes --json/);
+  assert.match(commands, /For agents,[\s\S]*direct patch writes/i);
+  assert.doesNotMatch(commands, /readToken|--if-match|--force/);
 });
 
 test("clash command reference exposes media asset copy-on-write replacement", async () => {
   const commands = await readFile(clashCommandsReferencePath, "utf8");
 
-  assert.match(commands, /clash canvas replace-asset --project <id> --node <media-node-id> --asset <asset-id> --if-match <readToken> --json/);
+  assert.match(commands, /clash canvas replace-asset --project <id> --node <media-node-id> --asset <asset-id> --json/);
   assert.match(commands, /copy-on-write media node/i);
   assert.match(commands, /does not mutate existing downstream references/i);
 });
@@ -590,39 +579,45 @@ test("clash command reference exposes text copy-on-write replacement", async () 
   assert.match(commands, /clash text apply --project <id> --node <text-node-id> --json/);
   assert.match(commands, /clash text replace --project <id> --node <text-node-id> --json/);
   assert.match(commands, /copy-on-write text\s+node/i);
-  assert.match(commands, /does not mutate existing materialized downstream checkpoints in place/i);
+  assert.match(commands, /copy-on-write text node/i);
+  assert.doesNotMatch(commands, /--lock|readToken|--if-match/);
 });
 
-test("clash command reference exposes timeline versioned replacement", async () => {
+test("clash command reference exposes concrete Timeline ownership and copy semantics", async () => {
   const commands = await readFile(clashCommandsReferencePath, "utf8");
 
-  assert.match(commands, /clash timeline pull --project <id> --node <video-editor-node-id> --json/);
-  assert.match(commands, /clash timeline apply --project <id> --node <video-editor-node-id> --json/);
-  assert.match(commands, /clash timeline replace --project <id> --node <video-editor-node-id> --json/);
-  assert.match(commands, /same lock as read proof/i);
-  assert.match(commands, /copy-on-write video-editor node/i);
-  assert.match(commands, /does not mutate existing materialized downstream renders in\s+place/i);
+  assert.match(commands, /clash timeline create --project <id> --id <timeline-id> --name <name> --json/);
+  assert.match(commands, /clash timeline pull --project <id> --timeline <timeline-id> --json/);
+  assert.match(commands, /clash timeline apply --project <id> --timeline <timeline-id> --json/);
+  assert.match(commands, /clash timeline attach --project <id> --timeline <timeline-id> --canvas <canvas-id> --json/);
+  assert.match(commands, /clash timeline copy --project <id> --timeline <timeline-id> --canvas <canvas-id> --json/);
+  assert.match(commands, /records the Timeline\s+observation|observation implicitly/i);
+  assert.match(commands, /creates a new Timeline\s+and Action node/i);
+  assert.match(commands, /leaving the source unchanged/i);
+  assert.doesNotMatch(commands, /--lock|readToken|--if-match/);
 });
 
 test("clash command reference exposes storyboard prompt-pack read-proof replacement", async () => {
   const commands = await readFile(clashCommandsReferencePath, "utf8");
 
   assert.match(commands, /clash production project-storyboard-prompt-pack --action actions\/storyboard-review\.json --out plans\/prompt-pack\.json --json/);
-  assert.match(commands, /clash production apply-storyboard-prompt-pack --file plans\/prompt-pack\.json --lock plans\/prompt-pack\.lock\.json --json/);
-  assert.match(commands, /clash production replace-storyboard-prompt-pack --file plans\/prompt-pack\.json --lock plans\/prompt-pack\.lock\.json --json/);
+  assert.match(commands, /clash production apply-storyboard-prompt-pack --file plans\/prompt-pack\.json --json/);
+  assert.match(commands, /clash production replace-storyboard-prompt-pack --file plans\/prompt-pack\.json --json/);
   assert.match(commands, /read step/i);
-  assert.match(commands, /same lock as\s+read proof/i);
-  assert.match(commands, /copy-on-write storyboard prompt-pack projection/i);
+  assert.match(commands, /same implicit observation/i);
+  assert.match(commands, /copy-on-write projection/i);
   assert.match(commands, /does not\s+mutate the existing managed projection/i);
+  assert.doesNotMatch(commands, /--lock|readToken|--if-match/);
 });
 
-test("clash command reference exposes path-bound review gate CAS", async () => {
+test("clash command reference exposes path-bound implicit review gate CAS", async () => {
   const commands = await readFile(clashCommandsReferencePath, "utf8");
 
   assert.match(commands, /clash production plan-review-gate --pipeline pipeline\.manifest\.json --stage export/);
-  assert.match(commands, /clash production approve-review-gate --gate reviews\/gates\/export\.review-gate\.json --lock reviews\/gates\/export\.review-gate\.lock\.json/);
-  assert.match(commands, /lock binds\s+the gate file path and gate hash/i);
-  assert.match(commands, /Reusing a lock from a copied or different\s+gate file is rejected/i);
+  assert.match(commands, /clash production approve-review-gate --gate reviews\/gates\/export\.review-gate\.json --reviewer/);
+  assert.match(commands, /path-bound version/i);
+  assert.match(commands, /copied, unread, or stale gate is rejected/i);
+  assert.doesNotMatch(commands, /--lock|readToken|--if-match/);
 });
 
 test("reference download schemas gate final export on redistribution and derivative rights", async () => {
@@ -655,7 +650,7 @@ test("transcript cut plan schema matches the generated frame-based talking-head 
   assert.doesNotMatch(encoded, /filler-word|repetition|startMs|sourceStartMs/);
 });
 
-test("timeline projection schemas require explicit node args for CAS apply", async () => {
+test("timeline projection schemas require explicit Timeline entity args for CAS apply", async () => {
   for (const schemaName of [
     "mg-overlay-manifest",
     "caption-overlay-projection",
@@ -671,10 +666,10 @@ test("timeline projection schemas require explicit node args for CAS apply", asy
     const required = casApply.required ?? [];
     const encoded = JSON.stringify(casApply);
 
-    assert.ok(required.includes("nodeIdPlaceholder"), `${schemaName} casApply must disclose the required timeline node`);
+    assert.ok(required.includes("timelineIdPlaceholder"), `${schemaName} casApply must disclose the required Timeline entity`);
     assert.ok(required.includes("requiredRuntimeArgs"), `${schemaName} casApply must list runtime args`);
-    assert.match(encoded, /<video-editor-node-id>/, `${schemaName} casApply should use a node id placeholder`);
-    assert.match(encoded, /--node/, `${schemaName} pull/apply args should include --node`);
+    assert.match(encoded, /<timeline-id>/, `${schemaName} casApply should use a Timeline id placeholder`);
+    assert.match(encoded, /--timeline/, `${schemaName} pull/apply args should include --timeline`);
   }
 });
 

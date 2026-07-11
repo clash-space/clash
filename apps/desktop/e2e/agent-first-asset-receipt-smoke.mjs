@@ -95,6 +95,15 @@ function sqliteRows(sql, params = []) {
   }
 }
 
+function sqliteRun(sql, params = []) {
+  const db = new DatabaseSync(path.join(dataDir, "local.sqlite"));
+  try {
+    return db.prepare(sql).run(...params);
+  } finally {
+    db.close();
+  }
+}
+
 function sqliteCountAt(targetDataDir, sql, params = []) {
   const db = new DatabaseSync(path.join(targetDataDir, "local.sqlite"));
   try {
@@ -123,7 +132,6 @@ function createPartialRouteMigrationSqlite(targetDataDir) {
       );
       CREATE TABLE asset_node_refs (asset_id TEXT NOT NULL);
       CREATE TABLE text_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
-      CREATE TABLE timeline_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE runtime_session (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE agent_member (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE chat_message (
@@ -384,50 +392,11 @@ async function main() {
     body: JSON.stringify({ revision: routeTextRevision, content: routeTextContent }),
   });
   const routeTextRevisionJson = await parseJsonResponse(routeTextRevisionResponse);
-  const routeTimelineContent = [
-    "tracks:",
-    "  - id: main",
-    "    items:",
-    "      - id: scene-001-video",
-    "        type: video",
-    "        from: start",
-    "        durationInFrames: 30",
-    "        sourceNodeId: scene-001",
-    "        assetId: asset-001",
-    "        componentId: lower-third",
-    "        textNodeId: script-001",
-    "",
-  ].join("\n");
-  const routeTimelineHash = "e727416a48c14543";
-  const routeTimelineRevision = {
-    schemaVersion: 1,
-    kind: "clash.timeline.revision",
-    timelineId: `timeline:${routeProject.id}:editor`,
-    revisionId: "tlrev-route-migration-000000000001",
-    projectId: routeProject.id,
-    nodeId: "editor",
-    createdAt: "2026-07-09T00:00:00.000Z",
-    timelineHash: routeTimelineHash,
-    hashAlgorithm: "sha256-64",
-    sourceFilePath: "timelines/main.timeline.yaml",
-    sourceFileHash: routeTimelineHash,
-    actor: {
-      actorType: "agent",
-      actorUserId: "asset-receipt-smoke-user",
-      actorAgentId: "route-migration-smoke",
-    },
-    dependencies: {
-      sourceNodeIds: ["scene-001"],
-      assetIds: ["asset-001"],
-      componentIds: ["lower-third"],
-      textNodeIds: ["script-001"],
-    },
-  };
-  const routeTimelineRevisionResponse = await routeMigrationRequest("/api/v1/timeline-revisions", {
-    method: "POST",
-    body: JSON.stringify({ revision: routeTimelineRevision, content: routeTimelineContent }),
-  });
-  const routeTimelineRevisionJson = await parseJsonResponse(routeTimelineRevisionResponse);
+  const routeTimelineRevisionResponse = await routeMigrationRequest(
+    "/api/v1/timeline-revisions",
+    { method: "POST", body: JSON.stringify({ revision: {} }) },
+  );
+
   const routeProviderResponse = await routeMigrationRequest("/api/v1/model-providers", {
     method: "PATCH",
     body: JSON.stringify({
@@ -446,34 +415,29 @@ async function main() {
   const routeTextListJson = await parseJsonResponse(
     await routeMigrationRequest(`/api/v1/projects/${encodeURIComponent(routeProject.id)}/text-revisions?nodeId=script`),
   );
-  const routeTimelineListJson = await parseJsonResponse(
-    await routeMigrationRequest(`/api/v1/projects/${encodeURIComponent(routeProject.id)}/timeline-revisions?nodeId=editor`),
-  );
   const routeProviderListJson = await parseJsonResponse(await routeMigrationRequest("/api/v1/model-providers"));
   recordCheck(
     "route-level local-api sqlite migration upgrades partial schemas before route writes",
     routeProjectResponse.status === 201 &&
       routeTextRevisionResponse.status === 200 &&
-      routeTimelineRevisionResponse.status === 200 &&
+      routeTimelineRevisionResponse.status === 404 &&
       routeProviderResponse.status === 200 &&
       routeProjectsJson.projects?.some((project) => project.id === routeProject.id) &&
       routeTextListJson.revisions?.some((revision) => revision.revisionId === routeTextRevision.revisionId) &&
-      routeTimelineListJson.revisions?.some((revision) => revision.revisionId === routeTimelineRevision.revisionId) &&
       routeProviderListJson.providers?.some((provider) => provider.id === "route-official") &&
       sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM project WHERE id = ?", [routeProject.id]) === 1 &&
       sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM text_revisions WHERE revision_id = ?", [routeTextRevision.revisionId]) === 1 &&
-      sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM timeline_revisions WHERE revision_id = ?", [routeTimelineRevision.revisionId]) === 1 &&
+      sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'timeline_revisions'") === 0 &&
       sqliteCountAt(routeMigrationDataDir, "SELECT COUNT(*) AS count FROM provider_accounts WHERE provider_id = ?", ["official"]) === 1,
     JSON.stringify({
       statuses: {
         project: routeProjectResponse.status,
         textRevision: routeTextRevisionResponse.status,
-        timelineRevision: routeTimelineRevisionResponse.status,
+        removedTimelineRevisionIndex: routeTimelineRevisionResponse.status,
         provider: routeProviderResponse.status,
       },
       routeProject,
       routeTextRevisionJson,
-      routeTimelineRevisionJson,
       routeProviderJson,
     }),
   );
@@ -499,23 +463,20 @@ async function main() {
   );
 
   const routeTimelineRevisionAudit = await parseJsonResponse(
-    await routeMigrationRequest(
-      `/api/v1/mutation-audit?operation=timeline_revision_index&entityId=${encodeURIComponent(`${routeProject.id}:editor`)}`,
-    ),
+    await routeMigrationRequest("/api/v1/mutation-audit?operation=timeline_revision_index"),
   );
-  const routeTimelineRevisionAuditRecord = routeTimelineRevisionAudit.records?.[0];
   recordCheck(
-    "timeline revision index writes sanitized local mutation audit evidence",
-    routeTimelineRevisionAudit.records?.length === 1 &&
-      routeTimelineRevisionAuditRecord.operation === "timeline_revision_index" &&
-      routeTimelineRevisionAuditRecord.entity?.kind === "timeline" &&
-      routeTimelineRevisionAuditRecord.entity?.id === `${routeProject.id}:editor` &&
-      routeTimelineRevisionAuditRecord.accepted === true &&
-      routeTimelineRevisionAuditRecord.reason === "timeline revision indexed" &&
-      routeTimelineRevisionAuditRecord.resultEntityId === routeTimelineRevision.revisionId &&
-      !JSON.stringify(routeTimelineRevisionAuditRecord.mutation ?? {}).includes("receipt") &&
-      mutationAuditRecordsHaveNoReadTokens(routeTimelineRevisionAudit.records),
-    JSON.stringify(routeTimelineRevisionAudit),
+    "duplicate Timeline revision index stays removed",
+    routeTimelineRevisionResponse.status === 404 &&
+      routeTimelineRevisionAudit.records?.length === 0 &&
+      sqliteCountAt(
+        routeMigrationDataDir,
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'timeline_revisions'",
+      ) === 0,
+    JSON.stringify({
+      routeStatus: routeTimelineRevisionResponse.status,
+      audit: routeTimelineRevisionAudit,
+    }),
   );
 
   const agentReadOnlyProjectResponse = await request("/api/v1/projects", {
@@ -2901,7 +2862,6 @@ async function main() {
       assetGcAudit.records?.length === 1 &&
       assetGcAuditRecord.operation === "asset_gc" &&
       assetGcAuditRecord.entity?.id === "local" &&
-      assetGcAuditRecord.forced === false &&
       assetGcAuditRecord.accepted === true &&
       assetGcAuditRecord.actorClientType === "agent" &&
       assetGcAuditRecord.reason === "asset garbage collection" &&
@@ -3570,7 +3530,7 @@ async function main() {
       restoredProjectStatus.storage?.workspace?.ownsCanonicalMetadata === false &&
       restoredProjectStatus.storage?.canonicalReplica?.metadata?.path === restoredProjectStatus.localSqlitePath &&
       restoredProjectStatus.storage?.canonicalReplica?.metadata?.agentWritable === false &&
-      restoredProjectStatus.storage?.canonicalReplica?.canvas?.agentWritable === false &&
+      restoredProjectStatus.storage?.canonicalReplica?.projectState?.agentWritable === false &&
       isSameOrInside(restoredProjectStatus.roots?.runtime ?? "", restoredProjectStatus.projectWorkspaceRoot ?? "") &&
       restoredProjectStatus.protectedPaths?.includes(restoredProjectStatus.roots?.runtime) === true &&
       restoredProjectStatus.protectedPaths?.includes(restoredProjectStatus.loro?.snapshotPath) === true,
@@ -3687,18 +3647,32 @@ async function main() {
     { mutation: delayedProjectPurgeJson.mutation },
   );
 
+  const agedDeletedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  sqliteRun(
+    "UPDATE project SET deleted_at = ?, updated_at = ? WHERE id = ?",
+    [agedDeletedAt, agedDeletedAt, purgeProject.id],
+  );
+  const agedPurgeReadResponse = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}?includeDeleted=true`);
+  const agedPurgeRead = await parseJsonResponse(agedPurgeReadResponse);
+  recordCheck(
+    "project purge reads a fresh receipt after the recovery window",
+    agedPurgeReadResponse.status === 200 &&
+      hasReceipt(agedPurgeRead.readToken, "project") &&
+      agedPurgeRead.readToken !== purgeRead.readToken,
+    JSON.stringify(agedPurgeRead),
+  );
+
   const acceptedProjectPurge = await request(`/api/v1/projects/${encodeURIComponent(purgeProject.id)}/purge`, {
     method: "DELETE",
     headers: {
       "x-clash-client-type": "agent",
-      "x-clash-if-match": purgeRead.readToken,
-      "x-clash-force": "true",
+      "x-clash-if-match": agedPurgeRead.readToken,
     },
     body: JSON.stringify({ confirm: "purge" }),
   });
   const acceptedProjectPurgeJson = await parseJsonResponse(acceptedProjectPurge);
   recordCheck(
-    "project purge with deleted-project receipt and force is accepted",
+    "project purge after recovery window with fresh receipt is accepted",
     acceptedProjectPurge.status === 200 &&
       acceptedProjectPurgeJson.purged === true &&
       acceptedProjectPurgeJson.id === purgeProject.id &&
@@ -3706,9 +3680,8 @@ async function main() {
       acceptedProjectPurgeJson.removed?.projects === 1 &&
       acceptedProjectPurgeJson.removed?.sessions === 1 &&
       acceptedProjectPurgeJson.mutation?.accepted === true &&
-      acceptedProjectPurgeJson.mutation?.forced === true &&
-      acceptedProjectPurgeJson.mutation?.expectedReadToken === purgeRead.readToken &&
-      acceptedProjectPurgeJson.mutation?.beforeReadToken === baseReadToken(purgeRead.readToken),
+      acceptedProjectPurgeJson.mutation?.expectedReadToken === agedPurgeRead.readToken &&
+      acceptedProjectPurgeJson.mutation?.beforeReadToken === baseReadToken(agedPurgeRead.readToken),
     JSON.stringify(acceptedProjectPurgeJson),
     { mutation: acceptedProjectPurgeJson.mutation },
   );
@@ -3732,7 +3705,6 @@ async function main() {
       purgeAudit.records?.length === 1 &&
       purgeAuditRecord.operation === "project_purge" &&
       purgeAuditRecord.entity?.id === purgeProject.id &&
-      purgeAuditRecord.forced === true &&
       purgeAuditRecord.accepted === true &&
       purgeAuditRecord.actorClientType === "agent" &&
       purgeAuditRecord.reason === "project purge" &&
@@ -3848,7 +3820,6 @@ async function main() {
       sessionDeleteAudit.records?.length === 1 &&
       sessionDeleteAuditRecord.operation === "session_delete" &&
       sessionDeleteAuditRecord.entity?.id === sessionCreated.threadId &&
-      sessionDeleteAuditRecord.forced === false &&
       sessionDeleteAuditRecord.accepted === true &&
       sessionDeleteAuditRecord.actorClientType === "agent" &&
       sessionDeleteAuditRecord.reason === "session delete" &&
@@ -4144,7 +4115,8 @@ async function main() {
       projectPurgeGetReceiptReturned: checks.some((check) => check.name === "project purge deleted get returns purge receipt" && check.status === "pass"),
       projectPurgeMissingReadRejected: checks.some((check) => check.name === "project purge without prior deleted read is rejected" && check.status === "pass"),
       projectPurgeDelayedByDefault: checks.some((check) => check.name === "project purge with receipt is delayed by default" && check.status === "pass"),
-      projectPurgeForceAccepted: checks.some((check) => check.name === "project purge with deleted-project receipt and force is accepted" && check.status === "pass"),
+      projectPurgeFreshReceiptAfterDelay: checks.some((check) => check.name === "project purge reads a fresh receipt after the recovery window" && check.status === "pass"),
+      projectPurgeAfterDelayAccepted: checks.some((check) => check.name === "project purge after recovery window with fresh receipt is accepted" && check.status === "pass"),
       projectPurgeRecoveryPointRemoved: checks.some((check) => check.name === "project purge removes deleted recovery point" && check.status === "pass"),
       projectPurgeAuditRecorded: checks.some((check) => check.name === "project purge writes sanitized local mutation audit evidence" && check.status === "pass"),
       sessionCreateAuditRecorded: checks.some((check) => check.name === "session create writes sanitized local mutation audit evidence" && check.status === "pass"),
@@ -4241,7 +4213,7 @@ async function main() {
       workflowGeneratedAssetAccepted: checks.some((check) => check.name === "workflow generated asset accepts agent local generation" && check.status === "pass"),
       workflowGeneratedAssetAuditRecorded: checks.some((check) => check.name === "workflow generated asset writes sanitized local mutation audit evidence" && check.status === "pass"),
       textRevisionIndexAuditRecorded: checks.some((check) => check.name === "text revision index writes sanitized local mutation audit evidence" && check.status === "pass"),
-      timelineRevisionIndexAuditRecorded: checks.some((check) => check.name === "timeline revision index writes sanitized local mutation audit evidence" && check.status === "pass"),
+      timelineRevisionIndexRemoved: checks.some((check) => check.name === "duplicate Timeline revision index stays removed" && check.status === "pass"),
       workflowGeneratedTextRevisionIndexed: checks.some((check) => check.name === "workflow generated text indexes host text revision" && check.status === "pass"),
       workflowGeneratedTextContentReturned: checks.some((check) => check.name === "workflow generated text content endpoint returns revision body" && check.status === "pass"),
       workflowGeneratedTextAuditRecorded: checks.some((check) => check.name === "workflow generated text writes sanitized local mutation audit evidence" && check.status === "pass"),

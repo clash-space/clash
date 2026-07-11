@@ -27,8 +27,6 @@
     "sourceTimelineHash": { "type": "string" },
     "sourceTimelineRevisionId": { "type": "string" },
     "sourceTimelineRevisionStatus": { "enum": ["draft-file", "applied"] },
-    "sourceTimelineFrontiers": { "type": "array" },
-    "sourceTimelineVersionVector": { "type": "object" },
     "format": { "const": "csv" },
     "outputPath": { "type": "string" },
     "outputs": { "type": "array", "items": { "type": "string" } },

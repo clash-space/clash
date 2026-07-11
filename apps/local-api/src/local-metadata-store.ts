@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { TextAppliedRevision, TimelineAppliedRevision } from "@clash/shared-types";
+import type { TextAppliedRevision } from "@clash/shared-types";
 import type { Asset, AssetKind, AssetRefRow } from "@clash/shared-types/assets";
 
 type SqlitePrimitive = string | number | null;
@@ -91,7 +91,6 @@ export interface LocalMutationAuditRecord {
   operation: string;
   entity: { kind: string; id: string };
   actorClientType: string | null;
-  forced: boolean;
   accepted: boolean;
   reason: string | null;
   resultEntityId: string | null;
@@ -106,12 +105,6 @@ export interface LocalMutationAuditFilter {
 }
 
 export interface LocalTextRevisionFilter {
-  projectId: string;
-  nodeId?: string;
-  limit?: number;
-}
-
-export interface LocalTimelineRevisionFilter {
   projectId: string;
   nodeId?: string;
   limit?: number;
@@ -248,23 +241,6 @@ function applySchema(db: SqliteDatabase): void {
       actor_json TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS timeline_revisions (
-      revision_id TEXT PRIMARY KEY NOT NULL,
-      timeline_id TEXT NOT NULL,
-      parent_revision_id TEXT,
-      project_id TEXT NOT NULL,
-      node_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      timeline_hash TEXT NOT NULL,
-      hash_algorithm TEXT NOT NULL,
-      source_file_path TEXT NOT NULL,
-      source_file_hash TEXT NOT NULL,
-      actor_json TEXT,
-      loro_frontiers_json TEXT,
-      loro_version_vector_json TEXT,
-      dependencies_json TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS runtime_session (
       id TEXT PRIMARY KEY NOT NULL,
       project_id TEXT NOT NULL,
@@ -308,7 +284,6 @@ function applySchema(db: SqliteDatabase): void {
       entity_kind TEXT NOT NULL,
       entity_id TEXT NOT NULL,
       actor_client_type TEXT,
-      forced INTEGER NOT NULL,
       accepted INTEGER NOT NULL,
       reason TEXT,
       result_entity_id TEXT,
@@ -329,8 +304,6 @@ function applySchema(db: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS asset_node_refs_project_idx ON asset_node_refs(project_id, node_id);
     CREATE INDEX IF NOT EXISTS text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS runtime_session_project_idx ON runtime_session(project_id, updated_at);
     CREATE INDEX IF NOT EXISTS agent_member_user_idx ON agent_member(user_id, created_at);
 	    CREATE INDEX IF NOT EXISTS chat_message_session_idx ON chat_message(session_id, created_at);
@@ -419,23 +392,6 @@ function ensureLocalMetadataColumns(db: SqliteDatabase): void {
     ensureSqliteColumn(db, "text_revisions", column);
   }
   for (const column of [
-    "timeline_id TEXT NOT NULL DEFAULT ''",
-    "parent_revision_id TEXT",
-    "project_id TEXT NOT NULL DEFAULT ''",
-    "node_id TEXT NOT NULL DEFAULT ''",
-    "created_at TEXT NOT NULL DEFAULT ''",
-    "timeline_hash TEXT NOT NULL DEFAULT ''",
-    "hash_algorithm TEXT NOT NULL DEFAULT 'sha256-64'",
-    "source_file_path TEXT NOT NULL DEFAULT ''",
-    "source_file_hash TEXT NOT NULL DEFAULT ''",
-    "actor_json TEXT",
-    "loro_frontiers_json TEXT",
-    "loro_version_vector_json TEXT",
-    "dependencies_json TEXT NOT NULL DEFAULT '{\"sourceNodeIds\":[],\"assetIds\":[],\"componentIds\":[],\"textNodeIds\":[]}'",
-  ]) {
-    ensureSqliteColumn(db, "timeline_revisions", column);
-  }
-  for (const column of [
     "project_id TEXT NOT NULL DEFAULT ''",
     "title TEXT NOT NULL DEFAULT ''",
     "type TEXT NOT NULL DEFAULT 'runtime'",
@@ -475,7 +431,6 @@ function ensureLocalMetadataColumns(db: SqliteDatabase): void {
     "entity_kind TEXT NOT NULL DEFAULT ''",
     "entity_id TEXT NOT NULL DEFAULT ''",
     "actor_client_type TEXT",
-    "forced INTEGER NOT NULL DEFAULT 0",
     "accepted INTEGER NOT NULL DEFAULT 0",
     "reason TEXT",
     "result_entity_id TEXT",
@@ -484,6 +439,7 @@ function ensureLocalMetadataColumns(db: SqliteDatabase): void {
   ]) {
     ensureSqliteColumn(db, "mutation_audit", column);
   }
+  dropSqliteColumnIfPresent(db, "mutation_audit", "forced");
 }
 
 function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition: string): void {
@@ -492,6 +448,12 @@ function ensureSqliteColumn(db: SqliteDatabase, table: string, columnDefinition:
   } catch {
     // Column already exists, or the existing table is too incompatible for safe repair.
   }
+}
+
+function dropSqliteColumnIfPresent(db: SqliteDatabase, table: string, column: string): void {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all()
+    .some((row) => rowString(row, "name") === column);
+  if (exists) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -548,11 +510,6 @@ function textRevisionLimit(limit: number | undefined): number {
   return Math.max(1, Math.min(200, Math.floor(limit ?? 50)));
 }
 
-function timelineRevisionLimit(limit: number | undefined): number {
-  if (!Number.isFinite(limit)) return 50;
-  return Math.max(1, Math.min(200, Math.floor(limit ?? 50)));
-}
-
 function textRevisionFromRow(row: Record<string, unknown>): TextAppliedRevision {
   return {
     schemaVersion: 1,
@@ -577,42 +534,6 @@ function sameTextRevision(left: TextAppliedRevision, right: TextAppliedRevision)
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function timelineRevisionFromRow(row: Record<string, unknown>): TimelineAppliedRevision {
-  return {
-    schemaVersion: 1,
-    kind: "clash.timeline.revision",
-    timelineId: rowString(row, "timeline_id"),
-    revisionId: rowString(row, "revision_id"),
-    ...(rowOptionalString(row, "parent_revision_id") ? { parentRevisionId: rowOptionalString(row, "parent_revision_id") } : {}),
-    projectId: rowString(row, "project_id"),
-    nodeId: rowString(row, "node_id"),
-    createdAt: rowString(row, "created_at"),
-    timelineHash: rowString(row, "timeline_hash"),
-    hashAlgorithm: "sha256-64",
-    sourceFilePath: rowString(row, "source_file_path"),
-    sourceFileHash: rowString(row, "source_file_hash"),
-    ...(rowOptionalString(row, "actor_json")
-      ? { actor: parseJson<TimelineAppliedRevision["actor"]>(row.actor_json, undefined) }
-      : {}),
-    ...(rowOptionalString(row, "loro_frontiers_json")
-      ? { loroFrontiers: parseJson<TimelineAppliedRevision["loroFrontiers"]>(row.loro_frontiers_json, undefined) }
-      : {}),
-    ...(rowOptionalString(row, "loro_version_vector_json")
-      ? { loroVersionVector: parseJson<TimelineAppliedRevision["loroVersionVector"]>(row.loro_version_vector_json, undefined) }
-      : {}),
-    dependencies: parseJson<TimelineAppliedRevision["dependencies"]>(row.dependencies_json, {
-      sourceNodeIds: [],
-      assetIds: [],
-      componentIds: [],
-      textNodeIds: [],
-    }),
-  };
-}
-
-function sameTimelineRevision(left: TimelineAppliedRevision, right: TimelineAppliedRevision): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function hasRows(db: SqliteDatabase): boolean {
   const row = db.prepare(`
     SELECT
@@ -621,7 +542,6 @@ function hasRows(db: SqliteDatabase): boolean {
       (SELECT COUNT(*) FROM asset_refs) +
       (SELECT COUNT(*) FROM asset_node_refs) +
       (SELECT COUNT(*) FROM text_revisions) +
-      (SELECT COUNT(*) FROM timeline_revisions) +
       (SELECT COUNT(*) FROM runtime_session) +
       (SELECT COUNT(*) FROM agent_member) +
       (SELECT COUNT(*) FROM chat_message) AS count
@@ -668,8 +588,8 @@ export function createLocalMetadataStore(dataDir: string) {
     db.prepare(`
       INSERT INTO mutation_audit (
         id, created_at, operation, entity_kind, entity_id, actor_client_type,
-        forced, accepted, reason, result_entity_id, error, mutation_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        accepted, reason, result_entity_id, error, mutation_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id,
       record.createdAt,
@@ -677,7 +597,6 @@ export function createLocalMetadataStore(dataDir: string) {
       record.entity.kind,
       record.entity.id,
       record.actorClientType ?? null,
-      record.forced ? 1 : 0,
       record.accepted ? 1 : 0,
       record.reason ?? null,
       record.resultEntityId ?? null,
@@ -1082,7 +1001,7 @@ export function createLocalMetadataStore(dataDir: string) {
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     return withDb((db) => db.prepare(`
       SELECT id, created_at, operation, entity_kind, entity_id, actor_client_type,
-             forced, accepted, reason, result_entity_id, error, mutation_json
+             accepted, reason, result_entity_id, error, mutation_json
         FROM mutation_audit
         ${where}
        ORDER BY created_at DESC, id DESC
@@ -1096,7 +1015,6 @@ export function createLocalMetadataStore(dataDir: string) {
         id: rowString(row, "entity_id"),
       },
       actorClientType: rowOptionalString(row, "actor_client_type") ?? null,
-      forced: rowBoolean(row, "forced"),
       accepted: rowBoolean(row, "accepted"),
       reason: rowOptionalString(row, "reason") ?? null,
       resultEntityId: rowOptionalString(row, "result_entity_id") ?? null,
@@ -1182,86 +1100,6 @@ export function createLocalMetadataStore(dataDir: string) {
     return row ? textRevisionFromRow(row) : null;
   }
 
-  async function upsertTimelineRevision(revision: TimelineAppliedRevision): Promise<TimelineAppliedRevision> {
-    await withDb((db) => {
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        const existing = db.prepare(`
-          SELECT revision_id, timeline_id, parent_revision_id, project_id, node_id,
-                 created_at, timeline_hash, hash_algorithm, source_file_path,
-                 source_file_hash, actor_json, loro_frontiers_json,
-                 loro_version_vector_json, dependencies_json
-            FROM timeline_revisions
-           WHERE revision_id = ?
-        `).get(revision.revisionId);
-        if (existing && !sameTimelineRevision(timelineRevisionFromRow(existing), revision)) {
-          throw new Error(`Timeline revision ${revision.revisionId} already exists with different metadata`);
-        }
-        db.prepare(`
-          INSERT OR REPLACE INTO timeline_revisions (
-            revision_id, timeline_id, parent_revision_id, project_id, node_id,
-            created_at, timeline_hash, hash_algorithm, source_file_path,
-            source_file_hash, actor_json, loro_frontiers_json,
-            loro_version_vector_json, dependencies_json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          revision.revisionId,
-          revision.timelineId,
-          revision.parentRevisionId ?? null,
-          revision.projectId,
-          revision.nodeId,
-          revision.createdAt,
-          revision.timelineHash,
-          revision.hashAlgorithm,
-          revision.sourceFilePath,
-          revision.sourceFileHash,
-          jsonOrNull(revision.actor),
-          jsonOrNull(revision.loroFrontiers),
-          jsonOrNull(revision.loroVersionVector),
-          JSON.stringify(revision.dependencies),
-        );
-        markMigration(db, dataDir, "");
-        db.exec("COMMIT");
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
-    });
-    return revision;
-  }
-
-  async function listTimelineRevisions(filter: LocalTimelineRevisionFilter): Promise<TimelineAppliedRevision[]> {
-    const clauses = ["project_id = ?"];
-    const params: SqlitePrimitive[] = [filter.projectId];
-    if (filter.nodeId?.trim()) {
-      clauses.push("node_id = ?");
-      params.push(filter.nodeId.trim());
-    }
-    params.push(timelineRevisionLimit(filter.limit));
-    return withDb((db) => db.prepare(`
-      SELECT revision_id, timeline_id, parent_revision_id, project_id, node_id,
-             created_at, timeline_hash, hash_algorithm, source_file_path,
-             source_file_hash, actor_json, loro_frontiers_json,
-             loro_version_vector_json, dependencies_json
-        FROM timeline_revisions
-       WHERE ${clauses.join(" AND ")}
-       ORDER BY created_at DESC, revision_id DESC
-       LIMIT ?
-    `).all(...params).map(timelineRevisionFromRow));
-  }
-
-  async function getTimelineRevision(projectId: string, revisionId: string): Promise<TimelineAppliedRevision | null> {
-    const row = await withDb((db) => db.prepare(`
-      SELECT revision_id, timeline_id, parent_revision_id, project_id, node_id,
-             created_at, timeline_hash, hash_algorithm, source_file_path,
-             source_file_hash, actor_json, loro_frontiers_json,
-             loro_version_vector_json, dependencies_json
-        FROM timeline_revisions
-       WHERE project_id = ? AND revision_id = ?
-    `).get(projectId, revisionId));
-    return row ? timelineRevisionFromRow(row) : null;
-  }
-
   return {
     path,
     load,
@@ -1273,8 +1111,5 @@ export function createLocalMetadataStore(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
-    upsertTimelineRevision,
-    listTimelineRevisions,
-    getTimelineRevision,
   };
 }

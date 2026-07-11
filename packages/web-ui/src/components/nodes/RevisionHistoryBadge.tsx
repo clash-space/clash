@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from "react";
-import type { RevisionHistoryEntry, RevisionHistoryKind } from "@clash/web-ui/hooks/useRevisionHistory";
+import type { RevisionHistoryEntry } from "@clash/web-ui/hooks/useRevisionHistory";
 
 interface RevisionHistorySnapshot {
   count: number;
@@ -10,7 +10,6 @@ interface RevisionHistorySnapshot {
 }
 
 export interface RevisionHistoryBadgeProps {
-  kind: RevisionHistoryKind;
   nodeId: string;
   history: RevisionHistorySnapshot;
   onRestoreRevision?: (request: RevisionRestoreRequest) => void;
@@ -18,7 +17,7 @@ export interface RevisionHistoryBadgeProps {
 }
 
 export interface RevisionRestoreRequest {
-  kind: RevisionHistoryKind;
+  kind: "text";
   nodeId: string;
   revisionId: string;
   mode: "replace";
@@ -27,21 +26,16 @@ export interface RevisionRestoreRequest {
 
 export const REVISION_RESTORE_REQUEST_EVENT = "clash:revision-restore-request";
 
-function labelFor(kind: RevisionHistoryKind): string {
-  return kind === "text" ? "Text revision history" : "Timeline revision history";
+function recoveryCommand(revisionId: string): string {
+  return `clash text content --revision ${shellArg(revisionId)} --out ${shellArg(`revisions/${revisionId}.md`)}`;
 }
 
-function recoveryCommand(kind: RevisionHistoryKind, revisionId: string): string {
-  const extension = kind === "text" ? "md" : "timeline.yaml";
-  return `clash ${kind} content --revision ${shellArg(revisionId)} --out ${shellArg(`revisions/${revisionId}.${extension}`)}`;
-}
-
-function restoreCommand(kind: RevisionHistoryKind, nodeId: string, revisionId: string): string {
-  return `clash ${kind} restore --node ${shellArg(nodeId)} --revision ${shellArg(revisionId)} --mode replace`;
+function restoreCommand(nodeId: string, revisionId: string): string {
+  return `clash text restore --node ${shellArg(nodeId)} --revision ${shellArg(revisionId)} --mode replace`;
 }
 
 function revisionHash(revision: RevisionHistoryEntry): string | null {
-  return revision.textHash ?? revision.timelineHash ?? revision.content?.hash ?? null;
+  return revision.textHash ?? revision.content?.hash ?? null;
 }
 
 function shellArg(value: string): string {
@@ -50,12 +44,12 @@ function shellArg(value: string): string {
     : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-export function RevisionHistoryBadge({ kind, nodeId, history, onRestoreRevision, className = "" }: RevisionHistoryBadgeProps) {
+export function RevisionHistoryBadge({ nodeId, history, onRestoreRevision, className = "" }: RevisionHistoryBadgeProps) {
   const [open, setOpen] = useState(false);
 
   if (history.count === 0) return null;
 
-  const label = labelFor(kind);
+  const label = "Text revision history";
   const stopNodeGesture = (event: MouseEvent) => {
     event.stopPropagation();
   };
@@ -106,7 +100,7 @@ export function RevisionHistoryBadge({ kind, nodeId, history, onRestoreRevision,
           <ul className="mt-2 space-y-2">
             {history.revisions.map((revision) => {
               const hash = revisionHash(revision);
-              const restore = restoreCommand(kind, nodeId, revision.revisionId);
+              const restore = restoreCommand(nodeId, revision.revisionId);
               const directRestore = Boolean(onRestoreRevision);
               return (
                 <li key={revision.revisionId} className="border-t border-warm-border pt-2 first:border-t-0 first:pt-0">
@@ -125,30 +119,34 @@ export function RevisionHistoryBadge({ kind, nodeId, history, onRestoreRevision,
                       {hash}
                     </div>
                   )}
-                  <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
-                    {recoveryCommand(kind, revision.revisionId)}
-                  </code>
-                  <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
-                    {restore}
-                  </code>
-                  <button
-                    type="button"
-                    className="mt-1 inline-flex h-6 items-center rounded-md border border-warm-border bg-warm-surface px-2 text-[10px] font-semibold text-stone-700 transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
-                    aria-label={directRestore
-                      ? `Restore ${kind} revision ${revision.revisionId}`
-                      : `Copy restore command for ${kind} revision ${revision.revisionId}`}
-                    onClick={() =>
-                      requestRestore({
-                        kind,
-                        nodeId,
-                        revisionId: revision.revisionId,
-                        mode: "replace",
-                        command: restore,
-                      })
-                    }
-                  >
-                    {directRestore ? "Restore" : "Copy restore"}
-                  </button>
+                  {restore && (
+                    <>
+                      <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
+                        {recoveryCommand(revision.revisionId)}
+                      </code>
+                      <code className="mt-1 block break-all rounded-md bg-warm-muted px-2 py-1 font-mono text-[10px] leading-snug text-stone-800 dark:text-stone-100">
+                        {restore}
+                      </code>
+                      <button
+                        type="button"
+                        className="mt-1 inline-flex h-6 items-center rounded-md border border-warm-border bg-warm-surface px-2 text-[10px] font-semibold text-stone-700 transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
+                        aria-label={directRestore
+                          ? `Restore text revision ${revision.revisionId}`
+                          : `Copy restore command for text revision ${revision.revisionId}`}
+                        onClick={() =>
+                          requestRestore({
+                            kind: "text",
+                            nodeId,
+                            revisionId: revision.revisionId,
+                            mode: "replace",
+                            command: restore,
+                          })
+                        }
+                      >
+                        {directRestore ? "Restore" : "Copy restore"}
+                      </button>
+                    </>
+                  )}
                 </li>
               );
             })}

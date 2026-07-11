@@ -18,7 +18,6 @@ export interface AgentCanvasDeleteNodeOperation {
   op: "delete_node";
   node: Pick<AgentCanvasNodePatch, "id">;
   ifMatch?: string;
-  force?: boolean;
 }
 
 export interface AgentCanvasEdgePatch {
@@ -32,7 +31,6 @@ export interface AgentCanvasAddEdgeOperation {
   op: "add_edge";
   edge: AgentCanvasEdgePatch;
   ifMatch?: string;
-  force?: boolean;
 }
 
 export interface AgentCanvasUpdateEdgeOperation {
@@ -42,14 +40,12 @@ export interface AgentCanvasUpdateEdgeOperation {
     patch: Record<string, unknown>;
   };
   ifMatch?: string;
-  force?: boolean;
 }
 
 export interface AgentCanvasDeleteEdgeOperation {
   op: "delete_edge";
   edge: Pick<AgentCanvasEdgePatch, "id">;
   ifMatch?: string;
-  force?: boolean;
 }
 
 export interface AgentTimelineApplyOperation {
@@ -57,7 +53,6 @@ export interface AgentTimelineApplyOperation {
   timeline: {
     nodeId: string;
     dsl: Record<string, unknown>;
-    force?: boolean;
     ifMatch?: string;
   };
 }
@@ -144,7 +139,6 @@ function parseDeleteNodeOperation(value: unknown): AgentCanvasDeleteNodeOperatio
     op: "delete_node",
     node: { id },
     ...(ifMatch ? { ifMatch } : {}),
-    ...(value.force === true ? { force: true } : {}),
   };
 }
 
@@ -165,7 +159,6 @@ function parseAddEdgeOperation(value: unknown): AgentCanvasAddEdgeOperation | nu
       ...(type ? { type } : {}),
     },
     ...(ifMatch ? { ifMatch } : {}),
-    ...(value.force === true ? { force: true } : {}),
   };
 }
 
@@ -181,7 +174,6 @@ function parseUpdateEdgeOperation(value: unknown): AgentCanvasUpdateEdgeOperatio
       patch: value.edge.patch,
     },
     ...(ifMatch ? { ifMatch } : {}),
-    ...(value.force === true ? { force: true } : {}),
   };
 }
 
@@ -194,7 +186,6 @@ function parseDeleteEdgeOperation(value: unknown): AgentCanvasDeleteEdgeOperatio
     op: "delete_edge",
     edge: { id },
     ...(ifMatch ? { ifMatch } : {}),
-    ...(value.force === true ? { force: true } : {}),
   };
 }
 
@@ -212,7 +203,6 @@ function parseTimelineApplyOperation(value: unknown): AgentTimelineApplyOperatio
     timeline: {
       nodeId,
       dsl: value.timeline.dsl,
-      ...(value.timeline.force === true ? { force: true } : {}),
       ...(ifMatch ? { ifMatch } : {}),
     },
   };

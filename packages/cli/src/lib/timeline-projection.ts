@@ -1,74 +1,25 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
-  agentReadToken,
-  TimelineAppliedRevisionSchema,
+  timelineDslCanonicalJson,
   timelineDslFromYaml,
-  timelineDslToYaml,
-  validateCanvasTimelineApply,
   type ResolvedTimelineDsl,
-  type TimelineAppliedRevision,
-  type TimelineRevisionActor,
-  type TimelineRevisionDependencies,
 } from "@clash/shared-types";
 import {
-  assertProjectionLockFilePath,
-  createProjectionLock,
   hashProjectionContent,
-  parseProjectionLock,
-  type ProjectionLockEntity,
   resolveProjectionFilePathInsideCwd,
-  resolveProjectionLockPathInsideCwd,
-  resolveProjectionLockSidecarPathInsideCwd,
 } from "./projection-cas";
-
-export type {
-  TimelineAppliedRevision,
-  TimelineRevisionActor,
-  TimelineRevisionDependencies,
-};
-
-export type TimelineNodeLike = {
-  id?: string;
-  type: string;
-  data?: Record<string, unknown>;
-};
-
-export type TimelineReferenceNodeLike = {
-  id: string;
-  type?: string;
-  data?: Record<string, unknown>;
-};
-
-export type TimelineReferenceEdge = {
-  source: string;
-  target: string;
-};
-
-export type TimelineLock = {
-  schemaVersion: 1;
-  kind: "clash.timeline.lock";
-  projectionKind: "timeline";
-  projectId: string;
-  entity: ProjectionLockEntity;
-  nodeId: string;
-  filePath: string;
-  contentHash: string;
-  timelineHash: string;
-  readToken?: string;
-  hashAlgorithm: "sha256-64";
-  pulledAt: string;
-  appliedRevision?: TimelineAppliedRevision;
-};
 
 export type ParseTimelineApplyResult =
   | { ok: true; dsl: ResolvedTimelineDsl; sources: string[] }
   | { ok: false; error: string };
 
-export type TimelineCasResult = { ok: true } | { ok: false; error: string };
-
 export type TimelineRevisionStatus = "draft-file" | "applied";
+
+export type ProjectTimelineRevisionRef = {
+  timelineId: string;
+  revisionId: string;
+  timelineHash: string;
+};
 
 export type TimelineSourceProvenance = {
   sourceTimelineId: string;
@@ -76,13 +27,6 @@ export type TimelineSourceProvenance = {
   sourceTimelineHash: string;
   sourceTimelineRevisionId: string;
   sourceTimelineRevisionStatus: TimelineRevisionStatus;
-  sourceTimelineFrontiers?: unknown[];
-  sourceTimelineVersionVector?: Record<string, number>;
-};
-
-export type LoroRevisionMetadata = {
-  loroFrontiers?: unknown[];
-  loroVersionVector?: Record<string, number>;
 };
 
 export type TimelineProjectionCasApply = {
@@ -90,10 +34,7 @@ export type TimelineProjectionCasApply = {
   mutation: "projection-only";
   applyCommand: "clash timeline apply";
   filePath: string;
-  lockPath: string;
-  lockRequired: true;
-  lockSource: "fresh-canvas-pull";
-  nodeIdPlaceholder: "<video-editor-node-id>";
+  timelineIdPlaceholder: "<timeline-id>";
   requiredRuntimeArgs: string[];
   pullCommand: "clash timeline pull";
   pullArgs: string[];
@@ -114,57 +55,28 @@ export function resolveTimelineFilePath(options: {
   });
 }
 
-export function resolveTimelineLockPath(options: {
-  cwd: string;
-  file?: string;
-  lock?: string;
-  timeline?: string;
-}): string {
-  if (options.lock) {
-    return resolveProjectionLockSidecarPathInsideCwd({
-      lockPath: options.lock,
-      cwd: options.cwd,
-    });
-  }
-  return resolveProjectionLockPathInsideCwd({
-    filePath: resolveTimelineFilePath(options),
-    cwd: options.cwd,
-  });
-}
-
 export function timelineProjectionCasApply(options: {
   cwd: string;
   filePath: string;
   timeline?: string;
-}): { casApply: TimelineProjectionCasApply; lockPath: string } {
+}): { casApply: TimelineProjectionCasApply } {
   const timeline = options.timeline ?? "main";
   const targetFilePath = resolveTimelineFilePath({ cwd: options.cwd, timeline });
-  const lockPath = resolveTimelineLockPath({ cwd: options.cwd, timeline });
   const projectionPath = toProjectPath(options.cwd, options.filePath);
   const targetProjectPath = toProjectPath(options.cwd, targetFilePath);
-  const lockProjectPath = toProjectPath(options.cwd, lockPath);
   return {
-    lockPath,
     casApply: {
       target: "timeline",
       mutation: "projection-only",
       applyCommand: "clash timeline apply",
       filePath: projectionPath,
-      lockPath: lockProjectPath,
-      lockRequired: true,
-      lockSource: "fresh-canvas-pull",
-      nodeIdPlaceholder: "<video-editor-node-id>",
-      requiredRuntimeArgs: ["--node <video-editor-node-id>"],
+      timelineIdPlaceholder: "<timeline-id>",
+      requiredRuntimeArgs: ["--timeline <timeline-id>"],
       pullCommand: "clash timeline pull",
-      pullArgs: ["--node", "<video-editor-node-id>", "--file", targetProjectPath],
-      applyArgs: ["--node", "<video-editor-node-id>", "--file", projectionPath, "--lock", lockProjectPath],
+      pullArgs: ["--timeline", "<timeline-id>", "--file", targetProjectPath],
+      applyArgs: ["--timeline", "<timeline-id>", "--file", projectionPath],
     },
   };
-}
-
-export function timelineYamlFromNode(node: TimelineNodeLike): string {
-  const dsl = normalizeTimelineDslForYaml(node.data?.timelineDsl);
-  return timelineDslToYaml(dsl);
 }
 
 export function parseTimelineFileForApply(raw: string): ParseTimelineApplyResult {
@@ -178,63 +90,14 @@ export function parseTimelineFileForApply(raw: string): ParseTimelineApplyResult
 }
 
 export function timelineHash(dsl: ResolvedTimelineDsl): string {
-  return hashProjectionContent(stableJsonForHash(dsl));
-}
-
-export function timelineReadToken(options: {
-  projectId: string;
-  nodeId: string;
-  dsl?: ResolvedTimelineDsl;
-  timelineHash?: string;
-}): string {
-  const hash = options.timelineHash ?? (options.dsl ? timelineHash(options.dsl) : "");
-  if (!hash) throw new Error("timelineReadToken requires a timeline hash or DSL");
-  return agentReadToken({
-    namespace: "timeline",
-    subject: {
-      projectId: options.projectId,
-      nodeId: options.nodeId,
-      timelineHash: hash,
-    },
-  });
-}
-
-export function createTimelineCowNodeData(options: {
-  sourceNodeId: string;
-  sourceLabel?: string;
-  sourceDsl: ResolvedTimelineDsl;
-  dsl: ResolvedTimelineDsl;
-  label?: string;
-  filePath?: string;
-  timelineRevision?: TimelineAppliedRevision;
-}): Record<string, unknown> {
-  const sourceTimelineHash = timelineHash(options.sourceDsl);
-  const nextTimelineHash = timelineHash(options.dsl);
-  const sourceLabel = options.sourceLabel?.trim();
-  const label = options.label?.trim() || (sourceLabel ? `${sourceLabel} (copy)` : `Copy of ${options.sourceNodeId}`);
-  return {
-    label,
-    timelineDsl: options.dsl,
-    copyOnWrite: true,
-    copyOnWriteKind: "timeline-replacement",
-    sourceTimelineNodeId: options.sourceNodeId,
-    sourceTimelineHash,
-    timelineHash: nextTimelineHash,
-    ...(options.filePath ? { sourceTimelineFilePath: options.filePath } : {}),
-    ...(options.timelineRevision ? { timelineRevision: options.timelineRevision } : {}),
-  };
+  return hashProjectionContent(timelineDslCanonicalJson(normalizeTimelineDslForYaml(dsl)));
 }
 
 export function createTimelineSourceProvenance(options: {
   cwd: string;
   filePath: string;
   dsl: ResolvedTimelineDsl;
-  appliedRevision?: TimelineAppliedRevision | null;
-  timelineId?: string;
-  revisionId?: string;
-  revisionStatus?: TimelineRevisionStatus;
-  sourceTimelineFrontiers?: unknown[];
-  sourceTimelineVersionVector?: Record<string, number>;
+  timelineRevision?: ProjectTimelineRevisionRef | null;
 }): TimelineSourceProvenance {
   const cwd = resolve(options.cwd);
   const absolutePath = isAbsolute(options.filePath) ? resolve(options.filePath) : resolve(cwd, options.filePath);
@@ -242,285 +105,28 @@ export function createTimelineSourceProvenance(options: {
     throw new Error("Timeline provenance path must stay inside the current project cwd");
   }
   const sourceTimelinePath = toProjectPath(cwd, absolutePath);
-  if (options.appliedRevision) {
+  const sourceTimelineHash = timelineHash(options.dsl);
+  if (options.timelineRevision) {
+    if (options.timelineRevision.timelineHash !== sourceTimelineHash) {
+      throw new Error(
+        "Timeline projection does not match Project Timeline revision. Run `clash timeline pull` or apply the edited projection first.",
+      );
+    }
     return {
-      sourceTimelineId: options.appliedRevision.timelineId,
+      sourceTimelineId: options.timelineRevision.timelineId,
       sourceTimelinePath,
-      sourceTimelineHash: options.appliedRevision.timelineHash,
-      sourceTimelineRevisionId: options.appliedRevision.revisionId,
+      sourceTimelineHash,
+      sourceTimelineRevisionId: options.timelineRevision.revisionId,
       sourceTimelineRevisionStatus: "applied",
-      ...(options.appliedRevision.loroFrontiers ? { sourceTimelineFrontiers: options.appliedRevision.loroFrontiers } : {}),
-      ...(options.appliedRevision.loroVersionVector ? { sourceTimelineVersionVector: options.appliedRevision.loroVersionVector } : {}),
     };
   }
-  const sourceTimelineHash = timelineHash(options.dsl);
   return {
-    sourceTimelineId: options.timelineId ?? `timeline:${sourceTimelinePath}`,
+    sourceTimelineId: `timeline:${sourceTimelinePath}`,
     sourceTimelinePath,
     sourceTimelineHash,
-    sourceTimelineRevisionId: options.revisionId ?? `tlrev-${sourceTimelineHash}`,
-    sourceTimelineRevisionStatus: options.revisionStatus ?? "draft-file",
-    ...(options.sourceTimelineFrontiers ? { sourceTimelineFrontiers: options.sourceTimelineFrontiers } : {}),
-    ...(options.sourceTimelineVersionVector ? { sourceTimelineVersionVector: options.sourceTimelineVersionVector } : {}),
+    sourceTimelineRevisionId: `draft-${sourceTimelineHash}`,
+    sourceTimelineRevisionStatus: "draft-file",
   };
-}
-
-export async function readAppliedTimelineRevisionForSource(options: {
-  cwd: string;
-  sourceTimelinePath: string;
-  dsl: ResolvedTimelineDsl;
-}): Promise<TimelineAppliedRevision | null> {
-  const cwd = resolve(options.cwd);
-  const sourceTimelinePath = isAbsolute(options.sourceTimelinePath)
-    ? resolve(options.sourceTimelinePath)
-    : resolve(cwd, options.sourceTimelinePath);
-  if (!isInsideOrEqual(cwd, sourceTimelinePath)) {
-    throw new Error("Timeline revision source path must stay inside the current project cwd");
-  }
-  const expectedHash = timelineHash(options.dsl);
-  const lockPath = resolveTimelineLockPath({ cwd, file: sourceTimelinePath });
-  let raw: string;
-  try {
-    raw = await readFile(lockPath, "utf8");
-  } catch (error) {
-    if (isMissingFile(error)) return null;
-    throw error;
-  }
-
-  try {
-    const lock = parseTimelineLock(raw);
-    const sourceProjectPath = toProjectPath(cwd, sourceTimelinePath);
-    if (lock.timelineHash !== expectedHash) return null;
-    if (!lock.appliedRevision || lock.appliedRevision.timelineHash !== expectedHash) return null;
-    if (lock.appliedRevision.sourceFilePath !== sourceProjectPath) {
-      const lockedFilePath = resolveTimelineFilePath({ cwd, file: lock.filePath });
-      const lockedProjectPath = toProjectPath(cwd, lockedFilePath);
-      if (lockedProjectPath !== sourceProjectPath) return null;
-    }
-    return lock.appliedRevision;
-  } catch {
-    return null;
-  }
-}
-
-export function createTimelineAppliedRevision(options: {
-  projectId: string;
-  nodeId: string;
-  cwd: string;
-  filePath: string;
-  dsl: ResolvedTimelineDsl;
-  parentRevisionId?: string | null;
-  createdAt?: string;
-  timelineId?: string;
-  loroFrontiers?: unknown[];
-  loroVersionVector?: Record<string, number>;
-  actor?: TimelineRevisionActor;
-}): TimelineAppliedRevision {
-  const cwd = resolve(options.cwd);
-  const absolutePath = isAbsolute(options.filePath) ? resolve(options.filePath) : resolve(cwd, options.filePath);
-  if (!isInsideOrEqual(cwd, absolutePath)) {
-    throw new Error("Timeline revision source path must stay inside the current project cwd");
-  }
-  const timelineId = options.timelineId ?? `timeline:${options.projectId}:${options.nodeId}`;
-  const hash = timelineHash(options.dsl);
-  const createdAt = options.createdAt ?? new Date().toISOString();
-  const revisionSeed = {
-    timelineId,
-    timelineHash: hash,
-    parentRevisionId: options.parentRevisionId ?? null,
-    createdAt,
-    actor: options.actor ?? null,
-    loroFrontiers: options.loroFrontiers ?? null,
-    loroVersionVector: options.loroVersionVector ?? null,
-  };
-  const revisionSuffix = createHash("sha256").update(stableJsonForHash(revisionSeed)).digest("hex").slice(0, 12);
-  return {
-    schemaVersion: 1,
-    kind: "clash.timeline.revision",
-    timelineId,
-    revisionId: `tlrev-${hash}-${revisionSuffix}`,
-    ...(options.parentRevisionId ? { parentRevisionId: options.parentRevisionId } : {}),
-    projectId: options.projectId,
-    nodeId: options.nodeId,
-    createdAt,
-    timelineHash: hash,
-    hashAlgorithm: "sha256-64",
-    sourceFilePath: toProjectPath(cwd, absolutePath),
-    sourceFileHash: hash,
-    ...(options.actor ? { actor: options.actor } : {}),
-    ...(options.loroFrontiers ? { loroFrontiers: options.loroFrontiers } : {}),
-    ...(options.loroVersionVector ? { loroVersionVector: options.loroVersionVector } : {}),
-    dependencies: collectTimelineRevisionDependencies(options.dsl),
-  };
-}
-
-export function readLoroRevisionMetadata(doc: unknown): LoroRevisionMetadata {
-  const value = doc as {
-    frontiers?: () => unknown;
-    version?: () => { toJSON?: () => unknown };
-  };
-  const metadata: LoroRevisionMetadata = {};
-  try {
-    const frontiers = value.frontiers?.();
-    if (Array.isArray(frontiers)) metadata.loroFrontiers = frontiers;
-  } catch {
-    // Version metadata is best-effort; the content hash remains the v1 guard.
-  }
-  try {
-    const versionVector = value.version?.().toJSON?.();
-    if (versionVector && typeof versionVector === "object" && !Array.isArray(versionVector)) {
-      const record = versionVector as Record<string, number>;
-      if (Object.keys(record).length > 0) metadata.loroVersionVector = record;
-    }
-  } catch {
-    // Some Loro bindings do not expose a JSON-friendly VersionVector.
-  }
-  return metadata;
-}
-
-export function createTimelineLock(options: {
-  projectId: string;
-  nodeId: string;
-  filePath: string;
-  dsl: ResolvedTimelineDsl;
-  readToken?: string;
-  pulledAt?: string;
-  appliedRevision?: TimelineAppliedRevision;
-}): TimelineLock {
-  return createTimelineLockFromHash({
-    ...options,
-    timelineHash: timelineHash(options.dsl),
-  });
-}
-
-export function createTimelineLockFromHash(options: {
-  projectId: string;
-  nodeId: string;
-  filePath: string;
-  timelineHash: string;
-  readToken?: string;
-  pulledAt?: string;
-  appliedRevision?: TimelineAppliedRevision;
-}): TimelineLock {
-  return createProjectionLock({
-    kind: "clash.timeline.lock",
-    projectionKind: "timeline",
-    projectId: options.projectId,
-    entity: { kind: "video-editor-node", id: options.nodeId },
-    filePath: options.filePath,
-    contentHash: options.timelineHash,
-    readToken: options.readToken ?? timelineReadToken({
-      projectId: options.projectId,
-      nodeId: options.nodeId,
-      timelineHash: options.timelineHash,
-    }),
-    pulledAt: options.pulledAt ?? new Date().toISOString(),
-    extra: {
-      nodeId: options.nodeId,
-      timelineHash: options.timelineHash,
-      ...(options.appliedRevision ? { appliedRevision: options.appliedRevision } : {}),
-    },
-  }) as TimelineLock;
-}
-
-export function parseTimelineLock(raw: string): TimelineLock {
-  const value = JSON.parse(raw) as Partial<TimelineLock>;
-  if (
-    value.schemaVersion !== 1 ||
-    value.kind !== "clash.timeline.lock" ||
-    typeof value.projectId !== "string" ||
-    typeof value.nodeId !== "string" ||
-    typeof value.filePath !== "string" ||
-    typeof value.timelineHash !== "string" ||
-    (value.readToken !== undefined && typeof value.readToken !== "string") ||
-    value.hashAlgorithm !== "sha256-64" ||
-    typeof value.pulledAt !== "string"
-  ) {
-    throw new Error("Invalid timeline lock file");
-  }
-  if (value.appliedRevision !== undefined) {
-    parseTimelineAppliedRevision(value.appliedRevision);
-  }
-  const normalized = {
-    ...value,
-    projectionKind: value.projectionKind ?? "timeline",
-    entity: value.entity ?? { kind: "video-editor-node", id: value.nodeId },
-    contentHash: value.contentHash ?? value.timelineHash,
-  } as TimelineLock;
-  parseProjectionLock(normalized, {
-    kind: "clash.timeline.lock",
-    projectionKind: "timeline",
-    entityKind: "video-editor-node",
-    entityId: value.nodeId,
-  });
-  return normalized;
-}
-
-export function assertTimelineCas(options: {
-  projectId: string;
-  nodeId: string;
-  lock?: TimelineLock | null;
-  currentDsl: ResolvedTimelineDsl;
-  force?: boolean;
-  filePath?: string;
-  cwd?: string;
-}): TimelineCasResult {
-  if (options.force) return { ok: true };
-  if (!options.lock) {
-    return {
-      ok: false,
-      error: "Missing timeline CAS lock. Run `clash timeline pull` first, or pass --force to intentionally overwrite.",
-    };
-  }
-  if (options.lock.projectId !== options.projectId || options.lock.nodeId !== options.nodeId) {
-    return {
-      ok: false,
-      error: `Timeline CAS lock belongs to project ${options.lock.projectId} node ${options.lock.nodeId}, not project ${options.projectId} node ${options.nodeId}.`,
-    };
-  }
-  const filePathResult = assertTimelineLockFilePath({
-    lock: options.lock,
-    filePath: options.filePath,
-    cwd: options.cwd,
-  });
-  if (!filePathResult.ok) return filePathResult;
-  const currentHash = timelineHash(options.currentDsl);
-  if (currentHash !== options.lock.timelineHash) {
-    return {
-      ok: false,
-      error:
-        `Stale timeline apply rejected. Canvas timeline hash is ${currentHash}, ` +
-        `but lock was pulled from ${options.lock.timelineHash}. ` +
-        "Run `clash timeline pull` again and merge, or pass --force to intentionally overwrite.",
-    };
-  }
-  return { ok: true };
-}
-
-export function assertTimelineLockFilePath(options: {
-  lock?: TimelineLock | null;
-  filePath?: string;
-  cwd?: string;
-  force?: boolean;
-}): TimelineCasResult {
-  return assertProjectionLockFilePath({
-    label: "timeline",
-    lockFilePath: options.lock?.filePath,
-    filePath: options.filePath,
-    cwd: options.cwd,
-    force: options.force,
-    readCommand: "clash timeline pull",
-    writeVerb: "Apply",
-  });
-}
-
-export function assertTimelineNotMaterializedReferenced(options: {
-  nodeId: string;
-  nodes?: Iterable<TimelineReferenceNodeLike>;
-  edges: TimelineReferenceEdge[];
-  force?: boolean;
-}): TimelineCasResult {
-  return validateCanvasTimelineApply(options);
 }
 
 export function normalizeTimelineDslForYaml(raw: unknown): ResolvedTimelineDsl {
@@ -556,47 +162,6 @@ export function sourceNodeIdsFromResolved(dsl: ResolvedTimelineDsl): string[] {
   return Array.from(seen);
 }
 
-function parseTimelineAppliedRevision(value: unknown): TimelineAppliedRevision {
-  const parsed = TimelineAppliedRevisionSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error("Invalid timeline applied revision");
-  }
-  return parsed.data;
-}
-
-function collectTimelineRevisionDependencies(dsl: ResolvedTimelineDsl): TimelineRevisionDependencies {
-  const sourceNodeIds = new Set<string>();
-  const assetIds = new Set<string>();
-  const componentIds = new Set<string>();
-  const textNodeIds = new Set<string>();
-  for (const track of dsl.tracks) {
-    for (const item of track.items) {
-      addString(sourceNodeIds, item.sourceNodeId);
-      addString(assetIds, item.assetId);
-      addString(assetIds, item.sourceAssetId);
-      addString(assetIds, item.derivedAssetId);
-      addString(assetIds, item.videoAssetId);
-      addString(assetIds, item.audioAssetId);
-      addString(assetIds, item.imageAssetId);
-      addString(componentIds, item.componentId);
-      addString(componentIds, item.compositionId);
-      addString(textNodeIds, item.textNodeId);
-      addString(textNodeIds, item.scriptNodeId);
-      addString(textNodeIds, item.captionNodeId);
-    }
-  }
-  return {
-    sourceNodeIds: Array.from(sourceNodeIds),
-    assetIds: Array.from(assetIds),
-    componentIds: Array.from(componentIds),
-    textNodeIds: Array.from(textNodeIds),
-  };
-}
-
-function addString(target: Set<string>, value: unknown): void {
-  if (typeof value === "string" && value.length > 0) target.add(value);
-}
-
 function timelineFileSlug(raw: string): string {
   const slug = raw
     .trim()
@@ -615,23 +180,18 @@ function isInsideOrEqual(parent: string, child: string): boolean {
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
 }
 
-function isMissingFile(error: unknown): boolean {
-  return typeof error === "object"
-    && error !== null
-    && "code" in error
-    && (error as NodeJS.ErrnoException).code === "ENOENT";
-}
-
 function normalizeTrackForYaml(raw: unknown, index: number): ResolvedTimelineDsl["tracks"][number] {
   const track = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const items = Array.isArray(track.items) ? track.items : [];
   const id = typeof track.id === "string" && track.id.length > 0 ? track.id : `track-${index}`;
+  const name = typeof track.name === "string" ? track.name : undefined;
+  const role = typeof track.role === "string" && track.role.length > 0 ? track.role : undefined;
   return {
     id,
-    name: typeof track.name === "string" ? track.name : undefined,
-    role: typeof track.role === "string" && track.role.length > 0 ? track.role : undefined,
-    hidden: track.hidden === true || undefined,
-    locked: track.locked === true || undefined,
+    ...(name !== undefined ? { name } : {}),
+    ...(role !== undefined ? { role } : {}),
+    ...(track.hidden === true ? { hidden: true } : {}),
+    ...(track.locked === true ? { locked: true } : {}),
     items: items
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
       .map((item, itemIndex) => normalizeItemForYaml(item, id, itemIndex)),
@@ -672,17 +232,4 @@ function normalizeItemForYaml(
     durationInFrames,
     ...passthrough,
   };
-}
-
-function stableJsonForHash(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJsonForHash).join(",")}]`;
-  if (value && typeof value === "object") {
-    const keys = Object.keys(value as object)
-      .filter((key) => key !== "fromExpr")
-      .sort();
-    return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${stableJsonForHash((value as Record<string, unknown>)[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }

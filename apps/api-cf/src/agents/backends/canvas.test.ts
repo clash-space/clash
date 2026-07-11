@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { LoroDoc } from "loro-crdt";
-import { Canvas, MODEL_CARDS, capability } from "@clash/shared-types";
+import {
+  Canvas,
+  MODEL_CARDS,
+  attachTimelineToCanvas,
+  capability,
+  createProjectTimeline,
+} from "@clash/shared-types";
 import { NodeType, RF_NODE_TYPE, ProposalType, Status } from "../../domain/canvas";
 
 function makeCanvas(): Canvas {
@@ -114,15 +120,18 @@ describe("Canvas class", () => {
       const doc = new LoroDoc();
       const broadcasts: Uint8Array[] = [];
       const canvas = new Canvas(doc, (data) => broadcasts.push(data));
+      canvas.insertNode("src", "text", {}, null, { x: 0, y: 0 });
+      canvas.insertNode("tgt", "text", {}, null, { x: 100, y: 0 });
+      broadcasts.length = 0;
 
       canvas.insertEdge("e1", "src", "tgt", "custom");
 
       expect(broadcasts).toHaveLength(1);
-      const edgesMap = doc.getMap("edges");
-      const edge = edgesMap.get("e1") as Record<string, any>;
+      const edge = canvas.listEdges().find((candidate) => candidate.id === "e1")!;
       expect(edge.source).toBe("src");
       expect(edge.target).toBe("tgt");
       expect(edge.type).toBe("custom");
+      expect(doc.getMap("edges").size).toBe(0);
     });
   });
 
@@ -347,10 +356,9 @@ describe("Canvas class", () => {
         edgeType: "special",
       });
 
-      const edgesMap = doc.getMap("edges");
-      const edge = edgesMap.get("custom-edge") as Record<string, any>;
+      const edge = canvas.listEdges().find((candidate) => candidate.id === "custom-edge");
       expect(edge).toBeDefined();
-      expect(edge.type).toBe("special");
+      expect(edge!.type).toBe("special");
     });
   });
 
@@ -492,9 +500,13 @@ describe("Canvas class", () => {
 
     it("does not overwrite an existing node when the generated render id collides", () => {
       idCounter = 0;
-      const canvas = makeCanvas();
-      canvas.insertNode("editor1", "video-editor", {
-        timelineDsl: {
+      const doc = new LoroDoc();
+      const canvas = new Canvas(doc, () => {});
+      canvas.insertNode("gen-1", "text", { label: "Existing render id" }, null, { x: 1, y: 2 });
+      createProjectTimeline(doc, {
+        id: "timeline-1",
+        name: "Timeline 1",
+        state: {
           tracks: [
             {
               id: "track-1",
@@ -506,8 +518,13 @@ describe("Canvas class", () => {
           ],
           durationInFrames: 30,
         },
-      }, null, { x: 0, y: 0 });
-      canvas.insertNode("gen-1", "text", { label: "Existing render id" }, null, { x: 1, y: 2 });
+      });
+      attachTimelineToCanvas(doc, {
+        timelineId: "timeline-1",
+        canvasId: "main",
+        actionNodeId: "editor1",
+        position: { x: 0, y: 0 },
+      });
 
       const result = canvas.executeRender("editor1", generateId);
 

@@ -36,11 +36,10 @@ clash canvas delete-plan --project <project-id> --node <node-id> --node <node-id
 
 Use `list` (or filtered `list --type`) for an overview, `search` when
 the user references something by content rather than id, and `get`
-when you need a node's full payload (e.g. inputs to an action node). `get
---json` returns a `readToken`; pass that token to direct writes with
-`--if-match` so concurrent browser/agent edits are not overwritten blindly.
-Use `delete-plan --json` before batch deletion; it returns a graph-aware
-`readToken` for the whole target set plus current edge graph.
+when you need a node's full payload (e.g. inputs to an action node).
+`get --json` records the observed node version in `.clash/observed.json` and exposes
+whether the node is `immutable`. `edges` and `delete-plan` record their graph
+versions the same way. Versions are internal CLI state, not command arguments.
 
 The user can see the canvas live in their browser — don't paraphrase
 its full state back to them. Cite what's relevant to the question.
@@ -58,15 +57,17 @@ instead of relying on inference. Returns the new id.
 ## Editing
 
 ```bash
-clash canvas update --project <project-id> --node <node-id> --if-match <readToken> --label "<new label>" --json
-clash canvas update --project <project-id> --node <node-id> --if-match <readToken> --content "<new content>" --json
-clash canvas replace-asset --project <project-id> --node <media-node-id> --asset <asset-id> --if-match <readToken> --json
+clash canvas update --project <project-id> --node <node-id> --label "<new label>" --json
+clash canvas update --project <project-id> --node <node-id> --content "<new content>" --json
+clash canvas copy --project <project-id> --node <node-id> --json
+clash canvas replace-asset --project <project-id> --node <media-node-id> --asset <asset-id> --json
 ```
 
 Update only the fields you want to change. For agents, always read with
-`clash canvas get --json` first and pass the returned `readToken` through
-`--if-match`; if the CLI reports a stale token, re-read and retry only after
-checking the new state. Use `replace-asset` for fulfilled image/video/audio
+`clash canvas get --json` first. The CLI checks the cwd observation and current
+canvas version automatically; on `STALE_READ`, re-read and reconcile before
+retrying. If the read reports `immutable: true`, an in-place update returns
+`IMMUTABLE_NODE`; use `canvas copy`, then edit the copy. Use `replace-asset` for fulfilled image/video/audio
 asset changes; it creates a copy-on-write node and leaves existing downstream
 references on the old node. Re-`get` after if you need to verify the result.
 
@@ -83,25 +84,25 @@ to track the result.
 ## Deleting
 
 ```bash
-clash canvas delete --project <project-id> --node <node-id> --if-match <readToken> --yes --json
-clash canvas delete-batch --project <project-id> --node <node-id> --node <node-id> --if-match <readToken> --yes --json
+clash canvas delete --project <project-id> --node <node-id> --yes --json
+clash canvas delete-batch --project <project-id> --node <node-id> --node <node-id> --yes --json
 ```
 
 **Always confirm** with the user before deleting. Quote the node's
 label back so they can verify which one you mean. The CLI requires
-`--yes` as the machine-readable confirmation flag. Read the node first and
-pass its `readToken` with `--if-match`. For multiple nodes, read
-`delete-plan --json` and pass that plan's `readToken` to `delete-batch`.
-If the CLI reports downstream references or a stale token, do not retry with
-`--force` unless the user explicitly agrees to orphan those references or
-overwrite the newer state.
+`--yes` as the machine-readable confirmation flag. Read the node first. For
+multiple nodes, run `delete-plan --json` before `delete-batch`; the CLI uses
+the recorded graph version automatically.
+If the CLI reports downstream references or `STALE_READ`, do not retry with
+an overwrite bypass. Re-read and reconcile the newer state. Remove or rewire
+downstream references first, or use the explicit copy-on-write replacement
+workflow when existing outputs must stay pinned.
 
 ## Conventions
 
 - Concurrent edits: the user can edit the canvas in the browser at the
-  same time. Re-`list` (or `get`) before destructive ops, and pass the
-  latest `readToken` with `--if-match` for direct `update`/`delete`; use
-  `delete-plan` before `delete-batch`.
+  same time. Re-`get` before direct or destructive writes and use
+  `delete-plan` before `delete-batch`. The CLI performs CAS from cwd state.
 - Don't loop `list` to poll for changes — Loro syncs in the background;
   the next read picks up everything.
 - Keep your output terse. The user can see the canvas; they want

@@ -99,7 +99,7 @@ declared asset with `downstreamUsage: "identity-reference"`. Do not point this
 field at a mutable draft file; create a new asset id for revisions.
 
 To prepare image/video generation prompts without mutating canvas state, project
-a CAS-locked prompt pack, edit the JSON file, then apply it explicitly:
+an observed prompt pack, edit the JSON file, then apply it explicitly:
 
 ```bash
 clash production project-storyboard-prompt-pack \
@@ -111,18 +111,16 @@ clash production project-storyboard-prompt-pack \
 
 clash production apply-storyboard-prompt-pack \
   --file plans/prompt-pack.json \
-  --lock plans/prompt-pack.lock.json \
   --json
 
 clash production replace-storyboard-prompt-pack \
   --file plans/prompt-pack.json \
-  --lock plans/prompt-pack.lock.json \
   --json
 ```
 
 Managed apply writes `projections/storyboards/<asset>.prompt-pack.json`. If the
-managed prompt-pack changed since the lock was pulled, apply is rejected unless
-the user intentionally passes `--force`. Use `replace-storyboard-prompt-pack`
+managed prompt-pack changed since it was projected, apply is rejected. Project
+again and reconcile, or use `replace-storyboard-prompt-pack`
 when the edit should become a versioned copy-on-write prompt-pack projection
 while existing downstream references keep pointing at the old managed
 projection.
@@ -146,7 +144,7 @@ clash production verify-storyboard-timeline \
 
 This writes a `clash.storyboard.timeline-projection` manifest and
 `projections/timelines/<asset>.storyboard.timeline.yaml` with image timeline
-items. It reports the required CAS lock path and never creates a fake lock.
+items. It records the required pull/apply contract and creates no lock sidecar.
 The verification report proves panel coverage, timeline item coverage,
 fresh-pull CAS, local asset paths, and panel consistency thresholds before the
 timeline projection is applied.

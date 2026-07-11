@@ -1376,7 +1376,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  it("routes revision restore requests through the local runtime CLI action path", () => {
+  it("routes text revision restore requests through the local runtime CLI action path", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",

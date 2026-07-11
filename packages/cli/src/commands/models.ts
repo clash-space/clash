@@ -1,6 +1,11 @@
 import { Command } from "commander";
 import { apiJson } from "../lib/api";
 import { isJsonMode, printJson } from "../lib/output";
+import {
+  publicAgentCommandResult,
+  recordAgentObservation,
+  requireAgentObservation,
+} from "../lib/agent-worktree-observation";
 
 interface ProviderAccountPayload {
   providerId: string;
@@ -38,6 +43,11 @@ function optionalNumber(value: unknown): number | undefined {
   return parsed;
 }
 
+export function publicProviderAccountsResult(providers: unknown[]): unknown[] {
+  const result = publicAgentCommandResult({ providers });
+  return Array.isArray(result.providers) ? result.providers : [];
+}
+
 export function providerPayloadFromOptions(providerId: string, options: Record<string, unknown>): ProviderAccountPayload {
   const weight = optionalNumber(options.weight);
   const priority = optionalNumber(options.priority);
@@ -52,18 +62,18 @@ export function providerPayloadFromOptions(providerId: string, options: Record<s
 }
 
 export function providerWriteHeaders(
-  options: { ifMatch?: string; force?: boolean } = {},
+  options: { observedVersion?: string; ifMatch?: string } = {},
   env: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
   if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
     headers["x-clash-client-type"] = "agent";
   }
-  if (options.ifMatch?.trim()) {
+  if (options.observedVersion?.trim()) {
+    const observed = options.observedVersion.trim();
+    headers[observed.includes(":receipt:") ? "x-clash-if-match" : "x-clash-observed-version"] = observed;
+  } else if (options.ifMatch?.trim()) {
     headers["x-clash-if-match"] = options.ifMatch.trim();
-  }
-  if (options.force === true) {
-    headers["x-clash-force"] = "true";
   }
   return headers;
 }
@@ -77,13 +87,17 @@ modelsCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const data = await apiJson<ModelProviderResponse>("/api/v1/model-providers");
+    await recordAgentObservation({
+      entityKind: "provider-accounts",
+      entityId: "current",
+      revision: data.readToken,
+    });
     if (isJsonMode(options)) {
-      printJson(data);
+      printJson(publicProviderAccountsResult(data.providers));
       return;
     }
     if (data.providers.length === 0) {
       console.log("No model providers configured. Configure a local provider account with `clash models provider set <PROVIDER>`.");
-      if (data.readToken) console.log(`Read token: ${data.readToken}`);
       return;
     }
     for (const provider of data.providers) {
@@ -93,7 +107,6 @@ modelsCommand
       const status = provider.enabled === false ? "disabled" : "enabled";
       console.log(`  ${route.padEnd(28)} ${status.padEnd(8)} ${vars}${weight}`);
     }
-    if (data.readToken) console.log(`Read token: ${data.readToken}`);
   });
 
 modelsCommand
@@ -106,21 +119,27 @@ modelsCommand
   .option("--weight <number>", "Higher weight wins during auto routing")
   .option("--priority <number>", "Lower priority wins within equal weights")
   .option("--disable", "Disable this provider account")
-  .option("--if-match <readToken>", "Require the provider-accounts read token from `clash models providers --json` before writing")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (providerId: string, options) => {
     const provider = providerPayloadFromOptions(providerId, options);
+    const observedVersion = await requireAgentObservation({
+      entityKind: "provider-accounts",
+      entityId: "current",
+    });
     const data = await apiJson<ModelProviderResponse>("/api/v1/model-providers", {
       method: "PATCH",
       headers: providerWriteHeaders({
-        ifMatch: options.ifMatch,
-        force: options.force === true,
+        observedVersion,
       }),
       body: JSON.stringify({ providers: [provider] }),
     });
+    await recordAgentObservation({
+      entityKind: "provider-accounts",
+      entityId: "current",
+      revision: data.readToken,
+    });
     if (isJsonMode(options)) {
-      printJson(data.providers);
+      printJson(publicProviderAccountsResult(data.providers));
       return;
     }
     console.log(`Model provider configured: ${[provider.providerId, provider.upstreamId, provider.region].filter(Boolean).join("/")}`);

@@ -12,8 +12,6 @@ import {
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
-  timelineDslFromYaml,
-  timelineDslHash,
   type Asset,
 } from "@clash/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +38,17 @@ function openSqlite() {
   return new DatabaseSync(join(dataDir, "local.sqlite"));
 }
 
+function ageDeletedProjectForPurge(projectId: string): void {
+  const sqlite = openSqlite();
+  const agedDeletedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    sqlite.prepare("UPDATE project SET deleted_at = ?, updated_at = ? WHERE id = ?")
+      .run(agedDeletedAt, agedDeletedAt, projectId);
+  } finally {
+    sqlite.close();
+  }
+}
+
 function baseReadToken(readToken: string): string {
   return readToken.split(":receipt:")[0];
 }
@@ -48,17 +57,10 @@ function projectionContentHash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
-async function timelineContentHash(content: string): Promise<string> {
-  const parsed = timelineDslFromYaml(content);
-  if (!parsed.ok) throw new Error(parsed.error);
-  return timelineDslHash(parsed.dsl);
-}
-
 function providerModelTestMutation(providerId: string, modelId: string) {
   return {
     operation: "provider_model_test",
     entity: { kind: "provider-test", id: `${providerId}:${modelId}` },
-    forced: false,
     accepted: true,
     resultEntityId: `${providerId}:${modelId}`,
   };
@@ -128,7 +130,6 @@ async function expectSingleMutationAudit(
     entity: { kind: options.entityKind, id: options.entityId },
     actorClientType: options.actorClientType ?? null,
     accepted: true,
-    forced: false,
     reason: options.reason,
     resultEntityId: options.entityId,
   });
@@ -207,7 +208,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_sync_config_update",
         entity: { kind: "local-config", id: "sync" },
-        forced: false,
         accepted: true,
         resultEntityId: "sync",
       },
@@ -243,7 +243,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_sync_config_update",
         entity: { kind: "local-config", id: "sync" },
-        forced: false,
         accepted: false,
         error: "remote_loro_url is required for cloud-sync mode",
       },
@@ -274,7 +273,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_sync_config_update",
         entity: { kind: "local-config", id: "sync" },
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing local sync config update read proof"),
       },
@@ -301,7 +299,6 @@ describe("local API app", () => {
         entity: { kind: "local-config", id: "sync" },
         expectedReadToken: bareReadToken,
         beforeReadToken: bareReadToken,
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing local sync config update read receipt"),
       },
@@ -366,7 +363,6 @@ describe("local API app", () => {
         entity: { kind: "local-config", id: "sync" },
         expectedReadToken: refreshedJson.readToken,
         beforeReadToken: baseReadToken(refreshedJson.readToken!),
-        forced: false,
         accepted: true,
         resultEntityId: "sync",
         afterReadToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
@@ -383,7 +379,6 @@ describe("local API app", () => {
       entity: { kind: "local-config", id: "sync" },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "local sync config update",
       resultEntityId: "sync",
     });
@@ -392,7 +387,6 @@ describe("local API app", () => {
       entity: { kind: "local-config", id: "sync" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "local sync config update",
       resultEntityId: "sync",
     });
@@ -458,7 +452,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_config_update",
         entity: { kind: "local-config", id: "audio" },
-        forced: false,
         accepted: true,
         resultEntityId: "audio",
       },
@@ -488,7 +481,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_config_update",
         entity: { kind: "local-config", id: "audio" },
-        forced: false,
         accepted: true,
         resultEntityId: "audio",
       },
@@ -540,7 +532,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_config_update",
         entity: { kind: "local-config", id: "audio" },
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing local audio config update read proof"),
       },
@@ -567,7 +558,6 @@ describe("local API app", () => {
         entity: { kind: "local-config", id: "audio" },
         expectedReadToken: bareReadToken,
         beforeReadToken: bareReadToken,
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing local audio config update read receipt"),
       },
@@ -630,7 +620,6 @@ describe("local API app", () => {
         entity: { kind: "local-config", id: "audio" },
         expectedReadToken: refreshedJson.readToken,
         beforeReadToken: baseReadToken(refreshedJson.readToken!),
-        forced: false,
         accepted: true,
         resultEntityId: "audio",
         afterReadToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
@@ -647,7 +636,6 @@ describe("local API app", () => {
       entity: { kind: "local-config", id: "audio" },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "local audio config update",
       resultEntityId: "audio",
     });
@@ -656,7 +644,6 @@ describe("local API app", () => {
       entity: { kind: "local-config", id: "audio" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "local audio config update",
       resultEntityId: "audio",
     });
@@ -703,7 +690,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_model_install",
         entity: { kind: "local-config", id: "audio" },
-        forced: false,
         accepted: true,
         resultEntityId: "audio",
       },
@@ -798,7 +784,6 @@ describe("local API app", () => {
       entity: { kind: "local-config", id: "audio" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "local audio model install",
       resultEntityId: "audio",
     });
@@ -848,7 +833,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_config_update",
         entity: { kind: "local-config", id: "audio" },
-        forced: false,
         accepted: false,
         error: "asr_provider must be builtin-funasr",
       },
@@ -889,7 +873,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_transcription",
         entity: { kind: "local-action", id: "audio-transcription" },
-        forced: false,
         accepted: true,
         resultEntityId: "audio-transcription",
       },
@@ -904,7 +887,6 @@ describe("local API app", () => {
       operation: "local_audio_transcription",
       entity: { kind: "local-action", id: "audio-transcription" },
       accepted: true,
-      forced: false,
       reason: "local audio transcription",
       resultEntityId: "audio-transcription",
     });
@@ -934,7 +916,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_transcription",
         entity: { kind: "local-action", id: "audio-transcription" },
-        forced: false,
         accepted: false,
         error: "Local ASR is not enabled. Open Settings > Audio and enable voice input.",
       },
@@ -959,7 +940,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_audio_transcription",
         entity: { kind: "local-action", id: "audio-transcription" },
-        forced: false,
         accepted: false,
         error: "Missing file",
       },
@@ -1139,7 +1119,6 @@ describe("local API app", () => {
       mutation: {
         operation: "session_create",
         entity: { kind: "session", id: "" },
-        forced: false,
         accepted: false,
         error: "Missing projectId",
       },
@@ -1164,7 +1143,6 @@ describe("local API app", () => {
       operation: "session_create",
       entity: { kind: "session", id: createdJson.threadId },
       resultEntityId: createdJson.threadId,
-      forced: false,
       accepted: true,
     });
     const createAudit = await app.request(`/api/v1/mutation-audit?operation=session_create&entityId=${encodeURIComponent(createdJson.threadId)}`);
@@ -1176,7 +1154,6 @@ describe("local API app", () => {
       entity: { kind: "session", id: createdJson.threadId },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "session create",
       resultEntityId: createdJson.threadId,
     });
@@ -1200,7 +1177,6 @@ describe("local API app", () => {
       mutation: {
         operation: "session_create",
         entity: { kind: "session", id: "" },
-        forced: false,
         accepted: false,
         error: "Project is deleted; restore it before creating sessions",
       },
@@ -1213,7 +1189,6 @@ describe("local API app", () => {
       mutation: {
         operation: "session_delete",
         entity: { kind: "session", id: "" },
-        forced: false,
         accepted: false,
         error: "Missing threadId",
       },
@@ -1228,7 +1203,6 @@ describe("local API app", () => {
       mutation: {
         operation: "session_delete",
         entity: { kind: "session", id: "missing-session" },
-        forced: false,
         accepted: false,
         error: "Not found",
       },
@@ -1244,7 +1218,6 @@ describe("local API app", () => {
         operation: "session_delete",
         entity: { kind: "session", id: createdJson.threadId },
         resultEntityId: createdJson.threadId,
-        forced: false,
         accepted: true,
       },
     });
@@ -1283,7 +1256,6 @@ describe("local API app", () => {
       mutation: {
         operation: "session_delete",
         entity: { kind: "session", id: threadId },
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing session delete read proof"),
       },
@@ -1305,7 +1277,6 @@ describe("local API app", () => {
         entity: { kind: "session", id: threadId },
         expectedReadToken: bareReadToken,
         beforeReadToken: bareReadToken,
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing session delete read receipt"),
       },
@@ -1354,7 +1325,6 @@ describe("local API app", () => {
         expectedReadToken: freshReadToken,
         beforeReadToken: baseReadToken(freshReadToken!),
         resultEntityId: threadId,
-        forced: false,
         accepted: true,
       },
     });
@@ -1367,14 +1337,12 @@ describe("local API app", () => {
       operation: "session_delete",
       entity: { kind: "session", id: threadId },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "session delete",
       mutation: {
         operation: "session_delete",
         entity: { kind: "session", id: threadId },
         resultEntityId: threadId,
-        forced: false,
         accepted: true,
       },
     });
@@ -1617,268 +1585,33 @@ describe("local API app", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("indexes applied timeline revisions with immutable content blobs without creating media asset rows", async () => {
+  it("does not expose a duplicate SQLite Timeline revision surface", async () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const content = [
-      "tracks:",
-      "  - id: main",
-      "    items:",
-      "      - id: scene-001-video",
-      "        type: video",
-      "        from: start",
-      "        durationInFrames: 30",
-      "        sourceNodeId: scene-001",
-      "        assetId: asset-001",
-      "        componentId: lower-third",
-      "        textNodeId: script-001",
-      "",
-    ].join("\n");
-    const timelineHash = "e727416a48c14543";
-    const revision = {
-      schemaVersion: 1,
-      kind: "clash.timeline.revision",
-      timelineId: "timeline:project-timeline:editor",
-      revisionId: "tlrev-1234567890abcdef-feedfacecafe",
-      parentRevisionId: "tlrev-parent",
-      projectId: "project-timeline",
-      nodeId: "editor",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      timelineHash,
-      hashAlgorithm: "sha256-64",
-      sourceFilePath: "timelines/main.timeline.yaml",
-      sourceFileHash: timelineHash,
-      actor: { actorType: "agent", actorUserId: "user-1", actorAgentId: "agent-1" },
-      loroFrontiers: [{ peer: "1", counter: 4 }],
-      loroVersionVector: { "1": 4 },
-      dependencies: {
-        sourceNodeIds: ["scene-001"],
-        assetIds: ["asset-001"],
-        componentIds: ["lower-third"],
-        textNodeIds: ["script-001"],
-      },
-    };
 
-    const registered = await app.request("/api/v1/timeline-revisions", {
+    const create = await app.request("/api/v1/timeline-revisions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision, content }),
+      body: JSON.stringify({ revision: {} }),
     });
-    expect(registered.status).toBe(200);
-    const registeredJson = await registered.json();
-    expect(registeredJson).toMatchObject({
-      revision,
-      content: {
-        kind: "timeline-revision-content",
-        stored: true,
-        timelineHash,
-        mediaType: "application/yaml",
-        url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
-        immutable: true,
-        storage: {
-          kind: "content-addressed-revision-blob",
-          registry: "timeline_revisions",
-          mediaAsset: false,
-          agentWritable: false,
-        },
-      },
-      mutation: {
-        operation: "timeline_revision_index",
-        entity: { kind: "timeline", id: "project-timeline:editor" },
-        resultEntityId: revision.revisionId,
-        accepted: true,
-      },
-    });
+    const list = await app.request("/api/v1/projects/project-timeline/timeline-revisions");
+    const content = await app.request(
+      "/api/v1/projects/project-timeline/timeline-revisions/old/content",
+    );
 
-    const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
-    expect(await listed.json()).toEqual({
-      revisions: [{
-        ...revision,
-        content: {
-          kind: "timeline-revision-content",
-          stored: true,
-          timelineHash,
-          mediaType: "application/yaml",
-          url: `/api/v1/projects/project-timeline/timeline-revisions/${revision.revisionId}/content`,
-          immutable: true,
-          storage: {
-            kind: "content-addressed-revision-blob",
-            registry: "timeline_revisions",
-            mediaAsset: false,
-            agentWritable: false,
-          },
-        },
-      }],
-    });
-
-    const contentResponse = await app.request(registeredJson.content.url);
-    expect(contentResponse.status).toBe(200);
-    expect(contentResponse.headers.get("content-type")).toContain("application/yaml");
-    expect(contentResponse.headers.get("x-clash-timeline-hash")).toBe(timelineHash);
-    expect(await contentResponse.text()).toBe(content);
-
-    const blobPath = join(dataDir, "timeline-revision-blobs", timelineHash.slice(0, 2), `${timelineHash}.timeline.yaml`);
-    expect(await readFile(blobPath, "utf8")).toBe(content);
-    expect((await stat(blobPath)).mode & 0o777).toBe(0o444);
+    expect(create.status).toBe(404);
+    expect(list.status).toBe(404);
+    expect(content.status).toBe(404);
 
     const sqlite = openSqlite();
     try {
-      expect(sqlite.prepare("select count(*) as count from timeline_revisions").get()).toEqual({ count: 1 });
-      expect(sqlite.prepare("select count(*) as count from assets").get()).toEqual({ count: 0 });
+      expect(
+        sqlite.prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'timeline_revisions'",
+        ).get(),
+      ).toBeUndefined();
     } finally {
       sqlite.close();
     }
-  });
-
-  it("rejects timeline revision content whose semantic hash does not match the revision", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const revision = {
-      schemaVersion: 1,
-      kind: "clash.timeline.revision",
-      timelineId: "timeline:project-timeline:editor",
-      revisionId: "tlrev-1234567890abcdef-badcontent",
-      projectId: "project-timeline",
-      nodeId: "editor",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      timelineHash: "1234567890abcdef",
-      hashAlgorithm: "sha256-64",
-      sourceFilePath: "timelines/main.timeline.yaml",
-      sourceFileHash: "1234567890abcdef",
-      dependencies: {
-        sourceNodeIds: [],
-        assetIds: [],
-        componentIds: [],
-        textNodeIds: [],
-      },
-    };
-
-    const registered = await app.request("/api/v1/timeline-revisions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision, content: "tracks: []\n" }),
-    });
-
-    expect(registered.status).toBe(400);
-    expect(await registered.json()).toMatchObject({
-      error: "timeline revision timelineHash does not match content",
-      mutation: {
-        operation: "timeline_revision_index",
-        accepted: false,
-        error: "timeline revision timelineHash does not match content",
-      },
-    });
-
-    const listed = await app.request("/api/v1/projects/project-timeline/timeline-revisions?nodeId=editor");
-    expect(await listed.json()).toEqual({ revisions: [] });
-    await expect(stat(join(dataDir, "timeline-revision-blobs", "12", "1234567890abcdef.timeline.yaml")))
-      .rejects.toMatchObject({ code: "ENOENT" });
-
-    const sqlite = openSqlite();
-    try {
-      const audit = sqlite.prepare(`
-        select operation, entity_kind, entity_id, accepted, reason, error, mutation_json
-          from mutation_audit
-         where operation = ?
-      `).get("timeline_revision_index");
-      expect(audit).toMatchObject({
-        operation: "timeline_revision_index",
-        entity_kind: "timeline",
-        entity_id: "project-timeline:editor",
-        accepted: 0,
-        reason: "timeline revision rejected",
-        error: "timeline revision timelineHash does not match content",
-      });
-      expect(JSON.parse(String(audit?.mutation_json))).toMatchObject({
-        operation: "timeline_revision_index",
-        accepted: false,
-        error: "timeline revision timelineHash does not match content",
-      });
-    } finally {
-      sqlite.close();
-    }
-  });
-
-  it("does not leave a timeline content blob when revision metadata conflicts", async () => {
-    const app = createLocalApiApp({ dataDir, userId: "local-user" });
-    const initialContent = [
-      "tracks:",
-      "  - id: main",
-      "    items:",
-      "      - id: scene-001-video",
-      "        type: video",
-      "        from: start",
-      "        durationInFrames: 30",
-      "        sourceNodeId: scene-001",
-      "",
-    ].join("\n");
-    const initialHash = await timelineContentHash(initialContent);
-    const revision = {
-      schemaVersion: 1,
-      kind: "clash.timeline.revision",
-      timelineId: "timeline:project-timeline:editor",
-      revisionId: "tlrev-conflict-1234567890abcdef",
-      projectId: "project-timeline",
-      nodeId: "editor",
-      createdAt: "2026-07-07T00:00:00.000Z",
-      timelineHash: initialHash,
-      hashAlgorithm: "sha256-64",
-      sourceFilePath: "timelines/main.timeline.yaml",
-      sourceFileHash: initialHash,
-      dependencies: {
-        sourceNodeIds: ["scene-001"],
-        assetIds: [],
-        componentIds: [],
-        textNodeIds: [],
-      },
-    };
-    const created = await app.request("/api/v1/timeline-revisions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ revision, content: initialContent }),
-    });
-    expect(created.status).toBe(200);
-
-    const conflictingContent = [
-      "tracks:",
-      "  - id: main",
-      "    items:",
-      "      - id: scene-002-video",
-      "        type: video",
-      "        from: start",
-      "        durationInFrames: 45",
-      "        sourceNodeId: scene-002",
-      "",
-    ].join("\n");
-    const conflictingHash = await timelineContentHash(conflictingContent);
-    const rejected = await app.request("/api/v1/timeline-revisions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        revision: {
-          ...revision,
-          nodeId: "other-editor",
-          timelineHash: conflictingHash,
-          sourceFileHash: conflictingHash,
-          dependencies: {
-            sourceNodeIds: ["scene-002"],
-            assetIds: [],
-            componentIds: [],
-            textNodeIds: [],
-          },
-        },
-        content: conflictingContent,
-      }),
-    });
-
-    expect(rejected.status).toBe(409);
-    expect(await rejected.json()).toMatchObject({
-      error: expect.stringContaining("already exists with different metadata"),
-      mutation: {
-        operation: "timeline_revision_index",
-        accepted: false,
-      },
-    });
-    await expect(stat(join(dataDir, "timeline-revision-blobs", conflictingHash.slice(0, 2), `${conflictingHash}.timeline.yaml`)))
-      .rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects asset create paths that escape local asset storage", async () => {
@@ -1894,7 +1627,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_create",
         entity: { kind: "asset", id: "" },
-        forced: false,
         accepted: false,
       },
     });
@@ -1915,7 +1647,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_create",
         entity: { kind: "asset", id: "" },
-        forced: false,
         accepted: false,
       },
     });
@@ -1935,7 +1666,6 @@ describe("local API app", () => {
       operation: "asset_create",
       entity: { kind: "asset", id: assetId },
       resultEntityId: assetId,
-      forced: false,
       accepted: true,
     });
     const createAudit = await app.request(`/api/v1/mutation-audit?operation=asset_create&entityId=${encodeURIComponent(assetId)}`);
@@ -1947,7 +1677,6 @@ describe("local API app", () => {
       entity: { kind: "asset", id: assetId },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "asset create",
       resultEntityId: assetId,
     });
@@ -1987,7 +1716,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_ref_delete",
         entity: { kind: "asset-ref", id: `${assetId}:` },
-        forced: false,
         accepted: false,
         error: "Missing projectId",
       },
@@ -2004,7 +1732,6 @@ describe("local API app", () => {
         operation: "asset_ref_delete",
         entity: { kind: "asset-ref", id: `${assetId}:project-a` },
         beforeReadToken: projectAReadToken,
-        forced: false,
         accepted: false,
       },
     });
@@ -2030,7 +1757,6 @@ describe("local API app", () => {
         entity: { kind: "asset-ref", id: `${assetId}:project-a` },
         expectedReadToken: projectAReadToken,
         beforeReadToken: projectAReadToken,
-        forced: false,
         accepted: false,
       },
     });
@@ -2051,7 +1777,6 @@ describe("local API app", () => {
         expectedReadToken: readJson.readToken,
         beforeReadToken: projectAReadToken,
         resultEntityId: `${assetId}:project-a`,
-        forced: false,
         accepted: true,
       },
     });
@@ -2106,7 +1831,6 @@ describe("local API app", () => {
         entity: { kind: "asset", id: assetId },
         afterReadToken: patchedJson.readToken,
         resultEntityId: assetId,
-        forced: false,
         accepted: true,
       },
     });
@@ -2126,7 +1850,6 @@ describe("local API app", () => {
         operation: "asset_cover_update",
         entity: { kind: "asset", id: assetId },
         beforeReadToken: baseReadToken(patchedJson.readToken),
-        forced: false,
         accepted: false,
       },
     });
@@ -2155,7 +1878,6 @@ describe("local API app", () => {
         entity: { kind: "asset", id: assetId },
         expectedReadToken: bareReadToken,
         beforeReadToken: bareReadToken,
-        forced: false,
         accepted: false,
       },
     });
@@ -2179,7 +1901,6 @@ describe("local API app", () => {
       beforeReadToken: bareReadToken,
       afterReadToken: agentPatchedJson.readToken,
       resultEntityId: assetId,
-      forced: false,
       accepted: true,
     });
 
@@ -2192,7 +1913,6 @@ describe("local API app", () => {
       entity: { kind: "asset", id: assetId },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "asset cover update",
       resultEntityId: assetId,
     });
@@ -2212,7 +1932,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_cover_update",
         entity: { kind: "asset", id: assetId },
-        forced: false,
         accepted: false,
         error: "Missing coverR2Key",
       },
@@ -2229,7 +1948,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_cover_update",
         entity: { kind: "asset", id: "missing-asset" },
-        forced: false,
         accepted: false,
         error: "not found",
       },
@@ -2256,7 +1974,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_cover_update",
         entity: { kind: "asset", id: assetId },
-        forced: false,
         accepted: false,
       },
     });
@@ -2309,7 +2026,6 @@ describe("local API app", () => {
         operation: "asset_import",
         entity: { kind: "asset", id: `local:sha256:${contentHash}` },
         resultEntityId: `local:sha256:${contentHash}`,
-        forced: false,
         accepted: true,
       },
     });
@@ -2324,7 +2040,6 @@ describe("local API app", () => {
       entity: { kind: "asset", id: importedJson.id },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "asset import",
       resultEntityId: importedJson.id,
     });
@@ -2415,7 +2130,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_import",
         entity: { kind: "asset", id: assetId },
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Asset id already exists with different immutable content"),
       },
@@ -2488,7 +2202,6 @@ describe("local API app", () => {
         operation: "asset_cow_replace",
         entity: { kind: "media-node", id: "image-source" },
         beforeReadToken: expect.stringMatching(/^node-v1:/),
-        forced: false,
         accepted: false,
       },
     });
@@ -2531,7 +2244,6 @@ describe("local API app", () => {
         entity: { kind: "media-node", id: "image-source" },
         expectedReadToken: freshReadToken,
         beforeReadToken: freshReadToken,
-        forced: false,
         accepted: false,
       },
     });
@@ -2543,7 +2255,6 @@ describe("local API app", () => {
       operation: "asset_cow_replace",
       entity: { kind: "media-node", id: "image-source" },
       actorClientType: "agent",
-      forced: false,
       accepted: false,
       reason: "asset copy-on-write replacement rejected",
       error: expect.stringContaining("Missing canvas update read receipt for agent"),
@@ -2588,7 +2299,6 @@ describe("local API app", () => {
         expectedReadToken: readJson.readToken,
         beforeReadToken: freshReadToken,
         afterReadToken: replacedJson.readToken,
-        forced: false,
         accepted: true,
         resultEntityId: "image-replacement",
       },
@@ -2601,7 +2311,6 @@ describe("local API app", () => {
       operation: "asset_cow_replace",
       entity: { kind: "media-node", id: "image-source" },
       actorClientType: "agent",
-      forced: false,
       accepted: true,
       reason: "asset copy-on-write replacement",
       resultEntityId: "image-replacement",
@@ -2622,8 +2331,8 @@ describe("local API app", () => {
       sourceMediaNodeId: "image-source",
       sourceAssetId,
     });
-    const edges = recovered.getMap("edges");
-    expect(edges.get("image-source-image-replacement")).toMatchObject({
+    const edges = new Canvas(recovered, () => {}).listEdges();
+    expect(edges.find((edge) => edge.id === "image-source-image-replacement")).toMatchObject({
       source: "image-source",
       target: "image-replacement",
       type: "copy-on-write",
@@ -2837,7 +2546,6 @@ describe("local API app", () => {
       operation: "canvas_update",
       entity: { kind: "canvas-node", id: "loose" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "canvas node update",
     });
@@ -2854,7 +2562,6 @@ describe("local API app", () => {
       operation: "canvas_delete",
       entity: { kind: "canvas-node", id: "loose" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "canvas node delete",
     });
@@ -3053,7 +2760,6 @@ describe("local API app", () => {
       operation: "canvas_batch_delete",
       entity: { kind: "canvas-node-batch", id: "root,child,external" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "canvas batch delete",
     });
@@ -3164,14 +2870,12 @@ describe("local API app", () => {
       operation: "canvas_add_edge",
       entity: { kind: "canvas-edge", id: "edge-bc" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "canvas edge add",
       mutation: {
         operation: "canvas_add_edge",
         entity: { kind: "canvas-edge", id: "edge-bc" },
         resultEntityId: "edge-bc",
-        forced: false,
         accepted: true,
       },
     });
@@ -3237,14 +2941,12 @@ describe("local API app", () => {
       operation: "canvas_update_edge",
       entity: { kind: "canvas-edge", id: "edge-bc" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "canvas edge update",
       mutation: {
         operation: "canvas_update_edge",
         entity: { kind: "canvas-edge", id: "edge-bc" },
         resultEntityId: "edge-bc",
-        forced: false,
         accepted: true,
       },
     });
@@ -3302,14 +3004,12 @@ describe("local API app", () => {
       operation: "canvas_delete_edge",
       entity: { kind: "canvas-edge", id: "edge-bc" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "canvas edge delete",
       mutation: {
         operation: "canvas_delete_edge",
         entity: { kind: "canvas-edge", id: "edge-bc" },
         resultEntityId: "edge-bc",
-        forced: false,
         accepted: true,
       },
     });
@@ -3319,11 +3019,12 @@ describe("local API app", () => {
     expect(auditJson.records[0].mutation).not.toHaveProperty("afterReadToken");
 
     const recovered = await new FileReplicaStore(join(dataDir, "projects")).recover(projectId);
-    expect(recovered.getMap("edges").get("edge-ab")).toMatchObject({
+    const recoveredEdges = new Canvas(recovered, () => {}).listEdges();
+    expect(recoveredEdges.find((edge) => edge.id === "edge-ab")).toMatchObject({
       source: "node-a",
       target: "node-b",
     });
-    expect(recovered.getMap("edges").get("edge-bc")).toBeUndefined();
+    expect(recoveredEdges.find((edge) => edge.id === "edge-bc")).toBeUndefined();
   });
 
   it("garbage collects only unreferenced local content-addressed assets", async () => {
@@ -3373,7 +3074,6 @@ describe("local API app", () => {
         operation: "asset_gc",
         entity: { kind: "asset-store", id: "local" },
         resultEntityId: "local",
-        forced: false,
         accepted: true,
       },
     });
@@ -3578,14 +3278,12 @@ describe("local API app", () => {
       operation: "asset_gc",
       entity: { kind: "asset-store", id: "local" },
       accepted: true,
-      forced: false,
       actorClientType: "agent",
       reason: "asset garbage collection",
       mutation: {
         operation: "asset_gc",
         entity: { kind: "asset-store", id: "local" },
         resultEntityId: "local",
-        forced: false,
         accepted: true,
       },
     });
@@ -3922,7 +3620,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_references_refresh",
         entity: { kind: "asset", id: assetId },
-        forced: false,
         accepted: false,
       },
     });
@@ -3944,7 +3641,6 @@ describe("local API app", () => {
         entity: { kind: "asset", id: assetId },
         expectedReadToken: baseReadToken(assetReadJson.readToken),
         beforeReadToken: baseReadToken(assetReadJson.readToken),
-        forced: false,
         accepted: false,
       },
     });
@@ -3982,7 +3678,6 @@ describe("local API app", () => {
         beforeReadToken: baseReadToken(assetReadJson.readToken),
         afterReadToken: assetReadJson.readToken,
         resultEntityId: assetId,
-        forced: false,
         accepted: true,
       },
     });
@@ -3995,7 +3690,6 @@ describe("local API app", () => {
       entity: { kind: "asset", id: assetId },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "asset reference refresh",
       resultEntityId: assetId,
     });
@@ -4030,7 +3724,6 @@ describe("local API app", () => {
       mutation: {
         operation: "custom_action_upload",
         entity: { kind: "custom-action-result", id: "" },
-        forced: false,
         accepted: false,
         error: "Missing required fields: projectId, taskId, nodeId",
       },
@@ -4054,7 +3747,6 @@ describe("local API app", () => {
       mutation: {
         operation: "custom_action_upload",
         entity: { kind: "custom-action-result", id: "task-text" },
-        forced: false,
         accepted: true,
         resultEntityId: "task-text",
       },
@@ -4080,7 +3772,6 @@ describe("local API app", () => {
       mutation: {
         operation: "custom_action_upload",
         entity: { kind: "custom-action-result", id: "task-image" },
-        forced: false,
         accepted: true,
         resultEntityId: "task-image",
       },
@@ -4094,7 +3785,6 @@ describe("local API app", () => {
       entity: { kind: "custom-action-result", id: "task-image" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "custom action upload",
       resultEntityId: "task-image",
     });
@@ -4150,7 +3840,6 @@ describe("local API app", () => {
       mutation: {
         operation: "custom_action_upload",
         entity: { kind: "custom-action-result", id: "task-rerun" },
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Custom action output already exists with different checkpoint content"),
       },
@@ -4261,7 +3950,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_accounts_update",
         entity: { kind: "provider-accounts", id: "local-user" },
-        forced: false,
         accepted: false,
         error: "Invalid providers",
       },
@@ -4289,7 +3977,6 @@ describe("local API app", () => {
       operation: "provider_accounts_update",
       entity: { kind: "provider-accounts", id: "local-user" },
       resultEntityId: "local-user",
-      forced: false,
       accepted: true,
     });
 
@@ -4300,7 +3987,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_account_delete",
         entity: { kind: "provider-account", id: "missing-provider" },
-        forced: false,
         accepted: false,
         error: "Provider account not found",
       },
@@ -4314,7 +4000,6 @@ describe("local API app", () => {
         operation: "provider_account_delete",
         entity: { kind: "provider-account", id: "replicate-primary" },
         resultEntityId: "replicate-primary",
-        forced: false,
         accepted: true,
       },
     });
@@ -4560,7 +4245,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_model_test",
         entity: { kind: "provider-test", id: "unknown" },
-        forced: false,
         accepted: false,
         error: "provider and modelId are required",
       },
@@ -5332,7 +5016,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_accounts_update",
         entity: { kind: "provider-accounts", id: "local-user" },
-        forced: false,
         accepted: false,
         error: "Invalid provider model filters",
       },
@@ -5376,13 +5059,46 @@ describe("local API app", () => {
         operation: "provider_account_delete",
         entity: { kind: "provider-account", id: "replicate-primary" },
         resultEntityId: "replicate-primary",
-        forced: false,
         accepted: true,
       },
     });
     const providers = await app.request("/api/v1/model-providers");
     const providersJson = (await providers.json()) as { providers: Array<{ id?: string }> };
     expect(providersJson.providers.map((provider) => provider.id)).toEqual(["replicate-secondary"]);
+  });
+
+  it("accepts cwd observed versions for provider writes and rejects stale versions", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const initial = await app.request("/api/v1/model-providers");
+    const initialJson = await initial.json() as { readToken: string };
+    const observedVersion = baseReadToken(initialJson.readToken);
+
+    const updated = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-observed-version": observedVersion,
+      },
+      body: JSON.stringify({
+        providers: [{ providerId: "replicate", upstreamId: "replicate", enabled: true }],
+      }),
+    });
+    expect(updated.status).toBe(200);
+
+    const stale = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-client-type": "agent",
+        "x-clash-observed-version": observedVersion,
+      },
+      body: JSON.stringify({
+        providers: [{ providerId: "replicate", upstreamId: "replicate", enabled: false }],
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: expect.stringMatching(/^STALE_READ:/) });
   });
 
   it("requires receipt-bearing provider account reads before agent provider writes", async () => {
@@ -5495,7 +5211,6 @@ describe("local API app", () => {
       entity: { kind: "provider-accounts", id: "local-user" },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "provider accounts update",
       resultEntityId: "local-user",
     });
@@ -5504,7 +5219,6 @@ describe("local API app", () => {
       entity: { kind: "provider-accounts", id: "local-user" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "provider accounts update",
       resultEntityId: "local-user",
     });
@@ -5663,7 +5377,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_oauth_start",
         entity: { kind: "provider-oauth", id: "not-real" },
-        forced: false,
         accepted: false,
         error: "Unsupported OAuth provider",
       },
@@ -5678,7 +5391,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_oauth_start",
         entity: { kind: "provider-oauth", id: "dreamina" },
-        forced: false,
         accepted: false,
         error: "OAuth provider is not configured",
       },
@@ -5721,7 +5433,6 @@ describe("local API app", () => {
         operation: "provider_oauth_start",
         entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
         resultEntityId: "dreamina:jimeng-primary",
-        forced: false,
         accepted: true,
       },
     });
@@ -5737,7 +5448,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_oauth_complete",
         entity: { kind: "provider-oauth", id: "dreamina:jimeng-missing" },
-        forced: false,
         accepted: false,
         error: "deviceCode is required",
       },
@@ -5757,7 +5467,6 @@ describe("local API app", () => {
         operation: "provider_oauth_complete",
         entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
         resultEntityId: "dreamina:jimeng-primary",
-        forced: false,
         accepted: true,
       },
     });
@@ -5772,7 +5481,6 @@ describe("local API app", () => {
         operation: "provider_oauth_delete",
         entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
         resultEntityId: "dreamina:jimeng-primary",
-        forced: false,
         accepted: true,
       },
     });
@@ -5887,7 +5595,6 @@ describe("local API app", () => {
         expectedReadToken: authorized!.readToken,
         beforeReadToken: baseReadToken(authorized!.readToken!),
         resultEntityId: "dreamina:jimeng-primary",
-        forced: false,
         accepted: true,
       },
     });
@@ -5920,7 +5627,6 @@ describe("local API app", () => {
       mutation: {
         operation: "provider_oauth_delete",
         entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
-        forced: false,
         accepted: false,
       },
     });
@@ -6034,7 +5740,6 @@ describe("local API app", () => {
       entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "provider OAuth start",
       resultEntityId: "dreamina:jimeng-primary",
     });
@@ -6043,7 +5748,6 @@ describe("local API app", () => {
       entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "provider OAuth start",
       resultEntityId: "dreamina:jimeng-primary",
     });
@@ -6199,7 +5903,6 @@ describe("local API app", () => {
       entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "provider OAuth complete",
       resultEntityId: "dreamina:jimeng-primary",
     });
@@ -6290,7 +5993,6 @@ describe("local API app", () => {
         operation: "provider_oauth_start",
         entity: { kind: "provider-oauth", id: "dreamina" },
         resultEntityId: "dreamina",
-        forced: false,
         accepted: true,
       },
     });
@@ -6333,7 +6035,6 @@ describe("local API app", () => {
         operation: "provider_oauth_complete",
         entity: { kind: "provider-oauth", id: "dreamina" },
         resultEntityId: "dreamina",
-        forced: false,
         accepted: true,
       },
     });
@@ -6528,7 +6229,6 @@ describe("local API app", () => {
         operation: "provider_oauth_complete",
         entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
         resultEntityId: "dreamina:jimeng-primary",
-        forced: false,
         accepted: true,
       },
     });
@@ -6561,6 +6261,23 @@ describe("local API app", () => {
     expect(preflight.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:3001");
     expect(preflight.headers.get("access-control-allow-credentials")).toBe("true");
 
+    const session = await app.request("/api/better-auth/get-session", {
+      headers: { origin: "http://127.0.0.1:3001" },
+    });
+    expect(session.status).toBe(200);
+    expect(session.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:3001");
+    expect(session.headers.get("access-control-allow-credentials")).toBe("true");
+
+    const desktopPreflight = await app.request("/api/v1/projects", {
+      method: "OPTIONS",
+      headers: {
+        origin: "clash://app",
+        "access-control-request-method": "GET",
+      },
+    });
+    expect(desktopPreflight.headers.get("access-control-allow-origin")).toBe("clash://app");
+    expect(desktopPreflight.headers.get("access-control-allow-credentials")).toBe("true");
+
     const agent = await app.request("/api/v1/agents");
     const agentJson = (await agent.json()) as { agents: Array<Record<string, unknown>> };
     expect(agentJson.agents).toEqual([
@@ -6575,6 +6292,34 @@ describe("local API app", () => {
         runtime_status: "online",
       }),
     ]);
+  });
+
+  it("rejects browser requests from non-local origins", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+
+    const preflight = await app.request("/api/v1/projects", {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://attacker.example",
+        "access-control-request-method": "POST",
+      },
+    });
+    expect(preflight.status).toBe(403);
+
+    const mutation = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: {
+        origin: "https://attacker.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "Cross-origin project" }),
+    });
+    expect(mutation.status).toBe(403);
+    expect(await mutation.json()).toEqual({ error: "origin not allowed" });
+
+    const listed = await app.request("/api/v1/projects");
+    const body = await listed.json() as { projects: Array<{ name: string }> };
+    expect(body.projects.some((project) => project.name === "Cross-origin project")).toBe(false);
   });
 
   it("does not persist derived built-in agent members from the agents read endpoint", async () => {
@@ -6709,7 +6454,6 @@ describe("local API app", () => {
         operation: "runtime_session_create",
         entity: { kind: "session", id: "local-session-1" },
         resultEntityId: "local-session-1",
-        forced: false,
         accepted: true,
       },
     });
@@ -6867,7 +6611,6 @@ describe("local API app", () => {
       mutation: {
         operation: "runtime_session_create",
         entity: { kind: "session", id: "" },
-        forced: false,
         accepted: false,
         error: "Local agent runtime unavailable",
       },
@@ -6899,7 +6642,6 @@ describe("local API app", () => {
       mutation: {
         operation: "runtime_session_create",
         entity: { kind: "session", id: "" },
-        forced: false,
         accepted: false,
         error: "Missing agent_id",
       },
@@ -6944,7 +6686,6 @@ describe("local API app", () => {
         operation: "session_delete",
         entity: { kind: "session", id: session_id },
         resultEntityId: session_id,
-        forced: false,
         accepted: true,
       },
     });
@@ -7004,7 +6745,6 @@ describe("local API app", () => {
       operation: "runtime_session_create",
       entity: { kind: "session", id: createdJson.session_id },
       resultEntityId: createdJson.session_id,
-      forced: false,
       accepted: true,
     });
 
@@ -7155,7 +6895,6 @@ describe("local API app", () => {
         operation: "runtime_session_create",
         entity: { kind: "session", id: "local-session-agent" },
         resultEntityId: "local-session-agent",
-        forced: false,
         accepted: true,
       },
     });
@@ -7257,7 +6996,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_enablement_update",
         entity: { kind: "local-harness-config", id: "enabled" },
-        forced: false,
         accepted: true,
         resultEntityId: "enabled",
       },
@@ -7396,7 +7134,6 @@ describe("local API app", () => {
       entity: { kind: "local-harness-config", id: "enabled" },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "local harness enablement update",
       resultEntityId: "enabled",
     });
@@ -7405,7 +7142,6 @@ describe("local API app", () => {
       entity: { kind: "local-harness-config", id: "enabled" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "local harness enablement update",
       resultEntityId: "enabled",
     });
@@ -7580,7 +7316,6 @@ describe("local API app", () => {
       entity: { kind: "local-harness", id: "gemini" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "local harness install",
       resultEntityId: "gemini",
     });
@@ -7646,7 +7381,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_enablement_update",
         entity: { kind: "local-harness-config", id: "enabled" },
-        forced: false,
         accepted: false,
         error: "Authenticate Devin before enabling.",
       },
@@ -7734,7 +7468,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_agent_servers_update",
         entity: { kind: "local-harness-config", id: "agent-servers" },
-        forced: false,
         accepted: true,
         resultEntityId: "agent-servers",
       },
@@ -7889,7 +7622,6 @@ describe("local API app", () => {
       entity: { kind: "local-harness-config", id: "agent-servers" },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "local agent servers update",
       resultEntityId: "agent-servers",
     });
@@ -7898,7 +7630,6 @@ describe("local API app", () => {
       entity: { kind: "local-harness-config", id: "agent-servers" },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "local agent servers update",
       resultEntityId: "agent-servers",
     });
@@ -7954,7 +7685,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_install",
         entity: { kind: "local-harness", id: "gemini" },
-        forced: false,
         accepted: true,
         resultEntityId: "gemini",
       },
@@ -8005,7 +7735,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_install",
         entity: { kind: "local-harness", id: "gemini" },
-        forced: false,
         accepted: true,
         resultEntityId: "gemini",
       },
@@ -8062,7 +7791,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_uninstall",
         entity: { kind: "local-harness", id: "gemini" },
-        forced: false,
         accepted: true,
         resultEntityId: "gemini",
       },
@@ -8122,7 +7850,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_upgrade",
         entity: { kind: "local-harness", id: "gemini" },
-        forced: false,
         accepted: true,
         resultEntityId: "gemini",
       },
@@ -8183,7 +7910,6 @@ describe("local API app", () => {
       mutation: {
         operation: "local_harness_authenticate",
         entity: { kind: "local-harness", id: "gemini" },
-        forced: false,
         accepted: true,
         resultEntityId: "gemini",
       },
@@ -8252,7 +7978,6 @@ describe("local API app", () => {
         operation: "runtime_session_create",
         entity: { kind: "session", id: "local-session-agent" },
         resultEntityId: "local-session-agent",
-        forced: false,
         accepted: true,
       },
     });
@@ -8315,7 +8040,6 @@ describe("local API app", () => {
       operation: "runtime_session_create",
       entity: { kind: "session", id: body.session_id },
       resultEntityId: body.session_id,
-      forced: false,
       accepted: true,
     });
   });
@@ -8433,7 +8157,6 @@ describe("local API app", () => {
         operation: "runtime_session_attach",
         entity: { kind: "session", id: "local-session-existing" },
         resultEntityId: "local-session-existing",
-        forced: false,
         accepted: true,
       },
     });
@@ -8508,7 +8231,6 @@ describe("local API app", () => {
       mutation: {
         operation: "runtime_session_attach",
         entity: { kind: "session", id: "local-session-attach-cas" },
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing runtime session attach read proof"),
       },
@@ -8532,7 +8254,6 @@ describe("local API app", () => {
         entity: { kind: "session", id: "local-session-attach-cas" },
         expectedReadToken: bareReadToken,
         beforeReadToken: bareReadToken,
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing runtime session attach read receipt"),
       },
@@ -8586,7 +8307,6 @@ describe("local API app", () => {
         expectedReadToken: freshReadToken,
         beforeReadToken: baseReadToken(freshReadToken!),
         resultEntityId: "local-session-attach-cas",
-        forced: false,
         accepted: true,
         afterReadToken: expect.stringMatching(SESSION_RECEIPT_READ_TOKEN_RE),
       },
@@ -8638,7 +8358,6 @@ describe("local API app", () => {
         operation: "runtime_session_attach",
         entity: { kind: "session", id: sessionId },
         resultEntityId: sessionId,
-        forced: false,
         accepted: true,
       },
     });
@@ -8907,7 +8626,6 @@ describe("local API app", () => {
       entity: { kind: "project", id },
       afterReadToken: createdJson.readToken,
       resultEntityId: id,
-      forced: false,
       accepted: true,
     });
 
@@ -8944,7 +8662,6 @@ describe("local API app", () => {
       beforeReadToken: baseReadToken(createdJson.readToken!),
       afterReadToken: renamedJson.readToken,
       resultEntityId: id,
-      forced: false,
       accepted: true,
     });
 
@@ -8962,7 +8679,6 @@ describe("local API app", () => {
       beforeReadToken: baseReadToken(renamedJson.readToken!),
       afterReadToken: deletedJson.readToken,
       resultEntityId: id,
-      forced: false,
       accepted: true,
     });
     const audit = await app.request(`/api/v1/mutation-audit?operation=project_delete&entityId=${id}`);
@@ -9003,7 +8719,6 @@ describe("local API app", () => {
       entity: { kind: "project", id: v1Project.id },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "v1 project create",
       resultEntityId: v1Project.id,
     });
@@ -9065,7 +8780,6 @@ describe("local API app", () => {
         operation: "project_update",
         entity: { kind: "project", id: createdJson.id },
         beforeReadToken: baseReadToken(createdJson.readToken),
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Missing project update read proof for agent"),
       },
@@ -9102,7 +8816,6 @@ describe("local API app", () => {
         entity: { kind: "project", id: createdJson.id },
         expectedReadToken: createdJson.readToken,
         beforeReadToken: baseReadToken(humanRenameJson.readToken),
-        forced: false,
         accepted: false,
         error: expect.stringContaining("Stale project update rejected"),
       },
@@ -9127,7 +8840,6 @@ describe("local API app", () => {
       expectedReadToken: freshJson.readToken,
       beforeReadToken: baseReadToken(freshJson.readToken),
       afterReadToken: acceptedJson.readToken,
-      forced: false,
       accepted: true,
     });
     const updateAudit = await app.request(`/api/v1/mutation-audit?operation=project_update&entityId=${encodeURIComponent(createdJson.id)}`);
@@ -9141,7 +8853,6 @@ describe("local API app", () => {
       entity: { kind: "project", id: createdJson.id },
       actorClientType: null,
       accepted: true,
-      forced: false,
       reason: "project update",
       resultEntityId: createdJson.id,
     });
@@ -9150,7 +8861,6 @@ describe("local API app", () => {
       entity: { kind: "project", id: createdJson.id },
       actorClientType: "agent",
       accepted: true,
-      forced: false,
       reason: "project update",
       resultEntityId: createdJson.id,
     });
@@ -9172,7 +8882,6 @@ describe("local API app", () => {
         operation: "project_delete",
         entity: { kind: "project", id: createdJson.id },
         beforeReadToken: baseReadToken(acceptedJson.readToken),
-        forced: false,
         accepted: false,
       },
     });
@@ -9192,7 +8901,6 @@ describe("local API app", () => {
       expectedReadToken: acceptedJson.readToken,
       beforeReadToken: baseReadToken(acceptedJson.readToken),
       afterReadToken: deletedJson.readToken,
-      forced: false,
       accepted: true,
     });
   });
@@ -9225,7 +8933,6 @@ describe("local API app", () => {
         entity: { kind: "project", id: createdJson.id },
         expectedReadToken: baseReadToken(createdJson.readToken),
         beforeReadToken: baseReadToken(createdJson.readToken),
-        forced: false,
         accepted: false,
       },
     });
@@ -9252,7 +8959,6 @@ describe("local API app", () => {
       expectedReadToken: readJson.readToken,
       beforeReadToken: baseReadToken(readJson.readToken),
       afterReadToken: acceptedJson.readToken,
-      forced: false,
       accepted: true,
     });
   });
@@ -9316,7 +9022,6 @@ describe("local API app", () => {
       entity: { kind: "project", id: project.id },
       afterReadToken: project.readToken,
       resultEntityId: project.id,
-      forced: false,
       accepted: true,
     });
 
@@ -9450,15 +9155,17 @@ describe("local API app", () => {
         timelines: {
           kind: "agent-editable-view-files",
           path: status.roots.timelines,
-          defaultFile: "main.timeline.yaml",
-          applyCommand: "clash timeline apply",
+          defaultFilePattern: "<timeline-id>.timeline.yaml",
+          pullCommand: "clash timeline pull --timeline <id>",
+          applyCommand: "clash timeline apply --timeline <id>",
           casRequired: true,
           ownsCanonicalState: false,
         },
         timelineProjections: {
           kind: "agent-editable-projection-files",
           path: join(status.roots.projections, "timelines"),
-          applyCommand: "clash timeline apply",
+          defaultFilePattern: "<timeline-id>.timeline.yaml",
+          applyCommand: "clash timeline apply --timeline <id>",
           casRequired: true,
           ownsCanonicalState: false,
         },
@@ -9473,7 +9180,7 @@ describe("local API app", () => {
         path: status.localSqlitePath,
         agentWritable: false,
       },
-      canvas: {
+      projectState: {
         kind: "loro",
         snapshotPath: status.loro.snapshotPath,
         updatesLogPath: status.loro.updatesLogPath,
@@ -9496,17 +9203,10 @@ describe("local API app", () => {
           immutable: true,
           agentWritable: false,
         },
-        timelineRevisions: {
-          kind: "content-addressed-files",
-          path: join(dataDir, "timeline-revision-blobs"),
-          mediaType: "application/yaml",
-          immutable: true,
-          agentWritable: false,
-        },
       },
     });
     expect(status.storage.contentModel).toMatchObject({
-      role: "agent-projections-with-host-indexed-revision-content",
+      role: "agent-projections-over-host-owned-canonical-state",
       textNodes: {
         liveState: "loro-canvas-text-node-data",
         editableProjection: "storage.workspace.viewFiles.texts",
@@ -9521,16 +9221,27 @@ describe("local API app", () => {
         agentWritableCanonicalState: false,
       },
       timelines: {
-        liveState: "loro-canvas-video-editor-node-data",
+        liveState: "loro-project-timeline-entity",
+        timelineIdentity: "timeline-id",
         editableProjection: "storage.workspace.viewFiles.timelines",
         projectionPath: status.roots.timelines,
-        applyCommand: "clash timeline apply",
-        replaceCommand: "clash timeline replace",
+        projectionFilePattern: "<timeline-id>.timeline.yaml",
+        pullCommand: "clash timeline pull --timeline <id>",
+        applyCommand: "clash timeline apply --timeline <id>",
+        publicCommands: [
+          "clash timeline list",
+          "clash timeline create --id <id> --name <name>",
+          "clash timeline attach --timeline <id> --canvas <id> --node <action-node-id>",
+          "clash timeline detach --timeline <id>",
+          "clash timeline copy --timeline <id> --canvas <id> --new-timeline <id> --new-node <action-node-id>",
+          "clash timeline pull --timeline <id>",
+          "clash timeline apply --timeline <id>",
+        ],
         casRequired: true,
-        copyOnWriteWhenReferenced: true,
-        revisionRegistry: "timeline_revisions",
-        revisionBlobPath: join(dataDir, "timeline-revision-blobs"),
-        mediaAsset: false,
+        copyOnWriteWhenReferenced: false,
+        downstreamRendersPinRevision: true,
+        revisionAuthority: "loro-project-history",
+        revisionIdentity: "state-hash",
         agentWritableCanonicalState: false,
       },
     });
@@ -9712,7 +9423,6 @@ describe("local API app", () => {
       beforeReadToken: baseReadToken(project.readToken),
       afterReadToken: deletedJson.readToken,
       resultEntityId: project.id,
-      forced: false,
       accepted: true,
     });
 
@@ -9751,7 +9461,6 @@ describe("local API app", () => {
       beforeReadToken: baseReadToken(deletedJson.readToken!),
       afterReadToken: restoredJson.readToken,
       resultEntityId: project.id,
-      forced: false,
       accepted: true,
     });
 
@@ -9778,7 +9487,6 @@ describe("local API app", () => {
       mutation: {
         operation: "project_delete",
         entity: { kind: "project", id: "missing-project" },
-        forced: false,
         accepted: false,
         error: "Project not found",
       },
@@ -9791,7 +9499,6 @@ describe("local API app", () => {
       mutation: {
         operation: "project_restore",
         entity: { kind: "project", id: "missing-project" },
-        forced: false,
         accepted: false,
         error: "Project recovery point not found",
       },
@@ -9906,7 +9613,6 @@ describe("local API app", () => {
         beforeReadToken: baseReadToken(deletedReadJson.readToken),
         afterReadToken: acceptedJson.readToken,
         resultEntityId: project.id,
-        forced: false,
         accepted: true,
       },
     });
@@ -9982,14 +9688,17 @@ describe("local API app", () => {
 
     const deletedAgain = await app.request(`/api/v1/projects/${project.id}`, { method: "DELETE" });
     expect(deletedAgain.status).toBe(200);
-    const deletedAgainJson = await deletedAgain.json() as { readToken: string };
+    await deletedAgain.json();
+    ageDeletedProjectForPurge(project.id);
+    const agedDeleted = await app.request(`/api/v1/projects/${project.id}?includeDeleted=true`);
+    expect(agedDeleted.status).toBe(200);
+    const agedDeletedJson = await agedDeleted.json() as { readToken: string };
     const purged = await app.request(`/api/v1/projects/${project.id}/purge`, {
       method: "DELETE",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
-        "x-clash-if-match": deletedAgainJson.readToken,
-        "x-clash-force": "true",
+        "x-clash-if-match": agedDeletedJson.readToken,
       },
       body: JSON.stringify({ confirm: "purge" }),
     });
@@ -10078,7 +9787,7 @@ describe("local API app", () => {
     const activePurge = await app.request(`/api/v1/projects/${project.id}/purge`, {
       method: "DELETE",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ confirm: "purge", force: true }),
+      body: JSON.stringify({ confirm: "purge" }),
     });
     expect(activePurge.status).toBe(409);
     expect(await activePurge.json()).toMatchObject({
@@ -10098,7 +9807,7 @@ describe("local API app", () => {
     const missingConfirm = await app.request(`/api/v1/projects/${project.id}/purge`, {
       method: "DELETE",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ force: true }),
+      body: JSON.stringify({}),
     });
     expect(missingConfirm.status).toBe(400);
     expect(await missingConfirm.json()).toMatchObject({
@@ -10171,15 +9880,21 @@ describe("local API app", () => {
         accepted: false,
       },
     });
+    expect(delayedJson.error).toBe(`Project purge is delayed until ${delayedJson.purgeAfter}.`);
+    expect(delayedJson.error).not.toMatch(/\b(force|admin)\b/i);
     expect(Date.parse(delayedJson.purgeAfter)).toBeGreaterThan(Date.parse(deletedJson.deletedAt));
+
+    ageDeletedProjectForPurge(project.id);
+    const agedDeleted = await app.request(`/api/v1/projects/${project.id}?includeDeleted=true`);
+    expect(agedDeleted.status).toBe(200);
+    const agedDeletedJson = await agedDeleted.json() as { deletedAt: string; readToken: string };
 
     const purged = await app.request(`/api/v1/projects/${project.id}/purge`, {
       method: "DELETE",
       headers: {
         "content-type": "application/json",
         "x-clash-client-type": "agent",
-        "x-clash-if-match": deletedJson.readToken,
-        "x-clash-force": "true",
+        "x-clash-if-match": agedDeletedJson.readToken,
       },
       body: JSON.stringify({ confirm: "purge" }),
     });
@@ -10188,8 +9903,8 @@ describe("local API app", () => {
       purged: true,
       recoverable: false,
       id: project.id,
-      deletedAt: deletedJson.deletedAt,
-      purgeAfter: delayedJson.purgeAfter,
+      deletedAt: agedDeletedJson.deletedAt,
+      purgeAfter: expect.any(String),
       replicaDeleted: true,
       removed: {
         projects: 1,
@@ -10203,10 +9918,9 @@ describe("local API app", () => {
       mutation: {
         operation: "project_purge",
         entity: { kind: "project", id: project.id },
-        expectedReadToken: deletedJson.readToken,
-        beforeReadToken: baseReadToken(deletedJson.readToken),
+        expectedReadToken: agedDeletedJson.readToken,
+        beforeReadToken: baseReadToken(agedDeletedJson.readToken),
         resultEntityId: project.id,
-        forced: true,
         accepted: true,
       },
     });
@@ -10238,7 +9952,6 @@ describe("local API app", () => {
       records: Array<{
         operation: string;
         entity: { kind: string; id: string };
-        forced: boolean;
         accepted: boolean;
         actorClientType?: string;
         reason?: string;
@@ -10249,14 +9962,12 @@ describe("local API app", () => {
     expect(auditJson.records[0]).toMatchObject({
       operation: "project_purge",
       entity: { kind: "project", id: project.id },
-      forced: true,
       accepted: true,
       actorClientType: "agent",
       reason: "project purge",
       mutation: {
         operation: "project_purge",
         entity: { kind: "project", id: project.id },
-        forced: true,
         accepted: true,
         resultEntityId: project.id,
       },
@@ -10321,7 +10032,6 @@ describe("local API app", () => {
       mutation: {
         operation: "asset_blob_upload",
         entity: { kind: "asset-blob", id: "" },
-        forced: false,
         accepted: false,
         error: "Missing file",
       },
@@ -10337,7 +10047,6 @@ describe("local API app", () => {
     expect(mutation).toEqual({
       operation: "asset_blob_upload",
       entity: { kind: "asset-blob", id: storageKey },
-      forced: false,
       accepted: true,
       resultEntityId: storageKey,
     });
@@ -10374,7 +10083,6 @@ describe("local API app", () => {
         mutation: {
           operation: "asset_blob_upload",
           entity: { kind: "asset-blob", id: expect.stringMatching(/^uploads\/.+-escape\.txt$/) },
-          forced: false,
           accepted: false,
           error: "Asset path escapes local asset storage",
         },
@@ -10402,7 +10110,6 @@ describe("local API app", () => {
         mutation: {
           operation: "asset_blob_upload",
           entity: { kind: "asset-blob", id: expect.stringMatching(/^uploads\/.+-root_escape\.txt$/) },
-          forced: false,
           accepted: false,
           error: "Asset path escapes local asset storage",
         },

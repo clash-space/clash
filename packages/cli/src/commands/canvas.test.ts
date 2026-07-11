@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveAssetDownloadUrl, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
+import {
+  resolveAssetDownloadUrl,
+  resolveCanvasActor,
+  resolveCanvasPresenceOptions,
+  resolveCanvasProjectId,
+} from "./canvas";
 import { initProject } from "./projects";
 
 test("marks spawned agent canvas sync as agent presence", () => {
@@ -22,30 +27,81 @@ test("keeps human CLI canvas sync as cli presence", () => {
   });
 });
 
+test("uses runtime-injected actor identity without a network lookup", async () => {
+  await assert.doesNotReject(async () => {
+    assert.deepEqual(await resolveCanvasActor({
+      CLASH_USER_ID: "local-user",
+      CLASH_AGENT_MEMBER_ID: "local-agent",
+    }), {
+      actorType: "agent",
+      actorUserId: "local-user",
+      actorAgentId: "local-agent",
+    });
+  });
+});
+
 test("canvas connect passes presence options into the daemon", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 
   assert.match(source, /startDaemon\(projectId, serverUrl, apiKey, resolveCanvasPresenceOptions\(\)\)/);
 });
 
-test("canvas direct writes expose read-token CAS options for agents", () => {
+test("canvas direct writes use implicit cwd observations for agents", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 
   assert.match(source, /canvasNodeReadToken\(node\)/);
-  assert.match(source, /readToken/);
-  assert.match(source, /\.option\("--if-match <readToken>"/);
+  assert.match(source, /recordWorktreeObservation/);
+  assert.match(source, /requireWorktreeObservation/);
+  assert.match(source, /observedVersion/);
+  assert.doesNotMatch(source, /\.option\("--if-match <readToken>"/);
   assert.match(source, /actorClientType: resolveCanvasPresenceOptions\(\)\.clientType/);
-  assert.match(source, /validateCanvasReadProof\(\{/);
   assert.match(source, /assertAgentHostWritePath/);
 });
 
-test("canvas exposes edge read tokens for agent edge CAS", () => {
+test("canvas records edge graph observations without exposing tokens", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 
   assert.match(source, /\.command\("edges"\)/);
-  assert.match(source, /canvasEdgeReadToken\(edge\)/);
   assert.match(source, /canvasEdgesReadToken\(baseEdges\)/);
-  assert.match(source, /readToken/);
+  assert.match(source, /entityKind: "canvas-edges"/);
+  assert.match(source, /printJson\(edges\)/);
+  assert.doesNotMatch(source, /Graph read token/);
+});
+
+test("canvas node commands accept and propagate a concrete Canvas scope", () => {
+  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+
+  assert.match(source, /--canvas <id>/);
+  assert.match(source, /canvasId: activeCanvasId/);
+  assert.match(source, /canvasId: activeCanvasId,/);
+  assert.match(source, /client\.selectCanvas\(activeCanvasId\)/);
+});
+
+test("CLI exposes Project Canvas registry management with implicit observations", () => {
+  const commandUrl = new URL("./canvases.ts", import.meta.url);
+  assert.equal(existsSync(commandUrl), true);
+  const source = readFileSync(commandUrl, "utf8");
+  const indexSource = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+
+  assert.match(indexSource, /canvasesCommand/);
+  assert.match(source, /new Command\("canvases"\)/);
+  assert.match(source, /\.command\("list"\)/);
+  assert.match(source, /\.command\("create"\)/);
+  assert.match(source, /\.command\("rename"\)/);
+  assert.match(source, /\.command\("delete"\)/);
+  assert.match(source, /recordWorktreeObservation/);
+  assert.match(source, /requireWorktreeObservation/);
+  assert.doesNotMatch(source, /--if-match/);
+  assert.doesNotMatch(source, /--force/);
+});
+
+test("canvas get exposes whole-node immutability", () => {
+  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+
+  assert.match(source, /immutable: immutable === true/);
+  assert.match(source, /Immutable:/);
+  assert.match(daemonSource, /immutable: isCanvasNodeImmutable/);
 });
 
 test("canvas exposes graph-aware batch delete read and apply commands", () => {
@@ -68,10 +124,21 @@ test("canvas exposes explicit media asset copy-on-write replacement", () => {
 
   assert.match(source, /\.command\("replace-asset"\)/);
   assert.match(source, /action: "asset_cow_replace"/);
-  assert.match(source, /--if-match <readToken>/);
+  assert.doesNotMatch(source, /--if-match <readToken>/);
+  assert.match(source, /observedVersion/);
   assert.match(source, /copy-on-write media node/);
   assert.match(daemonSource, /case "asset_cow_replace"/);
   assert.match(mediaReplacementSource, /copyOnWriteKind: "media-asset-replacement"/);
+});
+
+test("canvas exposes one generic copy command for immutable nodes", () => {
+  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+
+  assert.match(source, /\.command\("copy"\)/);
+  assert.match(source, /action: "copy_node"/);
+  assert.match(source, /requireCanvasObservation/);
+  assert.match(daemonSource, /case "copy_node"/);
 });
 
 test("canvas add fallback checks createNode errors before wiring reference edges", () => {

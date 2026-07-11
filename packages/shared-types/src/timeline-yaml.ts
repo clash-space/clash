@@ -502,16 +502,19 @@ function isLocalProjectPath(value: unknown): boolean {
  * equivalence of the timeline shouldn't include the agent's authoring memo).
  * Used as input to SHA-256.
  */
-function stableJsonForHash(value: unknown): string {
-  if (Array.isArray(value)) return "[" + value.map(stableJsonForHash).join(",") + "]";
+export function timelineDslCanonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return "[" + value.map(timelineDslCanonicalJson).join(",") + "]";
   if (value && typeof value === "object") {
     const keys = Object.keys(value as object)
-      .filter((k) => k !== "fromExpr") // exclude memo
+      .filter((k) =>
+        k !== "fromExpr" &&
+        (value as Record<string, unknown>)[k] !== undefined
+      )
       .sort();
     return (
       "{" +
       keys
-        .map((k) => JSON.stringify(k) + ":" + stableJsonForHash((value as Record<string, unknown>)[k]))
+        .map((k) => JSON.stringify(k) + ":" + timelineDslCanonicalJson((value as Record<string, unknown>)[k]))
         .join(",") +
       "}"
     );
@@ -527,7 +530,14 @@ function stableJsonForHash(value: unknown): string {
  * rejections.
  */
 export async function timelineDslHash(dsl: ResolvedTimelineDsl): Promise<string> {
-  const stable = stableJsonForHash(dsl);
+  const stable = timelineDslCanonicalJson({
+    ...dsl,
+    tracks: Array.isArray(dsl.tracks) ? dsl.tracks : [],
+    compositionWidth: typeof dsl.compositionWidth === "number" ? dsl.compositionWidth : 1920,
+    compositionHeight: typeof dsl.compositionHeight === "number" ? dsl.compositionHeight : 1080,
+    fps: typeof dsl.fps === "number" ? dsl.fps : 30,
+    durationInFrames: typeof dsl.durationInFrames === "number" ? dsl.durationInFrames : 300,
+  });
   const Encoder = (globalThis as unknown as {
     TextEncoder?: new () => { encode(input?: string): Uint8Array };
   }).TextEncoder;

@@ -28,8 +28,6 @@
     "sourceTimelineHash": { "type": "string" },
     "sourceTimelineRevisionId": { "type": "string" },
     "sourceTimelineRevisionStatus": { "enum": ["draft-file", "applied"] },
-    "sourceTimelineFrontiers": { "type": "array" },
-    "sourceTimelineVersionVector": { "type": "object" },
     "format": { "enum": ["srt", "vtt", "ass"] },
     "outputPath": { "type": "string" },
     "fps": { "type": "number" },

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { runtimeApiUrl } from "../lib/runtimeConfig";
 
-export type RevisionHistoryKind = "text" | "timeline";
-
 export interface RevisionHistoryContentDescriptor {
   kind?: string;
   stored?: boolean;
@@ -18,9 +16,7 @@ export interface RevisionHistoryEntry {
   projectId?: string;
   nodeId?: string;
   textId?: string;
-  timelineId?: string;
   textHash?: string;
-  timelineHash?: string;
   parentRevisionId?: string | null;
   sourceFilePath?: string | null;
   actor?: string | null;
@@ -31,7 +27,6 @@ export interface RevisionHistoryEntry {
 export interface UseRevisionHistoryOptions {
   projectId: string | null | undefined;
   nodeId: string | null | undefined;
-  kind: RevisionHistoryKind;
   limit?: number;
   enabled?: boolean;
 }
@@ -45,10 +40,6 @@ export interface UseRevisionHistoryReturn {
   refetch: () => Promise<void>;
 }
 
-function endpointFor(kind: RevisionHistoryKind): string {
-  return kind === "text" ? "text-revisions" : "timeline-revisions";
-}
-
 function normalizeLimit(limit: number | undefined): number {
   if (typeof limit !== "number" || !Number.isFinite(limit)) return 5;
   return Math.max(1, Math.floor(limit));
@@ -57,7 +48,6 @@ function normalizeLimit(limit: number | undefined): number {
 export function useRevisionHistory({
   projectId,
   nodeId,
-  kind,
   limit,
   enabled = true,
 }: UseRevisionHistoryOptions): UseRevisionHistoryReturn {
@@ -76,7 +66,7 @@ export function useRevisionHistory({
         limit: String(normalizedLimit),
       });
       const res = await fetch(
-        runtimeApiUrl(`/api/v1/projects/${encodeURIComponent(projectId)}/${endpointFor(kind)}?${query}`),
+        runtimeApiUrl(`/api/v1/projects/${encodeURIComponent(projectId)}/text-revisions?${query}`),
         { credentials: "same-origin" },
       );
       const json = (await res.json().catch(() => ({}))) as {
@@ -102,7 +92,7 @@ export function useRevisionHistory({
     } finally {
       setLoading(false);
     }
-  }, [enabled, kind, nodeId, normalizedLimit, projectId]);
+  }, [enabled, nodeId, normalizedLimit, projectId]);
 
   useEffect(() => {
     setRevisions([]);

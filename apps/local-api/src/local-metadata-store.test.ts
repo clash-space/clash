@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -58,6 +58,22 @@ function readSqliteObjectName(dataDir: string, type: string, name: string): stri
   }
 }
 
+function readSqliteTableColumns(dataDir: string, table: string): string[] {
+  const { DatabaseSync } = require("node:sqlite") as {
+    DatabaseSync: new (path: string) => {
+      prepare(sql: string): { all(): Array<Record<string, unknown>> };
+      close(): void;
+    };
+  };
+  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
+  try {
+    return db.prepare(`PRAGMA table_info(${table})`).all()
+      .map((row) => String(row.name ?? ""));
+  } finally {
+    db.close();
+  }
+}
+
 function createPartialCoreMetadataSqlite(dataDir: string): void {
   const { DatabaseSync } = require("node:sqlite") as {
     DatabaseSync: new (path: string) => {
@@ -79,7 +95,6 @@ function createPartialCoreMetadataSqlite(dataDir: string): void {
       );
       CREATE TABLE asset_node_refs (asset_id TEXT NOT NULL);
       CREATE TABLE text_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
-      CREATE TABLE timeline_revisions (revision_id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE runtime_session (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE agent_member (id TEXT PRIMARY KEY NOT NULL);
       CREATE TABLE chat_message (
@@ -111,6 +126,7 @@ describe("local metadata store", () => {
 
     expect(readSqlitePragma(dataDir, "journal_mode")).toBe("wal");
     expect(readSqliteObjectName(dataDir, "table", "local_config")).toBe("local_config");
+    expect(readSqliteObjectName(dataDir, "table", "timeline_revisions")).toBeUndefined();
   });
 
   it("upgrades partial sqlite metadata and projection tables before local-api metadata access", async () => {
@@ -146,15 +162,6 @@ describe("local metadata store", () => {
     await expect(store.load()).resolves.toMatchObject({
       projects: [{ id: "project-upgraded", ownerId: "local-user" }],
     });
-  });
-
-  it("keeps timeline revision immutable-id checks inside a write transaction", async () => {
-    const source = await readFile(new URL("./local-metadata-store.ts", import.meta.url), "utf8");
-    const match = source.match(/async function upsertTimelineRevision[\s\S]*?async function listTimelineRevisions/);
-
-    expect(match?.[0]).toContain('db.exec("BEGIN IMMEDIATE")');
-    expect(match?.[0]).toContain('db.exec("COMMIT")');
-    expect(match?.[0]).toContain('db.exec("ROLLBACK")');
   });
 
   it("round-trips soft-deleted project metadata", async () => {
@@ -239,7 +246,6 @@ describe("local metadata store", () => {
       operation: "project_purge",
       entity: { kind: "project", id: "project-audit" },
       actorClientType: "agent",
-      forced: true,
       accepted: true,
       reason: "project purge",
       resultEntityId: "project-audit",
@@ -247,7 +253,6 @@ describe("local metadata store", () => {
       mutation: {
         operation: "project_purge",
         entity: { kind: "project", id: "project-audit" },
-        forced: true,
         accepted: true,
         resultEntityId: "project-audit",
       },
@@ -270,7 +275,6 @@ describe("local metadata store", () => {
         operation: "project_purge",
         entity: { kind: "project", id: "project-audit" },
         actorClientType: "agent",
-        forced: true,
         accepted: true,
         reason: "project purge",
         resultEntityId: "project-audit",
@@ -278,12 +282,12 @@ describe("local metadata store", () => {
         mutation: {
           operation: "project_purge",
           entity: { kind: "project", id: "project-audit" },
-          forced: true,
           accepted: true,
           resultEntityId: "project-audit",
         },
       },
     ]);
+    expect(readSqliteTableColumns(dataDir, "mutation_audit")).not.toContain("forced");
   });
 
   it("marks sqlite metadata authoritative after an audit-only write", async () => {
@@ -296,7 +300,6 @@ describe("local metadata store", () => {
       operation: "text_revision_index",
       entity: { kind: "text", id: "project-text:script" },
       actorClientType: "agent",
-      forced: false,
       accepted: false,
       reason: "text revision rejected",
       resultEntityId: null,
@@ -304,7 +307,6 @@ describe("local metadata store", () => {
       mutation: {
         operation: "text_revision_index",
         entity: { kind: "text", id: "project-text:script" },
-        forced: false,
         accepted: false,
         error: "text revision contentHash does not match content",
       },

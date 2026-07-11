@@ -193,12 +193,23 @@ export const NodeDataSchema = z.object({
 
 export type NodeData = z.infer<typeof NodeDataSchema>;
 
+export const UpstreamRefSchema = z.object({
+  nodeId: z.string(),
+  edgeId: z.string(),
+  type: z.string().default('default'),
+  sourceHandle: z.string().optional(),
+  targetHandle: z.string().optional(),
+});
+export type UpstreamRef = z.infer<typeof UpstreamRefSchema>;
+
 // === Canvas Node ===
 export const CanvasNodeSchema = z.object({
   id: z.string(),
+  canvasId: z.string(),
   type: z.string(),
   position: PositionSchema,
   data: NodeDataSchema,
+  upstream: z.array(UpstreamRefSchema).default([]),
   parentId: z.string().optional(),
   extent: z.literal('parent').optional(),
 });
@@ -217,8 +228,12 @@ export type CanvasEdge = z.infer<typeof CanvasEdgeSchema>;
 
 // === Loro Document State ===
 export const LoroDocumentStateSchema = z.object({
+  canvases: z.record(z.string(), z.object({
+    id: z.string(),
+    name: z.string(),
+    position: z.number(),
+  })),
   nodes: z.record(z.string(), CanvasNodeSchema),
-  edges: z.record(z.string(), CanvasEdgeSchema),
   tasks: z.record(z.string(), z.any()),
 });
 export type LoroDocumentState = z.infer<typeof LoroDocumentStateSchema>;

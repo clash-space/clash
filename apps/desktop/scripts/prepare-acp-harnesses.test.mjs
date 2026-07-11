@@ -1,24 +1,43 @@
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_ACP_WRAPPERS,
-  renderCodexAcpWrapper,
   renderNodeAcpWrapper,
 } from "./prepare-acp-harnesses.mjs";
+
+const desktopRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const repoRoot = dirname(dirname(desktopRoot));
 
 describe("prepare ACP harness wrappers", () => {
   it("prepares only the built-in harness wrapper names", () => {
     expect(BUILTIN_ACP_WRAPPERS).toEqual(["codex-acp", "claude-agent-acp"]);
   });
 
-  it("runs Codex ACP from the packaged native payload before development fallbacks", () => {
-    const script = renderCodexAcpWrapper({
-      packagedNativePath: "$RESOURCES_DIR/app.asar.unpacked/node_modules/@zed-industries/codex-acp-darwin-arm64/bin/codex-acp",
-      devNativePath: "/repo/node_modules/@zed-industries/codex-acp-darwin-arm64/bin/codex-acp",
+  it("runs Codex ACP from a Resources-owned Node bundle", () => {
+    const script = renderNodeAcpWrapper({
+      packagedScriptPath: "$RESOURCES_DIR/acp-node/codex-acp/node_modules/@agentclientprotocol/codex-acp/dist/index.js",
+      devScriptPath: "/repo/node_modules/@agentclientprotocol/codex-acp/dist/index.js",
     });
 
-    expect(script).toContain("app.asar.unpacked/node_modules/@zed-industries/codex-acp-darwin-arm64/bin/codex-acp");
-    expect(script).toContain("exec \"$PACKAGED_NATIVE\" \"$@\"");
-    expect(script).toContain("exec '/repo/node_modules/@zed-industries/codex-acp-darwin-arm64/bin/codex-acp' \"$@\"");
+    expect(script).toContain("acp-node/codex-acp/node_modules/@agentclientprotocol/codex-acp/dist/index.js");
+    expect(script).not.toContain("app.asar");
+    expect(script).toContain("export ELECTRON_RUN_AS_NODE=1");
+    expect(script).toContain("exec \"$CLASH_NODE_EXEC_PATH\" \"$SCRIPT\" \"$@\"");
+  });
+
+  it("prepares harnesses as part of every desktop package build", async () => {
+    const packageJson = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
+    const bridgePackageJson = JSON.parse(
+      await readFile(join(repoRoot, "packages", "clash-bridge", "package.json"), "utf8"),
+    );
+
+    expect(packageJson.scripts["prepare:pack"]).toContain("pnpm prepare:harnesses");
+    expect(packageJson.devDependencies["@agentclientprotocol/codex-acp"]).toBe("^1.1.2");
+    expect(packageJson.devDependencies["@zed-industries/codex-acp"]).toBeUndefined();
+    expect(packageJson.devDependencies["@agentclientprotocol/claude-agent-acp"]).toBeTruthy();
+    expect(bridgePackageJson.dependencies["@zed-industries/codex-acp"]).toBeUndefined();
   });
 
   it("runs node-based ACP packages from a Resources-owned bundle in packaged apps", () => {

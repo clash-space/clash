@@ -12,6 +12,7 @@
     "artifacts",
     "paths",
     "cas",
+    "workspaceCli",
     "checks",
     "issues",
     "recommendations"
@@ -203,24 +204,28 @@
         "logPath",
         "missingReadProofRejected",
         "staleReadProofRejected",
-        "wrongFileLockRejected",
+        "sourceActionStaleReadProofRejected",
         "copyOnWritePreservedSource",
-        "directCanvasMissingReadTokenRejected",
-        "directCanvasStaleReadTokenRejected",
-        "directCanvasFreshReadTokenAccepted",
-        "directCanvasMutationEnvelopeRecorded",
-        "directCanvasDeleteReadTokenRequired",
-        "directCanvasCliMissingReadTokenRejected",
-        "directCanvasCliStaleReadTokenRejected",
-        "directCanvasCliFreshReadTokenAccepted",
+        "directCanvasCliWriteBeforeReadRejected",
+        "directCanvasCliCwdObservationRecorded",
+        "directCanvasCliStaleObservationRejected",
+        "directCanvasCliFreshObservationAccepted",
         "directCanvasCliMutationEnvelopeRecorded",
-        "directCanvasCliDeleteReadTokenRequired",
+        "directCanvasCliImmutableUpdateRejected",
+        "directCanvasCliCopyOnWriteSupported",
+        "directCanvasCliDeleteReadRequired",
+        "textProjectionNoLockSidecar",
+        "timelineProjectionNoLockSidecar",
+        "timelineEntityApplyAdvancesRevision",
         "textHistoryReadsHostRevisionIndex",
+        "textRevisionContentStorageContract",
         "textContentRestoresHostRevisionBody",
-        "timelineHistoryReadsHostRevisionIndex",
-        "timelineContentRestoresHostRevisionBody",
+        "textRestoreCreatesCopyOnWriteRevisionFromHostContent",
         "textCutExportSourceProvenanceRecorded",
         "textCutExportSymlinkActionRejected",
+        "projectionPathOutsideCwdRejected",
+        "legacyProjectionLockSidecarsIgnored",
+        "forceMutationBypassAbsent",
         "evidence"
       ],
       "properties": {
@@ -232,90 +237,90 @@
           "type": "string",
           "minLength": 1
         },
-        "missingReadProofRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "staleReadProofRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "wrongFileLockRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "copyOnWritePreservedSource": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasMissingReadTokenRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasStaleReadTokenRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasFreshReadTokenAccepted": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasMutationEnvelopeRecorded": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasDeleteReadTokenRequired": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasCliMissingReadTokenRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasCliStaleReadTokenRejected": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasCliFreshReadTokenAccepted": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasCliMutationEnvelopeRecorded": {
-          "type": "boolean",
-          "const": true
-        },
-        "directCanvasCliDeleteReadTokenRequired": {
-          "type": "boolean",
-          "const": true
-        },
-        "textHistoryReadsHostRevisionIndex": {
-          "type": "boolean",
-          "const": true
-        },
-        "textContentRestoresHostRevisionBody": {
-          "type": "boolean",
-          "const": true
-        },
-        "timelineHistoryReadsHostRevisionIndex": {
-          "type": "boolean",
-          "const": true
-        },
-        "timelineContentRestoresHostRevisionBody": {
-          "type": "boolean",
-          "const": true
-        },
-        "textCutExportSourceProvenanceRecorded": {
-          "type": "boolean",
-          "const": true
-        },
-        "textCutExportSymlinkActionRejected": {
-          "type": "boolean",
-          "const": true
-        },
+        "missingReadProofRejected": { "$ref": "#/$defs/trueBoolean" },
+        "staleReadProofRejected": { "$ref": "#/$defs/trueBoolean" },
+        "sourceActionStaleReadProofRejected": { "$ref": "#/$defs/trueBoolean" },
+        "copyOnWritePreservedSource": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliWriteBeforeReadRejected": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliCwdObservationRecorded": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliStaleObservationRejected": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliFreshObservationAccepted": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliMutationEnvelopeRecorded": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliImmutableUpdateRejected": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliCopyOnWriteSupported": { "$ref": "#/$defs/trueBoolean" },
+        "directCanvasCliDeleteReadRequired": { "$ref": "#/$defs/trueBoolean" },
+        "textProjectionNoLockSidecar": { "$ref": "#/$defs/trueBoolean" },
+        "timelineProjectionNoLockSidecar": { "$ref": "#/$defs/trueBoolean" },
+        "timelineEntityApplyAdvancesRevision": { "$ref": "#/$defs/trueBoolean" },
+        "textHistoryReadsHostRevisionIndex": { "$ref": "#/$defs/trueBoolean" },
+        "textRevisionContentStorageContract": { "$ref": "#/$defs/trueBoolean" },
+        "textContentRestoresHostRevisionBody": { "$ref": "#/$defs/trueBoolean" },
+        "textRestoreCreatesCopyOnWriteRevisionFromHostContent": { "$ref": "#/$defs/trueBoolean" },
+        "textCutExportSourceProvenanceRecorded": { "$ref": "#/$defs/trueBoolean" },
+        "textCutExportSymlinkActionRejected": { "$ref": "#/$defs/trueBoolean" },
+        "projectionPathOutsideCwdRejected": { "$ref": "#/$defs/trueBoolean" },
+        "legacyProjectionLockSidecarsIgnored": { "$ref": "#/$defs/trueBoolean" },
+        "forceMutationBypassAbsent": { "$ref": "#/$defs/trueBoolean" },
         "evidence": {
           "type": "string",
           "minLength": 1
         }
+      }
+    },
+    "workspaceCli": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reportPath",
+        "logPath",
+        "projectMarkerPreservesSpecialId",
+        "localWithoutCloudCredentials",
+        "hashedDaemonSocketConfined",
+        "mainCanvasPresent",
+        "canvasCreateRefreshesObservation",
+        "unknownCanvasRejected",
+        "canvasNodeCreationSucceeds",
+        "canvasScopesStayIsolated",
+        "nativeTimelineApplyUsesEntityCas",
+        "timelineAttachOwnsOneAction",
+        "timelineRenderUsesProjectState",
+        "timelineCopyCreatesNewIdentities",
+        "timelineDetachReturnsToProjectRoot",
+        "timelineOwnershipListAccurate",
+        "staleTimelineApplyRejected",
+        "forgedObservationRejected",
+        "observationOwnerOnly",
+        "daemonRestartRecoversProjectState",
+        "recoveredTimelineActionKeepsCanvas",
+        "publicOutputHidesObservations",
+        "legacyJsonDatabaseAbsent",
+        "evidence"
+      ],
+      "properties": {
+        "reportPath": { "type": "string", "minLength": 1 },
+        "logPath": { "type": "string", "minLength": 1 },
+        "projectMarkerPreservesSpecialId": { "$ref": "#/$defs/trueBoolean" },
+        "localWithoutCloudCredentials": { "$ref": "#/$defs/trueBoolean" },
+        "hashedDaemonSocketConfined": { "$ref": "#/$defs/trueBoolean" },
+        "mainCanvasPresent": { "$ref": "#/$defs/trueBoolean" },
+        "canvasCreateRefreshesObservation": { "$ref": "#/$defs/trueBoolean" },
+        "unknownCanvasRejected": { "$ref": "#/$defs/trueBoolean" },
+        "canvasNodeCreationSucceeds": { "$ref": "#/$defs/trueBoolean" },
+        "canvasScopesStayIsolated": { "$ref": "#/$defs/trueBoolean" },
+        "nativeTimelineApplyUsesEntityCas": { "$ref": "#/$defs/trueBoolean" },
+        "timelineAttachOwnsOneAction": { "$ref": "#/$defs/trueBoolean" },
+        "timelineRenderUsesProjectState": { "$ref": "#/$defs/trueBoolean" },
+        "timelineCopyCreatesNewIdentities": { "$ref": "#/$defs/trueBoolean" },
+        "timelineDetachReturnsToProjectRoot": { "$ref": "#/$defs/trueBoolean" },
+        "timelineOwnershipListAccurate": { "$ref": "#/$defs/trueBoolean" },
+        "staleTimelineApplyRejected": { "$ref": "#/$defs/trueBoolean" },
+        "forgedObservationRejected": { "$ref": "#/$defs/trueBoolean" },
+        "observationOwnerOnly": { "$ref": "#/$defs/trueBoolean" },
+        "daemonRestartRecoversProjectState": { "$ref": "#/$defs/trueBoolean" },
+        "recoveredTimelineActionKeepsCanvas": { "$ref": "#/$defs/trueBoolean" },
+        "publicOutputHidesObservations": { "$ref": "#/$defs/trueBoolean" },
+        "legacyJsonDatabaseAbsent": { "$ref": "#/$defs/trueBoolean" },
+        "evidence": { "type": "string", "minLength": 1 }
       }
     },
     "checks": {
@@ -380,6 +385,10 @@
     }
   },
   "$defs": {
+    "trueBoolean": {
+      "type": "boolean",
+      "const": true
+    },
     "artifact": {
       "type": "object",
       "additionalProperties": false,

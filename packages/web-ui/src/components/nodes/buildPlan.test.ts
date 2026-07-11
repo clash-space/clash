@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import type { Edge, Node } from "@xyflow/react";
 
 import { computeBuildPlan, computeBuildPlanFromGraph } from "./buildPlan";
 
 describe("build plan graph lookup", () => {
+  it("keeps ReactFlow as an adapter over the shared headless planner", () => {
+    const source = readFileSync(
+      new URL("./buildPlan.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toMatch(
+      /computeActionBuildPlan[\s\S]*from ['"]@clash\/shared-types['"]/,
+    );
+    expect(source).not.toContain("const dfs =");
+  });
+
   it("matches the array-based build plan result", () => {
     const nodes: Node<Record<string, unknown>>[] = [
       {
@@ -45,5 +58,40 @@ describe("build plan graph lookup", () => {
     );
 
     expect(lookupPlan).toEqual(arrayPlan);
+  });
+
+  it("preserves custom Action invocation semantics through the ReactFlow adapter", () => {
+    const nodes: Node<Record<string, unknown>>[] = [
+      {
+        id: "custom-action",
+        type: "action-badge",
+        position: { x: 0, y: 0 },
+        data: {
+          actionType: "custom:grid-split",
+          customActionId: "grid-split",
+          label: "Grid split",
+        },
+      },
+      {
+        id: "draft",
+        type: "image",
+        position: { x: 100, y: 0 },
+        data: { status: "draft" },
+      },
+    ];
+
+    const plan = computeBuildPlan("draft", nodes, [
+      { id: "custom-output", source: "custom-action", target: "draft" },
+    ]);
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.estimatedInvocations).toEqual([
+      {
+        actionDefinitionRef: "custom:grid-split",
+        actionDefinitionName: "Grid split",
+        kind: "custom",
+        count: 1,
+      },
+    ]);
   });
 });

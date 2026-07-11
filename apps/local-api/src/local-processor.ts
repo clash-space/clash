@@ -161,7 +161,6 @@ async function recordGeneratedTextRevision(options: {
   const mutation = hostMutationSucceeded({
     operation: "text_generate",
     entity: { kind: "text-revision", id: revision.revisionId },
-    forced: false,
   }, { resultEntityId: revision.revisionId });
   await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await createLocalMetadataStore(options.dataDir).upsertTextRevision(revision, {
@@ -170,7 +169,6 @@ async function recordGeneratedTextRevision(options: {
     operation: mutation.operation,
     entity: mutation.entity,
     actorClientType: options.nodeData.actorType === "agent" ? "agent" : null,
-    forced: mutation.forced,
     accepted: mutation.accepted,
     reason: "workflow generated text",
     resultEntityId: mutation.resultEntityId ?? null,
@@ -289,7 +287,6 @@ async function saveAsset(
   const mutation = hostMutationSucceeded({
     operation: "asset_generate",
     entity: { kind: "asset", id: asset.id },
-    forced: false,
   }, { resultEntityId: asset.id });
   await createLocalMetadataStore(options.dataDir).upsertAsset(asset, {
     assetId: asset.id,
@@ -301,7 +298,6 @@ async function saveAsset(
     operation: mutation.operation,
     entity: mutation.entity,
     actorClientType: options.nodeData.actorType === "agent" ? "agent" : null,
-    forced: mutation.forced,
     accepted: mutation.accepted,
     reason: "workflow generated asset",
     resultEntityId: mutation.resultEntityId ?? null,

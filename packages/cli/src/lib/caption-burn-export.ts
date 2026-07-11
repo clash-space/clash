@@ -8,7 +8,7 @@ import {
 import { exportCaptionFile } from "./caption-export";
 import {
   createTimelineSourceProvenance,
-  readAppliedTimelineRevisionForSource,
+  type ProjectTimelineRevisionRef,
 } from "./timeline-projection";
 import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
@@ -52,6 +52,7 @@ export type ExportCaptionBurnOptions = {
   ffmpegPlanPath?: string;
   render?: boolean;
   ffmpegPath?: string;
+  timelineRevision?: ProjectTimelineRevisionRef;
 };
 
 export type ExportCaptionBurnResult = {
@@ -106,16 +107,11 @@ export async function exportCaptionBurn(
   if (stats.captionItems === 0 || stats.cues === 0) {
     throw new Error("Caption burn export requires structured timeline items with type: caption and cues.");
   }
-  const appliedRevision = await readAppliedTimelineRevisionForSource({
-    cwd,
-    sourceTimelinePath,
-    dsl: parsed.dsl,
-  });
   const timelineProvenance = createTimelineSourceProvenance({
     cwd,
     filePath: sourceTimelinePath,
     dsl: parsed.dsl,
-    appliedRevision,
+    timelineRevision: options.timelineRevision,
   });
 
   const captionSidecarPath = resolveAgentOutputPath(cwd, captionSidecarRelativePath, "Caption burn sidecar");
@@ -127,6 +123,7 @@ export async function exportCaptionBurn(
     timelinePath: toProjectRelativePath(cwd, sourceTimelinePath),
     outPath: captionSidecarRelativePath,
     format: "ass",
+    timelineRevision: options.timelineRevision,
   });
 
   const sourceAbsolutePath = resolveProjectPath(cwd, sourceAssetPath, `source asset ${sourceAsset.id} path`);

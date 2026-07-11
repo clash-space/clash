@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
@@ -25,6 +25,7 @@ it("resolver finds the nearest marker from a child directory", async () => {
   expect(context.projectId).toBe("proj_nearest");
   expect(context.source).toBe("marker");
   expect(context.markerPath).toBe(join(projectRoot, ".clash", "project.toml"));
+  expect(context.workspaceRoot).toBe(projectRoot);
 });
 
 it("explicit project overrides marker and environment", async () => {
@@ -40,6 +41,7 @@ it("explicit project overrides marker and environment", async () => {
   expect(context.projectId).toBe("proj_explicit");
   expect(context.source).toBe("explicit");
   expect(context.markerPath).toBe(join(root, ".clash", "project.toml"));
+  expect(context.workspaceRoot).toBe(root);
 });
 
 it("marker and environment conflict without explicit project", async () => {
@@ -129,4 +131,34 @@ it("project marker remains a project pointer and drops collaboration state", asy
   expect(marker).not.toContain("mode =");
   expect(marker).not.toContain("capabilities");
   expect(parsed).not.toHaveProperty("sync");
+});
+
+it("rejects removed sync sections in project pointers", async () => {
+  const root = await tempDir();
+  const markerPath = join(root, ".clash", "project.toml");
+  await mkdir(join(root, ".clash"), { recursive: true });
+  await writeFile(markerPath, [
+    "schema_version = 1",
+    'project_id = "proj_local"',
+    "",
+    "[sync]",
+    'mode = "cloud-sync"',
+    "",
+  ].join("\n"), "utf8");
+
+  await expect(readProjectMarker(markerPath)).rejects.toThrow(/unsupported TOML section.*\[sync\]/i);
+});
+
+it("rejects unknown project pointer fields", async () => {
+  const root = await tempDir();
+  const markerPath = join(root, ".clash", "project.toml");
+  await mkdir(join(root, ".clash"), { recursive: true });
+  await writeFile(markerPath, [
+    "schema_version = 1",
+    'project_id = "proj_local"',
+    'auth_token = "not-allowed"',
+    "",
+  ].join("\n"), "utf8");
+
+  await expect(readProjectMarker(markerPath)).rejects.toThrow(/unsupported field.*auth_token/i);
 });

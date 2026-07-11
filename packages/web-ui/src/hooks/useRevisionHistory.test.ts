@@ -39,7 +39,7 @@ describe("useRevisionHistory", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() =>
-      useRevisionHistory({ projectId: "project-1", nodeId: "text-1", kind: "text", limit: 5 }),
+      useRevisionHistory({ projectId: "project-1", nodeId: "text-1", limit: 5 }),
     );
 
     expect(result.current.loading).toBe(true);
@@ -49,39 +49,12 @@ describe("useRevisionHistory", () => {
     expect(result.current.error).toBeNull();
   });
 
-  it("loads timeline revisions from the host-owned revision index", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe("/api/v1/projects/project-1/timeline-revisions?nodeId=editor-1&limit=3");
-      return new Response(JSON.stringify({
-        revisions: [
-          {
-            revisionId: "tlrev-1",
-            projectId: "project-1",
-            nodeId: "editor-1",
-            timelineId: "editor-1",
-            timelineHash: "timeline-hash",
-            createdAt: "2026-07-09T01:10:00.000Z",
-          },
-        ],
-      }), { headers: { "content-type": "application/json" } });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { result } = renderHook(() =>
-      useRevisionHistory({ projectId: "project-1", nodeId: "editor-1", kind: "timeline", limit: 3 }),
-    );
-
-    await waitFor(() => expect(result.current.latest?.revisionId).toBe("tlrev-1"));
-    expect(result.current.count).toBe(1);
-    expect(result.current.loading).toBe(false);
-  });
-
   it("does not fetch until project and node identity are known", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() =>
-      useRevisionHistory({ projectId: null, nodeId: "text-1", kind: "text" }),
+      useRevisionHistory({ projectId: null, nodeId: "text-1" }),
     );
 
     expect(result.current.loading).toBe(false);

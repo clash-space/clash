@@ -4,6 +4,7 @@ export {
   canvasEdgesReadToken,
   canvasNodeReadToken,
   canvasDownstreamTargets,
+  isCanvasNodeImmutable,
   validateCanvasBatchDelete,
   validateCanvasBatchDeleteReadProof,
   validateCanvasCheckpointPatch,

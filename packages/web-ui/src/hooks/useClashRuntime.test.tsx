@@ -180,7 +180,6 @@ describe("useClashRuntime", () => {
           mutation: {
             operation: "runtime_session_create",
             entity: { kind: "session", id: "" },
-            forced: false,
             accepted: false,
           },
         }), {
@@ -1604,7 +1603,6 @@ describe("useClashRuntime", () => {
           mutation: {
             operation: "runtime_session_attach",
             entity: { kind: "session", id: "local-session-old" },
-            forced: false,
             accepted: true,
           },
         }), {

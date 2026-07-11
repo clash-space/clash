@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { appendFile, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateStubRuntimeReport } from "./qa-agent-report-validation.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(__dirname, "..");
@@ -41,6 +42,12 @@ function buildPrompt({
   const agentFirstCasArtifactRoot = path.join(artifactRoot, "agent-first-cas");
   const agentFirstCasLogPath = path.join(commandLogDir, "agent-first-cas-smoke.log");
   const agentFirstCasReportPath = path.join(agentFirstCasArtifactRoot, "agent-first-cas-report.json");
+  const projectWorkspaceCliArtifactRoot = path.join(artifactRoot, "project-workspace-cli");
+  const projectWorkspaceCliLogPath = path.join(commandLogDir, "project-workspace-cli-smoke.log");
+  const projectWorkspaceCliReportPath = path.join(
+    projectWorkspaceCliArtifactRoot,
+    "project-workspace-cli-report.json",
+  );
   const shortDramaScenarioPath = path.join(repoRoot, ".tmp", "qa-scenarios", "short-drama-timeline-scenario.json");
   const pnpmBin = process.env.CLASH_QA_PNPM_BIN || "/opt/homebrew/bin/pnpm";
   const pathCommand = targetRuntime === "real-codex-acp"
@@ -48,6 +55,7 @@ function buildPrompt({
     : `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_DESKTOP_AGENT_BROWSER_CAPTURE_DIR=${JSON.stringify(screenshotDir)} CLASH_DESKTOP_AGENT_BROWSER_DATA_DIR=${JSON.stringify(localDataDir)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:agent-browser > ${JSON.stringify(smokeLogPath)} 2>&1`;
   const timelineCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_SHORT_DRAMA_TIMELINE_ARTIFACT_ROOT=${JSON.stringify(timelineArtifactRoot)} CLASH_SHORT_DRAMA_SCENARIO_PATH=${JSON.stringify(shortDramaScenarioPath)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:short-drama-timeline > ${JSON.stringify(timelineLogPath)} 2>&1`;
   const agentFirstCasCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_AGENT_FIRST_CAS_ARTIFACT_ROOT=${JSON.stringify(agentFirstCasArtifactRoot)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:agent-first-cas > ${JSON.stringify(agentFirstCasLogPath)} 2>&1`;
+  const projectWorkspaceCliCommand = `PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin CLASH_PROJECT_WORKSPACE_ARTIFACT_ROOT=${JSON.stringify(projectWorkspaceCliArtifactRoot)} ${JSON.stringify(pnpmBin)} --filter @master-clash/desktop test:e2e:project-workspace-cli > ${JSON.stringify(projectWorkspaceCliLogPath)} 2>&1`;
 
   return `You are a black-box QA agent for Clash desktop.
 
@@ -73,6 +81,9 @@ Paths:
 - Agent-first CAS artifact root: ${agentFirstCasArtifactRoot}
 - Agent-first CAS command log: ${agentFirstCasLogPath}
 - Agent-first CAS report path: ${agentFirstCasReportPath}
+- Project workspace CLI artifact root: ${projectWorkspaceCliArtifactRoot}
+- Project workspace CLI command log: ${projectWorkspaceCliLogPath}
+- Project workspace CLI report path: ${projectWorkspaceCliReportPath}
 
 Target runtime: ${targetRuntime}
 
@@ -83,9 +94,12 @@ Rules:
 - Do not launch an installed app.
 - Run the exact primary command below first. It launches the development Electron app and drives it with agent-browser.
 - Run the exact timeline command below second. It creates and restores a deterministic short-drama timeline artifact from the scenario path.
-- Run the exact CAS command below third. It verifies missing/stale/wrong-file read-proof rejection and copy-on-write preservation through public CLI commands.
-- After all commands exit, inspect only the command logs, screenshots, files under ${localDataDir}/projects, ${timelineReportPath}, ${createdTimelinePath}, ${restoredTimelinePath}, and ${agentFirstCasReportPath}.
-- If the primary command log contains projectStatus, convert it into paths.projectStatuses. Do not read snapshot.bin or edit SQLite directly.
+- Run the exact CAS command below third. It verifies implicit read-before-write rejection, stale-write rejection, copy-on-write, text revision, and Timeline entity apply behavior through public CLI commands.
+- Run the exact Project workspace CLI command below fourth. It exercises project.toml, multiple Canvases, concrete Timeline ownership, native file apply, stale/forged observations, restart recovery, and public-output redaction.
+- After all commands exit, inspect only the command logs, screenshots, files under ${localDataDir}/projects, ${timelineReportPath}, ${createdTimelinePath}, ${restoredTimelinePath}, ${agentFirstCasReportPath}, and ${projectWorkspaceCliReportPath}.
+- The stub primary log emits structured [desktop-agent-browser] history and [desktop-agent-browser] project status JSON. Use those records for exact session and path observations.
+- Do not invent or normalize session IDs. Copy history.sessions[].id and restoredSession.id exactly, with their apiPath, storagePath, and cwdPath values.
+- Convert every structured project status record into paths.projectStatuses. Do not read snapshot.bin or edit SQLite directly.
 - If the command fails, still produce the schema report with status "fail" or "blocked" and include the log path.
 
 Primary command:
@@ -103,6 +117,11 @@ Agent-first CAS command:
 ${agentFirstCasCommand}
 \`\`\`
 
+Project workspace CLI command:
+\`\`\`bash
+${projectWorkspaceCliCommand}
+\`\`\`
+
 Required QA flow:
 1. Use the primary command's UI run as the black-box interaction evidence.
 2. Record the created project id, URL path, visible label if any, storage path, and agent cwd path if one exists.
@@ -111,8 +130,9 @@ Required QA flow:
 5. Record the created timeline path from the timeline command report and JSON file.
 6. Record the restored timeline path from the timeline command report and JSON file.
 7. Record CAS evidence from ${agentFirstCasReportPath}.
-8. Record restored/history project paths and restored/history session paths from the session-history phase in the command output and screenshots.
-9. Verify path stability: a restored/history session for the same project should not silently move to a different project cwd. If sessions are DB rows rather than directories, say that explicitly and set storagePath to local-api session/message evidence while cwdPath remains null or the project cwd depending on the runtime.
+8. Record Project/Canvas/Timeline CLI evidence from ${projectWorkspaceCliReportPath}.
+9. Record restored/history project paths and restored/history session paths from the session-history phase in the command output and screenshots.
+10. Verify path stability: a restored/history session for the same project should not silently move to a different project cwd. If sessions are DB rows rather than directories, say that explicitly and set storagePath to local-api session/message evidence while cwdPath remains null or the project cwd depending on the runtime.
 
 Path report requirements:
 - paths.createdProjects must contain every project created by this QA run.
@@ -131,8 +151,14 @@ Path report requirements:
 CAS report requirements:
 - cas.reportPath must be ${agentFirstCasReportPath}.
 - cas.logPath must be ${agentFirstCasLogPath}.
-- cas.missingReadProofRejected, cas.staleReadProofRejected, cas.wrongFileLockRejected, cas.copyOnWritePreservedSource, cas.directCanvasMissingReadTokenRejected, cas.directCanvasStaleReadTokenRejected, cas.directCanvasFreshReadTokenAccepted, cas.directCanvasMutationEnvelopeRecorded, cas.directCanvasDeleteReadTokenRequired, cas.directCanvasCliMissingReadTokenRejected, cas.directCanvasCliStaleReadTokenRejected, cas.directCanvasCliFreshReadTokenAccepted, cas.directCanvasCliMutationEnvelopeRecorded, cas.directCanvasCliDeleteReadTokenRequired, cas.textHistoryReadsHostRevisionIndex, cas.textContentRestoresHostRevisionBody, cas.timelineHistoryReadsHostRevisionIndex, cas.timelineContentRestoresHostRevisionBody, cas.textCutExportSourceProvenanceRecorded, and cas.textCutExportSymlinkActionRejected must all be true, based on the CAS report JSON.
+- Every boolean required by the cas object schema must be true and must match the same key in the CAS report's booleans object.
 - cas.evidence must cite the smoke report checks and the commands that failed or passed.
+
+Project workspace CLI report requirements:
+- workspaceCli.reportPath must be ${projectWorkspaceCliReportPath}.
+- workspaceCli.logPath must be ${projectWorkspaceCliLogPath}.
+- Every boolean required by the workspaceCli object schema must be true and must be justified by the corresponding named check in the Project workspace CLI report.
+- workspaceCli.evidence must cite the report checks for project.toml identity, local operation without cloud credentials, Canvas isolation, Timeline entity apply/ownership, stale and forged write rejection, owner-only observations, daemon restart recovery, public-output redaction, and absence of a legacy JSON database.
 
 Environment used by the primary command:
 - PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin
@@ -149,6 +175,57 @@ function requiredString(value, name) {
   }
 }
 
+const CAS_BOOLEAN_KEYS = [
+  "missingReadProofRejected",
+  "staleReadProofRejected",
+  "sourceActionStaleReadProofRejected",
+  "copyOnWritePreservedSource",
+  "directCanvasCliWriteBeforeReadRejected",
+  "directCanvasCliCwdObservationRecorded",
+  "directCanvasCliStaleObservationRejected",
+  "directCanvasCliFreshObservationAccepted",
+  "directCanvasCliMutationEnvelopeRecorded",
+  "directCanvasCliImmutableUpdateRejected",
+  "directCanvasCliCopyOnWriteSupported",
+  "directCanvasCliDeleteReadRequired",
+  "textProjectionNoLockSidecar",
+  "timelineProjectionNoLockSidecar",
+  "timelineEntityApplyAdvancesRevision",
+  "textHistoryReadsHostRevisionIndex",
+  "textRevisionContentStorageContract",
+  "textContentRestoresHostRevisionBody",
+  "textRestoreCreatesCopyOnWriteRevisionFromHostContent",
+  "textCutExportSourceProvenanceRecorded",
+  "textCutExportSymlinkActionRejected",
+  "projectionPathOutsideCwdRejected",
+  "legacyProjectionLockSidecarsIgnored",
+  "forceMutationBypassAbsent",
+];
+
+const WORKSPACE_CLI_CHECKS = {
+  projectMarkerPreservesSpecialId: "project marker preserves special project id",
+  localWithoutCloudCredentials: "local Project CLI works without cloud credentials",
+  hashedDaemonSocketConfined: "hashed daemon socket stays inside socket directory",
+  mainCanvasPresent: "fresh project exposes main Canvas",
+  canvasCreateRefreshesObservation: "Canvas create refreshes implicit observation",
+  unknownCanvasRejected: "unknown Canvas is rejected",
+  canvasNodeCreationSucceeds: "Canvas-scoped node creation returns an id",
+  canvasScopesStayIsolated: "Canvas node scopes stay isolated",
+  nativeTimelineApplyUsesEntityCas: "native Timeline file edit applies through entity CAS",
+  timelineAttachOwnsOneAction: "Timeline attach moves identity under one Canvas Action",
+  timelineRenderUsesProjectState: "Canvas-scoped Timeline Action renders from Project Timeline state",
+  timelineCopyCreatesNewIdentities: "cross-Canvas Timeline copy creates new identities",
+  timelineDetachReturnsToProjectRoot: "Timeline detach returns the same Timeline to Project root",
+  timelineOwnershipListAccurate: "Timeline ownership list distinguishes standalone and Canvas-owned copies",
+  staleTimelineApplyRejected: "stale Timeline apply is rejected",
+  forgedObservationRejected: "forged semantic observation cannot authorize a write",
+  observationOwnerOnly: "cwd observation is owner-only",
+  daemonRestartRecoversProjectState: "daemon restart recovers all Project Timelines from one snapshot",
+  recoveredTimelineActionKeepsCanvas: "recovered Timeline Action stays on its owning Canvas",
+  publicOutputHidesObservations: "public CLI output hides internal observations",
+  legacyJsonDatabaseAbsent: "CLI workflow creates no legacy JSON database",
+};
+
 function validateReportShape(report) {
   if (!report || typeof report !== "object" || Array.isArray(report)) {
     throw new Error("QA report is not a JSON object");
@@ -163,6 +240,9 @@ function validateReportShape(report) {
   }
   if (!report.cas || typeof report.cas !== "object" || Array.isArray(report.cas)) {
     throw new Error("QA report is missing cas evidence");
+  }
+  if (!report.workspaceCli || typeof report.workspaceCli !== "object" || Array.isArray(report.workspaceCli)) {
+    throw new Error("QA report is missing Project workspace CLI evidence");
   }
   for (const key of [
     "createdProjects",
@@ -188,33 +268,35 @@ async function validateCasEvidence(report) {
   if (smoke.status !== "pass") {
     throw new Error(`CAS smoke report status ${smoke.status ?? "missing"}`);
   }
-  for (const key of [
-    "missingReadProofRejected",
-    "staleReadProofRejected",
-    "wrongFileLockRejected",
-    "copyOnWritePreservedSource",
-    "directCanvasMissingReadTokenRejected",
-    "directCanvasStaleReadTokenRejected",
-    "directCanvasFreshReadTokenAccepted",
-    "directCanvasMutationEnvelopeRecorded",
-    "directCanvasDeleteReadTokenRequired",
-    "directCanvasCliMissingReadTokenRejected",
-    "directCanvasCliStaleReadTokenRejected",
-    "directCanvasCliFreshReadTokenAccepted",
-    "directCanvasCliMutationEnvelopeRecorded",
-    "directCanvasCliDeleteReadTokenRequired",
-    "textHistoryReadsHostRevisionIndex",
-    "textContentRestoresHostRevisionBody",
-    "timelineHistoryReadsHostRevisionIndex",
-    "timelineContentRestoresHostRevisionBody",
-    "textCutExportSourceProvenanceRecorded",
-    "textCutExportSymlinkActionRejected",
-  ]) {
+  for (const key of CAS_BOOLEAN_KEYS) {
     if (cas?.[key] !== true) {
       throw new Error(`QA report cas.${key} must be true`);
     }
     if (smoke.booleans?.[key] !== true) {
       throw new Error(`CAS smoke report booleans.${key} must be true`);
+    }
+  }
+}
+
+async function validateWorkspaceCliEvidence(report) {
+  const workspaceCli = report?.workspaceCli;
+  requiredString(workspaceCli?.reportPath, "workspaceCli.reportPath");
+  requiredString(workspaceCli?.logPath, "workspaceCli.logPath");
+  requiredString(workspaceCli?.evidence, "workspaceCli.evidence");
+  const smoke = JSON.parse(await readFile(workspaceCli.reportPath, "utf8"));
+  if (smoke.kind !== "clash.project-workspace-cli-e2e") {
+    throw new Error(`Project workspace CLI report kind ${smoke.kind ?? "missing"}`);
+  }
+  if (smoke.status !== "pass" || smoke.summary?.failures !== 0) {
+    throw new Error(`Project workspace CLI report status ${smoke.status ?? "missing"}`);
+  }
+  const checks = new Map((smoke.checks ?? []).map((check) => [check?.name, check?.status]));
+  for (const [key, checkName] of Object.entries(WORKSPACE_CLI_CHECKS)) {
+    if (workspaceCli?.[key] !== true) {
+      throw new Error(`QA report workspaceCli.${key} must be true`);
+    }
+    if (checks.get(checkName) !== "pass") {
+      throw new Error(`Project workspace CLI report check did not pass: ${checkName}`);
     }
   }
 }
@@ -236,6 +318,10 @@ function projectStatusObservations(report) {
 }
 
 function validateTargetRuntimeReport(report, targetRuntime) {
+  if (targetRuntime === "stub-acp") {
+    validateStubRuntimeReport(report);
+    return;
+  }
   if (targetRuntime !== "real-codex-acp") return;
   if (report.run?.targetRuntime !== "real-codex-acp") {
     throw new Error(`Real Codex QA report has targetRuntime ${report.run?.targetRuntime ?? "missing"}`);
@@ -271,6 +357,7 @@ async function parseAndValidateReport(reportPath) {
   const report = JSON.parse(raw);
   validateReportShape(report);
   await validateCasEvidence(report);
+  await validateWorkspaceCliEvidence(report);
   return report;
 }
 

@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 import { chmod, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { timelineDslFromYaml, timelineDslHash } from "@clash/shared-types";
 import {
   compareSecondaryCanvasRecovery,
   doctorCommand,
@@ -70,24 +69,6 @@ function createRevisionIndexSchema(sqlite: ReturnType<typeof openSqlite>): void 
     CREATE INDEX text_revisions_project_node_idx ON text_revisions(project_id, node_id, created_at DESC);
     CREATE INDEX text_revisions_text_idx ON text_revisions(text_id, created_at DESC);
 
-    CREATE TABLE timeline_revisions (
-      revision_id TEXT PRIMARY KEY NOT NULL,
-      timeline_id TEXT NOT NULL,
-      parent_revision_id TEXT,
-      project_id TEXT NOT NULL,
-      node_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      timeline_hash TEXT NOT NULL,
-      hash_algorithm TEXT NOT NULL,
-      source_file_path TEXT NOT NULL,
-      source_file_hash TEXT NOT NULL,
-      actor_json TEXT,
-      loro_frontiers_json TEXT,
-      loro_version_vector_json TEXT,
-      dependencies_json TEXT NOT NULL
-    );
-    CREATE INDEX timeline_revisions_project_node_idx ON timeline_revisions(project_id, node_id, created_at DESC);
-    CREATE INDEX timeline_revisions_timeline_idx ON timeline_revisions(timeline_id, created_at DESC);
   `);
 }
 
@@ -139,13 +120,6 @@ function textRevisionBlobPath(homeDir: string, content: string): string {
   return join(homeDir, ".clash", "local-api", "text-revision-blobs", hash.slice(0, 2), `${hash}.md`);
 }
 
-async function timelineRevisionBlobPath(homeDir: string, content: string): Promise<string> {
-  const parsed = timelineDslFromYaml(content);
-  assert.equal(parsed.ok, true);
-  const hash = await timelineDslHash(parsed.dsl);
-  return join(homeDir, ".clash", "local-api", "timeline-revision-blobs", hash.slice(0, 2), `${hash}.timeline.yaml`);
-}
-
 async function writeWritableFile(filePath: string, content: string): Promise<void> {
   await mkdir(join(filePath, ".."), { recursive: true });
   await writeFile(filePath, content, { encoding: "utf8", mode: 0o644 });
@@ -171,7 +145,7 @@ test("storage doctor reports marker project with non-fatal missing-store warning
   assert.equal(checkById(report, "project-marker").level, "ok");
   assert.equal(checkById(report, "editable-protected-separation").level, "ok");
   assert.equal(checkById(report, "cwd-protected").level, "ok");
-  assert.equal(checkById(report, "project-workspace").level, "warning");
+  assert.equal(checkById(report, "project-workspace").level, "ok");
   assert.equal(checkById(report, "editable-drafts-root").level, "warning");
   assert.equal(checkById(report, "editable-projections-root").level, "warning");
   assert.equal(checkById(report, "editable-timelines-root").level, "warning");
@@ -186,7 +160,7 @@ test("storage doctor reports v1 project workspace roots when they exist", async 
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
-  const projectRoot = join(homeDir, ".clash", "projects", "doctor_project");
+  const projectRoot = cwd;
   await Promise.all([
     mkdir(join(projectRoot, "drafts"), { recursive: true }),
     mkdir(join(projectRoot, "projections", "text"), { recursive: true }),
@@ -194,7 +168,7 @@ test("storage doctor reports v1 project workspace roots when they exist", async 
     mkdir(join(projectRoot, "timelines"), { recursive: true }),
     mkdir(join(projectRoot, "sessions"), { recursive: true }),
     mkdir(join(projectRoot, "assets", "links"), { recursive: true }),
-    mkdir(join(projectRoot, "runtime"), { recursive: true }),
+    mkdir(join(homeDir, ".clash", "projects", "doctor_project", "runtime"), { recursive: true }),
   ]);
 
   const report = await runStorageDoctor({ cwd, env: {}, homeDir });
@@ -213,7 +187,7 @@ test("storage doctor fails on broken project asset links", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
-  const projectRoot = join(homeDir, ".clash", "projects", "doctor_project");
+  const projectRoot = cwd;
   const assetLinksRoot = join(projectRoot, "assets", "links");
   await Promise.all([
     mkdir(join(projectRoot, "drafts"), { recursive: true }),
@@ -221,7 +195,7 @@ test("storage doctor fails on broken project asset links", async () => {
     mkdir(join(projectRoot, "timelines"), { recursive: true }),
     mkdir(join(projectRoot, "sessions"), { recursive: true }),
     mkdir(assetLinksRoot, { recursive: true }),
-    mkdir(join(projectRoot, "runtime"), { recursive: true }),
+    mkdir(join(homeDir, ".clash", "projects", "doctor_project", "runtime"), { recursive: true }),
   ]);
   await symlink(
     join(homeDir, ".clash", "assets", "missing.png"),
@@ -1230,7 +1204,7 @@ test("storage doctor fails when machine-local config is not modeled as protected
   assert.match(contract.message, /machine-local config JSON sidecars are not removed/);
 });
 
-test("storage doctor fails when text or timeline content is modeled as media assets or agent-writable canonical state", () => {
+test("storage doctor rejects media-backed text revisions and non-Loro Timeline history", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },
     { homeDir: "/tmp/clash-home" },
@@ -1249,7 +1223,10 @@ test("storage doctor fails when text or timeline content is modeled as media ass
         },
         timelines: {
           ...status.storage.contentModel.timelines,
-          projectionPath: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
+          projectionPath: status.loro.replicaRoot,
+          revisionAuthority: "sqlite-revision-index",
+          revisionRegistry: "timeline_revisions",
+          contentRegistry: { table: "timeline_revisions" },
           mediaAsset: true,
         },
       },
@@ -1264,10 +1241,13 @@ test("storage doctor fails when text or timeline content is modeled as media ass
   assert.match(contract.message, /text content model incorrectly uses media assets/);
   assert.match(contract.message, /text content model marks canonical state agent-writable/);
   assert.match(contract.message, /timeline content model projection path is wrong/);
-  assert.match(contract.message, /timeline content model incorrectly uses media assets/);
+  assert.match(contract.message, /timeline content model exposes removed revisionRegistry/);
+  assert.match(contract.message, /timeline content model exposes removed contentRegistry/);
+  assert.match(contract.message, /timeline content model exposes removed mediaAsset/);
+  assert.match(contract.message, /timeline content model revision authority is wrong/);
 });
 
-test("storage doctor fails when text or timeline revision read commands drift from the CLI contract", () => {
+test("storage doctor fails when text revision or Timeline entity commands drift from the CLI contract", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },
     { homeDir: "/tmp/clash-home" },
@@ -1286,9 +1266,8 @@ test("storage doctor fails when text or timeline revision read commands drift fr
         },
         timelines: {
           ...status.storage.contentModel.timelines,
-          restoreCommand: "clash timeline apply",
-          historyCommand: "clash text history",
-          contentCommand: "clash text content",
+          pullCommand: "clash timeline pull --node <id>",
+          publicCommands: ["clash timeline history"],
         },
       },
     },
@@ -1301,9 +1280,8 @@ test("storage doctor fails when text or timeline revision read commands drift fr
   assert.match(contract.message, /text content model restore command is wrong/);
   assert.match(contract.message, /text content model history command is wrong/);
   assert.match(contract.message, /text content model content command is wrong/);
-  assert.match(contract.message, /timeline content model restore command is wrong/);
-  assert.match(contract.message, /timeline content model history command is wrong/);
-  assert.match(contract.message, /timeline content model content command is wrong/);
+  assert.match(contract.message, /timeline content model pull command is wrong/);
+  assert.match(contract.message, /timeline content model public commands are wrong/);
 });
 
 test("storage doctor fails when workspace editable paths omit a declared agent root", () => {
@@ -1414,7 +1392,7 @@ test("storage doctor fails when timeline view files point at canonical state", (
           },
           timelineProjections: {
             ...status.storage.workspace.viewFiles.timelineProjections,
-            path: status.storage.canonicalReplica.contentBlobs.timelineRevisions.path,
+            path: status.loro.snapshotPath,
           },
         },
       },
@@ -1489,83 +1467,6 @@ test("storage doctor fails when text revision content blobs are writable or hash
   assert.match(check.message, /writable/);
 });
 
-test("storage doctor fails when timeline revision content blobs are writable or hash-mismatched", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "doctor_project" });
-  const blobPath = join(
-    homeDir,
-    ".clash",
-    "local-api",
-    "timeline-revision-blobs",
-    "12",
-    "1234567890abcdef.timeline.yaml",
-  );
-  await mkdir(join(blobPath, ".."), { recursive: true });
-  await writeFile(
-    blobPath,
-    [
-      "fps: 30",
-      "durationInFrames: 30",
-      "tracks:",
-      "  - id: v1",
-      "    name: Video",
-      "    items: []",
-      "",
-    ].join("\n"),
-    { encoding: "utf8", mode: 0o644 },
-  );
-
-  const report = await runStorageDoctor({ cwd, env: {}, homeDir });
-
-  assert.equal(report.ok, false);
-  const check = checkById(report, "timeline-revision-blob-integrity");
-  assert.equal(check.level, "error");
-  assert.equal(check.path, blobPath);
-  assert.match(check.message, /hash mismatch/);
-  assert.match(check.message, /writable/);
-});
-
-test("storage doctor repair makes valid text revision content blobs read-only", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "doctor_project" });
-  const content = "repairable text revision\n";
-  const blobPath = textRevisionBlobPath(homeDir, content);
-  await writeWritableFile(blobPath, content);
-
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
-
-  assert.equal(repaired.ok, true);
-  assert.ok(repaired.repairs?.some((repair) => repair.id === "revision-blob-permissions" && repair.path === blobPath));
-  assert.equal(checkById(repaired, "text-revision-blob-integrity").level, "ok");
-  assert.equal((await stat(blobPath)).mode & 0o222, 0);
-});
-
-test("storage doctor repair makes valid timeline revision content blobs read-only", async () => {
-  const homeDir = await tempDir();
-  const cwd = await tempDir();
-  await initProject({ cwd, projectId: "doctor_project" });
-  const content = [
-    "fps: 30",
-    "durationInFrames: 30",
-    "tracks:",
-    "  - id: v1",
-    "    name: Video",
-    "    items: []",
-    "",
-  ].join("\n");
-  const blobPath = await timelineRevisionBlobPath(homeDir, content);
-  await writeWritableFile(blobPath, content);
-
-  const repaired = await runStorageDoctor({ cwd, env: {}, homeDir, repair: true });
-
-  assert.equal(repaired.ok, true);
-  assert.ok(repaired.repairs?.some((repair) => repair.id === "revision-blob-permissions" && repair.path === blobPath));
-  assert.equal(checkById(repaired, "timeline-revision-blob-integrity").level, "ok");
-  assert.equal((await stat(blobPath)).mode & 0o222, 0);
-});
-
 test("storage doctor warns when local SQLite lacks the asset reference index schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
@@ -1595,7 +1496,7 @@ test("storage doctor warns when local SQLite lacks the asset reference index sch
   assert.match(schemaCheck.message, /asset_node_refs/);
 });
 
-test("storage doctor warns when local SQLite lacks text and timeline revision index schema", async () => {
+test("storage doctor warns when local SQLite lacks the text revision index schema", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await initProject({ cwd, projectId: "doctor_project" });
@@ -1614,7 +1515,6 @@ test("storage doctor warns when local SQLite lacks text and timeline revision in
   const schemaCheck = checkById(report, "local-sqlite-schema");
   assert.equal(schemaCheck.level, "warning");
   assert.match(schemaCheck.message, /text_revisions/);
-  assert.match(schemaCheck.message, /timeline_revisions/);
 });
 
 test("storage doctor warns when local SQLite lacks core metadata tables", async () => {
@@ -1717,7 +1617,7 @@ test("storage doctor repair creates workspace roots and fixes local SQLite asset
 
   assert.equal(repaired.ok, true);
   assert.equal(repaired.repaired, true);
-  assert.ok(repaired.repairs?.some((repair) => repair.id === "project-workspace"));
+  assert.ok(repaired.repairs?.some((repair) => repair.id === "editable-drafts-root"));
   assert.ok(repaired.repairs?.some((repair) => repair.id === "local-sqlite-schema"));
   assert.equal(checkById(repaired, "project-workspace").level, "ok");
   assert.equal(checkById(repaired, "editable-drafts-root").level, "ok");
@@ -1735,16 +1635,8 @@ test("storage doctor repair creates workspace roots and fixes local SQLite asset
       "text_revisions",
     );
     assert.equal(
-      sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'timeline_revisions'").get()?.name,
-      "timeline_revisions",
-    );
-    assert.equal(
       sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'text_revisions_project_node_idx'").get()?.name,
       "text_revisions_project_node_idx",
-    );
-    assert.equal(
-      sqliteAfterRepair.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'timeline_revisions_project_node_idx'").get()?.name,
-      "timeline_revisions_project_node_idx",
     );
   } finally {
     sqliteAfterRepair.close();

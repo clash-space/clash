@@ -22,6 +22,7 @@ import {
 type AppNode = Node<Record<string, any>>;
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
+import { Toolbar } from 'radix-ui';
 import {
     FilmSlate,
     TextT,
@@ -37,12 +38,10 @@ import {
     PuzzlePiece,
     CursorClick,
     HandGrabbing,
-    ShareFat,
-    ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { useLocation, useNavigate } from 'react-router';
 import { useHotkeys } from 'react-hotkeys-hook';
-import type { Project } from '@clash/web-ui/lib/types';
+import type { Project, ProjectAsset } from '@clash/web-ui/lib/types';
 import ChatbotCopilot from './ChatbotCopilot';
 import { useSessionHistory } from '@clash/web-ui/hooks/useSessionHistory';
 import { updateProjectName } from '@clash/web-ui/lib/clientActions';
@@ -83,11 +82,11 @@ import {
 } from '@clash/web-ui/lib/layout';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useLoroSync } from '@clash/web-ui/hooks/useLoroSync';
-import { useProjectStatus } from '@clash/web-ui/hooks/useProjectStatus';
 import { actionIsCheckpointLocked } from '@clash/web-ui/lib/actionCheckpoint';
 import { LoroSyncProvider } from './LoroSyncContext';
-import type { PresenceClient } from '@clash/shared-types';
-import PresenceBar from './PresenceBar';
+import type { ProjectCanvas,
+  ProjectTimeline,
+} from '@clash/shared-types';
 import ActivityToast, { useActivityToasts } from './ActivityToast';
 import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicator';
 import AwarenessLayer from './AwarenessLayer';
@@ -102,21 +101,24 @@ import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-u
 import { calculateScaledDimensions } from './nodes/assetNodeSizing';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-import { getRuntimeCapabilities, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
-import { resolveProjectShareAdmission, resolveProjectWebAdmission } from '@clash/web-ui/lib/projectShareGate';
+import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { DESKTOP_TAB_TITLE_EVENT, type DesktopTabTitleEventDetail } from '@clash/web-ui/lib/desktopTabs';
 import { dispatchHostMutationEvent } from '@clash/web-ui/lib/hostMutationEvents';
-import { buildFallbackCanvasFromAssets } from '@clash/web-ui/lib/projectFallbackCanvas';
-import { visiblePresenceClients } from '@clash/web-ui/lib/presenceVisibility';
 import { sanitizeNodesForReactFlow } from '@clash/web-ui/lib/canvasNodeOrder';
 import UserControls from './UserControls';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
-import { Toggle } from './ui/toggle';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Input } from './ui/input';
 import { Tooltip } from './ui/tooltip';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+import ProjectWorkspaceNavigator, {
+  type ProjectWorkspaceSurface,
+} from "./ProjectWorkspaceNavigator";
+import {
+  ProjectAssetsSurface,
+  StandaloneTimelineSurface,
+} from "./ProjectWorkspaceSurfaces";
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 
@@ -169,7 +171,8 @@ interface ProjectEditorProps {
  * The overlay owns interaction while the editor is open, but the canvas remains
  * visible as spatial context.
  */
-function ProjectSurfaceBehindEditor({ children }: { children: React.ReactNode }) {
+function ProjectSurfaceBehindEditor({ children }: { children: React.ReactNode;
+}) {
     const { isOpen } = useVideoEditor();
     return (
         <div
@@ -219,7 +222,8 @@ function SelectionGroupButton({
     bounds,
     onGroup,
 }: {
-    bounds: { absMinX: number; absMinY: number; absMaxX: number; absMaxY: number } | null;
+    bounds: { absMinX: number; absMinY: number; absMaxX: number; absMaxY: number;
+  } | null;
     onGroup: () => void;
 }) {
     const { x, y, zoom } = useViewport();
@@ -261,7 +265,7 @@ function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
             if (map.has(node.id)) return map.get(node.id)!;
             let { x: nx, y: ny } = node.position;
             if (node.parentId) {
-                const parent = nodes.find(n => n.id === node.parentId);
+                const parent = nodes.find((n) => n.id === node.parentId);
                 if (parent) { const p = getAbs(parent); nx += p.x; ny += p.y; }
             }
             const abs = { x: nx, y: ny };
@@ -279,7 +283,7 @@ function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
                 collapsible
                 style={{ transform: `translate(${x}px, ${y}px) scale(${zoom})`, transformOrigin: '0 0' }}
             >
-                {nodes.map(node => {
+                {nodes.map((node) => {
                     const d = node.data ?? {};
                     const parts = [node.id];
                     if (d.status) parts.push(d.status);
@@ -328,30 +332,27 @@ function DebugNodeIds({ nodes }: { nodes: AppNode[] }) {
 }
 
 export default function ProjectEditor({ project, initialPrompt, initialThreadId, globalActions = [] }: ProjectEditorProps) {
-    const fallbackCanvas = useMemo(
-        () => buildFallbackCanvasFromAssets(project.assets),
-        [project.assets],
-    );
-    const fallbackNodeIds = useMemo(
-        () => new Set(fallbackCanvas.nodes.map((node) => node.id)),
-        [fallbackCanvas.nodes],
-    );
-    const fallbackSeededRef = useRef(false);
-    const sawCanonicalCanvasRef = useRef(false);
-
-    useEffect(() => {
-        fallbackSeededRef.current = false;
-        sawCanonicalCanvasRef.current = false;
-    }, [project.id]);
+    const [activeCanvasId, setActiveCanvasId] = useState("main");
+    const [workspaceSurface, setWorkspaceSurface] =
+    useState<ProjectWorkspaceSurface>({
+      kind: "canvas",
+      canvasId: "main",
+    });
 
     // Loro remains the single source of truth. These asset-ref nodes are only
     // a recovery bootstrap for old projects whose Loro document is empty while
     // the project still owns media assets.
-    const initialNodes = fallbackCanvas.nodes as AppNode[];
-    const initialEdges: Edge[] = fallbackCanvas.edges;
+    const [nodes, setNodesInternal] = useNodesState<AppNode>([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const nodesRef = useRef<AppNode[]>(nodes);
+    const edgesRef = useRef<Edge[]>(edges);
 
-    const [nodes, setNodesInternal] = useNodesState<AppNode>(initialNodes);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+    useEffect(() => {
+        nodesRef.current = nodes;
+    }, [nodes]);
+    useEffect(() => {
+        edgesRef.current = edges;
+    }, [edges]);
 
     // Wrap setNodes to ALWAYS sanitize before setting - this prevents "Parent node X not found" errors
     // The sanitization must happen BEFORE nodes are set to state, not after
@@ -366,19 +367,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const location = useLocation();
     const [showDebugIds, setShowDebugIds] = useState(false);
     const [canvasMode, setCanvasMode] = useState<'select' | 'hand'>('select');
-    const [shareCopied, setShareCopied] = useState(false);
-    const projectStatus = useProjectStatus(project.id);
-    const projectShareGate = projectStatus.actions?.shareProject;
-    const projectOpenInWebGate = projectStatus.actions?.openInWeb;
-    const runtimeCapabilities = getRuntimeCapabilities();
-    const projectShareAdmission = resolveProjectShareAdmission({
-        shareGate: projectShareGate,
-        runtimePersistence: runtimeCapabilities.loro.persistence,
+    useHotkeys('mod+shift+i', () => setShowDebugIds((visible) => !visible), {
+        enabled: process.env.NODE_ENV === 'development',
+        preventDefault: true,
     });
-    const projectWebAdmission = resolveProjectWebAdmission({
-        openInWebGate: projectOpenInWebGate,
-    });
-    const projectTitleInputWidthCh = Math.min(Math.max(Array.from(projectName || 'Untitled').length + 1, 5), 30);
     const handleProjectNameSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         projectTitleInputRef.current?.blur();
@@ -392,11 +384,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         window.dispatchEvent(new CustomEvent(DESKTOP_TAB_TITLE_EVENT, { detail }));
     }, [location.pathname, project.name, projectName]);
 
-    // Collaboration visibility: presence + activity
-    const [presenceClients, setPresenceClients] = useState<PresenceClient[]>([]);
-    // Filter out the current browser user, but keep local agent/CLI clients
-    // because they are user-owned surrogates doing work on this user's behalf.
-    const otherClients = visiblePresenceClients(presenceClients, project.ownerId);
     const { toasts, addToast, dismiss: dismissToast } = useActivityToasts();
     const { highlights, addHighlight } = useNodeHighlights();
 
@@ -415,39 +402,23 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     // Loro CRDT sync
     const loroSync = useLoroSync({
         projectId: project.id,
-        onPresenceChange: setPresenceClients,
+    canvasId: activeCanvasId,
         onActivity: (activity) => {
             addToast(activity);
             addHighlight(activity);
         },
         onMutation: (mutation) => dispatchHostMutationEvent(project.id, mutation),
-        onAwareness: (msg) => {
+    onAwareness: (msg) => {
             awarenessSinkRef.current?.(msg);
         },
         onNodesChange: (syncedNodes) => {
-            if (syncedNodes.length > 0) {
-                sawCanonicalCanvasRef.current = true;
-            }
+      // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
+      // Only preserve spatial state during active interaction (drag/resize).
+      // Selection is UI-only and should NOT block remote/local layout updates.
+            const currentNodes = nodesRef.current;
+                const currentNodesMap = new Map(currentNodes.map((n) => [n.id, n]));
 
-            if (
-                syncedNodes.length === 0 &&
-                fallbackCanvas.nodes.length > 0 &&
-                !sawCanonicalCanvasRef.current &&
-                !fallbackSeededRef.current
-            ) {
-                setNodes((currentNodes) => (
-                    currentNodes.length === 0 ? fallbackCanvas.nodes as AppNode[] : currentNodes
-                ));
-                return;
-            }
-
-            // Loro is the SINGLE SOURCE OF TRUTH - use its state directly
-            // Only preserve spatial state during active interaction (drag/resize).
-            // Selection is UI-only and should NOT block remote/local layout updates.
-            setNodes((currentNodes) => {
-                const currentNodesMap = new Map(currentNodes.map(n => [n.id, n]));
-
-                let processedNodes = syncedNodes.map(syncedNode => {
+                let processedNodes = syncedNodes.map((syncedNode) => {
                     const currentNode = currentNodesMap.get(syncedNode.id);
 
                     // Fix: Ensure text nodes have correct dimensions (300x400)
@@ -514,7 +485,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                     // Get current edges for reference detection
                     // Note: We use the current edges state since onEdgesChange may have already updated them
-                    const currentEdges = edges;
+                    const currentEdges = edgesRef.current;
 
                     for (const node of nodesToLayout) {
                         const result = autoInsertNode(node.id, processedNodes, currentEdges);
@@ -541,7 +512,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         if (!loroSyncRef.current) return;
 
                         for (const node of nodesToLayout) {
-                            const layoutedNode = processedNodes.find(n => n.id === node.id);
+                            const layoutedNode = processedNodes.find((n) => n.id === node.id);
                             if (layoutedNode && !needsAutoLayout(layoutedNode)) {
                                 loroSyncRef.current.updateNode(node.id, {
                                     position: layoutedNode.position,
@@ -551,8 +522,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                         // Also sync pushed nodes positions
                         for (const node of processedNodes) {
-                            const original = syncedNodes.find(n => n.id === node.id);
-                            if (original && !nodesToLayout.some(n => n.id === node.id)) {
+                            const original = syncedNodes.find((n) => n.id === node.id);
+                            if (original && !nodesToLayout.some((n) => n.id === node.id)) {
                                 if (node.position.x !== original.position.x || node.position.y !== original.position.y) {
                                     loroSyncRef.current?.updateNode(node.id, {
                                         position: node.position,
@@ -563,7 +534,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                         // Sync group size changes
                         for (const node of processedNodes) {
-                            const original = syncedNodes.find(n => n.id === node.id);
+                            const original = syncedNodes.find((n) => n.id === node.id);
                             if (original && node.type === 'group') {
                                 if (node.width !== original.width || node.height !== original.height) {
                                     loroSyncRef.current?.updateNode(node.id, {
@@ -577,8 +548,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                     });
                 }
 
-                return processedNodes;
-            });
+            nodesRef.current = processedNodes as AppNode[];
+            setNodes(processedNodes);
         },
         onEdgesChange: (syncedEdges) => {
             setEdges(syncedEdges);
@@ -592,45 +563,13 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     }, [loroSync]);
 
     useEffect(() => {
-        if (!loroSync.isInitialized || !loroSync.connected) return;
-        if (fallbackCanvas.nodes.length === 0) return;
-        if (fallbackSeededRef.current || sawCanonicalCanvasRef.current) return;
-
-        const seedTimer = window.setTimeout(() => {
-            if (fallbackSeededRef.current || sawCanonicalCanvasRef.current) return;
-
-            let shouldSeed = false;
-            setNodes((currentNodes) => {
-                const hasCanonicalNodes = currentNodes.some((node) => !fallbackNodeIds.has(node.id));
-                if (hasCanonicalNodes) {
-                    sawCanonicalCanvasRef.current = true;
-                    return currentNodes;
-                }
-                shouldSeed = true;
-                return currentNodes.length === 0 ? fallbackCanvas.nodes as AppNode[] : currentNodes;
-            });
-
-            if (!shouldSeed) return;
-            fallbackSeededRef.current = true;
-            for (const node of fallbackCanvas.nodes) {
-                loroSync.addNode(node.id, node);
-            }
-            for (const edge of fallbackCanvas.edges) {
-                loroSync.addEdge(edge.id, edge);
-            }
-        }, 1000);
-
-        return () => window.clearTimeout(seedTimer);
-    }, [
-        fallbackCanvas.edges,
-        fallbackCanvas.nodes,
-        fallbackNodeIds,
-        loroSync.addEdge,
-        loroSync.addNode,
-        loroSync.connected,
-        loroSync.isInitialized,
-        setNodes,
-    ]);
+        if (loroSync.canvases.length === 0) return;
+        if (loroSync.canvases.some((canvas) => canvas.id === activeCanvasId))
+      return;
+    const nextCanvasId = loroSync.canvases[0].id;
+    setActiveCanvasId(nextCanvasId);
+    setWorkspaceSurface({ kind: "canvas", canvasId: nextCanvasId });
+  }, [activeCanvasId, loroSync.canvases]);
 
     // Awareness: cursor + selection. Rides on loroSync's WS via sendSideband.
     // sendSideband doesn't change identity once loroSync is created, so we
@@ -685,25 +624,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         editorRouter('/projects');
     }, [editorRouter]);
 
-    const handleShareProject = useCallback(async () => {
-        if (!projectShareAdmission.allowed) return;
-        if (typeof window === 'undefined') return;
-        const href = window.location.href;
-        try {
-            await navigator.clipboard?.writeText(href);
-            setShareCopied(true);
-            window.setTimeout(() => setShareCopied(false), 1600);
-        } catch {
-            setShareCopied(false);
-        }
-    }, [projectShareAdmission.allowed]);
-
-    const handleOpenProjectInWeb = useCallback(() => {
-        if (!projectWebAdmission.allowed || !projectWebAdmission.url) return;
-        if (typeof window === 'undefined') return;
-        window.open(projectWebAdmission.url, '_blank', 'noopener,noreferrer');
-    }, [projectWebAdmission.allowed, projectWebAdmission.url]);
-
     const handleCreateSession = useCallback(async (initialMessage?: string): Promise<{ threadId: string; title: string } | null> => {
         try {
             const title = initialMessage
@@ -727,7 +647,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const handleNewSession = useCallback(() => {
         setChatInitialPrompt(undefined);
         setThreadId('');
-        setSessionKey(k => k + 1);
+        setSessionKey((k) => k + 1);
     }, []);
 
     const handleSwitchSession = useCallback((id: string) => {
@@ -746,7 +666,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         upsertSession({ threadId: result.threadId, title: result.title, type: 'cloud' });
         setChatInitialPrompt(initialMessage);
         setThreadId(result.threadId);
-        setSessionKey(k => k + 1);
+        setSessionKey((k) => k + 1);
     }, [handleCreateSession, upsertSession]);
 
     // Auto-create session for initialPrompt from HomePage. The initial prompt
@@ -757,7 +677,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     useEffect(() => {
         if (initialPrompt && !threadId && !hasCreatedSessionRef.current) {
             hasCreatedSessionRef.current = true;
-            handleCreateSession(initialPrompt).then(result => {
+            handleCreateSession(initialPrompt).then((result) => {
                 if (result) {
                     upsertSession({ threadId: result.threadId, title: result.title, type: 'cloud' });
                     setChatInitialPrompt(initialPrompt!);
@@ -822,8 +742,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
 		    // Custom onNodesChange to handle recursive resizing
 		    const handleNodesChange = useCallback((changes: NodeChange[]) => {
-	        setNodes((currentNodes) => {
-	            let updatedNodes = applyNodeChanges(changes as NodeChange<AppNode>[], currentNodes);
+	        const currentNodes = nodesRef.current;
+	        let updatedNodes = applyNodeChanges(changes as NodeChange<AppNode>[], currentNodes);
 
             // Check for dimension changes (resizing)
             const resizeChanges = changes.filter((c) => c.type === 'dimensions');
@@ -915,13 +835,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	                applyLayoutPatchesToLoro(loroSync, patches);
 	            }
 
-	            // Always sanitize before returning to ReactFlow - removes invalid parentId references
-	            // This prevents "Parent node X not found" errors when parent nodes are deleted
-	            return sanitizeNodes(updatedNodes);
-	        });
+	        // Always sanitize before returning to ReactFlow - removes invalid parentId references.
+	        // Keep CRDT writes outside React state updater functions because React may replay them.
+	        const nextNodes = sanitizeNodes(updatedNodes) as AppNode[];
+	        nodesRef.current = nextNodes;
+	        setNodes(nextNodes);
 
         // Handle node deletions - sync to Loro (Fallback if onNodesDelete doesn't fire)
-        const removeChanges = changes.filter(c => c.type === 'remove');
+        const removeChanges = changes.filter((c) => c.type === 'remove');
         if (removeChanges.length > 0) {
             loroSync.removeNodes(removeChanges.map((change) => change.id));
         }
@@ -950,8 +871,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             }
         }
 
-        const allowedNodes = nds.filter(n => !pinnedNodeIds.has(n.id));
-        const allowedEdges = eds.filter(e => !lockedEdgeIds.has(e.id));
+        const allowedNodes = nds.filter((n) => !pinnedNodeIds.has(n.id));
+        const allowedEdges = eds.filter((e) => !lockedEdgeIds.has(e.id));
         return { nodes: allowedNodes, edges: allowedEdges };
     }, [nodes, edges]);
 
@@ -963,22 +884,24 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
         // Drop project's asset_refs row for any assetId no longer referenced by any surviving node.
         // Other projects sharing the same asset are unaffected (M:N).
-        const deletedIds = new Set(persistedDeletedNodes.map(n => n.id));
+        const deletedIds = new Set(persistedDeletedNodes.map((n) => n.id));
         const survivingAssetIds = new Set(
             nodes
-                .filter(n => !deletedIds.has(n.id))
-                .map(n => (n.data as Record<string, unknown>)?.assetId as string | undefined)
+                .filter((n) => !deletedIds.has(n.id))
+                .map(
+            (n) => (n.data as Record<string, unknown>)?.assetId as string | undefined)
                 .filter((v): v is string => !!v),
         );
         const orphanedAssetIds = new Set(
             persistedDeletedNodes
-                .map(n => (n.data as Record<string, unknown>)?.assetId as string | undefined)
+                .map(
+            (n) => (n.data as Record<string, unknown>)?.assetId as string | undefined)
                 .filter((v): v is string => !!v && !survivingAssetIds.has(v)),
         );
-        orphanedAssetIds.forEach(assetId => {
+        orphanedAssetIds.forEach((assetId) => {
             void fetch(runtimeApiUrl(`/api/v1/assets/${encodeURIComponent(assetId)}/ref?projectId=${encodeURIComponent(project.id)}`), {
                 method: 'DELETE',
-            }).catch(e => console.warn('[onNodesDelete] removeAssetRef failed', assetId, e));
+            }).catch((e) => console.warn('[onNodesDelete] removeAssetRef failed', assetId, e));
         });
     }, [loroSync, nodes, project.id]);
 
@@ -1019,7 +942,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 	                    };
 	                }
 
-	                let updatedNodes = nds.map((n) => (n.id === draggedNode.id ? nextNode : n));
+	                let updatedNodes = nds.map((n) =>
+            n.id === draggedNode.id ? nextNode : n);
 
 	                // Auto-resize ancestors to fit the moved node (including nested groups).
 	                const scales = recursiveGroupScale(nextNode.id, updatedNodes);
@@ -1085,7 +1009,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         if (topLevel.length < 2) return null;
 
         const commonParent = (nodesById.get(topLevel[0].id) ?? topLevel[0]).parentId;
-        if (!topLevel.every((n) => ((nodesById.get(n.id) ?? n).parentId) === commonParent)) return null;
+        if (!topLevel.every((n) => (nodesById.get(n.id) ?? n).parentId === commonParent)) return null;
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const sel of topLevel) {
@@ -1116,8 +1040,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
         const groupAbsX = absMinX - PADDING;
         const groupAbsY = absMinY - TITLE_GAP - PADDING;
-        const groupWidth = (absMaxX - absMinX) + PADDING * 2;
-        const groupHeight = (absMaxY - absMinY) + TITLE_GAP + PADDING * 2;
+        const groupWidth = absMaxX - absMinX + PADDING * 2;
+        const groupHeight = absMaxY - absMinY + TITLE_GAP + PADDING * 2;
 
         // Convert the group's absolute position into the common parent's local space.
         let groupX = groupAbsX;
@@ -1159,7 +1083,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         };
 
         const selectedSet = new Set(topLevelIds);
-        const childUpdates: Array<{ id: string; parentId: string; position: { x: number; y: number } }> = [];
+        const childUpdates: Array<{ id: string; parentId: string; position: { x: number; y: number };
+    }> = [];
 
         setNodes((nds) => {
             const absPos = new Map<string, { x: number; y: number }>();
@@ -1236,9 +1161,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         onEdgesChange(changes);
 
         // Handle edge deletions - sync to Loro
-        const removeChanges = changes.filter(c => c.type === 'remove');
+        const removeChanges = changes.filter((c) => c.type === 'remove');
         if (removeChanges.length > 0) {
-            removeChanges.forEach(change => {
+            removeChanges.forEach((change) => {
                 if (change.type === 'remove') {
                     loroSync.removeEdge(change.id);
                 }
@@ -1251,13 +1176,15 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             // Reject invalid connections (e.g. video → image-gen ActionBadge can't use video as reference image)
             const srcId = (params as Connection).source;
             const tgtId = (params as Connection).target;
+            const currentNodes = nodesRef.current;
+            const currentEdges = edgesRef.current;
             if (srcId && tgtId) {
-                const src = nodes.find(n => n.id === srcId);
-                const tgt = nodes.find(n => n.id === tgtId);
+                const src = currentNodes.find((n) => n.id === srcId);
+                const tgt = currentNodes.find((n) => n.id === tgtId);
                 // GC-style protection: refs of materialized checkpoints are
                 // lineage, not editable inputs. Draft-only action chains remain
                 // editable.
-                if (tgt?.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: tgt.id, nodes, edges })) {
+                if (tgt?.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: tgt.id, nodes: currentNodes, edges: currentEdges })) {
                     console.warn(`[onConnect] rejected: target action-badge is a materialized checkpoint`);
                     return;
                 }
@@ -1280,15 +1207,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 selectable: true,
                 deletable: true,
             };
-            setEdges((eds) => {
-                if (eds.some(e => e.id === canonicalId)) return eds;
-                const newEdges = addEdge(paramsWithDefaults as any, eds);
-                const addedEdge = newEdges.find(e => e.id === canonicalId);
-                if (addedEdge && !loroSync.addEdge(addedEdge.id, addedEdge)) return eds;
-                return newEdges;
-            });
+            if (currentEdges.some((edge) => edge.id === canonicalId)) return;
+            const nextEdges = addEdge(paramsWithDefaults as any, currentEdges);
+            const addedEdge = nextEdges.find((edge) => edge.id === canonicalId);
+            if (addedEdge && !loroSync.addEdge(addedEdge.id, addedEdge)) return;
+            edgesRef.current = nextEdges;
+            setEdges(nextEdges);
         },
-        [nodes, setEdges, loroSync]
+        [setEdges, loroSync]
     );
 
     const handleGlobalHotkey = useCallback((e: KeyboardEvent) => {
@@ -1315,7 +1241,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         // Ctrl/Cmd+Shift+D: toggle debug node IDs (dev only)
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D' && process.env.NODE_ENV === 'development') {
             e.preventDefault();
-            setShowDebugIds(v => !v);
+            setShowDebugIds((v) => !v);
         }
 
         // Del/Backspace: delete selected edges (ReactFlow's deleteKeyCode isn't firing reliably).
@@ -1323,16 +1249,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         if (e.key === 'Delete' || e.key === 'Backspace') {
             const checkpointActionIds = new Set(
                 nodes
-                    .filter(n => n.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: n.id, nodes, edges }))
-                    .map(n => n.id),
+                    .filter(
+              (n) => n.type === 'action-badge' && actionIsCheckpointLocked({ nodeId: n.id, nodes, edges }))
+                    .map((n) => n.id),
             );
             const selectedEdgeIds = edges
-                .filter(ed => ed.selected && !checkpointActionIds.has(ed.target))
-                .map(ed => ed.id);
+                .filter((ed) => ed.selected && !checkpointActionIds.has(ed.target))
+                .map((ed) => ed.id);
             if (selectedEdgeIds.length > 0) {
                 e.preventDefault();
-                setEdges(eds => eds.filter(ed => !selectedEdgeIds.includes(ed.id)));
-                selectedEdgeIds.forEach(eid => loroSync.removeEdge(eid));
+                setEdges((eds) => eds.filter((ed) => !selectedEdgeIds.includes(ed.id)));
+                selectedEdgeIds.forEach((eid) => loroSync.removeEdge(eid));
             }
         }
 
@@ -1345,7 +1272,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         // Space: temporary hand mode
         if (e.key === ' ' && !e.repeat) {
             e.preventDefault();
-            setCanvasMode(prev => {
+            setCanvasMode((prev) => {
                 canvasModeBeforeSpace.current = prev;
                 return 'hand';
             });
@@ -1375,7 +1302,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
     const loroActions = useCustomActions(loroSync.doc);
     const customActions = useMemo(() => {
-        const merged = new Map<string, typeof loroActions[number]>();
+        const merged = new Map<string, (typeof loroActions)[number]>();
         // Global actions first (from D1)
         for (const ga of globalActions) {
             try {
@@ -1434,7 +1361,35 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     ];
 
     const addNode = useCallback((type: string, extraData: any = {}) => {
-        let nodeType = type;
+      if (type === "video-editor") {
+        const actionNodeId = extraData.id || `timeline-action-${Date.now()}`;
+        const timelineId = extraData.timelineId || `timeline-${Date.now()}`;
+        const name =
+          typeof extraData.label === "string" && extraData.label.trim()
+            ? extraData.label.trim()
+            : "Untitled Timeline";
+        const created = loroSync.createTimeline({
+          id: timelineId,
+          name,
+          state: { tracks: [] },
+        });
+        if (!created.ok) {
+          console.error(`[ProjectEditor] ${created.error}`);
+          return "";
+        }
+        const attached = loroSync.attachTimeline({
+          timelineId,
+          actionNodeId,
+          position: extraData.position ?? { x: 100, y: 100 },
+        });
+        if (!attached.ok) {
+          console.error(`[ProjectEditor] ${attached.error}`);
+          return "";
+        }
+        return actionNodeId;
+      }
+
+      let nodeType = type;
         let nodeData: any = { label: `New ${type}`, ...extraData };
         const imageModelDefaults = {
             modelId: defaultImageModel?.id ?? 'nano-banana-2',
@@ -1515,13 +1470,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         } else if (type === 'video-editor') {
             nodeData = { label: 'Video Editor', inputs: [], ...nodeData };
         }
+        const nds = nodesRef.current;
 
         // If caller didn't specify a parentId, default to "current group context":
         // - Prefer the selected group (deepest if multiple)
         // - Otherwise, use the parentId of the first selected node (if any)
         let insertionParentId: string | undefined = extraData.parentId;
         if (!insertionParentId && selectedNodes.length > 0) {
-            const byId = new Map(nodes.map((n) => [n.id, n]));
+            const byId = new Map(nds.map((n) => [n.id, n]));
             const selectedGroups = selectedNodes
                 .map((n) => byId.get(n.id) ?? n)
                 .filter((n) => n.type === 'group');
@@ -1529,7 +1485,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             if (selectedGroups.length > 0) {
                 insertionParentId = selectedGroups
                     .slice()
-                    .sort((a, b) => getNestingDepth(b.id, nodes) - getNestingDepth(a.id, nodes))[0]?.id;
+                    .sort((a, b) => getNestingDepth(b.id, nds) - getNestingDepth(a.id, nds))[0]?.id;
             } else {
                 const first = byId.get(selectedNodes[0].id) ?? selectedNodes[0];
                 insertionParentId = first.parentId;
@@ -1544,12 +1500,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         if (nodeType === 'group') {
             if (extraData.parentId) {
                 // Nested Group: Must be ABOVE parent
-                const parent = nodes.find(n => n.id === extraData.parentId);
+                const parent = nds.find((n) => n.id === extraData.parentId);
                 const parentZIndex = Number(parent?.style?.zIndex ?? 0);
                 zIndex = parentZIndex + 1;
             } else {
                 // Root Group: Keep existing logic (behind other groups)
-                const groupNodes = nodes.filter((n) => n.type === 'group');
+                const groupNodes = nds.filter((n) => n.type === 'group');
                 const minZIndex = groupNodes.reduce((min, n) => {
                     const nodeZIndex = Number(n.style?.zIndex ?? 0);
                     return Math.min(min, nodeZIndex);
@@ -1558,9 +1514,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             }
         }
 
-        const newNodeId = extraData.id || `${nodes.length + 1}-${Date.now()}`;
+        const newNodeId = extraData.id || `${nds.length + 1}-${Date.now()}`;
+        if (nds.some((node) => node.id === newNodeId)) return newNodeId;
 
-        setNodes((nds) => {
             // 1. Determine Dimensions FIRST
             let defaultWidth: number | undefined = 300;
             let defaultHeight: number | undefined = 300;
@@ -1624,7 +1580,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
             // Validate parentId exists
             if (parentId) {
-                const parentExists = nds.find(n => n.id === parentId);
+                const parentExists = nds.find((n) => n.id === parentId);
                 if (!parentExists) {
                     console.warn(`Parent node ${parentId} not found in current nodes list (size: ${nds.length}), creating node at root level`);
                     parentId = undefined;
@@ -1644,7 +1600,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 let maxBottom = 0;
                 let leftmostX = Infinity;
 
-                nds.forEach(n => {
+                nds.forEach((n) => {
                     if (!n.parentId) {
                         const h = n.height || Number(n.style?.height) || 300;
                         const bottom = n.position.y + h;
@@ -1670,22 +1626,22 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 // 1. Upstream Node Placement (Highest Priority)
                 const primaryUpstream = upstreamList[0];
                 if (primaryUpstream) {
-                    const upstreamNode = nds.find(n => n.id === primaryUpstream);
+                    const upstreamNode = nds.find((n) => n.id === primaryUpstream);
                     if (upstreamNode) {
                         // Calculate Upstream Node's Absolute Position
                         const upstreamAbsPos = getAbsolutePosition(upstreamNode, nds);
                         const upstreamWidth = upstreamNode.width || Number(upstreamNode.style?.width) || 300;
                         const upstreamHeight = upstreamNode.height || Number(upstreamNode.style?.height) || 300;
-                        const upstreamCenterY = upstreamAbsPos.y + (upstreamHeight / 2);
+                        const upstreamCenterY = upstreamAbsPos.y + upstreamHeight / 2;
 
                         // Calculate Parent Group's Absolute Position
-                        const parentGroup = nds.find(n => n.id === parentId);
+                        const parentGroup = nds.find((n) => n.id === parentId);
                         const parentAbsPos = parentGroup ? getAbsolutePosition(parentGroup, nds) : { x: 0, y: 0 };
 
                         // Calculate Target Position Relative to Parent Group
                         // We want the new node to be to the right of the upstream node
                         const targetAbsX = upstreamAbsPos.x + upstreamWidth + 80;
-                        const targetAbsY = upstreamCenterY - (layoutHeight / 2);
+                        const targetAbsY = upstreamCenterY - layoutHeight / 2;
 
                         let relativeX = targetAbsX - parentAbsPos.x;
                         let relativeY = targetAbsY - parentAbsPos.y;
@@ -1711,12 +1667,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 }
                 // 2. Layout Direction (Right vs Bottom)
                 else {
-                    const children = nds.filter(n => n.parentId === parentId);
+                    const children = nds.filter((n) => n.parentId === parentId);
                     if (children.length > 0) {
                         if (extraData.layoutDirection === 'right') {
                             // Find the right-most child
                             const rightMostChild = children.reduce((prev, current) => {
-                                return (prev.position.x > current.position.x) ? prev : current;
+                                return prev.position.x > current.position.x ? prev : current;
                             });
                             const childWidth = rightMostChild.width || Number(rightMostChild.style?.width) || layoutWidth;
 
@@ -1727,7 +1683,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         } else {
                             // Default: Vertical stacking (bottom)
                             const bottomChild = children.reduce((prev, current) => {
-                                return (prev.position.y > current.position.y) ? prev : current;
+                                return prev.position.y > current.position.y ? prev : current;
                             });
                             const childHeight = bottomChild.height || Number(bottomChild.style?.height) || 200;
                             targetPos = {
@@ -1741,7 +1697,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 // Root level placement (e.g. new groups)
                 if (nodeType === 'group') {
                     // Place new group below existing groups
-                    const existingGroups = nds.filter(n => n.type === 'group');
+                    const existingGroups = nds.filter((n) => n.type === 'group');
                     if (existingGroups.length > 0) {
                         let maxBottom = 0;
                         let leftmostX = Infinity;
@@ -1767,8 +1723,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             if (parentId && !explicitPosition) {
                 // Inside a group: use mesh for collision-free placement
                 const siblingRects = nds
-                    .filter(n => n.parentId === parentId && n.type !== 'group')
-                    .map(n => getAbsoluteRect(n, nds));
+                    .filter((n) => n.parentId === parentId && n.type !== 'group')
+                    .map((n) => getAbsoluteRect(n, nds));
                 position = mesh.findNonOverlappingPosition(
                     targetPos,
                     { width: layoutWidth, height: layoutHeight },
@@ -1778,8 +1734,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 // Root level: use the rightmost position directly
                 // Only adjust if there's a direct overlap at the exact position
                 const directRect = { x: targetPos.x, y: targetPos.y, width: layoutWidth, height: layoutHeight };
-                const rootNodes = nds.filter(n => !n.parentId);
-                const hasDirectOverlap = rootNodes.some(n => {
+                const rootNodes = nds.filter((n) => !n.parentId);
+                const hasDirectOverlap = rootNodes.some((n) => {
                     const nodeRect = getAbsoluteRect(n, nds);
                     return rectOverlaps(directRect, nodeRect);
                 });
@@ -1838,21 +1794,21 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             }
 
             updatedNodes = applyAutoZIndex(updatedNodes);
-            const finalNodes = updatedNodes;
+            const finalNodes = sanitizeNodes(updatedNodes) as AppNode[];
+            nodesRef.current = finalNodes;
+            setNodes(finalNodes);
 
             // Persist derived layout updates (group resize / collision resolution)
             applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(nds, finalNodes));
 
             // Sync new node to Loro
-            const createdNode = finalNodes.find(n => n.id === newNodeId);
+            const createdNode = finalNodes.find((n) => n.id === newNodeId);
             if (createdNode) {
                 loroSync.addNode(newNodeId, createdNode);
             }
 
-            return finalNodes;
-        });
         return newNodeId;
-    }, [nodes, selectedNodes, setNodes, loroSync, applyAutoZIndex, customActions]);
+    }, [selectedNodes, setNodes, loroSync, applyAutoZIndex, customActions]);
 
     const updateNode = useCallback((nodeId: string, updates: Partial<Node>) => {
         setNodes((nds) =>
@@ -1891,27 +1847,27 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     };
 
     const addAssetEdgeToEditor = useCallback((assetNodeId: string, editorNodeId: string) => {
-        setEdges((eds) => {
-            const exists = eds.some(
-                (edge) =>
-                    edge.source === assetNodeId &&
-                    edge.target === editorNodeId &&
-                    edge.targetHandle === 'assets'
-            );
-            if (exists) return eds;
+        const currentEdges = edgesRef.current;
+        const exists = currentEdges.some(
+            (edge) =>
+                edge.source === assetNodeId &&
+                edge.target === editorNodeId &&
+                edge.targetHandle === 'assets'
+        );
+        if (exists) return;
 
-            const edgeId = `edge-${assetNodeId}-${editorNodeId}-assets`;
-            const newEdge: Edge = {
-                id: edgeId,
-                source: assetNodeId,
-                target: editorNodeId,
-                targetHandle: 'assets',
-            };
+        const edgeId = `edge-${assetNodeId}-${editorNodeId}-assets`;
+        const newEdge: Edge = {
+            id: edgeId,
+            source: assetNodeId,
+            target: editorNodeId,
+            targetHandle: 'assets',
+        };
+        if (!loroSync.addEdge(edgeId, newEdge)) return;
 
-            if (!loroSync.addEdge(edgeId, newEdge)) return eds;
-
-            return [...eds, newEdge];
-        });
+        const nextEdges = [...currentEdges, newEdge];
+        edgesRef.current = nextEdges;
+        setEdges(nextEdges);
     }, [setEdges, loroSync]);
 
     const uploadFileAsAssetNode = useCallback(
@@ -2182,7 +2138,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 }
 
                 // Validate parentId if present
-                if (rest.parentId && !nodes.find(n => n.id === rest.parentId)) {
+                if (rest.parentId && !nodes.find((n) => n.id === rest.parentId)) {
                     console.warn(`Parent node ${rest.parentId} not found in command, creating node at root level`);
                     delete rest.parentId;
                 }
@@ -2190,7 +2146,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 // Generate semantic ID
                 const nodeId = await generateSemanticId(project.id);
 
-                const newNode: Node = {
+          if (type === "video-editor") {
+            addNode("video-editor", {
+              id: nodeId,
+              ...(data || {}),
+              position: rest.position,
+            });
+            break;
+          }
+
+          const newNode: Node = {
                     id: nodeId,
                     type,
                     data,
@@ -2215,7 +2180,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             default:
                 console.warn('Unknown command type:', command.type);
         }
-    }, [nodes, edges, setNodes, setEdges, project.id]);
+    }, [addNode, nodes, edges, setNodes, setEdges, project.id]);
 
     const applyRelayout = useCallback(
         (currentNodes: Node[], currentEdges: Edge[], scopeParentId: string | undefined) => {
@@ -2276,13 +2241,13 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
     const relayoutParent = useCallback(
         (parentId: string | undefined) => {
-            setNodes((current) => {
-                const updated = applyRelayout(current, edges, parentId);
-                applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(current, updated));
-                return updated;
-            });
+            const currentNodes = nodesRef.current;
+            const updated = applyRelayout(currentNodes, edgesRef.current, parentId);
+            nodesRef.current = updated;
+            setNodes(updated);
+            applyLayoutPatchesToLoro(loroSync, collectLayoutNodePatches(currentNodes, updated));
         },
-        [setNodes, applyRelayout, loroSync, edges]
+        [setNodes, applyRelayout, loroSync]
     );
 
     const onLayout = useCallback(() => {
@@ -2328,13 +2293,122 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
 
     const findNodeIdByName = useCallback((name: string): string | undefined => {
-        const node = nodes.find(n => n.data?.label === name);
+        const node = nodes.find((n) => n.data?.label === name);
         return node?.id;
     }, [nodes]);
 
+  const activeCanvas =
+    loroSync.canvases.find((canvas) => canvas.id === activeCanvasId) ??
+    loroSync.canvases[0];
+  const projectAssets = project.assets ?? [];
+  const selectedStandaloneTimeline =
+    workspaceSurface.kind === "timeline"
+      ? loroSync.standaloneTimelines.find(
+          (timeline) => timeline.id === workspaceSurface.timelineId,
+        )
+      : undefined;
 
-    return (
-        <ProjectProvider projectId={project.id}>
+  const selectCanvas = useCallback(
+    (canvasId: string) => {
+      setNodes([]);
+      setEdges([]);
+      setActiveCanvasId(canvasId);
+      setWorkspaceSurface({ kind: "canvas", canvasId });
+    },
+    [setEdges, setNodes],
+  );
+
+  const createCanvasFromNavigator = useCallback(() => {
+    const name = window.prompt("Canvas name")?.trim();
+    if (!name) return;
+    const stem =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "canvas";
+    const canvasId = `${stem}-${Date.now().toString(36)}`;
+    const result = loroSync.createCanvas({ id: canvasId, name });
+    if (!result.ok) {
+      window.alert(result.error);
+      return;
+    }
+    selectCanvas(canvasId);
+  }, [loroSync, selectCanvas]);
+
+  const renameCanvasFromNavigator = useCallback(
+    (canvas: ProjectCanvas) => {
+      const name = window.prompt("Canvas name", canvas.name)?.trim();
+      if (!name || name === canvas.name) return;
+      const result = loroSync.renameCanvas(canvas.id, name);
+      if (!result.ok) window.alert(result.error);
+    },
+    [loroSync],
+  );
+
+  const deleteCanvasFromNavigator = useCallback(
+    (canvas: ProjectCanvas) => {
+      if (!window.confirm(`Delete Canvas "${canvas.name}"?`)) return;
+      const fallback = loroSync.canvases.find(
+        (candidate) => candidate.id !== canvas.id,
+      );
+      const result = loroSync.deleteCanvas(canvas.id);
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      if (activeCanvasId === canvas.id && fallback) selectCanvas(fallback.id);
+    },
+    [activeCanvasId, loroSync, selectCanvas],
+  );
+
+  const createTimelineFromNavigator = useCallback(() => {
+    const name = window.prompt("Timeline name")?.trim();
+    if (!name) return;
+    const timelineId = `timeline-${Date.now().toString(36)}`;
+    const result = loroSync.createTimeline({
+      id: timelineId,
+      name,
+      state: { tracks: [] },
+    });
+    if (!result.ok) {
+      window.alert(result.error);
+      return;
+    }
+    setWorkspaceSurface({ kind: "timeline", timelineId });
+  }, [loroSync]);
+
+  const attachTimelineFromNavigator = useCallback(
+    (timeline: ProjectTimeline) => {
+      const actionNodeId = `timeline-action-${Date.now().toString(36)}`;
+      const result = loroSync.attachTimeline({
+        timelineId: timeline.id,
+        actionNodeId,
+        position: { x: 100, y: 100 },
+      });
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
+    },
+    [activeCanvasId, loroSync],
+  );
+
+  const placeProjectAsset = useCallback(
+    (asset: ProjectAsset) => {
+      const assetId = asset.assetId ?? asset.id;
+      addNode(asset.type, {
+        assetId,
+        label: asset.type === "video" ? "Project Video" : "Project Image",
+        status: "completed",
+      });
+      setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
+    },
+    [activeCanvasId, addNode],
+  );
+
+  return (
+    <ProjectProvider projectId={project.id}>
             <LoroSyncProvider loroSync={loroSync}>
               <CustomActionsProvider actions={customActions}>
               <PresenceAwarenessProvider peers={awareness.peers}>
@@ -2377,89 +2451,100 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 isSidebarCollapsed={isSidebarCollapsed}
                             />
 
-                            {/* Project Name - No Background.
-                                z-10 — same stacking band as toolbar / chatbot panel
-                                so modal dialogs cover it cleanly without backdrop tricks. */}
-                            <div id="editor-header" className="absolute left-9 top-4 z-20 flex items-center gap-2 pointer-events-auto">
-                                <Tooltip label="Return to projects">
-                                    <IconButton
-                                        label="Return to projects"
-                                        onClick={handleReturnToProjects}
-                                        icon={<ArrowLeft className="h-5 w-5" weight="bold" />}
-                                        size="lg"
-                                        shape="rounded"
-                                        className="clash-project-return-button h-10 min-h-10 w-10 min-w-10 rounded-xl text-slate-800 focus-visible:ring-offset-warm-page"
-                                    />
-                                </Tooltip>
-                                {/* Project Name Input */}
-                                <form onSubmit={handleProjectNameSubmit}>
-                                    <Input
-                                        ref={projectTitleInputRef}
-                                        className="clash-project-name-input h-10 min-w-[5ch] bg-transparent px-1 text-xl font-display font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
-                                        style={{
-                                            width: `${projectTitleInputWidthCh}ch`,
-                                            maxWidth: 'min(46vw, 360px)',
-                                        }}
-                                        value={projectName}
-                                        onChange={(e) => setProjectName(e.target.value)}
-                                        onBlur={() => {
-                                            if (projectName !== project.name) {
-                                                updateProjectName(project.id, projectName);
-                                            }
-                                        }}
-                                        placeholder="Untitled"
-                                    />
-                                </form>
-                            </div>
-
                             <motion.div
                                 id="project-top-actions"
-                                className="absolute top-4 z-20 flex items-center gap-2 pointer-events-auto"
+                                className="absolute top-3 z-20 flex items-center pointer-events-auto"
                                 style={{ right: topActionsRight }}
                                 animate={{ right: topActionsRight }}
                                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                             >
-                                <PresenceBar clients={otherClients} />
-                                {projectWebAdmission.visible && (
-                                    <Tooltip label={projectWebAdmission.tooltip}>
-                                        <span className="inline-flex">
-                                            <Button
-                                                onClick={handleOpenProjectInWeb}
-                                                disabled={!projectWebAdmission.allowed}
-                                                leftIcon={<ArrowSquareOut className="h-4 w-4" weight="bold" />}
-                                                size="sm"
-                                                shape="rounded"
-                                                aria-label="Open project in web"
-                                                className="clash-project-top-action h-10 min-h-10 rounded-xl px-3 text-sm font-display font-semibold focus-visible:ring-offset-warm-page"
-                                            >
-                                                <span>Web</span>
-                                            </Button>
-                                        </span>
-                                    </Tooltip>
-                                )}
-                                {projectShareAdmission.visible && (
-                                    <Tooltip label={projectShareAdmission.tooltip}>
-                                        <span className="inline-flex">
-                                            <Button
-                                                onClick={handleShareProject}
-                                                disabled={!projectShareAdmission.allowed}
-                                                leftIcon={<ShareFat className="h-4 w-4" weight="bold" />}
-                                                size="sm"
-                                                shape="rounded"
-                                                aria-label="Copy project link"
-                                                className="clash-project-top-action h-10 min-h-10 rounded-xl px-3 text-sm font-display font-semibold focus-visible:ring-offset-warm-page"
-                                            >
-                                                <span>{shareCopied ? 'Copied' : 'Share'}</span>
-                                            </Button>
-                                        </span>
-                                    </Tooltip>
-                                )}
                                 <UserControls projectChrome />
                             </motion.div>
 
                             <div
+                              id="project-workspace-shell"
+                              className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:3rem]"
+                            >
+                            <ProjectWorkspaceNavigator
+                              header={
+                                <div
+                                  id="editor-header"
+                                  className="clash-project-sidebar-header-content flex min-w-0 flex-1 items-center gap-1.5 pointer-events-auto"
+                                >
+                                  <Tooltip label="Return to projects">
+                                    <IconButton
+                                      label="Return to projects"
+                                      onClick={handleReturnToProjects}
+                                      icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
+                                      size="sm"
+                                      shape="rounded"
+                                      className="clash-project-return-button shrink-0 rounded-md text-slate-800 focus-visible:ring-offset-warm-page"
+                                    />
+                                  </Tooltip>
+                                  <form className="min-w-0 flex-1" onSubmit={handleProjectNameSubmit}>
+                                    <Input
+                                      ref={projectTitleInputRef}
+                                      className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[13px] font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
+                                      value={projectName}
+                                      onChange={(event) => setProjectName(event.target.value)}
+                                      onBlur={() => {
+                                        if (projectName !== project.name) {
+                                          updateProjectName(project.id, projectName);
+                                        }
+                                      }}
+                                      placeholder="Untitled"
+                                    />
+                                  </form>
+                                </div>
+                              }
+                              canvases={loroSync.canvases}
+                              standaloneTimelines={loroSync.standaloneTimelines}
+                              assets={projectAssets}
+                              surface={workspaceSurface}
+                              onSelectCanvas={selectCanvas}
+                              onSelectTimeline={(timelineId) => {
+                                setWorkspaceSurface({
+                                  kind: "timeline",
+                                  timelineId,
+                                });
+                              }}
+                              onSelectAssets={() => {
+                                setWorkspaceSurface({ kind: "assets" });
+                              }}
+                              onCreateCanvas={createCanvasFromNavigator}
+                              onRenameCanvas={renameCanvasFromNavigator}
+                              onDeleteCanvas={deleteCanvasFromNavigator}
+                              onCreateTimeline={createTimelineFromNavigator}
+                              onAttachTimeline={attachTimelineFromNavigator}
+                            />
+
+                            <div
+                              id="project-workspace-inset"
+                              className="relative min-h-0 min-w-0 overflow-hidden"
+                            >
+                            {workspaceSurface.kind === "assets" && (
+                              <ProjectAssetsSurface
+                                assets={projectAssets}
+                                canvasName={activeCanvas?.name ?? "Canvas"}
+                                onPlace={placeProjectAsset}
+                              />
+                            )}
+
+                            {selectedStandaloneTimeline && (
+                              <StandaloneTimelineSurface
+                                timeline={selectedStandaloneTimeline}
+                                canvasName={activeCanvas?.name ?? "Canvas"}
+                                onAttach={() =>
+                                  attachTimelineFromNavigator(
+                                    selectedStandaloneTimeline,
+                                  )
+                                }
+                              />
+                            )}
+
+                            <div
                                 ref={flowBoundsRef}
-                                className={`absolute inset-0 z-0 ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}
+                                className={`absolute inset-0 z-0 ${workspaceSurface.kind === "canvas" ? "" : "hidden"} ${canvasMode === 'hand' ? '[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing' : ''}`}
                             >
                                 <ReactFlow
                                     nodes={sanitizedNodes}
@@ -2533,63 +2618,92 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 z-10 keeps it above the canvas (z-0) but well below
                                 the bottom-right ChatbotCopilot popover and any modal
                                 Dialog (z-[70]). */}
-                            <motion.div
-                                className="absolute left-6 top-1/2 -translate-y-1/2 z-10 flex flex-col items-start gap-2 pointer-events-none"
+                            {workspaceSurface.kind === "canvas" && (
+                              <motion.div
+                                className="absolute left-[var(--clash-project-chrome-gutter)] top-[calc(var(--clash-project-sidebar-header-height)+var(--clash-project-search-row-height))] z-10 flex flex-col items-start gap-2 pointer-events-none"
                                 initial={{ opacity: 0, x: -8, scale: 0.98 }}
                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                 exit={{ opacity: 0, x: -8, scale: 0.98 }}
                                 transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
                             >
-                                 <div className="clash-canvas-toolbar-surface pointer-events-auto flex w-16 flex-none flex-col items-center gap-3 rounded-2xl py-6 px-3 transition-all">
-                                    {/* Canvas Mode Toggle: select off, hand on. */}
-                                    <Tooltip label={canvasMode === 'select' ? 'Select mode (V)' : 'Hand mode (H)'}>
-                                        <Toggle
-                                            asChild
-                                            pressed={canvasMode === 'hand'}
-                                            onPressedChange={(pressed) => setCanvasMode(pressed ? 'hand' : 'select')}
-                                        >
+                                 <Toolbar.Root
+                                    aria-label="Canvas tools"
+                                    orientation="vertical"
+                                    loop
+                                    className="clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-2 transition-colors"
+                                 >
+                                 <Toolbar.ToggleGroup
+                                    type="single"
+                                    value={canvasMode}
+                                    onValueChange={(mode) => {
+                                        if (mode === 'select' || mode === 'hand') setCanvasMode(mode);
+                                    }}
+                                    orientation="vertical"
+                                    aria-label="Canvas mode"
+                                    className="flex w-full flex-col items-center gap-0"
+                                 >
+                                    <Tooltip label="Select mode (V)">
+                                        <Toolbar.ToggleItem value="select" asChild>
                                             <IconButton
-                                                label={canvasMode === 'select' ? 'Switch to hand mode' : 'Switch to select mode'}
-                                                icon={canvasMode === 'select'
-                                                    ? <CursorClick className="h-5 w-5" weight="regular" />
-                                                    : <HandGrabbing className="h-5 w-5" weight="fill" />
-                                                }
-                                                size="lg"
+                                                label="Select mode"
+                                                icon={<CursorClick className="h-[18px] w-[18px]" weight="regular" />}
+                                                size="sm"
                                                 shape="rounded"
-                                                className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950"
+                                                className="rounded-md bg-transparent text-stone-500 hover:text-slate-950 data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
                                             />
-                                        </Toggle>
+                                        </Toolbar.ToggleItem>
                                     </Tooltip>
+                                    <Tooltip label="Hand mode (H)">
+                                        <Toolbar.ToggleItem value="hand" asChild>
+                                            <IconButton
+                                                label="Hand mode"
+                                                icon={<HandGrabbing className="h-[18px] w-[18px]" weight="regular" />}
+                                                size="sm"
+                                                shape="rounded"
+                                                className="rounded-md bg-transparent text-stone-500 hover:text-slate-950 data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
+                                            />
+                                        </Toolbar.ToggleItem>
+                                    </Tooltip>
+                                 </Toolbar.ToggleGroup>
 
-                                    {/* Divider */}
-                                    <div className="clash-control-divider w-8 h-px" />
+                                 <div className="flex h-2 w-full shrink-0 items-center justify-center">
+                                    <Toolbar.Separator
+                                        orientation="horizontal"
+                                        className="h-px w-8 bg-stone-200/80"
+                                    />
+                                 </div>
+
+                                 <div className="flex w-full flex-none flex-col items-center gap-0">
 
                                     {toolbarMenu.map((item) => {
                                         const Icon = item.icon;
                                         const submenuItems = 'items' in item ? item.items : undefined;
+                                        const sectionSpacing = item.id === 'actions' ? 'mt-2' : '';
 
                                         if (submenuItems) {
                                             return (
                                                 <DropdownMenu key={item.id}>
                                                     <Tooltip label={item.label}>
                                                         <DropdownMenuTrigger asChild>
-                                                            <IconButton
-                                                                label={item.label}
-                                                                icon={<Icon className="h-5 w-5" weight="regular" />}
-                                                                size="lg"
-                                                                shape="rounded"
-                                                                className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950 data-[state=open]:bg-brand data-[state=open]:text-white data-[state=open]:shadow-md"
-                                                            />
+                                                            <Toolbar.Button asChild>
+                                                                <IconButton
+                                                                    label={item.label}
+                                                                    icon={<Icon className="h-[18px] w-[18px]" weight="regular" />}
+                                                                    size="sm"
+                                                                    shape="rounded"
+                                                                    className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950 data-[state=open]:bg-brand/10 data-[state=open]:text-brand`}
+                                                                />
+                                                            </Toolbar.Button>
                                                         </DropdownMenuTrigger>
                                                     </Tooltip>
                                                     <DropdownMenuContent
                                                         aria-label={`${item.label} tools`}
                                                         side="right"
                                                         align="start"
-                                                        sideOffset={16}
-                                                        className="clash-canvas-menu-surface flex min-w-[140px] flex-col gap-1 rounded-2xl p-2"
+                                                        sideOffset={10}
+                                                        className="clash-canvas-menu-surface flex min-w-[140px] flex-col gap-0.5 rounded-lg p-1.5"
                                                     >
-                                                        <div className="mb-1 px-2 py-1 text-xs font-bold uppercase tracking-wider text-stone-400">
+                                                        <div className="px-2 py-1 text-xs font-semibold text-stone-500">
                                                             {item.label}
                                                         </div>
                                                         {submenuItems.map((subItem) => {
@@ -2600,7 +2714,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                                     onSelect={() => {
                                                                         handleToolClick(subItem.id);
                                                                     }}
-                                                                    className="clash-input-icon-button gap-3 rounded-xl px-3 py-2 text-sm text-stone-600 transition-colors hover:text-slate-950"
+                                                                    className="clash-input-icon-button gap-2.5 rounded-md px-2.5 py-2 text-sm text-stone-600 transition-colors hover:text-slate-950"
                                                                 >
                                                                     <SubIcon className="h-4 w-4" />
                                                                     <span className="whitespace-nowrap">{subItem.label}</span>
@@ -2614,86 +2728,83 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                                         return (
                                             <Tooltip key={item.id} label={item.label}>
-                                                <IconButton
-                                                    label={item.label}
-                                                    icon={<Icon className="h-5 w-5" weight="regular" />}
-                                                    size="lg"
-                                                    shape="rounded"
-                                                    onClick={() => handleToolClick(item.id)}
-                                                    className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950"
-                                                />
+                                                <Toolbar.Button asChild>
+                                                    <IconButton
+                                                        label={item.label}
+                                                        icon={<Icon className="h-[18px] w-[18px]" weight="regular" />}
+                                                        size="sm"
+                                                        shape="rounded"
+                                                        onClick={() => handleToolClick(item.id)}
+                                                        className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950`}
+                                                    />
+                                                </Toolbar.Button>
                                             </Tooltip>
                                         );
                                     })}
 
-                                    {/* Divider */}
-                                    <div className="clash-control-divider w-8 h-px" />
+                                  </div>
 
-                                    {/* Helper Tools (Undo/Redo/Layout) */}
+                                  <div className="flex h-2 w-full shrink-0 items-center justify-center">
+                                    <Toolbar.Separator
+                                        orientation="horizontal"
+                                        className="h-px w-8 bg-stone-200/80"
+                                    />
+                                  </div>
+
+                                  <div className="flex w-full flex-none flex-col items-center gap-0">
                                     <Tooltip label="Auto Layout">
-                                        <IconButton
-                                             label="Auto Layout"
-                                             icon={<MagicWand className="h-5 w-5" weight="regular" />}
-                                             onClick={onLayout}
-                                             size="lg"
-                                             shape="rounded"
-                                             className="clash-toolbar-button h-10 min-h-10 w-10 min-w-10 rounded-xl bg-transparent text-stone-500 hover:text-slate-950"
-                                         />
+                                        <Toolbar.Button asChild>
+                                            <IconButton
+                                                 label="Auto Layout"
+                                                 icon={<MagicWand className="h-[18px] w-[18px]" weight="regular" />}
+                                                 onClick={onLayout}
+                                                 size="sm"
+                                                 shape="rounded"
+                                                 className="clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950"
+                                             />
+                                        </Toolbar.Button>
                                      </Tooltip>
 
                                      <Tooltip label="Undo">
-                                         <IconButton
-                                             label="Undo"
-                                             icon={<ArrowCounterClockwise className="h-5 w-5" weight="bold" />}
-                                             onClick={() => loroSync.undo()}
-                                             disabled={!loroSync.canUndo}
-                                             size="lg"
-                                             shape="rounded"
-                                             className={`h-10 min-h-10 w-10 min-w-10 rounded-xl ${
-                                                 loroSync.canUndo
-                                                 ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
-                                                 : "text-slate-300 cursor-not-allowed"
-                                             }`}
-                                         />
-                                     </Tooltip>
-                                     <Tooltip label="Redo">
-                                         <IconButton
-                                             label="Redo"
-                                             icon={<ArrowClockwise className="h-5 w-5" weight="bold" />}
-                                             onClick={() => loroSync.redo()}
-                                             disabled={!loroSync.canRedo}
-                                             size="lg"
-                                             shape="rounded"
-                                             className={`h-10 min-h-10 w-10 min-w-10 rounded-xl ${
-                                                 loroSync.canRedo
-                                                 ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
-                                                 : "text-slate-300 cursor-not-allowed"
-                                             }`}
-                                         />
-                                     </Tooltip>
-
-                                     {/* Debug: toggle node IDs (dev only) */}
-                                     {process.env.NODE_ENV === 'development' && (
-                                         <>
-                                         <div className="clash-control-divider w-8 h-px" />
-                                         <Tooltip label="Toggle Node IDs">
+                                         <Toolbar.Button asChild>
                                              <IconButton
-                                                 label="Toggle Node IDs"
-                                                 icon={<span className="font-mono text-xs font-bold">ID</span>}
-                                                 onClick={() => setShowDebugIds(v => !v)}
-                                                 size="lg"
+                                                 label="Undo"
+                                                 icon={<ArrowCounterClockwise className="h-[18px] w-[18px]" weight="bold" />}
+                                                 onClick={() => loroSync.undo()}
+                                                 disabled={!loroSync.canUndo}
+                                                 size="sm"
                                                  shape="rounded"
-                                                 className={`h-10 min-h-10 w-10 min-w-10 rounded-xl ${
-                                                     showDebugIds
-                                                     ? "bg-green-600 text-white shadow-md"
-                                                     : "clash-toolbar-button bg-transparent text-stone-400 hover:text-slate-950"
+                                                 className={`rounded-md ${
+                                                     loroSync.canUndo
+                                                     ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
+                                                     : "text-slate-300 cursor-not-allowed"
                                                  }`}
                                              />
-                                          </Tooltip>
-                                          </>
-                                      )}
+                                         </Toolbar.Button>
+                                     </Tooltip>
+                                     <Tooltip label="Redo">
+                                         <Toolbar.Button asChild>
+                                             <IconButton
+                                                 label="Redo"
+                                                 icon={<ArrowClockwise className="h-[18px] w-[18px]" weight="bold" />}
+                                                 onClick={() => loroSync.redo()}
+                                                 disabled={!loroSync.canRedo}
+                                                 size="sm"
+                                                 shape="rounded"
+                                                 className={`rounded-md ${
+                                                     loroSync.canRedo
+                                                     ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
+                                                     : "text-slate-300 cursor-not-allowed"
+                                                 }`}
+                                             />
+                                         </Toolbar.Button>
+                                     </Tooltip>
                                   </div>
+                                 </Toolbar.Root>
                              </motion.div>
+                            )}
+                            </div>
+                            </div>
 
                             <div
                                 id="copilot-container"
@@ -2714,11 +2825,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         selectedNodes={selectedNodes}
                                         onAddNode={addNode}
                                         onRemoveNode={(nodeId, options) => {
-                                            setNodes((nds) => {
-                                                if (!nds.some((node) => node.id === nodeId)) return nds;
-                                                if (!loroSync.removeNode(nodeId, options)) return nds;
-                                                return nds.filter((node) => node.id !== nodeId);
-                                            });
+                                            const currentNodes = nodesRef.current;
+                                            if (!currentNodes.some((node) => node.id === nodeId)) return;
+                                            if (!loroSync.removeNode(nodeId, options)) return;
+                                            const nextNodes = currentNodes.filter((node) => node.id !== nodeId);
+                                            nodesRef.current = nextNodes;
+                                            setNodes(nextNodes);
                                         }}
                                         onAddEdge={(edge, options) => {
                                             if ('source' in edge && edge.source && edge.target) {
@@ -2730,37 +2842,37 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                     id: edgeId,
                                                     type: 'type' in edge && edge.type ? edge.type : 'default',
                                                 };
-                                                setEdges((eds) => {
-                                                    if (eds.some((existingEdge) => existingEdge.id === edgeId)) return eds;
-                                                    const nextEdges = addEdge(edgeWithDefaults as any, eds);
-                                                    const addedEdge = nextEdges.find((candidate) => candidate.id === edgeId);
-                                                    if (addedEdge && !loroSync.addEdge(addedEdge.id, addedEdge, options)) return eds;
-                                                    return nextEdges;
-                                                });
+                                                const currentEdges = edgesRef.current;
+                                                if (currentEdges.some((existingEdge) => existingEdge.id === edgeId)) return;
+                                                const nextEdges = addEdge(edgeWithDefaults as any, currentEdges);
+                                                const addedEdge = nextEdges.find((candidate) => candidate.id === edgeId);
+                                                if (addedEdge && !loroSync.addEdge(addedEdge.id, addedEdge, options)) return;
+                                                edgesRef.current = nextEdges;
+                                                setEdges(nextEdges);
                                             }
                                         }}
                                         onUpdateEdge={(edgeId, patch, options) => {
-                                            setEdges((eds) => {
-                                                if (!eds.some((edge) => edge.id === edgeId)) return eds;
-                                                if (!loroSync.updateEdge(edgeId, patch, options)) return eds;
-                                                return eds.map((edge) => (
-                                                    edge.id === edgeId
-                                                        ? { ...edge, ...patch }
-                                                        : edge
-                                                ));
-                                            });
+                                            const currentEdges = edgesRef.current;
+                                            if (!currentEdges.some((edge) => edge.id === edgeId)) return;
+                                            if (!loroSync.updateEdge(edgeId, patch, options)) return;
+                                            const nextEdges = currentEdges.map((edge) =>
+                                                edge.id === edgeId ? { ...edge, ...patch } : edge
+                                            );
+                                            edgesRef.current = nextEdges;
+                                            setEdges(nextEdges);
                                         }}
                                         onRemoveEdge={(edgeId, options) => {
-                                            setEdges((eds) => {
-                                                if (!eds.some((edge) => edge.id === edgeId)) return eds;
-                                                if (!loroSync.removeEdge(edgeId, options)) return eds;
-                                                return eds.filter((edge) => edge.id !== edgeId);
-                                            });
+                                            const currentEdges = edgesRef.current;
+                                            if (!currentEdges.some((edge) => edge.id === edgeId)) return;
+                                            if (!loroSync.removeEdge(edgeId, options)) return;
+                                            const nextEdges = currentEdges.filter((edge) => edge.id !== edgeId);
+                                            edgesRef.current = nextEdges;
+                                            setEdges(nextEdges);
                                         }}
                                         onApplyTimeline={(nodeId, timelineDsl, options) => {
                                             if (!loroSync.applyTimelineDsl(nodeId, timelineDsl, options)) return;
-                                            setNodes((nds) => nds.map((node) => (
-                                                node.id === nodeId
+                                            setNodes((nds) => nds.map((node) =>
+                                        node.id === nodeId
                                                     ? {
                                                         ...node,
                                                         data: {
@@ -2769,7 +2881,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                                         },
                                                     }
                                                     : node
-                                            )));
+                                            ));
                                         }}
                                         onUpdateNode={updateNode}
                                         findNodeIdByName={findNodeIdByName}

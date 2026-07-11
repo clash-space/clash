@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LoroDoc } from "loro-crdt";
+import { listNodeOwnedEdges } from "@clash/shared-types";
 import { updateNodeData, updateNode, updateEdge } from "./NodeUpdater";
 
 function makeDocWithNode(
@@ -134,6 +135,8 @@ describe("NodeUpdater", () => {
   describe("updateEdge", () => {
     it("inserts an edge and broadcasts", () => {
       const doc = new LoroDoc();
+      doc.getMap("nodes").set("a", { canvasId: "main", type: "text" });
+      doc.getMap("nodes").set("b", { canvasId: "main", type: "text" });
       const broadcasts: Uint8Array[] = [];
 
       updateEdge(
@@ -145,17 +148,21 @@ describe("NodeUpdater", () => {
 
       expect(broadcasts).toHaveLength(1);
 
-      const edge = (doc.getMap("edges").get("e1") as Record<string, any>);
+      const edge = listNodeOwnedEdges(doc)[0];
       expect(edge.source).toBe("a");
       expect(edge.target).toBe("b");
+      expect(doc.getMap("edges").size).toBe(0);
     });
 
     it("overwrites existing edge", () => {
       const doc = new LoroDoc();
+      for (const id of ["a", "b", "c", "d"]) {
+        doc.getMap("nodes").set(id, { canvasId: "main", type: "text" });
+      }
       updateEdge(doc, "e1", { source: "a", target: "b" }, () => {});
       updateEdge(doc, "e1", { source: "c", target: "d" }, () => {});
 
-      const edge = (doc.getMap("edges").get("e1") as Record<string, any>);
+      const edge = listNodeOwnedEdges(doc)[0];
       expect(edge.source).toBe("c");
       expect(edge.target).toBe("d");
     });

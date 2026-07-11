@@ -14,9 +14,21 @@ import {
   validateCanvasTimelineApply,
   validateCanvasUpdateDataFields,
   isCanvasActionCheckpointLocked,
+  isCanvasNodeImmutable,
 } from "./canvas-update-guardrails";
 
 describe("canvas update guardrails", () => {
+  it("derives whole-node immutability from downstream references", () => {
+    expect(isCanvasNodeImmutable({
+      nodeId: "gen-1",
+      edges: [],
+    })).toBe(false);
+    expect(isCanvasNodeImmutable({
+      nodeId: "gen-1",
+      edges: [{ source: "gen-1", target: "image-1" }],
+    })).toBe(true);
+  });
+
   it("requires agent batch deletes to carry a matching graph-aware read token", () => {
     const nodes = [
       { id: "source-1", type: "text", data: { content: "source" } },
@@ -43,7 +55,7 @@ describe("canvas update guardrails", () => {
     expect(stale.ok).toBe(false);
     if (!stale.ok) {
       expect(stale.error).toContain("Stale canvas batch delete rejected");
-      expect(stale.error).toContain("re-read");
+      expect(stale.error).toContain("clash canvas delete-plan");
     }
   });
 
@@ -75,7 +87,7 @@ describe("canvas update guardrails", () => {
     expect(stale.ok).toBe(false);
     if (!stale.ok) {
       expect(stale.error).toContain("Stale canvas delete rejected");
-      expect(stale.error).toContain("re-read");
+      expect(stale.error).toContain("clash canvas get --json");
     }
   });
 
@@ -383,7 +395,7 @@ describe("canvas update guardrails", () => {
     }
   });
 
-  it("allows timeline apply with draft placeholders or explicit force", () => {
+  it("allows timeline apply while downstream outputs are still draft placeholders", () => {
     expect(validateCanvasTimelineApply({
       nodeId: "editor-1",
       nodes: [
@@ -393,18 +405,9 @@ describe("canvas update guardrails", () => {
       edges: [{ source: "editor-1", target: "draft-render" }],
     })).toEqual({ ok: true });
 
-    expect(validateCanvasTimelineApply({
-      nodeId: "editor-1",
-      nodes: [
-        { id: "editor-1", type: "video-editor", data: { timelineDsl: { tracks: [] } } },
-        { id: "render-1", type: "video", data: { status: "completed", assetId: "asset-render" } },
-      ],
-      edges: [{ source: "editor-1", target: "render-1" }],
-      force: true,
-    })).toEqual({ ok: true });
   });
 
-  it("rejects referenced node deletes unless forced", () => {
+  it("rejects referenced node deletes until references are removed or rewired", () => {
     const edges = [{ source: "source-1", target: "child-1" }];
 
     const result = validateCanvasDelete({
@@ -415,12 +418,8 @@ describe("canvas update guardrails", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toContain("Refusing to delete referenced node");
+      expect(result.error).toContain("Remove or rewire");
     }
-    expect(validateCanvasDelete({
-      nodeId: "source-1",
-      edges,
-      force: true,
-    })).toEqual({ ok: true });
   });
 
   it("allows batch deleting a closed referenced subgraph", () => {
@@ -444,14 +443,6 @@ describe("canvas update guardrails", () => {
       expect(result.error).toContain("Refusing to delete referenced node(s)");
       expect(result.error).toContain("child-1 -> external-render-1");
     }
-    expect(validateCanvasBatchDelete({
-      nodeIds: ["source-1", "child-1"],
-      edges: [
-        { source: "source-1", target: "child-1" },
-        { source: "child-1", target: "external-render-1" },
-      ],
-      force: true,
-    })).toEqual({ ok: true });
   });
 
   it("allows deleting input edges on unreferenced action drafts", () => {
@@ -545,7 +536,7 @@ describe("canvas update guardrails", () => {
     })).toEqual({ ok: true });
   });
 
-  it("rejects deleting checkpoint input and output lineage edges unless forced", () => {
+  it("rejects deleting checkpoint input and output lineage edges", () => {
     const nodes = [
       { id: "image-1", type: "image", data: { assetId: "asset-1" } },
       { id: "action-1", type: "action-badge", data: { actionType: "image-gen" } },
@@ -573,12 +564,6 @@ describe("canvas update guardrails", () => {
       edges,
     });
     expect(outputResult.ok).toBe(false);
-    expect(validateCanvasEdgeDelete({
-      edge: { source: "action-1", target: "output-1" },
-      nodes,
-      edges,
-      force: true,
-    })).toEqual({ ok: true });
   });
 
   it("exposes action checkpoint lock status for UI affordances", () => {

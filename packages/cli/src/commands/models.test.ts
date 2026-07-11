@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { providerPayloadFromOptions, providerWriteHeaders } from "./models";
+import {
+  providerPayloadFromOptions,
+  providerWriteHeaders,
+  publicProviderAccountsResult,
+} from "./models";
 
 const modelsSource = readFileSync(fileURLToPath(new URL("./models.ts", import.meta.url)), "utf8");
 
@@ -38,29 +42,44 @@ test("can disable a provider account from CLI options", () => {
   });
 });
 
-test("provider account writes expose agent read-token CAS", () => {
+test("provider account writes use implicit cwd observation CAS", () => {
   const providersSource = commandBlock(modelsSource, "providers", "provider");
   const providerSetSource = commandBlock(modelsSource, "set");
 
-  assert.match(providersSource, /printJson\(data\)/);
-  assert.match(providersSource, /Read token:/);
-  assert.match(providerSetSource, /\.option\("--if-match <readToken>"/);
-  assert.match(providerSetSource, /\.option\("--force"/);
+  assert.match(providersSource, /recordAgentObservation/);
+  assert.match(providersSource, /publicProviderAccountsResult/);
+  assert.doesNotMatch(providersSource, /Read token:/);
+  assert.doesNotMatch(providerSetSource, /\.option\("--if-match/);
+  assert.doesNotMatch(providerSetSource, /\.option\("--force"/);
   assert.match(providerSetSource, /providerWriteHeaders\(\{/);
-  assert.match(providerSetSource, /ifMatch: options\.ifMatch/);
-  assert.match(providerSetSource, /force: options\.force === true/);
+  assert.match(providerSetSource, /observedVersion/);
+  assert.doesNotMatch(providerSetSource, /force: options\.force === true/);
 });
 
-test("provider write headers carry agent read proof", () => {
+test("provider JSON output hides internal read receipts", () => {
+  assert.deepEqual(publicProviderAccountsResult([
+    {
+      providerId: "fal",
+      enabled: true,
+      readToken: "provider-account-v1:secret:receipt:secret",
+    },
+  ] as Array<any>), [
+    {
+      providerId: "fal",
+      enabled: true,
+    },
+  ]);
+});
+
+test("provider write headers carry an internal observed version", () => {
   assert.deepEqual(
     providerWriteHeaders(
-      { ifMatch: " provider-accounts-v1:abc:receipt:xyz ", force: true },
+      { observedVersion: " provider-accounts-v1:abc " },
       { CLASH_AGENT_MEMBER_ID: "agent-1" },
     ),
     {
       "x-clash-client-type": "agent",
-      "x-clash-if-match": "provider-accounts-v1:abc:receipt:xyz",
-      "x-clash-force": "true",
+      "x-clash-observed-version": "provider-accounts-v1:abc",
     },
   );
 });

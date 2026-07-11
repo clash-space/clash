@@ -3177,7 +3177,6 @@ describe("local ACP adapter", () => {
       ],
       spawnEnv: {
         CLASH_API_URL: "http://127.0.0.1:49396",
-        CLASH_API_KEY: "clsh_local_desktop",
       },
       createSessionManager: () => ({
         setSpawnEnv,
@@ -3198,7 +3197,6 @@ describe("local ACP adapter", () => {
 
     expect(setSpawnEnv).toHaveBeenCalledWith({
       CLASH_API_URL: "http://127.0.0.1:49396",
-      CLASH_API_KEY: "clsh_local_desktop",
     });
     expect(start).toHaveBeenCalledWith(expect.objectContaining({
       agent_id: "codex-acp",

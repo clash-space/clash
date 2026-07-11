@@ -138,19 +138,21 @@ function buildChecks(options: { html: string; manifest: Record<string, any> }): 
     }),
     check({
       id: "manifest.cas-fresh-pull",
-      label: "Timeline apply uses fresh-pull CAS",
+      label: "Timeline apply uses implicit cwd CAS",
       pass:
         cas.target === "timeline" &&
         cas.mutation === "projection-only" &&
         cas.applyCommand === "clash timeline apply" &&
-        cas.lockPath === "timelines/main.timeline.lock.json" &&
-        cas.lockSource === "fresh-canvas-pull" &&
-        cas.nodeIdPlaceholder === "<video-editor-node-id>" &&
+        cas.timelineIdPlaceholder === "<timeline-id>" &&
         Array.isArray(cas.requiredRuntimeArgs) &&
-        cas.requiredRuntimeArgs.includes("--node <video-editor-node-id>") &&
-        cas.pullCommand === "clash timeline pull",
-      expected: "fresh-canvas-pull lock with explicit --node runtime arg",
-      actual: cas.lockSource === "fresh-canvas-pull" ? "fresh-pull CAS present" : "fresh-pull CAS missing",
+        cas.requiredRuntimeArgs.includes("--timeline <timeline-id>") &&
+        cas.pullCommand === "clash timeline pull" &&
+        Array.isArray(cas.applyArgs) &&
+        !cas.applyArgs.includes("--lock"),
+      expected: "pull then apply with implicit cwd observation and explicit --timeline runtime arg",
+      actual: Array.isArray(cas.applyArgs) && !cas.applyArgs.includes("--lock")
+        ? "implicit cwd CAS present"
+        : "timeline apply contract is stale",
     }),
     check({
       id: "implementation.first-party-license-safe",

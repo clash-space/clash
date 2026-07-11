@@ -63,7 +63,7 @@ function expectedProjectRoomPolicy(cloudSurface: "disabled" | "sequencer") {
 const expectedSyncMirrorPolicy = {
   canvas: {
     requirement: "canvas",
-    source: "loro-canvas-replica",
+    source: "loro-project-replica",
     conflictPolicy: "loro-crdt",
   },
   assetMetadata: {
@@ -76,8 +76,8 @@ const expectedSyncMirrorPolicy = {
   revisionContent: {
     requirement: "revision-content",
     source: "sqlite-index-and-content-addressed-revision-blobs",
-    registries: ["text_revisions", "timeline_revisions"],
-    contentKinds: ["text-revision-content", "timeline-revision-content"],
+    registries: ["text_revisions"],
+    contentKinds: ["text-revision-content"],
     mediaAsset: false,
     agentWritable: false,
     conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",
@@ -156,10 +156,10 @@ test("project status exposes agent-readable project roots and protected local fi
   });
 
   const projectStore = join(homeDir, ".clash", "projects", "project%2Fwith%20spaces");
+  const workspaceRoot = "/tmp/workspace";
   const localApiDataDir = join(homeDir, ".clash", "local-api");
   const assetBlobRoot = join(homeDir, ".clash", "assets", "blobs");
   const textRevisionBlobRoot = join(localApiDataDir, "text-revision-blobs");
-  const timelineRevisionBlobRoot = join(localApiDataDir, "timeline-revision-blobs");
   const loroRoot = join(
     localApiDataDir,
     "projects",
@@ -223,11 +223,11 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.equal(status.loro.replicaRoot, loroRoot);
   assert.equal(status.loro.snapshotPath, join(loroRoot, "snapshot.bin"));
   assert.equal(status.loro.updatesLogPath, join(loroRoot, "updates.log"));
-  assert.equal(status.roots.drafts, join(projectStore, "drafts"));
-  assert.equal(status.roots.projections, join(projectStore, "projections"));
-  assert.equal(status.roots.timelines, join(projectStore, "timelines"));
-  assert.equal(status.roots.sessions, join(projectStore, "sessions"));
-  assert.equal(status.roots.assetLinks, join(projectStore, "assets", "links"));
+  assert.equal(status.roots.drafts, join(workspaceRoot, "drafts"));
+  assert.equal(status.roots.projections, join(workspaceRoot, "projections"));
+  assert.equal(status.roots.timelines, join(workspaceRoot, "timelines"));
+  assert.equal(status.roots.sessions, join(workspaceRoot, "sessions"));
+  assert.equal(status.roots.assetLinks, join(workspaceRoot, "assets", "links"));
   assert.equal(status.roots.runtime, join(projectStore, "runtime"));
   assert.equal(status.draftsRoot, status.roots.drafts);
   assert.equal(status.projectionsRoot, status.roots.projections);
@@ -235,11 +235,11 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.equal(status.runtimeRoot, status.roots.runtime);
 
   assert.deepEqual(status.editablePaths, [
-    join(projectStore, "drafts"),
-    join(projectStore, "projections"),
-    join(projectStore, "timelines"),
-    join(projectStore, "sessions"),
-    join(projectStore, "assets", "links"),
+    join(workspaceRoot, "drafts"),
+    join(workspaceRoot, "projections"),
+    join(workspaceRoot, "timelines"),
+    join(workspaceRoot, "sessions"),
+    join(workspaceRoot, "assets", "links"),
   ]);
   assert.deepEqual(status.protectedPaths, [
     localApiDataDir,
@@ -251,7 +251,6 @@ test("project status exposes agent-readable project roots and protected local fi
     join(loroRoot, "updates.log"),
     assetBlobRoot,
     textRevisionBlobRoot,
-    timelineRevisionBlobRoot,
     status.roots.runtime,
   ]);
   assert.deepEqual(status.storage, {
@@ -264,15 +263,15 @@ test("project status exposes agent-readable project roots and protected local fi
     },
     workspace: {
       role: "agent-draft-and-projection-workspace",
-      root: projectStore,
+      root: workspaceRoot,
       ownsCanonicalSnapshot: false,
       ownsCanonicalMetadata: false,
       editablePaths: status.editablePaths,
-      protectedPaths: [status.roots.runtime],
+      protectedPaths: [],
       viewFiles: {
         texts: {
           kind: "agent-editable-projection-files",
-          path: join(projectStore, "projections", "text"),
+          path: join(workspaceRoot, "projections", "text"),
           defaultFilePattern: "<node-id>.md",
           applyCommand: "clash text apply",
           casRequired: true,
@@ -280,16 +279,18 @@ test("project status exposes agent-readable project roots and protected local fi
         },
         timelines: {
           kind: "agent-editable-view-files",
-          path: join(projectStore, "timelines"),
-          defaultFile: "main.timeline.yaml",
-          applyCommand: "clash timeline apply",
+          path: join(workspaceRoot, "timelines"),
+          defaultFilePattern: "<timeline-id>.timeline.yaml",
+          pullCommand: "clash timeline pull --timeline <id>",
+          applyCommand: "clash timeline apply --timeline <id>",
           casRequired: true,
           ownsCanonicalState: false,
         },
         timelineProjections: {
           kind: "agent-editable-projection-files",
-          path: join(projectStore, "projections", "timelines"),
-          applyCommand: "clash timeline apply",
+          path: join(workspaceRoot, "projections", "timelines"),
+          defaultFilePattern: "<timeline-id>.timeline.yaml",
+          applyCommand: "clash timeline apply --timeline <id>",
           casRequired: true,
           ownsCanonicalState: false,
         },
@@ -313,7 +314,7 @@ test("project status exposes agent-readable project roots and protected local fi
           jsonSidecars: "removed",
         },
       },
-      canvas: {
+      projectState: {
         kind: "loro",
         replicaRoot: loroRoot,
         snapshotPath: join(loroRoot, "snapshot.bin"),
@@ -337,13 +338,6 @@ test("project status exposes agent-readable project roots and protected local fi
           immutable: true,
           agentWritable: false,
         },
-        timelineRevisions: {
-          kind: "content-addressed-files",
-          path: timelineRevisionBlobRoot,
-          mediaType: "application/yaml",
-          immutable: true,
-          agentWritable: false,
-        },
       },
     },
     localSecrets: {
@@ -364,11 +358,11 @@ test("project status exposes agent-readable project roots and protected local fi
       },
     },
     contentModel: {
-      role: "agent-projections-with-host-indexed-revision-content",
+      role: "agent-projections-over-host-owned-canonical-state",
       textNodes: {
         liveState: "loro-canvas-text-node-data",
         editableProjection: "storage.workspace.viewFiles.texts",
-        projectionPath: join(projectStore, "projections", "text"),
+        projectionPath: join(workspaceRoot, "projections", "text"),
         applyCommand: "clash text apply",
         replaceCommand: "clash text replace",
         restoreCommand: "clash text restore",
@@ -388,25 +382,27 @@ test("project status exposes agent-readable project roots and protected local fi
         agentWritableCanonicalState: false,
       },
       timelines: {
-        liveState: "loro-canvas-video-editor-node-data",
+        liveState: "loro-project-timeline-entity",
+        timelineIdentity: "timeline-id",
         editableProjection: "storage.workspace.viewFiles.timelines",
-        projectionPath: join(projectStore, "timelines"),
-        applyCommand: "clash timeline apply",
-        replaceCommand: "clash timeline replace",
-        restoreCommand: "clash timeline restore",
-        historyCommand: "clash timeline history",
-        contentCommand: "clash timeline content",
+        projectionPath: join(workspaceRoot, "timelines"),
+        projectionFilePattern: "<timeline-id>.timeline.yaml",
+        pullCommand: "clash timeline pull --timeline <id>",
+        applyCommand: "clash timeline apply --timeline <id>",
+        publicCommands: [
+          "clash timeline list",
+          "clash timeline create --id <id> --name <name>",
+          "clash timeline attach --timeline <id> --canvas <id> --node <action-node-id>",
+          "clash timeline detach --timeline <id>",
+          "clash timeline copy --timeline <id> --canvas <id> --new-timeline <id> --new-node <action-node-id>",
+          "clash timeline pull --timeline <id>",
+          "clash timeline apply --timeline <id>",
+        ],
         casRequired: true,
-        copyOnWriteWhenReferenced: true,
-        revisionRegistry: "timeline_revisions",
-        revisionBlobPath: join(localApiDataDir, "timeline-revision-blobs"),
-        contentRegistry: {
-          kind: "sqlite-non-media-revision-registry",
-          table: "timeline_revisions",
-          blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
-          mediaAssetTable: false,
-        },
-        mediaAsset: false,
+        copyOnWriteWhenReferenced: false,
+        downstreamRendersPinRevision: true,
+        revisionAuthority: "loro-project-history",
+        revisionIdentity: "state-hash",
         agentWritableCanonicalState: false,
       },
     },
@@ -441,7 +437,7 @@ test("project pointer marker uses the product-internal local-only default", asyn
   );
 });
 
-test("project marker sync fields cannot open cloud collaboration gates", async () => {
+test("project marker rejects removed sync fields", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   await mkdir(join(cwd, ".clash"), { recursive: true });
@@ -464,30 +460,10 @@ test("project marker sync fields cannot open cloud collaboration gates", async (
     "utf8",
   );
 
-  const status = await resolveProjectStatus({ cwd, env: {}, homeDir });
-
-  assert.equal(status.projectId, "ready_cloud_project");
-  assert.equal(status.collaboration.mode, "local-only");
-  assert.equal(status.collaboration.webOpenable, false);
-  assert.equal(status.collaboration.roomAuthority, "local");
-  assert.equal(status.collaboration.cloudProjectRoom, "disabled");
-  assert.deepEqual(status.collaboration.syncReadiness, {
-    status: "disabled",
-    ready: false,
-    required: ["canvas", "asset-metadata", "revision-content"],
-    missing: ["canvas", "asset-metadata", "revision-content"],
-  });
-  assert.deepEqual(status.collaboration.actions.openInWeb, {
-    allowed: false,
-    reason: "project-is-local-only",
-    requirements: ["enable-sync"],
-  });
-  assert.deepEqual(status.collaboration.actions.shareProject, {
-    allowed: false,
-    reason: "project-is-local-only",
-    requirements: ["enable-sync"],
-  });
-  assert.deepEqual(status.collaboration.syncPolicy, expectedSyncPolicy("disabled-until-enable-sync"));
+  await assert.rejects(
+    resolveProjectStatus({ cwd, env: {}, homeDir }),
+    /unsupported TOML section.*\[sync\]/i,
+  );
 });
 
 test("project status reads canonical sync readiness from the product SQLite store", async () => {
@@ -523,24 +499,7 @@ test("project status reads canonical sync readiness from the product SQLite stor
 test("project status uses canonical sync readiness supplied by the product", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
-  await mkdir(join(cwd, ".clash"), { recursive: true });
-  await writeFile(
-    join(cwd, ".clash", "project.toml"),
-    [
-      "schema_version = 1",
-      'project_id = "missing_revision_content_project"',
-      'store = "managed"',
-      "",
-      "[sync]",
-      'mode = "cloud-sync"',
-      "",
-      "[sync.capabilities]",
-      "canvas = true",
-      "asset_metadata = true",
-      "",
-    ].join("\n"),
-    "utf8",
-  );
+  await initProject({ cwd, projectId: "missing_revision_content_project" });
 
   const status = await resolveProjectStatus({
     cwd,
@@ -588,7 +547,7 @@ test("project status identifies the current marker workspace separately from the
 
   assert.deepEqual(status.currentWorkspace, {
     schemaVersion: 1,
-    role: "project-reference-workspace",
+    role: "project-reference-and-draft-workspace",
     currentWorkingDirectory: childCwd,
     markerPath: initialized.markerPath,
     markerRoot: cwd,
@@ -601,6 +560,9 @@ test("project status identifies the current marker workspace separately from the
     deletionDeletesProjectState: false,
   });
   assert.equal(status.projectStore, status.projectWorkspaceRoot);
+  assert.equal(status.storage.workspace.root, cwd);
+  assert.equal(status.roots.timelines, join(cwd, "timelines"));
+  assert.equal(status.roots.projections, join(cwd, "projections"));
   assert.equal(status.storage.canonicalReplica.metadata.path, join(homeDir, ".clash", "local-api", "local.sqlite"));
 });
 

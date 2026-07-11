@@ -1,9 +1,9 @@
 import { Command } from "commander";
 import WebSocket from "ws";
-import { chmodSync, writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { chmodSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import {
-  LoroSyncClient, Canvas,
+  LoroSyncClient, DEFAULT_CANVAS_ID,
   parsePromptParts, extractAssetRefs,
   createMediaAssetCowNodeData,
   isMediaNodeType,
@@ -13,14 +13,19 @@ import { isJsonMode, printJson } from "../lib/output";
 import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
 import { apiFetch, apiJson } from "../lib/api";
 import { resolveClashRoot } from "../lib/clash-home";
-import { resolveProjectContext } from "../lib/project-context";
+import { resolveProjectContext, type ResolvedProjectContext } from "../lib/project-context";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
+import { publicAgentCommandResult } from "../lib/agent-worktree-observation";
+import {
+  forgetWorktreeObservation,
+  recordWorktreeObservation,
+  requireWorktreeObservation,
+} from "../lib/worktree-observations";
 import {
   canvasBatchDeleteReadToken,
-  canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
-  canvasDownstreamTargets,
+  isCanvasNodeImmutable,
   validateCanvasBatchDelete,
   validateCanvasBatchDeleteReadProof,
   validateCanvasCheckpointPatch,
@@ -33,22 +38,6 @@ import {
   type CanvasReadProofNodeLike,
 } from "../lib/canvas-update-guardrails";
 import { requireDestructiveConfirmation } from "../lib/destructive-guardrails";
-import {
-  assertTimelineCas,
-  assertTimelineLockFilePath,
-  assertTimelineNotMaterializedReferenced,
-  createTimelineAppliedRevision,
-  createTimelineLock,
-  normalizeTimelineDslForYaml,
-  parseTimelineFileForApply,
-  parseTimelineLock,
-  readLoroRevisionMetadata,
-  resolveTimelineFilePath,
-  resolveTimelineLockPath,
-  timelineYamlFromNode,
-  type TimelineAppliedRevision,
-  type TimelineLock,
-} from "../lib/timeline-projection";
 
 export interface CanvasPresenceOptions {
   clientType: "cli" | "agent";
@@ -62,6 +51,12 @@ export type CanvasActor = {
   actorUserId: string;
   actorAgentId?: string;
 };
+
+let activeCanvasId = DEFAULT_CANVAS_ID;
+
+export function resolveCanvasCommandCanvasId(options: { canvas?: string } = {}): string {
+  return options.canvas?.trim() || process.env.CLASH_CANVAS_ID?.trim() || DEFAULT_CANVAS_ID;
+}
 
 export function resolveCanvasPresenceOptions(
   env: Record<string, string | undefined> = process.env,
@@ -88,25 +83,31 @@ export function resolveCanvasPresenceOptions(
  * Resolve the actor that's running this CLI invocation for Phase 0
  * attribution. There are two shapes:
  *
- *   - User-driven (default): the CLI was launched by a human with their
- *     own API token. Hit /api/v1/me to translate the token into a
- *     user id, then stamp `{actorType:'user', actorUserId:<user>}`.
+ *   - User-driven (default): resolve the local/remote product user through
+ *     /api/v1/me, then stamp `{actorType:'user', actorUserId:<user>}`.
  *   - Agent-driven: the CLI was launched by the bridge daemon as the
  *     subprocess of an ACP agent. Bridge stamps
- *     CLASH_AGENT_MEMBER_ID + CLASH_API_KEY into the env. The API token
- *     still resolves to the agent member's owner (because agent claims
- *     run under the user's bearer); we stamp `{actorType:'agent',
+ *     CLASH_AGENT_MEMBER_ID into the env. We stamp `{actorType:'agent',
  *     actorAgentId:<cm>, actorUserId:<owner>}` so the resulting node
  *     attributes back to the human accountable for it.
  *
  * Both lookups go through the same /api/v1/me endpoint — agent-driven
  * just additionally carries the agent member id from the env.
  */
-export async function resolveCanvasActor(): Promise<CanvasActor> {
+export async function resolveCanvasActor(
+  env: Record<string, string | undefined> = process.env,
+): Promise<CanvasActor> {
+  const configuredUserId = env.CLASH_USER_ID?.trim();
+  const configuredAgentId = env.CLASH_AGENT_MEMBER_ID?.trim();
+  if (configuredUserId) {
+    return configuredAgentId
+      ? { actorType: "agent", actorUserId: configuredUserId, actorAgentId: configuredAgentId }
+      : { actorType: "user", actorUserId: configuredUserId };
+  }
   const me = await apiJson<{ id: string }>("/api/v1/me").catch((e) => {
-    throw new Error(`Failed to resolve user from API key: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(`Failed to resolve the current Clash user: ${e instanceof Error ? e.message : String(e)}`);
   });
-  const agentMemberId = process.env.CLASH_AGENT_MEMBER_ID;
+  const agentMemberId = configuredAgentId;
   if (agentMemberId) {
     return { actorType: "agent", actorUserId: me.id, actorAgentId: agentMemberId };
   }
@@ -118,13 +119,84 @@ export async function resolveCanvasProjectId(options: {
   cwd?: string;
   env?: Record<string, string | undefined>;
 } = {}): Promise<string> {
+  return (await resolveCanvasProjectContext(options)).projectId;
+}
+
+export async function resolveCanvasProjectContext(options: {
+  project?: string;
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+} = {}): Promise<ResolvedProjectContext> {
   try {
-    const context = await resolveProjectContext(options);
-    return context.projectId;
+    return await resolveProjectContext(options);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(2);
   }
+}
+
+function agentClientType(): "cli" | "agent" {
+  return resolveCanvasPresenceOptions().clientType;
+}
+
+async function recordCanvasObservation(options: {
+  context: ResolvedProjectContext;
+  entityKind: string;
+  entityId: string;
+  revision: unknown;
+}): Promise<void> {
+  if (agentClientType() !== "agent") return;
+  if (!options.context.workspaceRoot) {
+    throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+  }
+  if (typeof options.revision !== "string" || !options.revision.trim()) {
+    throw new Error("Host read did not return an entity version.");
+  }
+  const revision = options.revision.trim();
+  await recordWorktreeObservation({
+    workspaceRoot: options.context.workspaceRoot,
+    projectId: options.context.projectId,
+    entityKind: options.entityKind,
+    entityId: options.entityId,
+    revision,
+  });
+}
+
+async function requireCanvasObservation(options: {
+  context: ResolvedProjectContext;
+  entityKind: string;
+  entityId: string;
+}): Promise<string | undefined> {
+  if (agentClientType() !== "agent") return undefined;
+  if (!options.context.workspaceRoot) {
+    throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first.");
+  }
+  const observation = await requireWorktreeObservation({
+    workspaceRoot: options.context.workspaceRoot,
+    projectId: options.context.projectId,
+    entityKind: options.entityKind,
+    entityId: options.entityId,
+  });
+  if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
+  return observation.revision;
+}
+
+async function forgetCanvasObservation(options: {
+  context: ResolvedProjectContext;
+  entityKind: string;
+  entityId: string;
+}): Promise<void> {
+  if (agentClientType() !== "agent" || !options.context.workspaceRoot) return;
+  await forgetWorktreeObservation({
+    workspaceRoot: options.context.workspaceRoot,
+    projectId: options.context.projectId,
+    entityKind: options.entityKind,
+    entityId: options.entityId,
+  });
+}
+
+function publicMutationResult(value: Record<string, unknown>): Record<string, unknown> {
+  return publicAgentCommandResult(value);
 }
 
 /**
@@ -138,12 +210,14 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   const client = new LoroSyncClient({
     serverUrl: wsUrl,
     projectId,
+    canvasId: activeCanvasId,
     token: apiKey,
     ...resolveCanvasPresenceOptions(),
     WebSocket: WebSocket as any,
   });
 
   await client.connect();
+  client.selectCanvas(activeCanvasId);
   return client;
 }
 
@@ -152,7 +226,7 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
  */
 async function runCommand(projectId: string, cmd: object): Promise<any> {
   if (isDaemonRunning(projectId)) {
-    return sendCommand(projectId, cmd);
+    return sendCommand(projectId, { ...cmd, canvasId: activeCanvasId });
   }
   return null; // caller should fall back
 }
@@ -172,26 +246,12 @@ function normalizeNodeIds(nodeIds: unknown): string[] {
 }
 
 function listCanvasReadProofEdges(client: LoroSyncClient): CanvasReadProofEdgeLike[] {
-  const edgesMap = client.doc.getMap("edges");
-  const edges: CanvasReadProofEdgeLike[] = [];
-  for (const [edgeId, rawEdge] of edgesMap.entries()) {
-    if (!isRecord(rawEdge)) continue;
-    const edge = rawEdge as Record<string, unknown>;
-    edges.push({
-      id: edgeId,
-      ...edge,
-    });
-  }
-  return edges;
+  return client.canvas.listEdges().map((edge) => ({ ...edge }));
 }
 
-function listCanvasEdgesWithReadTokens(client: LoroSyncClient): { edges: CanvasReadProofEdgeLike[]; readToken: string } {
+function listCanvasEdgesWithVersion(client: LoroSyncClient): { edges: CanvasReadProofEdgeLike[]; version: string } {
   const baseEdges = listCanvasReadProofEdges(client);
-  const edges = baseEdges.map((edge) => ({
-    ...edge,
-    readToken: canvasEdgeReadToken(edge),
-  }));
-  return { edges, readToken: canvasEdgesReadToken(baseEdges) };
+  return { edges: baseEdges, version: canvasEdgesReadToken(baseEdges) };
 }
 
 function readCanvasBatchDeletePlan(client: LoroSyncClient, requestedNodeIds: string[]): {
@@ -237,14 +297,18 @@ export async function replaceCanvasAssetNode(options: {
   project?: string;
   nodeId: string;
   assetId: string;
-  ifMatch?: string;
   newNode?: string;
   label?: string;
-  force?: boolean;
 }): Promise<Record<string, unknown>> {
-  const projectId = await resolveCanvasProjectId({ project: options.project });
+  const context = await resolveCanvasProjectContext({ project: options.project });
+  const projectId = context.projectId;
   const assetId = String(options.assetId ?? "").trim();
   if (!assetId) throw new Error("asset id is required");
+  const observedVersion = await requireCanvasObservation({
+    context,
+    entityKind: "canvas-node",
+    entityId: options.nodeId,
+  });
 
   const daemonResult = await runCommand(projectId, {
     action: "asset_cow_replace",
@@ -252,17 +316,22 @@ export async function replaceCanvasAssetNode(options: {
     assetId,
     newNodeId: options.newNode,
     label: options.label,
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    ifMatch: options.ifMatch,
-    force: options.force === true,
+    actorClientType: agentClientType(),
+    observedVersion,
+    ifMatch: observedVersion,
   });
   if (daemonResult) {
     if (daemonResult.error) throw new Error(daemonResult.error);
-    return daemonResult;
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: String(daemonResult.newNodeId ?? daemonResult.nodeId),
+      revision: daemonResult.readToken ?? daemonResult.version,
+    });
+    return publicMutationResult(daemonResult);
   }
   const hostWrite = assertAgentHostWritePath({
     actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: options.force === true,
     operation: "canvas media replacement",
     readCommand: "clash canvas get --json",
   });
@@ -275,15 +344,6 @@ export async function replaceCanvasAssetNode(options: {
     if (!isMediaNodeType(node.type)) {
       throw new Error(`Node ${options.nodeId} has type "${node.type}", expected image, video, or audio`);
     }
-    const readProof = validateCanvasReadProof({
-      operation: "update",
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      node,
-      expectedReadToken: options.ifMatch,
-      force: options.force === true,
-    });
-    if (!readProof.ok) throw new Error(readProof.error);
-
     const newNodeId = typeof options.newNode === "string" && options.newNode.trim()
       ? options.newNode.trim()
       : crypto.randomUUID().slice(0, 8);
@@ -314,8 +374,6 @@ export async function replaceCanvasAssetNode(options: {
       sourceAssetId,
       assetId,
       lineageEdge: { source: options.nodeId, target: newNodeId, type: "copy-on-write" },
-      ...(newNode ? { readToken: canvasNodeReadToken(newNode) } : {}),
-      ...(options.force === true ? { forced: true } : {}),
     };
   } finally {
     await client.disconnect();
@@ -410,23 +468,27 @@ canvasCommand
 
 canvasCommand
   .command("edges")
-  .description("List canvas edges with read tokens for agent CAS")
+  .description("List canvas edges")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
     const daemonResult = await runCommand(projectId, { action: "edges" });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       const edges = Array.isArray(daemonResult.edges) ? daemonResult.edges : [];
-      const readToken = typeof daemonResult.readToken === "string" ? daemonResult.readToken : undefined;
-      if (isJsonMode(options)) { printJson({ edges, ...(readToken ? { readToken } : {}) }); }
+      await recordCanvasObservation({
+        context,
+        entityKind: "canvas-edges",
+        entityId: "graph",
+        revision: daemonResult.readToken ?? daemonResult.version,
+      });
+      if (isJsonMode(options)) { printJson(edges); }
       else {
         for (const edge of edges) {
           console.log(`${edge.id}  ${edge.source} -> ${edge.target}`);
-          if (edge.readToken) console.log(`  Read token: ${edge.readToken}`);
         }
-        if (readToken) console.log(`\nGraph read token: ${readToken}`);
         console.log(`\n${edges.length} edge(s)`);
       }
       return;
@@ -434,18 +496,21 @@ canvasCommand
 
     const client = await connectToProject(projectId);
     try {
-      const { edges, readToken } = listCanvasEdgesWithReadTokens(client);
+      const { edges, version } = listCanvasEdgesWithVersion(client);
+      await recordCanvasObservation({
+        context,
+        entityKind: "canvas-edges",
+        entityId: "graph",
+        revision: version,
+      });
       if (isJsonMode(options)) {
-        printJson({ edges, readToken });
+        printJson(edges);
       } else if (edges.length === 0) {
         console.log("No edges found.");
-        console.log(`Graph read token: ${readToken}`);
       } else {
         for (const edge of edges) {
           console.log(`${edge.id}  ${edge.source} -> ${edge.target}`);
-          if (edge.readToken) console.log(`  Read token: ${edge.readToken}`);
         }
-        console.log(`\nGraph read token: ${readToken}`);
         console.log(`\n${edges.length} edge(s)`);
       }
     } finally {
@@ -455,7 +520,7 @@ canvasCommand
 
 canvasCommand
   .command("delete-plan")
-  .description("Read a graph-aware batch delete plan and CAS token")
+  .description("Read a graph-aware batch delete plan")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--node <id>", "Node ID to include in the delete batch; repeat for multiple nodes", collectNodeOption, [] as string[])
   .option("--json", "Output as JSON")
@@ -466,7 +531,9 @@ canvasCommand
       process.exit(1);
     }
 
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
+    const batchId = nodeIds.join(",");
     const daemonResult = await runCommand(projectId, {
       action: "batch_delete_plan",
       nodeIds,
@@ -474,10 +541,15 @@ canvasCommand
     });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) printJson(daemonResult);
+      await recordCanvasObservation({
+        context,
+        entityKind: "canvas-node-batch",
+        entityId: batchId,
+        revision: daemonResult.readToken ?? daemonResult.version,
+      });
+      if (isJsonMode(options)) printJson(publicMutationResult(daemonResult));
       else {
         console.log(`Batch delete plan: ${daemonResult.nodeIds?.join(", ") ?? nodeIds.join(", ")}`);
-        console.log(`Read token: ${daemonResult.readToken}`);
       }
       return;
     }
@@ -485,10 +557,18 @@ canvasCommand
     const client = await connectToProject(projectId);
     try {
       const plan = readCanvasBatchDeletePlan(client, nodeIds);
-      if (isJsonMode(options)) printJson(plan);
+      await recordCanvasObservation({
+        context,
+        entityKind: "canvas-node-batch",
+        entityId: batchId,
+        revision: plan.readToken,
+      });
+      if (isJsonMode(options)) {
+        const { readToken: _readToken, ...publicPlan } = plan;
+        printJson(publicPlan);
+      }
       else {
         console.log(`Batch delete plan: ${plan.nodeIds.join(", ")}`);
-        console.log(`Read token: ${plan.readToken}`);
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -558,6 +638,7 @@ function printNodeInfo(n: any) {
   console.log(`Label:    ${(n.data?.label as string) || "(none)"}`);
   console.log(`Status:   ${(n.data?.status as string) || "(none)"}`);
   console.log(`Position: (${n.position.x}, ${n.position.y})`);
+  console.log(`Immutable: ${n.immutable === true ? "yes" : "no"}`);
   if (n.data?.content) console.log(`Content:  ${n.data.content}`);
   if (n.data?.description) console.log(`Desc:     ${n.data.description}`);
 }
@@ -570,24 +651,43 @@ canvasCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     let node: any = null;
-    let readToken: string | null = null;
+    let observation: string | null = null;
+    let immutable = false;
 
-    const projectId = await resolveCanvasProjectId(options);
-    const daemonResult = await runCommand(projectId, { action: "get", nodeId: options.node });
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
+    const daemonResult = await runCommand(projectId, {
+      action: "get",
+      projectId,
+      nodeId: options.node,
+      actorClientType: agentClientType(),
+    });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
       node = daemonResult.node;
-      readToken = typeof daemonResult.readToken === "string" ? daemonResult.readToken : null;
+      immutable = daemonResult.immutable === true;
+      observation = typeof daemonResult.readToken === "string"
+        ? daemonResult.readToken
+        : typeof daemonResult.version === "string"
+          ? daemonResult.version
+          : null;
     } else {
       const client = await connectToProject(projectId);
       try {
         node = client.readNode(options.node);
         if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
+        immutable = isCanvasNodeImmutable({ nodeId: options.node, edges: client.canvas.listEdges() });
       } finally {
         await client.disconnect();
       }
     }
-    readToken = readToken ?? canvasNodeReadToken(node);
+    observation = observation ?? canvasNodeReadToken(node);
+    await recordCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: options.node,
+      revision: observation,
+    });
 
     // For media nodes, download the asset via D1 assetId.
     const assetId = typeof node.data?.assetId === "string" ? node.data.assetId : undefined;
@@ -598,10 +698,9 @@ canvasCommand
     }
 
     if (isJsonMode(options)) {
-      printJson({ ...node, readToken, ...(assetPath ? { assetPath } : {}) });
+      printJson({ ...node, immutable: immutable === true, ...(assetPath ? { assetPath } : {}) });
     } else {
-      printNodeInfo(node);
-      console.log(`Read token: ${readToken}`);
+      printNodeInfo({ ...node, immutable: immutable === true });
       if (assetPath) {
         console.log(`Asset:    ${assetPath}`);
         console.log(`\nTo view this ${node.type}, open or read the file at the path above.`);
@@ -971,8 +1070,7 @@ canvasCommand
 
     const client = await connectToProject(projectId);
     try {
-      const canvas = new Canvas(client.doc, () => {});
-      const r = canvas.execute(options.node, () => crypto.randomUUID().slice(0, 8));
+      const r = client.canvas.execute(options.node, () => crypto.randomUUID().slice(0, 8));
       if (r.error) { console.error(`Error: ${r.error}`); process.exit(1); }
       if (isJsonMode(options)) {
         printJson({ executed: true, kind: r.kind, childNodeId: r.childNodeId, childNodeType: r.childNodeType });
@@ -983,322 +1081,6 @@ canvasCommand
       await client.disconnect();
     }
   });
-
-// ─── timeline (pull / push) ───────────────────────────────
-//
-// VideoEditorNode owns a `timelineDsl` blob under `node.data.timelineDsl`
-// (tracks + fps + composition size + duration; shape defined in
-// `@master-clash/remotion-core` as `TimelineDsl`). The canvas-editor agent
-// edits videos by:
-//   1. `clash canvas timeline pull --node <id> -o timeline.yaml`
-//   2. opening timeline.yaml in their Read/Edit toolchain
-//   3. `clash canvas timeline push --node <id> -i timeline.yaml`
-//
-// YAML, not JSON: matches the agent-facing format defined in
-// `@clash/shared-types/timeline-yaml` (`timelineDsl{To,From}Yaml`). That
-// module already implements the full validator + relative-position
-// resolver ("prev", "prev+15", "clip-A-30") used by the in-app
-// agent tools, so the CLI just delegates. Keeps the agent surface and
-// the in-app surface byte-identical instead of inventing a parallel
-// JSON dialect that drifts.
-
-const timelineCommand = canvasCommand
-  .command("timeline")
-  .description(
-    `Round-trip a VideoEditorNode's timeline as a YAML file (edit-on-disk).
-
-Workflow:
-  clash canvas timeline pull --node <id> -o timeline.yaml   # export
-  # edit timeline.yaml with your normal Read/Edit tools
-  clash canvas timeline push --node <id> -i timeline.yaml   # write back
-
-CAS:
-  pull with -o also writes timeline.lock.json. push refuses to write if the
-  canvas timeline changed after pull unless --force is passed.
-
-Shape (one track, two image clips back-to-back):
-  compositionWidth: 1920
-  compositionHeight: 1080
-  fps: 30
-  durationInFrames: 300
-  tracks:
-    - id: track-1
-      name: Video
-      items:
-        - id: shot-A
-          type: image
-          from: 0
-          durationInFrames: 150
-          sourceNodeId: abc12345
-        - id: shot-B
-          type: image
-          from: prev          # = previous item's end
-          durationInFrames: 150
-          sourceNodeId: def67890
-
-\`from\` accepts numbers (absolute frame), the literal "prev" (the
-previous item on the same track), or "<id>±N" (offset from another
-item's end). All resolved to absolute frames on push. \`sourceNodeId\`
-points at a canvas asset node — find candidates with
-\`clash canvas list --type image --json\`.`,
-  );
-
-// ─── timeline pull ─────────────────────────────────────────
-
-timelineCommand
-  .command("pull")
-  .description("Export the node's timelineDsl as YAML to stdout or a file")
-  .requiredOption("--node <id>", "VideoEditorNode ID")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("-o, --output <path>", "Write to this file instead of stdout")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    const node = await readNode(projectId, options.node);
-    if (!node) {
-      console.error(`Node not found: ${options.node}`);
-      process.exit(1);
-    }
-    if (node.type !== "video-editor") {
-      // Soft warning, not a hard error — power users might keep timeline
-      // blobs on non-editor nodes during migrations. Surface it loudly so
-      // agents notice and pick a different node.
-      process.stderr.write(
-        `warning: node ${options.node} has type "${node.type}", expected "video-editor". ` +
-          `Proceeding; the editor may ignore the result.\n`,
-      );
-    }
-
-    const dsl = normalizeTimelineDslForYaml(node.data?.timelineDsl);
-    const yaml = timelineYamlFromNode(node);
-
-    if (options.output) {
-      const filePath = resolveTimelineFilePath({ cwd: process.cwd(), file: options.output });
-      const lockPath = resolveTimelineLockPath({ cwd: process.cwd(), file: options.output });
-      const lock = createTimelineLock({
-        projectId,
-        nodeId: options.node,
-        filePath,
-        dsl,
-      });
-      mkdirSync(dirname(filePath), { recursive: true });
-      mkdirSync(dirname(lockPath), { recursive: true });
-      writeFileSync(filePath, yaml, "utf-8");
-      writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf-8");
-      process.stderr.write(`wrote ${filePath}\nwrote ${lockPath}\n`);
-    } else {
-      process.stdout.write(yaml);
-      process.stderr.write("warning: no CAS lock written for stdout output; push from stdin requires --lock or --force.\n");
-    }
-  });
-
-// ─── timeline push ─────────────────────────────────────────
-
-timelineCommand
-  .command("push")
-  .description("Write a timelineDsl YAML file back into the node")
-  .requiredOption("--node <id>", "VideoEditorNode ID")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("-i, --input <path>", "Read from this file (default: stdin, or '-' for stdin)")
-  .option("--lock <path>", "CAS lock path (default: input YAML sidecar)")
-  .option("--force", "Bypass CAS and intentionally overwrite the current canvas timeline")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-
-    // Read body. `-i -` and omitting `-i` both read stdin; `-i <path>` reads file.
-    const raw = readBody(options.input);
-    // Validate + resolve via the shared parser. Catches: bad YAML, missing
-    // `tracks`, items without id/type/durationInFrames, items typoed with
-    // `start`/`end` instead of `from`/`durationInFrames` (those fail the
-    // durationInFrames check), and resolves `prev` / `<id>±N` references
-    // to absolute frames.
-    const result = parseTimelineFileForApply(raw);
-    if (!result.ok) {
-      console.error(`error: ${result.error}`);
-      process.exit(1);
-    }
-    const resolved = result.dsl;
-    const lockPath = resolveTimelineApplyLockPath(options.input, options.lock);
-    const lock = options.force ? null : readTimelineLockForApply(lockPath);
-    const inputFilePath = options.input && options.input !== "-"
-      ? resolveTimelineFilePath({ cwd: process.cwd(), file: options.input })
-      : undefined;
-    const filePathCas = assertTimelineLockFilePath({
-      lock,
-      filePath: inputFilePath,
-      cwd: process.cwd(),
-      force: options.force === true,
-    });
-    if (!filePathCas.ok) {
-      console.error(filePathCas.error);
-      process.exit(1);
-    }
-
-    // Each unique source media node in the timeline gets a default
-    // canvas edge to the editor — so the graph view reflects "this
-    // editor consumes these media nodes" instead of looking like a
-    // floating island. ensure_edge is idempotent on (source, target).
-    const sources = result.sources;
-    const actor = await resolveCanvasActor();
-
-    function refreshTimelineLock(timelineRevision: TimelineAppliedRevision): void {
-      if (!lockPath || !inputFilePath) return;
-      const refreshedLock = createTimelineLock({
-        projectId,
-        nodeId: options.node,
-        filePath: inputFilePath,
-        dsl: resolved,
-        appliedRevision: timelineRevision,
-      });
-      mkdirSync(dirname(lockPath), { recursive: true });
-      writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf-8");
-    }
-
-    // Daemon path: existing `update` action merges `data` into node.data
-    // and broadcasts to the project room. timelineDsl is just one of
-    // those merged fields — same wire shape as `clash canvas update`.
-    const daemonResult = await runCommand(projectId, {
-      action: "timeline_cas_update",
-      projectId,
-      nodeId: options.node,
-      dsl: resolved,
-      expectedTimelineHash: lock?.timelineHash,
-      expectedTimelineFilePath: lock?.filePath,
-      ...(inputFilePath ? { cwd: process.cwd(), filePath: inputFilePath } : {}),
-      actor,
-      force: options.force === true,
-    });
-    if (daemonResult) {
-      if (daemonResult.error) {
-        console.error(daemonResult.error);
-        process.exit(1);
-      }
-      let edgesAdded = 0;
-      for (const src of sources) {
-        const r = await runCommand(projectId, {
-          action: "ensure_edge",
-          source: src,
-          target: options.node,
-        });
-        if (r && !r.error && r.existed === false) edgesAdded++;
-      }
-      const timelineRevision = daemonResult.timelineRevision ?? (inputFilePath
-        ? createTimelineAppliedRevision({
-            projectId,
-            nodeId: options.node,
-            cwd: process.cwd(),
-            filePath: inputFilePath,
-            dsl: resolved,
-            parentRevisionId: lock?.appliedRevision?.revisionId,
-            actor,
-          })
-        : undefined);
-      if (timelineRevision) refreshTimelineLock(timelineRevision);
-      if (isJsonMode(options)) printJson({ ...daemonResult, edgesAdded, sources });
-      else
-        process.stderr.write(
-          `pushed timeline to ${options.node} (${sources.length} source${sources.length === 1 ? "" : "s"}, +${edgesAdded} edge${edgesAdded === 1 ? "" : "s"})${daemonResult.forced ? " (forced)" : ""}\n`,
-        );
-      return;
-    }
-
-    // One-shot fallback (no daemon connected for this project).
-    const client = await connectToProject(projectId);
-    try {
-      const current = client.readNode(options.node);
-      if (!current) {
-        console.error(`Node not found: ${options.node}`);
-        process.exit(1);
-      }
-      const cas = assertTimelineCas({
-        projectId,
-        nodeId: options.node,
-        lock,
-        currentDsl: normalizeTimelineDslForYaml(current.data?.timelineDsl),
-        force: options.force === true,
-        ...(inputFilePath ? { filePath: inputFilePath, cwd: process.cwd() } : {}),
-      });
-      if (!cas.ok) {
-        console.error(cas.error);
-        process.exit(1);
-      }
-      const reference = assertTimelineNotMaterializedReferenced({
-        nodeId: options.node,
-        nodes: client.listNodes(),
-        edges: client.canvas.listEdges(),
-        force: options.force === true,
-      });
-      if (!reference.ok) {
-        console.error(reference.error);
-        process.exit(1);
-      }
-      const ok = client.updateNode(options.node, { timelineDsl: resolved });
-      if (!ok) {
-        console.error(`Node not found: ${options.node}`);
-        process.exit(1);
-      }
-      let edgesAdded = 0;
-      const existing = client.canvas.listEdges();
-      for (const src of sources) {
-        const pair = existing.find((e) => e.source === src && e.target === options.node);
-        if (pair) continue;
-        const edgeId = `e-${src}-${options.node}-${crypto.randomUUID().slice(0, 4)}`;
-        client.canvas.insertEdge(edgeId, src, options.node, "default");
-        edgesAdded++;
-      }
-      const timelineRevision = inputFilePath
-        ? createTimelineAppliedRevision({
-            projectId,
-            nodeId: options.node,
-            cwd: process.cwd(),
-            filePath: inputFilePath,
-            dsl: resolved,
-            parentRevisionId: lock?.appliedRevision?.revisionId,
-            actor,
-            ...readLoroRevisionMetadata(client.doc),
-          })
-        : undefined;
-      if (timelineRevision) refreshTimelineLock(timelineRevision);
-      if (isJsonMode(options)) printJson({
-        updated: true,
-        nodeId: options.node,
-        edgesAdded,
-        sources,
-        ...(options.force === true ? { forced: true } : {}),
-      });
-      else
-        process.stderr.write(
-          `pushed timeline to ${options.node} (${sources.length} source${sources.length === 1 ? "" : "s"}, +${edgesAdded} edge${edgesAdded === 1 ? "" : "s"})${options.force === true ? " (forced)" : ""}\n`,
-        );
-    } finally {
-      await client.disconnect();
-    }
-  });
-
-/** Read input from a path, "-" (stdin), or stdin when unspecified. */
-function readBody(input?: string): string {
-  if (!input || input === "-") return readFileSync(0, "utf-8");
-  return readFileSync(input, "utf-8");
-}
-
-function resolveTimelineApplyLockPath(input?: string, lock?: string): string | null {
-  if (lock) return resolveTimelineLockPath({ cwd: process.cwd(), lock });
-  if (!input || input === "-") return null;
-  return resolveTimelineLockPath({ cwd: process.cwd(), file: input });
-}
-
-function readTimelineLockForApply(lockPath: string | null): TimelineLock {
-  if (!lockPath) {
-    console.error("Missing timeline CAS lock. Push from stdin requires --lock, or pass --force to intentionally overwrite.");
-    process.exit(1);
-  }
-  try {
-    return parseTimelineLock(readFileSync(lockPath, "utf-8"));
-  } catch (error) {
-    console.error(`Failed to read timeline CAS lock at ${lockPath}: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
-  }
-}
 
 /** Read one node via daemon if possible, otherwise one-shot LoroSync. */
 async function readNode(
@@ -1329,8 +1111,6 @@ canvasCommand
   .option("--label <label>", "New label")
   .option("--content <content>", "New content")
   .option("--asset-id <id>", "Bind an existing asset (image/video/audio) to this node — its preview will render")
-  .option("--if-match <readToken>", "Require the node read token from `clash canvas get --json` before writing")
-  .option("--force", "Bypass the agent read-token check only; content/checkpoint guardrails still apply")
   .option(
     "--data <key=value...>",
     "Arbitrary node-data field (repeatable). Example: --data status=completed --data description='hello'",
@@ -1343,7 +1123,19 @@ canvasCommand
   )
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
+    let observedVersion: string | undefined;
+    try {
+      observedVersion = await requireCanvasObservation({
+        context,
+        entityKind: "canvas-node",
+        entityId: options.node,
+      });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
     const extraData: Record<string, unknown> = {};
     if (options.assetId) extraData.assetId = options.assetId;
     for (const [k, v] of (options.data ?? [])) extraData[k] = v;
@@ -1367,19 +1159,24 @@ canvasCommand
       label: options.label,
       content: options.content,
       data: Object.keys(extraData).length ? extraData : undefined,
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      ifMatch: options.ifMatch,
-      force: options.force === true,
+      actorClientType: agentClientType(),
+      observedVersion,
+      ifMatch: observedVersion,
     });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) { printJson(daemonResult); }
+      await recordCanvasObservation({
+        context,
+        entityKind: "canvas-node",
+        entityId: options.node,
+        revision: daemonResult.readToken ?? daemonResult.version,
+      });
+      if (isJsonMode(options)) { printJson(publicMutationResult(daemonResult)); }
       else console.log(`Updated node: ${options.node}`);
       return;
     }
     const hostWrite = assertAgentHostWritePath({
       actorClientType: resolveCanvasPresenceOptions().clientType,
-      force: options.force === true,
       operation: "canvas update",
       readCommand: "clash canvas get --json",
     });
@@ -1392,14 +1189,6 @@ canvasCommand
       if (typeof options.content === "string") updates.content = options.content;
       const node = client.readNode(options.node);
       if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      const readProof = validateCanvasReadProof({
-        operation: "update",
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        node,
-        expectedReadToken: options.ifMatch,
-        force: options.force === true,
-      });
-      if (!readProof.ok) { console.error(readProof.error); process.exit(1); }
       const edges = client.canvas.listEdges();
       const contentGuard = validateCanvasContentPatch({
         nodeId: options.node,
@@ -1431,8 +1220,6 @@ canvasCommand
       if (isJsonMode(options)) printJson({
         updated: true,
         nodeId: options.node,
-        ...(updatedNode ? { readToken: canvasNodeReadToken(updatedNode) } : {}),
-        ...(options.force === true ? { forced: true } : {}),
       });
       else console.log(`Updated node: ${options.node}`);
     } finally {
@@ -1448,10 +1235,8 @@ canvasCommand
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Source image/video/audio node ID")
   .requiredOption("--asset <assetId>", "Replacement immutable asset ID")
-  .option("--if-match <readToken>", "Require the source node read token from `clash canvas get --json` before forking")
   .option("--new-node <id>", "Optional node ID for the copied media node")
   .option("--label <label>", "Optional label for the copied media node")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     try {
@@ -1459,10 +1244,8 @@ canvasCommand
         project: options.project,
         nodeId: options.node,
         assetId: options.asset,
-        ifMatch: options.ifMatch,
         newNode: options.newNode,
         label: options.label,
-        force: options.force === true,
       });
       if (isJsonMode(options)) printJson(result);
       else console.log(`Created copy-on-write media node: ${result.newNodeId}`);
@@ -1472,16 +1255,61 @@ canvasCommand
     }
   });
 
+canvasCommand
+  .command("copy")
+  .description("Create a mutable copy of a node while preserving existing downstream references")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .requiredOption("--node <id>", "Source node ID")
+  .option("--new-node <id>", "Optional node ID for the copy")
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    const observedVersion = await requireCanvasObservation({
+      context,
+      entityKind: "canvas-node",
+      entityId: options.node,
+    });
+    const daemonResult = await runCommand(context.projectId, {
+      action: "copy_node",
+      nodeId: options.node,
+      newNodeId: options.newNode,
+      actorClientType: agentClientType(),
+      observedVersion,
+      ifMatch: observedVersion,
+    });
+    if (daemonResult) {
+      if (daemonResult.error) {
+        console.error(daemonResult.error);
+        process.exit(1);
+      }
+      await recordCanvasObservation({
+        context,
+        entityKind: "canvas-node",
+        entityId: String(daemonResult.newNodeId ?? daemonResult.nodeId),
+        revision: daemonResult.readToken ?? daemonResult.version,
+      });
+      if (isJsonMode(options)) printJson(publicMutationResult(daemonResult));
+      else console.log(`Created copy-on-write node: ${daemonResult.newNodeId}`);
+      return;
+    }
+
+    const hostWrite = assertAgentHostWritePath({
+      actorClientType: agentClientType(),
+      operation: "canvas copy",
+      readCommand: "clash canvas get --json",
+    });
+    console.error(hostWrite.ok ? "Canvas copy requires the local host daemon." : hostWrite.error);
+    process.exit(1);
+  });
+
 // ─── delete ───────────────────────────────────────────────
 
 canvasCommand
   .command("delete-batch")
-  .description("Delete multiple canvas nodes atomically with a graph-aware CAS token")
+  .description("Delete multiple canvas nodes atomically after reading a graph-aware plan")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--node <id>", "Node ID to delete; repeat for multiple nodes", collectNodeOption, [] as string[])
   .option("--yes", "Confirm deletion without an interactive prompt")
-  .option("--force", "Delete even if the batch would orphan downstream references or bypass the agent read-token check")
-  .option("--if-match <readToken>", "Require the batch read token from `clash canvas delete-plan --json` before deleting")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const nodeIds = normalizeNodeIds(options.node);
@@ -1498,29 +1326,42 @@ canvasCommand
       process.exit(1);
     }
 
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
+    const batchId = nodeIds.join(",");
+    let observedVersion: string | undefined;
+    try {
+      observedVersion = await requireCanvasObservation({
+        context,
+        entityKind: "canvas-node-batch",
+        entityId: batchId,
+      });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
     const daemonResult = await runCommand(projectId, {
       action: "delete_batch",
       nodeIds,
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      ifMatch: options.ifMatch,
-      force: options.force === true,
+      actorClientType: agentClientType(),
+      observedVersion,
+      ifMatch: observedVersion,
     });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) printJson(daemonResult);
+      await forgetCanvasObservation({ context, entityKind: "canvas-node-batch", entityId: batchId });
+      for (const nodeId of nodeIds) {
+        await forgetCanvasObservation({ context, entityKind: "canvas-node", entityId: nodeId });
+      }
+      if (isJsonMode(options)) printJson(publicMutationResult(daemonResult));
       else {
         console.log(`Deleted node batch: ${nodeIds.join(", ")}`);
-        if (daemonResult.forced && Array.isArray(daemonResult.orphanedReferences) && daemonResult.orphanedReferences.length > 0) {
-          console.log(`Forced: orphaned downstream refs ${daemonResult.orphanedReferences.join(", ")}`);
-        }
       }
       return;
     }
 
     const hostWrite = assertAgentHostWritePath({
       actorClientType: resolveCanvasPresenceOptions().clientType,
-      force: options.force === true,
       operation: "canvas batch delete",
       readCommand: "clash canvas delete-plan --node <id> --node <id> --json",
     });
@@ -1529,22 +1370,12 @@ canvasCommand
     const client = await connectToProject(projectId);
     try {
       const plan = readCanvasBatchDeletePlan(client, nodeIds);
-      const readProof = validateCanvasBatchDeleteReadProof({
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        nodes: plan.nodes,
-        edges: plan.edges,
-        expectedReadToken: options.ifMatch,
-        force: options.force === true,
-      });
-      if (!readProof.ok) { console.error(readProof.error); process.exit(1); }
       const guardrailEdges = canvasGuardrailEdgesFromReadProof(plan.edges);
       const deleteGuard = validateCanvasBatchDelete({
         nodeIds: plan.nodeIds,
         edges: guardrailEdges,
-        force: options.force === true,
       });
       if (!deleteGuard.ok) { console.error(deleteGuard.error); process.exit(1); }
-      const orphanedReferences = plan.nodeIds.flatMap((nodeId) => canvasDownstreamTargets(nodeId, guardrailEdges));
       const result = client.deleteNodes(plan.nodeIds);
       if (result.deletedNodeIds.length === 0) {
         console.error(`Node(s) not found: ${plan.nodeIds.join(", ")}`);
@@ -1555,14 +1386,10 @@ canvasCommand
         nodeIds: plan.nodeIds,
         deletedNodeIds: result.deletedNodeIds,
         deletedEdgeIds: result.deletedEdgeIds,
-        ...(options.force === true ? { forced: true, orphanedReferences } : {}),
       };
       if (isJsonMode(options)) printJson(payload);
       else {
         console.log(`Deleted node batch: ${plan.nodeIds.join(", ")}`);
-        if (options.force === true && orphanedReferences.length > 0) {
-          console.log(`Forced: orphaned downstream refs ${orphanedReferences.join(", ")}`);
-        }
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -1578,8 +1405,6 @@ canvasCommand
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .requiredOption("--node <id>", "Node ID")
   .option("--yes", "Confirm deletion without an interactive prompt")
-  .option("--force", "Delete even if this node has downstream references")
-  .option("--if-match <readToken>", "Require the node read token from `clash canvas get --json` before deleting")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const confirmation = requireDestructiveConfirmation(
@@ -1591,28 +1416,37 @@ canvasCommand
       process.exit(1);
     }
 
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
+    let observedVersion: string | undefined;
+    try {
+      observedVersion = await requireCanvasObservation({
+        context,
+        entityKind: "canvas-node",
+        entityId: options.node,
+      });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
     const daemonResult = await runCommand(projectId, {
       action: "delete",
       nodeId: options.node,
-      actorClientType: resolveCanvasPresenceOptions().clientType,
-      ifMatch: options.ifMatch,
-      force: options.force === true,
+      actorClientType: agentClientType(),
+      observedVersion,
+      ifMatch: observedVersion,
     });
     if (daemonResult) {
       if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
-      if (isJsonMode(options)) { printJson(daemonResult); }
+      await forgetCanvasObservation({ context, entityKind: "canvas-node", entityId: options.node });
+      if (isJsonMode(options)) { printJson(publicMutationResult(daemonResult)); }
       else {
         console.log(`Deleted node: ${options.node}`);
-        if (daemonResult.forced && Array.isArray(daemonResult.orphanedReferences) && daemonResult.orphanedReferences.length > 0) {
-          console.log(`Forced: orphaned downstream refs ${daemonResult.orphanedReferences.join(", ")}`);
-        }
       }
       return;
     }
     const hostWrite = assertAgentHostWritePath({
       actorClientType: resolveCanvasPresenceOptions().clientType,
-      force: options.force === true,
       operation: "canvas delete",
       readCommand: "clash canvas get --json",
     });
@@ -1622,35 +1456,21 @@ canvasCommand
     try {
       const node = client.readNode(options.node);
       if (!node) { console.error(`Node not found: ${options.node}`); process.exit(1); }
-      const readProof = validateCanvasReadProof({
-        operation: "delete",
-        actorClientType: resolveCanvasPresenceOptions().clientType,
-        node,
-        expectedReadToken: options.ifMatch,
-        force: options.force === true,
-      });
-      if (!readProof.ok) { console.error(readProof.error); process.exit(1); }
       const edges = client.canvas.listEdges();
       const deleteGuard = validateCanvasDelete({
         nodeId: options.node,
         edges,
-        force: options.force === true,
       });
       if (!deleteGuard.ok) { console.error(deleteGuard.error); process.exit(1); }
-      const orphanedReferences = canvasDownstreamTargets(options.node, edges);
       const ok = client.deleteNode(options.node);
       if (!ok) { console.error(`Node not found: ${options.node}`); process.exit(1); }
       const payload = {
         deleted: true,
         nodeId: options.node,
-        ...(options.force === true ? { forced: true, orphanedReferences } : {}),
       };
       if (isJsonMode(options)) printJson(payload);
       else {
         console.log(`Deleted node: ${options.node}`);
-        if (options.force === true && orphanedReferences.length > 0) {
-          console.log(`Forced: orphaned downstream refs ${orphanedReferences.join(", ")}`);
-        }
       }
     } finally {
       await client.disconnect();
@@ -1702,3 +1522,13 @@ canvasCommand
       await client.disconnect();
     }
   });
+
+for (const command of canvasCommand.commands) {
+  if (!command.options.some((option) => option.long === "--canvas")) {
+    command.option("--canvas <id>", "Canvas ID (defaults to main or $CLASH_CANVAS_ID)");
+  }
+}
+
+canvasCommand.hook("preAction", (_command, actionCommand) => {
+  activeCanvasId = resolveCanvasCommandCanvasId(actionCommand.opts());
+});

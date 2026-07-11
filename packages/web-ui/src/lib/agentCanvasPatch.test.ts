@@ -91,7 +91,6 @@ describe("parseAgentCanvasPatch", () => {
           type: "default",
         },
         ifMatch: "edges-v1:graph-read",
-        force: true,
       },
     ]);
   });
@@ -124,7 +123,6 @@ describe("parseAgentCanvasPatch", () => {
           },
         },
         ifMatch: "edge-v1:update-read",
-        force: true,
       },
     ]);
   });
@@ -149,7 +147,6 @@ describe("parseAgentCanvasPatch", () => {
           id: "agent-node-1",
         },
         ifMatch: "node-v1:delete-read",
-        force: true,
       },
     ]);
   });
@@ -174,7 +171,6 @@ describe("parseAgentCanvasPatch", () => {
           id: "agent-edge-1",
         },
         ifMatch: "edge-v1:delete-read",
-        force: true,
       },
     ]);
   });
@@ -207,7 +203,6 @@ describe("parseAgentCanvasPatch", () => {
             durationInFrames: 90,
             tracks: [{ id: "main", type: "video", items: [] }],
           },
-          force: true,
           ifMatch: "node-v1:timeline-read",
         },
       },

@@ -24,6 +24,13 @@ must extend this model without creating a second local workflow.
   drafts, scripts, source assets, text projections, and timeline files. The
   marker resolves project identity automatically; normal operations must not
   require a status preflight or expose internal storage topology.
+- Agent read-before-write is implicit. Successful CLI reads record an internal
+  entity observation in `.clash/observed.json`; a connected host may append an
+  opaque receipt so a fabricated semantic hash cannot authorize a write.
+  Mutation commands perform read-presence verification and CAS internally.
+  Never expose or require a `readToken`, `--if-match`, projection lock sidecar,
+  or force bypass in the agent workflow. A stale write must tell the agent to
+  read again. Observations are concurrency evidence, not permissions or secrets.
 - Local-only, synced, and shared use the same local replica, working tree,
   asset model, CLI commands, CAS rules, and copy-on-write semantics. Never add
   a cloud-specific project directory, canvas, mutation API, or agent workflow.
@@ -35,10 +42,18 @@ must extend this model without creating a second local workflow.
 - For projected text and timelines, the workflow is checkout/pull, native file
   edit, then explicit apply. Apply performs CAS and copy-on-write when needed;
   stale overwrite, replace, delete, restore, or metadata-fill operations must
-  fail with a structured conflict unless force/admin intent is explicit.
-- Media assets and applied text/timeline revisions are immutable facts.
-  Editing creates a new revision or asset and moves the selected reference;
-  downstream outputs keep the revision they rendered from.
+  fail with a structured conflict. Force is not a privilege: there is no
+  mutation bypass. Re-read, merge, and apply again; use copy-on-write and
+  explicit rewiring when downstream references must remain pinned.
+- Media assets and applied text revisions are immutable facts. Timeline state
+  evolves in Project Loro history rather than a second revision table/blob
+  store; every committed state has a stable revision id. Downstream outputs
+  keep the asset, text revision, and Timeline revision they rendered from.
+- A canvas node with any downstream reference is immutable as a whole. Reads
+  expose `immutable: true`; in-place writes fail with `IMMUTABLE_NODE`.
+  `clash canvas copy --node <id>` is the uniform copy-on-write escape hatch;
+  existing downstream references remain on the source until explicitly
+  rewired.
 - `project status` is diagnostic only. It may report working-tree dirtiness,
   conflicts, recovery state, or product-internal replication health, but an
   agent must be able to read and modify the project without calling it first.
@@ -90,20 +105,20 @@ make remotion-bundle        # Build Remotion video bundle
 
 pnpm workspaces + Turborepo. All apps deploy to **Cloudflare** (Workers / Pages).
 
-| Directory | What | Runtime |
-|-----------|------|---------|
-| `apps/web` | Next.js 15 frontend (React 19, Tailwind CSS v4) | Cloudflare Pages via OpenNext |
-| `apps/api-cf` | Hono API + Durable Objects + Workflows | Cloudflare Workers |
-| `apps/auth-gateway` | Reverse proxy, auth validation, request routing | Cloudflare Workers |
-| `apps/render-server` | Remotion video rendering (Node.js) | Cloudflare Containers |
-| `apps/loro-sync-server` | Legacy CRDT sync (functionality merged into api-cf) | Cloudflare Workers |
-| `packages/shared-types` | Zod schemas, TS types, model cards, Loro operations | Shared library |
-| `packages/shared-layout` | Canvas node layout algorithms (zero deps) | Shared library |
-| `packages/cli` | Terminal CLI (`clash` command) for project/canvas ops | Node.js |
-| `packages/claude-code-plugin` | Claude Code integration (skills, hooks) | Plugin |
-| `packages/remotion-*` | Video editor: core state, components, UI | Shared libraries |
+| Directory                     | What                                                  | Runtime                       |
+| ----------------------------- | ----------------------------------------------------- | ----------------------------- |
+| `apps/web`                    | Next.js 15 frontend (React 19, Tailwind CSS v4)       | Cloudflare Pages via OpenNext |
+| `apps/api-cf`                 | Hono API + Durable Objects + Workflows                | Cloudflare Workers            |
+| `apps/auth-gateway`           | Reverse proxy, auth validation, request routing       | Cloudflare Workers            |
+| `apps/render-server`          | Remotion video rendering (Node.js)                    | Cloudflare Containers         |
+| `apps/loro-sync-server`       | Legacy CRDT sync (functionality merged into api-cf)   | Cloudflare Workers            |
+| `packages/shared-types`       | Zod schemas, TS types, model cards, Loro operations   | Shared library                |
+| `packages/shared-layout`      | Canvas node layout algorithms (zero deps)             | Shared library                |
+| `packages/cli`                | Terminal CLI (`clash` command) for project/canvas ops | Node.js                       |
+| `packages/claude-code-plugin` | Claude Code integration (skills, hooks)               | Plugin                        |
+| `packages/remotion-*`         | Video editor: core state, components, UI              | Shared libraries              |
 
-### Gateway Pattern (Request Flow)
+### Hosted Gateway Pattern (Optional Cloud Path)
 
 ```
 User/CLI → Auth Gateway (:8788)
@@ -122,14 +137,25 @@ Auth gateway injects `x-user-id` header for downstream services. Two auth method
 
 ### Real-time Sync (Loro CRDT)
 
-Canvas state (nodes, edges) lives in **Loro CRDT** documents managed by the `ProjectRoom` Durable Object. Clients connect via WebSocket at `/sync/:projectId` and exchange binary CRDT updates. The flow:
+On each machine, the local-api host owns the persistent **Project Loro replica**.
+Desktop, CLI, and local agents operate that same replica. Canvas graph payloads
+are downstream-owned entries in mergeable `nodeUpstreams` containers; a
+mergeable `edgeIdentity` register resolves each edge ID to one downstream node
+or deletion tombstone.
 
-1. Client connects → receives Loro snapshot
-2. Local edits → generate CRDT update (binary) → send to ProjectRoom
-3. ProjectRoom applies update → broadcasts to all other clients
-4. Conflict resolution is automatic (CRDT properties)
+When cloud collaboration is enabled, the local host replicates admitted product
+state with the hosted `ProjectRoom` Durable Object. `ProjectRoom` is the remote
+sequencer and fan-out point, not a prerequisite or alternate mutation model for
+local work:
 
-Relational data (users, projects, sessions, API tokens) lives in **D1** (SQLite) via **Drizzle ORM**.
+1. Local host loads the machine's canonical Project Loro snapshot.
+2. Desktop, CLI, and agents read or mutate that local replica.
+3. Optional cloud sync exchanges Loro updates with `ProjectRoom`.
+4. Other admitted devices receive those updates and Loro resolves concurrency.
+
+Machine-local metadata, provider credentials, sessions, and indexes live in the
+local SQLite store. Hosted identity, membership, billing, and remote admission
+live in D1 through Drizzle ORM.
 
 ### Durable Objects (api-cf)
 
@@ -154,6 +180,7 @@ API tokens: `clsh_` + 40 hex chars. Only SHA-256 hash stored in D1 (`api_token` 
 ### Collaboration Visibility
 
 Sideband JSON messages over the same WebSocket used for CRDT sync:
+
 - **Presence**: `{ type: "presence", clients: [...] }` — who's connected (browser/CLI)
 - **Activity**: `{ type: "activity", actor, action, nodeId, ... }` — who did what, throttled per node
 
@@ -194,14 +221,17 @@ canvas.executeGeneration(nodeId, generateId)   // validate → buildPending → 
 `executeGeneration` replaces the previously duplicated flow of read node → extract prompt/model → validate → build pending asset → create linked node. One call does everything.
 
 **Validation & builders** (in `canvas.ts`, used internally by Canvas):
+
 - `validateGenerationInput()` — Validates prompt + reference images against model card.
 - `buildPendingAssetNode()` — Builds pending image/video node data.
 
 **Layout** (`packages/shared-layout`, used internally by Canvas):
+
 - `autoInsertNode` — Calculates position (right of reference via edge, or bottom of group) + chainPush.
 - `relayoutToGrid` — Full grid relayout for the relayout button.
 
 **Rules:**
+
 - Reference images come from prompt parts (inline `@`-mentions via `parsePromptParts`), not from connected upstream nodes.
 - Never hardcode positions — Canvas handles auto-insert internally.
 - Any logic duplicated across clients must go into `packages/shared-types` or `packages/shared-layout`. Client code should only contain framework-specific glue (React hooks, CLI output formatting, etc.).
@@ -229,12 +259,14 @@ All API requests validated with Zod schemas in `apps/api-cf/src/domain/requests.
 Installed as `clash` command. Connects to canvas via WebSocket (Loro CRDT sync), REST for project CRUD.
 
 ```bash
-clash auth login              # Configure API token
-clash auth status             # Verify authentication
-clash projects list           # List projects
-clash canvas list --project <id>    # List canvas nodes
-clash canvas execute --project <id> --node <id>  # Trigger generation
-clash tasks wait --task-id <id>     # Poll task to completion
+clash host status --json             # Verify the local host
+clash init --project <id> --json     # Link this cwd once
+clash canvas list --json             # Read the marker-selected Canvas
+clash timeline pull --timeline <id>  # Project Timeline to editable YAML
+clash timeline apply --timeline <id> # CAS apply after native file edits
+clash auth login                     # Optional cloud sync only
 ```
 
-Config stored at `~/.clash/config.json`. Server URL via `CLASH_SERVER_URL` env var (defaults to `http://localhost:8788`).
+Local commands use the discovered local-api host and need no cloud credential.
+Optional cloud OAuth config is stored below `$CLASH_HOME`. Server URL can be
+overridden with `CLASH_API_URL` (default `http://localhost:8788`).

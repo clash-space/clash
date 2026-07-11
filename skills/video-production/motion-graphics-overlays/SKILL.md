@@ -53,9 +53,9 @@ HTML preview is self-contained and seekable: it exposes a frame scrubber,
 updates `data-current-frame` on the stage, and emits `clash-mg-frame` events
 when `window.__CLASH_MG__.seek(frame)` is called. The
 manifest includes the required `clash timeline apply` CAS boundary, the
-required video-editor node placeholder, and the fresh-pull lock path. The
-command does not mint a fake lock and does not apply the projection to
-canvas/timeline state. Pull the current timeline lock before apply.
+required Project Timeline ID placeholder, and the fresh-pull observation
+contract. The command does not apply the projection to Project state. Pull the
+current Timeline before apply.
 
 Verify the generated preview before review/apply:
 
@@ -163,14 +163,11 @@ derived assets to be different and does not create a lock or mutate the canvas.
     "mutation": "projection-only",
     "applyCommand": "clash timeline apply",
     "filePath": "projections/timelines/lower-third-001.mg.timeline.yaml",
-    "lockPath": "timelines/main.timeline.lock.json",
-    "lockRequired": true,
-    "lockSource": "fresh-canvas-pull",
-    "nodeIdPlaceholder": "<video-editor-node-id>",
-    "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+    "timelineIdPlaceholder": "<timeline-id>",
+    "requiredRuntimeArgs": ["--timeline <timeline-id>"],
     "pullCommand": "clash timeline pull",
-    "pullArgs": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-    "applyArgs": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/lower-third-001.mg.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"]
+    "pullArgs": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+    "applyArgs": ["--timeline", "<timeline-id>", "--file", "projections/timelines/lower-third-001.mg.timeline.yaml"]
   },
   "timelineItems": [
     {

@@ -31,8 +31,8 @@ test("assets command registers link subcommand", () => {
   assert.ok(get.options.some((option) => option.long === "--asset"));
   const replace = assetsCommand.commands.find((command) => command.name() === "replace");
   assert.ok(replace);
-  assert.ok(replace.options.some((option) => option.long === "--if-match"));
-  assert.ok(replace.options.some((option) => option.long === "--force"));
+  assert.ok(!replace.options.some((option) => option.long === "--if-match"));
+  assert.ok(!replace.options.some((option) => option.long === "--force"));
   const cover = assetsCommand.commands.find((command) => command.name() === "cover");
   assert.ok(cover);
   assert.deepEqual(cover.commands.map((command) => command.name()), ["set"]);
@@ -40,8 +40,8 @@ test("assets command registers link subcommand", () => {
   assert.ok(coverSet);
   assert.ok(coverSet.options.some((option) => option.long === "--asset"));
   assert.ok(coverSet.options.some((option) => option.long === "--cover-key"));
-  assert.ok(coverSet.options.some((option) => option.long === "--if-match"));
-  assert.ok(coverSet.options.some((option) => option.long === "--force"));
+  assert.ok(!coverSet.options.some((option) => option.long === "--if-match"));
+  assert.ok(!coverSet.options.some((option) => option.long === "--force"));
   const ref = assetsCommand.commands.find((command) => command.name() === "ref");
   assert.ok(ref);
   assert.deepEqual(ref.commands.map((command) => command.name()), ["get", "delete"]);
@@ -49,18 +49,19 @@ test("assets command registers link subcommand", () => {
   assert.ok(refDelete);
   assert.ok(refDelete.options.some((option) => option.long === "--asset"));
   assert.ok(refDelete.options.some((option) => option.long === "--project"));
-  assert.ok(refDelete.options.some((option) => option.long === "--if-match"));
-  assert.ok(refDelete.options.some((option) => option.long === "--force"));
+  assert.ok(!refDelete.options.some((option) => option.long === "--if-match"));
+  assert.ok(!refDelete.options.some((option) => option.long === "--force"));
   assert.ok(refDelete.options.some((option) => option.long === "--yes"));
   const refs = assetsCommand.commands.find((command) => command.name() === "refs");
   assert.ok(refs);
   assert.ok(refs.options.some((option) => option.long === "--asset"));
   assert.ok(refs.options.some((option) => option.long === "--project"));
   assert.ok(refs.options.some((option) => option.long === "--refresh"));
+  assert.ok(!refs.options.some((option) => option.long === "--if-match"));
   const gc = assetsCommand.commands.find((command) => command.name() === "gc");
   assert.ok(gc);
-  assert.ok(gc.options.some((option) => option.long === "--if-match"));
-  assert.ok(gc.options.some((option) => option.long === "--force"));
+  assert.ok(!gc.options.some((option) => option.long === "--if-match"));
+  assert.ok(!gc.options.some((option) => option.long === "--force"));
 });
 
 test("asset link names must stay inside the project asset links directory", () => {
@@ -87,12 +88,12 @@ test("links an immutable asset into the project asset links root", async () => {
 
   assert.equal(result.projectId, "asset_project");
   assert.equal(result.method, "symlink");
-  assert.equal(result.linkPath, join(homeDir, ".clash", "projects", "asset_project", "assets", "links", "asset.png"));
+  assert.equal(result.linkPath, join(cwd, "assets", "links", "asset.png"));
   assert.equal((await lstat(result.linkPath)).isSymbolicLink(), true);
   assert.equal(await readFile(result.linkPath, "utf8"), "asset-bytes");
 });
 
-test("asset links refuse accidental overwrite without force", async () => {
+test("asset links refuse accidental overwrite", async () => {
   const homeDir = await tempDir();
   const cwd = await tempDir();
   const source = join(await tempDir(), "asset.txt");
@@ -163,7 +164,7 @@ test("imports a local file as a content-addressed immutable asset with a project
   assert.equal(result.assetId, `local:sha256:${hash}`);
   assert.equal(result.contentHash, hash);
   assert.equal(result.blobPath, join(homeDir, ".clash", "assets", "blobs", hash, "original.png"));
-  assert.equal(result.linkPath, join(homeDir, ".clash", "projects", "asset_project", "assets", "links", `local_sha256_${hash}.png`));
+  assert.equal(result.linkPath, join(cwd, "assets", "links", `local_sha256_${hash}.png`));
   assert.equal(result.linkMethod, "symlink");
   assert.equal(result.deduplicated, false);
   assert.equal(await readFile(result.blobPath, "utf8"), "asset-bytes");
@@ -283,7 +284,6 @@ test("asset replace imports a file then calls copy-on-write canvas replacement w
         homeDir: undefined,
         kind: "image",
         link: true,
-        force: undefined,
         registerImportedAsset: undefined,
       },
     },
@@ -295,7 +295,6 @@ test("asset replace imports a file then calls copy-on-write canvas replacement w
         ifMatch: "node-v1:read",
         newNode: "node-copy",
         label: "Replacement",
-        force: undefined,
       },
     },
   ]);
@@ -382,7 +381,6 @@ test("asset gc delete can pass an agent dry-run receipt back to the host", async
   await runAssetGarbageCollection({
     dryRun: false,
     ifMatch: "asset-gc-v1:read:receipt:signed",
-    force: true,
     env: { CLASH_AGENT_MEMBER_ID: "agent-member-1" },
     request: async (path, init) => {
       calls.push({
@@ -403,7 +401,6 @@ test("asset gc delete can pass an agent dry-run receipt back to the host", async
     headers: {
       "x-clash-client-type": "agent",
       "x-clash-if-match": "asset-gc-v1:read:receipt:signed",
-      "x-clash-force": "true",
     },
     body: { dryRun: false },
   }]);
@@ -529,7 +526,6 @@ test("asset cover set passes agent read proof to the host API", async () => {
           beforeReadToken: "asset-v1:read",
           afterReadToken: "asset-v1:after:receipt:signed",
           accepted: true,
-          forced: false,
         },
       }), { status: 200 });
     },
@@ -590,7 +586,6 @@ test("asset ref delete passes agent read proof to the host API", async () => {
           expectedReadToken: "asset-ref-v1:read:receipt:signed",
           beforeReadToken: "asset-ref-v1:read",
           accepted: true,
-          forced: false,
         },
       }), { status: 200 });
     },

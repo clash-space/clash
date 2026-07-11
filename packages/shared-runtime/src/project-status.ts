@@ -15,9 +15,22 @@ export type ProjectReplicationState = Record<string, unknown>;
 
 export type ProjectWorkspaceIdKind = "managed" | "external";
 
+export const PROJECT_TIMELINE_FILE_PATTERN = "<timeline-id>.timeline.yaml" as const;
+export const PROJECT_TIMELINE_PULL_COMMAND = "clash timeline pull --timeline <id>" as const;
+export const PROJECT_TIMELINE_APPLY_COMMAND = "clash timeline apply --timeline <id>" as const;
+export const PROJECT_TIMELINE_PUBLIC_COMMANDS = [
+  "clash timeline list",
+  "clash timeline create --id <id> --name <name>",
+  "clash timeline attach --timeline <id> --canvas <id> --node <action-node-id>",
+  "clash timeline detach --timeline <id>",
+  "clash timeline copy --timeline <id> --canvas <id> --new-timeline <id> --new-node <action-node-id>",
+  PROJECT_TIMELINE_PULL_COMMAND,
+  PROJECT_TIMELINE_APPLY_COMMAND,
+] as const;
+
 export interface ProjectStatusCurrentWorkspace {
   schemaVersion: 1;
-  role: "project-reference-workspace";
+  role: "project-reference-and-draft-workspace";
   currentWorkingDirectory?: string;
   markerPath?: string;
   markerRoot?: string;
@@ -57,15 +70,17 @@ export interface ProjectStatusStorage {
       timelines: {
         kind: "agent-editable-view-files";
         path: string;
-        defaultFile: "main.timeline.yaml";
-        applyCommand: "clash timeline apply";
+        defaultFilePattern: typeof PROJECT_TIMELINE_FILE_PATTERN;
+        pullCommand: typeof PROJECT_TIMELINE_PULL_COMMAND;
+        applyCommand: typeof PROJECT_TIMELINE_APPLY_COMMAND;
         casRequired: true;
         ownsCanonicalState: false;
       };
       timelineProjections: {
         kind: "agent-editable-projection-files";
         path: string;
-        applyCommand: "clash timeline apply";
+        defaultFilePattern: typeof PROJECT_TIMELINE_FILE_PATTERN;
+        applyCommand: typeof PROJECT_TIMELINE_APPLY_COMMAND;
         casRequired: true;
         ownsCanonicalState: false;
       };
@@ -89,7 +104,7 @@ export interface ProjectStatusStorage {
         jsonSidecars: "removed";
       };
     };
-    canvas: {
+    projectState: {
       kind: "loro";
       replicaRoot: string;
       snapshotPath: string;
@@ -113,17 +128,10 @@ export interface ProjectStatusStorage {
         immutable: true;
         agentWritable: false;
       };
-      timelineRevisions: {
-        kind: "content-addressed-files";
-        path: string;
-        mediaType: "application/yaml";
-        immutable: true;
-        agentWritable: false;
-      };
     };
   };
   contentModel: {
-    role: "agent-projections-with-host-indexed-revision-content";
+    role: "agent-projections-over-host-owned-canonical-state";
     textNodes: {
       liveState: "loro-canvas-text-node-data";
       editableProjection: "storage.workspace.viewFiles.texts";
@@ -147,25 +155,19 @@ export interface ProjectStatusStorage {
       agentWritableCanonicalState: false;
     };
     timelines: {
-      liveState: "loro-canvas-video-editor-node-data";
+      liveState: "loro-project-timeline-entity";
+      timelineIdentity: "timeline-id";
       editableProjection: "storage.workspace.viewFiles.timelines";
       projectionPath: string;
-      applyCommand: "clash timeline apply";
-      replaceCommand: "clash timeline replace";
-      restoreCommand: "clash timeline restore";
-      historyCommand: "clash timeline history";
-      contentCommand: "clash timeline content";
+      projectionFilePattern: typeof PROJECT_TIMELINE_FILE_PATTERN;
+      pullCommand: typeof PROJECT_TIMELINE_PULL_COMMAND;
+      applyCommand: typeof PROJECT_TIMELINE_APPLY_COMMAND;
+      publicCommands: string[];
       casRequired: true;
-      copyOnWriteWhenReferenced: true;
-      revisionRegistry: "timeline_revisions";
-      revisionBlobPath: string;
-      contentRegistry: {
-        kind: "sqlite-non-media-revision-registry";
-        table: "timeline_revisions";
-        blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions";
-        mediaAssetTable: false;
-      };
-      mediaAsset: false;
+      copyOnWriteWhenReferenced: false;
+      downstreamRendersPinRevision: true;
+      revisionAuthority: "loro-project-history";
+      revisionIdentity: "state-hash";
       agentWritableCanonicalState: false;
     };
   };
@@ -277,7 +279,7 @@ export interface ProjectStatusSyncPolicy {
   mirror: {
     canvas: {
       requirement: "canvas";
-      source: "loro-canvas-replica";
+      source: "loro-project-replica";
       conflictPolicy: "loro-crdt";
     };
     assetMetadata: {
@@ -290,8 +292,8 @@ export interface ProjectStatusSyncPolicy {
     revisionContent: {
       requirement: "revision-content";
       source: "sqlite-index-and-content-addressed-revision-blobs";
-      registries: ["text_revisions", "timeline_revisions"];
-      contentKinds: ["text-revision-content", "timeline-revision-content"];
+      registries: ["text_revisions"];
+      contentKinds: ["text-revision-content"];
       mediaAsset: false;
       agentWritable: false;
       conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise";
@@ -435,14 +437,19 @@ export function buildProjectStatus(
     "projects",
     encodeURIComponent(context.projectId),
   );
-  const projections = joinPath(projectWorkspaceRoot, "projections");
-  const timelines = joinPath(projectWorkspaceRoot, "timelines");
+  const markerRoot = context.markerPath ? projectMarkerRoot(context.markerPath) : undefined;
+  const activeWorkspaceRoot = markerRoot ?? projectWorkspaceRoot;
+  const projections = joinPath(activeWorkspaceRoot, "projections");
+  const timelines = joinPath(activeWorkspaceRoot, "timelines");
   const textProjections = joinPath(projections, "text");
   const timelineProjections = joinPath(projections, "timelines");
-  const drafts = joinPath(projectWorkspaceRoot, "drafts");
-  const sessions = joinPath(projectWorkspaceRoot, "sessions");
-  const assetLinks = joinPath(projectWorkspaceRoot, "assets", "links");
+  const drafts = joinPath(activeWorkspaceRoot, "drafts");
+  const sessions = joinPath(activeWorkspaceRoot, "sessions");
+  const assetLinks = joinPath(activeWorkspaceRoot, "assets", "links");
   const runtimeRoot = joinPath(projectWorkspaceRoot, "runtime");
+  const workspaceProtectedPaths = activeWorkspaceRoot === projectWorkspaceRoot
+    ? [runtimeRoot]
+    : [];
   const mode =
     typeof options.replicationState?.mode === "string"
       ? options.replicationState.mode
@@ -453,7 +460,6 @@ export function buildProjectStatus(
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
-  const timelineRevisionBlobRoot = joinPath(localApiDataDir, "timeline-revision-blobs");
   const loroReplicaRoot = joinPath(localApiProjectRoot, "loro");
   const loroSnapshotPath = joinPath(loroReplicaRoot, "snapshot.bin");
   const loroUpdatesLogPath = joinPath(loroReplicaRoot, "updates.log");
@@ -474,13 +480,11 @@ export function buildProjectStatus(
     loroUpdatesLogPath,
     mediaAssetBlobRoot,
     textRevisionBlobRoot,
-    timelineRevisionBlobRoot,
     runtimeRoot,
   ];
-  const markerRoot = context.markerPath ? projectMarkerRoot(context.markerPath) : undefined;
   const currentWorkspace: ProjectStatusCurrentWorkspace = {
     schemaVersion: 1,
-    role: "project-reference-workspace",
+    role: "project-reference-and-draft-workspace",
     ...(options.currentWorkingDirectory
       ? { currentWorkingDirectory: normalizePath(options.currentWorkingDirectory) }
       : {}),
@@ -541,11 +545,11 @@ export function buildProjectStatus(
       },
       workspace: {
         role: "agent-draft-and-projection-workspace",
-        root: projectWorkspaceRoot,
+        root: activeWorkspaceRoot,
         ownsCanonicalSnapshot: false,
         ownsCanonicalMetadata: false,
         editablePaths,
-        protectedPaths: [runtimeRoot],
+        protectedPaths: workspaceProtectedPaths,
         viewFiles: {
           texts: {
             kind: "agent-editable-projection-files",
@@ -558,15 +562,17 @@ export function buildProjectStatus(
           timelines: {
             kind: "agent-editable-view-files",
             path: timelines,
-            defaultFile: "main.timeline.yaml",
-            applyCommand: "clash timeline apply",
+            defaultFilePattern: PROJECT_TIMELINE_FILE_PATTERN,
+            pullCommand: PROJECT_TIMELINE_PULL_COMMAND,
+            applyCommand: PROJECT_TIMELINE_APPLY_COMMAND,
             casRequired: true,
             ownsCanonicalState: false,
           },
           timelineProjections: {
             kind: "agent-editable-projection-files",
             path: timelineProjections,
-            applyCommand: "clash timeline apply",
+            defaultFilePattern: PROJECT_TIMELINE_FILE_PATTERN,
+            applyCommand: PROJECT_TIMELINE_APPLY_COMMAND,
             casRequired: true,
             ownsCanonicalState: false,
           },
@@ -590,7 +596,7 @@ export function buildProjectStatus(
             jsonSidecars: "removed",
           },
         },
-        canvas: {
+        projectState: {
           kind: "loro",
           replicaRoot: loroReplicaRoot,
           snapshotPath: loroSnapshotPath,
@@ -614,13 +620,6 @@ export function buildProjectStatus(
             immutable: true,
             agentWritable: false,
           },
-          timelineRevisions: {
-            kind: "content-addressed-files",
-            path: timelineRevisionBlobRoot,
-            mediaType: "application/yaml",
-            immutable: true,
-            agentWritable: false,
-          },
         },
       },
       localSecrets: {
@@ -641,7 +640,7 @@ export function buildProjectStatus(
         },
       },
       contentModel: {
-        role: "agent-projections-with-host-indexed-revision-content",
+        role: "agent-projections-over-host-owned-canonical-state",
         textNodes: {
           liveState: "loro-canvas-text-node-data",
           editableProjection: "storage.workspace.viewFiles.texts",
@@ -665,25 +664,19 @@ export function buildProjectStatus(
           agentWritableCanonicalState: false,
         },
         timelines: {
-          liveState: "loro-canvas-video-editor-node-data",
+          liveState: "loro-project-timeline-entity",
+          timelineIdentity: "timeline-id",
           editableProjection: "storage.workspace.viewFiles.timelines",
           projectionPath: timelines,
-          applyCommand: "clash timeline apply",
-          replaceCommand: "clash timeline replace",
-          restoreCommand: "clash timeline restore",
-          historyCommand: "clash timeline history",
-          contentCommand: "clash timeline content",
+          projectionFilePattern: PROJECT_TIMELINE_FILE_PATTERN,
+          pullCommand: PROJECT_TIMELINE_PULL_COMMAND,
+          applyCommand: PROJECT_TIMELINE_APPLY_COMMAND,
+          publicCommands: [...PROJECT_TIMELINE_PUBLIC_COMMANDS],
           casRequired: true,
-          copyOnWriteWhenReferenced: true,
-          revisionRegistry: "timeline_revisions",
-          revisionBlobPath: timelineRevisionBlobRoot,
-          contentRegistry: {
-            kind: "sqlite-non-media-revision-registry",
-            table: "timeline_revisions",
-            blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
-            mediaAssetTable: false,
-          },
-          mediaAsset: false,
+          copyOnWriteWhenReferenced: false,
+          downstreamRendersPinRevision: true,
+          revisionAuthority: "loro-project-history",
+          revisionIdentity: "state-hash",
           agentWritableCanonicalState: false,
         },
       },
@@ -761,7 +754,7 @@ function projectSyncPolicy(
     mirror: {
       canvas: {
         requirement: "canvas",
-        source: "loro-canvas-replica",
+        source: "loro-project-replica",
         conflictPolicy: "loro-crdt",
       },
       assetMetadata: {
@@ -774,8 +767,8 @@ function projectSyncPolicy(
       revisionContent: {
         requirement: "revision-content",
         source: "sqlite-index-and-content-addressed-revision-blobs",
-        registries: ["text_revisions", "timeline_revisions"],
-        contentKinds: ["text-revision-content", "timeline-revision-content"],
+        registries: ["text_revisions"],
+        contentKinds: ["text-revision-content"],
         mediaAsset: false,
         agentWritable: false,
         conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",

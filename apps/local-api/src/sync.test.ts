@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
+import { Canvas } from "@clash/shared-types";
 import WebSocket from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -53,6 +54,38 @@ function countUpdateLogRecords(log: Buffer): number {
 }
 
 describe("LocalLoroRoom", () => {
+  it("persists and broadcasts graph repair updates after importing an orphan edge", async () => {
+    const projectId = "project/orphan-repair";
+    const room = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const sender = room.addPeer(() => {});
+    const peerUpdates: Uint8Array[] = [];
+    room.addPeer((update) => peerUpdates.push(update));
+    peerUpdates.length = 0;
+
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("target", { canvasId: "main", type: "image_gen", data: {} });
+    clientDoc.getMap("nodeUpstreams").ensureMergeableMap("target").set("orphan", {
+      nodeId: "missing-source",
+      edgeId: "orphan",
+      type: "default",
+    });
+    clientDoc.getMap("edgeIdentity").set("orphan", { target: "target" });
+
+    await room.receive(sender, clientDoc.export({ mode: "snapshot" }));
+
+    expect(peerUpdates).toHaveLength(2);
+    const peerDoc = new LoroDoc();
+    for (const update of peerUpdates) peerDoc.import(update);
+    expect(new Canvas(peerDoc, () => {}, "main").listEdges()).toEqual([]);
+    expect(peerDoc.getMap("edgeIdentity").get("orphan")).toEqual({ deleted: true });
+
+    const reopened = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
+    const persisted = new LoroDoc();
+    persisted.import(reopened.snapshot());
+    expect(new Canvas(persisted, () => {}, "main").listEdges()).toEqual([]);
+    expect(persisted.getMap("edgeIdentity").get("orphan")).toEqual({ deleted: true });
+  });
+
   it("registers local custom actions from JSON sideband messages", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,
@@ -209,7 +242,7 @@ describe("LocalLoroRoom", () => {
         asset_id: imageNode.data.assetId,
         project_id: "project/local-gen",
       });
-      const audit = sqlite.prepare("select operation, entity_kind, entity_id, actor_client_type, forced, accepted, reason, result_entity_id, mutation_json from mutation_audit where operation = ? and entity_id = ?").get(
+      const audit = sqlite.prepare("select operation, entity_kind, entity_id, actor_client_type, accepted, reason, result_entity_id, mutation_json from mutation_audit where operation = ? and entity_id = ?").get(
         "asset_generate",
         imageNode.data.assetId,
       );
@@ -218,7 +251,6 @@ describe("LocalLoroRoom", () => {
         entity_kind: "asset",
         entity_id: imageNode.data.assetId,
         actor_client_type: null,
-        forced: 0,
         accepted: 1,
         reason: "workflow generated asset",
         result_entity_id: imageNode.data.assetId,
@@ -227,7 +259,6 @@ describe("LocalLoroRoom", () => {
       expect(mutation).toMatchObject({
         operation: "asset_generate",
         entity: { kind: "asset", id: imageNode.data.assetId },
-        forced: false,
         accepted: true,
         resultEntityId: imageNode.data.assetId,
       });
@@ -429,7 +460,6 @@ describe("LocalLoroRoom", () => {
       operation: "text_generate",
       entity: { kind: "text-revision", id: revision.revisionId },
       actorClientType: null,
-      forced: false,
       accepted: true,
       reason: "workflow generated text",
       resultEntityId: revision.revisionId,
@@ -437,7 +467,6 @@ describe("LocalLoroRoom", () => {
     expect(audits[0]?.mutation).toMatchObject({
       operation: "text_generate",
       entity: { kind: "text-revision", id: revision.revisionId },
-      forced: false,
       accepted: true,
       resultEntityId: revision.revisionId,
     });

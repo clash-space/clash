@@ -2,162 +2,449 @@ import { Command } from "commander";
 import WebSocket from "ws";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import {
   LoroSyncClient,
-  TimelineRevisionHistoryEntrySchema,
-  type ResolvedTimelineDsl,
-  type TimelineRevisionHistoryEntry,
+  projectTimelineReadToken,
+  timelineDslToYaml,
+  type ProjectTimeline,
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
-import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson, printTable } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
-import { resolveAgentFilePathInsideCwd } from "../lib/projection-cas";
-import { resolveCanvasActor, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
+import { type ResolvedProjectContext } from "../lib/project-context";
 import {
-  assertTimelineCas,
-  assertTimelineLockFilePath,
-  assertTimelineNotMaterializedReferenced,
-  createTimelineAppliedRevision,
-  createTimelineCowNodeData,
-  createTimelineLock,
-  createTimelineSourceProvenance,
+  recordWorktreeObservation,
+  requireWorktreeObservation,
+} from "../lib/worktree-observations";
+import {
+  resolveCanvasPresenceOptions,
+  resolveCanvasProjectContext,
+} from "./canvas";
+import {
   normalizeTimelineDslForYaml,
   parseTimelineFileForApply,
-  parseTimelineLock,
-  readLoroRevisionMetadata,
   resolveTimelineFilePath,
-  resolveTimelineLockPath,
   timelineHash,
-  timelineReadToken,
-  timelineYamlFromNode,
-  type TimelineAppliedRevision,
-  type TimelineLock,
-  type TimelineNodeLike,
-  type TimelineRevisionActor,
 } from "../lib/timeline-projection";
 
-export {
-  assertTimelineCas,
-  assertTimelineLockFilePath,
-  assertTimelineNotMaterializedReferenced,
-  createTimelineAppliedRevision,
-  createTimelineLock,
-  createTimelineSourceProvenance,
-  normalizeTimelineDslForYaml,
-  parseTimelineFileForApply,
-  parseTimelineLock,
-  readLoroRevisionMetadata,
-  resolveTimelineFilePath,
-  resolveTimelineLockPath,
-  timelineHash,
-  timelineReadToken,
-  timelineYamlFromNode,
-};
+function isAgentTimelineClient(): boolean {
+  return resolveCanvasPresenceOptions().clientType === "agent";
+}
 
-export type ApplyTimelineDslResult = {
-  updated: true;
-  nodeId: string;
-  edgesAdded: number;
-  timelineRevision?: TimelineAppliedRevision;
-  readToken?: string;
-  forced?: true;
-};
+async function recordTimelineObservation(
+  context: ResolvedProjectContext,
+  nodeId: string,
+  revision: string,
+): Promise<void> {
+  if (!isAgentTimelineClient()) return;
+  if (!context.workspaceRoot) {
+    throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+  }
+  await recordWorktreeObservation({
+    workspaceRoot: context.workspaceRoot,
+    projectId: context.projectId,
+    entityKind: "timeline",
+    entityId: nodeId,
+    revision,
+  });
+}
 
-export type ReplaceTimelineDslResult = {
-  replaced: true;
-  copyOnWrite: true;
-  sourceNodeId: string;
-  newNodeId: string;
-  edgesAdded: number;
-  sourceTimelineHash?: string;
-  timelineHash?: string;
-  timelineRevision?: TimelineAppliedRevision;
-  lineageEdge?: unknown;
-  readToken?: string;
-  forced?: true;
-};
+async function requireTimelineObservation(
+  context: ResolvedProjectContext,
+  nodeId: string,
+): Promise<string | undefined> {
+  if (!isAgentTimelineClient()) return undefined;
+  if (!context.workspaceRoot) {
+    throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and pull the timeline first.");
+  }
+  const observation = await requireWorktreeObservation({
+    workspaceRoot: context.workspaceRoot,
+    projectId: context.projectId,
+    entityKind: "timeline",
+    entityId: nodeId,
+  });
+  if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
+  return observation.revision;
+}
 
 export const timelineCommand = new Command("timeline")
   .description(
-    `Agent-editable timeline files.
-
-Default file path:
-  timelines/main.timeline.yaml
+    `Manage Project Timeline entities through agent-editable YAML projections.
 
 Workflow:
-  clash timeline pull --project <id> --node <video-editor-node-id>
-  # edit timelines/main.timeline.yaml with normal file tools
-  clash timeline apply --project <id> --node <video-editor-node-id>
+  clash timeline create --id episode-1 --name "Episode 1"
+  clash timeline pull --timeline episode-1
+  # edit timelines/episode-1.timeline.yaml with normal file tools
+  clash timeline apply --timeline episode-1
 
-CAS:
-  pull also writes timelines/main.timeline.lock.json. apply refuses to write
-  if the canvas timeline changed after pull unless --force is passed.`,
+CAS is implicit: reads record an opaque host observation in
+.clash/observed.json; ownership changes and apply reject stale writes.`,
   );
+
+type TimelineWorkspaceResult = {
+  timelines?: ProjectTimeline[];
+  timeline?: ProjectTimeline;
+  versions?: Record<string, string>;
+  version?: string;
+  readToken?: string;
+  sourceVersion?: string;
+  error?: string;
+  code?: string;
+};
+
+function timelinePosition(value: unknown, option: string): number {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) throw new Error(`${option} must be a finite number`);
+  return parsed;
+}
+
+async function listTimelineEntities(
+  context: ResolvedProjectContext,
+): Promise<{ timelines: ProjectTimeline[]; versions: Record<string, string> }> {
+  if (isDaemonRunning(context.projectId)) {
+    const result = await sendCommand(context.projectId, {
+      action: "list_timelines",
+    }) as TimelineWorkspaceResult;
+    if (result.error) throw new Error(result.error);
+    return { timelines: result.timelines ?? [], versions: result.versions ?? {} };
+  }
+  const client = await connectToProject(context.projectId);
+  try {
+    const timelines = client.listTimelines();
+    return {
+      timelines,
+      versions: Object.fromEntries(
+        timelines.map((timeline) => [timeline.id, projectTimelineReadToken(timeline)]),
+      ),
+    };
+  } finally {
+    await client.disconnect();
+  }
+}
+
+export async function readTimelineEntityForProjection(
+  context: ResolvedProjectContext,
+  timelineId: string,
+): Promise<ProjectTimeline> {
+  const result = await listTimelineEntities(context);
+  const timeline = result.timelines.find((candidate) => candidate.id === timelineId);
+  if (!timeline) throw new Error(`Timeline ${timelineId} not found`);
+  await recordTimelineObservation(
+    context,
+    timeline.id,
+    result.versions[timeline.id] ?? projectTimelineReadToken(timeline),
+  );
+  return timeline;
+}
+
+async function recordTimelineVersions(
+  context: ResolvedProjectContext,
+  versions: Record<string, string>,
+): Promise<void> {
+  for (const [timelineId, revision] of Object.entries(versions)) {
+    await recordTimelineObservation(context, timelineId, revision);
+  }
+}
+
+function assertTimelineEntityHostWrite(operation: string): void {
+  const hostWrite = assertAgentHostWritePath({
+    actorClientType: resolveCanvasPresenceOptions().clientType,
+    operation,
+    readCommand: "clash timeline list --json",
+  });
+  if (!hostWrite.ok) throw new Error(hostWrite.error);
+}
+
+timelineCommand
+  .command("list")
+  .description("List Project Timelines and their current owners")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--standalone", "Show only standalone Project Timelines")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    const result = await listTimelineEntities(context);
+    await recordTimelineVersions(context, result.versions);
+    const timelines = options.standalone
+      ? result.timelines.filter((timeline) => timeline.owner.kind === "project")
+      : result.timelines;
+    if (isJsonMode(options)) {
+      printJson(timelines);
+      return;
+    }
+    printTable(timelines.map((timeline) => ({
+      id: timeline.id,
+      name: timeline.name,
+      owner: timeline.owner.kind === "project"
+        ? "Project"
+        : `Canvas ${timeline.owner.canvasId}`,
+      node: timeline.owner.kind === "canvas-action" ? timeline.owner.actionNodeId : "",
+    })), [
+      { key: "id", label: "Timeline", width: 24 },
+      { key: "name", label: "Name", width: 28 },
+      { key: "owner", label: "Owner", width: 24 },
+      { key: "node", label: "Action Node", width: 24 },
+    ]);
+  });
+
+timelineCommand
+  .command("create")
+  .description("Create a standalone Project Timeline")
+  .requiredOption("--id <id>", "Project-scoped Timeline ID")
+  .requiredOption("--name <name>", "Timeline name")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    let result: TimelineWorkspaceResult;
+    if (isDaemonRunning(context.projectId)) {
+      result = await sendCommand(context.projectId, {
+        action: "create_timeline",
+        timelineId: options.id,
+        name: options.name,
+        state: { tracks: [] },
+      }) as TimelineWorkspaceResult;
+    } else {
+      const client = await connectToProject(context.projectId);
+      try {
+        const created = client.createTimeline({
+          id: options.id,
+          name: options.name,
+          state: { tracks: [] },
+        });
+        result = created.ok
+          ? { timeline: created.timeline, version: projectTimelineReadToken(created.timeline) }
+          : { error: created.error };
+      } finally {
+        await client.disconnect();
+      }
+    }
+    if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline create failed");
+    await recordTimelineObservation(
+      context,
+      result.timeline.id,
+      result.readToken ?? result.version ?? projectTimelineReadToken(result.timeline),
+    );
+    if (isJsonMode(options)) printJson(result.timeline);
+    else console.log(`Created Timeline: ${result.timeline.id}`);
+  });
+
+timelineCommand
+  .command("attach")
+  .description("Move a standalone Timeline into one Canvas as a Timeline Action")
+  .requiredOption("--timeline <id>", "Standalone Timeline ID")
+  .requiredOption("--canvas <id>", "Owning Canvas ID")
+  .option("--node <id>", "Timeline Action node ID (defaults to a generated ID)")
+  .option("--x <number>", "Canvas X position", "0")
+  .option("--y <number>", "Canvas Y position", "0")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    const timelineId = String(options.timeline);
+    const observedVersion = await requireTimelineObservation(context, timelineId);
+    const actionNodeId = options.node?.trim() || randomUUID().slice(0, 8);
+    let result: TimelineWorkspaceResult;
+    if (isDaemonRunning(context.projectId)) {
+      result = await sendCommand(context.projectId, {
+        action: "attach_timeline",
+        timelineId,
+        canvasId: options.canvas,
+        actionNodeId,
+        position: {
+          x: timelinePosition(options.x, "--x"),
+          y: timelinePosition(options.y, "--y"),
+        },
+        actorClientType: resolveCanvasPresenceOptions().clientType,
+        observedVersion,
+        ifMatch: observedVersion,
+      }) as TimelineWorkspaceResult;
+    } else {
+      assertTimelineEntityHostWrite("Timeline attach");
+      const client = await connectToProject(context.projectId);
+      try {
+        const attached = client.attachTimeline({
+          timelineId,
+          canvasId: options.canvas,
+          actionNodeId,
+          position: {
+            x: timelinePosition(options.x, "--x"),
+            y: timelinePosition(options.y, "--y"),
+          },
+        });
+        result = attached.ok
+          ? { timeline: attached.timeline, version: projectTimelineReadToken(attached.timeline) }
+          : { error: attached.error };
+      } finally {
+        await client.disconnect();
+      }
+    }
+    if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline attach failed");
+    await recordTimelineObservation(
+      context,
+      timelineId,
+      result.readToken ?? result.version ?? projectTimelineReadToken(result.timeline),
+    );
+    if (isJsonMode(options)) printJson(result.timeline);
+    else console.log(`Attached Timeline ${timelineId} to Canvas ${options.canvas} as ${actionNodeId}`);
+  });
+
+timelineCommand
+  .command("detach")
+  .description("Move a Canvas-owned Timeline back to the Project root")
+  .requiredOption("--timeline <id>", "Canvas-owned Timeline ID")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    const timelineId = String(options.timeline);
+    const observedVersion = await requireTimelineObservation(context, timelineId);
+    let result: TimelineWorkspaceResult;
+    if (isDaemonRunning(context.projectId)) {
+      result = await sendCommand(context.projectId, {
+        action: "detach_timeline",
+        timelineId,
+        actorClientType: resolveCanvasPresenceOptions().clientType,
+        observedVersion,
+        ifMatch: observedVersion,
+      }) as TimelineWorkspaceResult;
+    } else {
+      assertTimelineEntityHostWrite("Timeline detach");
+      const client = await connectToProject(context.projectId);
+      try {
+        const detached = client.detachTimeline(timelineId);
+        result = detached.ok
+          ? { timeline: detached.timeline, version: projectTimelineReadToken(detached.timeline) }
+          : { error: detached.error };
+      } finally {
+        await client.disconnect();
+      }
+    }
+    if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline detach failed");
+    await recordTimelineObservation(
+      context,
+      timelineId,
+      result.readToken ?? result.version ?? projectTimelineReadToken(result.timeline),
+    );
+    if (isJsonMode(options)) printJson(result.timeline);
+    else console.log(`Detached Timeline: ${timelineId}`);
+  });
+
+timelineCommand
+  .command("copy")
+  .description("Copy a Canvas-owned Timeline Action into another Canvas")
+  .requiredOption("--timeline <id>", "Source Timeline ID")
+  .requiredOption("--canvas <id>", "Target Canvas ID")
+  .option("--new-timeline <id>", "New Timeline ID (defaults to a generated ID)")
+  .option("--new-node <id>", "New Timeline Action node ID (defaults to a generated ID)")
+  .option("--x <number>", "Target Canvas X position", "0")
+  .option("--y <number>", "Target Canvas Y position", "0")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .option("--json", "Output result as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    const timelineId = String(options.timeline);
+    const observedVersion = await requireTimelineObservation(context, timelineId);
+    const newTimelineId = options.newTimeline?.trim() || randomUUID().slice(0, 8);
+    const newActionNodeId = options.newNode?.trim() || randomUUID().slice(0, 8);
+    let result: TimelineWorkspaceResult;
+    if (isDaemonRunning(context.projectId)) {
+      result = await sendCommand(context.projectId, {
+        action: "copy_timeline_action",
+        sourceTimelineId: timelineId,
+        targetCanvasId: options.canvas,
+        newTimelineId,
+        newActionNodeId,
+        position: {
+          x: timelinePosition(options.x, "--x"),
+          y: timelinePosition(options.y, "--y"),
+        },
+        actorClientType: resolveCanvasPresenceOptions().clientType,
+        observedVersion,
+        ifMatch: observedVersion,
+      }) as TimelineWorkspaceResult;
+    } else {
+      assertTimelineEntityHostWrite("Timeline Action copy");
+      const client = await connectToProject(context.projectId);
+      try {
+        const copied = client.copyTimelineAction({
+          sourceTimelineId: timelineId,
+          targetCanvasId: options.canvas,
+          newTimelineId,
+          newActionNodeId,
+          position: {
+            x: timelinePosition(options.x, "--x"),
+            y: timelinePosition(options.y, "--y"),
+          },
+        });
+        result = copied.ok
+          ? {
+              timeline: copied.timeline,
+              version: projectTimelineReadToken(copied.timeline),
+            }
+          : { error: copied.error };
+      } finally {
+        await client.disconnect();
+      }
+    }
+    if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline copy failed");
+    await recordTimelineObservation(
+      context,
+      newTimelineId,
+      result.readToken ?? result.version ?? projectTimelineReadToken(result.timeline),
+    );
+    if (isJsonMode(options)) printJson(result.timeline);
+    else console.log(`Copied Timeline ${timelineId} to ${newTimelineId} on Canvas ${options.canvas}`);
+  });
 
 timelineCommand
   .command("pull")
-  .description("Export a canvas video-editor node's timelineDsl to a YAML file")
-  .requiredOption("--node <id>", "VideoEditorNode ID")
+  .description("Export a Project Timeline's current revision to a YAML file")
+  .requiredOption("--timeline <id>", "Timeline ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--timeline <name>", "Timeline name for the default timelines/<name>.timeline.yaml path", "main")
-  .option("--file <path>", "Timeline YAML path (default: timelines/<name>.timeline.yaml)")
+  .option("--file <path>", "Timeline YAML path (default: timelines/<timeline-id>.timeline.yaml)")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
     const filePath = resolveTimelineFilePath({
       cwd: process.cwd(),
       file: options.file,
       timeline: options.timeline,
     });
-    const lockPath = resolveTimelineLockPath({
-      cwd: process.cwd(),
-      file: options.file,
-      timeline: options.timeline,
-    });
-    const node = await readNode(projectId, options.node);
-    if (!node) {
-      console.error(`Node not found: ${options.node}`);
-      process.exit(1);
-    }
-    if (node.type !== "video-editor") {
-      process.stderr.write(
-        `warning: node ${options.node} has type "${node.type}", expected "video-editor". Proceeding.\n`,
-      );
-    }
-
-    const yaml = timelineYamlFromNode(node);
-    const currentDsl = normalizeTimelineDslForYaml(node.data?.timelineDsl);
-    const lock = createTimelineLock({
-      projectId,
-      nodeId: options.node,
-      filePath,
-      dsl: currentDsl,
-      readToken: node.readToken,
-    });
+    const listed = await listTimelineEntities(context);
+    const timeline = listed.timelines.find((candidate) => candidate.id === options.timeline);
+    if (!timeline) throw new Error(`Timeline ${options.timeline} not found`);
+    const currentDsl = normalizeTimelineDslForYaml(timeline.state);
+    const yaml = timelineDslToYaml(currentDsl);
+    const version = listed.versions[timeline.id] ?? projectTimelineReadToken(timeline);
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, yaml, "utf8");
-    writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf8");
+    await recordTimelineObservation(context, timeline.id, version);
 
-    const payload = { pulled: true, projectId, nodeId: options.node, filePath, lockPath, timelineHash: lock.timelineHash, readToken: lock.readToken };
+    const payload = {
+      pulled: true,
+      projectId: context.projectId,
+      timelineId: timeline.id,
+      revisionId: timeline.revisionId,
+      owner: timeline.owner,
+      filePath,
+      timelineHash: timelineHash(currentDsl),
+    };
     if (isJsonMode(options)) printJson(payload);
-    else process.stderr.write(`wrote ${filePath}\nwrote ${lockPath}\n`);
+    else process.stderr.write(`wrote ${filePath}\n`);
   });
 
 timelineCommand
   .command("apply")
-  .description("Validate a timeline YAML file and apply it back to the canvas node")
-  .requiredOption("--node <id>", "VideoEditorNode ID")
+  .description("Validate a timeline YAML file and advance the Project Timeline revision")
+  .requiredOption("--timeline <id>", "Timeline ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--timeline <name>", "Timeline name for the default timelines/<name>.timeline.yaml path", "main")
-  .option("--file <path>", "Timeline YAML path (default: timelines/<name>.timeline.yaml)")
-  .option("--lock <path>", "CAS lock path (default: timeline YAML sidecar)")
-  .option("--force", "Bypass CAS and intentionally overwrite the current canvas timeline")
+  .option("--file <path>", "Timeline YAML path (default: timelines/<timeline-id>.timeline.yaml)")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
     const filePath = resolveTimelineFilePath({
       cwd: process.cwd(),
       file: options.file,
@@ -170,281 +457,51 @@ timelineCommand
       process.exit(1);
     }
 
-    const lockPath = resolveTimelineLockPath({
-      cwd: process.cwd(),
-      file: options.file,
-      lock: options.lock,
-      timeline: options.timeline,
-    });
-    let result: ApplyTimelineDslResult;
-    let lock: TimelineLock | null = null;
-    const actor = await resolveCanvasActor();
-    try {
-      lock = options.force ? null : readTimelineLockFile(lockPath);
-      result = await applyTimelineDsl(projectId, options.node, parsed.dsl, parsed.sources, {
-        force: options.force === true,
-        lock,
-        cwd: process.cwd(),
-        filePath,
-        actor,
-      });
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
+    const timelineId = String(options.timeline);
+    const observedVersion = await requireTimelineObservation(context, timelineId);
+    let result: TimelineWorkspaceResult;
+    if (isDaemonRunning(context.projectId)) {
+      result = await sendCommand(context.projectId, {
+        action: "update_timeline_state",
+        timelineId,
+        state: parsed.dsl,
+        sourceNodeIds: parsed.sources,
+        actorClientType: resolveCanvasPresenceOptions().clientType,
+        observedVersion,
+        ifMatch: observedVersion,
+      }) as TimelineWorkspaceResult;
+    } else {
+      assertTimelineEntityHostWrite("Timeline apply");
+      const client = await connectToProject(context.projectId);
+      try {
+        const updated = client.updateTimelineState(timelineId, parsed.dsl);
+        result = updated.ok
+          ? { timeline: updated.timeline, version: projectTimelineReadToken(updated.timeline) }
+          : { error: updated.error };
+      } finally {
+        await client.disconnect();
+      }
     }
-    const timelineRevision = result.timelineRevision ?? createTimelineAppliedRevision({
-      projectId,
-      nodeId: options.node,
-      cwd: process.cwd(),
-      filePath,
-      dsl: parsed.dsl,
-      parentRevisionId: lock?.appliedRevision?.revisionId,
-      actor,
-    });
-    const refreshedLock = createTimelineLock({
-      projectId,
-      nodeId: options.node,
-      filePath,
-      dsl: parsed.dsl,
-      appliedRevision: timelineRevision,
-      readToken: result.readToken,
-    });
-    writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision, content);
+    if (result.error || !result.timeline) throw new Error(result.error ?? "Timeline apply failed");
+    await recordTimelineObservation(
+      context,
+      timelineId,
+      result.readToken ?? result.version ?? projectTimelineReadToken(result.timeline),
+    );
 
-    const payload = { ...result, timelineRevision, timelineRevisionIndex, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
+    const payload = {
+      applied: true,
+      projectId: context.projectId,
+      timelineId,
+      revisionId: result.timeline.revisionId,
+      owner: result.timeline.owner,
+      filePath,
+      sources: parsed.sources,
+      timelineHash: timelineHash(normalizeTimelineDslForYaml(parsed.dsl)),
+    };
     if (isJsonMode(options)) printJson(payload);
-    else {
-      if (!timelineRevisionIndex.indexed) {
-        process.stderr.write(`warning: ${timelineRevisionIndex.error}\n`);
-      }
-      process.stderr.write(
-        `applied ${filePath} to ${options.node} (${parsed.sources.length} source${parsed.sources.length === 1 ? "" : "s"}, +${result.edgesAdded} edge${result.edgesAdded === 1 ? "" : "s"})${result.forced ? " (forced)" : ""}\n`,
-      );
-    }
+    else process.stderr.write(`applied ${filePath} to Timeline ${timelineId}\n`);
   });
-
-timelineCommand
-  .command("replace")
-  .description("Create a copy-on-write replacement video-editor node from a timeline YAML file")
-  .requiredOption("--node <id>", "Source VideoEditorNode ID")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--timeline <name>", "Timeline name for the default timelines/<name>.timeline.yaml path", "main")
-  .option("--file <path>", "Timeline YAML path (default: timelines/<name>.timeline.yaml)")
-  .option("--lock <path>", "CAS lock path (default: timeline YAML sidecar)")
-  .option("--label <label>", "Label for the replacement timeline node")
-  .option("--new-node <id>", "Replacement node ID (defaults to a generated id)")
-  .option("--force", "Bypass CAS and intentionally fork from the current canvas timeline")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    const filePath = resolveTimelineFilePath({
-      cwd: process.cwd(),
-      file: options.file,
-      timeline: options.timeline,
-    });
-    const content = readFileSync(filePath, "utf8");
-    const parsed = parseTimelineFileForApply(content);
-    if (!parsed.ok) {
-      console.error(`error: ${parsed.error}`);
-      process.exit(1);
-    }
-
-    const lockPath = resolveTimelineLockPath({
-      cwd: process.cwd(),
-      file: options.file,
-      lock: options.lock,
-      timeline: options.timeline,
-    });
-    let result: ReplaceTimelineDslResult;
-    let lock: TimelineLock | null = null;
-    const actor = await resolveCanvasActor();
-    try {
-      lock = options.force ? null : readTimelineLockFile(lockPath);
-      result = await replaceTimelineDsl(projectId, options.node, parsed.dsl, parsed.sources, {
-        force: options.force === true,
-        lock,
-        cwd: process.cwd(),
-        filePath,
-        actor,
-        label: options.label,
-        newNodeId: options.newNode,
-      });
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-    const timelineRevision = result.timelineRevision ?? createTimelineAppliedRevision({
-      projectId,
-      nodeId: result.newNodeId,
-      cwd: process.cwd(),
-      filePath,
-      dsl: parsed.dsl,
-      parentRevisionId: lock?.appliedRevision?.revisionId,
-      actor,
-    });
-    const refreshedLock = createTimelineLock({
-      projectId,
-      nodeId: result.newNodeId,
-      filePath,
-      dsl: parsed.dsl,
-      appliedRevision: timelineRevision,
-      readToken: result.readToken,
-    });
-    writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-    const timelineRevisionIndex = await registerTimelineRevisionIndex(timelineRevision, content);
-
-    const payload = { ...result, timelineRevision, timelineRevisionIndex, projectId, filePath, lockPath, sources: parsed.sources, readToken: refreshedLock.readToken };
-    if (isJsonMode(options)) printJson(payload);
-    else {
-      if (!timelineRevisionIndex.indexed) {
-        process.stderr.write(`warning: ${timelineRevisionIndex.error}\n`);
-      }
-      process.stderr.write(
-        `created copy-on-write timeline ${result.newNodeId} from ${options.node} (${parsed.sources.length} source${parsed.sources.length === 1 ? "" : "s"}, +${result.edgesAdded} edge${result.edgesAdded === 1 ? "" : "s"})${result.forced ? " (forced)" : ""}\n` +
-        `wrote ${lockPath}\n`,
-      );
-    }
-  });
-
-timelineCommand
-  .command("history")
-  .description("List applied timeline revisions indexed by the host")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--node <id>", "Filter by video-editor node ID")
-  .option("--limit <n>", "Maximum revisions to return")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    let limit: number | undefined;
-    try {
-      limit = parseTimelineRevisionLimit(options.limit);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-
-    try {
-      const result = await fetchTimelineRevisionHistory(projectId, { nodeId: options.node, limit });
-      const payload = { projectId, nodeId: options.node, ...result };
-      if (isJsonMode(options)) {
-        printJson(payload);
-      } else {
-        printTable(result.revisions.map((revision) => ({
-          revisionId: revision.revisionId,
-          nodeId: revision.nodeId,
-          parent: revision.parentRevisionId ?? "",
-          hash: revision.timelineHash,
-          createdAt: revision.createdAt,
-          source: revision.sourceFilePath,
-        })), [
-          { key: "revisionId", label: "Revision", width: 32 },
-          { key: "nodeId", label: "Node", width: 20 },
-          { key: "hash", label: "Hash", width: 16 },
-          { key: "createdAt", label: "Created", width: 24 },
-          { key: "source", label: "Source", width: 36 },
-        ]);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-timelineCommand
-  .command("content")
-  .description("Fetch an applied timeline revision's YAML content from the host")
-  .requiredOption("--revision <id>", "Timeline revision ID")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--out <path>", "Write content to a cwd-contained timeline YAML file instead of stdout")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    try {
-      const content = await fetchTimelineRevisionContent(projectId, options.revision);
-      if (options.out) {
-        const filePath = resolveAgentFilePathInsideCwd({
-          cwd: process.cwd(),
-          filePath: options.out,
-          writeVerb: "Timeline revision content output",
-        });
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content, "utf8");
-        const payload = {
-          projectId,
-          revisionId: options.revision,
-          filePath,
-          bytes: Buffer.byteLength(content, "utf8"),
-        };
-        if (isJsonMode(options)) printJson(payload);
-        else process.stderr.write(`wrote ${filePath}\n`);
-        return;
-      }
-      if (isJsonMode(options)) {
-        printJson({ projectId, revisionId: options.revision, content });
-      } else {
-        process.stdout.write(content);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-timelineCommand
-  .command("restore")
-  .description("Restore an applied timeline revision through an explicit CAS/COW canvas action")
-  .requiredOption("--node <id>", "Target VideoEditorNode ID")
-  .requiredOption("--revision <id>", "Timeline revision ID to restore")
-  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--mode <mode>", "Restore mode: replace or apply (default: replace)", "replace")
-  .option("--file <path>", "Where to materialize the revision YAML (default: revisions/<revision>.timeline.yaml)")
-  .option("--lock <path>", "CAS lock path (default: timeline YAML sidecar)")
-  .option("--label <label>", "Label for the replacement timeline node in replace mode")
-  .option("--new-node <id>", "Replacement node ID in replace mode")
-  .option("--force", "Bypass CAS/reference guards and intentionally overwrite or fork from current canvas timeline")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
-    const actor = await resolveCanvasActor();
-    try {
-      const result = await restoreTimelineRevisionContent({
-        projectId,
-        nodeId: options.node,
-        revisionId: options.revision,
-        cwd: process.cwd(),
-        file: options.file,
-        lock: options.lock,
-        mode: parseTimelineRevisionRestoreMode(options.mode),
-        force: options.force === true,
-        actor,
-        label: options.label,
-        newNodeId: options.newNode,
-      });
-      if (isJsonMode(options)) {
-        printJson(result);
-      } else {
-        if (!result.timelineRevisionIndex.indexed) {
-          process.stderr.write(`warning: ${result.timelineRevisionIndex.error}\n`);
-        }
-        const action = result.mode === "replace"
-          ? `created copy-on-write timeline ${result.newNodeId} from ${options.node}`
-          : `restored ${options.revision} to ${options.node}`;
-        process.stderr.write(`${action}\nwrote ${result.filePath}\nwrote ${result.lockPath}\n`);
-      }
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-function readTimelineLockFile(lockPath: string): TimelineLock {
-  try {
-    return parseTimelineLock(readFileSync(lockPath, "utf8"));
-  } catch (error) {
-    throw new Error(`Failed to read timeline CAS lock at ${lockPath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
 
 async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   const apiKey = requireApiKey();
@@ -464,540 +521,4 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
 async function runCommand(projectId: string, cmd: object): Promise<any> {
   if (!isDaemonRunning(projectId)) return null;
   return sendCommand(projectId, cmd);
-}
-
-export type TimelineRevisionIndexResult =
-  | { indexed: true }
-  | { indexed: false; status?: number; error: string };
-
-export async function registerTimelineRevisionIndex(
-  revision: TimelineAppliedRevision,
-  contentOrRequest?: string | ((path: string, init?: RequestInit) => Promise<Response>),
-  requestOverride?: (path: string, init?: RequestInit) => Promise<Response>,
-): Promise<TimelineRevisionIndexResult> {
-  const content = typeof contentOrRequest === "string" ? contentOrRequest : undefined;
-  const request = typeof contentOrRequest === "function"
-    ? contentOrRequest
-    : requestOverride ?? apiFetch;
-  try {
-    const response = await request("/api/v1/timeline-revisions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        revision,
-        ...(content !== undefined ? { content } : {}),
-      }),
-    });
-    if (response.ok) return { indexed: true };
-    if (response.status === 404) {
-      return { indexed: false, status: 404, error: "timeline revision index API unavailable" };
-    }
-    const body = await response.text().catch(() => "");
-    return {
-      indexed: false,
-      status: response.status,
-      error: body ? `timeline revision index rejected: ${body}` : `timeline revision index rejected with HTTP ${response.status}`,
-    };
-  } catch (error) {
-    return {
-      indexed: false,
-      error: `timeline revision index unavailable: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
-
-export type TimelineRevisionHistoryResult = {
-  revisions: TimelineRevisionHistoryEntry[];
-};
-
-export async function fetchTimelineRevisionHistory(
-  projectId: string,
-  options: { nodeId?: string; limit?: number } = {},
-  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
-): Promise<TimelineRevisionHistoryResult> {
-  const params = new URLSearchParams();
-  if (options.nodeId) params.set("nodeId", options.nodeId);
-  if (options.limit !== undefined) params.set("limit", String(options.limit));
-  const query = params.toString();
-  const response = await request(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/timeline-revisions${query ? `?${query}` : ""}`,
-    { method: "GET" },
-  );
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error("timeline revision history API unavailable");
-    }
-    const body = await response.text().catch(() => "");
-    throw new Error(body ? `timeline revision history rejected: ${body}` : `timeline revision history rejected with HTTP ${response.status}`);
-  }
-  const body = await response.json().catch(() => null) as { revisions?: unknown[] } | null;
-  if (!body || !Array.isArray(body.revisions)) {
-    throw new Error("Invalid timeline revision history response");
-  }
-  return {
-    revisions: body.revisions.map((revision) => {
-      const parsed = TimelineRevisionHistoryEntrySchema.safeParse(revision);
-      if (!parsed.success) {
-        throw new Error("Invalid timeline revision history response");
-      }
-      return parsed.data;
-    }),
-  };
-}
-
-export async function fetchTimelineRevisionContent(
-  projectId: string,
-  revisionId: string,
-  request: (path: string, init?: RequestInit) => Promise<Response> = apiFetch,
-): Promise<string> {
-  const response = await request(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/timeline-revisions/${encodeURIComponent(revisionId)}/content`,
-    { method: "GET" },
-  );
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error("timeline revision content unavailable");
-    }
-    const body = await response.text().catch(() => "");
-    throw new Error(body ? `timeline revision content rejected: ${body}` : `timeline revision content rejected with HTTP ${response.status}`);
-  }
-  return response.text();
-}
-
-export type TimelineRevisionRestoreMode = "apply" | "replace";
-
-export type TimelineRevisionRestoreOptions = {
-  projectId: string;
-  nodeId: string;
-  revisionId: string;
-  cwd: string;
-  file?: string;
-  lock?: string;
-  mode?: TimelineRevisionRestoreMode;
-  force?: boolean;
-  actor?: TimelineRevisionActor;
-  label?: string;
-  newNodeId?: string;
-};
-
-export type TimelineRevisionRestoreDeps = {
-  fetchContent?: typeof fetchTimelineRevisionContent;
-  readNode?: typeof readNode;
-  apply?: typeof applyTimelineDsl;
-  replace?: typeof replaceTimelineDsl;
-  register?: typeof registerTimelineRevisionIndex;
-  mkdir?: typeof mkdirSync;
-  writeFile?: typeof writeFileSync;
-};
-
-export type TimelineRevisionRestoreResult = (
-  | (ApplyTimelineDslResult & { mode: "apply" })
-  | (ReplaceTimelineDslResult & { mode: "replace" })
-) & {
-  revisionId: string;
-  filePath: string;
-  lockPath: string;
-  timelineRevision: TimelineAppliedRevision;
-  timelineRevisionIndex: TimelineRevisionIndexResult;
-  readToken?: string;
-};
-
-export async function restoreTimelineRevisionContent(
-  options: TimelineRevisionRestoreOptions,
-  deps: TimelineRevisionRestoreDeps = {},
-): Promise<TimelineRevisionRestoreResult> {
-  const mode = parseTimelineRevisionRestoreMode(options.mode);
-  const fetchContent = deps.fetchContent ?? fetchTimelineRevisionContent;
-  const readCurrentNode = deps.readNode ?? readNode;
-  const apply = deps.apply ?? applyTimelineDsl;
-  const replace = deps.replace ?? replaceTimelineDsl;
-  const register = deps.register ?? registerTimelineRevisionIndex;
-  const mkdir = deps.mkdir ?? mkdirSync;
-  const writeFile = deps.writeFile ?? writeFileSync;
-  const filePath = resolveTimelineFilePath({
-    cwd: options.cwd,
-    file: options.file ?? join(options.cwd, "revisions", `${revisionFileStem(options.revisionId)}.timeline.yaml`),
-  });
-  const lockPath = resolveTimelineLockPath({
-    cwd: options.cwd,
-    file: filePath,
-    lock: options.lock,
-  });
-  const content = await fetchContent(options.projectId, options.revisionId);
-  const parsed = parseTimelineFileForApply(content);
-  if (!parsed.ok) {
-    throw new Error(`Invalid timeline revision content: ${parsed.error}`);
-  }
-  const currentNode = await readCurrentNode(options.projectId, options.nodeId);
-  if (!currentNode) throw new Error(`Node not found: ${options.nodeId}`);
-  if (currentNode.type !== "video-editor") {
-    throw new Error(`Node ${options.nodeId} has type "${currentNode.type}", expected "video-editor"`);
-  }
-  const currentDsl = normalizeTimelineDslForYaml(currentNode.data?.timelineDsl);
-  const currentLock = createTimelineLock({
-    projectId: options.projectId,
-    nodeId: options.nodeId,
-    filePath,
-    dsl: currentDsl,
-    readToken: currentNode.readToken,
-  });
-  mkdir(dirname(filePath), { recursive: true });
-  mkdir(dirname(lockPath), { recursive: true });
-  writeFile(filePath, content, "utf8");
-  writeFile(lockPath, JSON.stringify(currentLock, null, 2) + "\n", "utf8");
-
-  const sharedCas = {
-    lock: currentLock,
-    force: options.force === true,
-    filePath,
-    cwd: options.cwd,
-    actor: options.actor,
-    parentRevisionId: options.revisionId,
-  };
-  let result: ApplyTimelineDslResult | ReplaceTimelineDslResult;
-  let targetNodeId: string;
-  if (mode === "apply") {
-    result = await apply(options.projectId, options.nodeId, parsed.dsl, parsed.sources, sharedCas);
-    targetNodeId = result.nodeId;
-  } else {
-    result = await replace(options.projectId, options.nodeId, parsed.dsl, parsed.sources, {
-      ...sharedCas,
-      label: options.label,
-      newNodeId: options.newNodeId,
-    });
-    targetNodeId = result.newNodeId;
-  }
-  const timelineRevision = result.timelineRevision ?? createTimelineAppliedRevision({
-    projectId: options.projectId,
-    nodeId: targetNodeId,
-    cwd: options.cwd,
-    filePath,
-    dsl: parsed.dsl,
-    parentRevisionId: options.revisionId,
-    actor: options.actor,
-  });
-  const refreshedLock = createTimelineLock({
-    projectId: options.projectId,
-    nodeId: targetNodeId,
-    filePath,
-    dsl: parsed.dsl,
-    readToken: result.readToken,
-    appliedRevision: timelineRevision,
-  });
-  writeFile(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
-  const timelineRevisionIndex = await register(timelineRevision, content);
-  return {
-    ...result,
-    mode,
-    revisionId: options.revisionId,
-    filePath,
-    lockPath,
-    timelineRevision,
-    timelineRevisionIndex,
-    readToken: refreshedLock.readToken,
-  } as TimelineRevisionRestoreResult;
-}
-
-export function parseTimelineRevisionRestoreMode(value: unknown): TimelineRevisionRestoreMode {
-  if (value === undefined || value === null || value === "" || value === "replace") return "replace";
-  if (value === "apply") return "apply";
-  throw new Error("Timeline revision restore mode must be either apply or replace");
-}
-
-function revisionFileStem(revisionId: string): string {
-  return revisionId.trim().replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "") || "revision";
-}
-
-function parseTimelineRevisionLimit(value: unknown): number | undefined {
-  if (value === undefined) return undefined;
-  const limit = Number(value);
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw new Error("Timeline revision history limit must be a positive integer");
-  }
-  return limit;
-}
-
-export type TimelineNodeReadResult = TimelineNodeLike & {
-  readToken?: string;
-};
-
-async function readNode(projectId: string, nodeId: string): Promise<TimelineNodeReadResult | null> {
-  const daemonResult = await runCommand(projectId, {
-    action: "get",
-    projectId,
-    nodeId,
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-  });
-  if (daemonResult) {
-    if (daemonResult.error) return null;
-    return daemonResult.node
-      ? { ...daemonResult.node, readToken: daemonResult.timelineReadToken }
-      : null;
-  }
-  const client = await connectToProject(projectId);
-  try {
-    const node = client.readNode(nodeId);
-    return node ? { type: node.type, data: node.data as Record<string, unknown> } : null;
-  } finally {
-    await client.disconnect();
-  }
-}
-
-async function applyTimelineDsl(
-  projectId: string,
-  nodeId: string,
-  dsl: ResolvedTimelineDsl,
-  sources: string[],
-  cas: {
-    lock: TimelineLock | null;
-    force: boolean;
-    cwd: string;
-    filePath: string;
-    actor?: TimelineRevisionActor;
-    parentRevisionId?: string | null;
-  },
-): Promise<ApplyTimelineDslResult> {
-  const filePathCas = assertTimelineLockFilePath({
-    lock: cas.lock,
-    filePath: cas.filePath,
-    cwd: cas.cwd,
-    force: cas.force,
-  });
-  if (!filePathCas.ok) throw new Error(filePathCas.error);
-
-  const daemonResult = await runCommand(projectId, {
-    action: "timeline_cas_update",
-    projectId,
-    nodeId,
-    dsl,
-    expectedTimelineHash: cas.lock?.timelineHash,
-    expectedReadToken: cas.lock?.readToken,
-    expectedTimelineFilePath: cas.lock?.filePath,
-    parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
-    cwd: cas.cwd,
-    filePath: cas.filePath,
-    actor: cas.actor,
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
-  });
-  if (daemonResult) {
-    if (daemonResult.error) {
-      throw new Error(daemonResult.error);
-    }
-    let edgesAdded = 0;
-    for (const source of sources) {
-      const edge = await runCommand(projectId, { action: "ensure_edge", source, target: nodeId });
-      if (edge && !edge.error && edge.existed === false) edgesAdded++;
-    }
-    return {
-      updated: true,
-      nodeId,
-      edgesAdded,
-      timelineRevision: daemonResult.timelineRevision,
-      readToken: daemonResult.readToken,
-      ...(cas.force || daemonResult.forced === true ? { forced: true } : {}),
-    };
-  }
-  const hostWrite = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
-    operation: "timeline apply",
-    readCommand: "clash timeline pull --json",
-  });
-  if (!hostWrite.ok) throw new Error(hostWrite.error);
-
-  const client = await connectToProject(projectId);
-  try {
-    const current = client.readNode(nodeId);
-    if (!current) throw new Error(`Node not found: ${nodeId}`);
-    const casResult = assertTimelineCas({
-      projectId,
-      nodeId,
-      lock: cas.lock,
-      currentDsl: normalizeTimelineDslForYaml(current.data?.timelineDsl),
-      force: cas.force,
-      filePath: cas.filePath,
-      cwd: cas.cwd,
-    });
-    if (!casResult.ok) throw new Error(casResult.error);
-    const referenceResult = assertTimelineNotMaterializedReferenced({
-      nodeId,
-      nodes: client.listNodes(),
-      edges: client.canvas.listEdges(),
-      force: cas.force,
-    });
-    if (!referenceResult.ok) throw new Error(referenceResult.error);
-    const ok = client.updateNode(nodeId, { timelineDsl: dsl });
-    if (!ok) throw new Error(`Node not found: ${nodeId}`);
-    let edgesAdded = 0;
-    const existing = client.canvas.listEdges();
-    for (const source of sources) {
-      if (existing.some((edge) => edge.source === source && edge.target === nodeId)) continue;
-      client.canvas.insertEdge(`e-${source}-${nodeId}-${crypto.randomUUID().slice(0, 4)}`, source, nodeId, "default");
-      edgesAdded++;
-    }
-    const revisionMetadata = readLoroRevisionMetadata(client.doc);
-    const timelineRevision = createTimelineAppliedRevision({
-      projectId,
-      nodeId,
-      cwd: cas.cwd,
-      filePath: cas.filePath,
-      dsl,
-      parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
-      actor: cas.actor,
-      ...revisionMetadata,
-    });
-    return {
-      updated: true,
-      nodeId,
-      edgesAdded,
-      timelineRevision,
-      readToken: timelineReadToken({ projectId, nodeId, dsl }),
-      ...(cas.force ? { forced: true } : {}),
-    };
-  } finally {
-    await client.disconnect();
-  }
-}
-
-async function replaceTimelineDsl(
-  projectId: string,
-  nodeId: string,
-  dsl: ResolvedTimelineDsl,
-  sources: string[],
-  cas: {
-    lock: TimelineLock | null;
-    force: boolean;
-    cwd: string;
-    filePath: string;
-    actor?: TimelineRevisionActor;
-    parentRevisionId?: string | null;
-    label?: string;
-    newNodeId?: string;
-  },
-): Promise<ReplaceTimelineDslResult> {
-  const filePathCas = assertTimelineLockFilePath({
-    lock: cas.lock,
-    filePath: cas.filePath,
-    cwd: cas.cwd,
-    force: cas.force,
-  });
-  if (!filePathCas.ok) throw new Error(filePathCas.error);
-
-  const daemonResult = await runCommand(projectId, {
-    action: "timeline_cow_replace",
-    projectId,
-    nodeId,
-    dsl,
-    expectedTimelineHash: cas.lock?.timelineHash,
-    expectedReadToken: cas.lock?.readToken,
-    expectedTimelineFilePath: cas.lock?.filePath,
-    parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
-    cwd: cas.cwd,
-    filePath: cas.filePath,
-    actor: cas.actor,
-    label: cas.label,
-    newNodeId: cas.newNodeId,
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
-  });
-  if (daemonResult) {
-    if (daemonResult.error) throw new Error(daemonResult.error);
-    const newNodeId = daemonResult.newNodeId ?? daemonResult.nodeId;
-    let edgesAdded = 0;
-    for (const source of sources) {
-      const edge = await runCommand(projectId, { action: "ensure_edge", source, target: newNodeId });
-      if (edge && !edge.error && edge.existed === false) edgesAdded++;
-    }
-    return {
-      replaced: true,
-      copyOnWrite: true,
-      sourceNodeId: daemonResult.sourceNodeId ?? nodeId,
-      newNodeId,
-      edgesAdded,
-      sourceTimelineHash: daemonResult.sourceTimelineHash,
-      timelineHash: daemonResult.timelineHash,
-      timelineRevision: daemonResult.timelineRevision,
-      lineageEdge: daemonResult.lineageEdge,
-      readToken: daemonResult.readToken,
-      ...(cas.force || daemonResult.forced === true ? { forced: true } : {}),
-    };
-  }
-  const hostWrite = assertAgentHostWritePath({
-    actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
-    operation: "timeline replace",
-    readCommand: "clash timeline pull --json",
-  });
-  if (!hostWrite.ok) throw new Error(hostWrite.error);
-
-  const client = await connectToProject(projectId);
-  try {
-    const current = client.readNode(nodeId);
-    if (!current) throw new Error(`Node not found: ${nodeId}`);
-    if (current.type !== "video-editor") throw new Error(`Node ${nodeId} has type "${current.type}", expected "video-editor"`);
-    const currentDsl = normalizeTimelineDslForYaml(current.data?.timelineDsl);
-    const casResult = assertTimelineCas({
-      projectId,
-      nodeId,
-      lock: cas.lock,
-      currentDsl,
-      force: cas.force,
-      filePath: cas.filePath,
-      cwd: cas.cwd,
-    });
-    if (!casResult.ok) throw new Error(casResult.error);
-    const newNodeId = cas.newNodeId?.trim() || randomUUID().slice(0, 8);
-    const revisionMetadata = readLoroRevisionMetadata(client.doc);
-    const timelineRevision = createTimelineAppliedRevision({
-      projectId,
-      nodeId: newNodeId,
-      cwd: cas.cwd,
-      filePath: cas.filePath,
-      dsl,
-      parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
-      actor: cas.actor,
-      ...revisionMetadata,
-    });
-    const data = createTimelineCowNodeData({
-      sourceNodeId: nodeId,
-      sourceLabel: typeof current.data?.label === "string" ? current.data.label : undefined,
-      sourceDsl: currentDsl,
-      dsl,
-      label: cas.label,
-      filePath: cas.filePath,
-      timelineRevision,
-    });
-    client.canvas.createLinkedNode({
-      nodeId: newNodeId,
-      nodeType: "video-editor",
-      data,
-      parentId: current.parent_id ?? null,
-      sourceNodeId: nodeId,
-      edgeId: `${nodeId}-${newNodeId}`,
-      edgeType: "copy-on-write",
-    });
-    let edgesAdded = 0;
-    const existing = client.canvas.listEdges();
-    for (const source of sources) {
-      if (existing.some((edge) => edge.source === source && edge.target === newNodeId)) continue;
-      client.canvas.insertEdge(`e-${source}-${newNodeId}-${randomUUID().slice(0, 4)}`, source, newNodeId, "default");
-      edgesAdded++;
-    }
-    return {
-      replaced: true,
-      copyOnWrite: true,
-      sourceNodeId: nodeId,
-      newNodeId,
-      edgesAdded,
-      sourceTimelineHash: timelineHash(currentDsl),
-      timelineHash: timelineHash(dsl),
-      timelineRevision,
-      lineageEdge: { source: nodeId, target: newNodeId, type: "copy-on-write" },
-      readToken: timelineReadToken({ projectId, nodeId: newNodeId, dsl }),
-      ...(cas.force ? { forced: true } : {}),
-    };
-  } finally {
-    await client.disconnect();
-  }
 }

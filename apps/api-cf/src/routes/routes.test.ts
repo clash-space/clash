@@ -41,10 +41,10 @@ vi.mock("../agents/supervisor", () => ({
 // We need to import the app after mocks are set up
 import app from "../index";
 
-const USER_HEADERS = { "x-user-id": "user-1" };
+const USER_HEADERS = { authorization: "Bearer clsh_routes_test" };
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
+  const env = {
     GOOGLE_API_KEY: "test-key",
     GOOGLE_AI_STUDIO_BASE_URL: "",
     CF_AIG_TOKEN: "",
@@ -80,6 +80,26 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     WORKER_PUBLIC_URL: "https://api.example.com",
     ...overrides,
   } as Env;
+  const routeDb = env.DB;
+  env.DB = {
+    ...routeDb,
+    prepare: vi.fn((sql: string) => {
+      if (sql.includes("FROM api_token WHERE token_hash")) {
+        return {
+          bind: vi.fn(() => ({
+            all: vi.fn().mockResolvedValue({ results: [{ user_id: "user-1" }] }),
+          })),
+        };
+      }
+      if (sql.includes("UPDATE api_token SET last_used_at")) {
+        return {
+          bind: vi.fn(() => ({ run: vi.fn().mockResolvedValue({}) })),
+        };
+      }
+      return routeDb.prepare(sql);
+    }),
+  } as any;
+  return env;
 }
 
 describe("Hono routes", () => {
@@ -723,8 +743,13 @@ describe("Hono routes", () => {
     it("returns 500 when workflow.create throws (does NOT write to D1)", async () => {
       (env.GENERATION_WORKFLOW.create as any).mockRejectedValueOnce(new Error("Workflow service unavailable"));
       const dbRun = vi.fn().mockResolvedValue({});
-      (env.DB.prepare as any).mockReturnValue({
-        bind: vi.fn().mockReturnValue({ run: dbRun, first: vi.fn().mockResolvedValue(null), all: vi.fn().mockResolvedValue({ results: [] }) }),
+      env = makeEnv({
+        GENERATION_WORKFLOW: env.GENERATION_WORKFLOW,
+        DB: {
+          prepare: vi.fn().mockReturnValue({
+            bind: vi.fn().mockReturnValue({ run: dbRun, first: vi.fn().mockResolvedValue(null), all: vi.fn().mockResolvedValue({ results: [] }) }),
+          }),
+        } as any,
       });
 
       const res = await app.request(

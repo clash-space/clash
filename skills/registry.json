@@ -76,13 +76,11 @@
           "kind": "projection",
           "pathPattern": "projections/timelines/<composition-id>.mg.timeline.yaml",
           "applyCommand": "clash timeline apply",
-          "lockSource": "fresh-canvas-pull",
-          "lockPathPattern": "timelines/main.timeline.lock.json",
-          "nodeIdPlaceholder": "<video-editor-node-id>",
-          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "timelineIdPlaceholder": "<timeline-id>",
+          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
           "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<composition-id>.mg.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<composition-id>.mg.timeline.yaml"],
           "casRequired": true
         }
       ],
@@ -99,7 +97,7 @@
         },
         {
           "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
         }
       ]
     },
@@ -184,13 +182,11 @@
           "kind": "projection",
           "pathPattern": "projections/timelines/<composition-id>.composition.timeline.yaml",
           "applyCommand": "clash timeline apply",
-          "lockSource": "fresh-canvas-pull",
-          "lockPathPattern": "timelines/main.timeline.lock.json",
-          "nodeIdPlaceholder": "<video-editor-node-id>",
-          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "timelineIdPlaceholder": "<timeline-id>",
+          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
           "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<composition-id>.composition.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<composition-id>.composition.timeline.yaml"],
           "casRequired": true
         }
       ],
@@ -207,7 +203,7 @@
         },
         {
           "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
         }
       ]
     },
@@ -238,13 +234,11 @@
           "kind": "projection",
           "pathPattern": "projections/timelines/<derived-asset-id>.derived-overlay.timeline.yaml",
           "applyCommand": "clash timeline apply",
-          "lockSource": "fresh-canvas-pull",
-          "lockPathPattern": "timelines/main.timeline.lock.json",
-          "nodeIdPlaceholder": "<video-editor-node-id>",
-          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "timelineIdPlaceholder": "<timeline-id>",
+          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
           "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<derived-asset-id>.derived-overlay.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<derived-asset-id>.derived-overlay.timeline.yaml"],
           "casRequired": true
         }
       ],
@@ -260,7 +254,7 @@
         },
         {
           "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
         }
       ]
     },
@@ -300,13 +294,11 @@
           "kind": "projection",
           "pathPattern": "projections/timelines/<asset-id>.caption.timeline.yaml",
           "applyCommand": "clash timeline apply",
-          "lockSource": "fresh-canvas-pull",
-          "lockPathPattern": "timelines/main.timeline.lock.json",
-          "nodeIdPlaceholder": "<video-editor-node-id>",
-          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "timelineIdPlaceholder": "<timeline-id>",
+          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
           "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<asset-id>.caption.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<asset-id>.caption.timeline.yaml"],
           "casRequired": true
         }
       ],
@@ -324,7 +316,7 @@
         },
         {
           "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
         }
       ]
     },
@@ -404,13 +396,11 @@
           "pathPattern": "projections/timelines/<asset-id>.mv-beat-cut.timeline.yaml",
           "schema": "mv-beat-cut-projection",
           "applyCommand": "clash timeline apply",
-          "lockSource": "fresh-canvas-pull",
-          "lockPathPattern": "timelines/main.timeline.lock.json",
-          "nodeIdPlaceholder": "<video-editor-node-id>",
-          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "timelineIdPlaceholder": "<timeline-id>",
+          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
           "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<asset-id>.mv-beat-cut.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<asset-id>.mv-beat-cut.timeline.yaml"],
           "casRequired": true
         }
       ],
@@ -427,7 +417,7 @@
         },
         {
           "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
         }
       ]
     },
@@ -675,13 +665,11 @@
           "kind": "projection",
           "pathPattern": "projections/timelines/<asset-id>.storyboard.timeline.yaml",
           "applyCommand": "clash timeline apply",
-          "lockSource": "fresh-canvas-pull",
-          "lockPathPattern": "timelines/main.timeline.lock.json",
-          "nodeIdPlaceholder": "<video-editor-node-id>",
-          "requiredRuntimeArgs": ["--node <video-editor-node-id>"],
+          "timelineIdPlaceholder": "<timeline-id>",
+          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
           "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--node", "<video-editor-node-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--node", "<video-editor-node-id>", "--file", "projections/timelines/<asset-id>.storyboard.timeline.yaml", "--lock", "timelines/main.timeline.lock.json"],
+          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
+          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<asset-id>.storyboard.timeline.yaml"],
           "casRequired": true
         }
       ],
@@ -697,7 +685,7 @@
         },
         {
           "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, apply commands, CAS lock sidecar, capabilities, and skill linkage"
+          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
         }
       ]
     },
@@ -2570,7 +2558,7 @@
       "id": "review.stage-gates",
       "title": "Stage review gates",
       "status": "partial",
-      "description": "clash production plan-review-gate and approve-review-gate write local clash.review.stage-gate artifacts plus path-bound hash lock sidecars, block missing required artifacts, require explicit approval, and reject stale or wrong-file approval writes. Durable project DB storage, multi-user review UI, cloud sync, and full stage graph orchestration remain missing."
+      "description": "clash production plan-review-gate records a path-bound cwd observation for each local clash.review.stage-gate artifact; approve-review-gate consumes it implicitly, blocks missing required artifacts, requires explicit approval, and rejects stale, unread, copied, or wrong-file writes. Durable project DB storage, multi-user review UI, cloud sync, and full stage graph orchestration remain missing."
     },
     {
       "id": "workflow.pipeline-validation",
@@ -2756,7 +2744,7 @@
       "id": "storyboard.cas-projection",
       "title": "Storyboard CAS projection",
       "status": "partial",
-      "description": "clash production project-storyboard-timeline projects storyboard panel assets into a CAS-required timeline view; project-storyboard-prompt-pack/apply-storyboard-prompt-pack provide an agent-editable prompt-pack file with lock sidecar plus stale-write rejection into managed storyboard projections; replace-storyboard-prompt-pack creates a versioned copy-on-write prompt-pack projection from the same read-proof lock without moving existing downstream references. Editable storyboard host UI/apply integration remains missing."
+      "description": "clash production project-storyboard-timeline projects storyboard panel assets into a CAS-required timeline view; project-storyboard-prompt-pack records the editable prompt-pack version in cwd state, apply-storyboard-prompt-pack consumes it implicitly with stale-write rejection, and replace-storyboard-prompt-pack creates a versioned copy-on-write projection without moving existing downstream references. Editable storyboard host UI/apply integration remains missing."
     },
     {
       "id": "provenance.content-credentials",
@@ -2774,7 +2762,7 @@
       "id": "workflow.production-action-runner",
       "title": "Production action runner",
       "status": "partial",
-      "description": "Local CLI action runner is a Clash-managed adapter for portable file/artifact skill workflows, with repo-hosted marketplace action contracts for representative production primitives. It validates pipeline manifests, applies AssetMetadataFillAction, composition route plans, review stage gates, dry-run cost gates, semantic reference role plans, product/logo QA plans, analysis backend benchmark plans, image embedding store plans, audio stem separation plans, ComfyUI workflow plans, content credentials plans, MG specs/snapshots/video exports, derived-overlay projections, beat analysis, lyrics alignment, visual moment libraries, MV beat-cut timeline projections, ad delivery/packshot metadata, ad visual frame extraction manifests, ad visual pixel evidence, ad visual QA plans, text-cut plans/media exports, caption sidecar exports, timeline CSV handoffs, reference-review plans, controlled reference download plans/executions, reference non-copying QA, storyboard consistency QA, storyboard prompt-pack CAS projections, and storyboard timeline projections into metadata/assets/projections/rights without mutating canvas; pipeline validation checks action/metadata/asset/projection/review/export artifact coverage and CAS-required projections, route plans forbid silent runtime fallback, dry-run gates do not execute providers, semantic references carry copy-on-write requirements, controlled reference download execution keeps raw media quarantined and does not grant final export rights, product/logo QA fails closed on locked reference evidence, ad visual frame extraction uses explicit local ffmpeg and writes manifests, ad visual pixel analysis reads only local PPM frame samples, ad visual QA plans do not execute OCR/logo/pixel analysis backends, analysis backend benchmarks do not execute backends, image embedding stores register existing vector files without executing models, audio stem separation registers existing stem files without executing separation backends, ComfyUI workflow plans register pinned workflow/output lineage without executing ComfyUI, content credentials plans register unsigned/external manifests without signing C2PA, review approvals are path-bound hash-lock protected, and MG/derived-overlay/MV beat-cut/storyboard prompt-pack/storyboard timeline projections declare explicit CAS apply boundaries, including COW prompt-pack replacement from read-proof locks. Provider execution, project DB integration, multi-user review UI, and managed timeline apply orchestration remain separate."
+      "description": "Local CLI action runner is a Clash-managed adapter for portable file/artifact skill workflows, with repo-hosted marketplace action contracts for representative production primitives. It validates pipeline manifests, applies AssetMetadataFillAction, composition route plans, review stage gates, dry-run cost gates, semantic reference role plans, product/logo QA plans, analysis backend benchmark plans, image embedding store plans, audio stem separation plans, ComfyUI workflow plans, content credentials plans, MG specs/snapshots/video exports, derived-overlay projections, beat analysis, lyrics alignment, visual moment libraries, MV beat-cut timeline projections, ad delivery/packshot metadata, ad visual frame extraction manifests, ad visual pixel evidence, ad visual QA plans, text-cut plans/media exports, caption sidecar exports, timeline CSV handoffs, reference-review plans, controlled reference download plans/executions, reference non-copying QA, storyboard consistency QA, storyboard prompt-pack CAS projections, and storyboard timeline projections into metadata/assets/projections/rights without mutating canvas; pipeline validation checks action/metadata/asset/projection/review/export artifact coverage and CAS-required projections, route plans forbid silent runtime fallback, dry-run gates do not execute providers, semantic references carry copy-on-write requirements, controlled reference download execution keeps raw media quarantined and does not grant final export rights, product/logo QA fails closed on locked reference evidence, ad visual frame extraction uses explicit local ffmpeg and writes manifests, ad visual pixel analysis reads only local PPM frame samples, ad visual QA plans do not execute OCR/logo/pixel analysis backends, analysis backend benchmarks do not execute backends, image embedding stores register existing vector files without executing models, audio stem separation registers existing stem files without executing separation backends, ComfyUI workflow plans register pinned workflow/output lineage without executing ComfyUI, content credentials plans register unsigned/external manifests without signing C2PA, review approvals use path-bound cwd observations, and MG/derived-overlay/MV beat-cut/storyboard prompt-pack/storyboard timeline projections declare explicit apply boundaries with host-managed implicit CAS, including COW prompt-pack replacement from the same observed version. Provider execution, project DB integration, multi-user review UI, and managed timeline apply orchestration remain separate."
     }
   ],
   "thirdPartyReferences": [

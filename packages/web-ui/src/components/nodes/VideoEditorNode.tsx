@@ -12,14 +12,25 @@ import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import {
     buildPendingRenderVideoNodePayload,
     getTimelineDurationInFrames,
-    readPendingRenderAppliedTimelineRevision,
 } from '@clash/web-ui/lib/pendingRenderVideo';
 import { hydrateAssetIdsFromNodes } from '@clash/web-ui/lib/timelineDsl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getItemSourceNodeId } from '@master-clash/remotion-core';
 import { Button } from '../ui/button';
-import { useRevisionHistory } from '@clash/web-ui/hooks/useRevisionHistory';
-import { RevisionHistoryBadge } from './RevisionHistoryBadge';
+import { listProjectTimelines, type ProjectTimeline } from '@clash/shared-types';
+
+function readTimelineForAction(
+    doc: NonNullable<ReturnType<typeof useOptionalLoroSyncContext>>['doc'],
+    actionNodeId: string,
+): ProjectTimeline | null {
+    if (!doc) return null;
+    const actionNode = doc.getMap('nodes').get(actionNodeId) as any;
+    const timelineId = typeof actionNode?.data?.timelineId === 'string'
+        ? actionNode.data.timelineId
+        : undefined;
+    if (!timelineId) return null;
+    return listProjectTimelines(doc).find((timeline) => timeline.id === timelineId) ?? null;
+}
 
 /**
  * Resolve a canvas node's authoritative R2 key + cover + dimensions + duration.
@@ -83,12 +94,6 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
     const [rendering, setRendering] = useState(false);
     const [previewSrc, setPreviewSrc] = useState<string | null>(null);
     const signedPreviewUrl = useSignedUrl(previewSrc || undefined);
-    const revisionHistory = useRevisionHistory({
-        projectId: loroSync?.projectId ?? null,
-        nodeId: id,
-        kind: 'timeline',
-        limit: 5,
-    });
 
     // Extract first frame source from timeline
     // Force re-render trigger for Loro updates
@@ -124,19 +129,8 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         let cancelled = false;
 
         (async () => {
-            let timelineDsl = data.timelineDsl;
-            if (loroSync?.doc) {
-                const loroNode = loroSync.doc.getMap('nodes').get(id) as any;
-                const loroDsl = loroNode?.data?.timelineDsl;
-                if (loroDsl) {
-                    // Clone to ensure we have a plain object
-                    try {
-                        timelineDsl = JSON.parse(JSON.stringify(loroDsl));
-                    } catch (_e) {
-                        timelineDsl = loroDsl;
-                    }
-                }
-            }
+            const timeline = readTimelineForAction(loroSync?.doc ?? null, id);
+            const timelineDsl = timeline?.state as any;
 
             if (!timelineDsl?.tracks) {
                 if (!cancelled) setPreviewSrc(null);
@@ -174,7 +168,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         return () => {
             cancelled = true;
         };
-    }, [data.timelineDsl, id, loroSync?.doc, loroUpdateTrigger]);
+    }, [data.timelineId, id, loroSync?.doc, loroUpdateTrigger]);
 
     const handleOpenEditor = useCallback(async () => {
         // Derive connected assets dynamically from edges
@@ -238,11 +232,8 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         // Fallback/Supplement: Scan timelineDsl for used assets
         // This ensures that if arrange_timeline put something in the timeline, it shows up in assets
         // even if edges are missing or malformed.
-        let timelineDsl = data.timelineDsl;
-        if (loroSync?.doc) {
-            const loroNode = loroSync.doc.getMap('nodes').get(id) as any;
-            timelineDsl = loroNode?.data?.timelineDsl ?? timelineDsl;
-        }
+        const timeline = readTimelineForAction(loroSync?.doc ?? null, id);
+        let timelineDsl = timeline?.state as any;
 
         // Migrate legacy items (src but no assetId) to reference-by-nodeId
         // BEFORE we scan for timeline assets — otherwise legacy items without
@@ -372,7 +363,7 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         openEditor(uniqueAssetsResolved, id, timelineDsl, filteredAvailableAssets);
         // Note: reactFlow is intentionally excluded from deps - we read it inside the callback
         // to avoid re-creating this callback on every ProjectEditor render
-    }, [data.timelineDsl, id, loroSync, openEditor]);
+    }, [data.timelineId, id, loroSync, openEditor]);
 
     const handleRender = useCallback(async () => {
 
@@ -383,25 +374,10 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
 
         setRendering(true);
         try {
-            // Get current timeline DSL from node or data
-            let timelineDsl = data.timelineDsl;
-            let sourceTimelineData: unknown = data;
-            if (loroSync?.doc) {
-                const loroNode = loroSync.doc.getMap('nodes').get(id) as any;
-                sourceTimelineData = loroNode?.data ?? sourceTimelineData;
-                const loroDsl = loroNode?.data?.timelineDsl;
-                if (loroDsl) {
-                    // Ensure we have a plain JS object, not a Loro proxy
-                    try {
-                        timelineDsl = JSON.parse(JSON.stringify(loroDsl));
-                    } catch (e) {
-                        console.error('[VideoEditorNode] Failed to clone Loro DSL:', e);
-                        timelineDsl = loroDsl;
-                    }
-                }
-            }
+            const timeline = readTimelineForAction(loroSync.doc, id);
+            const timelineDsl = timeline?.state as any;
 
-            if (!timelineDsl || !timelineDsl.tracks || timelineDsl.tracks.length === 0) {
+            if (!timeline || !timelineDsl || !timelineDsl.tracks || timelineDsl.tracks.length === 0) {
                 alert('Please open the editor and create some content first!');
                 return;
             }
@@ -417,7 +393,10 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
             };
             const pendingVideoNode = await buildPendingRenderVideoNodePayload(updatedTimelineDsl, {
                 sourceTimelineNodeId: id,
-                appliedRevision: readPendingRenderAppliedTimelineRevision(sourceTimelineData),
+                timelineRevision: {
+                    timelineId: timeline.id,
+                    revisionId: timeline.revisionId,
+                },
             });
 
             // Calculate auto-layout position locally to ensure immediate correct placement
@@ -516,13 +495,6 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
                         <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Timeline Editor</span>
                     </div>
                 </div>
-                <RevisionHistoryBadge
-                    kind="timeline"
-                    nodeId={id}
-                    history={revisionHistory}
-                    className="absolute right-3 top-3 z-10"
-                />
-
                 {/* Preview Area */}
                 <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-warm-border">
                     {previewSrc ? (

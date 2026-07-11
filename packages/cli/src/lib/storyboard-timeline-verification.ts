@@ -223,12 +223,12 @@ function buildChecks(options: {
     casApply.target === "timeline" &&
     casApply.mutation === "projection-only" &&
     casApply.applyCommand === "clash timeline apply" &&
-    casApply.lockPath === "timelines/main.timeline.lock.json" &&
-    casApply.lockSource === "fresh-canvas-pull" &&
-    casApply.nodeIdPlaceholder === "<video-editor-node-id>" &&
+    casApply.timelineIdPlaceholder === "<timeline-id>" &&
     casApply.pullCommand === "clash timeline pull" &&
     Array.isArray(casApply.requiredRuntimeArgs) &&
-    casApply.requiredRuntimeArgs.includes("--node <video-editor-node-id>");
+    casApply.requiredRuntimeArgs.includes("--timeline <timeline-id>") &&
+    Array.isArray(casApply.applyArgs) &&
+    !casApply.applyArgs.includes("--lock");
   const missingManifestPanels = options.stats.panelCoverage.filter((panel) => !panel.coveredByPanelManifest);
   const missingTimelineItems = options.stats.panelCoverage.filter((panel) => !panel.coveredByTimelineItem);
   return [
@@ -243,7 +243,7 @@ function buildChecks(options: {
       id: "manifest.cas-fresh-pull",
       label: "Storyboard timeline projection declares fresh-pull CAS",
       pass: hasFreshPullCas,
-      expected: "projection manifest has fresh-canvas-pull CAS with explicit --node arg",
+      expected: "projection manifest has Project Timeline pull/apply CAS with explicit --timeline arg",
       actual: hasFreshPullCas ? "fresh-pull CAS present" : "fresh-pull CAS missing or target mismatch",
     }),
     check({

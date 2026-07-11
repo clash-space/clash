@@ -255,10 +255,26 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     };
     const [label, setLabel] = useState(data.label || 'Prompt');
     const [content, setContent] = useState(cleanContent(data.content));
-    const isCheckpointLocked = useMemo(
-        () => actionIsCheckpointLocked({ nodeId: id, nodes: getNodes(), edges: getEdges() }),
-        [id, data.hasRun, connectedEdges, getNodes, getEdges],
-    );
+    const isCheckpointLocked = useMemo(() => {
+        const checkpointEdges = getEdges();
+        const downstreamIds = new Set<string>();
+        const pendingSourceIds = [id];
+
+        while (pendingSourceIds.length > 0) {
+            const sourceId = pendingSourceIds.pop();
+            if (!sourceId) break;
+            for (const edge of checkpointEdges) {
+                if (edge.source !== sourceId || downstreamIds.has(edge.target)) continue;
+                downstreamIds.add(edge.target);
+                pendingSourceIds.push(edge.target);
+            }
+        }
+
+        const checkpointNodes = Array.from(downstreamIds)
+            .map((nodeId) => getNode(nodeId))
+            .filter((node): node is RFNode => Boolean(node));
+        return actionIsCheckpointLocked({ nodeId: id, nodes: checkpointNodes, edges: checkpointEdges });
+    }, [id, data.hasRun, connectedEdges, getNode, getEdges]);
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
 

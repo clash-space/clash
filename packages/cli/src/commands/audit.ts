@@ -8,7 +8,6 @@ export type MutationAuditRecord = {
   operation: string;
   entity: { kind: string; id: string };
   actorClientType?: string | null;
-  forced: boolean;
   accepted: boolean;
   reason?: string | null;
   resultEntityId?: string | null;
@@ -57,7 +56,6 @@ auditCommand
       operation: record.operation,
       entity: `${record.entity.kind}:${record.entity.id}`,
       actor: record.actorClientType ?? "",
-      forced: record.forced ? "yes" : "no",
       accepted: record.accepted ? "yes" : "no",
       reason: record.reason ?? record.error ?? "",
     })), [
@@ -65,7 +63,6 @@ auditCommand
       { key: "operation", label: "Operation", width: 22 },
       { key: "entity", label: "Entity", width: 36 },
       { key: "actor", label: "Actor", width: 10 },
-      { key: "forced", label: "Forced", width: 8 },
       { key: "accepted", label: "Accepted", width: 10 },
       { key: "reason", label: "Reason", width: 28 },
     ]);

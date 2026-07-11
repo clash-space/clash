@@ -1,0 +1,536 @@
+import { LoroMap, type LoroDoc } from "loro-crdt";
+import { agentReadToken } from "./agent-read-proof";
+import { Canvas } from "./canvas-ops";
+import {
+  clearNodeUpstreamRefs,
+  deleteNodeUpstreamRef,
+  readNodeUpstreamRefs,
+} from "./node-upstreams";
+
+export const DEFAULT_CANVAS_ID = "main";
+
+export interface ProjectCanvas {
+  id: string;
+  name: string;
+  position: number;
+}
+
+export function projectCanvasReadToken(canvas: ProjectCanvas): string {
+  return agentReadToken({
+    namespace: "canvas",
+    subject: {
+      id: canvas.id,
+      name: canvas.name,
+      position: canvas.position,
+    },
+  });
+}
+
+export type ProjectCanvasMutationResult =
+  | { ok: true; canvas: ProjectCanvas }
+  | { ok: false; error: string };
+
+export type ProjectCanvasDeleteResult =
+  | { ok: true; canvasId: string }
+  | { ok: false; error: string };
+
+export type TimelineOwner =
+  | { kind: "project" }
+  | { kind: "canvas-action"; canvasId: string; actionNodeId: string };
+
+export interface ProjectTimeline {
+  id: string;
+  name: string;
+  owner: TimelineOwner;
+  revisionId: string;
+  state: unknown;
+}
+
+interface ProjectTimelineRevision {
+  state: unknown;
+  revisionId: string;
+}
+
+export function projectTimelineRevisionId(timelineId: string, state: unknown): string {
+  return agentReadToken({
+    namespace: "timeline-revision",
+    subject: { timelineId, state },
+  });
+}
+
+export function projectTimelineReadToken(timeline: ProjectTimeline): string {
+  return agentReadToken({
+    namespace: "timeline",
+    subject: {
+      id: timeline.id,
+      name: timeline.name,
+      owner: timeline.owner,
+      revisionId: timeline.revisionId,
+      state: timeline.state,
+    },
+  });
+}
+
+export type ProjectTimelineMutationResult =
+  | { ok: true; timeline: ProjectTimeline }
+  | { ok: false; error: string };
+
+export type TimelineRenderTarget =
+  | { kind: "project-assets" }
+  | { kind: "canvas"; canvasId: string; actionNodeId: string };
+
+function defaultCanvasName(canvasId: string): string {
+  return canvasId
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "Untitled";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isLoroMap(value: unknown): value is LoroMap {
+  return value instanceof LoroMap || Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof (value as { get?: unknown }).get === "function" &&
+    typeof (value as { set?: unknown }).set === "function" &&
+    typeof (value as { entries?: unknown }).entries === "function" &&
+    typeof (value as { delete?: unknown }).delete === "function",
+  );
+}
+
+function timelineField(raw: unknown, field: string): unknown {
+  if (isLoroMap(raw)) return raw.get(field);
+  return isRecord(raw) ? raw[field] : undefined;
+}
+
+function timelineActionTimelineId(raw: unknown): string | null {
+  if (!isRecord(raw) || raw.type !== "video-editor" || !isRecord(raw.data)) return null;
+  return typeof raw.data.timelineId === "string" ? raw.data.timelineId : null;
+}
+
+function nodeCanvasId(raw: unknown): string {
+  return isRecord(raw) && typeof raw.canvasId === "string"
+    ? raw.canvasId
+    : DEFAULT_CANVAS_ID;
+}
+
+function parseTimeline(id: string, raw: unknown): ProjectTimeline | null {
+  if (!isRecord(raw) && !isLoroMap(raw)) return null;
+  const nameValue = timelineField(raw, "name");
+  const ownerField = timelineField(raw, "owner");
+  const ownerValue = isRecord(ownerField) ? ownerField : {};
+  const owner: TimelineOwner = ownerValue.kind === "canvas-action" &&
+    typeof ownerValue.canvasId === "string" &&
+    typeof ownerValue.actionNodeId === "string"
+    ? {
+        kind: "canvas-action",
+        canvasId: ownerValue.canvasId,
+        actionNodeId: ownerValue.actionNodeId,
+      }
+    : { kind: "project" };
+  const revisionField = timelineField(raw, "revision");
+  const revisionValue = isRecord(revisionField) ? revisionField : {};
+  const state = "state" in revisionValue
+    ? revisionValue.state
+    : timelineField(raw, "state");
+  const legacyRevisionId = timelineField(raw, "revisionId");
+  return {
+    id,
+    name: typeof nameValue === "string" && nameValue.trim() ? nameValue : "Untitled Timeline",
+    owner,
+    revisionId: typeof revisionValue.revisionId === "string" && revisionValue.revisionId.trim()
+      ? revisionValue.revisionId
+      : typeof legacyRevisionId === "string" && legacyRevisionId.trim()
+        ? legacyRevisionId
+        : projectTimelineRevisionId(id, state),
+    state,
+  };
+}
+
+export function readProjectTimeline(
+  doc: LoroDoc,
+  timelineId: string,
+): ProjectTimeline | null {
+  return parseTimeline(timelineId, doc.getMap("timelines").get(timelineId));
+}
+
+function setTimelineFields(fields: LoroMap, timeline: ProjectTimeline): void {
+  fields.set("name", timeline.name);
+  fields.set("owner", timeline.owner);
+  fields.set("revision", {
+    state: timeline.state,
+    revisionId: timeline.revisionId,
+  } satisfies ProjectTimelineRevision);
+}
+
+function ensureTimelineFields(
+  doc: LoroDoc,
+  timelineId: string,
+  parsedTimeline?: ProjectTimeline,
+): LoroMap {
+  const timelines = doc.getMap("timelines");
+  const existing = timelines.get(timelineId);
+  if (isLoroMap(existing)) return existing;
+
+  const legacyTimeline = parsedTimeline ?? parseTimeline(timelineId, existing);
+  if (existing !== undefined) timelines.delete(timelineId);
+  const fields = timelines.ensureMergeableMap(timelineId);
+  if (legacyTimeline) setTimelineFields(fields, legacyTimeline);
+  return fields;
+}
+
+export function ensureProjectCanvas(
+  doc: LoroDoc,
+  canvasId = DEFAULT_CANVAS_ID,
+  name = defaultCanvasName(canvasId),
+): ProjectCanvas {
+  const canvases = doc.getMap("canvases");
+  const existing = canvases.get(canvasId) as ProjectCanvas | undefined;
+  if (existing) return { ...existing, id: canvasId };
+
+  const canvas: ProjectCanvas = {
+    id: canvasId,
+    name,
+    position: canvases.size,
+  };
+  canvases.set(canvasId, canvas);
+  return canvas;
+}
+
+export function listProjectCanvases(doc: LoroDoc): ProjectCanvas[] {
+  const canvases: ProjectCanvas[] = [];
+  for (const [id, raw] of doc.getMap("canvases").entries()) {
+    if (!raw || typeof raw !== "object") continue;
+    const value = raw as Partial<ProjectCanvas>;
+    canvases.push({
+      id,
+      name: typeof value.name === "string" && value.name.trim()
+        ? value.name
+        : defaultCanvasName(id),
+      position: typeof value.position === "number" ? value.position : Number.MAX_SAFE_INTEGER,
+    });
+  }
+  return canvases.sort((left, right) =>
+    left.position - right.position || left.id.localeCompare(right.id)
+  );
+}
+
+export function createProjectCanvas(
+  doc: LoroDoc,
+  input: { id: string; name: string },
+): ProjectCanvasMutationResult {
+  const id = input.id.trim();
+  const name = input.name.trim();
+  if (!id) return { ok: false, error: "Canvas id is required" };
+  if (!name) return { ok: false, error: "Canvas name is required" };
+  const canvases = doc.getMap("canvases");
+  if (canvases.size === 0 && id !== DEFAULT_CANVAS_ID) {
+    ensureProjectCanvas(doc);
+  }
+  if (canvases.get(id)) return { ok: false, error: `Canvas ${id} already exists` };
+  const existing = listProjectCanvases(doc);
+  const canvas: ProjectCanvas = {
+    id,
+    name,
+    position: existing.length === 0
+      ? 0
+      : Math.max(...existing.map((candidate) => candidate.position)) + 1,
+  };
+  canvases.set(id, canvas);
+  return { ok: true, canvas };
+}
+
+export function renameProjectCanvas(
+  doc: LoroDoc,
+  canvasId: string,
+  name: string,
+): ProjectCanvasMutationResult {
+  const canvases = doc.getMap("canvases");
+  const existing = canvases.get(canvasId) as ProjectCanvas | undefined;
+  if (!existing) return { ok: false, error: `Canvas ${canvasId} not found` };
+  const nextName = name.trim();
+  if (!nextName) return { ok: false, error: "Canvas name is required" };
+  const canvas = { ...existing, id: canvasId, name: nextName };
+  canvases.set(canvasId, canvas);
+  return { ok: true, canvas };
+}
+
+export function deleteProjectCanvas(
+  doc: LoroDoc,
+  canvasId: string,
+): ProjectCanvasDeleteResult {
+  const canvases = listProjectCanvases(doc);
+  if (!canvases.some((canvas) => canvas.id === canvasId)) {
+    return { ok: false, error: `Canvas ${canvasId} not found` };
+  }
+  if (canvases.length === 1) return { ok: false, error: "Cannot delete the last Canvas" };
+  for (const [, raw] of doc.getMap("nodes").entries()) {
+    if (!raw || typeof raw !== "object") continue;
+    const value = raw as { canvasId?: unknown };
+    const nodeCanvasId = typeof value.canvasId === "string" ? value.canvasId : DEFAULT_CANVAS_ID;
+    if (nodeCanvasId === canvasId) return { ok: false, error: `Canvas ${canvasId} is not empty` };
+  }
+  doc.getMap("canvases").delete(canvasId);
+  return { ok: true, canvasId };
+}
+
+export function listProjectTimelines(doc: LoroDoc): ProjectTimeline[] {
+  const timelines: ProjectTimeline[] = [];
+  for (const [id, raw] of doc.getMap("timelines").entries()) {
+    const timeline = parseTimeline(id, raw);
+    if (timeline) timelines.push(timeline);
+  }
+  return timelines.sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+}
+
+export function listStandaloneTimelines(doc: LoroDoc): ProjectTimeline[] {
+  return listProjectTimelines(doc).filter((timeline) => timeline.owner.kind === "project");
+}
+
+export function createProjectTimeline(
+  doc: LoroDoc,
+  input: { id: string; name: string; state: unknown },
+): ProjectTimelineMutationResult {
+  const id = input.id.trim();
+  const name = input.name.trim();
+  if (!id) return { ok: false, error: "Timeline id is required" };
+  if (!name) return { ok: false, error: "Timeline name is required" };
+  const timelines = doc.getMap("timelines");
+  if (timelines.get(id)) return { ok: false, error: `Timeline ${id} already exists` };
+  const timeline: ProjectTimeline = {
+    id,
+    name,
+    owner: { kind: "project" },
+    revisionId: projectTimelineRevisionId(id, input.state),
+    state: input.state,
+  };
+  setTimelineFields(timelines.ensureMergeableMap(id), timeline);
+  return { ok: true, timeline };
+}
+
+export function updateProjectTimelineState(
+  doc: LoroDoc,
+  timelineId: string,
+  state: unknown,
+): ProjectTimelineMutationResult {
+  const timeline = readProjectTimeline(doc, timelineId);
+  if (!timeline) return { ok: false, error: `Timeline ${timelineId} not found` };
+  const next: ProjectTimeline = {
+    ...timeline,
+    revisionId: projectTimelineRevisionId(timelineId, state),
+    state,
+  };
+  ensureTimelineFields(doc, timelineId, timeline).set("revision", {
+    state: next.state,
+    revisionId: next.revisionId,
+  } satisfies ProjectTimelineRevision);
+  return { ok: true, timeline: next };
+}
+
+export function attachTimelineToCanvas(
+  doc: LoroDoc,
+  input: {
+    timelineId: string;
+    canvasId: string;
+    actionNodeId: string;
+    position: { x: number; y: number };
+  },
+): ProjectTimelineMutationResult {
+  const timelines = doc.getMap("timelines");
+  const timeline = parseTimeline(input.timelineId, timelines.get(input.timelineId));
+  if (!timeline) return { ok: false, error: `Timeline ${input.timelineId} not found` };
+  if (timeline.owner.kind !== "project") {
+    return { ok: false, error: `Timeline ${input.timelineId} is already owned by Canvas ${timeline.owner.canvasId}` };
+  }
+  const canvases = doc.getMap("canvases");
+  if (input.canvasId === DEFAULT_CANVAS_ID && canvases.size === 0) {
+    ensureProjectCanvas(doc);
+  }
+  if (!canvases.get(input.canvasId)) {
+    return { ok: false, error: `Canvas ${input.canvasId} not found` };
+  }
+  const nodes = doc.getMap("nodes");
+  if (nodes.get(input.actionNodeId)) {
+    return { ok: false, error: `Node ${input.actionNodeId} already exists` };
+  }
+
+  const next: ProjectTimeline = {
+    ...timeline,
+    owner: {
+      kind: "canvas-action",
+      canvasId: input.canvasId,
+      actionNodeId: input.actionNodeId,
+    },
+  };
+  ensureTimelineFields(doc, input.timelineId, timeline).set("owner", next.owner);
+  nodes.set(input.actionNodeId, {
+    canvasId: input.canvasId,
+    type: "video-editor",
+    data: { timelineId: input.timelineId, label: timeline.name },
+    position: input.position,
+  });
+  return { ok: true, timeline: next };
+}
+
+export function detachTimelineFromCanvas(
+  doc: LoroDoc,
+  timelineId: string,
+): ProjectTimelineMutationResult {
+  const timeline = readProjectTimeline(doc, timelineId);
+  if (!timeline) return { ok: false, error: `Timeline ${timelineId} not found` };
+  if (timeline.owner.kind !== "canvas-action") {
+    return { ok: false, error: `Timeline ${timelineId} is already standalone` };
+  }
+  const actionNodeId = timeline.owner.actionNodeId;
+  const rawAction = doc.getMap("nodes").get(actionNodeId);
+  if (
+    timelineActionTimelineId(rawAction) === timeline.id &&
+    nodeCanvasId(rawAction) === timeline.owner.canvasId
+  ) {
+    new Canvas(doc, () => {}, timeline.owner.canvasId).deleteNode(actionNodeId);
+  }
+  const next: ProjectTimeline = { ...timeline, owner: { kind: "project" } };
+  ensureTimelineFields(doc, timelineId, timeline).set("owner", next.owner);
+  return { ok: true, timeline: next };
+}
+
+function cloneTimelineState<T>(state: T): T {
+  return structuredClone(state);
+}
+
+export function copyTimelineActionToCanvas(
+  doc: LoroDoc,
+  input: {
+    sourceTimelineId: string;
+    targetCanvasId: string;
+    newTimelineId: string;
+    newActionNodeId: string;
+    position: { x: number; y: number };
+  },
+): ProjectTimelineMutationResult {
+  const timelines = doc.getMap("timelines");
+  const source = parseTimeline(input.sourceTimelineId, timelines.get(input.sourceTimelineId));
+  if (!source) return { ok: false, error: `Timeline ${input.sourceTimelineId} not found` };
+  if (source.owner.kind !== "canvas-action") {
+    return { ok: false, error: `Timeline ${input.sourceTimelineId} is standalone` };
+  }
+  const canvases = doc.getMap("canvases");
+  if (input.targetCanvasId === DEFAULT_CANVAS_ID && canvases.size === 0) {
+    ensureProjectCanvas(doc);
+  }
+  if (!canvases.get(input.targetCanvasId)) {
+    return { ok: false, error: `Canvas ${input.targetCanvasId} not found` };
+  }
+  if (timelines.get(input.newTimelineId)) {
+    return { ok: false, error: `Timeline ${input.newTimelineId} already exists` };
+  }
+  const nodes = doc.getMap("nodes");
+  if (nodes.get(input.newActionNodeId)) {
+    return { ok: false, error: `Node ${input.newActionNodeId} already exists` };
+  }
+
+  const sourceAction = nodes.get(source.owner.actionNodeId);
+  const sourceActionData = isRecord(sourceAction) && isRecord(sourceAction.data)
+    ? sourceAction.data
+    : {};
+  const timeline: ProjectTimeline = {
+    id: input.newTimelineId,
+    name: source.name,
+    owner: {
+      kind: "canvas-action",
+      canvasId: input.targetCanvasId,
+      actionNodeId: input.newActionNodeId,
+    },
+    revisionId: projectTimelineRevisionId(input.newTimelineId, source.state),
+    state: cloneTimelineState(source.state),
+  };
+  setTimelineFields(timelines.ensureMergeableMap(input.newTimelineId), timeline);
+  nodes.set(input.newActionNodeId, {
+    canvasId: input.targetCanvasId,
+    type: "video-editor",
+    data: {
+      ...sourceActionData,
+      timelineId: input.newTimelineId,
+      label: source.name,
+    },
+    position: input.position,
+  });
+  return { ok: true, timeline };
+}
+
+export function resolveTimelineRenderTarget(
+  doc: LoroDoc,
+  timelineId: string,
+): TimelineRenderTarget | null {
+  const timeline = readProjectTimeline(doc, timelineId);
+  if (!timeline) return null;
+  return timeline.owner.kind === "project"
+    ? { kind: "project-assets" }
+    : {
+        kind: "canvas",
+        canvasId: timeline.owner.canvasId,
+        actionNodeId: timeline.owner.actionNodeId,
+      };
+}
+
+export interface TimelineOwnershipReconciliation {
+  removedActionNodeIds: string[];
+  detachedTimelineIds: string[];
+}
+
+/**
+ * Loro's map conflict resolution converges a concurrently assigned owner to
+ * one value. The losing Action node is a separate CRDT object, so remove it
+ * deterministically after imports and detach an owner whose winning node was
+ * independently deleted.
+ */
+export function reconcileProjectTimelineOwnership(
+  doc: LoroDoc,
+): TimelineOwnershipReconciliation {
+  const timelines = new Map(listProjectTimelines(doc).map((timeline) => [timeline.id, timeline]));
+  const nodes = doc.getMap("nodes");
+  const removedActionNodeIds: string[] = [];
+
+  for (const [nodeId, raw] of [...nodes.entries()]) {
+    const timelineId = timelineActionTimelineId(raw);
+    if (!timelineId) continue;
+    const timeline = timelines.get(timelineId);
+    if (!timeline) continue;
+    const canvasId = nodeCanvasId(raw);
+    const isWinningAction = timeline.owner.kind === "canvas-action" &&
+      timeline.owner.actionNodeId === nodeId &&
+      timeline.owner.canvasId === canvasId;
+    if (isWinningAction) continue;
+
+    clearNodeUpstreamRefs(doc, nodeId, raw);
+    for (const [targetId, targetRaw] of nodes.entries()) {
+      for (const ref of readNodeUpstreamRefs(doc, targetId, targetRaw)) {
+        if (ref.nodeId === nodeId) {
+          deleteNodeUpstreamRef(doc, targetId, ref.edgeId, targetRaw);
+        }
+      }
+    }
+    nodes.delete(nodeId);
+    removedActionNodeIds.push(nodeId);
+  }
+
+  const detachedTimelineIds: string[] = [];
+  for (const timeline of timelines.values()) {
+    if (timeline.owner.kind !== "canvas-action") continue;
+    const rawOwner = nodes.get(timeline.owner.actionNodeId);
+    const ownerMatches = timelineActionTimelineId(rawOwner) === timeline.id &&
+      nodeCanvasId(rawOwner) === timeline.owner.canvasId;
+    if (ownerMatches) continue;
+    ensureTimelineFields(doc, timeline.id, timeline).set("owner", { kind: "project" });
+    detachedTimelineIds.push(timeline.id);
+  }
+
+  return {
+    removedActionNodeIds: removedActionNodeIds.sort(),
+    detachedTimelineIds: detachedTimelineIds.sort(),
+  };
+}

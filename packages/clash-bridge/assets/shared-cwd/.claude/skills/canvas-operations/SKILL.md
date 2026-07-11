@@ -106,11 +106,28 @@ clash canvas update <node-id> --content "<new content>" --json
 Update only the fields you want to change. Re-`get` after if you need to
 verify the result.
 
-**Editing the inside of a VideoEditorNode** (its timeline tracks /
-items / fps / composition size) does NOT go through `update` —
-the timeline DSL is too nested for key=value editing. Switch to the
-**timeline-editing** skill, which uses `clash canvas timeline pull/push`
-to round-trip the timeline through a JSON file.
+**Editing a Timeline Action's Project Timeline** does not go through
+`canvas update`. The action node points to a Project Timeline through
+`data.timelineId`; the Timeline entity owns the editable tracks/items
+state.
+
+When starting from a Timeline Action, inspect it and read that id:
+
+```bash
+clash canvas get --node <timeline-action-node-id> --json
+```
+
+Then switch to the **timeline-editing** skill and use the public Project
+Timeline workflow:
+
+```bash
+clash timeline list --json
+clash timeline pull --timeline <id> --file timelines/<id>.timeline.yaml --json
+# edit timelines/<id>.timeline.yaml
+clash timeline apply --timeline <id> --file timelines/<id>.timeline.yaml --json
+```
+
+Use `data.timelineId` as `<id>`, not the Timeline Action node id.
 
 ## Executing an action node
 

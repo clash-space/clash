@@ -12,7 +12,6 @@ describe("RevisionHistoryBadge", () => {
   it("shows recent text revisions and explicit CLI recovery and restore commands", () => {
     render(
       <RevisionHistoryBadge
-        kind="text"
         nodeId="text-1"
         history={{
           count: 2,
@@ -52,33 +51,10 @@ describe("RevisionHistoryBadge", () => {
     expect(screen.getByText("clash text restore --node text-1 --revision txrev-2 --mode replace")).toBeTruthy();
   });
 
-  it("uses timeline recovery and restore commands for timeline revisions", () => {
-    render(
-      <RevisionHistoryBadge
-        kind="timeline"
-        nodeId="editor-1"
-        history={{
-          count: 1,
-          latest: { revisionId: "tlrev-1", timelineHash: "timeline-hash" },
-          revisions: [{ revisionId: "tlrev-1", timelineHash: "timeline-hash" }],
-          loading: false,
-          error: null,
-        }}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Timeline revision history/ }));
-
-    expect(screen.getByText("timeline-hash")).toBeTruthy();
-    expect(screen.getByText("clash timeline content --revision tlrev-1 --out revisions/tlrev-1.timeline.yaml")).toBeTruthy();
-    expect(screen.getByText("clash timeline restore --node editor-1 --revision tlrev-1 --mode replace")).toBeTruthy();
-  });
-
   it("emits an explicit restore action without touching canvas state directly", () => {
     const onRestoreRevision = vi.fn();
     render(
       <RevisionHistoryBadge
-        kind="text"
         nodeId="text-1"
         onRestoreRevision={onRestoreRevision}
         history={{
@@ -113,29 +89,28 @@ describe("RevisionHistoryBadge", () => {
     window.addEventListener("clash:revision-restore-request", listener);
     render(
       <RevisionHistoryBadge
-        kind="timeline"
-        nodeId="editor-1"
+        nodeId="text-1"
         history={{
           count: 1,
-          latest: { revisionId: "tlrev-1" },
-          revisions: [{ revisionId: "tlrev-1" }],
+          latest: { revisionId: "txrev-1" },
+          revisions: [{ revisionId: "txrev-1" }],
           loading: false,
           error: null,
         }}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Timeline revision history/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Copy restore command for timeline revision tlrev-1" }));
+    fireEvent.click(screen.getByRole("button", { name: /Text revision history/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy restore command for text revision txrev-1" }));
 
-    expect(writeText).toHaveBeenCalledWith("clash timeline restore --node editor-1 --revision tlrev-1 --mode replace");
+    expect(writeText).toHaveBeenCalledWith("clash text restore --node text-1 --revision txrev-1 --mode replace");
     const event = listener.mock.calls[0]?.[0] as CustomEvent;
     expect(event.detail).toEqual({
-      kind: "timeline",
-      nodeId: "editor-1",
-      revisionId: "tlrev-1",
+      kind: "text",
+      nodeId: "text-1",
+      revisionId: "txrev-1",
       mode: "replace",
-      command: "clash timeline restore --node editor-1 --revision tlrev-1 --mode replace",
+      command: "clash text restore --node text-1 --revision txrev-1 --mode replace",
     });
     window.removeEventListener("clash:revision-restore-request", listener);
   });
@@ -143,7 +118,6 @@ describe("RevisionHistoryBadge", () => {
   it("quotes unsafe shell arguments in CLI restore commands", () => {
     render(
       <RevisionHistoryBadge
-        kind="text"
         nodeId={"script node 'A'"}
         history={{
           count: 1,
@@ -164,7 +138,6 @@ describe("RevisionHistoryBadge", () => {
   it("stays hidden when no revisions are indexed", () => {
     const { container } = render(
       <RevisionHistoryBadge
-        kind="text"
         nodeId="text-1"
         history={{
           count: 0,

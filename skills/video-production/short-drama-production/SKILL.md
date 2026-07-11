@@ -66,14 +66,12 @@ clash production project-storyboard-prompt-pack \
 # Edit plans/prompt-pack.json as a normal project file, then apply explicitly.
 clash production apply-storyboard-prompt-pack \
   --file plans/prompt-pack.json \
-  --lock plans/prompt-pack.lock.json \
   --json
 
 # Fork a versioned prompt-pack projection when existing downstream work should
 # keep pointing at the old managed prompt pack.
 clash production replace-storyboard-prompt-pack \
   --file plans/prompt-pack.json \
-  --lock plans/prompt-pack.lock.json \
   --json
 
 clash production project-storyboard-timeline \

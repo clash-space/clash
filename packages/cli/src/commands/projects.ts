@@ -19,6 +19,12 @@ import {
   type ResolvedProjectContext,
   type ProjectMarker,
 } from "../lib/project-context";
+import {
+  forgetAgentObservation,
+  publicAgentCommandResult,
+  recordAgentObservation,
+  requireAgentObservation,
+} from "../lib/agent-worktree-observation";
 
 export type ProjectStatus = SharedProjectStatus;
 
@@ -29,19 +35,23 @@ interface ProjectRecoveryPolicy {
 
 function projectWriteHeaders(options: {
   ifMatch?: string;
-  force?: boolean;
+  observedVersion?: string;
 } = {}): Record<string, string> {
   const headers: Record<string, string> = {};
   if (process.env.CLASH_AGENT_MEMBER_ID?.trim()) {
     headers["x-clash-client-type"] = "agent";
   }
-  if (options.ifMatch?.trim()) {
+  if (options.observedVersion?.trim()) {
+    const observed = options.observedVersion.trim();
+    headers[observed.includes(":receipt:") ? "x-clash-if-match" : "x-clash-observed-version"] = observed;
+  } else if (options.ifMatch?.trim()) {
     headers["x-clash-if-match"] = options.ifMatch.trim();
   }
-  if (options.force === true) {
-    headers["x-clash-force"] = "true";
-  }
   return headers;
+}
+
+function publicProjectResult<T extends object>(result: T): Omit<T, "readToken"> {
+  return publicAgentCommandResult(result as T & Record<string, unknown>) as Omit<T, "readToken">;
 }
 
 function projectRecoveryPolicyHint(policy?: ProjectRecoveryPolicy): string {
@@ -200,7 +210,7 @@ projectsCommand
     console.log(`Sync:         ${status.syncMode}`);
     console.log(`Marker:       ${status.markerPath ?? "(none)"}`);
     console.log(`Clash home:   ${status.clashHome}`);
-    console.log(`Workspace:    ${status.projectWorkspaceRoot}`);
+    console.log(`Workspace:    ${status.storage.workspace.root}`);
     console.log(`Local API:    ${status.localApiDataDir}`);
     console.log(`Projections:  ${status.roots.projections}`);
     console.log(`Drafts:       ${status.roots.drafts}`);
@@ -232,7 +242,7 @@ projectsCommand
   .option("--description <desc>", "Project description")
   .option("--json", "Output as JSON")
   .action(async (options) => {
-    const data = await apiJson<{ id: string; name: string }>(
+    const data = await apiJson<{ id: string; name: string; readToken?: string }>(
       "/api/v1/projects",
       {
         method: "POST",
@@ -242,9 +252,14 @@ projectsCommand
         }),
       }
     );
+    await recordAgentObservation({
+      entityKind: "project",
+      entityId: data.id,
+      revision: data.readToken,
+    });
 
     if (isJsonMode(options)) {
-      printJson(data);
+      printJson(publicProjectResult(data));
     } else {
       console.log(`Created project: ${data.id} (${data.name})`);
     }
@@ -268,16 +283,20 @@ projectsCommand
     }>(
       `/api/v1/projects/${encodeURIComponent(options.id)}${query}`
     );
+    await recordAgentObservation({
+      entityKind: "project",
+      entityId: options.id,
+      revision: data.readToken,
+    });
 
     if (isJsonMode(options)) {
-      printJson(data);
+      printJson(publicProjectResult(data));
     } else {
       console.log(`ID:          ${data.id}`);
       console.log(`Name:        ${data.name}`);
       console.log(`Description: ${data.description ?? "(none)"}`);
       console.log(`Created:     ${data.created_at}`);
       if (data.deletedAt) console.log(`Deleted:     ${data.deletedAt}`);
-      if (data.readToken) console.log(`Read token:  ${data.readToken}`);
     }
   });
 
@@ -286,8 +305,6 @@ projectsCommand
   .description("Delete a project")
   .requiredOption("--id <id>", "Project ID")
   .option("--yes", "Confirm deletion without an interactive prompt")
-  .option("--if-match <readToken>", "Require the project read token from `clash project get --json` before deleting")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (options) => {
     const confirmation = requireDestructiveConfirmation(
@@ -299,25 +316,34 @@ projectsCommand
       process.exit(1);
     }
 
+    const observedVersion = await requireAgentObservation({
+      entityKind: "project",
+      entityId: options.id,
+    });
     const deleted = await apiJson<{
       deleted: boolean;
       recoverable?: boolean;
       id?: string;
+      readToken?: string;
       recoveryPolicy?: ProjectRecoveryPolicy;
     }>(`/api/v1/projects/${encodeURIComponent(options.id)}`, {
       method: "DELETE",
       headers: projectWriteHeaders({
-        ifMatch: options.ifMatch,
-        force: options.force === true,
+        observedVersion,
       }),
     });
     const deletedId = deleted.id ?? options.id;
+    await recordAgentObservation({
+      entityKind: "project",
+      entityId: deletedId,
+      revision: deleted.readToken,
+    });
     const recoveryHint = deleted.recoverable
       ? ` (recoverable; run clash project restore ${deletedId} to undo)`
       : "";
     const policyHint = projectRecoveryPolicyHint(deleted.recoveryPolicy);
     if (isJsonMode(options)) {
-      printJson(deleted);
+      printJson(publicProjectResult(deleted));
     } else {
       console.log(`Deleted project: ${deletedId}${recoveryHint}${policyHint}`);
     }
@@ -327,27 +353,34 @@ projectsCommand
   .command("restore")
   .description("Restore a soft-deleted local project")
   .argument("<projectId>", "Project ID")
-  .option("--if-match <readToken>", "Require the deleted project read token from `clash project get --include-deleted --json` before restoring")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (projectId, options) => {
+    const observedVersion = await requireAgentObservation({
+      entityKind: "project",
+      entityId: projectId,
+    });
     const restored = await apiJson<{
       restored: boolean;
       id: string;
+      readToken?: string;
       recoveryPolicy?: ProjectRecoveryPolicy;
     }>(
       `/api/v1/projects/${encodeURIComponent(projectId)}/restore`,
       {
         method: "POST",
         headers: projectWriteHeaders({
-          ifMatch: options.ifMatch,
-          force: options.force === true,
+          observedVersion,
         }),
       },
     );
+    await recordAgentObservation({
+      entityKind: "project",
+      entityId: restored.id,
+      revision: restored.readToken,
+    });
 
     if (isJsonMode(options)) {
-      printJson(restored);
+      printJson(publicProjectResult(restored));
     } else {
       console.log(
         `Restored project: ${restored.id}${projectRecoveryPolicyHint(restored.recoveryPolicy)}`,
@@ -360,8 +393,6 @@ projectsCommand
   .description("Permanently purge a soft-deleted local project recovery point")
   .argument("<projectId>", "Project ID")
   .option("--yes", "Confirm permanent purge without an interactive prompt")
-  .option("--if-match <readToken>", "Require the deleted project read token from `clash project get --include-deleted --json` before purging")
-  .option("--force", "Bypass the delayed purge window and agent read-token check")
   .option("--json", "Output as JSON")
   .action(async (projectId, options) => {
     const confirmation = requireDestructiveConfirmation(
@@ -373,6 +404,10 @@ projectsCommand
       process.exit(1);
     }
 
+    const observedVersion = await requireAgentObservation({
+      entityKind: "project",
+      entityId: projectId,
+    });
     const purged = await apiJson<{
       purged: boolean;
       id: string;
@@ -383,11 +418,11 @@ projectsCommand
     }>(`/api/v1/projects/${encodeURIComponent(projectId)}/purge`, {
       method: "DELETE",
       headers: projectWriteHeaders({
-        ifMatch: options.ifMatch,
-        force: options.force === true,
+        observedVersion,
       }),
       body: JSON.stringify({ confirm: "purge" }),
     });
+    await forgetAgentObservation({ entityKind: "project", entityId: projectId });
 
     if (isJsonMode(options)) {
       printJson(purged);

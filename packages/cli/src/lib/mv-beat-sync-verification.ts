@@ -200,12 +200,12 @@ function buildChecks(options: {
     casApply.target === "timeline" &&
     casApply.mutation === "projection-only" &&
     casApply.applyCommand === "clash timeline apply" &&
-    casApply.lockPath === "timelines/main.timeline.lock.json" &&
-    casApply.lockSource === "fresh-canvas-pull" &&
-    casApply.nodeIdPlaceholder === "<video-editor-node-id>" &&
+    casApply.timelineIdPlaceholder === "<timeline-id>" &&
     casApply.pullCommand === "clash timeline pull" &&
     Array.isArray(casApply.requiredRuntimeArgs) &&
-    casApply.requiredRuntimeArgs.includes("--node <video-editor-node-id>");
+    casApply.requiredRuntimeArgs.includes("--timeline <timeline-id>") &&
+    Array.isArray(casApply.applyArgs) &&
+    !casApply.applyArgs.includes("--lock");
 
   return [
     check({
@@ -251,7 +251,7 @@ function buildChecks(options: {
       id: "projection.cas-fresh-pull",
       label: "MV timeline projection declares fresh-pull CAS apply",
       pass: hasFreshPullCas,
-      expected: "projection manifest has fresh-canvas-pull CAS with explicit --node arg",
+      expected: "projection manifest has Project Timeline pull/apply CAS with explicit --timeline arg",
       actual: hasFreshPullCas ? "fresh-pull CAS present" : "fresh-pull CAS missing or target mismatch",
     }),
     check({

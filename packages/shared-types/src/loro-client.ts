@@ -9,6 +9,25 @@
  */
 import { LoroDoc } from "loro-crdt";
 import { Canvas } from "./canvas-ops";
+import {
+  canvasGraphReconciliationChanged,
+  reconcileCanvasGraph,
+} from "./node-upstreams";
+import {
+  DEFAULT_CANVAS_ID,
+  attachTimelineToCanvas,
+  copyTimelineActionToCanvas,
+  createProjectCanvas,
+  createProjectTimeline,
+  deleteProjectCanvas,
+  detachTimelineFromCanvas,
+  ensureProjectCanvas,
+  listProjectCanvases,
+  listProjectTimelines,
+  reconcileProjectTimelineOwnership,
+  renameProjectCanvas,
+  updateProjectTimelineState,
+} from "./project-workspace";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 const FLUSH_TIMEOUT_MS = 5_000;
@@ -42,7 +61,9 @@ export type ClientType = "browser" | "cli" | "agent";
 export interface LoroSyncClientOptions {
   serverUrl: string;
   projectId: string;
-  token: string;
+  /** Initial Canvas scope for node operations. Defaults to `main`. */
+  canvasId?: string;
+  token?: string;
   /** Client type for presence tracking. Default: "browser" */
   clientType?: ClientType;
   /** Human user represented by this connection. */
@@ -57,8 +78,8 @@ export interface LoroSyncClientOptions {
 
 export class LoroSyncClient {
   readonly doc: LoroDoc = new LoroDoc();
-  /** Canvas operations on this client's Loro document. */
-  readonly canvas: Canvas;
+  private readonly canvasScopes = new Map<string, Canvas>();
+  private activeCanvasId: string;
 
   private ws: WSLike | null = null;
   private unsubscribe: (() => void) | null = null;
@@ -74,23 +95,123 @@ export class LoroSyncClient {
   constructor(options: LoroSyncClientOptions) {
     this.serverUrl = options.serverUrl.replace(/\/$/, "");
     this.projectId = options.projectId;
-    this.token = options.token;
+    this.token = options.token ?? "";
     this.clientType = options.clientType ?? "browser";
     this.userId = options.userId;
     this.userName = options.userName;
     this.agentName = options.agentName;
     this.WS = (options.WebSocket ?? globalThis.WebSocket) as unknown as WSConstructor;
+    this.activeCanvasId = options.canvasId?.trim() || DEFAULT_CANVAS_ID;
+  }
+
+  /** Canvas operations in the currently selected scope. */
+  get canvas(): Canvas {
+    return this.canvasFor(this.activeCanvasId);
+  }
+
+  canvasFor(canvasId: string): Canvas {
+    const id = canvasId.trim() || DEFAULT_CANVAS_ID;
+    const existing = this.canvasScopes.get(id);
+    if (existing) return existing;
     // No-op broadcast: local updates are sent via subscribeLocalUpdates in connect().
-    this.canvas = new Canvas(this.doc, () => {});
+    const canvas = new Canvas(this.doc, () => {}, id);
+    this.canvasScopes.set(id, canvas);
+    return canvas;
+  }
+
+  selectCanvas(canvasId: string): Canvas {
+    const id = canvasId.trim() || DEFAULT_CANVAS_ID;
+    const canvases = this.doc.getMap("canvases");
+    if (!canvases.get(id)) {
+      if (id === DEFAULT_CANVAS_ID && canvases.size === 0) {
+        ensureProjectCanvas(this.doc);
+        this.doc.commit({ origin: "sys:canvas-registry" });
+      } else {
+        throw new Error(`Canvas ${id} not found`);
+      }
+    }
+    const canvas = this.canvasFor(id);
+    this.activeCanvasId = id;
+    return canvas;
+  }
+
+  listCanvases() {
+    return listProjectCanvases(this.doc);
+  }
+
+  createCanvas(input: { id: string; name: string }) {
+    const result = createProjectCanvas(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  renameCanvas(canvasId: string, name: string) {
+    const result = renameProjectCanvas(this.doc, canvasId, name);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  deleteCanvas(canvasId: string) {
+    const result = deleteProjectCanvas(this.doc, canvasId);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  listTimelines() {
+    return listProjectTimelines(this.doc);
+  }
+
+  createTimeline(input: { id: string; name: string; state: unknown }) {
+    const result = createProjectTimeline(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  updateTimelineState(timelineId: string, state: unknown) {
+    const result = updateProjectTimelineState(this.doc, timelineId, state);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  attachTimeline(input: {
+    timelineId: string;
+    canvasId: string;
+    actionNodeId: string;
+    position: { x: number; y: number };
+  }) {
+    const result = attachTimelineToCanvas(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  detachTimeline(timelineId: string) {
+    const result = detachTimelineFromCanvas(this.doc, timelineId);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  copyTimelineAction(input: {
+    sourceTimelineId: string;
+    targetCanvasId: string;
+    newTimelineId: string;
+    newActionNodeId: string;
+    position: { x: number; y: number };
+  }) {
+    const result = copyTimelineActionToCanvas(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────
 
   async connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const url = `${this.serverUrl}/sync/${this.projectId}?token=${encodeURIComponent(this.token)}`;
+      const url = `${this.serverUrl}/sync/${encodeURIComponent(this.projectId)}`;
       const ws = new this.WS(url, undefined, {
-        headers: this.presenceHeaders(),
+        headers: {
+          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+          ...this.presenceHeaders(),
+        },
       });
       ws.binaryType = "arraybuffer";
       let snapshotReceived = false;
@@ -115,6 +236,19 @@ export class LoroSyncClient {
               this.ws.send(update);
             }
           });
+
+          const graphReconciliation = reconcileCanvasGraph(this.doc);
+          const reconciliation = reconcileProjectTimelineOwnership(this.doc);
+          let workspaceChanged = canvasGraphReconciliationChanged(graphReconciliation) ||
+            reconciliation.removedActionNodeIds.length > 0 ||
+            reconciliation.detachedTimelineIds.length > 0;
+          if (this.doc.getMap("canvases").size === 0) {
+            ensureProjectCanvas(this.doc);
+            workspaceChanged = true;
+          }
+          if (workspaceChanged) {
+            this.doc.commit({ origin: "sys:workspace-reconcile" });
+          }
 
           clearTimeout(timeout);
           resolve();

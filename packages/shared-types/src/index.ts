@@ -110,6 +110,11 @@ export {
 } from './agent-read-proof';
 
 export {
+  validateAgentObservation,
+  type AgentObservationResult,
+} from "./agent-observation";
+
+export {
   hostMutationRejected,
   hostMutationSucceeded,
   validateHostMutationEnvelope,
@@ -128,6 +133,7 @@ export {
   canvasCheckpointDownstreamTargets,
   canvasPatchFields,
   isCanvasActionCheckpointLocked,
+  isCanvasNodeImmutable,
   validateCanvasBatchDeleteReadProof,
   validateCanvasBatchDelete,
   validateCanvasCheckpointPatch,
@@ -429,6 +435,67 @@ export type {
 } from './canvas-ops';
 
 // Loro sync client
+export {
+  computeActionBuildPlan,
+  computeCanvasActionBuildPlan,
+  summarizeActionBuildInvocations,
+  type ActionBuildGraphEdge,
+  type ActionBuildGraphNode,
+  type ActionBuildGraphReader,
+  type ActionBuildInvocationEstimate,
+  type ActionBuildInvocationKind,
+  type ActionBuildModality,
+  type ActionBuildPlan,
+  type ActionBuildPlanEntry,
+  type CanvasActionBuildGraph,
+} from "./action-build-plan";
+
+export {
+  DEFAULT_CANVAS_ID,
+  createProjectCanvas,
+  createProjectTimeline,
+  copyTimelineActionToCanvas,
+  deleteProjectCanvas,
+  detachTimelineFromCanvas,
+  ensureProjectCanvas,
+  listProjectCanvases,
+  listProjectTimelines,
+  listStandaloneTimelines,
+  projectCanvasReadToken,
+  projectTimelineReadToken,
+  projectTimelineRevisionId,
+  readProjectTimeline,
+  reconcileProjectTimelineOwnership,
+  renameProjectCanvas,
+  resolveTimelineRenderTarget,
+  attachTimelineToCanvas,
+  updateProjectTimelineState,
+  type ProjectCanvas,
+  type ProjectCanvasDeleteResult,
+  type ProjectCanvasMutationResult,
+  type ProjectTimeline,
+  type ProjectTimelineMutationResult,
+  type TimelineOwner,
+  type TimelineOwnershipReconciliation,
+  type TimelineRenderTarget,
+} from "./project-workspace";
+
+export {
+  EDGE_IDENTITY_CONTAINER,
+  NODE_UPSTREAMS_CONTAINER,
+  canvasGraphReconciliationChanged,
+  clearNodeUpstreamRefs,
+  deleteNodeUpstreamRef,
+  ensureCanvasGraphIdentity,
+  listNodeOwnedEdges,
+  readNodeUpstreamRefs,
+  reconcileCanvasGraph,
+  upsertNodeUpstreamRef,
+  type CanvasGraphReconciliation,
+  type NodeOwnedEdge,
+} from "./node-upstreams";
+
+// Loro sync client
 export { LoroSyncClient } from './loro-client';
 export type { LoroSyncClientOptions } from './loro-client';
 
@@ -452,6 +519,7 @@ export * from './presence';
 export {
   timelineDslToYaml,
   timelineDslFromYaml,
+  timelineDslCanonicalJson,
   timelineDslHash,
   parseFromExpression,
   resolveFromExpression,
@@ -497,19 +565,6 @@ export {
   type TextRevisionContentDescriptor,
   type TextRevisionHistoryEntry,
 } from './text-revisions';
-
-export {
-  TimelineAppliedRevisionSchema,
-  TimelineRevisionActorSchema,
-  TimelineRevisionContentDescriptorSchema,
-  TimelineRevisionDependenciesSchema,
-  TimelineRevisionHistoryEntrySchema,
-  type TimelineAppliedRevision,
-  type TimelineRevisionActor,
-  type TimelineRevisionContentDescriptor,
-  type TimelineRevisionDependencies,
-  type TimelineRevisionHistoryEntry,
-} from './timeline-revisions';
 
 // Pipeline types
 export {

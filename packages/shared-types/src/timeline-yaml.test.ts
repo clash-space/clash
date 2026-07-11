@@ -370,6 +370,17 @@ tracks:
 });
 
 describe("timelineDslHash", () => {
+  it("treats omitted rendering defaults as explicit defaults", async () => {
+    const minimal = { tracks: [], fps: 30, durationInFrames: 60 };
+    const explicitDefaults = {
+      ...minimal,
+      compositionWidth: 1920,
+      compositionHeight: 1080,
+    };
+
+    expect(await timelineDslHash(minimal)).toBe(await timelineDslHash(explicitDefaults));
+  });
+
   it("returns the same hash for semantically identical DSLs (key order, fromExpr)", async () => {
     const a = {
       tracks: [{ id: "t", items: [{ id: "a", type: "video", from: 30, durationInFrames: 60 }] }],
@@ -385,11 +396,17 @@ describe("timelineDslHash", () => {
       tracks: [{ id: "t", items: [{ id: "a", type: "video", from: 30, durationInFrames: 60, fromExpr: "30" }] }],
       fps: 30,
     };
+    const d = {
+      tracks: [{ id: "t", items: [{ id: "a", type: "video", from: 30, durationInFrames: 60, src: undefined }] }],
+      fps: 30,
+    };
     const ha = await timelineDslHash(a);
     const hb = await timelineDslHash(b);
     const hc = await timelineDslHash(c);
+    const hd = await timelineDslHash(d);
     expect(ha).toBe(hb);
     expect(ha).toBe(hc);
+    expect(ha).toBe(hd);
   });
 
   it("returns a different hash when `from` actually changes", async () => {

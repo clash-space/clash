@@ -2,7 +2,7 @@
   "hooks": [
     {
       "event": "SessionStart",
-      "command": "clash auth status 2>/dev/null || echo '[Clash] Not authenticated. Run: clash auth login'"
+      "command": "clash host status 2>/dev/null || echo '[Clash] CLI unavailable. Install @clash-space/cli.'"
     }
   ]
 }

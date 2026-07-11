@@ -51,7 +51,7 @@ function expectedProjectRoomPolicy(cloudSurface: "disabled" | "sequencer") {
 const expectedSyncMirrorPolicy = {
   canvas: {
     requirement: "canvas",
-    source: "loro-canvas-replica",
+    source: "loro-project-replica",
     conflictPolicy: "loro-crdt",
   },
   assetMetadata: {
@@ -64,8 +64,8 @@ const expectedSyncMirrorPolicy = {
   revisionContent: {
     requirement: "revision-content",
     source: "sqlite-index-and-content-addressed-revision-blobs",
-    registries: ["text_revisions", "timeline_revisions"],
-    contentKinds: ["text-revision-content", "timeline-revision-content"],
+    registries: ["text_revisions"],
+    contentKinds: ["text-revision-content"],
     mediaAsset: false,
     agentWritable: false,
     conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",
@@ -105,6 +105,29 @@ describe("project status path builder", () => {
     expect(external).toMatch(/^external:[a-f0-9]{16}$/);
   });
 
+  it("keeps Project Timeline history in the canonical Loro replica", () => {
+    const status = buildProjectStatus(
+      { projectId: "timeline-history", source: "marker" },
+      { clashRoot: "/tmp/clash-home", localApiDataDir: "/tmp/clash-home/local-api" },
+    );
+
+    expect(status.storage.canonicalReplica).toHaveProperty("projectState");
+    expect(status.storage.canonicalReplica).not.toHaveProperty("canvas");
+    expect(status.storage.canonicalReplica.contentBlobs).not.toHaveProperty("timelineRevisions");
+    expect(status.storage.contentModel.timelines).toMatchObject({
+      liveState: "loro-project-timeline-entity",
+      revisionAuthority: "loro-project-history",
+      revisionIdentity: "state-hash",
+      downstreamRendersPinRevision: true,
+    });
+    expect(status.storage.contentModel.timelines).not.toHaveProperty("revisionRegistry");
+    expect(status.storage.contentModel.timelines).not.toHaveProperty("revisionBlobPath");
+    expect(status.storage.contentModel.timelines).not.toHaveProperty("contentRegistry");
+    expect(status.collaboration.syncPolicy.mirror.revisionContent.registries).toEqual([
+      "text_revisions",
+    ]);
+  });
+
   it("builds agent-editable roots and protected local store paths", () => {
     const status = buildProjectStatus(
       { projectId: "project/one", source: "explicit" },
@@ -114,7 +137,7 @@ describe("project status path builder", () => {
     expect(status.projectWorkspaceRoot).toBe("/tmp/clash-home/projects/project%2Fone");
     expect(status.currentWorkspace).toEqual({
       schemaVersion: 1,
-      role: "project-reference-workspace",
+      role: "project-reference-and-draft-workspace",
       projectWorkspaceRoot: status.projectWorkspaceRoot,
       locatedInProjectWorkspace: null,
       markerStore: "unknown",
@@ -142,7 +165,6 @@ describe("project status path builder", () => {
     expect(status.loro.snapshotPath).toBe("/tmp/clash-home/local-api/projects/project%2Fone/loro/snapshot.bin");
     expect(status.storage.canonicalReplica.mediaAssets.path).toBe("/tmp/clash-home/assets/blobs");
     expect(status.storage.canonicalReplica.contentBlobs.textRevisions.path).toBe("/tmp/clash-home/local-api/text-revision-blobs");
-    expect(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path).toBe("/tmp/clash-home/local-api/timeline-revision-blobs");
     expect(status.storage.contentModel.textNodes.revisionRegistry).toBe("text_revisions");
     expect(status.storage.contentModel.textNodes.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
     expect(status.storage.contentModel.textNodes.historyCommand).toBe("clash text history");
@@ -154,23 +176,29 @@ describe("project status path builder", () => {
       mediaAssetTable: false,
     });
     expect(status.storage.contentModel.textNodes.mediaAsset).toBe(false);
-    expect(status.storage.contentModel.timelines.revisionRegistry).toBe("timeline_revisions");
-    expect(status.storage.contentModel.timelines.revisionBlobPath).toBe(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
-    expect(status.storage.contentModel.timelines.historyCommand).toBe("clash timeline history");
-    expect(status.storage.contentModel.timelines.contentCommand).toBe("clash timeline content");
-    expect(status.storage.contentModel.timelines.contentRegistry).toEqual({
-      kind: "sqlite-non-media-revision-registry",
-      table: "timeline_revisions",
-      blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
-      mediaAssetTable: false,
-    });
-    expect(status.storage.contentModel.timelines.mediaAsset).toBe(false);
+    expect(status.storage.contentModel.timelines.revisionAuthority).toBe("loro-project-history");
+    expect(status.storage.contentModel.timelines.revisionIdentity).toBe("state-hash");
+    expect(status.storage.contentModel.timelines.liveState).toBe("loro-project-timeline-entity");
+    expect(status.storage.contentModel.timelines.projectionFilePattern).toBe("<timeline-id>.timeline.yaml");
+    expect(status.storage.contentModel.timelines.publicCommands).toEqual([
+      "clash timeline list",
+      "clash timeline create --id <id> --name <name>",
+      "clash timeline attach --timeline <id> --canvas <id> --node <action-node-id>",
+      "clash timeline detach --timeline <id>",
+      "clash timeline copy --timeline <id> --canvas <id> --new-timeline <id> --new-node <action-node-id>",
+      "clash timeline pull --timeline <id>",
+      "clash timeline apply --timeline <id>",
+    ]);
+    expect(status.storage.contentModel.timelines.copyOnWriteWhenReferenced).toBe(false);
+    expect(status.storage.contentModel.timelines.downstreamRendersPinRevision).toBe(true);
+    expect(status.storage.contentModel.timelines).not.toHaveProperty("historyCommand");
+    expect(status.storage.contentModel.timelines).not.toHaveProperty("restoreCommand");
+    expect(status.storage.contentModel.timelines).not.toHaveProperty("contentRegistry");
     expect(status.editablePaths).toContain(status.roots.drafts);
     expect(status.editablePaths).toContain(status.roots.timelines);
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.mediaAssets.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
-    expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.timelineRevisions.path);
     expect(status.protectedPaths).toContain(status.storage.localSecrets.files.cliConfig.path);
     expect(status.protectedPaths).toContain(status.storage.localSecrets.files.bridgeCredentials.path);
     expect(status.protectedPaths).toContain(status.roots.runtime);
@@ -244,15 +272,17 @@ describe("project status path builder", () => {
           timelines: {
             kind: "agent-editable-view-files",
             path: "/tmp/clash-home/projects/project%2Fone/timelines",
-            defaultFile: "main.timeline.yaml",
-            applyCommand: "clash timeline apply",
+            defaultFilePattern: "<timeline-id>.timeline.yaml",
+            pullCommand: "clash timeline pull --timeline <id>",
+            applyCommand: "clash timeline apply --timeline <id>",
             casRequired: true,
             ownsCanonicalState: false,
           },
           timelineProjections: {
             kind: "agent-editable-projection-files",
             path: "/tmp/clash-home/projects/project%2Fone/projections/timelines",
-            applyCommand: "clash timeline apply",
+            defaultFilePattern: "<timeline-id>.timeline.yaml",
+            applyCommand: "clash timeline apply --timeline <id>",
             casRequired: true,
             ownsCanonicalState: false,
           },
@@ -276,7 +306,7 @@ describe("project status path builder", () => {
             jsonSidecars: "removed",
           },
         },
-        canvas: {
+        projectState: {
           kind: "loro",
           replicaRoot: status.loro.replicaRoot,
           snapshotPath: status.loro.snapshotPath,
@@ -300,13 +330,6 @@ describe("project status path builder", () => {
             immutable: true,
             agentWritable: false,
           },
-          timelineRevisions: {
-            kind: "content-addressed-files",
-            path: "/tmp/clash-home/local-api/timeline-revision-blobs",
-            mediaType: "application/yaml",
-            immutable: true,
-            agentWritable: false,
-          },
         },
       },
       localSecrets: {
@@ -327,7 +350,7 @@ describe("project status path builder", () => {
         },
       },
       contentModel: {
-        role: "agent-projections-with-host-indexed-revision-content",
+        role: "agent-projections-over-host-owned-canonical-state",
         textNodes: {
           liveState: "loro-canvas-text-node-data",
           editableProjection: "storage.workspace.viewFiles.texts",
@@ -351,25 +374,27 @@ describe("project status path builder", () => {
           agentWritableCanonicalState: false,
         },
         timelines: {
-          liveState: "loro-canvas-video-editor-node-data",
+          liveState: "loro-project-timeline-entity",
+          timelineIdentity: "timeline-id",
           editableProjection: "storage.workspace.viewFiles.timelines",
           projectionPath: "/tmp/clash-home/projects/project%2Fone/timelines",
-          applyCommand: "clash timeline apply",
-          replaceCommand: "clash timeline replace",
-          restoreCommand: "clash timeline restore",
-          historyCommand: "clash timeline history",
-          contentCommand: "clash timeline content",
+          projectionFilePattern: "<timeline-id>.timeline.yaml",
+          pullCommand: "clash timeline pull --timeline <id>",
+          applyCommand: "clash timeline apply --timeline <id>",
+          publicCommands: [
+            "clash timeline list",
+            "clash timeline create --id <id> --name <name>",
+            "clash timeline attach --timeline <id> --canvas <id> --node <action-node-id>",
+            "clash timeline detach --timeline <id>",
+            "clash timeline copy --timeline <id> --canvas <id> --new-timeline <id> --new-node <action-node-id>",
+            "clash timeline pull --timeline <id>",
+            "clash timeline apply --timeline <id>",
+          ],
           casRequired: true,
-          copyOnWriteWhenReferenced: true,
-          revisionRegistry: "timeline_revisions",
-          revisionBlobPath: "/tmp/clash-home/local-api/timeline-revision-blobs",
-          contentRegistry: {
-            kind: "sqlite-non-media-revision-registry",
-            table: "timeline_revisions",
-            blobStore: "storage.canonicalReplica.contentBlobs.timelineRevisions",
-            mediaAssetTable: false,
-          },
-          mediaAsset: false,
+          copyOnWriteWhenReferenced: false,
+          downstreamRendersPinRevision: true,
+          revisionAuthority: "loro-project-history",
+          revisionIdentity: "state-hash",
           agentWritableCanonicalState: false,
         },
       },
@@ -386,15 +411,17 @@ describe("project status path builder", () => {
       timelines: {
         kind: "agent-editable-view-files",
         path: status.roots.timelines,
-        defaultFile: "main.timeline.yaml",
-        applyCommand: "clash timeline apply",
+        defaultFilePattern: "<timeline-id>.timeline.yaml",
+        pullCommand: "clash timeline pull --timeline <id>",
+        applyCommand: "clash timeline apply --timeline <id>",
         casRequired: true,
         ownsCanonicalState: false,
       },
       timelineProjections: {
         kind: "agent-editable-projection-files",
         path: "/tmp/clash-home/projects/project%2Fone/projections/timelines",
-        applyCommand: "clash timeline apply",
+        defaultFilePattern: "<timeline-id>.timeline.yaml",
+        applyCommand: "clash timeline apply --timeline <id>",
         casRequired: true,
         ownsCanonicalState: false,
       },
@@ -433,7 +460,7 @@ describe("project status path builder", () => {
 
     expect(status.currentWorkspace).toEqual({
       schemaVersion: 1,
-      role: "project-reference-workspace",
+      role: "project-reference-and-draft-workspace",
       currentWorkingDirectory: "/tmp/clash-vault/drafts/scene-1",
       markerPath: "/tmp/clash-vault/.clash/project.toml",
       markerRoot: "/tmp/clash-vault",
@@ -445,6 +472,10 @@ describe("project status path builder", () => {
       ownsCanonicalMetadata: false,
       deletionDeletesProjectState: false,
     });
+    expect(status.storage.workspace.root).toBe("/tmp/clash-vault");
+    expect(status.roots.timelines).toBe("/tmp/clash-vault/timelines");
+    expect(status.roots.projections).toBe("/tmp/clash-vault/projections");
+    expect(status.storage.workspace.protectedPaths).toEqual([]);
   });
 
   it("treats the project marker as a reference, never collaboration authority", () => {
@@ -868,8 +899,8 @@ describe("project status path builder", () => {
         revisionContent: {
           requirement: "revision-content",
           source: "sqlite-index-and-content-addressed-revision-blobs",
-          registries: ["text_revisions", "timeline_revisions"],
-          contentKinds: ["text-revision-content", "timeline-revision-content"],
+          registries: ["text_revisions"],
+          contentKinds: ["text-revision-content"],
           mediaAsset: false,
           agentWritable: false,
           conflictPolicy: "same-revision-id-same-hash-idempotent-conflict-otherwise",

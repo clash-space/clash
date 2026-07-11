@@ -229,6 +229,18 @@ function selectAuthMethod(authMethods: unknown, methodId?: string): AuthMethod |
   return methods.find((method) => method.id === methodId) ?? null;
 }
 
+async function agentReportedAuthMethod(agent: Agent, methods: AuthMethod[]): Promise<AuthMethod | null> {
+  if (typeof agent.extMethod !== "function") return null;
+  try {
+    const status = await agent.extMethod("authentication/status", {});
+    const type = isRecord(status) && typeof status.type === "string" ? status.type : null;
+    if (!type || type === "unauthenticated") return null;
+    return methods.find((method) => method.id === type) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function isAuthRequiredError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const typed = error as { code?: unknown; message?: unknown };
@@ -703,7 +715,9 @@ export async function probeAgentAuthStatus(
       (async (): Promise<ProbeAgentAuthStatus> => {
         const initResult = await initializeAcpAgent(connection.agent);
         const methods = supportedAuthMethods(initResult.authMethods);
-        const method = selectAuthMethod(initResult.authMethods);
+        const method =
+          await agentReportedAuthMethod(connection.agent, methods) ??
+          selectAuthMethod(initResult.authMethods);
         if (!method) return { status: "none" as const };
         const methodFields = authMethodStatusFields(method, methods, options.agent, connection.env, cwd);
         try {

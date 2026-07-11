@@ -26,12 +26,12 @@ describe("computeAdoption", () => {
         expect(result.type).toBe("audio");
         expect(result.data).toMatchObject({
             label: "Narrate this intro",
-            src: "",
             status: "pending",
             prompt: "Narrate this intro",
             model: "minimax-tts",
             modelId: "minimax-tts",
         });
+        expect(result.data).not.toHaveProperty("src");
     });
 
     it("adopts a text generation action into a pending text node", () => {

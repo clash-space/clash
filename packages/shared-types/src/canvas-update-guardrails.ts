@@ -142,7 +142,6 @@ export function validateCanvasReadProof(options: {
   expectedReadToken?: string;
   requireReceipt?: boolean;
   readReceiptVerifier?: AgentReadReceiptVerifier;
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
   return validateAgentReadProof({
     actorClientType: options.actorClientType,
@@ -151,9 +150,7 @@ export function validateCanvasReadProof(options: {
     expectedReadToken: options.expectedReadToken,
     requireReceipt: options.requireReceipt,
     readReceiptVerifier: options.readReceiptVerifier,
-    force: options.force,
-    readCommandHint:
-      "Run `clash canvas get --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+    readCommandHint: "Run `clash canvas get --json` first, then retry the mutation.",
   });
 }
 
@@ -164,7 +161,6 @@ export function validateCanvasBatchDeleteReadProof(options: {
   expectedReadToken?: string;
   requireReceipt?: boolean;
   readReceiptVerifier?: AgentReadReceiptVerifier;
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
   return validateAgentReadProof({
     actorClientType: options.actorClientType,
@@ -176,9 +172,8 @@ export function validateCanvasBatchDeleteReadProof(options: {
     expectedReadToken: options.expectedReadToken,
     requireReceipt: options.requireReceipt,
     readReceiptVerifier: options.readReceiptVerifier,
-    force: options.force,
     readCommandHint:
-      "Run `clash canvas delete-plan --node <id> --node <id> --json` first and pass its `readToken` with --if-match, or pass --force for an explicit destructive batch delete.",
+      "Run `clash canvas delete-plan --node <id> --node <id> --json` first, then retry the mutation.",
   });
 }
 
@@ -189,7 +184,6 @@ export function validateCanvasEdgeReadProof(options: {
   expectedReadToken?: string;
   requireReceipt?: boolean;
   readReceiptVerifier?: AgentReadReceiptVerifier;
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
   return validateAgentReadProof({
     actorClientType: options.actorClientType,
@@ -198,9 +192,7 @@ export function validateCanvasEdgeReadProof(options: {
     expectedReadToken: options.expectedReadToken,
     requireReceipt: options.requireReceipt,
     readReceiptVerifier: options.readReceiptVerifier,
-    force: options.force,
-    readCommandHint:
-      "Run `clash canvas edges --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+    readCommandHint: "Run `clash canvas edges --json` first, then retry the mutation.",
   });
 }
 
@@ -211,7 +203,6 @@ export function validateCanvasEdgesReadProof(options: {
   expectedReadToken?: string;
   requireReceipt?: boolean;
   readReceiptVerifier?: AgentReadReceiptVerifier;
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
   return validateAgentReadProof({
     actorClientType: options.actorClientType,
@@ -220,9 +211,7 @@ export function validateCanvasEdgesReadProof(options: {
     expectedReadToken: options.expectedReadToken,
     requireReceipt: options.requireReceipt,
     readReceiptVerifier: options.readReceiptVerifier,
-    force: options.force,
-    readCommandHint:
-      "Run `clash canvas edges --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+    readCommandHint: "Run `clash canvas edges --json` first, then retry the mutation.",
   });
 }
 
@@ -430,9 +419,7 @@ export function validateCanvasTimelineApply(options: {
   nodeId: string;
   nodes?: Iterable<CanvasUpdateNodeWithIdLike>;
   edges: CanvasUpdateEdgeLike[];
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
-  if (options.force) return { ok: true };
   const downstream = canvasCheckpointDownstreamTargets(options.nodeId, options.edges, options.nodes);
   if (downstream.length === 0) return { ok: true };
   return {
@@ -440,7 +427,7 @@ export function validateCanvasTimelineApply(options: {
     error:
       `Refusing to apply timeline for ${options.nodeId}. Timeline has materialized downstream checkpoint node(s): ` +
       `${downstream.join(", ")}. ` +
-      "Use copy-on-write/versioned timeline workflow or explicit force instead.",
+      "Use the copy-on-write/versioned timeline workflow instead.",
   };
 }
 
@@ -449,6 +436,13 @@ export function canvasDownstreamTargets(
   edges: CanvasUpdateEdgeLike[],
 ): string[] {
   return edges.filter((edge) => edge.source === nodeId).map((edge) => edge.target);
+}
+
+export function isCanvasNodeImmutable(options: {
+  nodeId: string;
+  edges: CanvasUpdateEdgeLike[];
+}): boolean {
+  return options.edges.some((edge) => edge.source === options.nodeId);
 }
 
 function isDraftPlaceholderNode(node: CanvasUpdateNodeWithIdLike | undefined): boolean {
@@ -535,27 +529,21 @@ function canvasMaterializedContentDownstreamTargets(
 export function validateCanvasDelete(options: {
   nodeId: string;
   edges: CanvasUpdateEdgeLike[];
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
-  if (options.force) return { ok: true };
   const downstream = canvasDownstreamTargets(options.nodeId, options.edges);
   if (downstream.length === 0) return { ok: true };
   return {
     ok: false,
     error:
       `Refusing to delete referenced node ${options.nodeId}. It has downstream node(s): ` +
-      `${downstream.join(", ")}. ` +
-      "Pass --force with --yes only if you intend to orphan those references.",
+      `${downstream.join(", ")}. Remove or rewire those references first.`,
   };
 }
 
 export function validateCanvasBatchDelete(options: {
   nodeIds: Iterable<string>;
   edges: CanvasUpdateEdgeLike[];
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
-  if (options.force) return { ok: true };
-
   const deletedIds = new Set(
     [...options.nodeIds]
       .filter((nodeId) => typeof nodeId === "string")
@@ -573,8 +561,7 @@ export function validateCanvasBatchDelete(options: {
     ok: false,
     error:
       "Refusing to delete referenced node(s). Batch would orphan downstream reference(s): " +
-      `${orphanedEdges.join(", ")}. ` +
-      "Pass --force with --yes only if you intend to orphan those references.",
+      `${orphanedEdges.join(", ")}. Delete a closed subgraph or rewire those references first.`,
   };
 }
 
@@ -582,10 +569,7 @@ export function validateCanvasEdgeDelete(options: {
   edge: CanvasUpdateEdgeLike;
   nodes: Iterable<CanvasUpdateNodeWithIdLike>;
   edges: CanvasUpdateEdgeLike[];
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
-  if (options.force) return { ok: true };
-
   const nodesById = new Map<string, CanvasUpdateNodeWithIdLike>();
   for (const node of options.nodes) nodesById.set(node.id, node);
 
@@ -621,10 +605,7 @@ export function validateCanvasEdgeAdd(options: {
   edge: CanvasUpdateEdgeLike;
   nodes: Iterable<CanvasUpdateNodeWithIdLike>;
   edges: CanvasUpdateEdgeLike[];
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
-  if (options.force) return { ok: true };
-
   const nodesById = new Map<string, CanvasUpdateNodeWithIdLike>();
   for (const node of options.nodes) nodesById.set(node.id, node);
 
@@ -649,7 +630,6 @@ export function validateCanvasEdgePatch(options: {
   patch: Partial<CanvasUpdateEdgeLike> & Record<string, unknown>;
   nodes: Iterable<CanvasUpdateNodeWithIdLike>;
   edges: CanvasUpdateEdgeLike[];
-  force?: boolean;
 }): CanvasUpdateGuardrailResult {
   const existingEdge = options.existingEdge ?? null;
   const nextSource = typeof options.patch.source === "string"
@@ -667,7 +647,6 @@ export function validateCanvasEdgePatch(options: {
       edge: nextEdge,
       nodes: options.nodes,
       edges: options.edges,
-      force: options.force,
     });
   }
 
@@ -680,7 +659,6 @@ export function validateCanvasEdgePatch(options: {
     edge: existingEdge,
     nodes: options.nodes,
     edges: options.edges,
-    force: options.force,
   });
   if (!deleteGuard.ok) return deleteGuard;
 
@@ -688,6 +666,5 @@ export function validateCanvasEdgePatch(options: {
     edge: nextEdge,
     nodes: options.nodes,
     edges: options.edges,
-    force: options.force,
   });
 }

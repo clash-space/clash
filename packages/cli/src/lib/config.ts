@@ -52,12 +52,26 @@ export function getServerUrl(): string {
   );
 }
 
-export function requireApiKey(): string {
+function isLoopbackServerUrl(serverUrl: string): boolean {
+  try {
+    const hostname = new URL(serverUrl).hostname.toLowerCase();
+    return hostname === "127.0.0.1" ||
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+export function requireApiKey(serverUrl = getServerUrl()): string {
   const key = getApiKey();
+  if (!key && isLoopbackServerUrl(serverUrl)) return "";
   if (!key) {
     console.error(
-      "Error: No API key configured.\n" +
-      "Set CLASH_API_KEY env var or run: clash auth login"
+      "Error: Cloud sync requires authentication.\n" +
+      "Run: clash auth login\n" +
+      "Pure local projects work through a loopback local-api without cloud login."
     );
     process.exit(1);
   }

@@ -21,6 +21,10 @@ import {
   waitForEval,
   waitForHttp,
 } from "./startup-shared.mjs";
+import {
+  finalAnswerTextFromEvents,
+  terminalOutputsFromEvents,
+} from "./real-codex-transcript.mjs";
 
 if (process.env.CLASH_E2E_REAL_CODEX !== "1") {
   throw new Error("Refusing to run the real Codex E2E without CLASH_E2E_REAL_CODEX=1");
@@ -191,8 +195,10 @@ async function logRuntimeSnapshot(apiPort, label) {
     const res = await fetch(url);
     const text = await res.text();
     console.log(`[startup-real-codex] ${label} ${res.status} ${text.slice(0, 4000)}`);
+    return res.ok ? JSON.parse(text) : null;
   } catch (error) {
     console.error(`[startup-real-codex] ${label} failed`, error instanceof Error ? error.message : error);
+    return null;
   }
 }
 
@@ -210,15 +216,24 @@ async function waitForPersistedPwdOutput(apiPort, projectId) {
         if (!sessionId || session?.type !== "runtime") continue;
         const messagesRes = await fetch(`http://127.0.0.1:${apiPort}/api/v1/local-sessions/${encodeURIComponent(sessionId)}/messages`);
         const messagesJson = messagesRes.ok ? await messagesRes.json() : null;
-        const serialized = JSON.stringify(messagesJson);
-        if (serialized.includes(expectedPathFragment) && serialized.includes("\"stdout\"")) {
+        const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+        const matchingOutputs = messages
+          .flatMap((message) => terminalOutputsFromEvents(message?.events))
+          .filter((output) => output.includes(expectedPathFragment));
+        if (matchingOutputs.length > 0) {
           return {
             sessionId,
             expectedPathFragment,
-            messages: messagesJson?.messages?.length ?? 0,
+            messages: messages.length,
+            toolOutputs: matchingOutputs.length,
           };
         }
-        lastState = { sessionId, messagesStatus: messagesRes.status, serialized: serialized.slice(0, 1000) };
+        lastState = {
+          sessionId,
+          messagesStatus: messagesRes.status,
+          messages: messages.length,
+          terminalOutputs: matchingOutputs.length,
+        };
       }
       lastState = { sessionsStatus: sessionsRes.status, sessions: sessions.map((session) => ({
         id: session?.id,
@@ -232,6 +247,37 @@ async function waitForPersistedPwdOutput(apiPort, projectId) {
     await sleep(500);
   }
   throw new Error(`Timed out waiting for persisted pwd output: ${JSON.stringify(lastState)}`);
+}
+
+async function waitForPersistedFinalAnswer(apiPort, sessionId, expectedAnswer) {
+  const deadline = Date.now() + 60000;
+  let lastState = null;
+  while (Date.now() < deadline) {
+    try {
+      const messagesRes = await fetch(
+        `http://127.0.0.1:${apiPort}/api/v1/local-sessions/${encodeURIComponent(sessionId)}/messages`,
+      );
+      const messagesJson = messagesRes.ok ? await messagesRes.json() : null;
+      const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+      const assistantMessages = messages.filter((message) => message?.sender_kind === "agent");
+      const latest = assistantMessages.at(-1);
+      const answer = finalAnswerTextFromEvents(latest?.events).trim();
+      if (answer === expectedAnswer) {
+        return { sessionId, answer, messages: messages.length };
+      }
+      lastState = {
+        messagesStatus: messagesRes.status,
+        assistantMessages: assistantMessages.length,
+        answer: answer.slice(0, 1000),
+      };
+    } catch (error) {
+      lastState = { error: error instanceof Error ? error.message : String(error) };
+    }
+    await sleep(500);
+  }
+  throw new Error(
+    `Timed out waiting for exact persisted Codex final answer ${JSON.stringify(expectedAnswer)}: ${JSON.stringify(lastState)}`,
+  );
 }
 
 function clickPwdToolRow(agentBrowser) {
@@ -301,6 +347,8 @@ async function main() {
       logs: electronLogs,
       env: {
         CLASH_ACP_TEST_BIN_DIR: path.join(desktopDir, "build", "acp-bin"),
+        CODEX_API_KEY: "",
+        OPENAI_API_KEY: "",
       },
     });
     await waitForHttp(`http://127.0.0.1:${cdpPort}/json/version`, "Electron CDP");
@@ -327,7 +375,17 @@ async function main() {
       "copilot composer",
       30000,
     );
-    await logRuntimeSnapshot(apiPort, "runtime snapshot before harness select");
+    const runtimeSnapshot = await logRuntimeSnapshot(apiPort, "runtime snapshot before harness select");
+    const codexAuth = runtimeSnapshot?.runtimes
+      ?.flatMap((runtime) => runtime?.agents ?? [])
+      .find((agent) => agent?.id === "codex-acp")
+      ?.auth;
+    if (
+      codexAuth?.status !== "configured" ||
+      !["chat-gpt", "chatgpt"].includes(String(codexAuth?.methodId ?? "").toLowerCase())
+    ) {
+      throw new Error(`Real Codex E2E must use the configured ChatGPT subscription: ${JSON.stringify(codexAuth)}`);
+    }
     await selectCodexHarness(agentBrowser);
 
     const prompt = "Run pwd with your shell tool. After it finishes, reply exactly DONE.";
@@ -370,6 +428,11 @@ async function main() {
       `!document.querySelector(".clash-chat-input-stop")`,
       "Codex turn idle after final answer",
       240000,
+    );
+    const persistedFinalAnswer = await waitForPersistedFinalAnswer(
+      apiPort,
+      persistedToolOutput.sessionId,
+      "DONE",
     );
     stopRetryStatusCapture = true;
     const retryStatus = await retryStatusCapture;
@@ -422,6 +485,7 @@ async function main() {
       retryStatusText: retryStatus?.text ?? null,
       transportDiagnosticObserved,
       persistedToolOutput,
+      persistedFinalAnswer,
       projectWorkspaceLayout,
       projectStatus,
       state,

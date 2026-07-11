@@ -45,7 +45,7 @@ test("canvas node read token is stable for semantic equality and changes with no
   );
 });
 
-test("requires agent direct canvas writes to carry a matching read proof unless forced", () => {
+test("requires agent direct canvas writes to carry a matching read proof", () => {
   const node = {
     id: "node-1",
     type: "text",
@@ -61,7 +61,8 @@ test("requires agent direct canvas writes to carry a matching read proof unless 
   assert.equal(missing.ok, false);
   if (!missing.ok) {
     assert.match(missing.error, /read proof/);
-    assert.match(missing.error, /--if-match/);
+    assert.match(missing.error, /clash canvas get/);
+    assert.doesNotMatch(missing.error, /--if-match|readToken/);
   }
 
   assert.deepEqual(
@@ -83,18 +84,9 @@ test("requires agent direct canvas writes to carry a matching read proof unless 
   assert.equal(stale.ok, false);
   if (!stale.ok) {
     assert.match(stale.error, /Stale canvas delete rejected/);
-    assert.match(stale.error, /re-read/);
+    assert.match(stale.error, /changed after it was read/);
   }
 
-  assert.deepEqual(
-    validateCanvasReadProof({
-      operation: "delete",
-      actorClientType: "agent",
-      node,
-      force: true,
-    }),
-    { ok: true },
-  );
 });
 
 test("rejects projection-owned timeline data patches", () => {
@@ -387,7 +379,7 @@ test("allows first assetId fulfillment on referenced pending media nodes", () =>
   );
 });
 
-test("rejects deleting nodes that have downstream references unless forced", () => {
+test("rejects deleting nodes that have downstream references", () => {
   const edges = [{ source: "asset-1", target: "image-gen-1" }];
 
   const result = validateCanvasDelete({
@@ -398,15 +390,7 @@ test("rejects deleting nodes that have downstream references unless forced", () 
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.match(result.error, /Refusing to delete referenced node/);
-    assert.match(result.error, /--force/);
+    assert.doesNotMatch(result.error, /--force/);
   }
-  assert.deepEqual(
-    validateCanvasDelete({
-      nodeId: "asset-1",
-      edges,
-      force: true,
-    }),
-    { ok: true },
-  );
   assert.deepEqual(canvasDownstreamTargets("asset-1", edges), ["image-gen-1"]);
 });

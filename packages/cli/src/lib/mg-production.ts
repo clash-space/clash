@@ -23,7 +23,6 @@ export type RenderMgProductionProjectionResult = {
   htmlPath: string;
   manifestPath: string;
   timelineProjectionPath: string;
-  timelineLockPath: string;
 };
 
 export async function renderMgProductionProjection(
@@ -42,7 +41,7 @@ export async function renderMgProductionProjection(
   const htmlPath = join(outDir, "index.html");
   const manifestPath = join(outDir, "timeline-manifest.json");
   const timelineProjectionPath = join(cwd, "projections", "timelines", `${spec.id}.mg.timeline.yaml`);
-  const { casApply, lockPath: timelineLockPath } = timelineProjectionCasApply({
+  const { casApply } = timelineProjectionCasApply({
     cwd,
     filePath: timelineProjectionPath,
   });
@@ -55,7 +54,6 @@ export async function renderMgProductionProjection(
     ),
     timelineFromFrame,
     timelineProjectionPath: toProjectPath(cwd, timelineProjectionPath),
-    timelineLockPath: toProjectPath(cwd, timelineLockPath),
     timelineCasApply: casApply,
   });
 
@@ -68,7 +66,6 @@ export async function renderMgProductionProjection(
     htmlPath,
     manifestPath,
     timelineProjectionPath,
-    timelineLockPath,
   };
 }
 

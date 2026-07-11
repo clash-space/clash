@@ -12,6 +12,7 @@ class CapturingWebSocket {
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   onerror: ((ev: unknown) => void) | null = null;
   onclose: ((ev: { code: number; reason: string }) => void) | null = null;
+  sent: unknown[] = [];
 
   constructor(
     readonly url: string,
@@ -21,13 +22,84 @@ class CapturingWebSocket {
     CapturingWebSocket.instances.push(this);
   }
 
-  send() {}
+  send(data: unknown) {
+    this.sent.push(data);
+  }
   close(code = 1000, reason = "closed") {
     this.onclose?.({ code, reason });
   }
 }
 
 describe("LoroSyncClient", () => {
+  it("scopes multiple Canvas clients over the same Project replica", () => {
+    const client = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-multi-canvas",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+
+    expect((client as any).canvasFor).toBeTypeOf("function");
+    expect((client as any).selectCanvas).toBeTypeOf("function");
+    const main = (client as any).canvasFor("main");
+    expect((client as any).createCanvas({ id: "shots", name: "Shots" }).ok).toBe(true);
+    const shots = (client as any).canvasFor("shots");
+    main.createNode("main-node", "text", { content: "Main" });
+    shots.createNode("shots-node", "image", { assetId: "asset-1" });
+
+    expect(main.listNodes().map((node: any) => node.id)).toEqual(["main-node"]);
+    expect(shots.listNodes().map((node: any) => node.id)).toEqual(["shots-node"]);
+    (client as any).selectCanvas("shots");
+    expect(client.canvas.listNodes().map((node) => node.id)).toEqual(["shots-node"]);
+  });
+
+  it("does not create a Canvas by selecting an unknown id", () => {
+    const client = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-no-implicit-canvas",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+    client.createNode("main-node", "text", { content: "Main" });
+
+    expect(() => (client as any).selectCanvas("typo")).toThrow("Canvas typo not found");
+    expect((client as any).listCanvases().map((canvas: any) => canvas.id)).toEqual(["main"]);
+  });
+
+  it("exposes Project Canvas and Timeline registry operations for CLI clients", () => {
+    const client = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-registry",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+    client.createNode("bootstrap", "text", { content: "Bootstrap" });
+
+    expect((client as any).listCanvases()).toEqual([
+      { id: "main", name: "Main", position: 0 },
+    ]);
+    expect((client as any).createCanvas({ id: "shots", name: "Shots" }).ok).toBe(true);
+    expect((client as any).listCanvases().map((canvas: any) => canvas.id)).toEqual(["main", "shots"]);
+
+    expect((client as any).createTimeline({
+      id: "timeline-1",
+      name: "Episode 1",
+      state: { tracks: [] },
+    }).ok).toBe(true);
+    expect((client as any).attachTimeline({
+      timelineId: "timeline-1",
+      canvasId: "main",
+      actionNodeId: "timeline-action-1",
+      position: { x: 0, y: 0 },
+    }).ok).toBe(true);
+    expect((client as any).listTimelines()).toEqual([
+      expect.objectContaining({
+        id: "timeline-1",
+        owner: { kind: "canvas-action", canvasId: "main", actionNodeId: "timeline-action-1" },
+      }),
+    ]);
+  });
+
   it("sends agent surrogate presence headers when the caller is a spawned agent", async () => {
     CapturingWebSocket.instances = [];
 
@@ -44,13 +116,73 @@ describe("LoroSyncClient", () => {
     const connected = client.connect();
     const socket = CapturingWebSocket.instances[0];
     expect(socket.options.headers).toMatchObject({
+      authorization: "Bearer local-test-key",
       "x-client-type": "agent",
       "x-user-id": "local-user",
       "x-agent-name": "local-director",
     });
+    expect(socket.url).not.toContain("local-test-key");
+    expect(new URL(socket.url).searchParams.has("token")).toBe(false);
 
     const snapshot = new LoroDoc().export({ mode: "snapshot" });
     socket.onmessage?.({ data: snapshot });
     await connected;
+  });
+
+  it("reconciles orphan graph identities when importing a Project snapshot", async () => {
+    CapturingWebSocket.instances = [];
+    const source = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-graph-reconcile",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+    source.createNode("source", "text", {});
+    source.createNode("target", "image_gen", {});
+    source.canvas.insertEdge("orphan", "source", "target");
+    source.doc.getMap("nodes").delete("source");
+
+    const target = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-graph-reconcile",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+    const connected = target.connect();
+    CapturingWebSocket.instances.at(-1)?.onmessage?.({
+      data: source.doc.export({ mode: "snapshot" }),
+    });
+    await connected;
+
+    expect(target.doc.getMap("edgeIdentity").get("orphan")).toEqual({ deleted: true });
+  });
+
+  it("does not echo a repair for post-connect remote imports owned by the host", async () => {
+    CapturingWebSocket.instances = [];
+    const client = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-host-repair",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+    const connected = client.connect();
+    const socket = CapturingWebSocket.instances[0];
+    socket.onmessage?.({ data: new LoroDoc().export({ mode: "snapshot" }) });
+    await connected;
+    const sentBeforeRemoteImport = socket.sent.length;
+
+    const remote = new LoroDoc();
+    remote.getMap("nodes").set("target", { canvasId: "main", type: "image_gen", data: {} });
+    remote.getMap("nodeUpstreams").ensureMergeableMap("target").set("orphan", {
+      nodeId: "missing-source",
+      edgeId: "orphan",
+      type: "default",
+    });
+    remote.getMap("edgeIdentity").set("orphan", { target: "target" });
+    socket.onmessage?.({ data: remote.export({ mode: "snapshot" }) });
+
+    expect(socket.sent).toHaveLength(sentBeforeRemoteImport);
+    expect(client.canvas.listEdges()).toEqual([]);
+    expect(client.doc.getMap("edgeIdentity").get("orphan")).toEqual({ target: "target" });
   });
 });

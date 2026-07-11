@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clash.project-workspace-cli-e2e.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "status", "runId", "projectId", "paths", "summary", "checks", "commands"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.project-workspace-cli-e2e" },
+    "status": { "enum": ["pass", "fail"] },
+    "runId": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "paths": { "type": "object" },
+    "summary": {
+      "type": "object",
+      "required": ["checks", "commands", "failures"],
+      "properties": {
+        "checks": { "type": "integer", "minimum": 0 },
+        "commands": { "type": "integer", "minimum": 0 },
+        "failures": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "evidence"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "enum": ["pass", "fail"] },
+          "evidence": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "status", "stdout", "stderr"],
+        "properties": {
+          "command": { "type": "string" },
+          "status": { "type": ["integer", "null"] },
+          "stdout": { "type": "string" },
+          "stderr": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "error": { "type": "string" }
+  },
+  "additionalProperties": false
+}

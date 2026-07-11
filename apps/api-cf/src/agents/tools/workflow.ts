@@ -30,6 +30,7 @@ import { tool } from "ai";
 import type { LoroDoc } from "loro-crdt";
 import {
   Canvas,
+  listNodeOwnedEdges,
   MODEL_CARDS,
   validateGenerationInput,
   parsePromptParts,
@@ -42,7 +43,7 @@ import {
 } from "@clash/shared-types";
 import { log } from "../../logger";
 
-// ─── Edge helpers (Canvas.listEdges drops IDs; we need them for clone) ───
+// ─── Edge helpers ───
 
 export interface EdgeWithId {
   id: string;
@@ -52,13 +53,7 @@ export interface EdgeWithId {
 }
 
 function listEdgesWithIds(doc: LoroDoc): EdgeWithId[] {
-  const edgesMap = doc.getMap("edges");
-  const out: EdgeWithId[] = [];
-  for (const [id, raw] of edgesMap.entries()) {
-    const r = raw as Record<string, any>;
-    if (r.source && r.target) out.push({ id, source: r.source, target: r.target, type: r.type });
-  }
-  return out;
+  return listNodeOwnedEdges(doc);
 }
 
 function buildIncomingIndex(edges: EdgeWithId[]): Map<string, EdgeWithId[]> {

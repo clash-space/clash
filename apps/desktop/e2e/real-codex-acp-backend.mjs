@@ -88,9 +88,6 @@ async function main() {
       'project_id = "local_real_codex_backend_smoke"',
       'store = "managed"',
       "",
-      "[sync]",
-      'mode = "local"',
-      "",
     ].join("\n"),
     "utf8",
   );

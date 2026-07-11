@@ -8,7 +8,7 @@ import {
 } from "@clash/shared-types";
 import {
   createTimelineSourceProvenance,
-  readAppliedTimelineRevisionForSource,
+  type ProjectTimelineRevisionRef,
 } from "./timeline-projection";
 import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
@@ -30,6 +30,7 @@ type ExportCaptionFileOptions = {
   manifestPath?: string;
   format?: CaptionExportFormat;
   fps?: number;
+  timelineRevision?: ProjectTimelineRevisionRef;
 };
 
 type CaptionCue = {
@@ -73,16 +74,11 @@ export async function exportCaptionFile(options: ExportCaptionFileOptions): Prom
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error("Caption export requires a positive fps from --fps or timeline fps");
   }
-  const appliedRevision = await readAppliedTimelineRevisionForSource({
-    cwd,
-    sourceTimelinePath: timelinePath,
-    dsl: parsed.dsl,
-  });
   const timelineProvenance = createTimelineSourceProvenance({
     cwd,
     filePath: timelinePath,
     dsl: parsed.dsl,
-    appliedRevision,
+    timelineRevision: options.timelineRevision,
   });
   const captions = collectCaptionEntries(parsed.dsl);
   if (captions.entries.length === 0) {

@@ -103,10 +103,11 @@ export class ClashAgent {
   }
 
   private async connect(): Promise<void> {
-    const url = `${this.wsUrl}/sync/${this.opts.projectId}?token=${encodeURIComponent(this.opts.apiKey)}`;
+    const url = `${this.wsUrl}/sync/${encodeURIComponent(this.opts.projectId)}`;
     this.log(`Connecting to ${url} (runtime_id=${this.opts.runtimeId.slice(0, 8)}…)`);
     const ws = new WebSocket(url, {
       headers: {
+        authorization: `Bearer ${this.opts.apiKey}`,
         'x-client-type': 'cli',
         'x-runtime-id': this.opts.runtimeId,
       },

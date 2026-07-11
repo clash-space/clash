@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
-import { Canvas, CustomActionDefinitionSchema, type ClientType, type PresenceClient } from "@clash/shared-types";
+import {
+  Canvas,
+  canvasGraphReconciliationChanged,
+  CustomActionDefinitionSchema,
+  reconcileCanvasGraph,
+  reconcileProjectTimelineOwnership,
+  type ClientType,
+  type PresenceClient,
+} from "@clash/shared-types";
 import { WebSocketServer, type WebSocket } from "ws";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
 import { createLocalWorkflowProcessor, type LocalWorkflowProcessor } from "./local-processor.js";
@@ -130,6 +138,7 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
   doc: LoroDoc;
   store: FileReplicaStore;
   importedRemoteSnapshot: boolean;
+  workspaceRepaired: boolean;
 }> {
   const store = new FileReplicaStore(join(options.dataDir, "projects"));
   let doc: LoroDoc;
@@ -154,7 +163,13 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
     }
   }
 
-  return { doc, store, importedRemoteSnapshot };
+  const graphRepair = reconcileCanvasGraph(doc);
+  const timelineRepair = reconcileProjectTimelineOwnership(doc);
+  const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+    timelineRepair.removedActionNodeIds.length > 0 ||
+    timelineRepair.detachedTimelineIds.length > 0;
+
+  return { doc, store, importedRemoteSnapshot, workspaceRepaired };
 }
 
 export class LocalLoroRoom {
@@ -182,7 +197,7 @@ export class LocalLoroRoom {
       options.remotePersistence,
       workflowProcessor,
     );
-    if (loaded.importedRemoteSnapshot) await room.saveSnapshot();
+    if (loaded.importedRemoteSnapshot || loaded.workspaceRepaired) await room.saveSnapshot();
     await room.processPendingWork();
     return room;
   }
@@ -212,11 +227,25 @@ export class LocalLoroRoom {
   async receive(sender: PeerId, update: Uint8Array): Promise<void> {
     const updateBytes = exactBytes(update);
     this.doc.import(updateBytes);
+    const repairVersion = this.doc.version();
+    const graphRepair = reconcileCanvasGraph(this.doc);
+    const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+    const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
+      timelineRepair.removedActionNodeIds.length > 0 ||
+      timelineRepair.detachedTimelineIds.length > 0;
+    const repairUpdate = workspaceRepaired
+      ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
+      : null;
     await this.persistUpdate(updateBytes);
     for (const [peerId, peer] of this.peers.entries()) {
       if (peerId !== sender) peer.sendUpdate(updateBytes);
     }
     this.mirrorRemoteUpdate(updateBytes);
+    if (repairUpdate?.byteLength) {
+      await this.persistUpdate(repairUpdate);
+      for (const peer of this.peers.values()) peer.sendUpdate(repairUpdate);
+      this.mirrorRemoteUpdate(repairUpdate);
+    }
     await this.processPendingWork();
   }
 

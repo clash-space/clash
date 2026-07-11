@@ -263,18 +263,17 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-canvas-menu-surface {
   isolation: isolate;
   overflow: visible;
-  border: 1px solid rgba(225, 221, 213, 0.82);
-  background: rgba(255, 254, 253, 0.94);
+  border: 1px solid rgba(218, 213, 204, 0.82);
+  background: rgba(255, 254, 252, 0.97);
   box-shadow:
-    0 18px 44px rgba(35, 31, 25, 0.095),
-    0 5px 16px rgba(35, 31, 25, 0.052),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(16px) saturate(1.02);
+    0 4px 12px rgba(35, 31, 25, 0.055),
+    0 1px 3px rgba(35, 31, 25, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
 .clash-canvas-toolbar-surface {
-  width: 4rem;
-  min-width: 4rem;
+  width: 3rem;
+  min-width: 3rem;
   flex: none;
   overflow: visible;
 }

@@ -36,7 +36,6 @@ export type ProjectDerivedOverlayResult = {
   sourceAssetId: string;
   derivedAssetId: string;
   timelineProjectionPath: string;
-  timelineLockPath: string;
   manifestPath: string;
 };
 
@@ -84,7 +83,7 @@ export async function projectDerivedOverlayTimeline(
     "timelines",
     `${safeSlug(options.derivedAssetId)}.derived-overlay.timeline.yaml`,
   );
-  const { casApply, lockPath: timelineLockPath } = timelineProjectionCasApply({
+  const { casApply } = timelineProjectionCasApply({
     cwd,
     filePath: timelineProjectionPath,
   });
@@ -131,7 +130,6 @@ export async function projectDerivedOverlayTimeline(
     sourceAssetId: options.sourceAssetId,
     derivedAssetId: options.derivedAssetId,
     timelineProjectionPath,
-    timelineLockPath,
     manifestPath,
   };
 }

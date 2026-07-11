@@ -15,7 +15,6 @@ describe("host mutation browser events", () => {
       operation: "canvas_update",
       entity: { kind: "canvas-node", id: "node-1" },
       accepted: true,
-      forced: false,
     });
 
     expect(listener).toHaveBeenCalledTimes(1);
@@ -26,7 +25,6 @@ describe("host mutation browser events", () => {
         operation: "canvas_update",
         entity: { kind: "canvas-node", id: "node-1" },
         accepted: true,
-        forced: false,
       },
     });
   });

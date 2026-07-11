@@ -3,7 +3,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { timelineDslFromYaml, type ResolvedItem, type ResolvedTimelineDsl } from "@clash/shared-types";
 import {
   createTimelineSourceProvenance,
-  readAppliedTimelineRevisionForSource,
+  type ProjectTimelineRevisionRef,
 } from "./timeline-projection";
 import { resolveAgentFilePathInsideCwd } from "./projection-cas";
 
@@ -24,6 +24,7 @@ export type ExportTimelineHandoffOptions = {
   manifestPath?: string;
   format?: TimelineHandoffFormat;
   fps?: number;
+  timelineRevision?: ProjectTimelineRevisionRef;
 };
 
 type HandoffRow = {
@@ -60,16 +61,11 @@ export async function exportTimelineHandoff(
   if (!Number.isFinite(fps) || fps <= 0) {
     throw new Error("Timeline handoff export requires a positive fps from --fps or timeline fps");
   }
-  const appliedRevision = await readAppliedTimelineRevisionForSource({
-    cwd,
-    sourceTimelinePath: timelinePath,
-    dsl: parsed.dsl,
-  });
   const timelineProvenance = createTimelineSourceProvenance({
     cwd,
     filePath: timelinePath,
     dsl: parsed.dsl,
-    appliedRevision,
+    timelineRevision: options.timelineRevision,
   });
   const rows = timelineRows(parsed.dsl, fps);
   await writeText(outputPath, renderCsv(rows));

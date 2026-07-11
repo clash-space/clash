@@ -13,40 +13,85 @@ import { apiFetch } from "../lib/api";
 import { isJsonMode, printJson, printTable } from "../lib/output";
 import { isDaemonRunning, sendCommand } from "../lib/daemon";
 import { assertAgentHostWritePath } from "../lib/agent-host-write";
+import { publicAgentCommandResult } from "../lib/agent-worktree-observation";
+import { isCanvasNodeImmutable } from "../lib/canvas-update-guardrails";
 import { resolveAgentFilePathInsideCwd } from "../lib/projection-cas";
-import { resolveCanvasActor, resolveCanvasPresenceOptions, resolveCanvasProjectId } from "./canvas";
+import { type ResolvedProjectContext } from "../lib/project-context";
 import {
-  assertTextCas,
-  assertTextLockFilePath,
+  recordWorktreeObservation,
+  requireWorktreeObservation,
+} from "../lib/worktree-observations";
+import {
+  resolveCanvasActor,
+  resolveCanvasPresenceOptions,
+  resolveCanvasProjectContext,
+  resolveCanvasProjectId,
+} from "./canvas";
+import {
   assertTextNotReferenced,
   createTextAppliedRevision,
   createTextCowNodeData,
-  createTextLock,
-  parseTextLock,
   resolveTextFilePath,
-  resolveTextLockPath,
   textHash,
   textReadToken,
   textContentFromNode,
   type TextAppliedRevision,
-  type TextLock,
   type TextNodeLike,
   type TextRevisionActor,
 } from "../lib/text-projection";
 
 export {
-  assertTextCas,
-  assertTextLockFilePath,
   assertTextNotReferenced,
   createTextAppliedRevision,
-  createTextLock,
-  parseTextLock,
   resolveTextFilePath,
-  resolveTextLockPath,
   textHash,
   textReadToken,
   textContentFromNode,
 };
+
+function isAgentTextClient(): boolean {
+  return resolveCanvasPresenceOptions().clientType === "agent";
+}
+
+async function recordTextObservation(
+  context: ResolvedProjectContext,
+  nodeId: string,
+  revision: string,
+): Promise<void> {
+  if (!isAgentTextClient()) return;
+  if (!context.workspaceRoot) {
+    throw new Error("Agent reads require a cwd linked through .clash/project.toml.");
+  }
+  await recordWorktreeObservation({
+    workspaceRoot: context.workspaceRoot,
+    projectId: context.projectId,
+    entityKind: "text",
+    entityId: nodeId,
+    revision,
+  });
+}
+
+async function requireTextObservation(
+  context: ResolvedProjectContext,
+  nodeId: string,
+): Promise<string | undefined> {
+  if (!isAgentTextClient()) return undefined;
+  if (!context.workspaceRoot) {
+    throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and pull the text first.");
+  }
+  const observation = await requireWorktreeObservation({
+    workspaceRoot: context.workspaceRoot,
+    projectId: context.projectId,
+    entityKind: "text",
+    entityId: nodeId,
+  });
+  if (!observation.ok) throw new Error(`${observation.code}: ${observation.error}`);
+  return observation.revision;
+}
+
+function publicTextMutationResult<T extends Record<string, unknown>>(result: T): Omit<T, "readToken" | "version"> {
+  return publicAgentCommandResult(result) as Omit<T, "readToken" | "version">;
+}
 
 export const textCommand = new Command("text")
   .description(
@@ -60,9 +105,8 @@ Workflow:
   # edit projections/text/<node-id>.md with normal file tools
   clash text apply --project <id> --node <text-node-id>
 
-CAS:
-  pull also writes projections/text/<node-id>.lock.json. apply refuses to write
-  if the canvas text changed after pull unless --force is passed.`,
+CAS is implicit: pull records the canvas version in .clash/observed.json, and
+apply/replace refuse stale writes.`,
   );
 
 textCommand
@@ -73,13 +117,9 @@ textCommand
   .option("--file <path>", "Markdown path (default: texts/<node-id>.md)")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
     const filePath = resolveTextFilePath({
-      cwd: process.cwd(),
-      file: options.file,
-      nodeId: options.node,
-    });
-    const lockPath = resolveTextLockPath({
       cwd: process.cwd(),
       file: options.file,
       nodeId: options.node,
@@ -96,28 +136,21 @@ textCommand
     }
 
     const content = textContentFromNode(node);
-    const lock = createTextLock({
-      projectId,
-      nodeId: options.node,
-      filePath,
-      content,
-      readToken: node.readToken,
-    });
+    const version = node.readToken ?? textReadToken({ projectId, nodeId: options.node, content });
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, content, "utf8");
-    writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf8");
+    await recordTextObservation(context, options.node, version);
 
     const payload = {
       pulled: true,
       projectId,
       nodeId: options.node,
       filePath,
-      lockPath,
-      contentHash: lock.contentHash,
-      readToken: lock.readToken,
+      contentHash: textHash(content),
+      immutable: node.immutable ?? false,
     };
     if (isJsonMode(options)) printJson(payload);
-    else process.stderr.write(`wrote ${filePath}\nwrote ${lockPath}\n`);
+    else process.stderr.write(`wrote ${filePath}\n`);
   });
 
 textCommand
@@ -126,32 +159,23 @@ textCommand
   .requiredOption("--node <id>", "Text node ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--file <path>", "Markdown path (default: texts/<node-id>.md)")
-  .option("--lock <path>", "CAS lock path (default: Markdown sidecar)")
-  .option("--force", "Bypass CAS and intentionally overwrite the current canvas text")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
     const filePath = resolveTextFilePath({
       cwd: process.cwd(),
       file: options.file,
       nodeId: options.node,
     });
-    const lockPath = resolveTextLockPath({
-      cwd: process.cwd(),
-      file: options.file,
-      lock: options.lock,
-      nodeId: options.node,
-    });
     let result: ApplyTextContentResult;
     let content = "";
-    let lock: TextLock | null = null;
     const actor = await resolveCanvasActor();
     try {
+      const observedVersion = await requireTextObservation(context, options.node);
       content = readFileSync(filePath, "utf8");
-      lock = options.force ? null : readTextLockFile(lockPath);
       result = await applyTextContent(projectId, options.node, content, {
-        force: options.force === true,
-        lock,
+        observedVersion,
         filePath,
         cwd: process.cwd(),
         actor,
@@ -166,36 +190,28 @@ textCommand
       cwd: process.cwd(),
       filePath,
       content,
-      parentRevisionId: lock?.appliedRevision?.revisionId,
       actor,
     });
-    const refreshedLock = createTextLock({
-      projectId,
-      nodeId: options.node,
-      filePath,
-      content,
-      readToken: result.readToken,
-      appliedRevision: textRevision,
-    });
-    mkdirSync(dirname(lockPath), { recursive: true });
-    writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+    await recordTextObservation(
+      context,
+      options.node,
+      result.readToken ?? result.version ?? textReadToken({ projectId, nodeId: options.node, content }),
+    );
     const textRevisionIndex = await registerTextRevisionIndex(textRevision, content);
     const payload = {
-      ...result,
+      ...publicTextMutationResult(result),
       projectId,
       filePath,
-      lockPath,
       textRevision,
       textRevisionIndex,
-      contentHash: refreshedLock.contentHash,
-      readToken: refreshedLock.readToken,
+      contentHash: textHash(content),
     };
     if (isJsonMode(options)) printJson(payload);
     else {
       if (!textRevisionIndex.indexed) {
         process.stderr.write(`warning: ${textRevisionIndex.error}\n`);
       }
-      process.stderr.write(`applied ${filePath} to ${options.node}${result.forced ? " (forced)" : ""}\n`);
+      process.stderr.write(`applied ${filePath} to ${options.node}\n`);
     }
   });
 
@@ -205,34 +221,25 @@ textCommand
   .requiredOption("--node <id>", "Source text node ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--file <path>", "Markdown path (default: texts/<node-id>.md)")
-  .option("--lock <path>", "CAS lock path (default: Markdown sidecar)")
   .option("--label <label>", "Label for the replacement text node")
   .option("--new-node <id>", "Replacement node ID (defaults to a generated id)")
-  .option("--force", "Bypass CAS and intentionally fork from the current canvas text")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
     const filePath = resolveTextFilePath({
       cwd: process.cwd(),
       file: options.file,
       nodeId: options.node,
     });
-    const lockPath = resolveTextLockPath({
-      cwd: process.cwd(),
-      file: options.file,
-      lock: options.lock,
-      nodeId: options.node,
-    });
     let result: ReplaceTextContentResult;
     let content = "";
-    let lock: TextLock | null = null;
     const actor = await resolveCanvasActor();
     try {
+      const observedVersion = await requireTextObservation(context, options.node);
       content = readFileSync(filePath, "utf8");
-      lock = options.force ? null : readTextLockFile(lockPath);
       result = await replaceTextContent(projectId, options.node, content, {
-        force: options.force === true,
-        lock,
+        observedVersion,
         filePath,
         cwd: process.cwd(),
         actor,
@@ -249,39 +256,28 @@ textCommand
       cwd: process.cwd(),
       filePath,
       content,
-      parentRevisionId: lock?.appliedRevision?.revisionId,
       actor,
     });
-    const refreshedLock = createTextLock({
-      projectId,
-      nodeId: result.newNodeId,
-      filePath,
-      content,
-      readToken: result.readToken,
-      appliedRevision: textRevision,
-    });
-    mkdirSync(dirname(lockPath), { recursive: true });
-    writeFileSync(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
+    await recordTextObservation(
+      context,
+      result.newNodeId,
+      result.readToken ?? result.version ?? textReadToken({ projectId, nodeId: result.newNodeId, content }),
+    );
     const textRevisionIndex = await registerTextRevisionIndex(textRevision, content);
     const payload = {
-      ...result,
+      ...publicTextMutationResult(result),
       projectId,
       filePath,
-      lockPath,
       textRevision,
       textRevisionIndex,
-      contentHash: refreshedLock.contentHash,
-      readToken: refreshedLock.readToken,
+      contentHash: textHash(content),
     };
     if (isJsonMode(options)) printJson(payload);
     else {
       if (!textRevisionIndex.indexed) {
         process.stderr.write(`warning: ${textRevisionIndex.error}\n`);
       }
-      process.stderr.write(
-        `created copy-on-write text ${result.newNodeId} from ${options.node}\n` +
-        `wrote ${lockPath}\n`,
-      );
+      process.stderr.write(`created copy-on-write text ${result.newNodeId} from ${options.node}\n`);
     }
   });
 
@@ -377,30 +373,39 @@ textCommand
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--mode <mode>", "Restore mode: replace or apply (default: replace)", "replace")
   .option("--file <path>", "Where to materialize the revision Markdown (default: revisions/<revision>.md)")
-  .option("--lock <path>", "CAS lock path (default: Markdown sidecar)")
   .option("--label <label>", "Label for the replacement text node in replace mode")
   .option("--new-node <id>", "Replacement node ID in replace mode")
-  .option("--force", "Bypass CAS/reference guards and intentionally overwrite or fork from current canvas text")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
-    const projectId = await resolveCanvasProjectId(options);
+    const context = await resolveCanvasProjectContext(options);
+    const projectId = context.projectId;
     const actor = await resolveCanvasActor();
     try {
+      const currentNode = await readNode(projectId, options.node);
+      if (!currentNode) throw new Error(`Node not found: ${options.node}`);
+      const currentContent = textContentFromNode(currentNode);
+      await recordTextObservation(
+        context,
+        options.node,
+        currentNode.readToken ?? textReadToken({ projectId, nodeId: options.node, content: currentContent }),
+      );
       const result = await restoreTextRevisionContent({
         projectId,
         nodeId: options.node,
         revisionId: options.revision,
         cwd: process.cwd(),
         file: options.file,
-        lock: options.lock,
         mode: parseTextRevisionRestoreMode(options.mode),
-        force: options.force === true,
         actor,
         label: options.label,
         newNodeId: options.newNode,
       });
+      const targetNodeId = result.mode === "replace" ? result.newNodeId : result.nodeId;
+      if (result.readToken ?? result.version) {
+        await recordTextObservation(context, targetNodeId, result.readToken ?? result.version!);
+      }
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicTextMutationResult(result));
       } else {
         if (!result.textRevisionIndex.indexed) {
           process.stderr.write(`warning: ${result.textRevisionIndex.error}\n`);
@@ -408,21 +413,13 @@ textCommand
         const action = result.mode === "replace"
           ? `created copy-on-write text ${result.newNodeId} from ${options.node}`
           : `restored ${options.revision} to ${options.node}`;
-        process.stderr.write(`${action}\nwrote ${result.filePath}\nwrote ${result.lockPath}\n`);
+        process.stderr.write(`${action}\nwrote ${result.filePath}\n`);
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
   });
-
-function readTextLockFile(lockPath: string): TextLock {
-  try {
-    return parseTextLock(readFileSync(lockPath, "utf8"));
-  } catch (error) {
-    throw new Error(`Failed to read text CAS lock at ${lockPath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
 
 async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   const apiKey = requireApiKey();
@@ -550,9 +547,7 @@ export type TextRevisionRestoreOptions = {
   revisionId: string;
   cwd: string;
   file?: string;
-  lock?: string;
   mode?: TextRevisionRestoreMode;
-  force?: boolean;
   actor?: TextRevisionActor;
   label?: string;
   newNodeId?: string;
@@ -574,11 +569,9 @@ export type TextRevisionRestoreResult = (
 ) & {
   revisionId: string;
   filePath: string;
-  lockPath: string;
   textRevision: TextAppliedRevision;
   textRevisionIndex: TextRevisionIndexResult;
   contentHash: string;
-  readToken?: string;
 };
 
 export async function restoreTextRevisionContent(
@@ -598,33 +591,22 @@ export async function restoreTextRevisionContent(
     nodeId: options.nodeId,
     file: options.file ?? join(options.cwd, "revisions", `${revisionFileStem(options.revisionId)}.md`),
   });
-  const lockPath = resolveTextLockPath({
-    cwd: options.cwd,
-    nodeId: options.nodeId,
-    file: filePath,
-    lock: options.lock,
-  });
   const content = await fetchContent(options.projectId, options.revisionId);
   const currentNode = await readCurrentNode(options.projectId, options.nodeId);
   if (!currentNode) throw new Error(`Node not found: ${options.nodeId}`);
   if (currentNode.type !== "text") {
     throw new Error(`Node ${options.nodeId} has type "${currentNode.type}", expected "text"`);
   }
-  const currentLock = createTextLock({
+  const observedVersion = currentNode.readToken ?? textReadToken({
     projectId: options.projectId,
     nodeId: options.nodeId,
-    filePath,
     content: textContentFromNode(currentNode),
-    readToken: currentNode.readToken,
   });
   mkdir(dirname(filePath), { recursive: true });
-  mkdir(dirname(lockPath), { recursive: true });
   writeFile(filePath, content, "utf8");
-  writeFile(lockPath, JSON.stringify(currentLock, null, 2) + "\n", "utf8");
 
   const sharedCas = {
-    lock: currentLock,
-    force: options.force === true,
+    observedVersion,
     filePath,
     cwd: options.cwd,
     actor: options.actor,
@@ -652,26 +634,16 @@ export async function restoreTextRevisionContent(
     parentRevisionId: options.revisionId,
     actor: options.actor,
   });
-  const refreshedLock = createTextLock({
-    projectId: options.projectId,
-    nodeId: targetNodeId,
-    filePath,
-    content,
-    readToken: result.readToken,
-    appliedRevision: textRevision,
-  });
-  writeFile(lockPath, JSON.stringify(refreshedLock, null, 2) + "\n", "utf8");
   const textRevisionIndex = await register(textRevision, content);
+  const publicResult = publicAgentCommandResult(result);
   return {
-    ...result,
+    ...publicResult,
     mode,
     revisionId: options.revisionId,
     filePath,
-    lockPath,
     textRevision,
     textRevisionIndex,
-    contentHash: refreshedLock.contentHash,
-    readToken: refreshedLock.readToken,
+    contentHash: textHash(content),
   } as TextRevisionRestoreResult;
 }
 
@@ -695,6 +667,7 @@ function parseTextRevisionLimit(value: unknown): number | undefined {
 }
 
 export type TextNodeReadResult = TextNodeLike & {
+  immutable?: boolean;
   readToken?: string;
 };
 
@@ -708,13 +681,21 @@ async function readNode(projectId: string, nodeId: string): Promise<TextNodeRead
   if (daemonResult) {
     if (daemonResult.error) return null;
     return daemonResult.node
-      ? { ...daemonResult.node, readToken: daemonResult.textReadToken }
+      ? {
+          ...daemonResult.node,
+          immutable: daemonResult.immutable === true,
+          readToken: daemonResult.textReadToken,
+        }
       : null;
   }
   const client = await connectToProject(projectId);
   try {
     const node = client.readNode(nodeId);
-    return node ? { type: node.type, data: node.data as Record<string, unknown> } : null;
+    return node ? {
+      type: node.type,
+      data: node.data as Record<string, unknown>,
+      immutable: isCanvasNodeImmutable({ nodeId, edges: client.canvas.listEdges() }),
+    } : null;
   } finally {
     await client.disconnect();
   }
@@ -725,36 +706,27 @@ async function applyTextContent(
   nodeId: string,
   content: string,
   cas: {
-    lock: TextLock | null;
-    force: boolean;
+    observedVersion?: string;
     filePath: string;
     cwd: string;
     actor?: TextRevisionActor;
     parentRevisionId?: string | null;
   },
 ): Promise<ApplyTextContentResult> {
-  const filePathCas = assertTextLockFilePath({
-    lock: cas.lock,
-    filePath: cas.filePath,
-    cwd: cas.cwd,
-    force: cas.force,
-  });
-  if (!filePathCas.ok) throw new Error(filePathCas.error);
+  resolveAgentFilePathInsideCwd({ filePath: cas.filePath, cwd: cas.cwd, writeVerb: "Text apply" });
 
   const daemonResult = await runCommand(projectId, {
     action: "text_cas_update",
     projectId,
     nodeId,
     content,
-    expectedContentHash: cas.lock?.contentHash,
-    expectedReadToken: cas.lock?.readToken,
-    expectedTextFilePath: cas.lock?.filePath,
-    parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
+    observedVersion: cas.observedVersion,
+    ifMatch: cas.observedVersion,
+    parentRevisionId: cas.parentRevisionId,
     filePath: cas.filePath,
     cwd: cas.cwd,
     actor: cas.actor,
     actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
   });
   if (daemonResult) {
     if (daemonResult.error) throw new Error(daemonResult.error);
@@ -762,13 +734,12 @@ async function applyTextContent(
       updated: true,
       nodeId,
       textRevision: daemonResult.textRevision,
+      version: daemonResult.version,
       readToken: daemonResult.readToken,
-      ...(cas.force || daemonResult.forced === true ? { forced: true } : {}),
     };
   }
   const hostWrite = assertAgentHostWritePath({
     actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
     operation: "text apply",
     readCommand: "clash text pull --json",
   });
@@ -778,26 +749,9 @@ async function applyTextContent(
   try {
     const current = client.readNode(nodeId);
     if (!current) throw new Error(`Node not found: ${nodeId}`);
-    const casResult = assertTextCas({
-      projectId,
-      nodeId,
-      lock: cas.lock,
-      currentContent: textContentFromNode({
-        type: current.type,
-        data: current.data as Record<string, unknown>,
-      }),
-      force: cas.force,
-      filePath: cas.filePath,
-      cwd: cas.cwd,
-    });
-    if (!casResult.ok) throw new Error(casResult.error);
-    const referenceResult = assertTextNotReferenced({
-      nodeId,
-      nodes: client.listNodes(),
-      edges: client.canvas.listEdges(),
-      force: cas.force,
-    });
-    if (!referenceResult.ok) throw new Error(referenceResult.error);
+    if (isCanvasNodeImmutable({ nodeId, edges: client.canvas.listEdges() })) {
+      throw new Error("IMMUTABLE_NODE");
+    }
     const ok = client.updateNode(nodeId, { content });
     if (!ok) throw new Error(`Node not found: ${nodeId}`);
     const textRevision = createTextAppliedRevision({
@@ -806,15 +760,16 @@ async function applyTextContent(
       cwd: cas.cwd,
       filePath: cas.filePath,
       content,
-      parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
+      parentRevisionId: cas.parentRevisionId,
       actor: cas.actor,
     });
+    const version = textReadToken({ projectId, nodeId, content });
     return {
       updated: true,
       nodeId,
       textRevision,
-      readToken: textReadToken({ projectId, nodeId, content }),
-      ...(cas.force ? { forced: true } : {}),
+      version,
+      readToken: version,
     };
   } finally {
     await client.disconnect();
@@ -824,8 +779,8 @@ export type ApplyTextContentResult = {
   updated: true;
   nodeId: string;
   textRevision?: TextAppliedRevision;
+  version?: string;
   readToken?: string;
-  forced?: true;
 };
 
 async function replaceTextContent(
@@ -833,8 +788,7 @@ async function replaceTextContent(
   nodeId: string,
   content: string,
   cas: {
-    lock: TextLock | null;
-    force: boolean;
+    observedVersion?: string;
     filePath: string;
     cwd: string;
     actor?: TextRevisionActor;
@@ -843,30 +797,22 @@ async function replaceTextContent(
     newNodeId?: string;
   },
 ): Promise<ReplaceTextContentResult> {
-  const filePathCas = assertTextLockFilePath({
-    lock: cas.lock,
-    filePath: cas.filePath,
-    cwd: cas.cwd,
-    force: cas.force,
-  });
-  if (!filePathCas.ok) throw new Error(filePathCas.error);
+  resolveAgentFilePathInsideCwd({ filePath: cas.filePath, cwd: cas.cwd, writeVerb: "Text replace" });
 
   const daemonResult = await runCommand(projectId, {
     action: "text_cow_replace",
     projectId,
     nodeId,
     content,
-    expectedContentHash: cas.lock?.contentHash,
-    expectedReadToken: cas.lock?.readToken,
-    expectedTextFilePath: cas.lock?.filePath,
-    parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
+    observedVersion: cas.observedVersion,
+    ifMatch: cas.observedVersion,
+    parentRevisionId: cas.parentRevisionId,
     filePath: cas.filePath,
     cwd: cas.cwd,
     actor: cas.actor,
     label: cas.label,
     newNodeId: cas.newNodeId,
     actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
   });
   if (daemonResult) {
     if (daemonResult.error) throw new Error(daemonResult.error);
@@ -879,13 +825,12 @@ async function replaceTextContent(
       contentHash: daemonResult.contentHash,
       textRevision: daemonResult.textRevision,
       lineageEdge: daemonResult.lineageEdge,
+      version: daemonResult.version,
       readToken: daemonResult.readToken,
-      ...(cas.force || daemonResult.forced === true ? { forced: true } : {}),
     };
   }
   const hostWrite = assertAgentHostWritePath({
     actorClientType: resolveCanvasPresenceOptions().clientType,
-    force: cas.force,
     operation: "text replace",
     readCommand: "clash text pull --json",
   });
@@ -900,16 +845,6 @@ async function replaceTextContent(
       type: current.type,
       data: current.data as Record<string, unknown>,
     });
-    const casResult = assertTextCas({
-      projectId,
-      nodeId,
-      lock: cas.lock,
-      currentContent,
-      force: cas.force,
-      filePath: cas.filePath,
-      cwd: cas.cwd,
-    });
-    if (!casResult.ok) throw new Error(casResult.error);
     const newNodeId = cas.newNodeId?.trim() || randomUUID().slice(0, 8);
     const textRevision = createTextAppliedRevision({
       projectId,
@@ -917,7 +852,7 @@ async function replaceTextContent(
       cwd: cas.cwd,
       filePath: cas.filePath,
       content,
-      parentRevisionId: cas.parentRevisionId ?? cas.lock?.appliedRevision?.revisionId,
+      parentRevisionId: cas.parentRevisionId,
       actor: cas.actor,
     });
     const data = createTextCowNodeData({
@@ -938,6 +873,7 @@ async function replaceTextContent(
       edgeId: `${nodeId}-${newNodeId}`,
       edgeType: "copy-on-write",
     });
+    const version = textReadToken({ projectId, nodeId: newNodeId, content });
     return {
       replaced: true,
       copyOnWrite: true,
@@ -947,8 +883,8 @@ async function replaceTextContent(
       contentHash: textHash(content),
       textRevision,
       lineageEdge: { source: nodeId, target: newNodeId, type: "copy-on-write" },
-      readToken: textReadToken({ projectId, nodeId: newNodeId, content }),
-      ...(cas.force ? { forced: true } : {}),
+      version,
+      readToken: version,
     };
   } finally {
     await client.disconnect();
@@ -964,6 +900,6 @@ export type ReplaceTextContentResult = {
   contentHash?: string;
   textRevision?: TextAppliedRevision;
   lineageEdge?: unknown;
+  version?: string;
   readToken?: string;
-  forced?: true;
 };

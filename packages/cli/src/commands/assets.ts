@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, lstatSync, mkdirSync, rmSync, symlinkSync, copyFileSync, readdirSync, statSync, createReadStream } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, symlinkSync, copyFileSync, readdirSync, statSync, createReadStream } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { downloadAssetById, replaceCanvasAssetNode } from "./canvas";
@@ -7,6 +7,12 @@ import { apiFetch } from "../lib/api";
 import { requireDestructiveConfirmation } from "../lib/destructive-guardrails";
 import { isJsonMode, printJson } from "../lib/output";
 import { resolveProjectStatus } from "./projects";
+import {
+  forgetAgentObservation,
+  publicAgentCommandResult,
+  recordAgentObservation,
+  requireAgentObservation,
+} from "../lib/agent-worktree-observation";
 
 export type AssetLinkMethod = "symlink" | "copy";
 
@@ -123,7 +129,6 @@ function createAssetLink(options: {
   sourcePath: string;
   assetLinksRoot: string;
   name?: string;
-  force?: boolean;
   createSymlink?: (target: string, path: string) => void;
 }): { linkPath: string; method: AssetLinkMethod } {
   const linkName = resolveAssetLinkName(options.assetId, options.sourcePath, options.name);
@@ -135,10 +140,7 @@ function createAssetLink(options: {
     if (existing.isDirectory() && !existing.isSymbolicLink()) {
       throw new Error(`asset link path is a directory: ${linkPath}`);
     }
-    if (!options.force) {
-      throw new Error(`asset link already exists: ${linkPath}. Pass --force to replace it.`);
-    }
-    rmSync(linkPath, { force: true });
+    throw new Error(`asset link already exists: ${linkPath}. Choose a different --name or remove the old link explicitly.`);
   }
 
   let method: AssetLinkMethod = "symlink";
@@ -162,7 +164,6 @@ export async function linkAssetIntoProject(options: {
   env?: Record<string, string | undefined>;
   homeDir?: string;
   name?: string;
-  force?: boolean;
   download?: (assetId: string) => Promise<string | null>;
   createSymlink?: (target: string, path: string) => void;
 }): Promise<AssetLinkResult> {
@@ -182,7 +183,6 @@ export async function linkAssetIntoProject(options: {
     sourcePath,
     assetLinksRoot: status.assetLinksRoot,
     name: options.name,
-    force: options.force,
     createSymlink: options.createSymlink,
   });
 
@@ -203,7 +203,6 @@ export async function importAssetFile(options: {
   homeDir?: string;
   kind?: string;
   name?: string;
-  force?: boolean;
   link?: boolean;
   registerImportedAsset?: (payload: ImportedAssetRegistrationPayload) => Promise<ImportedAssetRegistrationResult>;
   createSymlink?: (target: string, path: string) => void;
@@ -269,7 +268,6 @@ export async function importAssetFile(options: {
       sourcePath: blobPath,
       assetLinksRoot: status.assetLinksRoot,
       name: options.name ?? defaultName,
-      force: options.force,
       createSymlink: options.createSymlink,
     });
     result.linkPath = link.linkPath;
@@ -297,15 +295,15 @@ export async function runAssetGarbageCollection(options: {
   protectedAssetIds?: string[];
   projectIds?: string[];
   ifMatch?: string;
-  force?: boolean;
+  observedVersion?: string;
   env?: Record<string, string | undefined>;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
 } = {}): Promise<AssetGarbageCollectionResult> {
   const response = await (options.request ?? apiFetch)("/api/v1/assets/gc", {
     method: "POST",
     headers: agentWriteHeaders({
+      observedVersion: options.observedVersion,
       ifMatch: options.ifMatch,
-      force: options.force,
       env: options.env,
     }),
     body: JSON.stringify({
@@ -325,7 +323,7 @@ export async function fetchAssetReferences(options: {
   projectId?: string;
   refresh?: boolean;
   ifMatch?: string;
-  force?: boolean;
+  observedVersion?: string;
   env?: Record<string, string | undefined>;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
 }): Promise<AssetReferencesResult> {
@@ -335,8 +333,8 @@ export async function fetchAssetReferences(options: {
     const response = await (options.request ?? apiFetch)(`/api/v1/assets/${encodeURIComponent(assetId)}/references/refresh`, {
       method: "POST",
       headers: agentWriteHeaders({
+        observedVersion: options.observedVersion,
         ifMatch: options.ifMatch,
-        force: options.force,
         env: options.env,
       }),
       body: JSON.stringify({
@@ -373,7 +371,7 @@ export async function updateAssetCover(options: {
   assetId: string;
   coverR2Key: string;
   ifMatch?: string;
-  force?: boolean;
+  observedVersion?: string;
   env?: Record<string, string | undefined>;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
 }): Promise<AssetCoverUpdateResult> {
@@ -386,8 +384,8 @@ export async function updateAssetCover(options: {
     {
       method: "PATCH",
       headers: agentWriteHeaders({
+        observedVersion: options.observedVersion,
         ifMatch: options.ifMatch,
-        force: options.force,
         env: options.env,
       }),
       body: JSON.stringify({ coverR2Key }),
@@ -421,7 +419,7 @@ export async function deleteAssetProjectRef(options: {
   assetId: string;
   projectId: string;
   ifMatch?: string;
-  force?: boolean;
+  observedVersion?: string;
   env?: Record<string, string | undefined>;
   request?: (path: string, init?: RequestInit) => Promise<Response>;
 }): Promise<AssetProjectRefDeleteResult> {
@@ -434,8 +432,8 @@ export async function deleteAssetProjectRef(options: {
     {
       method: "DELETE",
       headers: agentWriteHeaders({
+        observedVersion: options.observedVersion,
         ifMatch: options.ifMatch,
-        force: options.force,
         env: options.env,
       }),
     },
@@ -457,7 +455,6 @@ export async function replaceAssetFile(options: {
   ifMatch?: string;
   newNode?: string;
   label?: string;
-  force?: boolean;
   link?: boolean;
   importFile?: (options: {
     filePath: string;
@@ -467,7 +464,6 @@ export async function replaceAssetFile(options: {
     homeDir?: string;
     kind?: string;
     link?: boolean;
-    force?: boolean;
     registerImportedAsset?: (payload: ImportedAssetRegistrationPayload) => Promise<ImportedAssetRegistrationResult>;
   }) => Promise<AssetImportResult>;
   replaceAsset?: (options: {
@@ -477,7 +473,6 @@ export async function replaceAssetFile(options: {
     ifMatch?: string;
     newNode?: string;
     label?: string;
-    force?: boolean;
   }) => Promise<Record<string, unknown>>;
 }): Promise<AssetFileReplaceResult> {
   const imported = await (options.importFile ?? importAssetFile)({
@@ -488,7 +483,6 @@ export async function replaceAssetFile(options: {
     homeDir: options.homeDir,
     kind: options.kind,
     link: options.link ?? true,
-    force: options.force,
     registerImportedAsset: options.importFile ? undefined : registerImportedAssetWithLocalApi,
   });
   const replaceResult = await (options.replaceAsset ?? replaceCanvasAssetNode)({
@@ -498,7 +492,6 @@ export async function replaceAssetFile(options: {
     ifMatch: options.ifMatch,
     newNode: options.newNode,
     label: options.label,
-    force: options.force,
   });
   return {
     importedAssetId: imported.assetId,
@@ -509,7 +502,7 @@ export async function replaceAssetFile(options: {
 
 function agentWriteHeaders(options: {
   ifMatch?: string;
-  force?: boolean;
+  observedVersion?: string;
   env?: Record<string, string | undefined>;
 }): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -517,11 +510,11 @@ function agentWriteHeaders(options: {
   if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
     headers["x-clash-client-type"] = "agent";
   }
-  if (options.ifMatch?.trim()) {
+  if (options.observedVersion?.trim()) {
+    const observed = options.observedVersion.trim();
+    headers[observed.includes(":receipt:") ? "x-clash-if-match" : "x-clash-observed-version"] = observed;
+  } else if (options.ifMatch?.trim()) {
     headers["x-clash-if-match"] = options.ifMatch.trim();
-  }
-  if (options.force === true) {
-    headers["x-clash-force"] = "true";
   }
   return headers;
 }
@@ -591,21 +584,39 @@ export const assetsCommand = new Command("assets")
   .alias("asset")
   .description("Inspect and link project assets");
 
+function publicAssetResult<T extends object>(result: T): Omit<T, "readToken"> {
+  return publicAgentCommandResult(result as T & Record<string, unknown>) as Omit<T, "readToken">;
+}
+
+function assetRefObservationId(assetId: string, projectId: string): string {
+  return `${assetId}:${projectId}`;
+}
+
+function assetGcObservationId(options: { protectedAssetIds?: string[]; projectIds?: string[] }): string {
+  const scope = JSON.stringify({
+    protectedAssetIds: [...(options.protectedAssetIds ?? [])].sort(),
+    projectIds: [...(options.projectIds ?? [])].sort(),
+  });
+  return createHash("sha256").update(scope).digest("hex").slice(0, 16);
+}
+
 assetsCommand
   .command("get")
-  .description("Read an asset row and its read token")
+  .description("Read an asset row")
   .requiredOption("--asset <id>", "Asset ID")
   .option("--json", "Output result as JSON")
   .action(async (options: { asset: string; json?: boolean }) => {
     try {
       const result = await fetchAssetRecord({ assetId: options.asset });
+      await recordAgentObservation({
+        entityKind: "asset",
+        entityId: options.asset,
+        revision: result.readToken,
+      });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         console.log(`${result.id}`);
-        if (typeof result.readToken === "string") {
-          console.log(`Read token: ${result.readToken}`);
-        }
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -619,18 +630,16 @@ assetsCommand
   .requiredOption("--asset <id>", "Asset ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--name <file>", "Link file name under assets/links")
-  .option("--force", "Replace an existing asset link")
   .option("--json", "Output as JSON")
-  .action(async (options: { asset: string; project?: string; name?: string; force?: boolean; json?: boolean }) => {
+  .action(async (options: { asset: string; project?: string; name?: string; json?: boolean }) => {
     try {
       const result = await linkAssetIntoProject({
         assetId: options.asset,
         project: options.project,
         name: options.name,
-        force: options.force === true,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         console.log(`linked ${result.assetId} -> ${result.linkPath} (${result.method})`);
       }
@@ -649,7 +658,6 @@ assetsCommand
   .option("--name <file>", "Link file name under assets/links")
   .option("--no-link", "Do not create a project assets/links entry")
   .option("--no-register", "Do not register the imported blob with local-api metadata")
-  .option("--force", "Replace an existing project asset link")
   .option("--json", "Output result as JSON")
   .action(async (options: {
     file: string;
@@ -658,7 +666,6 @@ assetsCommand
     name?: string;
     link?: boolean;
     register?: boolean;
-    force?: boolean;
     json?: boolean;
   }) => {
     try {
@@ -668,11 +675,10 @@ assetsCommand
         project: options.project,
         name: options.name,
         link: options.link,
-        force: options.force === true,
         registerImportedAsset: options.register === false ? undefined : registerImportedAssetWithLocalApi,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         const link = result.linkPath ? `, link ${result.linkPath}` : "";
         console.log(`imported ${result.assetId} -> ${result.blobPath}${link}`);
@@ -690,22 +696,18 @@ assetsCommand
   .requiredOption("--node <id>", "Source image/video/audio node ID")
   .option("--kind <kind>", "Asset kind, such as image, video, or audio")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .option("--if-match <readToken>", "Require the source node read token from `clash canvas get --json` before forking")
   .option("--new-node <id>", "Optional node ID for the copied media node")
   .option("--label <label>", "Optional label for the copied media node")
   .option("--no-link", "Do not create a project assets/links entry for the imported asset")
-  .option("--force", "Bypass the agent read-token check and replace existing asset link")
   .option("--json", "Output result as JSON")
   .action(async (options: {
     file: string;
     node: string;
     kind?: string;
     project?: string;
-    ifMatch?: string;
     newNode?: string;
     label?: string;
     link?: boolean;
-    force?: boolean;
     json?: boolean;
   }) => {
     try {
@@ -714,14 +716,12 @@ assetsCommand
         nodeId: options.node,
         project: options.project,
         kind: options.kind,
-        ifMatch: options.ifMatch,
         newNode: options.newNode,
         label: options.label,
         link: options.link,
-        force: options.force === true,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         const newNodeId = typeof result.replaceResult.newNodeId === "string" ? result.replaceResult.newNodeId : "(unknown)";
         console.log(`Imported ${result.importedAssetId} and created copy-on-write media node: ${newNodeId}`);
@@ -741,24 +741,27 @@ assetCoverCommand
   .description("Set an asset cover storage key")
   .requiredOption("--asset <id>", "Asset ID")
   .requiredOption("--cover-key <key>", "Cover asset storage key")
-  .option("--if-match <readToken>", "Require the asset read token from `clash asset get --json`")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; coverKey: string; ifMatch?: string; force?: boolean; json?: boolean }) => {
+  .action(async (options: { asset: string; coverKey: string; json?: boolean }) => {
     try {
+      const observedVersion = await requireAgentObservation({
+        entityKind: "asset",
+        entityId: options.asset,
+      });
       const result = await updateAssetCover({
         assetId: options.asset,
         coverR2Key: options.coverKey,
-        ifMatch: options.ifMatch,
-        force: options.force === true,
+        observedVersion,
+      });
+      await recordAgentObservation({
+        entityKind: "asset",
+        entityId: options.asset,
+        revision: result.readToken,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         console.log(`updated asset cover ${options.asset} -> ${options.coverKey}`);
-        if (typeof result.readToken === "string") {
-          console.log(`Read token: ${result.readToken}`);
-        }
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -772,7 +775,7 @@ const assetRefCommand = assetsCommand
 
 assetRefCommand
   .command("get")
-  .description("Read a project asset membership reference and its read token")
+  .description("Read a project asset membership reference")
   .requiredOption("--asset <id>", "Asset ID")
   .requiredOption("--project <id>", "Project ID")
   .option("--json", "Output result as JSON")
@@ -782,11 +785,15 @@ assetRefCommand
         assetId: options.asset,
         projectId: options.project,
       });
+      await recordAgentObservation({
+        entityKind: "asset-ref",
+        entityId: assetRefObservationId(options.asset, options.project),
+        revision: result.readToken,
+      });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         console.log(`${result.projectId} ${result.assetId} importedAt=${result.importedAt}`);
-        console.log(`Read token: ${result.readToken}`);
       }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -799,24 +806,24 @@ assetRefCommand
   .description("Delete a project asset membership reference")
   .requiredOption("--asset <id>", "Asset ID")
   .requiredOption("--project <id>", "Project ID")
-  .option("--if-match <readToken>", "Require the asset-ref read token from `clash asset ref get --json`")
-  .option("--force", "Bypass the agent read-token check")
   .option("--yes", "Confirm deletion")
   .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; project: string; ifMatch?: string; force?: boolean; yes?: boolean; json?: boolean }) => {
+  .action(async (options: { asset: string; project: string; yes?: boolean; json?: boolean }) => {
     try {
       const confirmation = requireDestructiveConfirmation(options, `${options.asset}:${options.project}`);
       if (!confirmation.ok) {
         throw new Error(confirmation.error);
       }
+      const entityId = assetRefObservationId(options.asset, options.project);
+      const observedVersion = await requireAgentObservation({ entityKind: "asset-ref", entityId });
       const result = await deleteAssetProjectRef({
         assetId: options.asset,
         projectId: options.project,
-        ifMatch: options.ifMatch,
-        force: options.force === true,
+        observedVersion,
       });
+      await forgetAgentObservation({ entityKind: "asset-ref", entityId });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         console.log(`deleted project asset ref ${options.asset}:${options.project}`);
       }
@@ -832,20 +839,20 @@ assetsCommand
   .requiredOption("--asset <id>", "Asset ID")
   .option("--project <id>", "Only show references in one project")
   .option("--refresh", "Refresh indexed references from the local project replica before reading")
-  .option("--if-match <readToken>", "Require the asset read token from `clash asset get --json` before refreshing")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output result as JSON")
-  .action(async (options: { asset: string; project?: string; refresh?: boolean; ifMatch?: string; force?: boolean; json?: boolean }) => {
+  .action(async (options: { asset: string; project?: string; refresh?: boolean; json?: boolean }) => {
     try {
+      const observedVersion = options.refresh === true
+        ? await requireAgentObservation({ entityKind: "asset", entityId: options.asset })
+        : undefined;
       const result = await fetchAssetReferences({
         assetId: options.asset,
         projectId: options.project,
         refresh: options.refresh === true,
-        ifMatch: options.ifMatch,
-        force: options.force === true,
+        observedVersion,
       });
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else if (result.references.length === 0) {
         console.log(`No indexed references for ${result.assetId}`);
       } else {
@@ -866,28 +873,40 @@ assetsCommand
   .option("--delete", "Delete unreferenced local asset rows and local blobs")
   .option("--protect-asset <id...>", "Asset ids currently referenced by live canvas/project state")
   .option("--project <id...>", "Project ids whose canvas state should be scanned for asset references")
-  .option("--if-match <readToken>", "Require the GC dry-run read token from `clash assets gc --dry-run --json` before deleting")
-  .option("--force", "Bypass the agent read-token check")
   .option("--json", "Output result as JSON")
   .action(async (options: {
     dryRun?: boolean;
     delete?: boolean;
     protectAsset?: string[];
     project?: string[];
-    ifMatch?: string;
-    force?: boolean;
     json?: boolean;
   }) => {
     try {
-      const result = await runAssetGarbageCollection({
-        dryRun: options.delete === true ? false : options.dryRun !== false,
+      const scopeId = assetGcObservationId({
         protectedAssetIds: options.protectAsset,
         projectIds: options.project,
-        ifMatch: options.ifMatch,
-        force: options.force,
       });
+      const deleting = options.delete === true;
+      const observedVersion = deleting
+        ? await requireAgentObservation({ entityKind: "asset-gc", entityId: scopeId })
+        : undefined;
+      const result = await runAssetGarbageCollection({
+        dryRun: deleting ? false : options.dryRun !== false,
+        protectedAssetIds: options.protectAsset,
+        projectIds: options.project,
+        observedVersion,
+      });
+      if (result.dryRun) {
+        await recordAgentObservation({
+          entityKind: "asset-gc",
+          entityId: scopeId,
+          revision: result.readToken,
+        });
+      } else {
+        await forgetAgentObservation({ entityKind: "asset-gc", entityId: scopeId });
+      }
       if (isJsonMode(options)) {
-        printJson(result);
+        printJson(publicAssetResult(result));
       } else {
         const mode = result.dryRun ? "would delete" : "deleted";
         console.log(`${mode} ${result.deletedAssets.length} assets and ${result.deletedBlobKeys.length} local blobs`);

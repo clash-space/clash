@@ -43,10 +43,10 @@ function printUsage(): never {
     `clash-bridge — pair a local AI agent with the Clash web UI\n` +
       `\n` +
       `Persistent runtime (recommended):\n` +
-      `  clash-bridge setup [--server-url=<https://...>] [--no-service] [--force]\n` +
+      `  clash-bridge setup [--server-url=<https://...>] [--no-service] [--reauthorize]\n` +
       `        First run: opens browser to register. Re-run anytime to upgrade —\n` +
       `        skips OAuth + just refreshes the launchd plist + restarts daemon.\n` +
-      `        --force does the OAuth dance again (e.g. after a server-side revoke).\n` +
+      `        --reauthorize runs OAuth again (e.g. after a server-side revoke).\n` +
       `  clash-bridge daemon\n` +
       `  clash-bridge status\n` +
       `  clash-bridge uninstall\n` +
@@ -88,7 +88,7 @@ async function dispatchSubcommand(name: string): Promise<void> {
           "server-url":     { type: "string" },
           "browser-origin": { type: "string" },
           "no-service":     { type: "boolean" },
-          force:            { type: "boolean" },
+          reauthorize:      { type: "boolean" },
           help:             { type: "boolean", short: "h" },
         },
         strict: true,
@@ -99,7 +99,7 @@ async function dispatchSubcommand(name: string): Promise<void> {
         serverUrl:     values["server-url"]     ?? DEFAULT_API_SERVER_URL,
         browserOrigin: values["browser-origin"] ?? DEFAULT_BROWSER_ORIGIN,
         noService:     !!values["no-service"],
-        force:         !!values.force,
+        reauthorize:   !!values.reauthorize,
       });
       return;
     }

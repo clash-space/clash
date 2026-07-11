@@ -3,7 +3,15 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLoroSync } from "./useLoroSync";
-import { agentReadToken, canvasBatchDeleteReadToken, canvasNodeReadToken, type HostMutationRecord } from "@clash/shared-types";
+import {
+  agentReadToken,
+  Canvas,
+  canvasBatchDeleteReadToken,
+  canvasNodeReadToken,
+  projectTimelineReadToken,
+  readProjectTimeline,
+  type HostMutationRecord,
+} from "@clash/shared-types";
 
 class FakeWebSocket {
   static CONNECTING = 0;
@@ -45,6 +53,292 @@ describe("useLoroSync guardrails", () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.localStorage.clear();
+  });
+
+  it("writes nodes into the selected Canvas scope in one Project document", async () => {
+    const { result, rerender } = renderHook(
+      ({ canvasId }) => useLoroSync({
+        projectId: "multi-canvas-hook",
+        canvasId,
+        syncServerUrl: "ws://localhost:7777",
+      }),
+      { initialProps: { canvasId: "main" } },
+    );
+
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    act(() => {
+      result.current.addNode("main-node", {
+        type: "text",
+        position: { x: 0, y: 0 },
+        data: { content: "Main" },
+      });
+      expect(result.current.createCanvas({ id: "shots", name: "Shots" }).ok).toBe(true);
+    });
+
+    rerender({ canvasId: "shots" });
+    act(() => {
+      result.current.addNode("shots-node", {
+        type: "image",
+        position: { x: 0, y: 0 },
+        data: { assetId: "asset-1" },
+      });
+    });
+
+    expect(result.current.doc?.getMap("nodes").get("main-node")).toMatchObject({ canvasId: "main" });
+    expect(result.current.doc?.getMap("nodes").get("shots-node")).toMatchObject({ canvasId: "shots" });
+    expect(result.current.doc?.getMap("canvases").get("main")).toBeTruthy();
+    expect(result.current.doc?.getMap("canvases").get("shots")).toBeTruthy();
+  });
+
+  it("does not create Canvas or node state from an unknown selected id", async () => {
+    const mutations: HostMutationRecord[] = [];
+    const { result, rerender } = renderHook(
+      ({ canvasId }) => useLoroSync({
+        projectId: "unknown-canvas-hook",
+        canvasId,
+        syncServerUrl: "ws://localhost:7777",
+        onMutation: (mutation) => mutations.push(mutation),
+      }),
+      { initialProps: { canvasId: "main" } },
+    );
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    rerender({ canvasId: "typo" });
+    let added: unknown;
+    act(() => {
+      added = result.current.addNode("should-not-exist", {
+        type: "text",
+        position: { x: 0, y: 0 },
+        data: { content: "No" },
+      });
+    });
+
+    expect(added).toBe(false);
+    expect(result.current.doc?.getMap("canvases").get("typo")).toBeUndefined();
+    expect(result.current.doc?.getMap("nodes").get("should-not-exist")).toBeUndefined();
+    expect(mutations.at(-1)).toMatchObject({
+      operation: "canvas_add_node",
+      accepted: false,
+      error: "Canvas typo not found",
+    });
+  });
+
+  it("does not turn updateNode into an implicit create", async () => {
+    const mutations: HostMutationRecord[] = [];
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "update-missing-node-hook",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+      onMutation: (mutation) => mutations.push(mutation),
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    let updated: unknown;
+    act(() => {
+      updated = result.current.updateNode("missing", { data: { label: "No" } });
+    });
+
+    expect(updated).toBe(false);
+    expect(result.current.doc?.getMap("nodes").get("missing")).toBeUndefined();
+    expect(mutations.at(-1)).toMatchObject({
+      operation: "canvas_update",
+      accepted: false,
+      error: "Node not found: missing",
+    });
+  });
+
+  it("projects only the selected Canvas and replays state when the Canvas changes", async () => {
+    const projectedNodeIds: string[][] = [];
+    const { result, rerender } = renderHook(
+      ({ canvasId }) => useLoroSync({
+        projectId: "multi-canvas-projection",
+        canvasId,
+        syncServerUrl: "ws://localhost:7777",
+        onNodesChange: (nodes) => projectedNodeIds.push(nodes.map((node) => node.id)),
+      }),
+      { initialProps: { canvasId: "main" } },
+    );
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    const remote = new (await import("loro-crdt")).LoroDoc();
+    remote.getMap("canvases").set("main", { id: "main", name: "Main", position: 0 });
+    remote.getMap("canvases").set("shots", { id: "shots", name: "Shots", position: 1 });
+    remote.getMap("nodes").set("main-node", {
+      canvasId: "main",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: { content: "Main" },
+      upstream: [],
+    });
+    remote.getMap("nodes").set("shots-node", {
+      canvasId: "shots",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: { assetId: "asset-1" },
+      upstream: [],
+    });
+    act(() => {
+      result.current.doc?.import(remote.export({ mode: "snapshot" }));
+    });
+    await waitFor(() => expect(projectedNodeIds.at(-1)).toEqual(["main-node"]));
+
+    rerender({ canvasId: "shots" });
+    await waitFor(() => expect(projectedNodeIds.at(-1)).toEqual(["shots-node"]));
+  });
+
+  it("stores UI edge mutations as downstream upstream references", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "derived-edge-hook",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    act(() => {
+      result.current.addNode("source", {
+        type: "text",
+        position: { x: 0, y: 0 },
+        data: {},
+      });
+      result.current.addNode("target", {
+        type: "image_gen",
+        position: { x: 100, y: 0 },
+        data: {},
+      });
+      result.current.addEdge("source-target", {
+        source: "source",
+        target: "target",
+        type: "default",
+      });
+    });
+
+    expect(result.current.doc?.getMap("edges").size).toBe(0);
+    expect(new Canvas(result.current.doc!, () => {}, "main").readNode("target")).toMatchObject({
+      upstream: [{ nodeId: "source", edgeId: "source-target", type: "default" }],
+    });
+
+    act(() => {
+      result.current.updateEdge("source-target", { type: "materialized" });
+    });
+    expect(new Canvas(result.current.doc!, () => {}, "main").readNode("target")).toMatchObject({
+      upstream: [{ nodeId: "source", edgeId: "source-target", type: "materialized" }],
+    });
+
+    act(() => {
+      result.current.removeEdge("source-target");
+    });
+    expect(new Canvas(result.current.doc!, () => {}, "main").readNode("target")).toMatchObject({ upstream: [] });
+  });
+
+  it("exposes synchronized Canvas registry operations to the product UI", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "canvas-registry-hook",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    expect((result.current as any).canvases).toEqual([
+      { id: "main", name: "Main", position: 0 },
+    ]);
+    expect((result.current as any).createCanvas).toBeTypeOf("function");
+    expect((result.current as any).renameCanvas).toBeTypeOf("function");
+    expect((result.current as any).deleteCanvas).toBeTypeOf("function");
+
+    act(() => {
+      expect((result.current as any).createCanvas({ id: "shots", name: "Shots" }).ok).toBe(true);
+    });
+    expect((result.current as any).canvases.map((canvas: any) => canvas.name)).toEqual(["Main", "Shots"]);
+
+    act(() => {
+      expect((result.current as any).renameCanvas("shots", "Selects").ok).toBe(true);
+    });
+    expect((result.current as any).canvases.map((canvas: any) => canvas.name)).toEqual(["Main", "Selects"]);
+
+    act(() => {
+      expect((result.current as any).deleteCanvas("shots").ok).toBe(true);
+    });
+    expect((result.current as any).canvases).toEqual([
+      { id: "main", name: "Main", position: 0 },
+    ]);
+  });
+
+  it("exposes standalone and Canvas-owned Timeline lifecycle operations", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "timeline-registry-hook",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    expect((result.current as any).createTimeline).toBeTypeOf("function");
+    expect((result.current as any).attachTimeline).toBeTypeOf("function");
+    expect((result.current as any).detachTimeline).toBeTypeOf("function");
+    act(() => {
+      expect((result.current as any).createTimeline({
+        id: "timeline-1",
+        name: "Episode 1",
+        state: { tracks: [] },
+      }).ok).toBe(true);
+    });
+    expect((result.current as any).standaloneTimelines).toEqual([
+      expect.objectContaining({ id: "timeline-1", owner: { kind: "project" } }),
+    ]);
+
+    act(() => {
+      expect((result.current as any).attachTimeline({
+        timelineId: "timeline-1",
+        actionNodeId: "timeline-action-1",
+        position: { x: 0, y: 0 },
+      }).ok).toBe(true);
+    });
+    expect((result.current as any).standaloneTimelines).toEqual([]);
+    expect(result.current.doc?.getMap("nodes").get("timeline-action-1")).toMatchObject({
+      canvasId: "main",
+      data: { timelineId: "timeline-1" },
+    });
+
+    act(() => {
+      expect((result.current as any).detachTimeline("timeline-1").ok).toBe(true);
+    });
+    expect((result.current as any).standaloneTimelines).toEqual([
+      expect.objectContaining({ id: "timeline-1", owner: { kind: "project" } }),
+    ]);
+  });
+
+  it("applies Timeline edits to the Timeline entity instead of duplicating DSL on its ActionNode", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "timeline-entity-apply",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    act(() => {
+      (result.current as any).createTimeline({
+        id: "timeline-1",
+        name: "Episode 1",
+        state: { tracks: [] },
+      });
+      (result.current as any).attachTimeline({
+        timelineId: "timeline-1",
+        actionNodeId: "timeline-action-1",
+        position: { x: 0, y: 0 },
+      });
+    });
+
+    act(() => {
+      expect(result.current.applyTimelineDsl("timeline-action-1", {
+        tracks: [{ id: "dialogue", items: [] }],
+      })).toBe(true);
+    });
+
+    expect(readProjectTimeline(result.current.doc!, "timeline-1")).toMatchObject({
+      state: { tracks: [{ id: "dialogue", items: [] }] },
+    });
+    expect(result.current.doc?.getMap("nodes").get("timeline-action-1")).toMatchObject({
+      data: { timelineId: "timeline-1" },
+    });
+    expect((result.current.doc?.getMap("nodes").get("timeline-action-1") as any)?.data?.timelineDsl).toBeUndefined();
   });
 
   it("does not let addNode overwrite an existing canvas node", async () => {
@@ -133,7 +427,6 @@ describe("useLoroSync guardrails", () => {
       beforeReadToken,
       afterReadToken,
       resultEntityId: "text-1",
-      forced: false,
       accepted: true,
     });
   });
@@ -173,7 +466,6 @@ describe("useLoroSync guardrails", () => {
       entity: { kind: "canvas-node", id: "node-1" },
       afterReadToken: readToken,
       resultEntityId: "node-1",
-      forced: false,
       accepted: true,
     });
 
@@ -192,7 +484,6 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_add_node",
       entity: { kind: "canvas-node", id: "node-1" },
       beforeReadToken: readToken,
-      forced: false,
       accepted: false,
       error: "Node already exists: node-1",
     });
@@ -239,7 +530,6 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_add_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       resultEntityId: "edge-1",
-      forced: false,
       accepted: true,
     });
 
@@ -254,7 +544,6 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_update_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       resultEntityId: "edge-1",
-      forced: false,
       accepted: true,
     }));
 
@@ -267,7 +556,6 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_delete_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       resultEntityId: "edge-1",
-      forced: false,
       accepted: true,
     }));
   });
@@ -325,7 +613,6 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_update",
       entity: { kind: "canvas-node", id: "text-1" },
       beforeReadToken,
-      forced: false,
       accepted: false,
       error:
         "Refusing to patch referenced text content through canvas update. Text node text-1 has downstream node(s): render-1. Use text projection or copy-on-write/replace workflow instead.",
@@ -345,11 +632,15 @@ describe("useLoroSync guardrails", () => {
     await waitFor(() => expect(result.current.isInitialized).toBe(true));
 
     act(() => {
-      result.current.addNode("editor-1", {
-        id: "editor-1",
-        type: "video-editor",
+      result.current.createTimeline({
+        id: "timeline-1",
+        name: "Timeline",
+        state: { tracks: [] },
+      });
+      result.current.attachTimeline({
+        timelineId: "timeline-1",
+        actionNodeId: "editor-1",
         position: { x: 0, y: 0 },
-        data: { label: "Timeline", timelineDsl: { tracks: [] } },
       });
       result.current.addNode("render-1", {
         id: "render-1",
@@ -371,34 +662,27 @@ describe("useLoroSync guardrails", () => {
       data?: Record<string, unknown>;
     };
     const beforeReadToken = canvasNodeReadToken({ id: "editor-1", ...before });
+    const timelineBefore = result.current.timelines.find((timeline) => timeline.id === "timeline-1")!;
+    const timelineBeforeReadToken = projectTimelineReadToken(timelineBefore);
 
-    let timelineRejected: unknown;
+    let timelineAccepted: unknown;
     act(() => {
-      timelineRejected = result.current.applyTimelineDsl("editor-1", {
+      timelineAccepted = result.current.applyTimelineDsl("editor-1", {
         tracks: [{ id: "main", items: [] }],
       });
     });
 
-    expect(timelineRejected).toBe(false);
-    expect(mutations).toContainEqual({
-      operation: "timeline_apply",
-      entity: { kind: "timeline", id: "editor-1" },
-      beforeReadToken,
-      forced: false,
-      accepted: false,
-      error:
-        "Refusing to apply timeline for editor-1. Timeline has materialized downstream checkpoint node(s): render-1. Use copy-on-write/versioned timeline workflow or explicit force instead.",
-    });
-
-    let timelineAccepted: unknown;
-    act(() => {
-      timelineAccepted = result.current.applyTimelineDsl(
-        "editor-1",
-        { tracks: [{ id: "main", items: [] }] },
-        { force: true },
-      );
-    });
     expect(timelineAccepted).toBe(true);
+    const timelineAfter = result.current.timelines.find((timeline) => timeline.id === "timeline-1")!;
+    expect(timelineAfter.revisionId).not.toBe(timelineBefore.revisionId);
+    expect(mutations).toContainEqual(expect.objectContaining({
+      operation: "timeline_apply",
+      entity: { kind: "timeline", id: "timeline-1" },
+      beforeReadToken: timelineBeforeReadToken,
+      afterReadToken: projectTimelineReadToken(timelineAfter),
+      resultEntityId: "timeline-1",
+      accepted: true,
+    }));
     const afterTimeline = result.current.doc?.getMap("nodes").get("editor-1") as {
       id?: string;
       type?: string;
@@ -406,15 +690,7 @@ describe("useLoroSync guardrails", () => {
       data?: Record<string, unknown>;
     };
     const afterReadToken = canvasNodeReadToken({ id: "editor-1", ...afterTimeline });
-    expect(mutations).toContainEqual({
-      operation: "timeline_apply",
-      entity: { kind: "timeline", id: "editor-1" },
-      beforeReadToken,
-      afterReadToken,
-      resultEntityId: "editor-1",
-      forced: true,
-      accepted: true,
-    });
+    expect(afterReadToken).toBe(beforeReadToken);
 
     let deleteRejected: unknown;
     act(() => {
@@ -425,9 +701,8 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_delete",
       entity: { kind: "canvas-node", id: "editor-1" },
       beforeReadToken: afterReadToken,
-      forced: false,
       accepted: false,
-      error: "Refusing to delete referenced node editor-1. It has downstream node(s): render-1. Pass --force with --yes only if you intend to orphan those references.",
+      error: "Refusing to delete referenced node editor-1. It has downstream node(s): render-1. Remove or rewire those references first.",
     });
   });
 
@@ -444,11 +719,15 @@ describe("useLoroSync guardrails", () => {
     await waitFor(() => expect(result.current.isInitialized).toBe(true));
 
     act(() => {
-      result.current.addNode("editor-1", {
-        id: "editor-1",
-        type: "video-editor",
+      result.current.createTimeline({
+        id: "timeline-1",
+        name: "Timeline",
+        state: { tracks: [] },
+      });
+      result.current.attachTimeline({
+        timelineId: "timeline-1",
+        actionNodeId: "editor-1",
         position: { x: 0, y: 0 },
-        data: { label: "Timeline", timelineDsl: { tracks: [] } },
       });
       result.current.addNode("scratch-1", {
         id: "scratch-1",
@@ -459,13 +738,9 @@ describe("useLoroSync guardrails", () => {
     });
     mutations.length = 0;
 
-    const editorBefore = result.current.doc?.getMap("nodes").get("editor-1") as {
-      id?: string;
-      type?: string;
-      position?: unknown;
-      data?: Record<string, unknown>;
-    };
-    const editorReadToken = canvasNodeReadToken({ id: "editor-1", ...editorBefore });
+    const timelineReadToken = projectTimelineReadToken(
+      result.current.timelines.find((timeline) => timeline.id === "timeline-1")!,
+    );
 
     let missingTimelineProof: unknown;
     act(() => {
@@ -477,17 +752,15 @@ describe("useLoroSync guardrails", () => {
     });
 
     expect(missingTimelineProof).toBe(false);
-    expect(result.current.doc?.getMap("nodes").get("editor-1")).toMatchObject({
-      data: { timelineDsl: { tracks: [] } },
+    expect(readProjectTimeline(result.current.doc!, "timeline-1")).toMatchObject({
+      state: { tracks: [] },
     });
     expect(mutations).toContainEqual({
       operation: "timeline_apply",
-      entity: { kind: "timeline", id: "editor-1" },
-      beforeReadToken: editorReadToken,
-      forced: false,
+      entity: { kind: "timeline", id: "timeline-1" },
+      beforeReadToken: timelineReadToken,
       accepted: false,
-      error:
-        "Missing canvas timeline apply read proof for agent. Run `clash canvas get --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+      error: "READ_REQUIRED: Read the target before applying Timeline state.",
     });
 
     let acceptedTimelineProof: unknown;
@@ -495,17 +768,16 @@ describe("useLoroSync guardrails", () => {
       acceptedTimelineProof = result.current.applyTimelineDsl(
         "editor-1",
         { tracks: [{ id: "main", items: [] }] },
-        { actorClientType: "agent", ifMatch: editorReadToken },
+        { actorClientType: "agent", ifMatch: timelineReadToken },
       );
     });
     expect(acceptedTimelineProof).toBe(true);
     expect(mutations).toContainEqual(expect.objectContaining({
       operation: "timeline_apply",
-      entity: { kind: "timeline", id: "editor-1" },
-      expectedReadToken: editorReadToken,
-      beforeReadToken: editorReadToken,
-      resultEntityId: "editor-1",
-      forced: false,
+      entity: { kind: "timeline", id: "timeline-1" },
+      expectedReadToken: timelineReadToken,
+      beforeReadToken: timelineReadToken,
+      resultEntityId: "timeline-1",
       accepted: true,
     }));
 
@@ -528,10 +800,9 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_delete",
       entity: { kind: "canvas-node", id: "scratch-1" },
       beforeReadToken: scratchReadToken,
-      forced: false,
       accepted: false,
       error:
-        "Missing canvas delete read proof for agent. Run `clash canvas get --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+        "Missing canvas delete read proof for agent. Run `clash canvas get --json` first, then retry the mutation.",
     });
 
     let acceptedDeleteProof: unknown;
@@ -550,15 +821,16 @@ describe("useLoroSync guardrails", () => {
       expectedReadToken: scratchReadToken,
       beforeReadToken: scratchReadToken,
       resultEntityId: "scratch-1",
-      forced: false,
       accepted: true,
     });
   });
 
   it("requires agent runtime edge mutations to carry matching read tokens", async () => {
     const edgeReadToken = (edgeId: string) => {
-      const edge = result.current.doc?.getMap("edges").get(edgeId) as Record<string, unknown>;
-      return agentReadToken({ namespace: "edge", subject: { id: edgeId, ...edge } });
+      const edge = new Canvas(result.current.doc!, () => {}, "main")
+        .listEdges()
+        .find((candidate) => candidate.id === edgeId);
+      return agentReadToken({ namespace: "edge", subject: edge });
     };
     const mutations: HostMutationRecord[] = [];
     const { result } = renderHook(() =>
@@ -596,56 +868,53 @@ describe("useLoroSync guardrails", () => {
 
     let missingUpdateProof: unknown;
     act(() => {
-      missingUpdateProof = (result.current.updateEdge as any)("edge-1", { label: "agent edit" }, {
+      missingUpdateProof = (result.current.updateEdge as any)("edge-1", { type: "agent-edit" }, {
         actorClientType: "agent",
       });
     });
     expect(missingUpdateProof).toBe(false);
-    expect(result.current.doc?.getMap("edges").get("edge-1")).not.toMatchObject({ label: "agent edit" });
+    expect(new Canvas(result.current.doc!, () => {}, "main").listEdges()[0]?.type).toBe("default");
     expect(mutations).toContainEqual({
       operation: "canvas_update_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       beforeReadToken,
-      forced: false,
       accepted: false,
       error:
-        "Missing canvas edge update read proof for agent. Run `clash canvas edges --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+        "Missing canvas edge update read proof for agent. Run `clash canvas edges --json` first, then retry the mutation.",
     });
 
     let staleUpdateProof: unknown;
     act(() => {
-      staleUpdateProof = (result.current.updateEdge as any)("edge-1", { label: "agent edit" }, {
+      staleUpdateProof = (result.current.updateEdge as any)("edge-1", { type: "agent-edit" }, {
         actorClientType: "agent",
         ifMatch: "edge-v1:stale",
       });
     });
     expect(staleUpdateProof).toBe(false);
-    expect(result.current.doc?.getMap("edges").get("edge-1")).not.toMatchObject({ label: "agent edit" });
+    expect(new Canvas(result.current.doc!, () => {}, "main").listEdges()[0]?.type).toBe("default");
     expect(mutations).toContainEqual(expect.objectContaining({
       operation: "canvas_update_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       expectedReadToken: "edge-v1:stale",
       beforeReadToken,
-      forced: false,
       accepted: false,
     }));
 
     let acceptedUpdateProof: unknown;
     act(() => {
-      acceptedUpdateProof = (result.current.updateEdge as any)("edge-1", { label: "agent edit" }, {
+      acceptedUpdateProof = (result.current.updateEdge as any)("edge-1", { type: "agent-edit" }, {
         actorClientType: "agent",
         ifMatch: beforeReadToken,
       });
     });
     expect(acceptedUpdateProof).toBe(true);
-    expect(result.current.doc?.getMap("edges").get("edge-1")).toMatchObject({ label: "agent edit" });
+    expect(new Canvas(result.current.doc!, () => {}, "main").listEdges()[0]?.type).toBe("agent-edit");
     expect(mutations).toContainEqual(expect.objectContaining({
       operation: "canvas_update_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       expectedReadToken: beforeReadToken,
       beforeReadToken,
       resultEntityId: "edge-1",
-      forced: false,
       accepted: true,
     }));
 
@@ -658,7 +927,7 @@ describe("useLoroSync guardrails", () => {
       });
     });
     expect(staleDeleteProof).toBe(false);
-    expect(result.current.doc?.getMap("edges").get("edge-1")).toBeTruthy();
+    expect(new Canvas(result.current.doc!, () => {}, "main").listEdges()).toHaveLength(1);
 
     let acceptedDeleteProof: unknown;
     act(() => {
@@ -668,23 +937,21 @@ describe("useLoroSync guardrails", () => {
       });
     });
     expect(acceptedDeleteProof).toBe(true);
-    expect(result.current.doc?.getMap("edges").get("edge-1")).toBeUndefined();
+    expect(new Canvas(result.current.doc!, () => {}, "main").listEdges()).toEqual([]);
     expect(mutations).toContainEqual({
       operation: "canvas_delete_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       expectedReadToken: afterUpdateReadToken,
       beforeReadToken: afterUpdateReadToken,
       resultEntityId: "edge-1",
-      forced: false,
       accepted: true,
     });
   });
 
   it("requires agent runtime edge creation between existing nodes to carry a graph read token", async () => {
     const edgesReadToken = () => {
-      const edgesMap = result.current.doc?.getMap("edges");
-      const edges = [...(edgesMap?.entries() ?? [])]
-        .map(([edgeId, rawEdge]) => ({ id: edgeId, ...(rawEdge as Record<string, unknown>) }))
+      const edges = new Canvas(result.current.doc!, () => {}, "main")
+        .listEdges()
         .sort((left, right) => String(left.id).localeCompare(String(right.id)));
       return agentReadToken({ namespace: "edges", subject: { edges } });
     };
@@ -733,10 +1000,9 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_add_edge",
       entity: { kind: "canvas-edge", id: "edge-1" },
       beforeReadToken: graphReadToken,
-      forced: false,
       accepted: false,
       error:
-        "Missing canvas edge add read proof for agent. Run `clash canvas edges --json` first and pass its `readToken` with --if-match, or pass --force for an explicit overwrite.",
+        "Missing canvas edge add read proof for agent. Run `clash canvas edges --json` first, then retry the mutation.",
     });
 
     let staleProof: unknown;
@@ -758,7 +1024,6 @@ describe("useLoroSync guardrails", () => {
       entity: { kind: "canvas-edge", id: "edge-1" },
       expectedReadToken: "edges-v1:stale",
       beforeReadToken: graphReadToken,
-      forced: false,
       accepted: false,
     }));
 
@@ -775,7 +1040,7 @@ describe("useLoroSync guardrails", () => {
       });
     });
     expect(accepted).toBe(true);
-    expect(result.current.doc?.getMap("edges").get("edge-1")).toMatchObject({
+    expect(new Canvas(result.current.doc!, () => {}, "main").listEdges()[0]).toMatchObject({
       source: "source-1",
       target: "target-1",
     });
@@ -785,7 +1050,6 @@ describe("useLoroSync guardrails", () => {
       expectedReadToken: graphReadToken,
       beforeReadToken: graphReadToken,
       resultEntityId: "edge-1",
-      forced: false,
       accepted: true,
     }));
   });
@@ -841,7 +1105,6 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_batch_delete",
       entity: { kind: "canvas-node-batch", id: "source-1,child-1" },
       resultEntityId: "source-1,child-1",
-      forced: false,
       accepted: true,
     }));
 
@@ -881,10 +1144,9 @@ describe("useLoroSync guardrails", () => {
     expect(mutations).toContainEqual(expect.objectContaining({
       operation: "canvas_batch_delete",
       entity: { kind: "canvas-node-batch", id: "source-2,child-2" },
-      forced: false,
       accepted: false,
       error:
-        "Refusing to delete referenced node(s). Batch would orphan downstream reference(s): child-2 -> external-1. Pass --force with --yes only if you intend to orphan those references.",
+        "Refusing to delete referenced node(s). Batch would orphan downstream reference(s): child-2 -> external-1. Delete a closed subgraph or rewire those references first.",
     }));
   });
 
@@ -934,10 +1196,9 @@ describe("useLoroSync guardrails", () => {
     expect(mutations).toContainEqual(expect.objectContaining({
       operation: "canvas_batch_delete",
       entity: { kind: "canvas-node-batch", id: "agent-source-1,agent-child-1" },
-      forced: false,
       accepted: false,
       error:
-        "Missing canvas batch delete read proof for agent. Run `clash canvas delete-plan --node <id> --node <id> --json` first and pass its `readToken` with --if-match, or pass --force for an explicit destructive batch delete.",
+        "Missing canvas batch delete read proof for agent. Run `clash canvas delete-plan --node <id> --node <id> --json` first, then retry the mutation.",
     }));
 
     const readBatchNode = (id: string) => {
@@ -952,7 +1213,7 @@ describe("useLoroSync guardrails", () => {
     };
     const readToken = canvasBatchDeleteReadToken({
       nodes: [readBatchNode("agent-source-1"), readBatchNode("agent-child-1")],
-      edges: [{ id: "agent-edge-internal", source: "agent-source-1", target: "agent-child-1" }],
+      edges: [{ id: "agent-edge-internal", source: "agent-source-1", target: "agent-child-1", type: "default" }],
     });
 
     act(() => {
@@ -985,17 +1246,16 @@ describe("useLoroSync guardrails", () => {
       operation: "canvas_batch_delete",
       entity: { kind: "canvas-node-batch", id: "agent-source-1,agent-child-1" },
       expectedReadToken: readToken,
-      forced: false,
       accepted: false,
     }));
     expect(mutations.at(-1)?.error).toContain("Stale canvas batch delete rejected");
 
     act(() => {
-      result.current.removeEdge("agent-edge-external", { force: true });
+      result.current.removeEdge("agent-edge-external");
     });
     const freshReadToken = canvasBatchDeleteReadToken({
       nodes: [readBatchNode("agent-source-1"), readBatchNode("agent-child-1")],
-      edges: [{ id: "agent-edge-internal", source: "agent-source-1", target: "agent-child-1" }],
+      edges: [{ id: "agent-edge-internal", source: "agent-source-1", target: "agent-child-1", type: "default" }],
     });
     mutations.length = 0;
 
@@ -1016,7 +1276,6 @@ describe("useLoroSync guardrails", () => {
       expectedReadToken: freshReadToken,
       beforeReadToken: freshReadToken,
       resultEntityId: "agent-source-1,agent-child-1",
-      forced: false,
       accepted: true,
     }));
   });

@@ -1,6 +1,6 @@
 import { memo, useId, useMemo } from "react";
 import { Warning, WarningCircle, X, Play } from "@phosphor-icons/react";
-import { summarizeModelCounts, type BuildPlan } from "./buildPlan";
+import { summarizeInvocations, type BuildPlan } from "./buildPlan";
 import { Dialog } from "../ui/dialog";
 import { Tooltip } from "../ui/tooltip";
 import { IconButton } from "../ui/icon-button";
@@ -27,13 +27,17 @@ const BuildPlanDialog = ({
   onConfirm,
   onCancel,
 }: BuildPlanDialogProps) => {
-  const modelRows = useMemo(
-    () => summarizeModelCounts(plan.modelCounts),
-    [plan.modelCounts],
+  const invocationRows = useMemo(
+    () => summarizeInvocations(plan.estimatedInvocations),
+    [plan.estimatedInvocations],
   );
   const totalCalls = useMemo(
-    () => Array.from(plan.modelCounts.values()).reduce((a, b) => a + b, 0),
-    [plan.modelCounts],
+    () =>
+      plan.estimatedInvocations.reduce(
+        (total, estimate) => total + estimate.count,
+        0,
+      ),
+    [plan.estimatedInvocations],
   );
   const canBuild =
     plan.blockers.length === 0 && plan.entries.length > 0 && !plan.cycle;
@@ -138,25 +142,25 @@ const BuildPlanDialog = ({
           </div>
         )}
 
-        {/* Model breakdown */}
-        {modelRows.length > 0 && (
-          <section aria-labelledby={`${headerId}-models`}>
+        {/* Action breakdown */}
+        {invocationRows.length > 0 && (
+          <section aria-labelledby={`${headerId}-actions`}>
             <h3
-              id={`${headerId}-models`}
+              id={`${headerId}-actions`}
               className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
             >
-              Models to invoke · {totalCalls} total
+              Actions to invoke · {totalCalls} total
             </h3>
             <div className="rounded-xl border border-warm-border overflow-hidden">
-              {modelRows.map((row, i) => (
+              {invocationRows.map((row, i) => (
                 <div
-                  key={row.modelId}
+                  key={row.actionDefinitionRef}
                   className={`flex items-center justify-between px-3.5 py-2 text-sm ${
                     i > 0 ? "border-t border-warm-border" : ""
                   }`}
                 >
                   <span className="font-medium text-slate-800 truncate">
-                    {row.modelName}
+                    {row.actionDefinitionName}
                   </span>
                   <span className="shrink-0 px-2 py-0.5 rounded-md bg-warm-muted text-slate-800 dark:text-slate-200 text-xs font-semibold">
                     <span aria-hidden="true">×</span>
@@ -184,14 +188,12 @@ const BuildPlanDialog = ({
                   key={entry.draftId}
                   className={`flex items-center justify-between gap-3 px-3.5 py-2 text-xs ${
                     i > 0 ? "border-t border-warm-border" : ""
-                  } ${!entry.hasPrompt || !entry.modelId ? "clash-node-row-error" : ""}`}
+                  } ${!entry.actionDefinitionRef || (entry.kind === "model" && !entry.hasPrompt) ? "clash-node-row-error" : ""}`}
                 >
                   <div className="min-w-0 flex items-center gap-2">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand" />
                     <Tooltip label={entry.label}>
-                      <span
-                        className="truncate text-slate-800 dark:text-slate-200"
-                      >
+                      <span className="truncate text-slate-800 dark:text-slate-200">
                         {entry.label}
                       </span>
                     </Tooltip>

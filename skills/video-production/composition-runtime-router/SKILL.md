@@ -78,4 +78,4 @@ clash production project-composition-timeline \
 This writes `projections/timelines/<composition-id>.composition.timeline.yaml`
 and a `composition-timeline-projection` manifest. The projection is still only a
 draft view until applied with `clash timeline apply` using a fresh
-`clash timeline pull` lock.
+`clash timeline pull` observation.

@@ -60,7 +60,6 @@ actionsCommand
       "  clash action install --project <id> --repo owner/repo      register a project-level worker action via Loro"
   )
   .argument("[id]", "Action id to fetch from the server registry")
-  .option("--force", "Reinstall even if the same version is already installed")
   .option("--project <id>", "Project ID (for --repo / --url Loro register flow)")
   .option("--repo <owner/repo>", "GitHub repo (e.g. user/style-transfer-action)")
   .option("--url <workerUrl>", "Direct CF Worker URL for author-deployed actions")
@@ -406,13 +405,12 @@ actionsCommand
  * up the new manifest within ~500ms and spawns the python subprocess —
  * no daemon restart needed.
  *
- * If a manifest already exists at the same version and `--force` is
- * not passed, we skip the write so we don't churn the watcher for
- * idempotent reinstall calls.
+ * If a manifest already exists at the same version, skip the write so
+ * idempotent install calls do not churn the watcher.
  */
 async function installFromRegistry(
   id: string,
-  options: { force?: boolean; json?: boolean }
+  options: { json?: boolean }
 ): Promise<void> {
   const apiKey = requireApiKey();
   const serverUrl = getServerUrl();
@@ -448,10 +446,8 @@ async function installFromRegistry(
   const manifestPath = join(targetDir, "manifest.json");
   const newVersion = pkg.manifest.version ?? "0.0.0";
 
-  // Idempotent reinstall: if the same version is already on disk, no-op
-  // unless --force. The watcher would otherwise see a manifest write +
-  // restart the subprocess for no real reason.
-  if (existsSync(manifestPath) && !options.force) {
+  // Idempotent reinstall: if the same version is already on disk, no-op.
+  if (existsSync(manifestPath)) {
     try {
       const existing = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
         version?: string;
@@ -466,10 +462,7 @@ async function installFromRegistry(
             reason: "already-installed",
           });
         } else {
-          console.log(
-            `${id}@${newVersion} already installed at ${targetDir}. ` +
-              `Pass --force to reinstall.`
-          );
+          console.log(`${id}@${newVersion} already installed at ${targetDir}.`);
         }
         return;
       }

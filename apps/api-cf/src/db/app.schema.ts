@@ -45,6 +45,23 @@ export const apiTokens = sqliteTable(
     })
 )
 
+/** Short-lived, one-time OAuth authorization codes for the public CLI client. */
+export const cliOauthCodes = sqliteTable(
+    "cli_oauth_code",
+    {
+        codeHash: text("code_hash").primaryKey(),
+        userId: text("user_id").notNull(),
+        clientId: text("client_id").notNull(),
+        redirectUri: text("redirect_uri").notNull(),
+        codeChallenge: text("code_challenge").notNull(),
+        expiresAt: integer("expires_at").notNull(),
+        createdAt: integer("created_at").default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        cliOauthCodeExpiryIdx: index("cli_oauth_code_expires_at_idx").on(table.expiresAt),
+    })
+)
+
 /**
  * User Variables — encrypted key-value store for API keys used by actions.
  * Values are AES-GCM encrypted with ACTION_SECRET_KEY env var.

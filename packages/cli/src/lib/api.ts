@@ -30,15 +30,15 @@ export async function apiFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const apiKey = requireApiKey();
   const serverUrl = getServerUrl();
+  const apiKey = requireApiKey(serverUrl);
   const url = `${serverUrl}${path}`;
 
   return fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       ...((options.headers as Record<string, string>) ?? {}),
     },
   });

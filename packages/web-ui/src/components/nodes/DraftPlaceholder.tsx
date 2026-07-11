@@ -45,10 +45,11 @@ function entriesEqual(a: readonly PlanEntry[], b: readonly PlanEntry[]) {
         const right = b[i];
         if (
             left.draftId !== right.draftId ||
-            left.actionId !== right.actionId ||
-            left.modelId !== right.modelId ||
-            left.modelName !== right.modelName ||
-            left.modality !== right.modality ||
+            left.actionNodeId !== right.actionNodeId ||
+            left.actionDefinitionRef !== right.actionDefinitionRef ||
+            left.actionDefinitionName !== right.actionDefinitionName ||
+            left.kind !== right.kind ||
+      left.modality !== right.modality ||
             left.label !== right.label ||
             left.hasPrompt !== right.hasPrompt
         ) {
@@ -58,12 +59,23 @@ function entriesEqual(a: readonly PlanEntry[], b: readonly PlanEntry[]) {
     return true;
 }
 
-function modelCountsEqual(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>) {
-    if (a.size !== b.size) return false;
-    for (const [key, value] of a) {
-        if (b.get(key) !== value) return false;
+function invocationEstimatesEqual(a: BuildPlan["estimatedInvocations"],
+  b: BuildPlan["estimatedInvocations"],
+) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      left.actionDefinitionRef !== right.actionDefinitionRef ||
+      left.actionDefinitionName !== right.actionDefinitionName ||
+      left.kind !== right.kind ||
+      left.count !== right.count
+    ) {
+      return false;
     }
-    return true;
+  }
+  return true;
 }
 
 function buildPlansEqual(a: BuildPlan, b: BuildPlan) {
@@ -71,7 +83,7 @@ function buildPlansEqual(a: BuildPlan, b: BuildPlan) {
         a.cycle === b.cycle &&
         arraysEqual(a.blockers, b.blockers) &&
         arraysEqual(a.warnings, b.warnings) &&
-        modelCountsEqual(a.modelCounts, b.modelCounts) &&
+    invocationEstimatesEqual(a.estimatedInvocations, b.estimatedInvocations) &&
         entriesEqual(a.entries, b.entries)
     );
 }
@@ -119,7 +131,7 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
     );
 
     const ancestorCount = Math.max(0, plan.entries.length - 1);
-    const totalCalls = Array.from(plan.modelCounts.values()).reduce((a, b) => a + b, 0);
+    const totalCalls = plan.estimatedInvocations.reduce((total, estimate) => total + estimate.count, 0);
     const targetEntry = plan.entries[plan.entries.length - 1];
     const targetLabel = targetEntry?.label ?? 'this draft';
 

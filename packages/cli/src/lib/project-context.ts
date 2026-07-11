@@ -12,6 +12,7 @@ export interface ResolvedProjectContext {
   projectId: string;
   source: "explicit" | "marker" | "env";
   markerPath?: string;
+  workspaceRoot?: string;
 }
 
 const MARKER_PATH = join(".clash", "project.toml");
@@ -54,38 +55,39 @@ export async function readProjectMarker(markerPath: string): Promise<ProjectMark
 
 function parseProjectMarkerToml(markerPath: string, text: string): ProjectMarker {
   const root: Record<string, unknown> = {};
-  let section: "root" | "legacy-sync" = "root";
+  const supportedFields = new Set(["schema_version", "project_id", "workspace_id", "store"]);
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
-    if (line === "[sync]") {
-      section = "legacy-sync";
-      continue;
-    }
-    if (line === "[sync.capabilities]") {
-      section = "legacy-sync";
-      continue;
+    if (line.startsWith("[") && line.endsWith("]")) {
+      throw new Error(`Invalid project marker at ${markerPath}: unsupported TOML section "${line}".`);
     }
     const match = /^([A-Za-z0-9_-]+)\s*=\s*(.+)$/.exec(line);
     if (!match) {
       throw new Error(`Invalid project marker at ${markerPath}: unsupported TOML line "${line}".`);
     }
     const key = match[1];
+    if (!supportedFields.has(key)) {
+      throw new Error(`Invalid project marker at ${markerPath}: unsupported field "${key}".`);
+    }
+    if (key in root) {
+      throw new Error(`Invalid project marker at ${markerPath}: duplicate field "${key}".`);
+    }
     const value = parseTomlScalar(markerPath, match[2]);
-    if (section === "root") root[key] = value;
+    root[key] = value;
   }
 
-  const schemaVersion = root.schema_version ?? root.schemaVersion;
+  const schemaVersion = root.schema_version;
   if (schemaVersion !== 1) {
     throw new Error(`Invalid project marker at ${markerPath}: schema_version must be 1.`);
   }
 
   return {
     schemaVersion: 1,
-    projectId: stringValue(root.project_id ?? root.projectId) ?? "",
-    ...(stringValue(root.workspace_id ?? root.workspaceId)
-      ? { workspaceId: stringValue(root.workspace_id ?? root.workspaceId) }
+    projectId: stringValue(root.project_id) ?? "",
+    ...(stringValue(root.workspace_id)
+      ? { workspaceId: stringValue(root.workspace_id) }
       : {}),
     ...(stringValue(root.store) ? { store: stringValue(root.store) } : {}),
   };
@@ -155,7 +157,7 @@ export async function resolveProjectContext(options: {
     return {
       projectId: explicitProjectId,
       source: "explicit",
-      ...(markerPath ? { markerPath } : {}),
+      ...(markerPath ? { markerPath, workspaceRoot: dirname(dirname(markerPath)) } : {}),
     };
   }
 
@@ -170,7 +172,12 @@ export async function resolveProjectContext(options: {
   }
 
   if (marker) {
-    return { projectId: marker.projectId, source: "marker", markerPath };
+    return {
+      projectId: marker.projectId,
+      source: "marker",
+      markerPath,
+      workspaceRoot: dirname(dirname(markerPath!)),
+    };
   }
   if (envProjectId) {
     return { projectId: envProjectId, source: "env" };

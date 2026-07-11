@@ -55,7 +55,7 @@ timeline CAS apply, and canvas/timeline projections.
   runtime probing and Remotion/Manim execution orchestration are still missing.
 - `review.stage-gates`: partially available through `clash production
   plan-review-gate` and `clash production approve-review-gate`, which write
-  local `clash.review.stage-gate` artifacts plus path-bound hash lock sidecars.
+  local `clash.review.stage-gate` artifacts and path-bound cwd observations.
   Required artifacts are checked as local project paths, gates stay blocked
   until missing artifacts exist, and explicit approval/reject decisions are
   stale-write and wrong-file protected. Durable project DB storage, multi-user
@@ -91,7 +91,7 @@ timeline CAS apply, and canvas/timeline projections.
   deterministic frame evaluation, self-contained seekable HTML previews with
   browser-verifiable `data-current-frame` state and `clash-mg-frame` events,
   `clash production render-mg` projection generation with explicit
-  `clash timeline apply` CAS boundary metadata and lock sidecar paths,
+  `clash timeline apply` boundaries and host-managed implicit CAS,
   `clash production export-mg-snapshots` SVG asset export,
   `clash production export-mg-video` local WebM/MP4 export, timeline
   `composition` items, VP9 alpha-mode verification, decoded alpha-plane pixel
@@ -312,10 +312,10 @@ timeline CAS apply, and canvas/timeline projections.
 - `storyboard.cas-projection`: partially available through
   `clash production project-storyboard-prompt-pack` and
   `clash production apply-storyboard-prompt-pack`, which turn storyboard
-  metadata into an agent-editable prompt-pack file plus lock sidecar, then
+  metadata into an agent-editable prompt-pack file with a cwd observation, then
   explicitly apply reviewed edits into `projections/storyboards/*` with stale
   write rejection. `clash production replace-storyboard-prompt-pack` uses the
-  same lock as read proof to create a versioned copy-on-write prompt-pack
+  same observed version to create a versioned copy-on-write prompt-pack
   projection without moving existing downstream references. Storyboard panel
   timeline projection is also CAS-required.
   Editable storyboard host UI/apply integration is still missing.
@@ -352,7 +352,7 @@ timeline CAS apply, and canvas/timeline projections.
   visual pixel analysis reads only local PPM frame samples, ad visual QA plans
   never execute OCR/logo/pixel analysis backends, and content
   credential plans register unsigned/external manifests without signing C2PA;
-  review gates carry path-bound hash lock sidecars.
+  review gates use path-bound cwd observations and implicit CAS.
   It still needs provider execution,
   durable project DB integration, multi-user review UI, and managed timeline
   apply orchestration.

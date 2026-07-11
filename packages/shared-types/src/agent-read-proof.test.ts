@@ -277,8 +277,10 @@ describe("agent read proof", () => {
     expect(stale.ok).toBe(false);
     if (!stale.ok) {
       expect(stale.error).toContain("Stale canvas update rejected");
-      expect(stale.error).toContain(currentReadToken);
-      expect(stale.error).toContain(staleReadToken);
+      expect(stale.code).toBe("STALE_READ");
+      expect(stale.error).not.toContain(currentReadToken);
+      expect(stale.error).not.toContain(staleReadToken);
+      expect(stale.error).not.toContain("--if-match");
     }
 
     expect(validateAgentReadProof({
@@ -316,8 +318,9 @@ describe("agent read proof", () => {
     expect(stale.ok).toBe(false);
     if (!stale.ok) {
       expect(stale.error).toContain("Stale project update rejected");
-      expect(stale.error).toContain(currentReadToken);
-      expect(stale.error).toContain(staleReadToken);
+      expect(stale.error).toContain("re-read the target");
+      expect(stale.error).not.toContain(currentReadToken);
+      expect(stale.error).not.toContain(staleReadToken);
     }
     expect(validateAgentReadProof({
       actorClientType: "cli",
@@ -391,8 +394,9 @@ describe("agent read proof", () => {
     expect(stale.ok).toBe(false);
     if (!stale.ok) {
       expect(stale.error).toContain("Stale canvas update rejected");
-      expect(stale.error).toContain(currentReadToken);
-      expect(stale.error).toContain(staleBase);
+      expect(stale.error).toContain("re-read the target");
+      expect(stale.error).not.toContain(currentReadToken);
+      expect(stale.error).not.toContain(staleBase);
     }
   });
 });

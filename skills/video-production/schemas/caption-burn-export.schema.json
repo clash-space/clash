@@ -36,8 +36,6 @@
     "sourceTimelineHash": { "type": "string" },
     "sourceTimelineRevisionId": { "type": "string" },
     "sourceTimelineRevisionStatus": { "enum": ["draft-file", "applied"] },
-    "sourceTimelineFrontiers": { "type": "array" },
-    "sourceTimelineVersionVector": { "type": "object" },
     "sourcePath": { "type": "string" },
     "captionSidecarPath": { "type": "string" },
     "packagePath": { "type": "string" },

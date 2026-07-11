@@ -84,10 +84,7 @@ export type MgOverlayManifest = {
     mutation: "projection-only";
     applyCommand: "clash timeline apply";
     filePath: string;
-    lockPath: string;
-    lockRequired: true;
-    lockSource?: "fresh-canvas-pull";
-    nodeIdPlaceholder?: "<video-editor-node-id>";
+    timelineIdPlaceholder?: "<timeline-id>";
     requiredRuntimeArgs?: string[];
     pullCommand?: "clash timeline pull";
     pullArgs?: string[];
@@ -297,20 +294,17 @@ export function buildMgOverlayManifest(
     renderedAssetPath: string;
     timelineFromFrame?: number;
     timelineProjectionPath?: string;
-    timelineLockPath?: string;
     timelineCasApply?: MgOverlayManifest["casApply"];
   },
 ): MgOverlayManifest {
   const spec = MgCompositionSpecSchema.parse(input);
   const timelineFromFrame = options.timelineFromFrame ?? 0;
-  const casApply = options.timelineCasApply ?? (options.timelineProjectionPath && options.timelineLockPath
+  const casApply = options.timelineCasApply ?? (options.timelineProjectionPath
     ? {
         target: "timeline" as const,
         mutation: "projection-only" as const,
         applyCommand: "clash timeline apply" as const,
         filePath: options.timelineProjectionPath,
-        lockPath: options.timelineLockPath,
-        lockRequired: true as const,
       }
     : undefined);
   return {

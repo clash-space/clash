@@ -58,28 +58,24 @@ clash production plan-review-gate \
   --json
 ```
 
-This writes `kind: "clash.review.stage-gate"` plus a sibling lock file. Missing
+This writes `kind: "clash.review.stage-gate"` and records its version in
+`.clash/observed.json`. Missing
 artifacts keep the gate `blocked`; present artifacts move it to
-`pending-review`. The lock is a read proof for this exact gate file: it binds
-the gate path and the gate hash.
+`pending-review`. The observation is path-bound to this exact gate file.
 
 Approve or request changes explicitly:
 
 ```bash
 clash production approve-review-gate \
   --gate reviews/gates/export.review-gate.json \
-  --lock reviews/gates/export.review-gate.lock.json \
   --reviewer qa-agent \
   --decision approve \
   --note "artifact checks pass" \
   --json
 ```
 
-Do not reuse a lock from a copied or different gate file. Re-plan or re-read
-the gate when the path or contents change.
-
-Approval is guarded by the gate lock hash. If the gate file changed after the
-agent read it, re-plan or re-read before approving.
+Copied, unread, or stale gates are rejected automatically. Re-plan or re-read
+the gate when the path or contents change; approval has no force bypass.
 - Dry run must report missing providers, missing Clash-native bindings, and cost
   risks.
 - Product state changes enter canvas/timeline through CLI/host APIs with CAS.
