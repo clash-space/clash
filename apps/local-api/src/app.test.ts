@@ -9987,7 +9987,7 @@ describe("local API app", () => {
     });
     const { id: projectId } = (await created.json()) as { id: string };
 
-    for (let index = 1; index <= 4; index++) {
+    for (let index = 1; index <= 12; index++) {
       const res = await app.request("/api/v1/assets", {
         method: "POST",
         body: JSON.stringify({
@@ -10000,26 +10000,44 @@ describe("local API app", () => {
       expect(res.status).toBe(200);
     }
 
+    const sqlite = openSqlite();
+    try {
+      sqlite.prepare(`
+        INSERT INTO project_preview_asset
+          (project_id, asset_id, url, type, storage_key, created_at, position)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        projectId,
+        "legacy-preview-id",
+        "/assets/uploads/preview-12.png",
+        "image",
+        "uploads/preview-12.png",
+        new Date().toISOString(),
+        99,
+      );
+    } finally {
+      sqlite.close();
+    }
+
     const listed = await app.request("/api/v1/projects");
     const listedJson = (await listed.json()) as { projects: Array<{
       id: string;
       assets: Array<{ url: string; type: string; storageKey: string }>;
+      assetCount: number;
     }> };
     const projects = listedJson.projects;
     expect(projects[0].id).toBe(projectId);
     expect(projects[0].assets).toHaveLength(4);
-    expect(new Set(projects[0].assets.map((asset) => asset.url))).toEqual(
-      new Set([
-        "/assets/uploads/preview-1.png",
-        "/assets/uploads/preview-2.png",
-        "/assets/uploads/preview-3.png",
-        "/assets/uploads/preview-4.png",
-      ]),
-    );
+    expect(projects[0].assetCount).toBe(12);
+    expect(new Set(projects[0].assets.map((asset) => asset.url)).size).toBe(4);
+    expect(projects[0].assets.every((asset) =>
+      /^\/assets\/uploads\/preview-(?:[1-9]|1[0-2])\.png$/.test(asset.url),
+    )).toBe(true);
 
     const loaded = await app.request(`/api/v1/projects/${projectId}`);
-    const project = (await loaded.json()) as { assets: unknown[] };
-    expect(project.assets).toHaveLength(4);
+    const project = (await loaded.json()) as { assets: unknown[]; assetCount: number };
+    expect(project.assets).toHaveLength(12);
+    expect(project.assetCount).toBe(12);
   });
 
   it("stores uploaded files locally and exposes unsigned asset URLs", async () => {

@@ -158,7 +158,7 @@ Project workspace CLI report requirements:
 - workspaceCli.reportPath must be ${projectWorkspaceCliReportPath}.
 - workspaceCli.logPath must be ${projectWorkspaceCliLogPath}.
 - Every boolean required by the workspaceCli object schema must be true and must be justified by the corresponding named check in the Project workspace CLI report.
-- workspaceCli.evidence must cite the report checks for project.toml identity, local operation without cloud credentials, Canvas isolation, Timeline entity apply/ownership, stale and forged write rejection, owner-only observations, daemon restart recovery, public-output redaction, and absence of a legacy JSON database.
+- workspaceCli.evidence must cite the report checks for project.toml identity, local operation without cloud credentials, Canvas isolation, Timeline entity apply/ownership, stale and forged write rejection, owner-only observations, daemon restart recovery, public-output redaction, and canonical SQLite metadata storage.
 
 Environment used by the primary command:
 - PATH=/opt/homebrew/bin:${path.join(repoRoot, "node_modules", ".bin")}:/usr/bin:/bin:/usr/sbin:/sbin
@@ -223,7 +223,7 @@ const WORKSPACE_CLI_CHECKS = {
   daemonRestartRecoversProjectState: "daemon restart recovers all Project Timelines from one snapshot",
   recoveredTimelineActionKeepsCanvas: "recovered Timeline Action stays on its owning Canvas",
   publicOutputHidesObservations: "public CLI output hides internal observations",
-  legacyJsonDatabaseAbsent: "CLI workflow creates no legacy JSON database",
+  canonicalSqliteStore: "canonical project metadata uses SQLite",
 };
 
 function validateReportShape(report) {

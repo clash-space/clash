@@ -293,7 +293,7 @@
         "daemonRestartRecoversProjectState",
         "recoveredTimelineActionKeepsCanvas",
         "publicOutputHidesObservations",
-        "legacyJsonDatabaseAbsent",
+        "canonicalSqliteStore",
         "evidence"
       ],
       "properties": {
@@ -319,7 +319,7 @@
         "daemonRestartRecoversProjectState": { "$ref": "#/$defs/trueBoolean" },
         "recoveredTimelineActionKeepsCanvas": { "$ref": "#/$defs/trueBoolean" },
         "publicOutputHidesObservations": { "$ref": "#/$defs/trueBoolean" },
-        "legacyJsonDatabaseAbsent": { "$ref": "#/$defs/trueBoolean" },
+        "canonicalSqliteStore": { "$ref": "#/$defs/trueBoolean" },
         "evidence": { "type": "string", "minLength": 1 }
       }
     },

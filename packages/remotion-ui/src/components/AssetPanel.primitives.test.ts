@@ -11,4 +11,13 @@ describe('AssetPanel primitives', () => {
     expect(source).not.toContain('<button');
     expect(source).not.toContain('<input');
   });
+
+  it('supports a compact headerless media browser for an embedded editor', () => {
+    const source = readFileSync(new URL('./AssetPanel.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('showHeader?: boolean');
+    expect(source).toContain('compact?: boolean');
+    expect(source).toContain('showUploadControls');
+    expect(source).toContain('AssetThumbnail');
+  });
 });

@@ -1307,7 +1307,7 @@ function withSignedAssetUrls<T extends Asset>(
   };
 }
 
-function projectPreviewAssets(
+function projectAssets(
   project: LocalProject,
   state: LocalDb,
 ): LocalProjectAsset[] {
@@ -1322,25 +1322,42 @@ function projectPreviewAssets(
         importedAt: asset.createdAt,
       })),
   ]
-    .sort((a, b) => b.importedAt - a.importedAt)
-    .slice(0, 12);
+    .sort((a, b) => b.importedAt - a.importedAt);
 
   const seenAssetIds = new Set<string>();
   const seenPreviewKeys = new Set<string>();
-  const previewAssets: LocalProjectAsset[] = [];
+  const resolvedAssets: LocalProjectAsset[] = [];
 
   for (const ref of refs) {
-    if (previewAssets.length >= 4 || seenAssetIds.has(ref.assetId)) continue;
+    if (seenAssetIds.has(ref.assetId)) continue;
     const asset = assetsById.get(ref.assetId);
     if (!asset) continue;
     const preview = toProjectAsset(asset, ref.importedAt);
     if (!preview || seenPreviewKeys.has(preview.url)) continue;
     seenAssetIds.add(ref.assetId);
     seenPreviewKeys.add(preview.url);
-    previewAssets.push(preview);
+    resolvedAssets.push(preview);
   }
 
-  return previewAssets;
+  for (const legacyAsset of project.assets) {
+    if (seenAssetIds.has(legacyAsset.id) || seenPreviewKeys.has(legacyAsset.url)) continue;
+    seenAssetIds.add(legacyAsset.id);
+    seenPreviewKeys.add(legacyAsset.url);
+    resolvedAssets.push(legacyAsset);
+  }
+
+  return resolvedAssets;
+}
+
+function projectPreviewAssets(
+  project: LocalProject,
+  state: LocalDb,
+): LocalProjectAsset[] {
+  return projectAssets(project, state).slice(0, 4);
+}
+
+function projectAssetCount(project: LocalProject, state: LocalDb): number {
+  return projectAssets(project, state).length;
 }
 
 function isDeletedProject(project: LocalProject): boolean {
@@ -1456,12 +1473,21 @@ function purgeProjectFromState(state: LocalDb, projectId: string) {
   return { project, counts };
 }
 
-function toV1Project(project: LocalProject, state?: LocalDb) {
+function toV1Project(
+  project: LocalProject,
+  state?: LocalDb,
+  assetMode: "preview" | "all" = "preview",
+) {
   return {
     id: project.id,
     name: project.name,
     description: project.description,
-    assets: state ? projectPreviewAssets(project, state) : project.assets,
+    assets: state
+      ? assetMode === "all"
+        ? projectAssets(project, state)
+        : projectPreviewAssets(project, state)
+      : project.assets,
+    assetCount: state ? projectAssetCount(project, state) : project.assets.length,
     created_at: isoToEpochSeconds(project.createdAt),
     updated_at: isoToEpochSeconds(project.updatedAt),
     ...(isDeletedProject(project) ? { deletedAt: project.deletedAt } : {}),
@@ -5645,7 +5671,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ? state.projects.find((candidate) => candidate.id === c.req.param("id"))
       : findActiveProject(state, c.req.param("id"));
     return project
-      ? c.json(toV1Project(project, state))
+      ? c.json(toV1Project(project, state, "all"))
       : c.json({ error: "Project not found" }, 404);
   });
 

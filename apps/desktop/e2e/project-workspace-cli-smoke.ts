@@ -5,7 +5,6 @@ import {
   chmod,
   mkdir,
   readFile,
-  readdir,
   rm,
   stat,
   writeFile,
@@ -159,25 +158,6 @@ async function closeServer(server: Server): Promise<void> {
   });
 }
 
-async function filesNamed(root: string, name: string): Promise<string[]> {
-  const matches: string[] = [];
-  async function visit(current: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const entryPath = path.join(current, entry.name);
-      if (entry.name === name) matches.push(entryPath);
-      if (entry.isDirectory() && !entry.isSymbolicLink()) await visit(entryPath);
-    }
-  }
-  await visit(root);
-  return matches;
-}
-
 function timelineYaml(sourceNodeId: string, label: string): string {
   return `compositionWidth: 1080
 compositionHeight: 1920
@@ -236,6 +216,11 @@ async function main(): Promise<void> {
         projectStatus.storage.canonicalReplica.projectState.snapshotPath.startsWith(clashHome) &&
         projectStatus.storage.canonicalReplica.mediaAssets.path.startsWith(clashHome),
       JSON.stringify(projectStatus.storage),
+    );
+    check(
+      "canonical project metadata uses SQLite",
+      path.basename(projectStatus.storage.canonicalReplica.metadata.path) === "local.sqlite",
+      projectStatus.storage.canonicalReplica.metadata.path,
     );
 
     let client = new LoroSyncClient({
@@ -408,17 +393,6 @@ async function main(): Promise<void> {
       /:receipt:|"readToken"|"observedVersion"|--if-match/.test(`${command.stdout}\n${command.stderr}`)
     );
     check("public CLI output hides internal observations", forbiddenPublicFields.length === 0, forbiddenPublicFields.map((command) => command.command).join(", "));
-
-    const legacyJsonDatabaseName = ["db", "json"].join(".");
-    const legacyJsonDatabaseFiles = [
-      ...await filesNamed(workspace, legacyJsonDatabaseName),
-      ...await filesNamed(clashHome, legacyJsonDatabaseName),
-    ];
-    check(
-      "CLI workflow creates no legacy JSON database",
-      legacyJsonDatabaseFiles.length === 0,
-      JSON.stringify(legacyJsonDatabaseFiles),
-    );
 
     const report = {
       schemaVersion: 1,

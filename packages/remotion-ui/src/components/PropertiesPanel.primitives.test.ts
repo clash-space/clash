@@ -15,4 +15,20 @@ describe('PropertiesPanel primitives', () => {
     expect(source).not.toContain('<select');
     expect(source).not.toContain('<textarea');
   });
+
+  it('does not present documentation-only rendering as a working editor action', () => {
+    const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
+
+    expect(source).not.toContain('Render video');
+    expect(source).not.toContain('Method 1: Command Line');
+    expect(source).not.toContain('Remotion Studio (Recommended)');
+    expect(source).not.toContain('showExportModal');
+  });
+
+  it('can omit its redundant heading inside the embedded editor side panel', () => {
+    const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('showHeader?: boolean');
+    expect(source).toContain('{showHeader && (');
+  });
 });

@@ -90,6 +90,31 @@ describe("useLoroSync guardrails", () => {
     expect(result.current.doc?.getMap("canvases").get("shots")).toBeTruthy();
   });
 
+  it("adds a project asset node to an explicit Canvas without changing the selected Canvas", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "explicit-canvas-add-hook",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    act(() => {
+      expect(result.current.createCanvas({ id: "shots", name: "Shots" }).ok).toBe(true);
+      expect(result.current.addNodeToCanvas("shots", "asset-node", {
+        type: "image",
+        position: { x: 100, y: 100 },
+        data: { assetId: "asset-1" },
+      })).toBe(true);
+    });
+
+    expect(result.current.doc?.getMap("nodes").get("asset-node")).toMatchObject({
+      canvasId: "shots",
+      data: { assetId: "asset-1" },
+    });
+    expect(new Canvas(result.current.doc!, () => {}, "main").readNode("asset-node")).toBeNull();
+    expect(new Canvas(result.current.doc!, () => {}, "shots").readNode("asset-node")).toBeTruthy();
+  });
+
   it("does not create Canvas or node state from an unknown selected id", async () => {
     const mutations: HostMutationRecord[] = [];
     const { result, rerender } = renderHook(
@@ -339,6 +364,36 @@ describe("useLoroSync guardrails", () => {
       data: { timelineId: "timeline-1" },
     });
     expect((result.current.doc?.getMap("nodes").get("timeline-action-1") as any)?.data?.timelineDsl).toBeUndefined();
+  });
+
+  it("applies Project Timeline edits directly without fabricating a Canvas Action node", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "project-timeline-direct-apply",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    act(() => {
+      expect(result.current.createTimeline({
+        id: "timeline-1",
+        name: "Episode 1",
+        state: { tracks: [] },
+      }).ok).toBe(true);
+    });
+
+    expect(result.current.applyTimelineState).toBeTypeOf("function");
+    act(() => {
+      expect(result.current.applyTimelineState("timeline-1", {
+        tracks: [{ id: "picture", items: [] }],
+      })).toBe(true);
+    });
+
+    expect(readProjectTimeline(result.current.doc!, "timeline-1")).toMatchObject({
+      state: { tracks: [{ id: "picture", items: [] }] },
+      owner: { kind: "project" },
+    });
+    expect(result.current.doc?.getMap("nodes").size).toBe(0);
   });
 
   it("does not let addNode overwrite an existing canvas node", async () => {

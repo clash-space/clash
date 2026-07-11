@@ -347,6 +347,7 @@ export async function startVite({ webPort, logs }) {
     cwd: webDir,
     env: {
       ...process.env,
+      CLASH_WEB_E2E_NO_CLOUDFLARE: "1",
       CLASH_WEB_E2E_PERSIST_STATE: persistStateDir,
     },
     stdio: ["ignore", "pipe", "pipe"],

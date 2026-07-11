@@ -71,7 +71,7 @@ const suiteDefinitions = [
       "cwd observation is owner-only",
       "daemon restart recovers all Project Timelines from one snapshot",
       "public CLI output hides internal observations",
-      "CLI workflow creates no legacy JSON database",
+      "canonical project metadata uses SQLite",
     ],
   },
   {

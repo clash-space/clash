@@ -6,7 +6,7 @@ import ProjectWorkspaceNavigator from './ProjectWorkspaceNavigator';
 afterEach(cleanup);
 
 describe('ProjectWorkspaceNavigator', () => {
-    it('exposes concrete Canvas, standalone Timeline, and Asset surfaces', () => {
+    it('exposes concrete Canvas, Timeline editor documents, and Asset surfaces', () => {
         const onSelectCanvas = vi.fn();
         const onSelectTimeline = vi.fn();
         const onSelectAssets = vi.fn();
@@ -16,12 +16,23 @@ describe('ProjectWorkspaceNavigator', () => {
                     { id: 'main', name: 'Main', position: 0 },
                     { id: 'shots', name: 'Shots', position: 1 },
                 ]}
-                standaloneTimelines={[
+                timelines={[
                     {
                         id: 'timeline-1',
                         name: 'Episode 1',
                         owner: { kind: 'project' },
                         revisionId: 'timeline-revision-v1:test',
+                        state: { tracks: [] },
+                    },
+                    {
+                        id: 'timeline-2',
+                        name: 'Trailer Cut',
+                        owner: {
+                            kind: 'canvas-action',
+                            canvasId: 'main',
+                            actionNodeId: 'timeline-action-2',
+                        },
+                        revisionId: 'timeline-revision-v1:attached',
                         state: { tracks: [] },
                     },
                 ]}
@@ -34,6 +45,7 @@ describe('ProjectWorkspaceNavigator', () => {
                         createdAt: null,
                     },
                 ]}
+                assetCount={12}
                 surface={{ kind: 'canvas', canvasId: 'main' }}
                 onSelectCanvas={onSelectCanvas}
                 onSelectTimeline={onSelectTimeline}
@@ -52,23 +64,48 @@ describe('ProjectWorkspaceNavigator', () => {
         expect(mainTab.className).toContain('w-full');
         expect(mainTab.className).not.toContain('flex-1');
         expect(screen.getByRole('button', { name: 'Canvas actions for Main' }).className).toContain('absolute');
-        expect(screen.getByRole('heading', { name: 'Library' })).toBeTruthy();
+        expect(screen.queryByRole('heading', { name: 'Library' })).toBeNull();
 
         fireEvent.click(screen.getByRole('tab', { name: 'Shots' }));
         fireEvent.click(screen.getByRole('tab', { name: 'Episode 1' }));
+        fireEvent.click(screen.getByRole('tab', { name: 'Trailer Cut' }));
         fireEvent.click(screen.getByRole('tab', { name: /Assets/ }));
 
         expect(onSelectCanvas).toHaveBeenCalledWith('shots');
         expect(onSelectTimeline).toHaveBeenCalledWith('timeline-1');
+        expect(onSelectTimeline).toHaveBeenCalledWith('timeline-2');
         expect(onSelectAssets).toHaveBeenCalledTimes(1);
-        expect(screen.getByText('1')).toBeTruthy();
+        expect(screen.getByText('12')).toBeTruthy();
+    });
+
+    it('keeps Assets as a direct project surface until another library type exists', () => {
+        render(
+            <ProjectWorkspaceNavigator
+                canvases={[{ id: 'main', name: 'Main', position: 0 }]}
+                timelines={[]}
+                assets={[]}
+                assetCount={3}
+                surface={{ kind: 'assets' }}
+                onSelectCanvas={vi.fn()}
+                onSelectTimeline={vi.fn()}
+                onSelectAssets={vi.fn()}
+                onCreateCanvas={vi.fn()}
+                onRenameCanvas={vi.fn()}
+                onDeleteCanvas={vi.fn()}
+                onCreateTimeline={vi.fn()}
+                onAttachTimeline={vi.fn()}
+            />,
+        );
+
+        expect(screen.queryByRole('heading', { name: 'Library' })).toBeNull();
+        expect(screen.getByRole('tab', { name: 'Assets (3)' })).toBeTruthy();
     });
 
     it('keeps an empty Timeline section quiet instead of spending space on a redundant message', () => {
         render(
             <ProjectWorkspaceNavigator
                 canvases={[{ id: 'main', name: 'Main', position: 0 }]}
-                standaloneTimelines={[]}
+                timelines={[]}
                 assets={[]}
                 surface={{ kind: 'canvas', canvasId: 'main' }}
                 onSelectCanvas={vi.fn()}
@@ -94,7 +131,7 @@ describe('ProjectWorkspaceNavigator', () => {
                     { id: 'main', name: 'Main', position: 0 },
                     { id: 'shots', name: 'Shots', position: 1 },
                 ]}
-                standaloneTimelines={[
+                timelines={[
                     {
                         id: 'timeline-1',
                         name: 'Episode 1',

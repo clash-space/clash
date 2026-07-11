@@ -179,7 +179,7 @@ describe("desktop startup test suite", () => {
     expect(JSON.stringify(schema.properties.workspaceCli)).toContain("canvasScopesStayIsolated");
     expect(JSON.stringify(schema.properties.workspaceCli)).toContain("nativeTimelineApplyUsesEntityCas");
     expect(JSON.stringify(schema.properties.workspaceCli)).toContain("daemonRestartRecoversProjectState");
-    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("legacyJsonDatabaseAbsent");
+    expect(JSON.stringify(schema.properties.workspaceCli)).toContain("canonicalSqliteStore");
 
     expect(schema.properties.paths.required).toEqual(
       expect.arrayContaining([
@@ -354,12 +354,13 @@ describe("desktop startup test suite", () => {
     expect(source).not.toContain("CLASH_LOCAL_ACP_MOCK");
   });
 
-  it("starts every desktop UI smoke with an isolated Miniflare state directory", () => {
+  it("starts every desktop UI smoke with an isolated local-only Vite shell", () => {
     const source = readText("e2e/agent-browser-smoke.mjs");
     const helperSource = readText("e2e/startup-shared.mjs");
 
     expect(source).toContain("startVite({ webPort, logs: webLogs })");
     expect(source).not.toContain('spawn("pnpm", ["--dir", webDir, "exec", "vite"');
+    expect(helperSource).toContain('CLASH_WEB_E2E_NO_CLOUDFLARE: "1"');
     expect(helperSource).toContain("CLASH_WEB_E2E_PERSIST_STATE: persistStateDir");
     expect(helperSource).toContain('rm(persistStateDir, { recursive: true, force: true })');
   });

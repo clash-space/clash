@@ -84,7 +84,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useLoroSync } from '@clash/web-ui/hooks/useLoroSync';
 import { actionIsCheckpointLocked } from '@clash/web-ui/lib/actionCheckpoint';
 import { LoroSyncProvider } from './LoroSyncContext';
-import type { ProjectCanvas,
+import { Canvas, type ProjectCanvas,
   ProjectTimeline,
 } from '@clash/shared-types';
 import ActivityToast, { useActivityToasts } from './ActivityToast';
@@ -117,7 +117,7 @@ import ProjectWorkspaceNavigator, {
 } from "./ProjectWorkspaceNavigator";
 import {
   ProjectAssetsSurface,
-  StandaloneTimelineSurface,
+  ProjectTimelineEditorSurface,
 } from "./ProjectWorkspaceSurfaces";
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
@@ -591,6 +591,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [sidebarWidth, setSidebarWidth] = useState(defaultCopilotPanelWidth);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [sidebarHydrated, setSidebarHydrated] = useState(false);
+    const isCopilotDocked = workspaceSurface.kind !== "canvas" && !isSidebarCollapsed;
     const topActionsRight = isSidebarCollapsed ? 24 : sidebarWidth + 32;
 
     useEffect(() => {
@@ -2301,9 +2302,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     loroSync.canvases.find((canvas) => canvas.id === activeCanvasId) ??
     loroSync.canvases[0];
   const projectAssets = project.assets ?? [];
-  const selectedStandaloneTimeline =
+  const selectedTimeline =
     workspaceSurface.kind === "timeline"
-      ? loroSync.standaloneTimelines.find(
+      ? loroSync.timelines.find(
           (timeline) => timeline.id === workspaceSurface.timelineId,
         )
       : undefined;
@@ -2394,17 +2395,48 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     [activeCanvasId, loroSync],
   );
 
-  const placeProjectAsset = useCallback(
-    (asset: ProjectAsset) => {
+  const saveTimelineFromNavigator = useCallback(
+    (timelineId: string, state: unknown) =>
+      loroSync.applyTimelineState(timelineId, state),
+    [loroSync.applyTimelineState],
+  );
+
+  const exitTimelineEditor = useCallback(() => {
+    setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
+  }, [activeCanvasId]);
+
+  const addProjectAssetToCanvas = useCallback(
+    (asset: ProjectAsset, canvasId: string) => {
       const assetId = asset.assetId ?? asset.id;
-      addNode(asset.type, {
-        assetId,
-        label: asset.type === "video" ? "Project Video" : "Project Image",
-        status: "completed",
+      const label = asset.type === "video" ? "Project Video" : "Project Image";
+
+      if (canvasId === activeCanvasId) {
+        const nodeId = addNode(asset.type, { assetId, label, status: "completed" });
+        if (nodeId) setWorkspaceSurface({ kind: "canvas", canvasId });
+        return;
+      }
+
+      const targetNodes = loroSync.doc
+        ? new Canvas(loroSync.doc, () => {}, canvasId).listNodes()
+        : [];
+      const rootNodes = targetNodes.filter((node) => !node.parent_id);
+      const maxBottom = rootNodes.reduce((bottom, node) =>
+        Math.max(bottom, node.position.y + (node.height ?? 300)), 0);
+      const leftmost = rootNodes.reduce((left, node) =>
+        Math.min(left, node.position.x), Number.POSITIVE_INFINITY);
+      const nodeId = `asset-node-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const created = loroSync.addNodeToCanvas(canvasId, nodeId, {
+        id: nodeId,
+        type: asset.type,
+        data: { assetId, label, status: "completed" },
+        position: {
+          x: Number.isFinite(leftmost) ? leftmost : 100,
+          y: maxBottom > 0 ? maxBottom + 50 : 100,
+        },
       });
-      setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
+      if (created) selectCanvas(canvasId);
     },
-    [activeCanvasId, addNode],
+    [activeCanvasId, addNode, loroSync, selectCanvas],
   );
 
   return (
@@ -2463,7 +2495,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
                             <div
                               id="project-workspace-shell"
+                              data-copilot-layout={isCopilotDocked ? "docked" : "overlay"}
                               className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:3rem]"
+                              style={{ right: isCopilotDocked ? sidebarWidth + 24 : 0 }}
                             >
                             <ProjectWorkspaceNavigator
                               header={
@@ -2498,8 +2532,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 </div>
                               }
                               canvases={loroSync.canvases}
-                              standaloneTimelines={loroSync.standaloneTimelines}
+                              timelines={loroSync.timelines}
                               assets={projectAssets}
+                              assetCount={project.assetCount ?? projectAssets.length}
                               surface={workspaceSurface}
                               onSelectCanvas={selectCanvas}
                               onSelectTimeline={(timelineId) => {
@@ -2525,20 +2560,17 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             {workspaceSurface.kind === "assets" && (
                               <ProjectAssetsSurface
                                 assets={projectAssets}
-                                canvasName={activeCanvas?.name ?? "Canvas"}
-                                onPlace={placeProjectAsset}
+                                canvases={loroSync.canvases}
+                                onAddToCanvas={addProjectAssetToCanvas}
                               />
                             )}
 
-                            {selectedStandaloneTimeline && (
-                              <StandaloneTimelineSurface
-                                timeline={selectedStandaloneTimeline}
-                                canvasName={activeCanvas?.name ?? "Canvas"}
-                                onAttach={() =>
-                                  attachTimelineFromNavigator(
-                                    selectedStandaloneTimeline,
-                                  )
-                                }
+                            {selectedTimeline && (
+                              <ProjectTimelineEditorSurface
+                                timeline={selectedTimeline}
+                                assets={projectAssets}
+                                onSave={saveTimelineFromNavigator}
+                                onExit={exitTimelineEditor}
                               />
                             )}
 

@@ -40,6 +40,8 @@ describe("listProjectsWithAssets", () => {
 
   it("falls back to project asset refs when room nodes are unavailable", async () => {
     const fallbackAssets = [
+      asset("asset-6", "projects/project-1/assets/dog-6.png", "2026-06-03T00:06:00.000Z"),
+      asset("asset-5", "projects/project-1/assets/dog-5.png", "2026-06-03T00:05:00.000Z"),
       asset("asset-4", "projects/project-1/assets/dog-4.png", "2026-06-03T00:04:00.000Z"),
       asset("asset-3", "projects/project-1/assets/dog-3.png", "2026-06-03T00:03:00.000Z"),
       asset("asset-2", "projects/project-1/assets/dog-2.png", "2026-06-03T00:02:00.000Z"),
@@ -70,11 +72,12 @@ describe("listProjectsWithAssets", () => {
     const [result] = await listProjectsWithAssets({ DB: {} as D1Database }, "user-1", 1);
 
     expect(result.assets).toHaveLength(4);
+    expect(result.assetCount).toBe(6);
     expect(result.assets.map((a: { url: string }) => a.url)).toEqual([
+      "/assets/projects/project-1/assets/dog-6.png?signed=1",
+      "/assets/projects/project-1/assets/dog-5.png?signed=1",
       "/assets/projects/project-1/assets/dog-4.png?signed=1",
       "/assets/projects/project-1/assets/dog-3.png?signed=1",
-      "/assets/projects/project-1/assets/dog-2.png?signed=1",
-      "/assets/projects/project-1/assets/dog-1.png?signed=1",
     ]);
   });
 });
@@ -86,6 +89,7 @@ describe("getProjectById", () => {
 
   it("includes fallback project asset refs for detail pages", async () => {
     const fallbackAssets = [
+      asset("asset-2", "projects/project-1/assets/dog-2.png", "2026-06-03T00:02:00.000Z"),
       asset("asset-1", "projects/project-1/assets/dog-1.png", "2026-06-03T00:01:00.000Z"),
     ];
 
@@ -112,7 +116,14 @@ describe("getProjectById", () => {
 
     const result = await getProjectById({ DB: {} as D1Database }, "user-1", "project-1");
 
+    expect(result?.assetCount).toBe(2);
     expect(result?.assets).toEqual([
+      expect.objectContaining({
+        id: "asset-2",
+        url: "/assets/projects/project-1/assets/dog-2.png?signed=1",
+        type: "image",
+        storageKey: "projects/project-1/assets/dog-2.png",
+      }),
       expect.objectContaining({
         id: "asset-1",
         url: "/assets/projects/project-1/assets/dog-1.png?signed=1",

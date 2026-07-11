@@ -33,6 +33,7 @@ type ProjectWithAssets = ProjectRow & {
     storageKey: string;
     createdAt: Date | null;
   }>;
+  assetCount: number;
 };
 
 async function ensureDevUser(db: ReturnType<typeof getDb>, env: Env) {
@@ -106,7 +107,7 @@ async function resolveProjectAssets(
     : [];
   const assetById = new Map(assetRows.map((r) => [r.id, r]));
 
-  const projectAssets = await Promise.all(
+  const projectAssetCandidates = await Promise.all(
     mediaNodes.map(async (node: any) => {
       const assetId = node.data.assetId as string;
       const row = assetById.get(assetId);
@@ -128,6 +129,13 @@ async function resolveProjectAssets(
     }),
   ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
 
+  const placedAssetIds = new Set<string>();
+  const projectAssets = projectAssetCandidates.filter((asset) => {
+    if (placedAssetIds.has(asset.assetId)) return false;
+    placedAssetIds.add(asset.assetId);
+    return true;
+  });
+
   const seenAssetIds = new Set(
     mediaNodes
       .map((node: any) => node.data?.assetId)
@@ -142,10 +150,7 @@ async function resolveProjectAssets(
       })
       .filter((r2Key: unknown): r2Key is string => typeof r2Key === "string"),
   );
-  let mergedAssets = projectAssets;
-
-  if (mergedAssets.length < 4) {
-    const fallbackRows = await db
+  const fallbackRows = await db
       .select({
         id: assets.id,
         srcR2Key: assets.srcR2Key,
@@ -158,9 +163,9 @@ async function resolveProjectAssets(
       .innerJoin(assetRefs, eq(assetRefs.assetId, assets.id))
       .where(and(eq(assetRefs.projectId, project.id), eq(assets.userId, userId)))
       .orderBy(desc(assetRefs.importedAt), desc(assets.createdAt))
-      .limit(12);
+      .limit(1000);
 
-    const fallbackAssets = await Promise.all(
+  const fallbackAssets = await Promise.all(
       fallbackRows.map(async (row) => {
         if (seenAssetIds.has(row.id)) return null;
         if (row.kind !== "image" && row.kind !== "video") return null;
@@ -180,10 +185,7 @@ async function resolveProjectAssets(
       }),
     ).then((arr) => arr.filter((a): a is NonNullable<typeof a> => a !== null));
 
-    mergedAssets = [...projectAssets, ...fallbackAssets];
-  }
-
-  return mergedAssets;
+  return [...projectAssets, ...fallbackAssets];
 }
 
 export async function listProjectsWithAssets(
@@ -202,7 +204,12 @@ export async function listProjectsWithAssets(
 
   return Promise.all(
     projectsData.map(async (project) => {
-      return { ...project, assets: await resolveProjectAssets(env, db, userId, project) };
+      const resolvedAssets = await resolveProjectAssets(env, db, userId, project);
+      return {
+        ...project,
+        assets: resolvedAssets.slice(0, 4),
+        assetCount: resolvedAssets.length,
+      };
     }),
   );
 }
@@ -218,7 +225,8 @@ export async function getProjectById(
     where: and(eq(projects.id, id), eq(projects.ownerId, userId)),
   });
   if (!project) return project;
-  return { ...project, assets: await resolveProjectAssets(env, db, userId, project) };
+  const resolvedAssets = await resolveProjectAssets(env, db, userId, project);
+  return { ...project, assets: resolvedAssets, assetCount: resolvedAssets.length };
 }
 
 export async function createNewProject(

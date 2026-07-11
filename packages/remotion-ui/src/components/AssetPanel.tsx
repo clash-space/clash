@@ -20,7 +20,45 @@ type AssetPanelProps = {
   availableAssets?: EditorAssetInput[];
   onAssetPicked?: (asset: EditorAssetInput) => void;
   onExport?: () => Promise<void>;
+  showHeader?: boolean;
+  compact?: boolean;
 };
+
+function AssetThumbnail({ asset, compact }: { asset: Asset; compact: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const sizeClass = compact ? 'h-10 w-10' : 'h-12 w-12';
+  const mediaClassName = `${sizeClass} shrink-0 rounded border border-slate-100 bg-slate-100 object-cover object-left-top`;
+
+  if (failed || !asset.src) {
+    return (
+      <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[9px] font-bold uppercase text-slate-400`}>
+        {asset.type}
+      </div>
+    );
+  }
+  if (asset.type === 'video') {
+    return asset.thumbnail ? (
+      <img src={asset.thumbnail} alt="" className={mediaClassName} onError={() => setFailed(true)} />
+    ) : (
+      <video
+        src={asset.src}
+        muted
+        playsInline
+        preload="metadata"
+        className={mediaClassName}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  if (asset.type === 'image') {
+    return <img src={asset.src} alt="" className={mediaClassName} onError={() => setFailed(true)} />;
+  }
+  return (
+    <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-xs font-bold text-slate-500`}>
+      A
+    </div>
+  );
+}
 
 export const AssetPanel: React.FC<AssetPanelProps> = ({
   onBack,
@@ -29,12 +67,15 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
   availableAssets = [],
   onAssetPicked,
   onExport,
+  showHeader = true,
+  compact = false,
 }) => {
   const dispatch = useEditorDispatch();
   const { tracks, assets } = useEditorStaticState();
   const { currentFrameRef } = useEditorPlaybackRefs();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const showUploadControls = Boolean(onAssetUpload || availableAssets.length > 0);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -202,6 +243,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
   return (
 
     <div className="relative flex h-full flex-col bg-[#fffdfb]">
+      {showHeader && (
       <div className="border-b border-slate-200/80 bg-white/95 px-4 py-3">
         <div className="flex items-center justify-between">
           {onBack ? (
@@ -241,11 +283,12 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           )}
         </div>
       </div>
+      )}
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className={`flex-1 overflow-auto ${compact ? 'p-3' : 'p-4'}`}>
         {/* Quick Add Section */}
-        <div className="mb-6">
-          <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Quick Add</h3>
+        <div className={compact ? 'mb-4' : 'mb-6'}>
+          <h3 className={`m-0 text-xs font-bold uppercase tracking-wide text-slate-500 ${compact ? 'mb-2' : 'mb-3'}`}>Quick Add</h3>
           <div className="flex gap-2">
             <RemotionButton
               onClick={handleAddTextToTrack}
@@ -344,7 +387,8 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
         </div>
 
         {/* Upload Section */}
-        <div className="mb-6">
+        {showUploadControls && (
+        <div className={compact ? 'mb-4' : 'mb-6'}>
           <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Media Files</h3>
           <RemotionFileInput
             ref={fileInputRef}
@@ -368,6 +412,7 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
             Add From Canvas
           </RemotionButton>
         </div>
+        )}
 
         {/* Assets List */}
         <div className="flex flex-col gap-2">
@@ -381,35 +426,9 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 key={asset.id}
                 draggable
                 onDragStart={(e) => handleAssetDragStart(e, asset)}
-                className="group flex cursor-move items-center gap-3 overflow-hidden rounded-md border border-slate-200 bg-white p-2 transition-all hover:border-[#ffb6a8] hover:shadow-sm"
+                className={`group flex cursor-move items-center overflow-hidden rounded-md border border-slate-200 bg-white transition-all hover:border-[#ffb6a8] hover:shadow-sm ${compact ? 'gap-2 p-1.5' : 'gap-3 p-2'}`}
               >
-                {asset.type === 'image' && (
-                  <img
-                    src={asset.src}
-                    alt={asset.name}
-                    className="w-12 h-12 object-cover object-left-top rounded bg-slate-100 border border-slate-100"
-                  />
-                )}
-                {asset.type === 'video' && (
-                  asset.thumbnail ? (
-                    <img
-                      src={asset.thumbnail}
-                      alt={asset.name}
-                      className="w-12 h-12 object-cover object-left-top rounded bg-slate-100 border border-slate-100"
-                    />
-                  ) : (
-                    <video
-                      src={asset.src}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="w-12 h-12 object-cover object-left-top rounded bg-slate-100 border border-slate-100"
-                    />
-                  )
-                )}
-                {asset.type === 'audio' && (
-                  <div className="w-12 h-12 flex items-center justify-center bg-slate-100 rounded text-xl border border-slate-200">🎵</div>
-                )}
+                <AssetThumbnail asset={asset} compact={compact} />
                 <div className="flex-1 min-w-0 overflow-hidden">
                   <div className="text-sm font-medium text-slate-900 truncate" title={asset.name}>
                     {asset.name}

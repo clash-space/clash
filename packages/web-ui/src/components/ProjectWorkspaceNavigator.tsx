@@ -29,8 +29,9 @@ export type ProjectWorkspaceSurface =
 interface ProjectWorkspaceNavigatorProps {
     header?: ReactNode;
     canvases: ProjectCanvas[];
-    standaloneTimelines: ProjectTimeline[];
+    timelines: ProjectTimeline[];
     assets: ProjectAsset[];
+    assetCount?: number;
     surface: ProjectWorkspaceSurface;
     onSelectCanvas: (canvasId: string) => void;
     onSelectTimeline: (timelineId: string) => void;
@@ -71,8 +72,9 @@ function selectedTabId(surface: ProjectWorkspaceSurface): string {
 export default function ProjectWorkspaceNavigator({
     header,
     canvases,
-    standaloneTimelines,
+    timelines,
     assets,
+    assetCount,
     surface,
     onSelectCanvas,
     onSelectTimeline,
@@ -87,22 +89,22 @@ export default function ProjectWorkspaceNavigator({
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
     const canvasSectionMatches = 'canvases'.includes(normalizedQuery);
     const timelineSectionMatches = 'timelines'.includes(normalizedQuery);
-    const librarySectionMatches = 'library assets'.includes(normalizedQuery);
+    const assetsSurfaceMatches = 'assets'.includes(normalizedQuery);
     const visibleCanvases = normalizedQuery && !canvasSectionMatches
         ? canvases.filter((canvas) => canvas.name.toLocaleLowerCase().includes(normalizedQuery))
         : canvases;
     const visibleTimelines = normalizedQuery && !timelineSectionMatches
-        ? standaloneTimelines.filter((timeline) => timeline.name.toLocaleLowerCase().includes(normalizedQuery))
-        : standaloneTimelines;
-    const assetsMatch = !normalizedQuery || librarySectionMatches || assets.some((asset) =>
+        ? timelines.filter((timeline) => timeline.name.toLocaleLowerCase().includes(normalizedQuery))
+        : timelines;
+    const assetsMatch = !normalizedQuery || assetsSurfaceMatches || assets.some((asset) =>
         [asset.id, asset.assetId, asset.storageKey, asset.type]
             .filter((value): value is string => typeof value === 'string')
             .some((value) => value.toLocaleLowerCase().includes(normalizedQuery)),
     );
     const showCanvasSection = !normalizedQuery || canvasSectionMatches || visibleCanvases.length > 0;
     const showTimelineSection = !normalizedQuery || timelineSectionMatches || visibleTimelines.length > 0;
-    const showLibrarySection = !normalizedQuery || assetsMatch;
-    const hasSearchResults = showCanvasSection || showTimelineSection || showLibrarySection;
+    const showAssetsSurface = !normalizedQuery || assetsMatch;
+    const hasSearchResults = showCanvasSection || showTimelineSection || showAssetsSurface;
 
     const handleSelectedTabChange = (tabId: string | null | undefined) => {
         if (!tabId) return;
@@ -115,7 +117,7 @@ export default function ProjectWorkspaceNavigator({
             onSelectCanvas(canvas.id);
             return;
         }
-        const timeline = standaloneTimelines.find((candidate) => timelineTabId(candidate.id) === tabId);
+        const timeline = timelines.find((candidate) => timelineTabId(candidate.id) === tabId);
         if (timeline) onSelectTimeline(timeline.id);
     };
 
@@ -284,23 +286,11 @@ export default function ProjectWorkspaceNavigator({
                 </section>
                 ) : null}
 
-                {showLibrarySection ? (
-                <section
-                    aria-labelledby="project-library-heading"
-                    className={showCanvasSection || showTimelineSection ? 'mt-2' : undefined}
-                >
-                    <div className={sectionHeaderClass}>
-                        <h2
-                            id="project-library-heading"
-                            className="font-display text-[11px] font-semibold text-stone-500"
-                        >
-                            Library
-                        </h2>
-                    </div>
-                    {assetsMatch ? (
+                {showAssetsSurface ? (
+                    <div className={showCanvasSection || showTimelineSection ? 'mt-2' : undefined}>
                     <Tab
                         id="project-assets"
-                        aria-label={`Assets (${assets.length})`}
+                        aria-label={`Assets (${assetCount ?? assets.length})`}
                         className={rowClass(surface.kind === 'assets')}
                     >
                         <ImageIcon
@@ -312,11 +302,10 @@ export default function ProjectWorkspaceNavigator({
                             data-sidebar-action-slot="asset-count"
                             className={`${sidebarActionSlotClass} absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center text-[11px] tabular-nums text-stone-400`}
                         >
-                            {assets.length}
+                            {assetCount ?? assets.length}
                         </span>
                     </Tab>
-                    ) : null}
-                </section>
+                    </div>
                 ) : null}
                 {!hasSearchResults ? (
                     <div role="status" className="flex h-8 items-center px-2 text-[12px] text-stone-400">

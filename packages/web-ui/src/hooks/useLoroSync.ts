@@ -120,8 +120,10 @@ export interface UseLoroSyncReturn {
     position: { x: number; y: number };
   }) => ProjectTimelineMutationResult;
   detachTimeline: (timelineId: string) => ProjectTimelineMutationResult;
+  addNodeToCanvas: (canvasId: string, nodeId: string, nodeData: any) => boolean;
   addNode: (nodeId: string, nodeData: any) => boolean;
   updateNode: (nodeId: string, nodeData: any, options?: LoroHostWriteOptions) => boolean;
+  applyTimelineState: (timelineId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => boolean;
   applyTimelineDsl: (nodeId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => boolean;
   removeNode: (nodeId: string, options?: LoroHostWriteOptions) => boolean;
   removeNodes: (nodeIds: string[], options?: LoroHostWriteOptions) => boolean;
@@ -757,13 +759,13 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   // Helper methods for modifying the document
   // Note: subscribeLocalUpdate automatically sends changes to server
   // So we just need to modify the Loro doc - no manual export needed
-  const addNode = useCallback((nodeId: string, nodeData: any) => {
+  const addNodeToCanvas = useCallback((targetCanvasId: string, nodeId: string, nodeData: any) => {
     const nodesMap = doc.getMap('nodes');
-    if (!doc.getMap("canvases").get(canvasId)) {
+    if (!doc.getMap("canvases").get(targetCanvasId)) {
       callbacksRef.current.onMutation?.(hostMutationRejected({
         operation: 'canvas_add_node',
         entity: { kind: 'canvas-node', id: nodeId },
-      }, `Canvas ${canvasId} not found`));
+      }, `Canvas ${targetCanvasId} not found`));
       return false;
     }
     const existing = nodesMap.get(nodeId);
@@ -778,7 +780,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
     nodesMap.set(nodeId, {
       ...nodeData,
-      canvasId,
+      canvasId: targetCanvasId,
       upstream: Array.isArray(nodeData?.upstream) ? nodeData.upstream : [],
     });
     doc.commit(); // Commit to trigger subscribeLocalUpdate
@@ -791,7 +793,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       afterReadToken: readNodeToken(nodeId, nodesMap.get(nodeId)),
     }));
     return true;
-  }, [canvasId, doc, updateUndoRedoState]);
+  }, [doc, updateUndoRedoState]);
+
+  const addNode = useCallback((nodeId: string, nodeData: any) =>
+    addNodeToCanvas(canvasId, nodeId, nodeData), [addNodeToCanvas, canvasId]);
 
   const createCanvas = useCallback(
     (input: { id: string; name: string }) => {
@@ -959,74 +964,41 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     return true;
   }, [doc, readStateFromLoro, updateUndoRedoState]);
 
-  const applyTimelineDsl = useCallback((nodeId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => {
-    const nodesMap = doc.getMap('nodes');
-    const existing = nodesMap.get(nodeId) as any;
-    if (!existing) {
-      console.warn(`[useLoroSync] Blocked timeline apply for ${nodeId}: node not found`);
-      callbacksRef.current.onMutation?.(hostMutationRejected({
-        operation: 'timeline_apply',
-        entity: { kind: 'timeline', id: nodeId },
-            }, `Node not found: ${nodeId}`));
+  const applyTimelineState = useCallback((timelineId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => {
+    const timeline = listProjectTimelines(doc).find(
+      (candidate) => candidate.id === timelineId,
+    );
+    if (!timeline) {
+      const error = `Timeline ${timelineId} not found`;
+      console.warn(`[useLoroSync] Blocked timeline apply for ${timelineId}: ${error}`);
+      callbacksRef.current.onMutation?.(
+        hostMutationRejected(
+          {
+            operation: "timeline_apply",
+            entity: { kind: "timeline", id: timelineId },
+          },
+          error,
+        ),
+      );
       return false;
     }
 
-    const timelineId =
-        typeof existing.data?.timelineId === "string"
-          ? existing.data.timelineId
-          : undefined;
-      if (!timelineId) {
-        const error = `Timeline Action ${nodeId} must reference a Project Timeline`;
-        console.warn(
-          `[useLoroSync] Blocked timeline apply for ${nodeId}: ${error}`,
-        );
-        callbacksRef.current.onMutation?.(
-          hostMutationRejected(
-            {
-              operation: "timeline_apply",
-              entity: { kind: "timeline", id: nodeId },
-            },
-            error,
-          ),
-        );
-        return false;
-      }
-      const timeline = listProjectTimelines(doc).find(
-        (candidate) => candidate.id === timelineId,
-      );
-      if (!timeline) {
-        const error = `Timeline ${timelineId} not found`;
-        console.warn(
-          `[useLoroSync] Blocked timeline apply for ${nodeId}: ${error}`,
-        );
-        callbacksRef.current.onMutation?.(
-          hostMutationRejected(
-            {
-          operation: "timeline_apply",
-              entity: { kind: "timeline", id: timelineId },
-            },
-            error,
-          ),
-        );
-        return false;
-      }
-
-      const beforeReadToken = projectTimelineReadToken(timeline);
+    const beforeReadToken = projectTimelineReadToken(timeline);
     const guard = validateAgentObservation({
-        actorClientType: options?.actorClientType,
-        operation: "applying Timeline state",
-        observedVersion: options?.ifMatch,
-        currentVersion: beforeReadToken,
-      });
+      actorClientType: options?.actorClientType,
+      operation: "applying Timeline state",
+      observedVersion: options?.ifMatch,
+      currentVersion: beforeReadToken,
+    });
     const hostMutation = validateHostMutationEnvelope({
       operation: 'timeline_apply',
       entity: { kind: 'timeline', id: timelineId },
       expectedReadToken: options?.ifMatch,
       currentReadToken: beforeReadToken,
-        guard,
+      guard,
     });
     if (!guard.ok) {
-      console.warn(`[useLoroSync] Blocked timeline apply for ${nodeId}: ${guard.error}`);
+      console.warn(`[useLoroSync] Blocked timeline apply for ${timelineId}: ${guard.error}`);
       if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
       const { nodes, edges, tasks } = readStateFromLoro();
       const cb = callbacksRef.current;
@@ -1036,23 +1008,55 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       return false;
     }
 
-      const updated = updateProjectTimelineState(doc, timelineId, timelineDsl);
-      if (!updated.ok) return false;
-      setTimelines(listProjectTimelines(doc));
+    const updated = updateProjectTimelineState(doc, timelineId, timelineDsl);
+    if (!updated.ok) return false;
     doc.commit();
+    setTimelines(listProjectTimelines(doc));
     updateUndoRedoState();
     callbacksRef.current.onMutation?.(hostMutationSucceeded(
       hostMutation.ok ? hostMutation.envelope : {
         operation: 'timeline_apply',
         entity: { kind: 'timeline', id: timelineId },
-              },
+      },
       {
         resultEntityId: timelineId,
         afterReadToken: projectTimelineReadToken(updated.timeline),
-          },
+      },
     ));
     return true;
   }, [doc, readStateFromLoro, updateUndoRedoState]);
+
+  const applyTimelineDsl = useCallback((nodeId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => {
+    const existing = doc.getMap('nodes').get(nodeId) as any;
+    if (!existing) {
+      console.warn(`[useLoroSync] Blocked timeline apply for ${nodeId}: node not found`);
+      callbacksRef.current.onMutation?.(hostMutationRejected({
+        operation: 'timeline_apply',
+        entity: { kind: 'timeline', id: nodeId },
+      }, `Node not found: ${nodeId}`));
+      return false;
+    }
+
+    const timelineId = typeof existing.data?.timelineId === "string"
+      ? existing.data.timelineId
+      : undefined;
+    if (!timelineId) {
+      const error = `Timeline Action ${nodeId} must reference a Project Timeline`;
+      console.warn(`[useLoroSync] Blocked timeline apply for ${nodeId}: ${error}`);
+      callbacksRef.current.onMutation?.(
+        hostMutationRejected(
+          {
+            operation: "timeline_apply",
+            entity: { kind: "timeline", id: nodeId },
+          },
+          error,
+        ),
+      );
+      return false;
+    }
+
+    return applyTimelineState(timelineId, timelineDsl, options);
+  }, [applyTimelineState, doc]);
 
   const removeNode = useCallback((nodeId: string, options?: LoroHostWriteOptions) => {
     const nodesMap = doc.getMap('nodes');
@@ -1442,8 +1446,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     createTimeline,
     attachTimeline,
     detachTimeline,
+    addNodeToCanvas,
     addNode,
     updateNode,
+    applyTimelineState,
     applyTimelineDsl,
     removeNode,
     removeNodes,

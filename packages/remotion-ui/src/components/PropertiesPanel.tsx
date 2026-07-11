@@ -73,7 +73,11 @@ const SplitButton: React.FC<{
   );
 });
 
-export const PropertiesPanel: React.FC = () => {
+type PropertiesPanelProps = {
+  showHeader?: boolean;
+};
+
+export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ showHeader = true }) => {
   const dispatch = useEditorDispatch();
   const {
     tracks,
@@ -83,7 +87,6 @@ export const PropertiesPanel: React.FC = () => {
     durationInFrames,
     fps,
   } = useEditorStaticState();
-  const [showExportModal, setShowExportModal] = React.useState(false);
 
   // Find selected item
   const selectedItem = selectedItemId
@@ -113,9 +116,11 @@ export const PropertiesPanel: React.FC = () => {
   if (!selectedItem) {
     return (
       <div className={panelClassName}>
+        {showHeader && (
         <div className={panelHeaderClassName}>
           <h2 className="m-0 text-sm font-bold text-slate-900">Properties</h2>
         </div>
+        )}
         <div className="flex-1 overflow-auto p-4">
           {/* Canvas Section */}
           <div className="mb-6">
@@ -174,61 +179,7 @@ export const PropertiesPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Export Section */}
-          <div className="mb-6">
-            <h3 className={sectionTitleClassName}>Export</h3>
-            <div className="mb-3">
-              <div className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-center text-sm font-medium text-slate-700">MP4 (H.264)</div>
-            </div>
-            <RemotionButton
-              onClick={() => setShowExportModal(true)}
-              className="w-full rounded-md bg-[#ff6b50] py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#e85f47] active:scale-95"
-            >
-              Render video
-            </RemotionButton>
-          </div>
         </div>
-
-        {/* Export Modal */}
-        {showExportModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40" onClick={() => setShowExportModal(false)}>
-            <div className="w-[90%] max-w-xl rounded-xl border border-slate-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h2 className="m-0 mb-4 text-xl font-bold text-slate-900">Export Video</h2>
-              <p className="m-0 mb-6 text-sm text-slate-500 leading-relaxed">
-                To render your video, use one of these methods:
-              </p>
-
-              <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 p-4">
-                <h3 className="m-0 mb-3 text-sm font-semibold text-slate-900">Method 1: Command Line</h3>
-                <div className="mb-2 overflow-x-auto rounded-md border border-slate-800 bg-slate-900 p-3">
-                  <code className="text-xs text-green-400 font-mono whitespace-pre-wrap break-all">
-                    npx remotion render src/remotion/index.tsx VideoComposition out/video.mp4
-                  </code>
-                </div>
-                <p className="m-0 text-xs text-slate-500">
-                  Run this in your terminal to render the video
-                </p>
-              </div>
-
-              <div className="mb-6 rounded-md border border-[#ffd3ca] bg-[#fff3f0] p-4">
-                <h3 className="m-0 mb-3 text-sm font-semibold text-slate-900">Method 2: Remotion Studio (Recommended)</h3>
-                <div className="mb-2 overflow-x-auto rounded-md border border-[#ffd3ca] bg-white p-3">
-                  <code className="font-mono text-xs text-[#d94f38]">npm run dev</code>
-                </div>
-                <p className="m-0 text-xs text-[#d94f38]/80">
-                  Opens Remotion Studio at localhost:3002 with GUI render controls
-                </p>
-              </div>
-
-              <RemotionButton
-                onClick={() => setShowExportModal(false)}
-                className="w-full rounded-md border border-slate-200 bg-slate-100 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 hover:text-slate-900"
-              >
-                Close
-              </RemotionButton>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -251,6 +202,7 @@ export const PropertiesPanel: React.FC = () => {
 
   return (
     <div className={panelClassName}>
+      {showHeader && (
       <div className={panelHeaderClassName}>
         <h2 className="m-0 text-sm font-bold text-slate-900">Properties</h2>
         <div className="flex gap-2">
@@ -268,6 +220,7 @@ export const PropertiesPanel: React.FC = () => {
           </RemotionButton>
         </div>
       </div>
+      )}
 
       <div className="flex-1 overflow-auto p-4">
 

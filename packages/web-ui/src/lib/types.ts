@@ -22,6 +22,7 @@ export interface Project {
   createdAt: Date | string | number | null;
   updatedAt: Date | string | number | null;
   assets?: ProjectAsset[];
+  assetCount?: number;
 }
 
 export interface ProjectWithAssets extends Project {
