@@ -45,6 +45,7 @@ describe('ProjectWorkspaceNavigator', () => {
                         createdAt: null,
                     },
                 ]}
+                footer={<button type="button">Project settings</button>}
                 assetCount={12}
                 surface={{ kind: 'canvas', canvasId: 'main' }}
                 onSelectCanvas={onSelectCanvas}
@@ -65,6 +66,8 @@ describe('ProjectWorkspaceNavigator', () => {
         expect(mainTab.className).not.toContain('flex-1');
         expect(screen.getByRole('button', { name: 'Canvas actions for Main' }).className).toContain('absolute');
         expect(screen.queryByRole('heading', { name: 'Library' })).toBeNull();
+        const projectControls = screen.getByRole('group', { name: 'Project controls' });
+        expect(projectControls.contains(screen.getByRole('button', { name: 'Project settings' }))).toBe(true);
 
         fireEvent.click(screen.getByRole('tab', { name: 'Shots' }));
         fireEvent.click(screen.getByRole('tab', { name: 'Episode 1' }));

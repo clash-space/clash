@@ -30,6 +30,7 @@ const historyScreenshot = path.join(captureDir, "history-agent-browser-desktop.p
 const narrowLayoutScreenshot = path.join(captureDir, "narrow-layout-agent-browser-desktop.png");
 const timelineDockScreenshot = path.join(captureDir, "timeline-dock-agent-browser-desktop.png");
 const assetDestinationScreenshot = path.join(captureDir, "asset-destination-agent-browser-desktop.png");
+const localSettingsScreenshot = path.join(captureDir, "local-settings-agent-browser-desktop.png");
 let electronTargetRecovery = null;
 
 function sleep(ms) {
@@ -652,6 +653,8 @@ async function main() {
     await waitForEval(
       `document.querySelector('[data-testid="project-timeline-editor"]') &&
        document.querySelector('[data-layout="embedded"]') &&
+       !document.querySelector('[role="dialog"][aria-label="Video editor"]') &&
+       !document.querySelector('[aria-label^="Open parent Canvas"]') &&
        document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'docked' &&
        document.body.innerText.includes(${JSON.stringify(draftMarker)})`,
       "embedded Timeline editor with docked persistent chat",
@@ -682,15 +685,22 @@ async function main() {
         const workspace = document.querySelector('#project-workspace-shell')?.getBoundingClientRect();
         const copilot = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
         const editor = document.querySelector('[data-testid="project-timeline-editor"]')?.getBoundingClientRect();
+        const navigator = document.querySelector('[aria-label="Project navigator"]')?.getBoundingClientRect();
+        const footer = document.querySelector('.clash-project-sidebar-footer')?.getBoundingClientRect();
+        const settings = document.querySelector('.clash-project-sidebar-footer [aria-label="Settings"]')?.getBoundingClientRect();
         const itemCount = document.querySelectorAll('[aria-label^="text:"]').length;
-        if (!workspace || !copilot || !editor || itemCount !== 1) return false;
+        if (!workspace || !copilot || !editor || !navigator || !footer || !settings || itemCount !== 1) return false;
         const gap = copilot.left - workspace.right;
-        if (gap < 8 || gap > 16) return false;
+        if (gap < -1 || gap > 1) return false;
+        if (Math.abs(navigator.bottom - footer.bottom) > 1) return false;
+        if (settings.top < footer.top || settings.bottom > footer.bottom) return false;
+        if (document.querySelector('#project-top-actions')) return false;
         if (!document.body.innerText.includes(${JSON.stringify(draftMarker)})) return false;
         return {
           workspace: { left: workspace.left, right: workspace.right, width: workspace.width },
           copilot: { left: copilot.left, right: copilot.right, width: copilot.width },
           editor: { left: editor.left, right: editor.right, width: editor.width },
+          sidebarFooter: { top: footer.top, bottom: footer.bottom, settingsLeft: settings.left },
           gap,
           itemCount,
         };
@@ -774,6 +784,33 @@ async function main() {
       throw new Error(`Explicit asset placement state failed: ${JSON.stringify(assetPlacement)}`);
     }
 
+    if (!evalJson(`(() => {
+      const link = document.querySelector('a[aria-label="Settings"]');
+      if (!link) return false;
+      const rect = link.getBoundingClientRect();
+      const style = getComputedStyle(link);
+      if (rect.width <= 0 || rect.height <= 0 || style.display === 'none' || style.visibility === 'hidden') return false;
+      link.scrollIntoView({ block: 'center', inline: 'center' });
+      link.click();
+      return true;
+    })()`)) {
+      throw new Error("Could not open local desktop Settings from the project sidebar");
+    }
+    const localSettings = await waitForEval(
+      `(() => {
+        if (location.pathname !== '/settings') return false;
+        const signOut = [...document.querySelectorAll('button')].find((button) =>
+          (button.innerText || button.textContent || '').trim() === 'Sign out'
+        );
+        if (signOut) return false;
+        if (!document.body.innerText.includes('Workspace controls')) return false;
+        return { path: location.pathname, signOutVisible: false };
+      })()`,
+      "local Settings without cloud sign out",
+      10000,
+    );
+    agentBrowser(["screenshot", localSettingsScreenshot]);
+
     console.log("[desktop-agent-browser] state", JSON.stringify(state));
     console.log("[desktop-agent-browser] history", JSON.stringify({
       firstHistory,
@@ -788,11 +825,13 @@ async function main() {
     console.log("[desktop-agent-browser] timeline dock", JSON.stringify(timelineDock));
     console.log("[desktop-agent-browser] asset destination", JSON.stringify(assetDestination));
     console.log("[desktop-agent-browser] asset placement", JSON.stringify(assetPlacement));
+    console.log("[desktop-agent-browser] local settings", JSON.stringify(localSettings));
     console.log(`[desktop-agent-browser] screenshot ${latestScreenshot}`);
     console.log(`[desktop-agent-browser] history screenshot ${historyScreenshot}`);
     console.log(`[desktop-agent-browser] narrow screenshot ${narrowLayoutScreenshot}`);
     console.log(`[desktop-agent-browser] timeline dock screenshot ${timelineDockScreenshot}`);
     console.log(`[desktop-agent-browser] asset destination screenshot ${assetDestinationScreenshot}`);
+    console.log(`[desktop-agent-browser] local settings screenshot ${localSettingsScreenshot}`);
     assertNoForbiddenRendererIssues(electronLogs);
   } catch (error) {
     try {

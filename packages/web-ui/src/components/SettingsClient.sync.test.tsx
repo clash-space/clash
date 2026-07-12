@@ -187,6 +187,31 @@ describe("SettingsSurface tab state", () => {
     expect(screen.queryByText("Create tokens for CLI or API access")).toBeNull();
   });
 
+  it("does not offer cloud sign out in desktop local settings", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = {
+      mode: "desktop",
+      apiBaseUrl: "http://127.0.0.1:49152",
+    };
+
+    render(
+      <MemoryRouter>
+        <SettingsSurface active="agents" onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("keeps sign out available in hosted settings", () => {
+    render(
+      <MemoryRouter>
+        <SettingsSurface active="agents" onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+  });
+
   it("keeps hosted API tokens available", async () => {
     const listApiTokensMock = vi.mocked(listApiTokens);
     listApiTokensMock.mockClear();

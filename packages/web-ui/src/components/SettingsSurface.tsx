@@ -272,16 +272,18 @@ export function SettingsSurface({
             })}
           </TabList>
         </TabProvider>
-        <div className="border-t border-warm-border p-2">
-          <Button
-            onClick={handleSignOut}
-            size="sm"
-            className="w-full justify-start rounded-lg border-transparent bg-transparent px-3 py-2 text-sm text-stone-700 shadow-none hover:bg-warm-surface hover:text-red-600 focus-visible:ring-brand/60 dark:text-stone-200"
-            leftIcon={<SignOut className="h-4 w-4" weight="bold" />}
-          >
-            Sign out
-          </Button>
-        </div>
+        {hostedSettingsAvailable ? (
+          <div className="border-t border-warm-border p-2">
+            <Button
+              onClick={handleSignOut}
+              size="sm"
+              className="w-full justify-start rounded-lg border-transparent bg-transparent px-3 py-2 text-sm text-stone-700 shadow-none hover:bg-warm-surface hover:text-red-600 focus-visible:ring-brand/60 dark:text-stone-200"
+              leftIcon={<SignOut className="h-4 w-4" weight="bold" />}
+            >
+              Sign out
+            </Button>
+          </div>
+        ) : null}
       </aside>
 
       <main className={`${isPage ? 'clash-settings-page-content' : 'clash-settings-dialog-content'} min-w-0 flex-1 overflow-y-auto`}>

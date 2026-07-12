@@ -56,7 +56,7 @@ import ImageEditorNode from './nodes/ImageEditorNode';
 import VideoClipperNode from './nodes/VideoClipperNode';
 import { MediaViewerProvider } from './MediaViewerContext';
 import { ProjectProvider } from './ProjectContext';
-import { VideoEditorProvider, useVideoEditor } from './VideoEditorContext';
+import { VideoEditorProvider } from './VideoEditorContext';
 import { ImageEditorProvider } from './ImageEditorContext';
 import { VideoClipperProvider } from './VideoClipperContext';
 import { getLayoutedElements } from '@clash/web-ui/lib/utils/elkLayout';
@@ -164,27 +164,6 @@ interface ProjectEditorProps {
         tags: string | null;
         manifest: string;
     }>;
-}
-
-/**
- * Keeps the project workspace mounted behind the video editor control layer.
- * The overlay owns interaction while the editor is open, but the canvas remains
- * visible as spatial context.
- */
-function ProjectSurfaceBehindEditor({ children }: { children: React.ReactNode;
-}) {
-    const { isOpen } = useVideoEditor();
-    return (
-        <div
-            aria-hidden={isOpen}
-            style={{
-                pointerEvents: isOpen ? 'none' : 'auto',
-            }}
-            className="h-[var(--clash-project-editor-height,100vh)] w-full"
-        >
-            {children}
-        </div>
-    );
 }
 
 const nodeTypes = {
@@ -592,7 +571,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [sidebarHydrated, setSidebarHydrated] = useState(false);
     const isCopilotDocked = workspaceSurface.kind !== "canvas" && !isSidebarCollapsed;
-    const topActionsRight = isSidebarCollapsed ? 24 : sidebarWidth + 32;
 
     useEffect(() => {
         const savedWidth = localStorage.getItem('copilot-sidebar-width');
@@ -1847,35 +1825,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         }
     };
 
-    const addAssetEdgeToEditor = useCallback((assetNodeId: string, editorNodeId: string) => {
-        const currentEdges = edgesRef.current;
-        const exists = currentEdges.some(
-            (edge) =>
-                edge.source === assetNodeId &&
-                edge.target === editorNodeId &&
-                edge.targetHandle === 'assets'
-        );
-        if (exists) return;
-
-        const edgeId = `edge-${assetNodeId}-${editorNodeId}-assets`;
-        const newEdge: Edge = {
-            id: edgeId,
-            source: assetNodeId,
-            target: editorNodeId,
-            targetHandle: 'assets',
-        };
-        if (!loroSync.addEdge(edgeId, newEdge)) return;
-
-        const nextEdges = [...currentEdges, newEdge];
-        edgesRef.current = nextEdges;
-        setEdges(nextEdges);
-    }, [setEdges, loroSync]);
-
     const uploadFileAsAssetNode = useCallback(
         async (
             file: File,
-            assetType: 'image' | 'video' | 'audio',
-            options?: { connectToVideoEditorId?: string }
+            assetType: 'image' | 'video' | 'audio'
         ): Promise<{
             id: string;
             type: 'image' | 'video' | 'audio';
@@ -1953,10 +1906,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 if (loroSync.connected) {
                     loroSync.updateNode(placeholderId, { width: scaled.width, height: scaled.height });
                 }
-            }
-
-            if (options?.connectToVideoEditorId) {
-                addAssetEdgeToEditor(placeholderId, options.connectToVideoEditorId);
             }
 
             try {
@@ -2079,7 +2028,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 return null;
             }
         },
-        [addNode, addAssetEdgeToEditor, loroSync, project.id, setNodes]
+        [addNode, loroSync, project.id, setNodes]
     );
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -2095,19 +2044,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
             }
         }
     };
-
-    const handleEditorAssetAdded = useCallback(
-        async (
-            file: File,
-            type: 'image' | 'video' | 'audio',
-            editorNodeId: string
-        ) => {
-            if (!type || !editorNodeId) return null;
-            return uploadFileAsAssetNode(file, type, { connectToVideoEditorId: editorNodeId });
-        },
-        [uploadFileAsAssetNode]
-    );
-
 
     const handleCommand = useCallback(async (command: any) => {
         console.log('Executing command:', command);
@@ -2309,6 +2245,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
         )
       : undefined;
 
+  const openTimelineFromCanvasAction = useCallback((timelineId: string) => {
+    if (!loroSync.timelines.some((timeline) => timeline.id === timelineId)) return;
+    setWorkspaceSurface({ kind: "timeline", timelineId });
+  }, [loroSync.timelines]);
+
   const selectCanvas = useCallback(
     (canvasId: string) => {
       setNodes([]);
@@ -2401,10 +2342,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     [loroSync.applyTimelineState],
   );
 
-  const exitTimelineEditor = useCallback(() => {
-    setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
-  }, [activeCanvasId]);
-
   const addProjectAssetToCanvas = useCallback(
     (asset: ProjectAsset, canvasId: string) => {
       const assetId = asset.assetId ?? asset.id;
@@ -2446,16 +2383,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
               <PresenceAwarenessProvider peers={awareness.peers}>
               <ImageEditorProvider>
                 <VideoClipperProvider>
-                <VideoEditorProvider
-                    onAssetAddedToCanvas={handleEditorAssetAdded}
-                    onCanvasAssetLinked={(asset, editorNodeId) => {
-                        if (!asset.sourceNodeId) return;
-                        addAssetEdgeToEditor(asset.sourceNodeId, editorNodeId);
-                    }}
-                    nodes={nodes}
-                    edges={edges}
-                >
-                    <ProjectSurfaceBehindEditor>
+                <VideoEditorProvider onOpenTimeline={openTimelineFromCanvasAction}>
                     <MediaViewerProvider>
                         <LayoutActionsProvider value={{ relayoutParent, ungroup }}>
                         <div
@@ -2483,21 +2411,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 isSidebarCollapsed={isSidebarCollapsed}
                             />
 
-                            <motion.div
-                                id="project-top-actions"
-                                className="absolute top-3 z-20 flex items-center pointer-events-auto"
-                                style={{ right: topActionsRight }}
-                                animate={{ right: topActionsRight }}
-                                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                            >
-                                <UserControls projectChrome />
-                            </motion.div>
-
                             <div
                               id="project-workspace-shell"
                               data-copilot-layout={isCopilotDocked ? "docked" : "overlay"}
                               className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:3rem]"
-                              style={{ right: isCopilotDocked ? sidebarWidth + 24 : 0 }}
+                              style={{ right: isCopilotDocked ? sidebarWidth : 0 }}
                             >
                             <ProjectWorkspaceNavigator
                               header={
@@ -2531,6 +2449,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                   </form>
                                 </div>
                               }
+                              footer={<UserControls compact />}
                               canvases={loroSync.canvases}
                               timelines={loroSync.timelines}
                               assets={projectAssets}
@@ -2569,8 +2488,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                               <ProjectTimelineEditorSurface
                                 timeline={selectedTimeline}
                                 assets={projectAssets}
+                                canvases={loroSync.canvases}
                                 onSave={saveTimelineFromNavigator}
-                                onExit={exitTimelineEditor}
+                                onOpenCanvas={selectCanvas}
                               />
                             )}
 
@@ -2854,6 +2774,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         onWidthChange={setSidebarWidth}
                                         isCollapsed={isSidebarCollapsed}
                                         onCollapseChange={setIsSidebarCollapsed}
+                                        layoutMode={workspaceSurface.kind === "canvas" ? "floating" : "docked"}
                                         selectedNodes={selectedNodes}
                                         onAddNode={addNode}
                                         onRemoveNode={(nodeId, options) => {
@@ -2934,7 +2855,6 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                         </div>
                         </LayoutActionsProvider>
                     </MediaViewerProvider>
-                    </ProjectSurfaceBehindEditor>
                 </VideoEditorProvider>
                 </VideoClipperProvider>
               </ImageEditorProvider>

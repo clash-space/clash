@@ -9,6 +9,8 @@ describe('Editor embedded layout', () => {
     expect(source).toContain('data-layout={layout}');
     expect(source).toContain('role="tablist"');
     expect(source).toContain('aria-label="Editor side panel"');
+    expect(source).toContain('headerLeadingAction?: React.ReactNode');
+    expect(source).toContain('{headerLeadingAction}');
     expect(source).toContain('showHeader={false}');
     expect(source).toContain('compact');
   });

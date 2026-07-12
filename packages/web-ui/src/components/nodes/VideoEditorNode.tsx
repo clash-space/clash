@@ -6,14 +6,12 @@ import { FilmSlate, VideoCamera } from '@phosphor-icons/react';
 import { useVideoEditor } from '../VideoEditorContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { SignedImg } from '../SignedMedia';
-import { useSignedUrl, getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-import { normalizeStatus, isActiveStatus } from '@clash/web-ui/lib/assetStatus';
+import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
 import {
     buildPendingRenderVideoNodePayload,
     getTimelineDurationInFrames,
 } from '@clash/web-ui/lib/pendingRenderVideo';
-import { hydrateAssetIdsFromNodes } from '@clash/web-ui/lib/timelineDsl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getItemSourceNodeId } from '@master-clash/remotion-core';
 import { Button } from '../ui/button';
@@ -88,7 +86,7 @@ async function resolveNodeAsset(node: Node): Promise<{
 }
 
 const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => {
-    const { openEditor } = useVideoEditor();
+    const { openTimeline } = useVideoEditor();
     const loroSync = useOptionalLoroSyncContext();
     const reactFlow = useReactFlow();
     const [rendering, setRendering] = useState(false);
@@ -170,200 +168,14 @@ const VideoEditorNode = ({ data, id }: NodeProps<Node<Record<string, any>>>) => 
         };
     }, [data.timelineId, id, loroSync?.doc, loroUpdateTrigger]);
 
-    const handleOpenEditor = useCallback(async () => {
-        // Derive connected assets dynamically from edges
-        // This removes the need to sync edge data to node.data.inputs
-        // Get nodes/edges inside callback to avoid reactFlow dependency
-        const nodes = reactFlow.getNodes();
-        const edges = reactFlow.getEdges();
-
-        // Find edges connected to this node's 'assets' handle
-        // Relaxed check: Look for ANY edge connected to this target node,
-        // prioritizing 'assets' handle but falling back to null handle if needed.
-        const connectedEdges = edges.filter(
-            (edge) => edge.target === id && (edge.targetHandle === 'assets' || !edge.targetHandle)
-        );
-
-        // Map connected edges to canvas source nodes, each resolved through
-        // the D1 asset row (see resolveNodeAsset) to obtain authoritative
-        // srcR2Key / dimensions / duration from assetId alone.
-        const edgeSourceNodes = connectedEdges
-            .map((edge) => nodes.find((n) => n.id === edge.source))
-            .filter((n): n is Node => !!n)
-            .filter((n) => {
-                const nodeType = (n.type || '').toLowerCase();
-                if (!['image', 'video', 'audio'].includes(nodeType)) return false;
-                // Skip only when a video is actively generating AND has no src anywhere.
-                const statusValue = n.data?.status;
-                const normalizedStatus = normalizeStatus(
-                    typeof statusValue === 'string' ? statusValue : undefined,
-                );
-                const isActive = isActiveStatus(normalizedStatus);
-                const hasAnySrc = typeof n.data?.assetId === 'string';
-                return !(nodeType === 'video' && isActive && !hasAnySrc);
-            });
-
-        const edgeAssets = await Promise.all(
-            edgeSourceNodes.map(async (sourceNode) => {
-                const resolved = await resolveNodeAsset(sourceNode);
-                const nodeType = (sourceNode.type || '').toLowerCase() as
-                    | 'image'
-                    | 'video'
-                    | 'audio';
-                const label =
-                    typeof sourceNode.data.label === 'string' ? sourceNode.data.label : undefined;
-                return {
-                    id: sourceNode.id,
-                    type: nodeType,
-                    src: resolved.srcR2Key ? await getSignedUrl(resolved.srcR2Key) : undefined,
-                    thumbnail: resolved.coverR2Key
-                        ? await getSignedUrl(resolved.coverR2Key)
-                        : undefined,
-                    name: label || sourceNode.type,
-                    width: resolved.width,
-                    height: resolved.height,
-                    duration: resolved.durationSec,
-                    sourceNodeId: sourceNode.id,
-                    backingAssetId: resolved.backingAssetId,
-                };
-            }),
-        );
-
-        // Fallback/Supplement: Scan timelineDsl for used assets
-        // This ensures that if arrange_timeline put something in the timeline, it shows up in assets
-        // even if edges are missing or malformed.
+    const handleOpenEditor = useCallback(() => {
         const timeline = readTimelineForAction(loroSync?.doc ?? null, id);
-        let timelineDsl = timeline?.state as any;
-
-        // Migrate legacy items (src but no assetId) to reference-by-nodeId
-        // BEFORE we scan for timeline assets — otherwise legacy items without
-        // assetId get dropped from the editor's initial asset set and fail
-        // to resolve inside the editor canvas.
-        if (timelineDsl?.tracks) {
-            timelineDsl = {
-                ...timelineDsl,
-                tracks: hydrateAssetIdsFromNodes(timelineDsl.tracks, nodes),
-            };
+        if (!timeline) {
+            console.error('[VideoEditorNode] Timeline Action has no Project Timeline');
+            return;
         }
-
-        const timelineAssets: any[] = [];
-        if (timelineDsl?.tracks) {
-            const sourceNodeIdsInTimeline = new Set<string>();
-            timelineDsl.tracks.forEach((track: any) => {
-                track.items?.forEach((item: any) => {
-                    const sourceNodeId = getItemSourceNodeId(item);
-                    if (sourceNodeId) {
-                        sourceNodeIdsInTimeline.add(sourceNodeId);
-                    }
-                });
-            });
-
-            await Promise.all(Array.from(sourceNodeIdsInTimeline).map(async (sourceNodeId) => {
-                const node = nodes.find(n => n.id === sourceNodeId);
-                if (!node) return;
-                const nodeType = (node.type || '').toLowerCase();
-                if (!['image', 'video', 'audio'].includes(nodeType)) return;
-                const resolved = await resolveNodeAsset(node);
-                const label =
-                    typeof node.data.label === 'string' ? node.data.label : undefined;
-                timelineAssets.push({
-                    id: node.id,
-                    type: nodeType as 'image' | 'video' | 'audio',
-                    src: resolved.srcR2Key ? await getSignedUrl(resolved.srcR2Key) : undefined,
-                    thumbnail: resolved.coverR2Key
-                        ? await getSignedUrl(resolved.coverR2Key)
-                        : undefined,
-                    name: label || node.type,
-                    width: resolved.width,
-                    height: resolved.height,
-                    duration: resolved.durationSec,
-                    sourceNodeId: node.id,
-                    backingAssetId: resolved.backingAssetId,
-                });
-            }));
-        }
-
-        // Combine and deduplicate
-        const allAssets = [...edgeAssets, ...timelineAssets];
-        const uniqueAssets = Array.from(new Map(allAssets.map(item => [item.id, item])).values());
-
-        const connectedAssetIds = new Set(uniqueAssets.map(a => a.id));
-        const inputSrcs = new Set(
-            uniqueAssets.map((asset: any) => asset?.src).filter(Boolean)
-        );
-        const seenKeys = new Set<string>();
-        // Available assets: everything resolvable on the canvas that isn't
-        // already wired to the editor. A node is only a usable asset source
-        // if it carries an assetId — that's the single input to resolution.
-        const availableCandidates = nodes
-            .filter((node) => ['image', 'video', 'audio'].includes((node.type || '').toLowerCase()))
-            .filter((node) => {
-                if (connectedAssetIds.has(node.id)) return false;
-                return typeof node.data?.assetId === 'string';
-            })
-            .filter((node) => {
-                const statusValue = node.data?.status;
-                if (typeof statusValue !== 'string') return true;
-                return !isActiveStatus(normalizeStatus(statusValue));
-            });
-        const availableAssets = await Promise.all(
-            availableCandidates.map(async (node) => {
-                const resolved = await resolveNodeAsset(node);
-                const label = typeof node.data?.label === 'string' ? node.data.label : undefined;
-                return {
-                    id: node.id,
-                    type: (node.type || '').toLowerCase() as 'image' | 'video' | 'audio',
-                    src: resolved.srcR2Key ? await getSignedUrl(resolved.srcR2Key) : undefined,
-                    thumbnail: resolved.coverR2Key
-                        ? await getSignedUrl(resolved.coverR2Key)
-                        : undefined,
-                    name: label || node.type,
-                    width: resolved.width,
-                    height: resolved.height,
-                    duration: resolved.durationSec,
-                    sourceNodeId: node.id,
-                    backingAssetId: resolved.backingAssetId,
-                };
-            }),
-        );
-        const filteredAvailableAssets = availableAssets
-            .filter((a): a is typeof a & { src: string } => typeof a.src === 'string' && !!a.src)
-            .filter((asset) => {
-                if (inputSrcs.has(asset.src)) return false;
-                const key = asset.sourceNodeId || asset.src;
-                if (seenKeys.has(key)) return false;
-                seenKeys.add(key);
-                return true;
-            });
-        // Drop any edge/timeline asset that couldn't be resolved to a src at
-        // all — the Editor expects Asset.src: string. An unresolved asset
-        // usually means the node is still generating; it'll show up next open.
-        const uniqueAssetsResolved = uniqueAssets.filter(
-            (a): a is typeof a & { src: string } => typeof a.src === 'string' && !!a.src,
-        );
-
-        console.group('[VideoEditor.openEditor] passing to Editor');
-        console.log('editorNodeId:', id);
-        console.log('timelineDsl.tracks:', timelineDsl?.tracks?.map((t: any) => ({
-            name: t.name,
-            items: t.items?.map((it: any) => ({
-                id: it.id, type: it.type, sourceNodeId: it.sourceNodeId, assetId: it.assetId,
-                from: it.from, duration: it.durationInFrames,
-            })),
-        })));
-        console.log('allAssets (before filter):', uniqueAssets.map((a: any) => ({
-            id: a.id, type: a.type, src: a.src?.slice(0, 80) ?? null, hasSrc: !!a.src,
-        })));
-        console.log('uniqueAssetsResolved (after src-required filter):', uniqueAssetsResolved.map((a: any) => ({
-            id: a.id, src: a.src?.slice(0, 80),
-        })));
-        console.log('filteredAvailableAssets:', filteredAvailableAssets.map((a: any) => ({ id: a.id, src: a.src?.slice(0, 80) })));
-        console.groupEnd();
-
-        openEditor(uniqueAssetsResolved, id, timelineDsl, filteredAvailableAssets);
-        // Note: reactFlow is intentionally excluded from deps - we read it inside the callback
-        // to avoid re-creating this callback on every ProjectEditor render
-    }, [data.timelineId, id, loroSync, openEditor]);
+        openTimeline(timeline.id);
+    }, [id, loroSync?.doc, openTimeline]);
 
     const handleRender = useCallback(async () => {
 

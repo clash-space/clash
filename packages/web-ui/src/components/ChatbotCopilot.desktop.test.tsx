@@ -1210,7 +1210,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(progress.className).not.toContain("top-0");
   });
 
-  it("aligns header and activity rail icons on the same shifted rail", () => {
+  it("keeps collapse in the header toolbar instead of reserving a left-side rail", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -1241,8 +1241,39 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     const headerRail = container.querySelector(".clash-copilot-panel-header [data-copilot-rail-slot]");
     const activityRail = container.querySelector(".clash-copilot-agent-activity-row [data-copilot-rail-slot]");
-    expect(headerRail?.className).toContain("-translate-x-1");
+    const collapse = screen.getByRole("button", { name: "Collapse AI Copilot" });
+    expect(headerRail).toBeNull();
+    expect(collapse.closest('[role="toolbar"]')).toBeTruthy();
     expect(activityRail?.className).toContain("-translate-x-1");
+  });
+
+  it("renders fixed editor surfaces as a flush docked column", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({ layoutMode: "docked" });
+
+    const panel = document.querySelector<HTMLElement>("#clash-copilot-panel");
+    expect(panel).toBeTruthy();
+    if (!panel) throw new Error("Missing Copilot panel");
+    expect(panel.className).toContain("clash-copilot-panel-shell--docked");
+    expect(panel.className).toContain("right-0");
+    expect(panel.className).toContain("bottom-0");
+    expect(panel.className).not.toContain("right-3");
+    expect(panel.className).not.toContain("bottom-3");
   });
 
   it("resets to a desktop runtime draft from the header plus button", () => {

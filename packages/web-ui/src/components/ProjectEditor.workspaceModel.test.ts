@@ -14,6 +14,9 @@ describe('ProjectEditor workspace model', () => {
         expect(source).toContain('id="project-workspace-shell"');
         expect(source).toContain('grid-cols-[12rem_minmax(0,1fr)]');
         expect(source).toContain('header={');
+        expect(source).toContain('footer={<UserControls compact />}');
+        expect(source).not.toContain('id="project-top-actions"');
+        expect(source).not.toContain('topActionsRight');
         expect(source).toContain('clash-project-sidebar-header');
         expect(source).not.toContain('className={`absolute bottom-0 left-52');
     });
@@ -30,13 +33,17 @@ describe('ProjectEditor workspace model', () => {
     it('opens a Timeline as an editor document instead of an information surface', () => {
         expect(source).toContain('timelines={loroSync.timelines}');
         expect(source).toContain('applyTimelineState');
+        expect(source).toContain('onOpenTimeline={openTimelineFromCanvasAction}');
+        expect(source).toContain('onOpenCanvas={selectCanvas}');
+        expect(source).not.toContain('onExit={exitTimelineEditor}');
         expect(source).not.toContain('standaloneTimelines={loroSync.standaloneTimelines}');
     });
 
     it('keeps one project chat mounted while fixed workspace surfaces dock beside it', () => {
         expect(source).toContain('const isCopilotDocked = workspaceSurface.kind !== "canvas" && !isSidebarCollapsed;');
         expect(source).toContain('data-copilot-layout={isCopilotDocked ? "docked" : "overlay"}');
-        expect(source).toContain('right: isCopilotDocked ? sidebarWidth + 24 : 0');
+        expect(source).toContain('right: isCopilotDocked ? sidebarWidth : 0');
+        expect(source).toContain('layoutMode={workspaceSurface.kind === "canvas" ? "floating" : "docked"}');
         expect(source.match(/<ChatbotCopilot/g)).toHaveLength(1);
 
         const copilotKey = source.match(/<ChatbotCopilot[\s\S]*?key=\{([^}]+)\}/)?.[1] ?? '';

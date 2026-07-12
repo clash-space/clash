@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const repoRoot = process.cwd().endsWith("packages/web-ui")
+  ? join(process.cwd(), "../..")
+  : process.cwd();
 const readSource = (path: string) =>
-  readFileSync(join(process.cwd(), path), "utf8");
+  readFileSync(join(repoRoot, path), "utf8");
 
 describe("editor modal primitives", () => {
   it("uses a shared Dialog-backed editor modal shell", () => {
@@ -18,7 +21,6 @@ describe("editor modal primitives", () => {
   });
 
   it.each([
-    "VideoEditorContext.tsx",
     "ImageEditorContext.tsx",
     "VideoClipperContext.tsx",
   ])("%s does not hand-roll editor dialog semantics", (file) => {
@@ -27,6 +29,14 @@ describe("editor modal primitives", () => {
     expect(source).toContain("./EditorModalDialog");
     expect(source).not.toContain('role="dialog"');
     expect(source).not.toContain('aria-modal="true"');
+  });
+
+  it("routes Timeline editing into the Project workspace instead of an editor modal", () => {
+    const source = readSource("packages/web-ui/src/components/VideoEditorContext.tsx");
+
+    expect(source).toContain("onOpenTimeline");
+    expect(source).not.toContain("./EditorModalDialog");
+    expect(source).not.toContain("<EditorModalDialog");
   });
 
   it("uses a mature gesture primitive for image crop dragging instead of window mouse listeners", () => {

@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CaretDown, FilmSlate, Image as ImageIcon, Plus } from '@phosphor-icons/react';
+import { CaretDown, FilmSlate, Image as ImageIcon, Plus, SquaresFour } from '@phosphor-icons/react';
 import type { EditorAssetInput, EditorState } from '@master-clash/remotion-core';
 import type { ProjectCanvas, ProjectTimeline } from '@clash/shared-types';
 import type { ProjectAsset } from '@clash/web-ui/lib/types';
 import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
 import { Button } from './ui/button';
+import { IconButton } from './ui/icon-button';
+import { Tooltip } from './ui/tooltip';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -123,13 +125,15 @@ function ProjectAssetPreview({ asset }: { asset: ProjectAsset }) {
 export function ProjectTimelineEditorSurface({
     timeline,
     assets,
+    canvases,
     onSave,
-    onExit,
+    onOpenCanvas,
 }: {
     timeline: ProjectTimeline;
     assets: ProjectAsset[];
+    canvases: ProjectCanvas[];
     onSave: (timelineId: string, state: ProjectTimelineEditorState) => boolean;
-    onExit: () => void;
+    onOpenCanvas: (canvasId: string) => void;
 }) {
     const editorStateRef = useRef<EditorState | null>(null);
     const lastSavedStateRef = useRef<EditorState | null>(null);
@@ -165,9 +169,24 @@ export function ProjectTimelineEditorSurface({
         persistRef.current();
     }, [timeline.id]);
 
-    const handleExit = useCallback(() => {
-        if (persistCurrentState()) onExit();
-    }, [onExit, persistCurrentState]);
+    const parentCanvasId = timeline.owner.kind === 'canvas-action'
+        ? timeline.owner.canvasId
+        : undefined;
+    const parentCanvas = parentCanvasId
+        ? canvases.find((canvas) => canvas.id === parentCanvasId)
+        : undefined;
+    const parentCanvasAction = parentCanvas ? (
+        <Tooltip label={`Open parent Canvas ${parentCanvas.name}`}>
+            <IconButton
+                label={`Open parent Canvas ${parentCanvas.name}`}
+                icon={<SquaresFour className="h-4 w-4" weight="regular" />}
+                size="sm"
+                shape="rounded"
+                onClick={() => onOpenCanvas(parentCanvas.id)}
+                className="h-8 min-h-8 w-8 min-w-8 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+            />
+        </Tooltip>
+    ) : undefined;
 
     return (
         <main
@@ -187,8 +206,7 @@ export function ProjectTimelineEditorSurface({
                     initialAssets={editorAssets}
                     initialState={initialState}
                     stateRef={editorStateRef}
-                    onBack={handleExit}
-                    backLabel="Back to project"
+                    headerLeadingAction={parentCanvasAction}
                     editorKey={timeline.id}
                 />
             </Suspense>

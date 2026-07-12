@@ -64,6 +64,7 @@ interface ChatbotCopilotProps {
     onWidthChange: (width: number) => void;
     isCollapsed: boolean;
     onCollapseChange: (collapsed: boolean) => void;
+    layoutMode?: 'floating' | 'docked';
     selectedNodes?: RFNode[];
     onAddNode?: (type: string, extraData?: any) => string;
     onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
@@ -571,6 +572,7 @@ export default function ChatbotCopilot({
     onWidthChange,
     isCollapsed,
     onCollapseChange,
+    layoutMode = 'floating',
     selectedNodes = [],
     onAddNode,
     onRemoveNode,
@@ -597,6 +599,7 @@ export default function ChatbotCopilot({
     // Below Tailwind's `lg` (1024px), the panel switches to a full-screen
     // sheet over the canvas. Desktop keeps a resizable bottom-right popover.
     const isMobile = useIsBelowLg();
+    const isDocked = !isMobile && layoutMode === 'docked';
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState(() => initialPrompt ?? '');
     const [isResizing, setIsResizing] = useState(false);
@@ -1806,11 +1809,16 @@ export default function ChatbotCopilot({
                             isMobile
                                 // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
                                 ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
-                                : `clash-copilot-panel-shell fixed bottom-3 right-3 z-50 flex flex-col overflow-hidden rounded-matrix bg-warm-surface ${isCollapsed ? 'pointer-events-none' : 'pointer-events-auto'}`
+                                : `clash-copilot-panel-shell fixed z-50 flex flex-col overflow-hidden bg-warm-surface ${isDocked
+                                    ? 'clash-copilot-panel-shell--docked bottom-0 right-0 rounded-none'
+                                    : 'bottom-3 right-3 rounded-matrix'
+                                } ${isCollapsed ? 'pointer-events-none' : 'pointer-events-auto'}`
                         }
                         style={isMobile ? undefined : {
                             width: `${width}px`,
-                            height: 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
+                            height: isDocked
+                                ? 'calc(100dvh - var(--clash-desktop-chrome-height, 0px))'
+                                : 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
                             transformOrigin: COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN,
                         }}
                         animate={
@@ -1848,18 +1856,7 @@ export default function ChatbotCopilot({
                             transition={COPILOT_PANEL_TRANSITION}
                             className="h-full flex flex-col relative"
                         >
-                            <div className="clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-6 py-3">
-                                <CopilotRailSlot ariaHidden={false}>
-                                    <CollapsibleTrigger asChild>
-                                        <IconButton
-                                            label={t('copilot.panel.collapse')}
-                                            size="sm"
-                                            icon={<CaretRight className="w-4 h-4" weight="bold" />}
-                                            className="h-8 w-8 text-stone-700 dark:text-stone-300"
-                                        />
-                                    </CollapsibleTrigger>
-                                </CopilotRailSlot>
-
+                            <div className="clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-4 py-3">
                                 <div className="min-w-0 flex-1">
                                     <div className="truncate font-display text-[14px] font-semibold text-slate-900 dark:text-slate-100">
                                         {panelTitle}
@@ -2008,6 +2005,14 @@ export default function ChatbotCopilot({
                                             </DropdownMenu>
                                         </div>
                                     )}
+                                    <CollapsibleTrigger asChild>
+                                        <IconButton
+                                            label={t('copilot.panel.collapse')}
+                                            size="sm"
+                                            icon={<CaretRight className="h-4 w-4" weight="bold" />}
+                                            className="h-8 w-8 text-stone-700 dark:text-stone-300"
+                                        />
+                                    </CollapsibleTrigger>
                                 </div>
                             </div>
 

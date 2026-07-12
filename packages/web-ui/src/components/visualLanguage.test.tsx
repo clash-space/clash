@@ -360,20 +360,18 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/clash-project-return-button/);
     expect(projectSource).toMatch(/<form className="min-w-0 flex-1"/);
     expect(projectSource).toMatch(/clash-project-name-input h-8 w-full/);
-    expect(projectSource).toMatch(/id="project-top-actions"/);
-    expect(projectSource).toMatch(/absolute top-3 z-20/);
-    expect(projectSource).toMatch(/const topActionsRight = isSidebarCollapsed \? 24 : sidebarWidth \+ 32/);
-    expect(projectSource).toMatch(/style=\{\{ right: topActionsRight \}\}/);
-    expect(projectSource).toMatch(/animate=\{\{ right: topActionsRight \}\}/);
+    expect(projectSource).not.toMatch(/id="project-top-actions"/);
+    expect(projectSource).not.toMatch(/topActionsRight/);
     expect(projectSource).not.toMatch(/resolveProjectShareAdmission|resolveProjectWebAdmission/);
     expect(projectSource).not.toMatch(/<PresenceBar clients=\{otherClients\} \/>/);
-    expect(projectSource).toMatch(/<UserControls projectChrome \/>/);
+    expect(projectSource).toMatch(/footer=\{<UserControls compact \/>\}/);
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
     expect(copilotSource).toMatch(/clash-copilot-launcher/);
     expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
     expect(copilotSource).toMatch(/AgentMotion/);
-    expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed bottom-3 right-3/);
-    expect(copilotSource).toMatch(/height: 'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1\.5rem\)'/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed z-50/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-shell--docked bottom-0 right-0 rounded-none/);
+    expect(copilotSource).toMatch(/height: isDocked[\s\S]*?'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\)\)'[\s\S]*?'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1\.5rem\)'/);
     expect(copilotSource).toMatch(/rounded-matrix/);
     expect(copilotSource).toMatch(/const COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX = 44/);
     expect(copilotSource).toMatch(/const COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN =[\s\S]*?calc\(100% - \$\{COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX\}px\)/);
@@ -388,9 +386,10 @@ describe("visual language surfaces", () => {
     expect(copilotSource).toMatch(/setInterval\(\(\) => \{[\s\S]*?\}, CREATIVE_STATUS_ROTATION_MS\)/);
     expect(copilotSource).not.toMatch(/\}, 4600\)/);
     expect(copilotSource).toMatch(/clash-copilot-panel-header/);
-    expect(copilotSource).toMatch(/clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-6 py-3/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-header relative z-20 flex shrink-0 items-center gap-2 px-4 py-3/);
     expect(copilotSource).toMatch(/import \{ CopilotRailSlot \} from '\.\/copilot\/CopilotRail'/);
-    expect(copilotSource).toMatch(/<CopilotRailSlot ariaHidden=\{false\}>[\s\S]*<IconButton[\s\S]*label=\{t\('copilot\.panel\.collapse'\)\}/);
+    expect(copilotSource).not.toMatch(/<CopilotRailSlot ariaHidden=\{false\}>[\s\S]*label=\{t\('copilot\.panel\.collapse'\)\}/);
+    expect(copilotSource).toMatch(/role="toolbar"[\s\S]*label=\{t\('copilot\.panel\.collapse'\)\}/);
     expect(copilotSource).not.toMatch(/clash-copilot-agent-perch/);
     expect(copilotSource).toMatch(/clash-copilot-agent-activity-row/);
     expect(copilotSource).toMatch(/clash-copilot-agent-activity-row flex items-center gap-0\.5 px-0/);
@@ -646,7 +645,6 @@ describe("visual language surfaces", () => {
     const source = [
       "packages/web-ui/src/components/ImageEditorContext.tsx",
       "packages/web-ui/src/components/VideoClipperContext.tsx",
-      "packages/web-ui/src/components/VideoEditorContext.tsx",
       "apps/web/app/globals.css",
     ]
       .map((path) => readFileSync(join(process.cwd(), path), "utf8"))
@@ -654,6 +652,8 @@ describe("visual language surfaces", () => {
 
     expect(source).not.toMatch(oldEditorModalShellTokens);
     expect(source).toMatch(/clash-editor-modal-backdrop/);
+    expect(readFileSync(join(process.cwd(), "packages/web-ui/src/components/VideoEditorContext.tsx"), "utf8"))
+      .not.toMatch(/EditorModalDialog|clash-editor-modal-backdrop/);
     expect(source).toMatch(/clash-editor-modal-surface/);
   });
 

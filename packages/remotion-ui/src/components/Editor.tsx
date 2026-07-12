@@ -78,6 +78,8 @@ type EditorProps = {
   onStateChange?: (state: EditorState) => void;
   onBack?: () => void;
   backLabel?: string;
+  /** Optional project-level navigation shown only in the embedded header. */
+  headerLeadingAction?: React.ReactNode;
   onAssetUpload?: (file: File, type: 'video' | 'image' | 'audio') => void;
   availableAssets?: EditorAssetInput[];
   onAssetPicked?: (asset: EditorAssetInput) => void;
@@ -89,21 +91,6 @@ type EditorProps = {
   layout?: 'standalone' | 'embedded';
 };
 
-function BackIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true" focusable="false">
-      <path
-        d="M10.5 6.5L5 12l5.5 5.5M6 12h13"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 export const Editor: React.FC<EditorProps> = ({
   initialAssets,
   initialState,
@@ -111,6 +98,7 @@ export const Editor: React.FC<EditorProps> = ({
   onStateChange,
   onBack,
   backLabel,
+  headerLeadingAction,
   onAssetUpload,
   availableAssets,
   onAssetPicked,
@@ -147,16 +135,7 @@ export const Editor: React.FC<EditorProps> = ({
             style={{ width: 'clamp(190px, 22%, 270px)' }}
           >
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white px-2">
-              {onBack && (
-                <RemotionButton
-                  type="button"
-                  onClick={onBack}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950"
-                  aria-label={backLabel || 'Back'}
-                >
-                  <BackIcon />
-                </RemotionButton>
-              )}
+              {headerLeadingAction}
               <div
                 role="tablist"
                 aria-label="Editor side panel"

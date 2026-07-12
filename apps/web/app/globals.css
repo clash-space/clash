@@ -1009,6 +1009,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   will-change: transform, opacity;
 }
 
+.clash-copilot-panel-shell--docked {
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  background: #fffefd;
+  box-shadow: none;
+}
+
 .clash-copilot-panel-header {
   background: transparent;
   border-bottom: 0;

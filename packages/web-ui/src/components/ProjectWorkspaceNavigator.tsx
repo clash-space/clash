@@ -28,6 +28,7 @@ export type ProjectWorkspaceSurface =
 
 interface ProjectWorkspaceNavigatorProps {
     header?: ReactNode;
+    footer?: ReactNode;
     canvases: ProjectCanvas[];
     timelines: ProjectTimeline[];
     assets: ProjectAsset[];
@@ -71,6 +72,7 @@ function selectedTabId(surface: ProjectWorkspaceSurface): string {
 
 export default function ProjectWorkspaceNavigator({
     header,
+    footer,
     canvases,
     timelines,
     assets,
@@ -314,6 +316,15 @@ export default function ProjectWorkspaceNavigator({
                 ) : null}
             </TabList>
             </TabProvider>
+            {footer ? (
+                <div
+                    role="group"
+                    aria-label="Project controls"
+                    className="clash-project-sidebar-footer flex h-12 shrink-0 items-center border-t border-warm-border/75 px-2"
+                >
+                    {footer}
+                </div>
+            ) : null}
         </aside>
     );
 }

@@ -147,6 +147,6 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).not.toContain('aria-label="Open project in web"');
     expect(projectEditorSource).not.toContain('aria-label="Copy project link"');
     expect(projectEditorSource).not.toContain("<PresenceBar clients={otherClients} />");
-    expect(projectEditorSource).toContain("<UserControls projectChrome />");
+    expect(projectEditorSource).toContain("footer={<UserControls compact />}");
   });
 });
