@@ -615,6 +615,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     // Sidebar state starts with server defaults; localStorage is read post-mount to avoid hydration mismatch.
     const [sidebarWidth, setSidebarWidth] = useState(defaultCopilotPanelWidth);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isProjectNavigatorCollapsed, setIsProjectNavigatorCollapsed] = useState(false);
     const [sidebarHydrated, setSidebarHydrated] = useState(false);
     const isCopilotDocked = workspaceSurface.kind !== "canvas" && !isSidebarCollapsed;
 
@@ -628,6 +629,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                 : nextDefault);
         }
         setIsSidebarCollapsed(localStorage.getItem('copilot-sidebar-collapsed') === 'true');
+        setIsProjectNavigatorCollapsed(localStorage.getItem('project-navigator-collapsed') === 'true');
         setSidebarHydrated(true);
     }, []);
 
@@ -637,6 +639,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     useEffect(() => {
         if (sidebarHydrated) localStorage.setItem('copilot-sidebar-collapsed', String(isSidebarCollapsed));
     }, [isSidebarCollapsed, sidebarHydrated]);
+    useEffect(() => {
+        if (sidebarHydrated) localStorage.setItem('project-navigator-collapsed', String(isProjectNavigatorCollapsed));
+    }, [isProjectNavigatorCollapsed, sidebarHydrated]);
 
     // Chat session state
     const [threadId, setThreadId] = useState<string>(initialThreadId || '');
@@ -2554,7 +2559,8 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                               id="project-workspace-shell"
                               data-copilot-layout={isCopilotDocked ? "docked" : "overlay"}
                               data-following-agent={followingAgent ? "true" : "false"}
-                              className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:3rem]"
+                              data-project-navigator-collapsed={isProjectNavigatorCollapsed}
+                              className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns] duration-150 ease-out data-[project-navigator-collapsed=true]:grid-cols-[3rem_minmax(0,1fr)] [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:2.5rem]"
                               style={{ right: isCopilotDocked ? sidebarWidth : 0 }}
                             >
                             <ProjectWorkspaceNavigator
@@ -2570,26 +2576,30 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                       icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
                                       size="sm"
                                       shape="rounded"
-                                      className="clash-project-return-button shrink-0 rounded-md text-slate-800 focus-visible:ring-offset-warm-page"
+                                      className={`clash-project-return-button shrink-0 rounded-md text-slate-800 focus-visible:ring-offset-warm-page ${isProjectNavigatorCollapsed ? '' : '-ml-px'}`}
                                     />
                                   </Tooltip>
-                                  <form className="min-w-0 flex-1" onSubmit={handleProjectNameSubmit}>
-                                    <Input
-                                      ref={projectTitleInputRef}
-                                      className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[13px] font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
-                                      value={projectName}
-                                      onChange={(event) => setProjectName(event.target.value)}
-                                      onBlur={() => {
-                                        if (projectName !== project.name) {
-                                          updateProjectName(project.id, projectName);
-                                        }
-                                      }}
-                                      placeholder="Untitled"
-                                    />
-                                  </form>
+                                  {!isProjectNavigatorCollapsed ? (
+                                    <form className="min-w-0 flex-1" onSubmit={handleProjectNameSubmit}>
+                                      <Input
+                                        ref={projectTitleInputRef}
+                                        className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[13px] font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
+                                        value={projectName}
+                                        onChange={(event) => setProjectName(event.target.value)}
+                                        onBlur={() => {
+                                          if (projectName !== project.name) {
+                                            updateProjectName(project.id, projectName);
+                                          }
+                                        }}
+                                        placeholder="Untitled"
+                                      />
+                                    </form>
+                                  ) : null}
                                 </div>
                               }
                               footer={<UserControls compact />}
+                              collapsed={isProjectNavigatorCollapsed}
+                              onCollapsedChange={setIsProjectNavigatorCollapsed}
                               canvases={loroSync.canvases}
                               timelines={loroSync.timelines}
                               assets={projectAssets}

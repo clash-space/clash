@@ -21,6 +21,15 @@ describe('ProjectEditor workspace model', () => {
         expect(source).not.toContain('className={`absolute bottom-0 left-52');
     });
 
+    it('persists a compact project navigator without removing its navigation rail', () => {
+        expect(source).toContain("localStorage.getItem('project-navigator-collapsed')");
+        expect(source).toContain("localStorage.setItem('project-navigator-collapsed'");
+        expect(source).toContain('data-project-navigator-collapsed={isProjectNavigatorCollapsed}');
+        expect(source).toContain('data-[project-navigator-collapsed=true]:grid-cols-[3rem_minmax(0,1fr)]');
+        expect(source).toContain('collapsed={isProjectNavigatorCollapsed}');
+        expect(source).toContain('onCollapsedChange={setIsProjectNavigatorCollapsed}');
+    });
+
     it('does not reconstruct Canvas ownership from the Project asset list', () => {
         expect(source).not.toContain('buildFallbackCanvasFromAssets');
         expect(source).not.toContain('recoveredFromAssetRef');
@@ -34,7 +43,7 @@ describe('ProjectEditor workspace model', () => {
         expect(source).toContain('timelines={loroSync.timelines}');
         expect(source).toContain('applyTimelineState');
         expect(source).toContain('onOpenTimeline={openTimelineFromCanvasAction}');
-        expect(source).toContain('onOpenCanvas={selectCanvas}');
+        expect(source).toContain('onOpenCanvas={selectCanvasFromNavigator}');
         expect(source).not.toContain('onExit={exitTimelineEditor}');
         expect(source).not.toContain('standaloneTimelines={loroSync.standaloneTimelines}');
     });

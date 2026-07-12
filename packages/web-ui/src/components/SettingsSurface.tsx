@@ -219,25 +219,22 @@ export function SettingsSurface({
       }
     >
       <aside className={`${isPage ? 'clash-settings-page-sidebar' : 'clash-settings-dialog-sidebar'} flex w-64 shrink-0 flex-col border-r border-warm-border/75`}>
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="clash-settings-sidebar-header flex h-10 shrink-0 items-center px-2">
           {onClose ? (
             <Tooltip label="Close settings">
               <IconButton
                 label="Close settings"
                 icon={<X className="h-4 w-4" weight="bold" />}
-                shape="circle"
-                size="md"
+                shape="rounded"
+                size="sm"
                 onClick={onClose}
                 className="text-stone-700 hover:bg-warm-hover hover:text-stone-900 focus-visible:ring-brand/60 dark:text-stone-300 dark:hover:text-stone-100"
               />
             </Tooltip>
           ) : (
-            <div>
-              <h1 className="font-display text-lg font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-                Settings
-              </h1>
-              <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">Workspace controls</p>
-            </div>
+            <h1 className="px-2 font-display text-[13px] font-semibold leading-5 text-stone-900 dark:text-stone-100">
+              Settings
+            </h1>
           )}
         </div>
         <TabProvider
@@ -248,7 +245,7 @@ export function SettingsSurface({
           orientation="vertical"
           focusLoop
         >
-          <TabList className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1" aria-label="Settings sections">
+          <TabList className="flex-1 space-y-0 overflow-y-auto px-2 py-1" aria-label="Settings sections">
             {navItems.map((item) => {
               const isActive = activeSection === item.id;
               const Icon = item.icon;
@@ -256,14 +253,14 @@ export function SettingsSurface({
                 <Tab
                   key={item.id}
                   id={item.id}
-                  className={`relative flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+                  className={`relative flex h-8 w-full items-center gap-2 rounded-md border px-2 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
                     isActive
                       ? 'border-brand/35 bg-brand-light text-brand shadow-sm dark:border-brand/30 dark:bg-brand/10 dark:text-brand-light'
                       : 'border-transparent text-stone-700 hover:bg-warm-surface/60 hover:text-stone-900 dark:text-stone-200'
                   }`}
                 >
                   {isActive && (
-                    <span aria-hidden="true" className="absolute left-1.5 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-brand" />
+                    <span aria-hidden="true" className="absolute left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-brand" />
                   )}
                   <Icon className={`h-4 w-4 ${isActive ? 'text-brand' : ''}`} weight="bold" />
                   <span className="truncate">{item.label}</span>
@@ -277,7 +274,7 @@ export function SettingsSurface({
             <Button
               onClick={handleSignOut}
               size="sm"
-              className="w-full justify-start rounded-lg border-transparent bg-transparent px-3 py-2 text-sm text-stone-700 shadow-none hover:bg-warm-surface hover:text-red-600 focus-visible:ring-brand/60 dark:text-stone-200"
+              className="h-8 w-full justify-start rounded-md border-transparent bg-transparent px-2 text-[13px] text-stone-700 shadow-none hover:bg-warm-surface hover:text-red-600 focus-visible:ring-brand/60 dark:text-stone-200"
               leftIcon={<SignOut className="h-4 w-4" weight="bold" />}
             >
               Sign out

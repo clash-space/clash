@@ -44,7 +44,7 @@ describe("ProjectEditor toolbar surface", () => {
 
   it("aligns sidebar and canvas controls to the same chrome grid", () => {
     expect(projectEditorSource).toContain(
-      "[--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:3rem]",
+      "[--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:2.5rem]",
     );
     expect(projectEditorSource).toContain(
       "left-[var(--clash-project-chrome-gutter)] top-[calc(var(--clash-project-sidebar-header-height)+var(--clash-project-search-row-height))]",
@@ -54,7 +54,16 @@ describe("ProjectEditor toolbar surface", () => {
     );
     expect(projectEditorSource).not.toContain('className="absolute left-3 top-4');
     expect(projectWorkspaceNavigatorSource).toContain(
-      'className="clash-project-sidebar-header flex h-12',
+      'className="clash-project-sidebar-header flex h-10 shrink-0 items-center px-2"',
+    );
+    expect(projectWorkspaceNavigatorSource).not.toContain(
+      'clash-project-sidebar-header flex h-12',
+    );
+    expect(projectWorkspaceNavigatorSource).not.toMatch(
+      /clash-project-sidebar-header[^\n]*border-b/,
+    );
+    expect(projectEditorSource).toContain(
+      "isProjectNavigatorCollapsed ? '' : '-ml-px'",
     );
     expect(projectWorkspaceNavigatorSource).toContain(
       'className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2"',
@@ -91,12 +100,7 @@ describe("ProjectEditor toolbar surface", () => {
       "'group/menu-button relative flex h-8",
     );
     expect(projectWorkspaceNavigatorSource).not.toContain('className="mt-3"');
-    expect(projectWorkspaceNavigatorSource).toContain(
-      "className={showCanvasSection ? 'mt-2' : undefined}",
-    );
-    expect(projectWorkspaceNavigatorSource).toContain(
-      "className={showCanvasSection || showTimelineSection ? 'mt-2' : undefined}",
-    );
+    expect(projectWorkspaceNavigatorSource.match(/className="mt-2"/g)).toHaveLength(2);
   });
 
   it("keeps canvas dots out of the toolbar surface texture", () => {

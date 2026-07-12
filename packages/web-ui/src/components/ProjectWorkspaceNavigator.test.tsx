@@ -1,11 +1,63 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ProjectWorkspaceNavigator from './ProjectWorkspaceNavigator';
 
 afterEach(cleanup);
 
 describe('ProjectWorkspaceNavigator', () => {
+    it('collapses into a navigable icon rail and can expand again', () => {
+        const onSelectCanvas = vi.fn();
+
+        function CollapsibleNavigator() {
+            const [collapsed, setCollapsed] = useState(false);
+            return (
+                <ProjectWorkspaceNavigator
+                    collapsed={collapsed}
+                    onCollapsedChange={setCollapsed}
+                    canvases={[
+                        { id: 'main', name: 'Main', position: 0 },
+                        { id: 'shots', name: 'Shots', position: 1 },
+                    ]}
+                    timelines={[]}
+                    assets={[]}
+                    footer={<button type="button">Project settings</button>}
+                    surface={{ kind: 'canvas', canvasId: 'main' }}
+                    onSelectCanvas={onSelectCanvas}
+                    onSelectTimeline={vi.fn()}
+                    onSelectAssets={vi.fn()}
+                    onCreateCanvas={vi.fn()}
+                    onRenameCanvas={vi.fn()}
+                    onDeleteCanvas={vi.fn()}
+                    onCreateTimeline={vi.fn()}
+                    onAttachTimeline={vi.fn()}
+                />
+            );
+        }
+
+        render(<CollapsibleNavigator />);
+
+        const navigator = screen.getByRole('complementary', { name: 'Project navigator' });
+        expect(navigator.getAttribute('data-collapsed')).toBe('false');
+        expect(screen.getByRole('button', { name: 'Project settings' })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Collapse project sidebar' }));
+
+        expect(navigator.getAttribute('data-collapsed')).toBe('true');
+        expect(screen.getByRole('button', { name: 'Expand project sidebar' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Project settings' })).toBeNull();
+        expect(screen.getByRole('tab', { name: 'Main' }).className).toContain('justify-center');
+        expect(screen.getByRole('button', { name: 'Search project' }).className).toContain('w-8');
+
+        fireEvent.click(screen.getByRole('tab', { name: 'Shots' }));
+        expect(onSelectCanvas).toHaveBeenCalledWith('shots');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Expand project sidebar' }));
+        expect(navigator.getAttribute('data-collapsed')).toBe('false');
+        expect(screen.getByRole('button', { name: 'Project settings' })).toBeTruthy();
+    });
+
     it('exposes concrete Canvas, Timeline editor documents, and Asset surfaces', () => {
         const onSelectCanvas = vi.fn();
         const onSelectTimeline = vi.fn();
@@ -127,7 +179,8 @@ describe('ProjectWorkspaceNavigator', () => {
         expect(screen.queryByText('No standalone timelines')).toBeNull();
     });
 
-    it('filters project surfaces from a fixed-height sidebar search control', () => {
+    it('opens project navigation from a Cmd-K command palette without filtering the sidebar itself', () => {
+        const onSelectCanvas = vi.fn();
         render(
             <ProjectWorkspaceNavigator
                 canvases={[
@@ -145,7 +198,7 @@ describe('ProjectWorkspaceNavigator', () => {
                 ]}
                 assets={[]}
                 surface={{ kind: 'canvas', canvasId: 'main' }}
-                onSelectCanvas={vi.fn()}
+                onSelectCanvas={onSelectCanvas}
                 onSelectTimeline={vi.fn()}
                 onSelectAssets={vi.fn()}
                 onCreateCanvas={vi.fn()}
@@ -156,18 +209,23 @@ describe('ProjectWorkspaceNavigator', () => {
             />,
         );
 
-        const search = screen.getByRole('searchbox', { name: 'Search project' });
-        expect(search.className).toContain('h-8');
+        const trigger = screen.getByRole('button', { name: 'Search project' });
+        expect(trigger.className).toContain('h-8');
+        expect(screen.getByText('⌘K')).toBeTruthy();
+        expect(screen.queryByRole('combobox', { name: 'Search project' })).toBeNull();
+
+        fireEvent.keyDown(window, { key: 'k', metaKey: true });
+
+        const search = screen.getByRole('combobox', { name: 'Search project' });
         fireEvent.change(search, { target: { value: 'shots' } });
 
-        expect(screen.getByRole('tab', { name: 'Shots' })).toBeTruthy();
-        expect(screen.queryByRole('tab', { name: 'Main' })).toBeNull();
-        expect(screen.queryByRole('tab', { name: 'Episode 1' })).toBeNull();
-        expect(screen.queryByRole('tab', { name: /Assets/ })).toBeNull();
+        expect(document.getElementById('project-canvas-main')).toBeTruthy();
+        expect(document.getElementById('project-timeline-timeline-1')).toBeTruthy();
+        expect(screen.getByRole('option', { name: 'Shots Canvas' })).toBeTruthy();
+        expect(screen.queryByRole('option', { name: 'Main Canvas' })).toBeNull();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
-        expect(screen.getByRole('tab', { name: 'Main' })).toBeTruthy();
-        expect(screen.getByRole('tab', { name: 'Episode 1' })).toBeTruthy();
-        expect(screen.getByRole('tab', { name: /Assets/ })).toBeTruthy();
+        fireEvent.click(screen.getByRole('option', { name: 'Shots Canvas' }));
+        expect(onSelectCanvas).toHaveBeenCalledWith('shots');
+        expect(screen.queryByRole('combobox', { name: 'Search project' })).toBeNull();
     });
 });

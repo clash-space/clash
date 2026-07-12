@@ -28,6 +28,7 @@ const sessionName = `clash-desktop-agent-browser-${Date.now().toString(36)}`;
 const latestScreenshot = path.join(captureDir, "latest-agent-browser-desktop.png");
 const historyScreenshot = path.join(captureDir, "history-agent-browser-desktop.png");
 const narrowLayoutScreenshot = path.join(captureDir, "narrow-layout-agent-browser-desktop.png");
+const collapsedNavigatorScreenshot = path.join(captureDir, "collapsed-navigator-agent-browser-desktop.png");
 const timelineDockScreenshot = path.join(captureDir, "timeline-dock-agent-browser-desktop.png");
 const assetDestinationScreenshot = path.join(captureDir, "asset-destination-agent-browser-desktop.png");
 const localSettingsScreenshot = path.join(captureDir, "local-settings-agent-browser-desktop.png");
@@ -550,6 +551,8 @@ async function main() {
       const sidebarElement = document.querySelector('[aria-label="Project navigator"]');
       const sidebar = sidebarElement?.getBoundingClientRect();
       const sidebarHeader = sidebarElement?.querySelector('.clash-project-sidebar-header')?.getBoundingClientRect();
+      const sidebarSearchRow = sidebarElement?.querySelector('.clash-project-sidebar-search')?.getBoundingClientRect();
+      const projectReturn = sidebarElement?.querySelector('[aria-label="Return to projects"]')?.getBoundingClientRect();
       const searchControl = sidebarElement?.querySelector('[aria-label="Search project"]')?.getBoundingClientRect();
       const selectedTab = sidebarElement?.querySelector('[role="tab"][aria-selected="true"]')?.getBoundingClientRect();
       const toolbarElement = document.querySelector('[aria-label="Canvas tools"]');
@@ -586,7 +589,14 @@ async function main() {
         left(sidebarElement?.querySelector('[role="tab"][aria-selected="true"] svg')),
         left(sidebarElement?.querySelector('#project-assets svg')),
       ];
+      const sidebarNavigationIconCenters = [
+        centerX(sidebarElement?.querySelector('[aria-label="Return to projects"] svg')),
+        centerX(sidebarElement?.querySelector('[role="tab"][aria-selected="true"] svg')),
+        centerX(sidebarElement?.querySelector('#project-assets svg')),
+      ];
       const atomicControlHeights = [
+        projectReturn?.height ?? null,
+        projectTitle?.getBoundingClientRect().height ?? null,
         searchControl?.height ?? null,
         canvasSectionHeader?.height ?? null,
         selectedTab?.height ?? null,
@@ -612,6 +622,10 @@ async function main() {
       const searchEdgeGutters = sidebar && searchControl
         ? [searchControl.left - sidebar.left, sidebar.right - searchControl.right]
         : [null, null];
+      const topUtilityRowHeights = [
+        sidebarHeader?.height ?? null,
+        sidebarSearchRow?.height ?? null,
+      ];
       return {
         viewport: { width: window.innerWidth, height: window.innerHeight },
         sidebarWidth: sidebar ? Math.round(sidebar.width) : null,
@@ -626,6 +640,8 @@ async function main() {
         primaryChromeDimensions: sidebarHeader && toolbarRail
           ? { sidebarHeaderHeight: Math.round(sidebarHeader.height), toolbarRailWidth: Math.round(toolbarRail.width) }
           : null,
+        topUtilityRowHeights: topUtilityRowHeights.map((value) => value === null ? null : Math.round(value)),
+        topUtilityRowHeightSpread: spread(topUtilityRowHeights),
         atomicControlHeights: atomicControlHeights.map((value) => value === null ? null : Math.round(value)),
         atomicControlHeightSpread: spread(atomicControlHeights),
         actionSlotHeights: sidebarActionHeights.map((value) => value === null ? null : Math.round(value)),
@@ -647,6 +663,8 @@ async function main() {
         sidebarActionColumnSpread: spread(sidebarActionCenters),
         sidebarSectionHeadingLeftSpread: spread(sidebarSectionHeadingLefts),
         sidebarRowIconLeftSpread: spread(sidebarRowIconLefts),
+        sidebarNavigationIconCenters: sidebarNavigationIconCenters.map((value) => value === null ? null : Math.round(value * 10) / 10),
+        sidebarNavigationIconCenterSpread: spread(sidebarNavigationIconCenters),
         horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
         projectTitleOverflow: projectTitle ? projectTitle.scrollWidth - projectTitle.clientWidth : null,
       };
@@ -657,8 +675,10 @@ async function main() {
       narrowLayout.toolbarRailWidth < 46 || narrowLayout.toolbarRailWidth > 50 ||
       narrowLayout.toolbarHorizontalGutter < 7 || narrowLayout.toolbarHorizontalGutter > 9 ||
       narrowLayout.toolbarVerticalOffset < 39 || narrowLayout.toolbarVerticalOffset > 41 ||
-      narrowLayout.primaryChromeDimensions?.sidebarHeaderHeight !== 48 ||
+      narrowLayout.primaryChromeDimensions?.sidebarHeaderHeight !== 40 ||
       narrowLayout.primaryChromeDimensions?.toolbarRailWidth !== 48 ||
+      narrowLayout.topUtilityRowHeights?.some((height) => height !== 40) ||
+      narrowLayout.topUtilityRowHeightSpread === null || narrowLayout.topUtilityRowHeightSpread > 1 ||
       narrowLayout.atomicControlHeights?.some((height) => height < 31 || height > 33) ||
       narrowLayout.atomicControlHeightSpread === null || narrowLayout.atomicControlHeightSpread > 1 ||
       narrowLayout.actionSlotHeights?.some((height) => height < 23 || height > 25) ||
@@ -674,12 +694,103 @@ async function main() {
       narrowLayout.sidebarActionColumnSpread === null || narrowLayout.sidebarActionColumnSpread > 1 ||
       narrowLayout.sidebarSectionHeadingLeftSpread === null || narrowLayout.sidebarSectionHeadingLeftSpread > 1 ||
       narrowLayout.sidebarRowIconLeftSpread === null || narrowLayout.sidebarRowIconLeftSpread > 1 ||
+      narrowLayout.sidebarNavigationIconCenterSpread === null || narrowLayout.sidebarNavigationIconCenterSpread > 1 ||
       narrowLayout.horizontalOverflow > 1 ||
       narrowLayout.projectTitleOverflow > 1
     ) {
       throw new Error(`Narrow project chrome layout failed: ${JSON.stringify(narrowLayout)}`);
     }
     agentBrowser(["screenshot", narrowLayoutScreenshot]);
+
+    agentBrowser(["press", "Meta+k"]);
+    const commandPalette = await waitForEval(
+      `(() => {
+        const dialog = document.querySelector('[role="dialog"][aria-label="Search project"], [role="dialog"] [aria-label="Search project"]')?.closest('[role="dialog"]');
+        const input = document.querySelector('[role="combobox"][aria-label="Search project"]');
+        if (!dialog || !input) return false;
+        return { dialogVisible: true, inputRole: input.getAttribute('role') };
+      })()`,
+      "Cmd-K project command palette",
+      10000,
+    );
+    agentBrowser(["keyboard", "type", "Main"]);
+    await waitForEval(
+      `!!document.querySelector('[role="option"][aria-label="Main Canvas"]')`,
+      "project command palette result",
+      10000,
+    );
+    agentBrowser(["press", "Escape"]);
+    await waitForEval(
+      `!document.querySelector('[role="dialog"] [aria-label="Search project"]')`,
+      "closed project command palette",
+      10000,
+    );
+
+    if (!clickButtonByLabel(agentBrowser, "Collapse project sidebar")) {
+      throw new Error("Could not collapse project sidebar");
+    }
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-project-navigator-collapsed') === 'true' &&
+       Math.round(document.querySelector('[aria-label="Project navigator"]')?.getBoundingClientRect().width ?? 0) === 48`,
+      "collapsed 48px project navigator",
+      10000,
+    );
+    const collapsedNavigator = evalJson(`(() => {
+      const sidebar = document.querySelector('[aria-label="Project navigator"]');
+      const sidebarRect = sidebar?.getBoundingClientRect();
+      const search = sidebar?.querySelector('[aria-label="Search project"]')?.getBoundingClientRect();
+      const selectedTab = sidebar?.querySelector('[role="tab"][aria-selected="true"]')?.getBoundingClientRect();
+      const toolbar = document.querySelector('[aria-label="Canvas tools"]')?.getBoundingClientRect();
+      const centerX = (element) => {
+        const rect = element?.getBoundingClientRect();
+        return rect ? Math.round((rect.left + rect.width / 2) * 10) / 10 : null;
+      };
+      const iconCenters = [
+        centerX(sidebar?.querySelector('[aria-label="Return to projects"] svg')),
+        centerX(sidebar?.querySelector('[aria-label="Search project"] svg')),
+        centerX(sidebar?.querySelector('[role="tab"][aria-selected="true"] svg')),
+        centerX(sidebar?.querySelector('#project-assets svg')),
+      ];
+      const iconCenterSpread = iconCenters.every((value) => value !== null)
+        ? Math.round((Math.max(...iconCenters) - Math.min(...iconCenters)) * 10) / 10
+        : null;
+      return {
+        sidebarWidth: sidebarRect ? Math.round(sidebarRect.width) : null,
+        searchWidth: search ? Math.round(search.width) : null,
+        selectedTabWidth: selectedTab ? Math.round(selectedTab.width) : null,
+        toolbarGutter: sidebarRect && toolbar ? Math.round(toolbar.left - sidebarRect.right) : null,
+        iconCenters,
+        iconCenterSpread,
+        projectTitleVisible: !!sidebar?.querySelector('.clash-project-name-input'),
+        settingsVisible: !!sidebar?.querySelector('[aria-label="Settings"]'),
+        expandVisible: !!sidebar?.querySelector('[aria-label="Expand project sidebar"]'),
+        horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
+      };
+    })()`);
+    if (
+      collapsedNavigator.sidebarWidth !== 48 ||
+      collapsedNavigator.searchWidth !== 32 ||
+      collapsedNavigator.selectedTabWidth !== 32 ||
+      collapsedNavigator.toolbarGutter < 7 || collapsedNavigator.toolbarGutter > 9 ||
+      collapsedNavigator.iconCenterSpread === null || collapsedNavigator.iconCenterSpread > 0.1 ||
+      collapsedNavigator.projectTitleVisible ||
+      collapsedNavigator.settingsVisible ||
+      !collapsedNavigator.expandVisible ||
+      collapsedNavigator.horizontalOverflow > 1
+    ) {
+      throw new Error(`Collapsed project navigator layout failed: ${JSON.stringify(collapsedNavigator)}`);
+    }
+    agentBrowser(["screenshot", collapsedNavigatorScreenshot]);
+
+    if (!clickButtonByLabel(agentBrowser, "Expand project sidebar")) {
+      throw new Error("Could not expand project sidebar");
+    }
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-project-navigator-collapsed') === 'false' &&
+       Math.round(document.querySelector('[aria-label="Project navigator"]')?.getBoundingClientRect().width ?? 0) === 192`,
+      "expanded 192px project navigator",
+      10000,
+    );
 
     agentBrowser(["set", "viewport", "1440", "900"]);
     await waitForEval(
@@ -857,8 +968,18 @@ async function main() {
           (button.innerText || button.textContent || '').trim() === 'Sign out'
         );
         if (signOut) return false;
-        if (!document.body.innerText.includes('Workspace controls')) return false;
-        return { path: location.pathname, signOutVisible: false };
+        if (document.body.innerText.includes('Workspace controls')) return false;
+        const sidebar = document.querySelector('.clash-settings-page-sidebar');
+        const sidebarHeader = sidebar?.querySelector('.clash-settings-sidebar-header')?.getBoundingClientRect();
+        const firstNavigationRow = sidebar?.querySelector('[aria-label="Settings sections"] [role="tab"]')?.getBoundingClientRect();
+        if (!sidebarHeader || Math.round(sidebarHeader.height) !== 40) return false;
+        if (!firstNavigationRow || Math.round(firstNavigationRow.height) !== 32) return false;
+        return {
+          path: location.pathname,
+          signOutVisible: false,
+          sidebarHeaderHeight: Math.round(sidebarHeader.height),
+          navigationRowHeight: Math.round(firstNavigationRow.height),
+        };
       })()`,
       "local Settings without cloud sign out",
       10000,
@@ -876,6 +997,8 @@ async function main() {
       status: projectStatusEvidence,
     }));
     console.log("[desktop-agent-browser] narrow layout", JSON.stringify(narrowLayout));
+    console.log("[desktop-agent-browser] command palette", JSON.stringify(commandPalette));
+    console.log("[desktop-agent-browser] collapsed navigator", JSON.stringify(collapsedNavigator));
     console.log("[desktop-agent-browser] timeline dock", JSON.stringify(timelineDock));
     console.log("[desktop-agent-browser] asset destination", JSON.stringify(assetDestination));
     console.log("[desktop-agent-browser] asset placement", JSON.stringify(assetPlacement));
@@ -884,6 +1007,7 @@ async function main() {
     console.log(`[desktop-agent-browser] screenshot ${latestScreenshot}`);
     console.log(`[desktop-agent-browser] history screenshot ${historyScreenshot}`);
     console.log(`[desktop-agent-browser] narrow screenshot ${narrowLayoutScreenshot}`);
+    console.log(`[desktop-agent-browser] collapsed navigator screenshot ${collapsedNavigatorScreenshot}`);
     console.log(`[desktop-agent-browser] timeline dock screenshot ${timelineDockScreenshot}`);
     console.log(`[desktop-agent-browser] asset destination screenshot ${assetDestinationScreenshot}`);
     console.log(`[desktop-agent-browser] local settings screenshot ${localSettingsScreenshot}`);
