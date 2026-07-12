@@ -72,6 +72,9 @@ export interface ActivityMessage {
   nodeId: string;
   nodeType: string;
   label: string;
+  /** Canvas that owns the node. Enables follow-mode clients to switch
+   * surfaces before centering the target. Older senders may omit it. */
+  canvasId?: string;
   timestamp: number;
 }
 

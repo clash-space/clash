@@ -13,6 +13,7 @@ import {
     Edge,
     Node,
     NodeChange,
+    type ReactFlowInstance,
     useViewport,
     SelectionMode,
 } from '@xyflow/react';
@@ -20,6 +21,7 @@ import {
 // Use a flexible data type to preserve v11-style data access patterns throughout the codebase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AppNode = Node<Record<string, any>>;
+type AgentFollowTarget = { nodeId: string; canvasId: string };
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
 import { Toolbar } from 'radix-ui';
@@ -84,8 +86,11 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useLoroSync } from '@clash/web-ui/hooks/useLoroSync';
 import { actionIsCheckpointLocked } from '@clash/web-ui/lib/actionCheckpoint';
 import { LoroSyncProvider } from './LoroSyncContext';
-import { Canvas, type ProjectCanvas,
-  ProjectTimeline,
+import {
+  Canvas,
+  type ActivityMessage,
+  type ProjectCanvas,
+  type ProjectTimeline,
 } from '@clash/shared-types';
 import ActivityToast, { useActivityToasts } from './ActivityToast';
 import NodeActivityIndicator, { useNodeHighlights } from './NodeActivityIndicator';
@@ -317,6 +322,44 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
       kind: "canvas",
       canvasId: "main",
     });
+    const activeCanvasIdRef = useRef(activeCanvasId);
+    const workspaceSurfaceRef = useRef(workspaceSurface);
+    activeCanvasIdRef.current = activeCanvasId;
+    workspaceSurfaceRef.current = workspaceSurface;
+
+    const [followingAgent, setFollowingAgent] = useState(false);
+    const followingAgentRef = useRef(false);
+    const lastAgentTargetRef = useRef<AgentFollowTarget | null>(null);
+    const pendingAgentTargetRef = useRef<AgentFollowTarget | null>(null);
+    const queueAgentFollowTargetRef = useRef<(target: AgentFollowTarget) => void>(() => {});
+    const reactFlowInstanceRef = useRef<ReactFlowInstance<AppNode, Edge> | null>(null);
+
+    const setFollowingAgentMode = useCallback((following: boolean) => {
+      followingAgentRef.current = following;
+      setFollowingAgent(following);
+      if (!following) {
+        pendingAgentTargetRef.current = null;
+        return;
+      }
+      if (lastAgentTargetRef.current) {
+        queueAgentFollowTargetRef.current(lastAgentTargetRef.current);
+      }
+    }, []);
+
+    const stopFollowingAgent = useCallback(() => {
+      if (followingAgentRef.current) setFollowingAgentMode(false);
+    }, [setFollowingAgentMode]);
+
+    const recordAgentTarget = useCallback((nodeId: string, canvasId?: string) => {
+      const id = nodeId.trim();
+      if (!id) return;
+      const target = {
+        nodeId: id,
+        canvasId: canvasId?.trim() || activeCanvasIdRef.current,
+      };
+      lastAgentTargetRef.current = target;
+      if (followingAgentRef.current) queueAgentFollowTargetRef.current(target);
+    }, []);
 
     // Loro remains the single source of truth. These asset-ref nodes are only
     // a recovery bootstrap for old projects whose Loro document is empty while
@@ -382,9 +425,12 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     const loroSync = useLoroSync({
         projectId: project.id,
     canvasId: activeCanvasId,
-        onActivity: (activity) => {
+        onActivity: (activity: ActivityMessage) => {
             addToast(activity);
             addHighlight(activity);
+            if (activity.actor.clientType === "agent" && activity.action !== "deleted") {
+              recordAgentTarget(activity.nodeId, activity.canvasId);
+            }
         },
         onMutation: (mutation) => dispatchHostMutationEvent(project.id, mutation),
     onAwareness: (msg) => {
@@ -624,20 +670,28 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     }, [project.id]);
 
     const handleNewSession = useCallback(() => {
+        lastAgentTargetRef.current = null;
+        setFollowingAgentMode(false);
         setChatInitialPrompt(undefined);
         setThreadId('');
         setSessionKey((k) => k + 1);
-    }, []);
+    }, [setFollowingAgentMode]);
 
     const handleSwitchSession = useCallback((id: string) => {
+        lastAgentTargetRef.current = null;
+        setFollowingAgentMode(false);
         setChatInitialPrompt(undefined);
         setThreadId(id);
-    }, []);
+    }, [setFollowingAgentMode]);
 
     const handleDeleteSession = useCallback((id: string) => {
         removeSession(id);
-        if (id === threadId) setThreadId('');
-    }, [removeSession, threadId]);
+        if (id === threadId) {
+            lastAgentTargetRef.current = null;
+            setFollowingAgentMode(false);
+            setThreadId('');
+        }
+    }, [removeSession, setFollowingAgentMode, threadId]);
 
     const handleCopilotCreateSession = useCallback(async (initialMessage: string) => {
         const result = await handleCreateSession(initialMessage);
@@ -2247,11 +2301,14 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
   const openTimelineFromCanvasAction = useCallback((timelineId: string) => {
     if (!loroSync.timelines.some((timeline) => timeline.id === timelineId)) return;
+    stopFollowingAgent();
     setWorkspaceSurface({ kind: "timeline", timelineId });
-  }, [loroSync.timelines]);
+  }, [loroSync.timelines, stopFollowingAgent]);
 
   const selectCanvas = useCallback(
     (canvasId: string) => {
+      activeCanvasIdRef.current = canvasId;
+      workspaceSurfaceRef.current = { kind: "canvas", canvasId };
       setNodes([]);
       setEdges([]);
       setActiveCanvasId(canvasId);
@@ -2260,7 +2317,86 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
     [setEdges, setNodes],
   );
 
+  const focusPendingAgentTarget = useCallback(() => {
+    const target = pendingAgentTargetRef.current;
+    const instance = reactFlowInstanceRef.current;
+    if (!target || !instance || !followingAgentRef.current) return;
+    if (activeCanvasIdRef.current !== target.canvasId) return;
+    const surface = workspaceSurfaceRef.current;
+    if (surface.kind !== "canvas" || surface.canvasId !== target.canvasId) return;
+
+    const currentNodes = nodesRef.current;
+    const node = currentNodes.find((candidate) => candidate.id === target.nodeId);
+    if (!node) return;
+    const layoutRect = getAbsoluteRect(node, currentNodes);
+    const internalNode = instance.getInternalNode(target.nodeId);
+    const absolute = internalNode?.internals.positionAbsolute ?? {
+      x: layoutRect.x,
+      y: layoutRect.y,
+    };
+    const width = internalNode?.measured.width ?? layoutRect.width;
+    const height = internalNode?.measured.height ?? layoutRect.height;
+    const zoom = Math.min(Math.max(instance.getZoom(), 0.9), 1.2);
+    const flowBounds = flowBoundsRef.current?.getBoundingClientRect();
+    if (!flowBounds) return;
+    const copilotPanel = document.querySelector<HTMLElement>('#clash-copilot-panel');
+    const copilotBounds = copilotPanel?.getBoundingClientRect();
+    const panelCoversCanvas =
+      copilotPanel?.getAttribute('aria-hidden') !== 'true' &&
+      !!copilotBounds &&
+      copilotBounds.left > flowBounds.left &&
+      copilotBounds.left < flowBounds.right &&
+      copilotBounds.bottom > flowBounds.top &&
+      copilotBounds.top < flowBounds.bottom;
+    const visibleRight = panelCoversCanvas
+      ? Math.max(0, copilotBounds.left - flowBounds.left - 12)
+      : flowBounds.width;
+    const targetCenterX = absolute.x + width / 2;
+    const targetCenterY = absolute.y + height / 2;
+    instance.setViewport({
+      x: visibleRight / 2 - targetCenterX * zoom,
+      y: flowBounds.height / 2 - targetCenterY * zoom,
+      zoom,
+    }, {
+      duration: 420,
+    });
+  }, []);
+
+  const queueAgentFollowTarget = useCallback((target: AgentFollowTarget) => {
+    lastAgentTargetRef.current = target;
+    if (!followingAgentRef.current) return;
+    pendingAgentTargetRef.current = target;
+    if (activeCanvasIdRef.current !== target.canvasId) {
+      selectCanvas(target.canvasId);
+    } else if (
+      workspaceSurfaceRef.current.kind !== "canvas" ||
+      workspaceSurfaceRef.current.canvasId !== target.canvasId
+    ) {
+      const surface: ProjectWorkspaceSurface = { kind: "canvas", canvasId: target.canvasId };
+      workspaceSurfaceRef.current = surface;
+      setWorkspaceSurface(surface);
+    }
+    window.requestAnimationFrame(focusPendingAgentTarget);
+  }, [focusPendingAgentTarget, selectCanvas]);
+  queueAgentFollowTargetRef.current = queueAgentFollowTarget;
+
+  useEffect(() => {
+    if (!pendingAgentTargetRef.current || !followingAgent) return;
+    const frame = window.requestAnimationFrame(focusPendingAgentTarget);
+    const settleTimer = window.setTimeout(focusPendingAgentTarget, 480);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
+    };
+  }, [activeCanvasId, focusPendingAgentTarget, followingAgent, isSidebarCollapsed, nodes, sidebarWidth, workspaceSurface]);
+
+  const selectCanvasFromNavigator = useCallback((canvasId: string) => {
+    stopFollowingAgent();
+    selectCanvas(canvasId);
+  }, [selectCanvas, stopFollowingAgent]);
+
   const createCanvasFromNavigator = useCallback(() => {
+    stopFollowingAgent();
     const name = window.prompt("Canvas name")?.trim();
     if (!name) return;
     const stem =
@@ -2275,7 +2411,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
       return;
     }
     selectCanvas(canvasId);
-  }, [loroSync, selectCanvas]);
+  }, [loroSync, selectCanvas, stopFollowingAgent]);
 
   const renameCanvasFromNavigator = useCallback(
     (canvas: ProjectCanvas) => {
@@ -2289,6 +2425,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
 
   const deleteCanvasFromNavigator = useCallback(
     (canvas: ProjectCanvas) => {
+      stopFollowingAgent();
       if (!window.confirm(`Delete Canvas "${canvas.name}"?`)) return;
       const fallback = loroSync.canvases.find(
         (candidate) => candidate.id !== canvas.id,
@@ -2300,10 +2437,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
       }
       if (activeCanvasId === canvas.id && fallback) selectCanvas(fallback.id);
     },
-    [activeCanvasId, loroSync, selectCanvas],
+    [activeCanvasId, loroSync, selectCanvas, stopFollowingAgent],
   );
 
   const createTimelineFromNavigator = useCallback(() => {
+    stopFollowingAgent();
     const name = window.prompt("Timeline name")?.trim();
     if (!name) return;
     const timelineId = `timeline-${Date.now().toString(36)}`;
@@ -2317,10 +2455,11 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
       return;
     }
     setWorkspaceSurface({ kind: "timeline", timelineId });
-  }, [loroSync]);
+  }, [loroSync, stopFollowingAgent]);
 
   const attachTimelineFromNavigator = useCallback(
     (timeline: ProjectTimeline) => {
+      stopFollowingAgent();
       const actionNodeId = `timeline-action-${Date.now().toString(36)}`;
       const result = loroSync.attachTimeline({
         timelineId: timeline.id,
@@ -2333,7 +2472,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
       }
       setWorkspaceSurface({ kind: "canvas", canvasId: activeCanvasId });
     },
-    [activeCanvasId, loroSync],
+    [activeCanvasId, loroSync, stopFollowingAgent],
   );
 
   const saveTimelineFromNavigator = useCallback(
@@ -2414,6 +2553,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                             <div
                               id="project-workspace-shell"
                               data-copilot-layout={isCopilotDocked ? "docked" : "overlay"}
+                              data-following-agent={followingAgent ? "true" : "false"}
                               className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:3rem]"
                               style={{ right: isCopilotDocked ? sidebarWidth : 0 }}
                             >
@@ -2455,14 +2595,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                               assets={projectAssets}
                               assetCount={project.assetCount ?? projectAssets.length}
                               surface={workspaceSurface}
-                              onSelectCanvas={selectCanvas}
+                              onSelectCanvas={selectCanvasFromNavigator}
                               onSelectTimeline={(timelineId) => {
+                                stopFollowingAgent();
                                 setWorkspaceSurface({
                                   kind: "timeline",
                                   timelineId,
                                 });
                               }}
                               onSelectAssets={() => {
+                                stopFollowingAgent();
                                 setWorkspaceSurface({ kind: "assets" });
                               }}
                               onCreateCanvas={createCanvasFromNavigator}
@@ -2490,7 +2632,7 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 assets={projectAssets}
                                 canvases={loroSync.canvases}
                                 onSave={saveTimelineFromNavigator}
-                                onOpenCanvas={selectCanvas}
+                                onOpenCanvas={selectCanvasFromNavigator}
                               />
                             )}
 
@@ -2501,6 +2643,16 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                 <ReactFlow
                                     nodes={sanitizedNodes}
                                     edges={edges}
+                                    onInit={(instance) => {
+                                        reactFlowInstanceRef.current = instance;
+                                        window.requestAnimationFrame(focusPendingAgentTarget);
+                                    }}
+                                    onMoveStart={(event) => {
+                                        if (event) stopFollowingAgent();
+                                    }}
+                                    onNodeClick={() => stopFollowingAgent()}
+                                    onPaneClick={() => stopFollowingAgent()}
+                                    onNodeDragStart={() => stopFollowingAgent()}
                                     onNodesChange={handleNodesChange}
                                     onEdgesChange={handleEdgesChange}
                                     onBeforeDelete={onBeforeDelete}
@@ -2508,7 +2660,10 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                     onNodeDragStop={onNodeDragStop}
                                     onConnect={onConnect}
                                     onSelectionChange={onSelectionChange}
-                                    onSelectionStart={() => setIsMarqueeing(true)}
+                                    onSelectionStart={() => {
+                                        stopFollowingAgent();
+                                        setIsMarqueeing(true);
+                                    }}
                                     onSelectionEnd={() => setIsMarqueeing(false)}
 
                                     nodeTypes={nodeTypes}
@@ -2775,6 +2930,9 @@ export default function ProjectEditor({ project, initialPrompt, initialThreadId,
                                         isCollapsed={isSidebarCollapsed}
                                         onCollapseChange={setIsSidebarCollapsed}
                                         layoutMode={workspaceSurface.kind === "canvas" ? "floating" : "docked"}
+                                        followingAgent={followingAgent}
+                                        onFollowingAgentChange={setFollowingAgentMode}
+                                        onAgentCanvasTarget={recordAgentTarget}
                                         selectedNodes={selectedNodes}
                                         onAddNode={addNode}
                                         onRemoveNode={(nodeId, options) => {

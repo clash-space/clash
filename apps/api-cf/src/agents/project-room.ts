@@ -38,6 +38,7 @@ import type {
 } from "@clash/shared-types";
 import {
   Canvas,
+  DEFAULT_CANVAS_ID,
   canvasGraphReconciliationChanged,
   CustomActionDefinitionSchema,
   listNodeOwnedEdges,
@@ -467,7 +468,8 @@ export class ProjectRoom extends DurableObject<Env> {
     action: ActivityAction,
     nodeId: string,
     nodeType: string,
-    label: string
+    label: string,
+    canvasId: string,
   ): void {
     const now = Date.now();
     const throttleKey = `${nodeId}:${action}`;
@@ -486,6 +488,7 @@ export class ProjectRoom extends DurableObject<Env> {
       nodeId,
       nodeType,
       label,
+      canvasId,
       timestamp: now,
     };
 
@@ -1125,18 +1128,39 @@ export class ProjectRoom extends DurableObject<Env> {
             if (!before) {
               // New node added
               const label = (after.data?.label as string) ?? (after.data?.name as string) ?? "";
-              this.broadcastActivity(msg.sender, "added", id, after.type ?? "text", label);
+              this.broadcastActivity(
+                msg.sender,
+                "added",
+                id,
+                after.type ?? "text",
+                label,
+                typeof after.canvasId === "string" ? after.canvasId : DEFAULT_CANVAS_ID,
+              );
             } else if (JSON.stringify(before) !== JSON.stringify(after)) {
               // Node updated
               const label = (after.data?.label as string) ?? (after.data?.name as string) ?? "";
-              this.broadcastActivity(msg.sender, "updated", id, after.type ?? "text", label);
+              this.broadcastActivity(
+                msg.sender,
+                "updated",
+                id,
+                after.type ?? "text",
+                label,
+                typeof after.canvasId === "string" ? after.canvasId : DEFAULT_CANVAS_ID,
+              );
             }
           }
           // Check for deleted nodes
           for (const [id, before] of nodesBefore) {
             if (!seenIds.has(id)) {
               const label = (before.data?.label as string) ?? (before.data?.name as string) ?? "";
-              this.broadcastActivity(msg.sender, "deleted", id, before.type ?? "text", label);
+              this.broadcastActivity(
+                msg.sender,
+                "deleted",
+                id,
+                before.type ?? "text",
+                label,
+                typeof before.canvasId === "string" ? before.canvasId : DEFAULT_CANVAS_ID,
+              );
             }
           }
 

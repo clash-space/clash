@@ -5,6 +5,10 @@
       "expand": "展开 AI 副驾驶",
       "collapse": "收起 AI 副驾驶"
     },
+    "follow": {
+      "start": "跟随 Agent 操作",
+      "stop": "停止跟随 Agent"
+    },
     "header": {
       "newSession": "新建会话",
       "newChat": "New chat",

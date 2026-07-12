@@ -39,6 +39,8 @@ vi.mock("react-i18next", () => ({
     t: (key: string, values?: Record<string, unknown>) => {
       if (key === "copilot.panel.label") return "AI Copilot";
       if (key === "copilot.panel.collapse") return "Collapse AI Copilot";
+      if (key === "copilot.follow.start") return "Follow agent actions";
+      if (key === "copilot.follow.stop") return "Stop following agent";
       if (key === "copilot.header.newSession") return "New session";
       if (key === "copilot.header.newChat") return "New chat";
       if (key === "copilot.header.history") return "Session history";
@@ -284,6 +286,84 @@ describe("ChatbotCopilot desktop local mode", () => {
     vi.unstubAllGlobals();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     window.sessionStorage.clear();
+  });
+
+  it("offers an explicit crosshair toggle for following agent actions", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const onFollowingAgentChange = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      followingAgent: false,
+      onFollowingAgentChange,
+    });
+
+    const toggle = screen.getByRole("button", { name: "Follow agent actions" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onFollowingAgentChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports the latest structured Canvas patch target for follow mode", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const onAddNode = vi.fn(() => "agent-target");
+    const onAgentCanvasTarget = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "streaming",
+      ready: true,
+      messages: [{
+        id: "runtime-follow-target",
+        role: "assistant",
+        parts: [{
+          type: "raw_event",
+          event: {
+            sessionUpdate: "clash.canvas.patch",
+            operations: [{
+              op: "add_node",
+              node: {
+                id: "agent-target",
+                type: "text",
+                data: { label: "Agent target" },
+                position: { x: 1200, y: 600 },
+              },
+            }],
+          },
+        }],
+      }] as any,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({ onAddNode, onAgentCanvasTarget });
+
+    await waitFor(() => expect(onAgentCanvasTarget).toHaveBeenCalledWith("agent-target"));
   });
 
   it("prepares the current desktop runtime as a draft and keeps web/cloud routing out of the header", async () => {

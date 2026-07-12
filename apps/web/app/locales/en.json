@@ -5,6 +5,10 @@
       "expand": "Expand AI Copilot",
       "collapse": "Collapse AI Copilot"
     },
+    "follow": {
+      "start": "Follow agent actions",
+      "stop": "Stop following agent"
+    },
     "header": {
       "newSession": "New session",
       "newChat": "New chat",

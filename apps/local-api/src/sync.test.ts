@@ -54,6 +54,75 @@ function countUpdateLogRecords(log: Buffer): number {
 }
 
 describe("LocalLoroRoom", () => {
+  it("broadcasts structured agent node add and update activity with its Canvas target", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/agent-follow",
+      workflowProcessor: null,
+    });
+    const browserSideband: Record<string, unknown>[] = [];
+    const agent = room.addPeer(() => {}, {
+      presence: {
+        id: "agent-peer",
+        clientType: "agent",
+        userId: "local-user",
+        name: "Codex",
+      },
+    });
+    room.addPeer(() => {}, {
+      presence: {
+        id: "browser-peer",
+        clientType: "browser",
+        userId: "local-user",
+        name: "Local User",
+      },
+      sendJson: (message) => browserSideband.push(message),
+    });
+    browserSideband.length = 0;
+
+    const agentDoc = new LoroDoc();
+    agentDoc.getMap("nodes").set("agent-shot", {
+      canvasId: "storyboard",
+      type: "image",
+      data: { label: "Agent shot" },
+      position: { x: 900, y: 400 },
+    });
+
+    await room.receive(agent, agentDoc.export({ mode: "snapshot" }));
+
+    expect(browserSideband).toContainEqual({
+      type: "activity",
+      actor: { clientType: "agent", name: "Codex" },
+      action: "added",
+      nodeId: "agent-shot",
+      nodeType: "image",
+      label: "Agent shot",
+      canvasId: "storyboard",
+      timestamp: expect.any(Number),
+    });
+
+    browserSideband.length = 0;
+    const updateFrom = agentDoc.version();
+    agentDoc.getMap("nodes").set("agent-shot", {
+      canvasId: "storyboard",
+      type: "image",
+      data: { label: "Agent shot revised" },
+      position: { x: 1100, y: 520 },
+    });
+    await room.receive(agent, agentDoc.export({ mode: "update", from: updateFrom }));
+
+    expect(browserSideband).toContainEqual({
+      type: "activity",
+      actor: { clientType: "agent", name: "Codex" },
+      action: "updated",
+      nodeId: "agent-shot",
+      nodeType: "image",
+      label: "Agent shot revised",
+      canvasId: "storyboard",
+      timestamp: expect.any(Number),
+    });
+  });
+
   it("persists and broadcasts graph repair updates after importing an orphan edge", async () => {
     const projectId = "project/orphan-repair";
     const room = await LocalLoroRoom.open({ dataDir, projectId, workflowProcessor: null });
@@ -649,7 +718,7 @@ describe("LocalLoroRoom", () => {
 });
 
 describe("attachLocalSync", () => {
-  it("broadcasts local agent presence as the local user's surrogate", async () => {
+  it("broadcasts local agent presence and structured Canvas activity", async () => {
     const server = createServer();
     attachLocalSync(server, { dataDir });
 
@@ -663,11 +732,13 @@ describe("attachLocalSync", () => {
       },
     });
     const browserPresence: any[] = [];
+    const browserActivity: any[] = [];
 
     browser.on("message", (data, isBinary) => {
       if (isBinary) return;
       const msg = JSON.parse(String(data));
       if (msg.type === "presence") browserPresence.push(msg);
+      if (msg.type === "activity") browserActivity.push(msg);
     });
 
     await Promise.all([
@@ -696,6 +767,28 @@ describe("attachLocalSync", () => {
           }),
         ]),
       );
+    });
+
+    const agentDoc = new LoroDoc();
+    agentDoc.getMap("nodes").set("ws-agent-shot", {
+      canvasId: "shot-board",
+      type: "image",
+      data: { label: "WebSocket agent shot" },
+      position: { x: 400, y: 200 },
+    });
+    agent.send(agentDoc.export({ mode: "snapshot" }));
+
+    await vi.waitFor(() => {
+      expect(browserActivity).toContainEqual({
+        type: "activity",
+        actor: { clientType: "agent", name: "Mock ACP" },
+        action: "added",
+        nodeId: "ws-agent-shot",
+        nodeType: "image",
+        label: "WebSocket agent shot",
+        canvasId: "shot-board",
+        timestamp: expect.any(Number),
+      });
     });
 
     await closeWebSocket(agent);

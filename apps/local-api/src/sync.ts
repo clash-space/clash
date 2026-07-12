@@ -3,10 +3,13 @@ import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
 import {
   Canvas,
+  DEFAULT_CANVAS_ID,
   canvasGraphReconciliationChanged,
   CustomActionDefinitionSchema,
   reconcileCanvasGraph,
   reconcileProjectTimelineOwnership,
+  type ActivityAction,
+  type ActivityMessage,
   type ClientType,
   type PresenceClient,
 } from "@clash/shared-types";
@@ -176,6 +179,7 @@ export class LocalLoroRoom {
   private peers = new Map<PeerId, LocalPeer>();
   private updatesSinceSnapshot = 0;
   private updateBytesSinceSnapshot = 0;
+  private activityThrottle = new Map<string, number>();
 
   private constructor(
     private readonly projectId: string,
@@ -226,6 +230,11 @@ export class LocalLoroRoom {
 
   async receive(sender: PeerId, update: Uint8Array): Promise<void> {
     const updateBytes = exactBytes(update);
+    const nodesMap = this.doc.getMap("nodes");
+    const nodesBefore = new Map<string, Record<string, any>>();
+    for (const [id, raw] of nodesMap.entries()) {
+      nodesBefore.set(id, raw as Record<string, any>);
+    }
     this.doc.import(updateBytes);
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);
@@ -246,7 +255,66 @@ export class LocalLoroRoom {
       for (const peer of this.peers.values()) peer.sendUpdate(repairUpdate);
       this.mirrorRemoteUpdate(repairUpdate);
     }
+    this.broadcastNodeActivity(sender, nodesBefore);
     await this.processPendingWork();
+  }
+
+  private broadcastNodeActivity(
+    sender: PeerId,
+    nodesBefore: Map<string, Record<string, any>>,
+  ): void {
+    const nodesAfter = this.doc.getMap("nodes").entries();
+    const seenIds = new Set<string>();
+    for (const [id, raw] of nodesAfter) {
+      seenIds.add(id);
+      const after = raw as Record<string, any>;
+      const before = nodesBefore.get(id);
+      if (!before) {
+        this.broadcastActivity(sender, "added", id, after);
+      } else if (JSON.stringify(before) !== JSON.stringify(after)) {
+        this.broadcastActivity(sender, "updated", id, after);
+      }
+    }
+    for (const [id, before] of nodesBefore) {
+      if (!seenIds.has(id)) this.broadcastActivity(sender, "deleted", id, before);
+    }
+  }
+
+  private broadcastActivity(
+    sender: PeerId,
+    action: ActivityAction,
+    nodeId: string,
+    node: Record<string, any>,
+  ): void {
+    const now = Date.now();
+    const throttleKey = `${nodeId}:${action}`;
+    const last = this.activityThrottle.get(throttleKey) ?? 0;
+    if (now - last < 500) return;
+    this.activityThrottle.set(throttleKey, now);
+
+    const actor = this.peers.get(sender)?.presence;
+    const message: ActivityMessage = {
+      type: "activity",
+      actor: {
+        clientType: actor?.clientType ?? "browser",
+        name: actor?.name ?? "Unknown",
+      },
+      action,
+      nodeId,
+      nodeType: typeof node.type === "string" ? node.type : "text",
+      label: typeof node.data?.label === "string"
+        ? node.data.label
+        : typeof node.data?.name === "string"
+          ? node.data.name
+          : "",
+      canvasId: typeof node.canvasId === "string" && node.canvasId.trim()
+        ? node.canvasId
+        : DEFAULT_CANVAS_ID,
+      timestamp: now,
+    };
+    for (const [peerId, peer] of this.peers) {
+      if (peerId !== sender) peer.sendJson?.({ ...message });
+    }
   }
 
   async receiveJson(sender: PeerId, msg: Record<string, any>): Promise<void> {

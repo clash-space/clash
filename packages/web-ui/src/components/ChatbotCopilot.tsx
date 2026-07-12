@@ -1,7 +1,7 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { ArrowBendDownRight, CaretRight, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
+import { ArrowBendDownRight, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
@@ -65,6 +65,9 @@ interface ChatbotCopilotProps {
     isCollapsed: boolean;
     onCollapseChange: (collapsed: boolean) => void;
     layoutMode?: 'floating' | 'docked';
+    followingAgent?: boolean;
+    onFollowingAgentChange?: (following: boolean) => void;
+    onAgentCanvasTarget?: (nodeId: string) => void;
     selectedNodes?: RFNode[];
     onAddNode?: (type: string, extraData?: any) => string;
     onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
@@ -573,6 +576,9 @@ export default function ChatbotCopilot({
     isCollapsed,
     onCollapseChange,
     layoutMode = 'floating',
+    followingAgent = false,
+    onFollowingAgentChange,
+    onAgentCanvasTarget,
     selectedNodes = [],
     onAddNode,
     onRemoveNode,
@@ -1220,6 +1226,7 @@ export default function ChatbotCopilot({
                             ifMatch: operation.ifMatch,
                             requiresReadProof: !createdNodeIdsInPatch.has(patchEdge.source) && !createdNodeIdsInPatch.has(patchEdge.target),
                         });
+                        onAgentCanvasTarget?.(patchEdge.target);
                         continue;
                     }
 
@@ -1258,6 +1265,7 @@ export default function ChatbotCopilot({
                             ...operation.timeline,
                             requiresReadProof: !createdNodeIdsInPatch.has(operation.timeline.nodeId),
                         });
+                        onAgentCanvasTarget?.(operation.timeline.nodeId);
                         continue;
                     }
 
@@ -1285,7 +1293,7 @@ export default function ChatbotCopilot({
                         actorAgentId: clashRt.selectedAgentId ?? undefined,
                     });
 
-                    onAddNode(patchNode.type, {
+                    const createdNodeId = onAddNode(patchNode.type, {
                         id: patchNode.id,
                         ...data,
                         ...(patchNode.position ? { position: patchNode.position } : {}),
@@ -1294,6 +1302,7 @@ export default function ChatbotCopilot({
                         ...(patchNode.height !== undefined ? { height: patchNode.height } : {}),
                         ...(patchNode.style ? { style: patchNode.style } : {}),
                     });
+                    onAgentCanvasTarget?.(createdNodeId || patchNode.id);
                 }
             }
         }
@@ -1377,7 +1386,7 @@ export default function ChatbotCopilot({
                 }
             }, 0);
         }
-    }, [actorUserId, chatMode, clashRt.messages, clashRt.selectedAgentId, onAddEdge, onAddNode, onApplyTimeline, onRemoveEdge, onRemoveNode, onUpdateEdge]);
+    }, [actorUserId, chatMode, clashRt.messages, clashRt.selectedAgentId, onAddEdge, onAddNode, onAgentCanvasTarget, onApplyTimeline, onRemoveEdge, onRemoveNode, onUpdateEdge]);
 
     // Mount-time send of the pending first message. Parent gives us a fresh
     // `key={threadId}` whenever the session changes, so this component remounts
@@ -2200,12 +2209,27 @@ export default function ChatbotCopilot({
                                             mentionableNodes={mentionableNodes}
                                             projectId={projectId}
                                             toolbarAccessory={(
-                                                <HarnessPermissionSelector
-                                                    selectedPermissionModeId={sessionPermissionModeId}
-                                                    sessionModes={effectiveSessionModes}
-                                                    modeConfigOption={modeConfigOption}
-                                                    onSelectPermissionMode={handleSelectSessionPermissionMode}
-                                                />
+                                                <div className="flex min-w-0 items-center gap-1">
+                                                    {onFollowingAgentChange ? (
+                                                        <Tooltip label={t(followingAgent ? 'copilot.follow.stop' : 'copilot.follow.start')}>
+                                                            <IconButton
+                                                                label={t(followingAgent ? 'copilot.follow.stop' : 'copilot.follow.start')}
+                                                                aria-pressed={followingAgent}
+                                                                variant={followingAgent ? 'active' : 'default'}
+                                                                size="sm"
+                                                                shape="rounded"
+                                                                onClick={() => onFollowingAgentChange(!followingAgent)}
+                                                                icon={<Crosshair className="h-4 w-4" weight={followingAgent ? 'bold' : 'regular'} />}
+                                                            />
+                                                        </Tooltip>
+                                                    ) : null}
+                                                    <HarnessPermissionSelector
+                                                        selectedPermissionModeId={sessionPermissionModeId}
+                                                        sessionModes={effectiveSessionModes}
+                                                        modeConfigOption={modeConfigOption}
+                                                        onSelectPermissionMode={handleSelectSessionPermissionMode}
+                                                    />
+                                                </div>
                                             )}
                                             rightToolbarAccessory={(
                                                 <SessionConfigSelector

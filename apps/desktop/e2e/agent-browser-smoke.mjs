@@ -31,6 +31,7 @@ const narrowLayoutScreenshot = path.join(captureDir, "narrow-layout-agent-browse
 const timelineDockScreenshot = path.join(captureDir, "timeline-dock-agent-browser-desktop.png");
 const assetDestinationScreenshot = path.join(captureDir, "asset-destination-agent-browser-desktop.png");
 const localSettingsScreenshot = path.join(captureDir, "local-settings-agent-browser-desktop.png");
+const agentFollowScreenshot = path.join(captureDir, "agent-follow-agent-browser-desktop.png");
 let electronTargetRecovery = null;
 
 function sleep(ms) {
@@ -407,7 +408,60 @@ async function main() {
 
     const firstPrompt = "agent-browser desktop first turn";
     const secondPrompt = "agent-browser desktop fresh turn";
+    if (
+      !clickButtonByLabel(agentBrowser, "Follow agent actions") &&
+      !clickButtonByLabel(agentBrowser, "跟随 Agent 操作")
+    ) {
+      throw new Error("Could not enable agent follow mode");
+    }
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'true' &&
+       document.querySelector('[aria-label="Stop following agent"], [aria-label="停止跟随 Agent"]')?.getAttribute('aria-pressed') === 'true'`,
+      "active agent follow mode",
+      10000,
+    );
     await sendPrompt(firstPrompt);
+    const agentFollow = await waitForEval(
+      `(() => {
+        const shell = document.querySelector('#project-workspace-shell');
+        const flow = document.querySelector('#project-workspace-inset .react-flow')?.getBoundingClientRect();
+        const target = [...document.querySelectorAll('[data-id^="mock-agent-action-"]')].at(-1)?.getBoundingClientRect();
+        const toggle = document.querySelector('[aria-label="Stop following agent"], [aria-label="停止跟随 Agent"]');
+        const panelElement = document.querySelector('#clash-copilot-panel');
+        const panel = panelElement?.getBoundingClientRect();
+        if (!shell || !flow || !target || !toggle) return false;
+        if (shell.getAttribute('data-following-agent') !== 'true' || toggle.getAttribute('aria-pressed') !== 'true') return false;
+        const panelCoversCanvas = panelElement?.getAttribute('aria-hidden') !== 'true' && panel &&
+          panel.left > flow.left && panel.left < flow.right && panel.bottom > flow.top && panel.top < flow.bottom;
+        const visibleRight = panelCoversCanvas ? panel.left - 12 : flow.right;
+        const deltaX = Math.abs((target.left + target.width / 2) - (flow.left + (visibleRight - flow.left) / 2));
+        const deltaY = Math.abs((target.top + target.height / 2) - (flow.top + flow.height / 2));
+        if (deltaX > 80 || deltaY > 80) return false;
+        return {
+          targetId: [...document.querySelectorAll('[data-id^="mock-agent-action-"]')].at(-1)?.getAttribute('data-id'),
+          deltaX: Math.round(deltaX),
+          deltaY: Math.round(deltaY),
+          active: true,
+        };
+      })()`,
+      "agent-created node centered by follow mode",
+      20000,
+    );
+    agentBrowser(["screenshot", agentFollowScreenshot]);
+
+    agentBrowser(["click", "#project-assets"]);
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'false' &&
+       !!document.querySelector('[aria-label="Follow agent actions"], [aria-label="跟随 Agent 操作"]')`,
+      "manual project navigation stops agent follow mode",
+      10000,
+    );
+    agentBrowser(["click", "#project-canvas-main"]);
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay'`,
+      "Main Canvas after manual follow takeover",
+      10000,
+    );
     const firstHistory = await assertRuntimeHistory(projectId, apiOrigin, 1);
 
     if (!clickButtonByLabel(agentBrowser, "New session") && !clickButtonByLabel(agentBrowser, "新建会话")) {
@@ -826,12 +880,14 @@ async function main() {
     console.log("[desktop-agent-browser] asset destination", JSON.stringify(assetDestination));
     console.log("[desktop-agent-browser] asset placement", JSON.stringify(assetPlacement));
     console.log("[desktop-agent-browser] local settings", JSON.stringify(localSettings));
+    console.log("[desktop-agent-browser] agent follow", JSON.stringify(agentFollow));
     console.log(`[desktop-agent-browser] screenshot ${latestScreenshot}`);
     console.log(`[desktop-agent-browser] history screenshot ${historyScreenshot}`);
     console.log(`[desktop-agent-browser] narrow screenshot ${narrowLayoutScreenshot}`);
     console.log(`[desktop-agent-browser] timeline dock screenshot ${timelineDockScreenshot}`);
     console.log(`[desktop-agent-browser] asset destination screenshot ${assetDestinationScreenshot}`);
     console.log(`[desktop-agent-browser] local settings screenshot ${localSettingsScreenshot}`);
+    console.log(`[desktop-agent-browser] agent follow screenshot ${agentFollowScreenshot}`);
     assertNoForbiddenRendererIssues(electronLogs);
   } catch (error) {
     try {
