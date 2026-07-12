@@ -297,6 +297,96 @@ describe("useClashRuntime", () => {
     });
   });
 
+  it("keeps streamed assistant text when persisted history is still lagging at session complete", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-lagging-history" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-lagging-history/messages") && !init?.method) {
+        return new Response(JSON.stringify({
+          messages: [{
+            id: "lagging-user-row",
+            sender_kind: "user",
+            sender_id: "local-user",
+            turn_id: "turn-lagging",
+            events: [{ type: "text", text: "hello" }],
+            created_at: 1,
+          }],
+        }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+
+    act(() => {
+      result.current.startDraft("desktop-local", undefined, {
+        agentId: "mock-acp",
+        projectId: "project-one",
+      });
+      result.current.sendMessage("hello");
+    });
+
+    await waitFor(() => expect(result.current.sessionId).toBe("local-session-lagging-history"));
+    const ws = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.ready",
+          session_id: "local-session-lagging-history",
+          acp_session_id: "mock-acp-session",
+        }),
+      });
+    });
+    const prompt = JSON.parse(ws.sent.find((frame) => JSON.parse(frame).type === "prompt")!);
+
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-lagging-history",
+          turn_id: prompt.turn_id,
+          event: { type: "text", text: "Mock ACP reply: hello" },
+        }),
+      });
+    });
+    expect(result.current.messages.at(-1)?.parts).toEqual([
+      { type: "text", text: "Mock ACP reply: hello" },
+    ]);
+
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.complete",
+          session_id: "local-session-lagging-history",
+          turn_id: prompt.turn_id,
+        }),
+      });
+    });
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(
+      "/api/v1/local-sessions/local-session-lagging-history/messages",
+    ))).toBe(true));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.messages.at(-1)?.parts).toEqual([
+      { type: "text", text: "Mock ACP reply: hello" },
+    ]);
+  });
+
   it("sends an explicit local ACP agent override when selecting a runtime", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);

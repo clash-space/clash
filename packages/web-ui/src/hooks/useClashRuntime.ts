@@ -311,6 +311,42 @@ async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessag
   return bubbles;
 }
 
+function runtimeTranscriptCompleteness(messages: ByoMessage[]) {
+  let userParts = 0;
+  let userTextLength = 0;
+  let assistantParts = 0;
+  let assistantTextLength = 0;
+
+  for (const message of messages) {
+    for (const part of message.parts) {
+      const textLength = part.type === 'text' || part.type === 'thought'
+        ? part.text.length
+        : part.type === 'event_note'
+          ? part.title.length + (part.detail?.length ?? 0)
+          : 0;
+      if (message.role === 'user') {
+        userParts += 1;
+        userTextLength += textLength;
+      } else {
+        assistantParts += 1;
+        assistantTextLength += textLength;
+      }
+    }
+  }
+
+  return { userParts, userTextLength, assistantParts, assistantTextLength };
+}
+
+function persistedTranscriptCanReplaceLive(history: ByoMessage[], live: ByoMessage[]): boolean {
+  if (live.length === 0) return true;
+  const persisted = runtimeTranscriptCompleteness(history);
+  const streamed = runtimeTranscriptCompleteness(live);
+  return persisted.userParts >= streamed.userParts
+    && persisted.userTextLength >= streamed.userTextLength
+    && persisted.assistantParts >= streamed.assistantParts
+    && persisted.assistantTextLength >= streamed.assistantTextLength;
+}
+
 function appendRuntimeError(messages: ByoMessage[], turnId: string | undefined, message: string): ByoMessage[] {
   const id = turnId ? `runtime-error-${turnId}` : `runtime-error-${Date.now().toString(36)}`;
   if (messages.some((candidate) => candidate.id === id)) return messages;
@@ -529,6 +565,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const hydrateMessagesFromStore = useCallback(async (targetSessionId: string) => {
     const history = await fetchRuntimeSessionMessages(targetSessionId);
     if (!history || sessionIdRef.current !== targetSessionId || history.length === 0) return;
+    if (!persistedTranscriptCanReplaceLive(history, messagesRef.current)) return;
     messagesRef.current = history;
     setMessages(history);
   }, []);
