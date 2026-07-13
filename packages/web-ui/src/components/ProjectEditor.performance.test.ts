@@ -13,6 +13,29 @@ describe("ProjectEditor canvas performance", () => {
     expect(source).toMatch(/onlyRenderVisibleElements/);
   });
 
+  it("loads ELK only when a full graph layout is requested", () => {
+    const source = projectEditorSource();
+
+    expect(source).not.toContain(
+      "import { getLayoutedElements } from '@clash/web-ui/lib/utils/elkLayout';",
+    );
+    expect(source).toMatch(
+      /await import\(["']@clash\/web-ui\/lib\/utils\/elkLayout["']\)/,
+    );
+  });
+
+  it("normalizes canvas nodes at write boundaries instead of rescanning on render", () => {
+    const source = projectEditorSource();
+
+    expect(source).not.toContain(
+      "const sanitizedNodes = useMemo(() => sanitizeNodes(nodes), [nodes]);",
+    );
+    expect(source).not.toContain("nodes={sanitizedNodes}");
+    expect(source).toContain("nodes={nodes}");
+    expect(source).toContain("setNodesInternal(processedNodes as AppNode[]);");
+    expect(source).toContain("setNodesInternal(nextNodes);");
+  });
+
   it("keeps Loro mutations outside React state updater functions", () => {
     const source = projectEditorSource();
     const sourceFile = ts.createSourceFile(

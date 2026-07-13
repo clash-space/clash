@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, waitFor, act, cleanup } from "@testing-library/react";
 import { useAsset, invalidateAsset, getAsset } from "./useAsset";
 import type { Asset } from "@clash/shared-types";
 
@@ -23,6 +23,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("useAsset", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.restoreAllMocks();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;

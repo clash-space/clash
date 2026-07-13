@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectAssetsSurface, ProjectTimelineEditorSurface } from './ProjectWorkspaceSurfaces';
+import { ProjectAssetSurface, ProjectTimelineEditorSurface } from './ProjectWorkspaceSurfaces';
 
 vi.mock('@master-clash/remotion-ui', () => ({
     Editor: ({ initialState, stateRef, onBack, headerLeadingAction, editorKey, layout }: any) => {
@@ -26,8 +26,7 @@ vi.mock('@master-clash/remotion-ui', () => ({
 }));
 
 describe('Project workspace surfaces', () => {
-    it('adds a Project Asset to an explicit Canvas', async () => {
-        const onAddToCanvas = vi.fn();
+    it('shows one selected Project Asset directly instead of an aggregate Assets page', () => {
         const asset = {
             id: 'asset-1',
             url: '/asset-1.png',
@@ -36,22 +35,13 @@ describe('Project workspace surfaces', () => {
             createdAt: null,
         };
         render(
-            <ProjectAssetsSurface
-                assets={[asset]}
-                canvases={[
-                    { id: 'main', name: 'Main', position: 0 },
-                    { id: 'shots', name: 'Shots', position: 1 },
-                ]}
-                onAddToCanvas={onAddToCanvas}
-            />,
+            <ProjectAssetSurface asset={asset} />,
         );
-        fireEvent.pointerDown(screen.getByRole('button', { name: 'Add asset-1 to canvas' }), {
-            button: 0,
-            ctrlKey: false,
-        });
-        fireEvent.click(await screen.findByRole('menuitem', { name: 'Shots' }));
-        expect(onAddToCanvas).toHaveBeenCalledWith(asset, 'shots');
-        expect(screen.queryByText(/Place on/)).toBeNull();
+
+        expect(screen.getByRole('main', { name: 'asset-1.png preview' })).toBeTruthy();
+        expect(screen.getByRole('img', { name: 'asset-1.png' }).getAttribute('src')).toBe('/asset-1.png');
+        expect(screen.queryByRole('heading', { name: 'Assets' })).toBeNull();
+        expect(screen.queryByText('1 project assets')).toBeNull();
     });
 
     it('opens a Project-owned Timeline without inventing a back action and persists on unmount', async () => {

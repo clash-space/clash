@@ -31,8 +31,12 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(editorSource).toContain('orientation="vertical"');
     expect(editorSource).toContain('<Toolbar.ToggleGroup');
     expect(editorSource).toContain('type="single"');
-    expect(editorSource).toContain('<Toolbar.ToggleItem value="select" asChild>');
-    expect(editorSource).toContain('<Toolbar.ToggleItem value="hand" asChild>');
+    expect(editorSource).toMatch(
+      /<Toolbar\.ToggleItem\s+value="select"\s+asChild\s*>/,
+    );
+    expect(editorSource).toMatch(
+      /<Toolbar\.ToggleItem\s+value="hand"\s+asChild\s*>/,
+    );
     expect(editorSource).not.toContain('role="group"');
   });
 

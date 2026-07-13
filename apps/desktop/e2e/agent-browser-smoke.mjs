@@ -29,8 +29,19 @@ const latestScreenshot = path.join(captureDir, "latest-agent-browser-desktop.png
 const historyScreenshot = path.join(captureDir, "history-agent-browser-desktop.png");
 const narrowLayoutScreenshot = path.join(captureDir, "narrow-layout-agent-browser-desktop.png");
 const collapsedNavigatorScreenshot = path.join(captureDir, "collapsed-navigator-agent-browser-desktop.png");
+const populatedChromeScreenshot = path.join(
+  captureDir,
+  "populated-chrome-agent-browser-desktop.png",
+);
 const timelineDockScreenshot = path.join(captureDir, "timeline-dock-agent-browser-desktop.png");
-const assetDestinationScreenshot = path.join(captureDir, "asset-destination-agent-browser-desktop.png");
+const assetPreviewScreenshot = path.join(
+  captureDir,
+  "asset-preview-agent-browser-desktop.png",
+);
+const assetDragScreenshot = path.join(
+  captureDir,
+  "asset-drag-agent-browser-desktop.png",
+);
 const localSettingsScreenshot = path.join(captureDir, "local-settings-agent-browser-desktop.png");
 const agentFollowScreenshot = path.join(captureDir, "agent-follow-agent-browser-desktop.png");
 let electronTargetRecovery = null;
@@ -160,18 +171,20 @@ function evalJson(expression) {
 async function waitForEval(expression, label, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   let lastValue;
-  let pollCount = 0;
   while (Date.now() < deadline) {
-    lastValue = evalJson(expression);
-    if (lastValue) return lastValue;
-    pollCount += 1;
-    if (
-      electronTargetRecovery &&
-      (evalJson("location.href") === "about:blank" || pollCount % 12 === 0)
-    ) {
-      recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
+    try {
       lastValue = evalJson(expression);
       if (lastValue) return lastValue;
+      if (
+        electronTargetRecovery &&
+        evalJson("location.href") === "about:blank"
+      ) {
+        recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
+      }
+    } catch (error) {
+      if (!electronTargetRecovery) throw error;
+      lastValue = `eval failed: ${error instanceof Error ? error.message : String(error)}`;
+      recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
     }
     await sleep(250);
   }
@@ -223,32 +236,6 @@ function clickHistoryMenuItemByText(text) {
   })()`);
 }
 
-function clickOpenMenuItemByText(text) {
-  return evalJson(`(() => {
-    const wanted = ${JSON.stringify(text)};
-    const menus = [...document.querySelectorAll('[role="menu"]')].filter((menu) => {
-      const rect = menu.getBoundingClientRect();
-      const style = getComputedStyle(menu);
-      return rect.width > 0 && rect.height > 0 &&
-        style.display !== "none" && style.visibility !== "hidden";
-    });
-    const menu = menus.at(-1);
-    const item = [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])].find((candidate) =>
-      (candidate.innerText || candidate.textContent || "").trim() === wanted &&
-      candidate.getAttribute("aria-disabled") !== "true"
-    );
-    if (!item) return false;
-    const pointerInit = { bubbles: true, cancelable: true, button: 0, pointerId: 1, pointerType: "mouse", isPrimary: true };
-    const mouseInit = { bubbles: true, cancelable: true, button: 0 };
-    item.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
-    item.dispatchEvent(new MouseEvent("mousedown", mouseInit));
-    item.dispatchEvent(new PointerEvent("pointerup", pointerInit));
-    item.dispatchEvent(new MouseEvent("mouseup", mouseInit));
-    item.click();
-    return true;
-  })()`);
-}
-
 async function sendPrompt(text) {
   if (!typeComposer(agentBrowser, text)) throw new Error("Could not type into composer");
   const clickedSend = clickComposerSubmitButton(agentBrowser);
@@ -258,8 +245,6 @@ async function sendPrompt(text) {
   if (!electronTargetRecovery) {
     throw new Error("Electron target recovery is not configured");
   }
-  await sleep(750);
-  recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
   await waitForEval(
      `document.body.innerText.includes(${JSON.stringify(text)}) &&
        document.body.innerText.includes(${JSON.stringify(`Mock ACP reply: ${text}`)})`,
@@ -336,18 +321,22 @@ async function main() {
     await waitForHttp(webOrigin, "Vite desktop-runtime web shell");
 
     const electronBin = require("electron");
-    electron = spawn(electronBin, [`--remote-debugging-port=${cdpPort}`, desktopDir], {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        CLASH_WEB_URL: webOrigin,
-        CLASH_E2E_STUB_ACP: "1",
-        CLASH_LOCAL_DATA_DIR: dataDir,
-        CLASH_LOCAL_API_PORT: String(apiPort),
-        CLASH_DESKTOP_CAPTURE_DIR: captureDir,
+    electron = spawn(
+      electronBin,
+      [`--remote-debugging-port=${cdpPort}`, desktopDir],
+      {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          CLASH_WEB_URL: webOrigin,
+          CLASH_E2E_STUB_ACP: "1",
+          CLASH_LOCAL_DATA_DIR: dataDir,
+          CLASH_LOCAL_API_PORT: String(apiPort),
+          CLASH_DESKTOP_CAPTURE_DIR: captureDir,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
       },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    );
     electron.stdout.on("data", (buf) => {
       const text = String(buf);
       electronLogs.push(text);
@@ -358,7 +347,10 @@ async function main() {
       electronLogs.push(text);
       process.stderr.write(text);
     });
-    await waitForHttp(`http://127.0.0.1:${cdpPort}/json/version`, "Electron CDP");
+    await waitForHttp(
+      `http://127.0.0.1:${cdpPort}/json/version`,
+      "Electron CDP",
+    );
 
     agentBrowser(["close"], { allowFailure: true });
     agentBrowser(["connect", String(cdpPort)]);
@@ -373,9 +365,11 @@ async function main() {
     );
     const apiOrigin = runtime.apiBaseUrl;
 
-    if (!clickVisibleLinkOrButtonByText("Projects")) throw new Error("Could not open Projects");
+    if (!clickVisibleLinkOrButtonByText("Projects"))
+      throw new Error("Could not open Projects");
     await waitForEval(`location.pathname === "/projects"`, "projects route");
-    if (!clickVisibleLinkOrButtonByText("New Project")) throw new Error("Could not create project");
+    if (!clickVisibleLinkOrButtonByText("New Project"))
+      throw new Error("Could not create project");
     const projectId = await waitForEval(
       `location.pathname.startsWith("/projects/") &&
         location.pathname !== "/projects" &&
@@ -394,18 +388,25 @@ async function main() {
       signal: AbortSignal.timeout(5000),
     });
     if (!seededAssetResponse.ok) {
-      throw new Error(`Could not seed project asset: HTTP ${seededAssetResponse.status}`);
+      throw new Error(
+        `Could not seed project asset: HTTP ${seededAssetResponse.status}`,
+      );
     }
     const seededAsset = await seededAssetResponse.json();
     agentBrowser(["eval", "location.reload()"], { allowFailure: true });
     await sleep(750);
     recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
     await waitForEval(
-      `document.querySelector('#project-assets')?.getAttribute('aria-label')?.includes('(1)') === true`,
+      `document.querySelector('[aria-controls="project-assets-list"]')?.getAttribute('aria-expanded') === 'true' &&
+       !!document.querySelector(${JSON.stringify(`#project-asset-${seededAsset.id}`)})`,
       "project detail with complete asset list",
       20000,
     );
-    await waitForEval(`document.body.innerText.includes("Mock ACP")`, "mock ACP runtime ready", 20000);
+    await waitForEval(
+      `document.body.innerText.includes("Mock ACP")`,
+      "mock ACP runtime ready",
+      20000,
+    );
 
     const firstPrompt = "agent-browser desktop first turn";
     const secondPrompt = "agent-browser desktop fresh turn";
@@ -450,10 +451,11 @@ async function main() {
     );
     agentBrowser(["screenshot", agentFollowScreenshot]);
 
-    agentBrowser(["click", "#project-assets"]);
+    agentBrowser(["click", `#project-asset-${seededAsset.id}`]);
     await waitForEval(
       `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'false' &&
-       !!document.querySelector('[aria-label="Follow agent actions"], [aria-label="跟随 Agent 操作"]')`,
+       !!document.querySelector('[aria-label="Follow agent actions"], [aria-label="跟随 Agent 操作"]') &&
+       !!document.querySelector(${JSON.stringify(`[aria-label="explicit-target.png preview"]`)})`,
       "manual project navigation stops agent follow mode",
       10000,
     );
@@ -465,7 +467,10 @@ async function main() {
     );
     const firstHistory = await assertRuntimeHistory(projectId, apiOrigin, 1);
 
-    if (!clickButtonByLabel(agentBrowser, "New session") && !clickButtonByLabel(agentBrowser, "新建会话")) {
+    if (
+      !clickButtonByLabel(agentBrowser, "New session") &&
+      !clickButtonByLabel(agentBrowser, "新建会话")
+    ) {
       throw new Error("Could not click New session");
     }
     await waitForEval(
@@ -476,7 +481,10 @@ async function main() {
     await sendPrompt(secondPrompt);
     const secondHistory = await assertRuntimeHistory(projectId, apiOrigin, 2);
 
-    if (!clickButtonByLabel(agentBrowser, "Session history") && !clickButtonByLabel(agentBrowser, "历史会话")) {
+    if (
+      !clickButtonByLabel(agentBrowser, "Session history") &&
+      !clickButtonByLabel(agentBrowser, "历史会话")
+    ) {
       throw new Error("Could not open session history");
     }
     await waitForEval(
@@ -498,7 +506,8 @@ async function main() {
       20000,
     );
     const restoredSession = firstHistory.sessions[0];
-    if (!restoredSession?.id) throw new Error("Could not identify the restored first session");
+    if (!restoredSession?.id)
+      throw new Error("Could not identify the restored first session");
 
     const projectStatusApiPath = `${apiOrigin}/api/v1/projects/${encodeURIComponent(projectId)}/status`;
     const projectStatus = await fetchJson(projectStatusApiPath);
@@ -508,7 +517,9 @@ async function main() {
       !Array.isArray(projectStatus.protectedPaths) ||
       !projectStatus.protectedPaths.includes(projectStatus.runtimeRoot)
     ) {
-      throw new Error(`Project status path contract failed: ${JSON.stringify(projectStatus)}`);
+      throw new Error(
+        `Project status path contract failed: ${JSON.stringify(projectStatus)}`,
+      );
     }
     const projectStatusEvidence = {
       projectId: projectStatus.projectId,
@@ -534,7 +545,9 @@ async function main() {
       !clickButtonByLabel(agentBrowser, "Collapse AI Copilot") &&
       !clickButtonByLabel(agentBrowser, "Collapse chat panel")
     ) {
-      throw new Error("Could not collapse project chat before narrow layout checks");
+      throw new Error(
+        "Could not collapse project chat before narrow layout checks",
+      );
     }
     await waitForEval(
       `!!document.querySelector('[aria-label="Expand AI Copilot"], [aria-label="Expand chat panel"]')`,
@@ -548,6 +561,7 @@ async function main() {
       10000,
     );
     const narrowLayout = evalJson(`(() => {
+      const workspace = document.querySelector('#project-workspace-shell')?.getBoundingClientRect();
       const sidebarElement = document.querySelector('[aria-label="Project navigator"]');
       const sidebar = sidebarElement?.getBoundingClientRect();
       const sidebarHeader = sidebarElement?.querySelector('.clash-project-sidebar-header')?.getBoundingClientRect();
@@ -557,9 +571,13 @@ async function main() {
       const selectedTab = sidebarElement?.querySelector('[role="tab"][aria-selected="true"]')?.getBoundingClientRect();
       const toolbarElement = document.querySelector('[aria-label="Canvas tools"]');
       const toolbarRail = toolbarElement?.getBoundingClientRect();
-      const canvasSectionHeader = sidebarElement?.querySelector('#project-canvases-heading')?.parentElement?.getBoundingClientRect();
-      const timelineSectionHeader = sidebarElement?.querySelector('#project-timelines-heading')?.parentElement?.getBoundingClientRect();
-      const assetsTab = sidebarElement?.querySelector('#project-assets')?.getBoundingClientRect();
+      const projectToggle = document.querySelector('[data-desktop-chrome="true"] [data-project-navigator-toggle]')?.getBoundingClientRect();
+      const backControl = document.querySelector('[data-desktop-chrome="true"] [aria-label="Back"]')?.getBoundingClientRect();
+      const canvasSectionHeader = sidebarElement?.querySelector('[data-project-folder="canvases"] [data-project-folder-header]')?.getBoundingClientRect();
+      const timelineSectionHeader = sidebarElement?.querySelector('[data-project-folder="timelines"] [data-project-folder-header]')?.getBoundingClientRect();
+      const assetsFolderElement = sidebarElement?.querySelector('[aria-controls="project-assets-list"]');
+      const assetsTab = assetsFolderElement?.closest('[data-project-folder-header]')?.getBoundingClientRect();
+      const firstAssetTab = sidebarElement?.querySelector('[id^="project-asset-"]')?.getBoundingClientRect();
       const timelineTabs = [...(sidebarElement?.querySelectorAll('[id^="project-timeline-"]') ?? [])]
         .map((element) => element.getBoundingClientRect());
       const selectMode = document.querySelector('[aria-label="Select mode"]')?.getBoundingClientRect();
@@ -579,21 +597,23 @@ async function main() {
       const sidebarActionCenters = [
         centerX(sidebarElement?.querySelector('[aria-label="New Canvas"]')),
         centerX(sidebarElement?.querySelector('[aria-label="New Timeline"]')),
-        centerX(sidebarElement?.querySelector('[data-sidebar-action-slot="asset-count"]')),
+        centerX(sidebarElement?.querySelector('[aria-label="Add Asset"]')),
       ];
       const sidebarSectionHeadingLefts = [
         left(sidebarElement?.querySelector('#project-canvases-heading')),
         left(sidebarElement?.querySelector('#project-timelines-heading')),
+        left(sidebarElement?.querySelector('#project-assets-heading')),
       ];
       const sidebarRowIconLefts = [
         left(sidebarElement?.querySelector('[role="tab"][aria-selected="true"] svg')),
-        left(sidebarElement?.querySelector('#project-assets svg')),
+        left(sidebarElement?.querySelector('[id^="project-timeline-"] svg')),
       ];
       const sidebarNavigationIconCenters = [
         centerX(sidebarElement?.querySelector('[aria-label="Return to projects"] svg')),
         centerX(sidebarElement?.querySelector('[role="tab"][aria-selected="true"] svg')),
-        centerX(sidebarElement?.querySelector('#project-assets svg')),
+        centerX(sidebarElement?.querySelector('[id^="project-timeline-"] svg')),
       ];
+      const sectionHeaderRects = [canvasSectionHeader, timelineSectionHeader, assetsTab];
       const atomicControlHeights = [
         projectReturn?.height ?? null,
         projectTitle?.getBoundingClientRect().height ?? null,
@@ -602,6 +622,8 @@ async function main() {
         selectedTab?.height ?? null,
         timelineSectionHeader?.height ?? null,
         assetsTab?.height ?? null,
+        firstAssetTab?.height ?? null,
+        projectToggle?.height ?? null,
         selectMode?.height ?? null,
         handMode?.height ?? null,
         assetsTool?.height ?? null,
@@ -611,7 +633,7 @@ async function main() {
       const sidebarActionHeights = [
         sidebarElement?.querySelector('[aria-label="New Canvas"]')?.getBoundingClientRect().height ?? null,
         sidebarElement?.querySelector('[aria-label="New Timeline"]')?.getBoundingClientRect().height ?? null,
-        sidebarElement?.querySelector('[data-sidebar-action-slot="asset-count"]')?.getBoundingClientRect().height ?? null,
+        sidebarElement?.querySelector('[aria-label="Add Asset"]')?.getBoundingClientRect().height ?? null,
       ];
       const chromeEdgeGutters = sidebar && selectedTab && toolbarRail
         ? [sidebar.right - selectedTab.right, toolbarRail.left - sidebar.right]
@@ -637,6 +659,9 @@ async function main() {
         toolbarVerticalOffset: sidebarHeader && toolbarRail
           ? Math.round(toolbarRail.top - sidebarHeader.bottom)
           : null,
+        toolbarTopInset: workspace && toolbarRail
+          ? Math.round(toolbarRail.top - workspace.top)
+          : null,
         primaryChromeDimensions: sidebarHeader && toolbarRail
           ? { sidebarHeaderHeight: Math.round(sidebarHeader.height), toolbarRailWidth: Math.round(toolbarRail.width) }
           : null,
@@ -647,6 +672,7 @@ async function main() {
         actionSlotHeights: sidebarActionHeights.map((value) => value === null ? null : Math.round(value)),
         actionSlotHeightSpread: spread(sidebarActionHeights),
         searchToolbarBoundarySpread: spread([searchControl?.bottom ?? null, toolbarRail?.top ?? null]),
+        desktopControlTopSpread: spread([projectToggle?.top ?? null, backControl?.top ?? null]),
         firstRowTopBoundarySpread: spread([canvasSectionHeader?.top ?? null, selectMode?.top ?? null]),
         secondRowTopBoundarySpread: spread([selectedTab?.top ?? null, handMode?.top ?? null]),
         thirdRowTopBoundarySpread: spread([timelineSectionHeader?.top ?? null, assetsTool?.top ?? null]),
@@ -662,6 +688,8 @@ async function main() {
         sidebarActionCenters: sidebarActionCenters.map((value) => value === null ? null : Math.round(value)),
         sidebarActionColumnSpread: spread(sidebarActionCenters),
         sidebarSectionHeadingLeftSpread: spread(sidebarSectionHeadingLefts),
+        sidebarSectionLeftEdgeSpread: spread(sectionHeaderRects.map((rect) => rect?.left ?? null)),
+        sidebarSectionRightEdgeSpread: spread(sectionHeaderRects.map((rect) => rect?.right ?? null)),
         sidebarRowIconLeftSpread: spread(sidebarRowIconLefts),
         sidebarNavigationIconCenters: sidebarNavigationIconCenters.map((value) => value === null ? null : Math.round(value * 10) / 10),
         sidebarNavigationIconCenterSpread: spread(sidebarNavigationIconCenters),
@@ -670,35 +698,68 @@ async function main() {
       };
     })()`);
     if (
-      narrowLayout.sidebarWidth < 190 || narrowLayout.sidebarWidth > 194 ||
+      narrowLayout.sidebarWidth < 190 ||
+      narrowLayout.sidebarWidth > 194 ||
       narrowLayout.selectedTabWidth < 174 ||
-      narrowLayout.toolbarRailWidth < 46 || narrowLayout.toolbarRailWidth > 50 ||
-      narrowLayout.toolbarHorizontalGutter < 7 || narrowLayout.toolbarHorizontalGutter > 9 ||
-      narrowLayout.toolbarVerticalOffset < 39 || narrowLayout.toolbarVerticalOffset > 41 ||
+      narrowLayout.toolbarRailWidth < 46 ||
+      narrowLayout.toolbarRailWidth > 50 ||
+      narrowLayout.toolbarHorizontalGutter < 7 ||
+      narrowLayout.toolbarHorizontalGutter > 9 ||
+      narrowLayout.toolbarVerticalOffset < 39 ||
+      narrowLayout.toolbarVerticalOffset > 41 ||
+      narrowLayout.toolbarTopInset < 79 ||
+      narrowLayout.toolbarTopInset > 81 ||
       narrowLayout.primaryChromeDimensions?.sidebarHeaderHeight !== 40 ||
       narrowLayout.primaryChromeDimensions?.toolbarRailWidth !== 48 ||
       narrowLayout.topUtilityRowHeights?.some((height) => height !== 40) ||
-      narrowLayout.topUtilityRowHeightSpread === null || narrowLayout.topUtilityRowHeightSpread > 1 ||
-      narrowLayout.atomicControlHeights?.some((height) => height < 31 || height > 33) ||
-      narrowLayout.atomicControlHeightSpread === null || narrowLayout.atomicControlHeightSpread > 1 ||
-      narrowLayout.actionSlotHeights?.some((height) => height < 23 || height > 25) ||
-      narrowLayout.actionSlotHeightSpread === null || narrowLayout.actionSlotHeightSpread > 1 ||
-      narrowLayout.searchToolbarBoundarySpread === null || narrowLayout.searchToolbarBoundarySpread > 1 ||
-      narrowLayout.firstRowTopBoundarySpread === null || narrowLayout.firstRowTopBoundarySpread > 1 ||
-      narrowLayout.secondRowTopBoundarySpread === null || narrowLayout.secondRowTopBoundarySpread > 1 ||
-      narrowLayout.thirdRowTopBoundarySpread === null || narrowLayout.thirdRowTopBoundarySpread > 1 ||
-      narrowLayout.timelineAssetsGap < 7 || narrowLayout.timelineAssetsGap > 9 ||
-      narrowLayout.chromeEdgeGutterSpread === null || narrowLayout.chromeEdgeGutterSpread > 1 ||
-      narrowLayout.searchEdgeGutterSpread === null || narrowLayout.searchEdgeGutterSpread > 1 ||
-      narrowLayout.toolbarButtonInsetSpread === null || narrowLayout.toolbarButtonInsetSpread > 1 ||
-      narrowLayout.sidebarActionColumnSpread === null || narrowLayout.sidebarActionColumnSpread > 1 ||
-      narrowLayout.sidebarSectionHeadingLeftSpread === null || narrowLayout.sidebarSectionHeadingLeftSpread > 1 ||
-      narrowLayout.sidebarRowIconLeftSpread === null || narrowLayout.sidebarRowIconLeftSpread > 1 ||
-      narrowLayout.sidebarNavigationIconCenterSpread === null || narrowLayout.sidebarNavigationIconCenterSpread > 1 ||
+      narrowLayout.topUtilityRowHeightSpread === null ||
+      narrowLayout.topUtilityRowHeightSpread > 1 ||
+      narrowLayout.atomicControlHeights?.some(
+        (height) => height < 31 || height > 33,
+      ) ||
+      narrowLayout.atomicControlHeightSpread === null ||
+      narrowLayout.atomicControlHeightSpread > 1 ||
+      narrowLayout.actionSlotHeights?.some(
+        (height) => height < 23 || height > 25,
+      ) ||
+      narrowLayout.actionSlotHeightSpread === null ||
+      narrowLayout.actionSlotHeightSpread > 1 ||
+      narrowLayout.searchToolbarBoundarySpread === null ||
+      narrowLayout.searchToolbarBoundarySpread > 1 ||
+      narrowLayout.desktopControlTopSpread === null ||
+      narrowLayout.desktopControlTopSpread > 1 ||
+      narrowLayout.firstRowTopBoundarySpread === null ||
+      narrowLayout.firstRowTopBoundarySpread > 1 ||
+      narrowLayout.secondRowTopBoundarySpread === null ||
+      narrowLayout.secondRowTopBoundarySpread > 1 ||
+      narrowLayout.thirdRowTopBoundarySpread === null ||
+      narrowLayout.thirdRowTopBoundarySpread > 1 ||
+      narrowLayout.timelineAssetsGap < 7 ||
+      narrowLayout.timelineAssetsGap > 9 ||
+      narrowLayout.chromeEdgeGutterSpread === null ||
+      narrowLayout.chromeEdgeGutterSpread > 1 ||
+      narrowLayout.searchEdgeGutterSpread === null ||
+      narrowLayout.searchEdgeGutterSpread > 1 ||
+      narrowLayout.toolbarButtonInsetSpread === null ||
+      narrowLayout.toolbarButtonInsetSpread > 1 ||
+      narrowLayout.sidebarActionColumnSpread === null ||
+      narrowLayout.sidebarActionColumnSpread > 1 ||
+      narrowLayout.sidebarSectionHeadingLeftSpread === null ||
+      narrowLayout.sidebarSectionHeadingLeftSpread > 1 ||
+      narrowLayout.sidebarSectionLeftEdgeSpread === null ||
+      narrowLayout.sidebarSectionLeftEdgeSpread > 1 ||
+      narrowLayout.sidebarSectionRightEdgeSpread === null ||
+      narrowLayout.sidebarSectionRightEdgeSpread > 1 ||
+      narrowLayout.sidebarRowIconLeftSpread === null ||
+      narrowLayout.sidebarRowIconLeftSpread > 1 ||
+      narrowLayout.sidebarNavigationIconCenterSpread === null ||
+      narrowLayout.sidebarNavigationIconCenterSpread > 1 ||
       narrowLayout.horizontalOverflow > 1 ||
       narrowLayout.projectTitleOverflow > 1
     ) {
-      throw new Error(`Narrow project chrome layout failed: ${JSON.stringify(narrowLayout)}`);
+      throw new Error(
+        `Narrow project chrome layout failed: ${JSON.stringify(narrowLayout)}`,
+      );
     }
     agentBrowser(["screenshot", narrowLayoutScreenshot]);
 
@@ -731,54 +792,75 @@ async function main() {
     }
     await waitForEval(
       `document.querySelector('#project-workspace-shell')?.getAttribute('data-project-navigator-collapsed') === 'true' &&
-       Math.round(document.querySelector('[aria-label="Project navigator"]')?.getBoundingClientRect().width ?? 0) === 48`,
-      "collapsed 48px project navigator",
+       Math.round(document.querySelector('[aria-label="Project navigator"]')?.getBoundingClientRect().width ?? -1) === 0 &&
+       !!document.querySelector('[data-desktop-chrome="true"] [aria-label="Expand project sidebar"]')`,
+      "fully collapsed project navigator",
       10000,
     );
     const collapsedNavigator = evalJson(`(() => {
+      const workspace = document.querySelector('#project-workspace-shell')?.getBoundingClientRect();
       const sidebar = document.querySelector('[aria-label="Project navigator"]');
       const sidebarRect = sidebar?.getBoundingClientRect();
-      const search = sidebar?.querySelector('[aria-label="Search project"]')?.getBoundingClientRect();
-      const selectedTab = sidebar?.querySelector('[role="tab"][aria-selected="true"]')?.getBoundingClientRect();
-      const toolbar = document.querySelector('[aria-label="Canvas tools"]')?.getBoundingClientRect();
-      const centerX = (element) => {
-        const rect = element?.getBoundingClientRect();
-        return rect ? Math.round((rect.left + rect.width / 2) * 10) / 10 : null;
-      };
-      const iconCenters = [
-        centerX(sidebar?.querySelector('[aria-label="Return to projects"] svg')),
-        centerX(sidebar?.querySelector('[aria-label="Search project"] svg')),
-        centerX(sidebar?.querySelector('[role="tab"][aria-selected="true"] svg')),
-        centerX(sidebar?.querySelector('#project-assets svg')),
-      ];
-      const iconCenterSpread = iconCenters.every((value) => value !== null)
-        ? Math.round((Math.max(...iconCenters) - Math.min(...iconCenters)) * 10) / 10
-        : null;
+      const toolbarElement = document.querySelector('[aria-label="Canvas tools"]');
+      const toolbar = toolbarElement?.getBoundingClientRect();
+      const desktopChromeElement = document.querySelector('[data-desktop-chrome="true"]');
+      const desktopChrome = desktopChromeElement?.getBoundingClientRect();
+      const toggleElement = desktopChromeElement?.querySelector('[aria-label="Expand project sidebar"]');
+      const toggle = toggleElement?.getBoundingClientRect();
+      const backElement = desktopChromeElement?.querySelector('[aria-label="Back"]');
+      const back = backElement?.getBoundingClientRect();
+      const selectMode = toolbarElement?.querySelector('[aria-label="Select mode"]')?.getBoundingClientRect();
       return {
         sidebarWidth: sidebarRect ? Math.round(sidebarRect.width) : null,
-        searchWidth: search ? Math.round(search.width) : null,
-        selectedTabWidth: selectedTab ? Math.round(selectedTab.width) : null,
-        toolbarGutter: sidebarRect && toolbar ? Math.round(toolbar.left - sidebarRect.right) : null,
-        iconCenters,
-        iconCenterSpread,
+        sidebarVisibility: sidebar ? getComputedStyle(sidebar).visibility : null,
+        sidebarAriaHidden: sidebar?.getAttribute('aria-hidden') ?? null,
+        toggleWidth: toggle ? Math.round(toggle.width) : null,
+        toggleHeight: toggle ? Math.round(toggle.height) : null,
+        toggleLeftInset: toggle && desktopChrome ? Math.round(toggle.left - desktopChrome.left) : null,
+        toggleTopInset: toggle && desktopChrome ? Math.round(toggle.top - desktopChrome.top) : null,
+        desktopControlTopSpread: toggle && back ? Math.round(Math.abs(toggle.top - back.top)) : null,
+        toolbarLeftInset: workspace && toolbar ? Math.round(toolbar.left - workspace.left) : null,
+        toolbarTopInset: workspace && toolbar ? Math.round(toolbar.top - workspace.top) : null,
+        selectTopInset: selectMode && toolbar ? Math.round(selectMode.top - toolbar.top) : null,
+        toggleInsideDesktopChrome: !!toggleElement && !!desktopChromeElement?.contains(toggleElement),
+        toggleBeforeBack: !!toggleElement && !!backElement && !!(toggleElement.compareDocumentPosition(backElement) & Node.DOCUMENT_POSITION_FOLLOWING),
+        toggleOutsideToolbar: !!toggleElement && !toolbarElement?.contains(toggleElement),
+        toggleOutsideSidebar: !!toggleElement && !sidebar?.contains(toggleElement),
         projectTitleVisible: !!sidebar?.querySelector('.clash-project-name-input'),
+        searchVisible: !!sidebar?.querySelector('[aria-label="Search project"]'),
         settingsVisible: !!sidebar?.querySelector('[aria-label="Settings"]'),
-        expandVisible: !!sidebar?.querySelector('[aria-label="Expand project sidebar"]'),
         horizontalOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
       };
     })()`);
     if (
-      collapsedNavigator.sidebarWidth !== 48 ||
-      collapsedNavigator.searchWidth !== 32 ||
-      collapsedNavigator.selectedTabWidth !== 32 ||
-      collapsedNavigator.toolbarGutter < 7 || collapsedNavigator.toolbarGutter > 9 ||
-      collapsedNavigator.iconCenterSpread === null || collapsedNavigator.iconCenterSpread > 0.1 ||
+      collapsedNavigator.sidebarWidth !== 0 ||
+      collapsedNavigator.sidebarVisibility !== "hidden" ||
+      collapsedNavigator.sidebarAriaHidden !== "true" ||
+      collapsedNavigator.toggleWidth !== 32 ||
+      collapsedNavigator.toggleHeight !== 32 ||
+      collapsedNavigator.toggleLeftInset < 91 ||
+      collapsedNavigator.toggleLeftInset > 93 ||
+      collapsedNavigator.toggleTopInset < 3 ||
+      collapsedNavigator.toggleTopInset > 5 ||
+      collapsedNavigator.desktopControlTopSpread > 1 ||
+      collapsedNavigator.toolbarLeftInset < 7 ||
+      collapsedNavigator.toolbarLeftInset > 9 ||
+      collapsedNavigator.toolbarTopInset < 79 ||
+      collapsedNavigator.toolbarTopInset > 81 ||
+      collapsedNavigator.selectTopInset < 7 ||
+      collapsedNavigator.selectTopInset > 9 ||
+      !collapsedNavigator.toggleInsideDesktopChrome ||
+      !collapsedNavigator.toggleBeforeBack ||
+      !collapsedNavigator.toggleOutsideToolbar ||
+      !collapsedNavigator.toggleOutsideSidebar ||
       collapsedNavigator.projectTitleVisible ||
+      collapsedNavigator.searchVisible ||
       collapsedNavigator.settingsVisible ||
-      !collapsedNavigator.expandVisible ||
       collapsedNavigator.horizontalOverflow > 1
     ) {
-      throw new Error(`Collapsed project navigator layout failed: ${JSON.stringify(collapsedNavigator)}`);
+      throw new Error(
+        `Collapsed project navigator layout failed: ${JSON.stringify(collapsedNavigator)}`,
+      );
     }
     agentBrowser(["screenshot", collapsedNavigatorScreenshot]);
 
@@ -804,6 +886,19 @@ async function main() {
     ) {
       throw new Error("Could not expand persistent project chat");
     }
+    await waitForEval(
+      `(() => {
+        const panel = document.querySelector('#clash-copilot-panel');
+        const composer = document.querySelector(".milkdown-chat-input [contenteditable='true']");
+        const rect = composer?.getBoundingClientRect();
+        const style = composer ? getComputedStyle(composer) : null;
+        return panel?.getAttribute('aria-hidden') === 'false' && !!rect &&
+          rect.width > 0 && rect.height > 0 &&
+          style?.display !== 'none' && style?.visibility !== 'hidden';
+      })()`,
+      "expanded persistent project chat composer",
+      10000,
+    );
     const draftMarker = "draft survives project surface switch";
     if (!typeComposer(agentBrowser, draftMarker)) {
       throw new Error("Could not type persistent chat draft");
@@ -820,6 +915,7 @@ async function main() {
        document.querySelector('[data-layout="embedded"]') &&
        !document.querySelector('[role="dialog"][aria-label="Video editor"]') &&
        !document.querySelector('[aria-label^="Open parent Canvas"]') &&
+       !!document.querySelector('[data-desktop-chrome="true"] [aria-label="Collapse project sidebar"]') &&
        document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'docked' &&
        document.body.innerText.includes(${JSON.stringify(draftMarker)})`,
       "embedded Timeline editor with docked persistent chat",
@@ -847,6 +943,9 @@ async function main() {
     }
     const timelineDock = await waitForEval(
       `(() => {
+        const navigatorCount = document.querySelectorAll('[aria-label="Project navigator"]').length;
+        const footerCount = document.querySelectorAll('.clash-project-sidebar-footer').length;
+        const launcherCount = document.querySelectorAll('.clash-copilot-launcher').length;
         const workspace = document.querySelector('#project-workspace-shell')?.getBoundingClientRect();
         const copilot = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
         const editor = document.querySelector('[data-testid="project-timeline-editor"]')?.getBoundingClientRect();
@@ -854,6 +953,7 @@ async function main() {
         const footer = document.querySelector('.clash-project-sidebar-footer')?.getBoundingClientRect();
         const settings = document.querySelector('.clash-project-sidebar-footer [aria-label="Settings"]')?.getBoundingClientRect();
         const itemCount = document.querySelectorAll('[aria-label^="text:"]').length;
+        if (navigatorCount !== 1 || footerCount !== 1 || launcherCount > 1) return false;
         if (!workspace || !copilot || !editor || !navigator || !footer || !settings || itemCount !== 1) return false;
         const gap = copilot.left - workspace.right;
         if (gap < -1 || gap > 1) return false;
@@ -866,6 +966,7 @@ async function main() {
           copilot: { left: copilot.left, right: copilot.right, width: copilot.width },
           editor: { left: editor.left, right: editor.right, width: editor.width },
           sidebarFooter: { top: footer.top, bottom: footer.bottom, settingsLeft: settings.left },
+          singletonChrome: { navigatorCount, footerCount, launcherCount },
           gap,
           itemCount,
         };
@@ -880,7 +981,9 @@ async function main() {
       return true;
     })()`);
     if (!clickButtonByLabel(agentBrowser, "New Canvas")) {
-      throw new Error("Could not create a second Canvas for explicit asset placement");
+      throw new Error(
+        "Could not create a second Canvas for explicit asset placement",
+      );
     }
     await waitForEval(
       `document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.textContent?.includes("Review Canvas") === true &&
@@ -889,67 +992,228 @@ async function main() {
       "second Canvas with persistent chat draft",
       10000,
     );
-    if (!evalJson(`(() => {
-      const assetsTab = document.querySelector('#project-assets');
-      if (!assetsTab) return false;
-      assetsTab.scrollIntoView({ block: 'center', inline: 'center' });
-      assetsTab.click();
+    const populatedChrome = evalJson(`(() => {
+      const sidebar = document.querySelector('[aria-label="Project navigator"]');
+      const toolbar = document.querySelector('[aria-label="Canvas tools"]');
+      const canvasTabs = [...(sidebar?.querySelectorAll('[id^="project-canvas-"]') ?? [])];
+      const timelineTabs = [...(sidebar?.querySelectorAll('[id^="project-timeline-"]') ?? [])];
+      const rect = (selector, root = document) => root.querySelector(selector)?.getBoundingClientRect() ?? null;
+      const spread = (values) => values.every((value) => value !== null)
+        ? Math.round((Math.max(...values) - Math.min(...values)) * 10) / 10
+        : null;
+      const canvasHeader = sidebar?.querySelector('[data-project-folder="canvases"] [data-project-folder-header]')?.getBoundingClientRect() ?? null;
+      const timelineHeader = sidebar?.querySelector('[data-project-folder="timelines"] [data-project-folder-header]')?.getBoundingClientRect() ?? null;
+      const firstCanvas = canvasTabs[0]?.getBoundingClientRect() ?? null;
+      const assetsTab = sidebar?.querySelector('[data-project-folder="assets"] [data-project-folder-header]')?.getBoundingClientRect() ?? null;
+      const selectMode = rect('[aria-label="Select mode"]');
+      const handMode = rect('[aria-label="Hand mode"]');
+      const sidebarRows = [canvasHeader, ...canvasTabs.map((tab) => tab.getBoundingClientRect()), timelineHeader,
+        ...timelineTabs.map((tab) => tab.getBoundingClientRect()), assetsTab].filter(Boolean);
+      const toolbarControls = [...(toolbar?.querySelectorAll('button[aria-label]') ?? [])]
+        .map((control) => control.getBoundingClientRect())
+        .sort((a, b) => a.top - b.top);
+      const uniqueBoundaries = (rects) => [...new Set(rects.flatMap((item) => [item.top, item.bottom])
+        .map((value) => Math.round(value * 10) / 10))];
+      const sidebarBoundaries = uniqueBoundaries(sidebarRows);
+      const toolbarBoundaries = uniqueBoundaries(toolbarControls);
+      const sharedBoundaries = sidebarBoundaries.filter((sidebarBoundary) =>
+        toolbarBoundaries.some((toolbarBoundary) => Math.abs(toolbarBoundary - sidebarBoundary) <= 1));
+      const controlGaps = toolbarControls.slice(1).map((control, index) =>
+        Math.round((control.top - toolbarControls[index].bottom) * 10) / 10);
+      const sectionGaps = controlGaps.filter((gap) => gap > 1);
+      return {
+        canvasCount: canvasTabs.length,
+        timelineCount: timelineTabs.length,
+        stableTopAnchorSpreads: {
+          canvasHeaderToSelect: spread([canvasHeader?.top ?? null, selectMode?.top ?? null]),
+          firstCanvasToHand: spread([firstCanvas?.top ?? null, handMode?.top ?? null]),
+        },
+        sharedBoundaryCount: sharedBoundaries.length,
+        sharedBoundaries,
+        maxControlGap: controlGaps.length ? Math.max(...controlGaps) : null,
+        sectionGaps,
+        sectionGapSpread: sectionGaps.length ? spread(sectionGaps) : null,
+        toolbarHeight: toolbar ? Math.round(toolbar.getBoundingClientRect().height) : null,
+      };
+    })()`);
+    if (
+      populatedChrome.canvasCount < 2 ||
+      populatedChrome.timelineCount < 1 ||
+      Object.values(populatedChrome.stableTopAnchorSpreads).some(
+        (value) => value === null || value > 1,
+      ) ||
+      populatedChrome.sharedBoundaryCount < 5 ||
+      populatedChrome.maxControlGap === null ||
+      populatedChrome.maxControlGap > 9 ||
+      populatedChrome.sectionGaps.length !== 3 ||
+      populatedChrome.sectionGaps.some((gap) => gap < 7 || gap > 9) ||
+      populatedChrome.sectionGapSpread === null ||
+      populatedChrome.sectionGapSpread > 1 ||
+      populatedChrome.toolbarHeight === null ||
+      populatedChrome.toolbarHeight > 365
+    ) {
+      throw new Error(
+        `Populated project chrome anchors failed: ${JSON.stringify(populatedChrome)}`,
+      );
+    }
+    agentBrowser(["screenshot", populatedChromeScreenshot]);
+
+    for (const folder of [
+      {
+        label: "Canvases",
+        controls: "project-canvases-list",
+        childSelector: '[id^="project-canvas-"]',
+        unaffectedSelector: '[id^="project-timeline-"]',
+      },
+      {
+        label: "Timelines",
+        controls: "project-timelines-list",
+        childSelector: '[id^="project-timeline-"]',
+        unaffectedSelector: '[id^="project-canvas-"]',
+      },
+    ]) {
+      const disclosureSelector = `[aria-controls="${folder.controls}"]`;
+      agentBrowser(["click", disclosureSelector]);
+      await waitForEval(
+        `document.querySelector(${JSON.stringify(disclosureSelector)})?.getAttribute('aria-expanded') === 'false' &&
+         !document.querySelector(${JSON.stringify(folder.childSelector)}) &&
+         !!document.querySelector(${JSON.stringify(folder.unaffectedSelector)}) &&
+         !!document.querySelector(${JSON.stringify(`#project-asset-${seededAsset.id}`)})`,
+        `collapsed ${folder.label} folder without affecting siblings`,
+        10000,
+      );
+      agentBrowser(["click", disclosureSelector]);
+      await waitForEval(
+        `document.querySelector(${JSON.stringify(disclosureSelector)})?.getAttribute('aria-expanded') === 'true' &&
+         !!document.querySelector(${JSON.stringify(folder.childSelector)})`,
+        `expanded ${folder.label} folder`,
+        10000,
+      );
+    }
+
+    const assetSelector = `#project-asset-${seededAsset.id}`;
+    if (
+      !evalJson(`(() => {
+      const asset = document.querySelector(${JSON.stringify(assetSelector)});
+      if (!asset) return false;
+      asset.scrollIntoView({ block: 'center', inline: 'center' });
+      asset.click();
       return true;
-    })()`)) {
-      throw new Error("Could not open project Assets surface");
+    })()`)
+    ) {
+      throw new Error("Could not open the project asset directly");
     }
     await waitForEval(
-      `document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.id === 'project-assets' &&
+      `document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.id === ${JSON.stringify(`project-asset-${seededAsset.id}`)} &&
+       !!document.querySelector('[aria-label="explicit-target.png preview"]') &&
+       ![...document.querySelectorAll('#project-workspace-inset h1, #project-workspace-inset h2')].some((heading) => (heading.textContent || '').trim() === 'Assets') &&
+       !!document.querySelector('[data-desktop-chrome="true"] [aria-label="Collapse project sidebar"]') &&
        document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'docked' &&
-       document.querySelector('[aria-label="Project navigator"]')?.innerText.includes('Library') === false &&
        document.body.innerText.includes(${JSON.stringify(draftMarker)})`,
-      "top-level Assets surface with docked persistent chat",
+      "direct asset preview with docked persistent chat",
       10000,
     );
-    const addAssetLabel = `Add ${seededAsset.id} to canvas`;
-    if (!clickButtonByLabel(agentBrowser, addAssetLabel)) {
-      throw new Error(`Could not open explicit asset destination menu for ${seededAsset.id}`);
-    }
-    const assetDestination = await waitForEval(
-      `(() => {
-        const menu = [...document.querySelectorAll('[role="menu"]')].find((candidate) => {
-          const rect = candidate.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        });
-        const choices = [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])]
-          .map((item) => (item.innerText || item.textContent || '').trim());
-        if (!choices.includes('Main') || !choices.includes('Review Canvas')) return false;
-        if (choices.some((choice) => /place/i.test(choice))) return false;
-        return { choices, libraryVisible: false, assetId: ${JSON.stringify(seededAsset.id)} };
-      })()`,
-      "explicit Canvas destination menu",
-      10000,
-    );
-    agentBrowser(["screenshot", assetDestinationScreenshot]);
-    if (!clickOpenMenuItemByText("Main")) {
-      throw new Error("Could not apply the asset to the explicit Main Canvas target");
-    }
+    const assetPreview = evalJson(`(() => ({
+      selectedAssetId: document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.id ?? null,
+      disclosureExpanded: document.querySelector('[aria-controls="project-assets-list"]')?.getAttribute('aria-expanded') ?? null,
+      previewVisible: !!document.querySelector('[aria-label="explicit-target.png preview"]'),
+      aggregatePageVisible: [...document.querySelectorAll('#project-workspace-inset h1, #project-workspace-inset h2')].some((heading) => (heading.textContent || '').trim() === 'Assets'),
+    }))()`);
+    agentBrowser(["screenshot", assetPreviewScreenshot]);
+
+    agentBrowser(["click", '[aria-controls="project-assets-list"]']);
     await waitForEval(
-      `!!document.querySelector('[data-id^="asset-node-"]')`,
-      "asset node on the explicit non-active Canvas target",
+      `document.querySelector('[aria-controls="project-assets-list"]')?.getAttribute('aria-expanded') === 'false' &&
+       !document.querySelector(${JSON.stringify(assetSelector)})`,
+      "collapsed Assets folder",
+      10000,
+    );
+    agentBrowser(["click", '[aria-controls="project-assets-list"]']);
+    await waitForEval(
+      `document.querySelector('[aria-controls="project-assets-list"]')?.getAttribute('aria-expanded') === 'true' &&
+       !!document.querySelector(${JSON.stringify(assetSelector)})`,
+      "expanded Assets folder",
+      10000,
+    );
+
+    agentBrowser(["click", "#project-canvas-main"]);
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay' &&
+       !!document.querySelector('.react-flow__pane')`,
+      "Main Canvas before asset drag",
+      10000,
+    );
+    const imageNodeCountBeforeDrop = evalJson(
+      `document.querySelectorAll('.react-flow__node-image').length`,
+    );
+    agentBrowser(["drag", assetSelector, ".react-flow__pane"]);
+    await waitForEval(
+      `document.querySelectorAll('.react-flow__node-image').length > ${Number(imageNodeCountBeforeDrop)}`,
+      "sidebar asset dropped onto Canvas",
       15000,
     );
     const assetPlacement = evalJson(`(() => ({
       selectedCanvas: document.querySelector('[aria-label="Project navigator"] [role="tab"][aria-selected="true"]')?.textContent?.trim() ?? null,
       copilotLayout: document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') ?? null,
       draftPreserved: document.body.innerText.includes(${JSON.stringify(draftMarker)}),
-      projectImageVisible: !!document.querySelector('[data-id^="asset-node-"]'),
+      projectImageVisible: document.querySelectorAll('.react-flow__node-image').length > ${Number(imageNodeCountBeforeDrop)},
     }))()`);
     if (
-      !assetPlacement.selectedCanvas?.includes('Main') ||
-      assetPlacement.copilotLayout !== 'overlay' ||
+      !assetPlacement.selectedCanvas?.includes("Main") ||
+      assetPlacement.copilotLayout !== "overlay" ||
       !assetPlacement.draftPreserved ||
       !assetPlacement.projectImageVisible
     ) {
-      throw new Error(`Explicit asset placement state failed: ${JSON.stringify(assetPlacement)}`);
+      throw new Error(
+        `Canvas asset drag state failed: ${JSON.stringify(assetPlacement)}`,
+      );
     }
 
-    if (!evalJson(`(() => {
+    evalJson(`(() => {
+      window.prompt = () => "Asset Drop Timeline";
+      return true;
+    })()`);
+    if (!clickButtonByLabel(agentBrowser, "New Timeline")) {
+      throw new Error("Could not create an empty Timeline for asset drag");
+    }
+    await waitForEval(
+      `!!document.querySelector('[data-testid="project-timeline-editor"] .tracks-viewport') &&
+       document.querySelectorAll('[aria-label^="image:"]').length === 0`,
+      "empty Timeline asset drop target",
+      15000,
+    );
+    agentBrowser(["drag", assetSelector, ".tracks-viewport"]);
+    await waitForEval(
+      `document.querySelectorAll('[aria-label^="image:"]').length === 1`,
+      "sidebar asset dropped onto Timeline",
+      15000,
+    );
+    agentBrowser(["click", "#project-canvas-main"]);
+    await waitForEval(
+      `document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay'`,
+      "Canvas after persisting Timeline asset drop",
+      10000,
+    );
+    if (!clickVisibleLinkOrButtonByText("Asset Drop Timeline")) {
+      throw new Error("Could not reopen the asset drop Timeline");
+    }
+    const timelineAssetPlacement = await waitForEval(
+      `(() => {
+        const imageItems = document.querySelectorAll('[aria-label^="image:"]').length;
+        if (imageItems !== 1) return false;
+        return {
+          imageItems,
+          copilotLayout: document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') ?? null,
+          draftPreserved: document.body.innerText.includes(${JSON.stringify(draftMarker)}),
+        };
+      })()`,
+      "persisted Timeline asset drop",
+      15000,
+    );
+    agentBrowser(["screenshot", assetDragScreenshot]);
+
+    if (
+      !evalJson(`(() => {
       const link = document.querySelector('a[aria-label="Settings"]');
       if (!link) return false;
       const rect = link.getBoundingClientRect();
@@ -958,8 +1222,11 @@ async function main() {
       link.scrollIntoView({ block: 'center', inline: 'center' });
       link.click();
       return true;
-    })()`)) {
-      throw new Error("Could not open local desktop Settings from the project sidebar");
+    })()`)
+    ) {
+      throw new Error(
+        "Could not open local desktop Settings from the project sidebar",
+      );
     }
     const localSettings = await waitForEval(
       `(() => {
@@ -969,6 +1236,7 @@ async function main() {
         );
         if (signOut) return false;
         if (document.body.innerText.includes('Workspace controls')) return false;
+        if (document.querySelector('[data-project-navigator-toggle]')) return false;
         const sidebar = document.querySelector('.clash-settings-page-sidebar');
         const sidebarHeader = sidebar?.querySelector('.clash-settings-sidebar-header')?.getBoundingClientRect();
         const firstNavigationRow = sidebar?.querySelector('[aria-label="Settings sections"] [role="tab"]')?.getBoundingClientRect();
@@ -977,6 +1245,7 @@ async function main() {
         return {
           path: location.pathname,
           signOutVisible: false,
+          projectNavigatorToggleVisible: false,
           sidebarHeaderHeight: Math.round(sidebarHeader.height),
           navigationRowHeight: Math.round(firstNavigationRow.height),
         };
@@ -987,41 +1256,103 @@ async function main() {
     agentBrowser(["screenshot", localSettingsScreenshot]);
 
     console.log("[desktop-agent-browser] state", JSON.stringify(state));
-    console.log("[desktop-agent-browser] history", JSON.stringify({
-      firstHistory,
-      secondHistory,
-      restoredSession,
-    }));
-    console.log("[desktop-agent-browser] project status", JSON.stringify({
-      apiPath: projectStatusApiPath,
-      status: projectStatusEvidence,
-    }));
-    console.log("[desktop-agent-browser] narrow layout", JSON.stringify(narrowLayout));
-    console.log("[desktop-agent-browser] command palette", JSON.stringify(commandPalette));
-    console.log("[desktop-agent-browser] collapsed navigator", JSON.stringify(collapsedNavigator));
-    console.log("[desktop-agent-browser] timeline dock", JSON.stringify(timelineDock));
-    console.log("[desktop-agent-browser] asset destination", JSON.stringify(assetDestination));
-    console.log("[desktop-agent-browser] asset placement", JSON.stringify(assetPlacement));
-    console.log("[desktop-agent-browser] local settings", JSON.stringify(localSettings));
-    console.log("[desktop-agent-browser] agent follow", JSON.stringify(agentFollow));
+    console.log(
+      "[desktop-agent-browser] history",
+      JSON.stringify({
+        firstHistory,
+        secondHistory,
+        restoredSession,
+      }),
+    );
+    console.log(
+      "[desktop-agent-browser] project status",
+      JSON.stringify({
+        apiPath: projectStatusApiPath,
+        status: projectStatusEvidence,
+      }),
+    );
+    console.log(
+      "[desktop-agent-browser] narrow layout",
+      JSON.stringify(narrowLayout),
+    );
+    console.log(
+      "[desktop-agent-browser] command palette",
+      JSON.stringify(commandPalette),
+    );
+    console.log(
+      "[desktop-agent-browser] collapsed navigator",
+      JSON.stringify(collapsedNavigator),
+    );
+    console.log(
+      "[desktop-agent-browser] populated chrome",
+      JSON.stringify(populatedChrome),
+    );
+    console.log(
+      "[desktop-agent-browser] timeline dock",
+      JSON.stringify(timelineDock),
+    );
+    console.log(
+      "[desktop-agent-browser] asset preview",
+      JSON.stringify(assetPreview),
+    );
+    console.log(
+      "[desktop-agent-browser] asset placement",
+      JSON.stringify(assetPlacement),
+    );
+    console.log(
+      "[desktop-agent-browser] timeline asset placement",
+      JSON.stringify(timelineAssetPlacement),
+    );
+    console.log(
+      "[desktop-agent-browser] local settings",
+      JSON.stringify(localSettings),
+    );
+    console.log(
+      "[desktop-agent-browser] agent follow",
+      JSON.stringify(agentFollow),
+    );
     console.log(`[desktop-agent-browser] screenshot ${latestScreenshot}`);
-    console.log(`[desktop-agent-browser] history screenshot ${historyScreenshot}`);
-    console.log(`[desktop-agent-browser] narrow screenshot ${narrowLayoutScreenshot}`);
-    console.log(`[desktop-agent-browser] collapsed navigator screenshot ${collapsedNavigatorScreenshot}`);
-    console.log(`[desktop-agent-browser] timeline dock screenshot ${timelineDockScreenshot}`);
-    console.log(`[desktop-agent-browser] asset destination screenshot ${assetDestinationScreenshot}`);
-    console.log(`[desktop-agent-browser] local settings screenshot ${localSettingsScreenshot}`);
-    console.log(`[desktop-agent-browser] agent follow screenshot ${agentFollowScreenshot}`);
+    console.log(
+      `[desktop-agent-browser] history screenshot ${historyScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] narrow screenshot ${narrowLayoutScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] collapsed navigator screenshot ${collapsedNavigatorScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] populated chrome screenshot ${populatedChromeScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] timeline dock screenshot ${timelineDockScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] asset preview screenshot ${assetPreviewScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] asset drag screenshot ${assetDragScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] local settings screenshot ${localSettingsScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] agent follow screenshot ${agentFollowScreenshot}`,
+    );
     assertNoForbiddenRendererIssues(electronLogs);
   } catch (error) {
     try {
       agentBrowser(["screenshot", latestScreenshot], { allowFailure: true });
-      console.error(`[desktop-agent-browser] failure screenshot ${latestScreenshot}`);
+      console.error(
+        `[desktop-agent-browser] failure screenshot ${latestScreenshot}`,
+      );
     } catch {
       // Ignore screenshot failure while unwinding.
     }
     console.error("[desktop-agent-browser] web logs\n" + tail(webLogs));
-    console.error("[desktop-agent-browser] electron logs\n" + tail(electronLogs));
+    console.error(
+      "[desktop-agent-browser] electron logs\n" + tail(electronLogs),
+    );
     throw error;
   } finally {
     agentBrowser(["close"], { allowFailure: true });

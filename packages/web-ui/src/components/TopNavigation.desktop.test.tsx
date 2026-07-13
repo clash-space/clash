@@ -7,6 +7,7 @@ import { Link, MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import TopNavigation from "./TopNavigation";
+import { PROJECT_NAVIGATOR_VISIBILITY_EVENT } from "../lib/projectNavigatorChrome";
 
 vi.mock("./UserControls", () => ({
   default: () => <button type="button">Account</button>,
@@ -34,7 +35,53 @@ function LocationEcho() {
 describe("TopNavigation desktop chrome", () => {
   afterEach(() => {
     cleanup();
+    localStorage.removeItem("project-navigator-collapsed");
     delete globalThis.__CLASH_DESKTOP__;
+  });
+
+  it("shows the project navigator control only on desktop project detail pages", async () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+    const onVisibility = vi.fn();
+    window.addEventListener(PROJECT_NAVIGATOR_VISIBILITY_EVENT, onVisibility);
+
+    render(
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <TopNavigation />
+      </MemoryRouter>,
+    );
+
+    const toggle = await screen.findByRole("button", {
+      name: "Collapse project sidebar",
+    });
+    const back = screen.getByRole("button", { name: "Back" });
+    expect(
+      toggle.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(onVisibility).toHaveBeenCalledTimes(1);
+    expect((onVisibility.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+      collapsed: true,
+    });
+    expect(
+      screen.getByRole("button", { name: "Expand project sidebar" }),
+    ).toBeTruthy();
+
+    window.removeEventListener(PROJECT_NAVIGATOR_VISIBILITY_EVENT, onVisibility);
+    cleanup();
+    localStorage.removeItem("project-navigator-collapsed");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <TopNavigation />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("tab", { name: "Home" });
+    expect(
+      screen.queryByRole("button", { name: /project sidebar/i }),
+    ).toBeNull();
   });
 
   it("uses the shared tab primitive instead of direct Ariakit or handwritten desktop tab semantics", () => {

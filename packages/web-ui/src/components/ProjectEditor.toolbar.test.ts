@@ -25,10 +25,19 @@ describe("ProjectEditor toolbar surface", () => {
   it("uses one fixed 48px vertical rail for every canvas mode and tool", () => {
     expect(projectEditorSource).toContain('id="project-workspace-shell"');
     expect(projectEditorSource).toContain('grid-cols-[12rem_minmax(0,1fr)]');
+    expect(projectEditorSource).toContain(
+      'data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)]',
+    );
+    expect(projectEditorSource).not.toContain(
+      'data-[project-navigator-collapsed=true]:grid-cols-[3rem_minmax(0,1fr)]',
+    );
+    expect(projectEditorSource).not.toContain('clash-project-sidebar-toggle-button');
     expect(projectEditorSource).toContain('className="absolute inset-0');
     expect(projectEditorSource).toContain('<Toolbar.Root');
     expect(projectEditorSource).toContain('clash-canvas-toolbar-surface pointer-events-auto flex w-12');
-    expect(projectEditorSource).toContain('orientation="vertical"\n                                    aria-label="Canvas mode"');
+    expect(projectEditorSource).toMatch(
+      /orientation=["']vertical["'][\s\S]*?aria-label=["']Canvas mode["']/,
+    );
     expect(projectEditorSource).toContain('className="flex w-full flex-col items-center gap-0"');
     expect(projectEditorSource.match(/<Toolbar\.Separator/g)).toHaveLength(2);
     expect(projectEditorSource).not.toContain('clash-canvas-mode-surface');
@@ -47,11 +56,12 @@ describe("ProjectEditor toolbar surface", () => {
       "[--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-search-row-height:2.5rem] [--clash-project-sidebar-header-height:2.5rem]",
     );
     expect(projectEditorSource).toContain(
-      "left-[var(--clash-project-chrome-gutter)] top-[calc(var(--clash-project-sidebar-header-height)+var(--clash-project-search-row-height))]",
+      "left-[var(--clash-project-chrome-gutter)] top-[calc(var(--clash-project-sidebar-header-height)+var(--clash-project-search-row-height))] z-10 flex flex-col items-start gap-2 pointer-events-none",
     );
-    expect(projectEditorSource).not.toContain(
-      "top-[var(--clash-project-sidebar-header-height)]",
+    expect(projectEditorSource).toContain(
+      "top-[calc(var(--clash-project-sidebar-header-height)+var(--clash-project-search-row-height))]",
     );
+    expect(projectEditorSource).not.toContain('isProjectNavigatorCollapsed ? "top-12"');
     expect(projectEditorSource).not.toContain('className="absolute left-3 top-4');
     expect(projectWorkspaceNavigatorSource).toContain(
       'className="clash-project-sidebar-header flex h-10 shrink-0 items-center px-2"',
@@ -62,8 +72,8 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectWorkspaceNavigatorSource).not.toMatch(
       /clash-project-sidebar-header[^\n]*border-b/,
     );
-    expect(projectEditorSource).toContain(
-      "isProjectNavigatorCollapsed ? '' : '-ml-px'",
+    expect(projectEditorSource).toMatch(
+      /isProjectNavigatorCollapsed\s*\?\s*["']{2}\s*:\s*["']-ml-px["']/,
     );
     expect(projectWorkspaceNavigatorSource).toContain(
       'className="min-h-0 flex-1 overflow-y-auto px-2 pb-4 pt-2"',
@@ -73,17 +83,19 @@ describe("ProjectEditor toolbar surface", () => {
     );
     expect(projectWorkspaceNavigatorSource).toContain('aria-label="Search project"');
     expect(projectEditorSource).toContain(
-      "clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-2",
+      "clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-2 transition-colors [--clash-toolbar-section-gap:0.5rem]",
     );
     expect(projectEditorSource).toContain(
       'className="flex w-full flex-col items-center gap-0"',
     );
-    expect(projectEditorSource.match(/className="flex h-2 w-full shrink-0 items-center justify-center"/g)).toHaveLength(2);
-    expect(projectEditorSource).toContain("const sectionSpacing = item.id === 'actions' ? 'mt-2' : '';");
+    expect(projectEditorSource.match(/h-\[var\(--clash-toolbar-section-gap\)\]/g)).toHaveLength(2);
+    expect(projectEditorSource).toMatch(
+      /const sectionSpacing\s*=\s*item\.id\s*===\s*["']actions["']\s*\?\s*["']mt-\[var\(--clash-toolbar-section-gap\)\]["']\s*:\s*["']{2};/,
+    );
     expect(projectEditorSource).not.toContain('size="md"\n                                                shape="rounded"');
   });
 
-  it("uses one measured sidebar action column for add, menu, and count controls", () => {
+  it("uses one measured folder header and action column for every project collection", () => {
     expect(projectWorkspaceNavigatorSource).toContain(
       "const sectionHeaderClass = 'flex h-8 items-center justify-between px-1';",
     );
@@ -91,6 +103,10 @@ describe("ProjectEditor toolbar surface", () => {
       "const sidebarActionSlotClass = 'clash-project-sidebar-action-slot h-6 min-h-6 w-6 min-w-6';",
     );
     expect(projectWorkspaceNavigatorSource).toContain(
+      "data-project-folder-header",
+    );
+    expect(projectWorkspaceNavigatorSource).toContain('addLabel="Add Asset"');
+    expect(projectWorkspaceNavigatorSource).not.toContain(
       'data-sidebar-action-slot="asset-count"',
     );
     expect(projectWorkspaceNavigatorSource).not.toContain(
@@ -100,7 +116,7 @@ describe("ProjectEditor toolbar surface", () => {
       "'group/menu-button relative flex h-8",
     );
     expect(projectWorkspaceNavigatorSource).not.toContain('className="mt-3"');
-    expect(projectWorkspaceNavigatorSource.match(/className="mt-2"/g)).toHaveLength(2);
+    expect(projectWorkspaceNavigatorSource).toContain('className="mt-2 first:mt-0"');
   });
 
   it("keeps canvas dots out of the toolbar surface texture", () => {

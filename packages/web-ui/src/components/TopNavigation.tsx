@@ -8,6 +8,7 @@ import {
   ArrowRight,
   House,
   FolderOpen,
+  SidebarSimple,
   Storefront,
   X,
 } from '@phosphor-icons/react';
@@ -25,6 +26,10 @@ import {
   type DesktopTab,
   updateDesktopTabTitle,
 } from '../lib/desktopTabs';
+import {
+  readProjectNavigatorCollapsed,
+  setProjectNavigatorCollapsedFromChrome,
+} from '../lib/projectNavigatorChrome';
 
 declare global {
   var __CLASH_DESKTOP__:
@@ -62,6 +67,7 @@ export default function TopNavigation() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [desktopTabs, setDesktopTabs] = useState<DesktopTab[]>([]);
   const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(null);
+  const [projectNavigatorCollapsed, setProjectNavigatorCollapsed] = useState(false);
   const [desktopHistory, setDesktopHistory] = useState<{ entries: string[]; index: number }>(() => ({
     entries: [pathname],
     index: 0,
@@ -103,6 +109,12 @@ export default function TopNavigation() {
       };
     });
   }, [isDesktop, pathname]);
+
+  useEffect(() => {
+    setProjectNavigatorCollapsed(
+      isProjectDetailPage ? readProjectNavigatorCollapsed() : false,
+    );
+  }, [isProjectDetailPage, pathname]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -179,6 +191,11 @@ export default function TopNavigation() {
     setDesktopHistory((history) => ({ ...history, index: nextIndex }));
     if (nextPath !== pathname) navigate(nextPath);
   };
+  const toggleProjectNavigator = () => {
+    const collapsed = !projectNavigatorCollapsed;
+    setProjectNavigatorCollapsed(collapsed);
+    setProjectNavigatorCollapsedFromChrome(collapsed);
+  };
 
   if (isDesktop) {
     return (
@@ -192,6 +209,28 @@ export default function TopNavigation() {
             data-desktop-toolbar="true"
             className="flex h-full items-center gap-1 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
+            {isProjectDetailPage ? (
+              <Tooltip
+                label={
+                  projectNavigatorCollapsed
+                    ? 'Expand project sidebar'
+                    : 'Collapse project sidebar'
+                }
+              >
+                <IconButton
+                  data-project-navigator-toggle
+                  label={
+                    projectNavigatorCollapsed
+                      ? 'Expand project sidebar'
+                      : 'Collapse project sidebar'
+                  }
+                  icon={<SidebarSimple className="h-4 w-4" weight="regular" />}
+                  size="sm"
+                  onClick={toggleProjectNavigator}
+                  className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] hover:text-stone-950"
+                />
+              </Tooltip>
+            ) : null}
             <Tooltip label="Back">
               <IconButton
                 label="Back"

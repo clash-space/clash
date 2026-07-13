@@ -1,18 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CaretDown, FilmSlate, Image as ImageIcon, Plus, SquaresFour } from '@phosphor-icons/react';
+import { FilmSlate, Image as ImageIcon, SquaresFour } from '@phosphor-icons/react';
 import type { EditorAssetInput, EditorState } from '@master-clash/remotion-core';
 import type { ProjectCanvas, ProjectTimeline } from '@clash/shared-types';
 import type { ProjectAsset } from '@clash/web-ui/lib/types';
 import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
-import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Tooltip } from './ui/tooltip';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from './ui/dropdown-menu';
 
 const TimelineEditor = lazy(() =>
     import('@master-clash/remotion-ui').then((module) => ({ default: module.Editor })),
@@ -23,102 +16,60 @@ type ProjectTimelineEditorState = Pick<
     'tracks' | 'compositionWidth' | 'compositionHeight' | 'fps' | 'durationInFrames'
 >;
 
-export function ProjectAssetsSurface({
-    assets,
-    canvases,
-    onAddToCanvas,
-}: {
-    assets: ProjectAsset[];
-    canvases: ProjectCanvas[];
-    onAddToCanvas: (asset: ProjectAsset, canvasId: string) => void;
-}) {
-    return (
-        <main className="absolute inset-0 z-10 overflow-y-auto bg-warm-page px-10 py-8">
-            <header className="mb-7 border-b border-warm-border pb-4">
-                <div>
-                    <h1 className="font-display text-2xl font-semibold text-slate-950">Assets</h1>
-                    <p className="mt-1 text-sm text-stone-500">{assets.length} project assets</p>
-                </div>
-            </header>
-            {assets.length === 0 ? (
-                <div className="py-16 text-sm text-stone-400">No assets</div>
-            ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
-                    {assets.map((asset) => (
-                        <article key={asset.id} className="group min-w-0 overflow-hidden rounded-lg border border-warm-border bg-warm-surface">
-                            <ProjectAssetPreview asset={asset} />
-                            <div className="flex h-12 min-w-0 items-center gap-2 px-3">
-                                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
-                                    {asset.id}
-                                </span>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button
-                                            size="sm"
-                                            shape="rounded"
-                                            aria-label={`Add ${asset.id} to canvas`}
-                                            disabled={canvases.length === 0}
-                                            leftIcon={<Plus className="h-3.5 w-3.5" weight="bold" />}
-                                            rightIcon={<CaretDown className="h-3 w-3" weight="bold" />}
-                                            className="h-8 min-h-8 rounded-md px-2.5 text-xs"
-                                        >
-                                            Add to canvas
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="min-w-44 rounded-md p-1">
-                                        {canvases.map((canvas) => (
-                                            <DropdownMenuItem
-                                                key={canvas.id}
-                                                onSelect={() => onAddToCanvas(asset, canvas.id)}
-                                                className="min-h-8 rounded-md px-2.5 py-1.5 text-xs"
-                                            >
-                                                {canvas.name}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                        </article>
-                    ))}
-                </div>
-            )}
-        </main>
-    );
-}
-
-function ProjectAssetPreview({ asset }: { asset: ProjectAsset }) {
+export function ProjectAssetSurface({ asset }: { asset: ProjectAsset }) {
     const [failed, setFailed] = useState(false);
+    const path = asset.storageKey?.trim() || asset.id;
+    const label = path.split(/[\\/]/).filter(Boolean).at(-1) || path;
+
+    useEffect(() => setFailed(false), [asset.id, asset.url]);
+
     const fallback = (
-        <div className="flex aspect-video items-center justify-center bg-stone-100 text-stone-400">
+        <div className="flex flex-col items-center gap-2 text-stone-400">
             {asset.type === 'video' ? (
                 <FilmSlate className="h-7 w-7" weight="regular" aria-hidden="true" />
             ) : (
                 <ImageIcon className="h-7 w-7" weight="regular" aria-hidden="true" />
             )}
+            <span className="text-xs">Preview unavailable</span>
         </div>
     );
 
-    if (failed || !asset.url) return fallback;
     return (
-        <div className="aspect-video overflow-hidden bg-stone-100">
-            {asset.type === 'video' ? (
-                <video
-                    src={asset.url}
-                    className="h-full w-full object-cover"
-                    muted
-                    playsInline
-                    preload="metadata"
-                    onError={() => setFailed(true)}
-                />
-            ) : (
-                <img
-                    src={asset.url}
-                    alt=""
-                    className="h-full w-full object-cover transition-transform duration-200 ease-out group-hover:scale-[1.02]"
-                    onError={() => setFailed(true)}
-                />
-            )}
-        </div>
+        <main
+            aria-label={`${label} preview`}
+            className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-warm-page"
+        >
+            <header className="flex h-10 shrink-0 items-center gap-2 border-b border-warm-border/80 px-3">
+                {asset.type === 'video' ? (
+                    <FilmSlate className="h-3.5 w-3.5 shrink-0 text-stone-400" weight="regular" />
+                ) : (
+                    <ImageIcon className="h-3.5 w-3.5 shrink-0 text-stone-400" weight="regular" />
+                )}
+                <span title={path} className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">
+                    {label}
+                </span>
+            </header>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-stone-100 p-5">
+                {failed || !asset.url ? fallback : asset.type === 'video' ? (
+                    <video
+                        src={asset.url}
+                        aria-label={label}
+                        className="max-h-full max-w-full bg-black object-contain"
+                        controls
+                        playsInline
+                        preload="metadata"
+                        onError={() => setFailed(true)}
+                    />
+                ) : (
+                    <img
+                        src={asset.url}
+                        alt={label}
+                        className="max-h-full max-w-full object-contain"
+                        onError={() => setFailed(true)}
+                    />
+                )}
+            </div>
+        </main>
     );
 }
 
