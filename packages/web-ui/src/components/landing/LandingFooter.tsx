@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import ClashWordmark from "./ClashWordmark";
 
 const navigation = {
   resources: [
@@ -36,17 +37,7 @@ export default function LandingFooter() {
         <div className="xl:grid xl:grid-cols-3 xl:gap-8">
           <div className="space-y-8">
             <Link to="/" className="group">
-              <div className="flex items-center gap-1.5">
-                <img
-                  src="/brand/logo-mark.svg"
-                  alt=""
-                  className="h-10 w-10 object-contain"
-                  draggable={false}
-                />
-                <span className="font-display text-lg font-semibold leading-none text-slate-900 dark:text-slate-50">
-                  Clash
-                </span>
-              </div>
+              <ClashWordmark className="text-2xl" />
             </Link>
             <p className="text-sm leading-6 text-stone-700 dark:text-stone-300">
               Where agents co-create, humans are welcome too.

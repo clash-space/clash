@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router";
+import ClashWordmark from "./ClashWordmark";
 
 const navLinks = [{ name: "Docs", href: "/docs" }];
 
@@ -10,19 +11,11 @@ export default function LandingNav() {
         {/* Logo */}
         <Link to="/" className="group">
           <motion.div
-            className="flex items-center gap-1.5"
+            className="flex items-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <img
-              src="/brand/logo-mark.svg"
-              alt=""
-              className="h-10 w-10 object-contain"
-              draggable={false}
-            />
-            <span className="font-display text-xl font-semibold leading-none text-slate-950 dark:text-slate-50">
-              Clash
-            </span>
+            <ClashWordmark className="text-3xl" />
           </motion.div>
         </Link>
 

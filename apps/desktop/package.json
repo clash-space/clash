@@ -16,7 +16,7 @@
     "pack:linux": "pnpm prepare:pack && electron-builder --linux AppImage --x64 --config electron-builder.yml --publish never",
     "prepare:harnesses": "node scripts/prepare-acp-harnesses.mjs",
     "prepare:remotion-bundle": "pnpm --filter @master-clash/render-server build && node ../render-server/dist/prebundle.js",
-    "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build && pnpm prepare:remotion-bundle && pnpm prepare:harnesses && node scripts/prepare-clash-cli.mjs",
+    "prepare:pack": "pnpm --filter @master-clash/web... build && pnpm --filter @master-clash/local-api build && pnpm build && pnpm prepare:remotion-bundle && pnpm prepare:harnesses && node scripts/prepare-clash-cli.mjs",
     "start": "pnpm --filter @master-clash/local-api build && pnpm build && electron .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",

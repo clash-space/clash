@@ -31,4 +31,14 @@ describe("LandingNav", () => {
     expect(headerSurface).toBeTruthy();
     expect(headerSurface?.className).toContain("clash-control-surface");
   });
+
+  it("uses the original Clash slash wordmark", () => {
+    const { container, getByLabelText } = render(<LandingNav />);
+
+    expect(getByLabelText("Clash")).toBeTruthy();
+    expect(container.querySelector(".clash-wordmark-slash")).toBeTruthy();
+    expect(
+      container.querySelector('img[src="/brand/logo-mark.svg"]'),
+    ).toBeNull();
+  });
 });
