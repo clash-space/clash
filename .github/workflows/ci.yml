@@ -57,6 +57,7 @@ jobs:
           node-version: 22.22.0
           cache: pnpm
 
+      - run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run test --concurrency=1
 
@@ -74,6 +75,7 @@ jobs:
           node-version: 22.22.0
           cache: pnpm
 
+      - run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:e2e:agent-first-local-v1
 
