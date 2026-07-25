@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  credentialsForProvider: vi.fn(),
+  credentialsForRoute: vi.fn(),
   generateOpenAIImage: vi.fn(),
 }));
 
 vi.mock("./provider-credentials", () => ({
-  credentialsForProvider: mocks.credentialsForProvider,
+  credentialsForRoute: mocks.credentialsForRoute,
 }));
 
 vi.mock("../../services/openai-image", () => ({
@@ -32,6 +32,17 @@ function makeCtx() {
       prompt: "render a product hero",
       modelName: "gpt-image-2",
       modelParams: { quality: "high" },
+      selectedRoute: {
+        modelCode: "gpt-image-2",
+        kind: "image",
+        providerId: "official",
+        accountId: "openai-primary",
+        upstreamId: "openai",
+        upstreamModel: "gpt-image-2",
+        apiShape: "openai-images",
+        priority: 10,
+        requiredCredentials: ["apiKey"],
+      },
     },
     env: {
       DB: {} as D1Database,
@@ -56,7 +67,7 @@ describe("openaiImageProvider", () => {
   });
 
   it("loads OpenAI credentials from provider accounts", async () => {
-    mocks.credentialsForProvider.mockResolvedValue({
+    mocks.credentialsForRoute.mockResolvedValue({
       apiKey: "provider-openai-key",
       baseUrl: "https://openai-compatible.example/v1",
     });
@@ -69,11 +80,7 @@ describe("openaiImageProvider", () => {
 
     await openaiImageProvider.execute(ctx as never);
 
-    expect(mocks.credentialsForProvider).toHaveBeenCalledWith(ctx, "official", ["apiKey"], {
-      upstreamId: "openai",
-      region: "global",
-      modelCode: "gpt-image-2",
-    });
+    expect(mocks.credentialsForRoute).toHaveBeenCalledWith(ctx, ctx.params.selectedRoute);
     expect(mocks.generateOpenAIImage).toHaveBeenCalledWith(
       expect.objectContaining({
         apiKey: "provider-openai-key",

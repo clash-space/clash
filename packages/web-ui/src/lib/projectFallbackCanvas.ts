@@ -15,7 +15,7 @@ export function buildFallbackCanvasFromAssets(
   assets: readonly FallbackAsset[] | undefined,
 ): { nodes: Node[]; edges: Edge[] } {
   const mediaAssets = (assets ?? []).filter(
-    (asset) => asset.type === "image" || asset.type === "video",
+    (asset) => asset.type === "image" || asset.type === "video" || asset.type === "audio",
   );
 
   return {
@@ -35,7 +35,11 @@ export function buildFallbackCanvasFromAssets(
           height: NODE_HEIGHT,
         },
         data: {
-          label: asset.type === "video" ? "Recovered Video" : "Recovered Image",
+          label: asset.type === "video"
+            ? "Recovered Video"
+            : asset.type === "audio"
+              ? "Recovered Audio"
+              : "Recovered Image",
           assetId,
           src: asset.storageKey,
           status: "completed",

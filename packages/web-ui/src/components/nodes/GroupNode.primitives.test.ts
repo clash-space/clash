@@ -37,4 +37,11 @@ describe('GroupNode action primitives', () => {
     expect(source).toContain('nopan');
     expect(source).not.toContain('onMouseDown={(e) => e.stopPropagation()}');
   });
+
+  it('subscribes only to the group parent chain instead of every node object', () => {
+    const source = readSource('packages/web-ui/src/components/nodes/GroupNode.tsx');
+
+    expect(source).toContain('useStore');
+    expect(source).not.toContain('useNodes()');
+  });
 });

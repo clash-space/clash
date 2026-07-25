@@ -14,6 +14,7 @@ interface DraftPlaceholderProps {
     modality: Modality;
     width?: number | string;
     height?: number | string;
+    compact?: boolean;
 }
 
 const MODALITY_ICON = {
@@ -118,7 +119,7 @@ function selectBuildPlan(state: ReactFlowState, nodeId: string): BuildPlan {
  * The button label carries a `+N` suffix when there are draft ancestors, so
  * the user sees the cost footprint before opening the dialog.
  */
-const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderProps) => {
+const DraftPlaceholder = ({ nodeId, modality, width, height, compact = false }: DraftPlaceholderProps) => {
     const { setNodes } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -171,40 +172,67 @@ const DraftPlaceholder = ({ nodeId, modality, width, height }: DraftPlaceholderP
             : totalCalls > 0
                 ? `Will run ${totalCalls} model call${totalCalls === 1 ? '' : 's'}`
                 : 'Build this draft';
+    const buttonAriaLabel = buttonDisabled
+        ? buttonLabel
+        : ancestorCount > 0
+            ? `Build - ${totalCalls} model call${totalCalls === 1 ? '' : 's'}, ${ancestorCount} upstream draft${ancestorCount === 1 ? '' : 's'}`
+            : 'Build this draft';
 
     return (
         <>
             <div
-                className="relative rounded-matrix bg-warm-muted/60 border-2 border-dashed border-warm-border flex flex-col items-center justify-center gap-3 p-4"
+                className={compact
+                    ? 'relative flex h-full w-full flex-row items-center justify-between gap-2 px-3 py-2'
+                    : 'relative flex flex-col items-center justify-center gap-3 rounded-matrix border-2 border-dashed border-warm-border bg-warm-muted/60 p-4'}
                 style={{ width: width ?? '100%', height: height ?? '100%' }}
                 role="group"
                 aria-label={`Draft ${MODALITY_LABEL[modality]} placeholder`}
             >
-                <div className="flex flex-col items-center gap-1 text-slate-700 dark:text-slate-300">
-                    <Icon size={28} weight="duotone" aria-hidden="true" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Draft {MODALITY_LABEL[modality]}</span>
-                </div>
-                <div className="flex flex-col gap-1.5 w-full max-w-[200px]">
-                    <Tooltip label={buttonLabel}>
-                        <Button
-                            onClick={openDialog}
-                            disabled={buttonDisabled}
-                            size="md"
-                            shape="rounded"
-                            leftIcon={<Play size={12} weight="fill" />}
-                            className="clash-node-primary w-full rounded-lg px-4 py-2.5 text-sm font-semibold motion-reduce:transition-none focus-visible:ring-offset-warm-muted"
-                            aria-label={
-                                buttonDisabled
-                                    ? buttonLabel
-                                    : ancestorCount > 0
-                                        ? `Build - ${totalCalls} model call${totalCalls === 1 ? '' : 's'}, ${ancestorCount} upstream draft${ancestorCount === 1 ? '' : 's'}`
-                                        : `Build this draft`
-                            }
-                        >
-                            <span aria-hidden="true">Build{suffix}</span>
-                        </Button>
-                    </Tooltip>
-                </div>
+                {compact ? (
+                    <>
+                        <div className="flex min-w-0 items-center gap-2 text-slate-700 dark:text-slate-300">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-audio/10 text-audio">
+                                <Icon size={18} weight="duotone" aria-hidden="true" />
+                            </span>
+                            <span className="truncate text-xs font-semibold">Draft {MODALITY_LABEL[modality]}</span>
+                        </div>
+                        <Tooltip label={buttonLabel}>
+                            <Button
+                                onClick={openDialog}
+                                disabled={buttonDisabled}
+                                size="sm"
+                                shape="rounded"
+                                leftIcon={<Play size={11} weight="fill" />}
+                                className="clash-node-primary h-8 min-h-8 shrink-0 rounded-lg px-3 text-xs font-semibold motion-reduce:transition-none focus-visible:ring-offset-warm-surface"
+                                aria-label={buttonAriaLabel}
+                            >
+                                <span aria-hidden="true">Build{suffix}</span>
+                            </Button>
+                        </Tooltip>
+                    </>
+                ) : (
+                    <>
+                        <div className="flex flex-col items-center gap-1 text-slate-700 dark:text-slate-300">
+                            <Icon size={28} weight="duotone" aria-hidden="true" />
+                            <span className="text-[11px] font-bold uppercase tracking-wider">Draft {MODALITY_LABEL[modality]}</span>
+                        </div>
+                        <div className="flex w-full max-w-[200px] flex-col gap-1.5">
+                            <Tooltip label={buttonLabel}>
+                                <Button
+                                    onClick={openDialog}
+                                    disabled={buttonDisabled}
+                                    size="md"
+                                    shape="rounded"
+                                    leftIcon={<Play size={12} weight="fill" />}
+                                    className="clash-node-primary w-full rounded-lg px-4 py-2.5 text-sm font-semibold motion-reduce:transition-none focus-visible:ring-offset-warm-muted"
+                                    aria-label={buttonAriaLabel}
+                                >
+                                    <span aria-hidden="true">Build{suffix}</span>
+                                </Button>
+                            </Tooltip>
+                        </div>
+                    </>
+                )}
             </div>
 
             <BuildPlanDialog

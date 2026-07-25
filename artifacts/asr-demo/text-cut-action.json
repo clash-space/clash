@@ -1,0 +1,122 @@
+{
+  "actionId": "talking-head-text-cut-asr-demo-source",
+  "targetAssetId": "asr-demo-source",
+  "metadataKind": "talking-head.analysis",
+  "metadata": {
+    "kind": "talking-head.analysis",
+    "fps": 30,
+    "asr": {
+      "kind": "asr-transcript",
+      "sourcePath": "artifacts/asr-demo/transcript.json",
+      "sourceHash": "sha256:e190d1324c67244ddd07855a3ab1c40ec097f37027eebbbaa1a117574d359825",
+      "backendId": "funasr",
+      "modelId": "iic/SenseVoiceSmall",
+      "language": "zh",
+      "durationFrames": 79,
+      "wordCount": 11
+    },
+    "words": [
+      {
+        "id": "word-000001",
+        "text": "你",
+        "startFrame": 0,
+        "endFrame": 3
+      },
+      {
+        "id": "word-000002",
+        "text": "好",
+        "startFrame": 4,
+        "endFrame": 7
+      },
+      {
+        "id": "word-000003",
+        "text": "，",
+        "startFrame": 8,
+        "endFrame": 12
+      },
+      {
+        "id": "word-000004",
+        "text": "clash",
+        "startFrame": 15,
+        "endFrame": 23
+      },
+      {
+        "id": "word-000005",
+        "text": "测",
+        "startFrame": 36,
+        "endFrame": 39
+      },
+      {
+        "id": "word-000006",
+        "text": "试",
+        "startFrame": 42,
+        "endFrame": 45
+      },
+      {
+        "id": "word-000007",
+        "text": "时",
+        "startFrame": 49,
+        "endFrame": 52
+      },
+      {
+        "id": "word-000008",
+        "text": "间",
+        "startFrame": 54,
+        "endFrame": 57
+      },
+      {
+        "id": "word-000009",
+        "text": "对",
+        "startFrame": 62,
+        "endFrame": 64
+      },
+      {
+        "id": "word-000010",
+        "text": "集",
+        "startFrame": 67,
+        "endFrame": 70
+      },
+      {
+        "id": "word-000011",
+        "text": "。",
+        "startFrame": 76,
+        "endFrame": 79
+      }
+    ],
+    "cuts": [
+      {
+        "id": "keep-1",
+        "sourceStartFrame": 0,
+        "sourceEndFrame": 79,
+        "outputStartFrame": 0,
+        "outputEndFrame": 79,
+        "action": "keep"
+      }
+    ],
+    "captionCues": [
+      {
+        "id": "cue-1",
+        "startFrame": 0,
+        "durationInFrames": 79,
+        "text": "你好，clash测试时间对集。",
+        "wordIds": [
+          "word-000001",
+          "word-000002",
+          "word-000003",
+          "word-000004",
+          "word-000005",
+          "word-000006",
+          "word-000007",
+          "word-000008",
+          "word-000009",
+          "word-000010",
+          "word-000011"
+        ],
+        "sourceStartFrame": 0,
+        "sourceEndFrame": 79
+      }
+    ],
+    "disfluencies": []
+  },
+  "producer": "clash-production-plan-text-cut"
+}

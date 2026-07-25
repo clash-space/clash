@@ -27,15 +27,29 @@ export const ImageRenderer: React.FC<ItemRenderProps> = ({ item, asset, width, h
   return (
     <div style={{ position: 'relative', width, height, background: colors.bg.primary, overflow: 'hidden' }}>
       {resolvedSrc && !imageError ? (
-        <img
-          src={resolvedSrc}
-          alt="thumb"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          onError={() => {
-            console.error(`[ImageRenderer] Load failed src="${resolvedSrc}"`);
-            setImageError(true);
-          }}
-        />
+        <>
+          <div
+            data-image-thumbnail-renderer="intrinsic-ratio-tiles"
+            style={{
+              backgroundImage: `url(${resolvedSrc})`,
+              backgroundPosition: 'left center',
+              backgroundRepeat: 'repeat-x',
+              backgroundSize: 'auto 100%',
+              inset: 0,
+              position: 'absolute',
+            }}
+          />
+          <img
+            src={resolvedSrc}
+            alt=""
+            aria-hidden="true"
+            style={{ display: 'none' }}
+            onError={() => {
+              console.error(`[ImageRenderer] Load failed src="${resolvedSrc}"`);
+              setImageError(true);
+            }}
+          />
+        </>
       ) : imageError ? (
         <div style={{
           width,
@@ -57,4 +71,3 @@ export const ImageRenderer: React.FC<ItemRenderProps> = ({ item, asset, width, h
     </div>
   );
 };
-

@@ -1,14 +1,19 @@
 import type { ProjectAsset } from './types';
+import { projectAssetPlaybackUrl } from '../features/assets/media-url';
 
 export const PROJECT_ASSET_DRAG_MIME = 'application/x-clash-project-asset';
+
+function dragAssetSource(asset: ProjectAsset): string {
+    return projectAssetPlaybackUrl(asset) ?? '';
+}
 
 function remotionAssetPayload(asset: ProjectAsset) {
     return {
         id: asset.id,
         backingAssetId: asset.assetId ?? asset.id,
         sourceNodeId: asset.id,
-        name: asset.storageKey ?? asset.id,
-        src: asset.url,
+        name: asset.name?.trim() || `${asset.type.charAt(0).toUpperCase()}${asset.type.slice(1)}`,
+        src: dragAssetSource(asset),
         type: asset.type,
     };
 }
@@ -24,16 +29,24 @@ export function writeProjectAssetDrag(dataTransfer: DataTransfer, asset: Project
 }
 
 export function hasProjectAssetDragData(dataTransfer: DataTransfer): boolean {
-    return Array.from(dataTransfer.types).some((type) => {
-        const normalized = type.toLocaleLowerCase();
-        return normalized === PROJECT_ASSET_DRAG_MIME || normalized === 'assetid' || normalized === 'text/plain';
-    });
+    const types = Array.from(dataTransfer.types, (type) => type.toLocaleLowerCase());
+    if (types.includes(PROJECT_ASSET_DRAG_MIME) || types.includes('assetid')) return true;
+
+    // Keep the native text fallback for older cross-surface asset drags, but
+    // never let another Clash drag contract masquerade as a Project Asset.
+    if (types.some((type) => type.startsWith('application/x-clash-'))) return false;
+    return types.includes('text/plain');
 }
 
 export function readProjectAssetDrag(
     dataTransfer: DataTransfer,
     assets: readonly ProjectAsset[],
 ): ProjectAsset | undefined {
+    const assetId = readProjectAssetDragId(dataTransfer);
+    return assetId ? assets.find((asset) => asset.id === assetId) : undefined;
+}
+
+export function readProjectAssetDragId(dataTransfer: DataTransfer): string | undefined {
     let assetId = '';
     const clashPayload = dataTransfer.getData(PROJECT_ASSET_DRAG_MIME);
     if (clashPayload) {
@@ -46,5 +59,5 @@ export function readProjectAssetDrag(
     }
     assetId ||= dataTransfer.getData('assetId');
     assetId ||= dataTransfer.getData('text/plain');
-    return assets.find((asset) => asset.id === assetId);
+    return assetId || undefined;
 }

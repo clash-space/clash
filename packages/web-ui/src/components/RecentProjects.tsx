@@ -5,10 +5,10 @@ import ProjectCreateTile from './ProjectCreateTile';
 
 interface RecentProjectsProps {
     projects: any[]; // Relaxed type to accept Drizzle result with assets
-    onStartNewProject: () => void;
+    onCreateProject: (projectName: string) => void | Promise<void>;
 }
 
-export default function RecentProjects({ projects, onStartNewProject }: RecentProjectsProps) {
+export default function RecentProjects({ projects, onCreateProject }: RecentProjectsProps) {
     // We want to show the section even if there are no projects, so the user can see the "New Project" card
     const projectList = projects || [];
 
@@ -25,7 +25,7 @@ export default function RecentProjects({ projects, onStartNewProject }: RecentPr
             </div>
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                <ProjectCreateTile ariaLabel="Start a new project" onActivate={onStartNewProject} />
+                <ProjectCreateTile ariaLabel="Start a new project" onCreate={onCreateProject} />
 
                 {/* Project Cards */}
                 {projectList.map((project) => (

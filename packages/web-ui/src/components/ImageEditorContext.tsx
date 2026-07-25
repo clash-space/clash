@@ -24,23 +24,25 @@ import { useOptionalLoroSyncContext } from './LoroSyncContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
-import { applyImageEdit } from '@clash/web-ui/lib/editPipeline';
+import { applyImageEdit, type EditApplyResult } from '../features/assets/action-client';
 import type { CropRect, ImageEditParams } from '@clash/shared-types';
 import { Button } from './ui/button';
 import { useDragGesture } from './ui/gesture';
 import { Input } from './ui/input';
 
-interface OpenImageEditorInput {
-    editorNodeId: string;
+export interface OpenImageEditorInput {
+    editorNodeId?: string;
     projectId: string;
     sourceAssetId: string;
     sourceR2Key: string;
     naturalWidth: number;
     naturalHeight: number;
     initialParams: ImageEditParams;
-    nodes: Node[];
-    edges: Edge[];
+    nodes?: Node[];
+    edges?: Edge[];
     parentId?: string;
+    onApplied?: (result: EditApplyResult) => void | Promise<void>;
+    origin?: 'canvas-node' | 'asset-preview';
 }
 
 interface ImageEditorContextType {
@@ -64,9 +66,13 @@ export function ImageEditorProvider({ children }: { children: ReactNode }) {
         setOpen(false);
         setInput(null);
     }, []);
+    const contextValue = useMemo(
+        () => ({ isOpen: open, openEditor, closeEditor }),
+        [closeEditor, open, openEditor],
+    );
 
     return (
-        <Ctx.Provider value={{ isOpen: open, openEditor, closeEditor }}>
+        <Ctx.Provider value={contextValue}>
             {children}
             {open && input && (
                 <EditorModalDialog
@@ -103,7 +109,7 @@ const ASPECT_OPTIONS: AspectId[] = ['free', '1:1', '16:9', '9:16', '4:3', '3:4']
 
 // ─── Panel ──────────────────────────────────────────────────
 
-function ImageEditorPanel({
+export function ImageEditorPanel({
     input, loroSync, onClose,
 }: {
     input: OpenImageEditorInput;
@@ -164,7 +170,7 @@ function ImageEditorPanel({
         setBusy(true);
         setError(null);
         try {
-            if (loroSync?.connected) {
+            if (loroSync?.connected && input.editorNodeId) {
                 loroSync.updateNode(input.editorNodeId, { data: { editParams: params } });
             }
             const result = await applyImageEdit({
@@ -172,16 +178,20 @@ function ImageEditorPanel({
                 sourceAssetId: input.sourceAssetId,
                 sourceR2Key: input.sourceR2Key,
                 params,
+                origin: input.origin,
             });
-            await spawnCompletedImageDownstream({
-                editorNodeId: input.editorNodeId,
-                parentId: input.parentId,
-                projectId: input.projectId,
-                assetId: result.assetId,
-                nodes: input.nodes,
-                edges: input.edges,
-                loroSync,
-            });
+            if (input.editorNodeId && input.nodes && input.edges) {
+                await spawnCompletedImageDownstream({
+                    editorNodeId: input.editorNodeId,
+                    parentId: input.parentId,
+                    projectId: input.projectId,
+                    assetId: result.assetId,
+                    nodes: input.nodes,
+                    edges: input.edges,
+                    loroSync,
+                });
+            }
+            await input.onApplied?.(result);
             onClose();
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -198,12 +208,12 @@ function ImageEditorPanel({
     return (
         <>
             <div className="flex items-center justify-between px-5 py-3 border-b border-warm-border bg-warm-surface">
-                <h2 className="text-base font-semibold text-slate-800">Image Editor</h2>
+                <h2 className="text-base font-semibold text-content-primary">Image Editor</h2>
                 <Button
                     size="sm"
                     onClick={onClose}
                     disabled={busy}
-                    className="rounded-md px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200"
+                    className="rounded-md px-3 py-1.5 text-sm text-content-secondary hover:bg-warm-muted hover:text-content-primary"
                 >
                     Cancel
                 </Button>
@@ -222,13 +232,13 @@ function ImageEditorPanel({
                             aspectRatio={ASPECT_RATIOS[aspect]}
                         />
                     ) : (
-                        <div className="text-slate-700 dark:text-slate-300 dark:text-slate-400">Loading…</div>
+                        <div className="text-content-muted">Loading…</div>
                     )}
                 </div>
 
                 <div className="w-72 border-l border-warm-border bg-warm-surface p-4 flex flex-col gap-5 overflow-y-auto">
                     <section>
-                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Aspect</h3>
+                        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-content-secondary">Aspect</h3>
                         <div className="grid grid-cols-3 gap-1.5">
                             {ASPECT_OPTIONS.map((id) => (
                                 <Button
@@ -237,8 +247,8 @@ function ImageEditorPanel({
                                     onClick={() => applyAspect(id)}
                                     className={`min-h-0 rounded-md px-2 py-1.5 text-xs ${
                                         aspect === id
-                                            ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900'
-                                            : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
+                                            ? 'border-brand/40 bg-brand-light text-brand hover:bg-brand-light/80'
+                                            : 'border-warm-border bg-warm-surface text-content-secondary hover:bg-warm-muted hover:text-content-primary'
                                     }`}
                                 >{id}</Button>
                             ))}
@@ -246,10 +256,10 @@ function ImageEditorPanel({
                     </section>
 
                     <section>
-                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Crop (px)</h3>
+                        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-content-secondary">Crop (px)</h3>
                         <div className="grid grid-cols-2 gap-2">
                             {(['x', 'y', 'width', 'height'] as const).map((k) => (
-                                <label key={k} className="text-xs text-slate-800 dark:text-slate-200 dark:text-slate-300 flex flex-col gap-1">
+                                <label key={k} className="flex flex-col gap-1 text-xs text-content-secondary">
                                     <span className="capitalize">{k}</span>
                                     <Input
                                         type="number"
@@ -258,7 +268,7 @@ function ImageEditorPanel({
                                             const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
                                             setCrop((c) => clampCrop({ ...c, [k]: n }, input.naturalWidth, input.naturalHeight));
                                         }}
-                                        className="border border-slate-300 rounded px-2 py-1 text-sm tabular-nums"
+                                        className="rounded border border-warm-border bg-warm-surface px-2 py-1 text-sm text-content-primary tabular-nums"
                                     />
                                 </label>
                             ))}
@@ -266,12 +276,12 @@ function ImageEditorPanel({
                         <Button
                             size="sm"
                             onClick={resetCrop}
-                            className="mt-2 min-h-0 justify-start border-transparent bg-transparent px-0 py-0 text-xs text-slate-800 shadow-none underline hover:bg-transparent hover:text-slate-800 dark:text-slate-200"
+                            className="mt-2 min-h-0 justify-start border-transparent bg-transparent px-0 py-0 text-xs text-brand shadow-none underline hover:bg-transparent hover:text-brand/80"
                         >Reset crop</Button>
                     </section>
 
                     <section>
-                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 dark:text-slate-300 uppercase tracking-wider mb-2">Rotation</h3>
+                        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-content-secondary">Rotation</h3>
                         <div className="flex gap-1">
                             {([0, 90, 180, 270] as const).map((d) => (
                                 <Button
@@ -280,8 +290,8 @@ function ImageEditorPanel({
                                     onClick={() => setRotation(d)}
                                     className={`min-h-0 flex-1 rounded-md px-2 py-1.5 text-xs ${
                                         rotation === d
-                                            ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900'
-                                            : 'bg-warm-surface text-slate-800 dark:text-slate-200 border-slate-300 hover:bg-slate-50'
+                                            ? 'border-brand/40 bg-brand-light text-brand hover:bg-brand-light/80'
+                                            : 'border-warm-border bg-warm-surface text-content-secondary hover:bg-warm-muted hover:text-content-primary'
                                     }`}
                                 >{d}°</Button>
                             ))}
@@ -289,7 +299,7 @@ function ImageEditorPanel({
                     </section>
 
                     {error && (
-                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md p-2">
+                        <div className="rounded-md border border-red-500/25 bg-red-500/10 p-2 text-xs text-red-700 dark:text-red-300">
                             {error}
                         </div>
                     )}
@@ -381,7 +391,7 @@ function CropEditor({
 
             {/* Crop rectangle */}
             <div
-                className="absolute border-2 border-emerald-400 cursor-move"
+                className="absolute cursor-move border-2 border-brand"
                 style={{
                     left: crop.x * scale,
                     top: crop.y * scale,
@@ -459,7 +469,7 @@ function CornerHandle({ pos, dragProps }: { pos: 'nw' | 'ne' | 'sw' | 'se'; drag
     return (
         <div
             {...restDragProps}
-            className={`absolute w-3 h-3 bg-warm-surface border-2 border-emerald-500 rounded-full ${cursor}`}
+            className={`absolute h-3 w-3 rounded-full border-2 border-brand bg-warm-surface ${cursor}`}
             style={{ ...positionStyle, ...dragStyle, touchAction: 'none' }}
         />
     );
@@ -485,7 +495,7 @@ function EdgeHandle({ pos, dragProps }: { pos: 'n' | 's' | 'e' | 'w'; dragProps:
     return (
         <div
             {...restDragProps}
-            className={`absolute bg-warm-surface border-2 border-emerald-500 rounded-sm ${cursor}`}
+            className={`absolute rounded-sm border-2 border-brand bg-warm-surface ${cursor}`}
             style={{ ...style, ...dragStyle, touchAction: 'none' }}
         />
     );

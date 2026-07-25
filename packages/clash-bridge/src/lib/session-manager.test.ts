@@ -12,6 +12,7 @@ import {
   type ManagerOut,
   parseAgentDiagnostic,
   parseAgentDiagnosticStatus,
+  selectAcpPermissionOutcome,
 } from "./session-manager";
 
 const require = createRequire(import.meta.url);
@@ -116,6 +117,15 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
 }
 
 describe("applyPermissionModeToAgentSpec", () => {
+  it("keeps the trusted local permission policy at the Clash host boundary", () => {
+    expect(selectAcpPermissionOutcome({
+      options: [
+        { optionId: "deny", name: "Deny", kind: "reject_once" },
+        { optionId: "allow", name: "Allow", kind: "allow_once" },
+      ],
+    } as never)).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
+  });
+
   it("leaves the agent spec unchanged when no permission mode is selected", () => {
     const spec = { command: "codex-acp", args: ["--flag"], env: { KEEP: "1" } };
     expect(applyPermissionModeToAgentSpec(

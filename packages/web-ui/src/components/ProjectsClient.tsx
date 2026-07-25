@@ -31,8 +31,8 @@ export default function ProjectsClient({ projects }: ProjectsClientProps) {
                     <ProjectCreateTile
                         ariaLabel="Create a new project"
                         empty={isEmpty}
-                        onActivate={async () => {
-                            await createProject('Untitled project', { startFromPrompt: false });
+                        onCreate={async (projectName) => {
+                            await createProject(projectName, { startFromPrompt: false });
                         }}
                     />
 

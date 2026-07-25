@@ -3,16 +3,25 @@ import { createPortal } from 'react-dom';
 import {
   findAssetForItem,
   getItemAssetDurationInFrames,
+  inferTrackCategory,
+  isSpokenMediaTrack,
   useEditorDispatch,
+  useEditorHistory,
   useEditorPlaybackRefs,
   useEditorStaticState,
 } from '@master-clash/remotion-core';
-import type { Asset, Item } from '@master-clash/remotion-core';
-import { colors, timeline, spacing, shadows } from './styles';
+import type { Asset, Item, Track, TrackCategory, TransitionItem } from '@master-clash/remotion-core';
+import type { AgentAnnotationObjectRef } from '@clash/shared-types';
+import { colors, timeline, spacing, shadows, typography } from './styles';
 import { secondsToFrames } from './utils/timeFormatter';
 import { TimelineItem } from './TimelineItem';
 import { currentDraggedAsset, currentAssetDragOffset } from '../AssetPanel';
+import { resolveAssetDropPayload } from './assetDropPayload';
 import { calculateResizeSnap } from './utils/snapCalculator';
+import { getTrackHeightForTrack } from './trackGeometry';
+import { getContinuousTransitionBoundaries } from '../../library/applyTimelineLibraryItem';
+import { PrimaryTranscriptWordbar } from './PrimaryTranscriptWordbar';
+import { createWheelAxisLock } from './wheelAxisLock';
 
 // Declare the global window property for TypeScript
 declare global {
@@ -57,6 +66,7 @@ interface TimelineTracksContainerProps {
     snapEdge?: 'left' | 'right' | null;
     snapTargetType?: 'item-start' | 'item-end' | 'playhead' | 'track-start' | 'grid' | undefined | null;
     snapGuideFrame?: number | null;
+    invalidTarget?: boolean;
   } | null;
   // Asset drag preview from AssetPanel
   assetDragPreview?: {
@@ -76,6 +86,8 @@ interface TimelineTracksContainerProps {
   contentInsetLeftPx?: number;
   // External insert position (for dnd-kit drags). If provided, overrides internal detection
   externalInsertPosition?: number | null;
+  onAnnotationTargetContextMenu?: (target: AgentAnnotationObjectRef) => void;
+  showTranscriptTimeline?: boolean;
 }
 
 // Store dragged data globally to work around dataTransfer issues
@@ -83,6 +95,318 @@ let globalDragData: { assetId?: string; quickAdd?: string; quickAddType?: string
 
 // Hoisted once: avoids re-allocating this string (and its <style> child) on every render.
 const TRACK_LABELS_SCROLLBAR_CSS = `.track-labels-panel::-webkit-scrollbar{display:none;}`;
+const GLOBAL_TRANSCRIPT_LANE_HEIGHT = 36;
+
+// Lanes of one kind read as one thing: every track in a category shares the
+// canonical category name instead of exposing per-track custom names.
+const CATEGORY_TRACK_LABELS: Record<TrackCategory, string> = {
+  effect: 'Effects',
+  text: 'Text',
+  visual: 'Media',
+  primary: 'Media',
+  audio: 'Audio',
+};
+
+const getTimelineTrackLabel = (
+  track: Track,
+  isPrimary: boolean,
+  primaryTrackId?: string | null,
+): string => {
+  if (isPrimary) return CATEGORY_TRACK_LABELS.primary;
+  const category = inferTrackCategory(track, primaryTrackId);
+  return category ? CATEGORY_TRACK_LABELS[category] : track.name;
+};
+
+const TrackCategoryIcon: React.FC<{ category: TrackCategory; isPrimary: boolean }> = ({ category, isPrimary }) => {
+  const common = {
+    width: 15,
+    height: 15,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  let glyph: React.ReactNode;
+  if (category === 'effect') {
+    glyph = <path d="M8 1.9l1.35 3.55L13 6.8l-3.65 1.35L8 11.8 6.65 8.15 3 6.8l3.65-1.35L8 1.9Z" />;
+  } else if (category === 'text') {
+    glyph = <><path d="M3 3.5h10" /><path d="M8 3.5v9" /><path d="M5.5 12.5h5" /></>;
+  } else if (category === 'audio') {
+    glyph = <><path d="M3 6v4" /><path d="M6.3 3.5v9" /><path d="M9.7 5v6" /><path d="M13 7v2" /></>;
+  } else {
+    glyph = <><rect x="2" y="3.25" width="12" height="9.5" rx="1.25" /><path d="m7 6 3.25 2L7 10V6Z" /></>;
+  }
+  return (
+    <span
+      data-track-category-icon={category}
+      style={{
+        alignItems: 'center',
+        color: isPrimary ? colors.accent.primary : colors.text.tertiary,
+        display: 'inline-flex',
+        flex: '0 0 auto',
+      }}
+    >
+      <svg {...common}>{glyph}</svg>
+    </span>
+  );
+};
+
+const TrackLaneBubbleSurface: React.FC<{ selected: boolean }> = ({ selected }) => (
+  <div
+    data-track-bubble-surface=""
+    data-track-bubble-edge="lane"
+    aria-hidden="true"
+    style={{
+      position: 'absolute',
+      top: timeline.trackBubbleInset,
+      bottom: timeline.trackBubbleInset,
+      left: 0,
+      right: 0,
+      borderRadius: timeline.trackBubbleRadius,
+      backgroundColor: selected ? colors.bg.selected : colors.bg.secondary,
+      boxShadow: shadows.trackBubble,
+      pointerEvents: 'none',
+      transition: 'background-color 150ms ease, box-shadow 150ms ease',
+    }}
+  />
+);
+
+type TransitionResizeEdge = 'start' | 'end';
+
+const TransitionRangeOverlay: React.FC<{
+  boundaryFrame: number;
+  fps: number;
+  maxDurationInFrames: number;
+  pixelsPerFrame: number;
+  selected: boolean;
+  transition: TransitionItem;
+  bottomOffset?: number;
+  onResizeEnd: () => void;
+  onResizeStart: () => void;
+  onSelect: () => void;
+  onUpdateDuration: (durationInFrames: number) => void;
+}> = ({
+  boundaryFrame,
+  fps,
+  maxDurationInFrames,
+  pixelsPerFrame,
+  selected,
+  transition,
+  bottomOffset,
+  onResizeEnd,
+  onResizeStart,
+  onSelect,
+  onUpdateDuration,
+}) => {
+  const resizeRef = useRef<{
+    edge: TransitionResizeEdge;
+    pointerId: number;
+    startClientX: number;
+    startDurationInFrames: number;
+  } | null>(null);
+  const durationInFrames = Math.max(1, transition.durationInFrames);
+  const durationSeconds = durationInFrames / Math.max(1, fps);
+  const label = `${transition.transitionType} transition, ${durationSeconds.toFixed(2)} seconds`;
+  const visibleWidth = Math.max(12, durationInFrames * pixelsPerFrame);
+
+  const finishResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const active = resizeRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    onResizeEnd();
+  }, [onResizeEnd]);
+
+  const resizeHandle = (edge: TransitionResizeEdge) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resizeRef.current = {
+        edge,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startDurationInFrames: durationInFrames,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      onResizeStart();
+      onSelect();
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
+      const active = resizeRef.current;
+      if (!active || active.pointerId !== event.pointerId) return;
+      const outwardDeltaPx = active.edge === 'start'
+        ? active.startClientX - event.clientX
+        : event.clientX - active.startClientX;
+      const nextDuration = Math.max(
+        1,
+        Math.min(
+          maxDurationInFrames,
+          active.startDurationInFrames + Math.round((outwardDeltaPx * 2) / Math.max(0.01, pixelsPerFrame)),
+        ),
+      );
+      onUpdateDuration(nextDuration);
+    },
+    onPointerUp: finishResize,
+    onPointerCancel: finishResize,
+  });
+
+  return (
+    <div
+      data-transition-range=""
+      data-transition-range-visual="seam-window"
+      data-transition-frame={boundaryFrame}
+      data-transition-duration-frames={durationInFrames}
+      aria-label={label}
+      role="group"
+      title={label}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+      style={{
+        background: selected
+          ? 'rgba(255, 255, 255, 0.24)'
+          : 'rgba(255, 255, 255, 0.16)',
+        border: '2px solid rgba(255, 255, 255, 0.96)',
+        borderRadius: 4,
+        boxShadow: selected
+          ? '0 0 0 1px rgba(15, 23, 42, 0.34), 0 4px 10px rgba(15, 23, 42, 0.18)'
+          : '0 0 0 1px rgba(15, 23, 42, 0.24), 0 2px 7px rgba(15, 23, 42, 0.14)',
+        boxSizing: 'border-box',
+        cursor: 'pointer',
+        left: boundaryFrame * pixelsPerFrame,
+        overflow: 'visible',
+        position: 'absolute',
+        top: timeline.trackBubbleInset,
+        bottom: bottomOffset ?? timeline.trackBubbleInset,
+        transform: 'translateX(-50%)',
+        width: visibleWidth,
+        zIndex: 16,
+      }}
+    >
+      <span
+        data-transition-seam-line=""
+        aria-hidden="true"
+        style={{
+          background: 'rgba(15, 23, 42, 0.42)',
+          bottom: 0,
+          left: '50%',
+          pointerEvents: 'none',
+          position: 'absolute',
+          top: 0,
+          transform: 'translateX(-50%)',
+          width: 1,
+        }}
+      />
+      <span
+        data-transition-seam-icon=""
+        aria-hidden="true"
+        style={{
+          alignItems: 'center',
+          display: 'inline-flex',
+          filter: 'drop-shadow(0 1px 1px rgba(15, 23, 42, 0.55))',
+          height: 24,
+          justifyContent: 'center',
+          left: '50%',
+          pointerEvents: 'none',
+          position: 'absolute',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 24,
+          zIndex: 1,
+        }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="22"
+          height="22"
+          fill="none"
+          stroke="rgba(255, 255, 255, 0.98)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4.5 5.5 12 12l-7.5 6.5v-13Z" />
+          <path d="M19.5 5.5 12 12l7.5 6.5v-13Z" />
+        </svg>
+      </span>
+      {(['start', 'end'] as const).map((edge) => (
+        <div
+          key={edge}
+          data-transition-resize-handle={edge}
+          {...resizeHandle(edge)}
+          aria-label={`Resize ${transition.transitionType} ${edge}`}
+          aria-orientation="vertical"
+          role="separator"
+          style={{
+            bottom: 0,
+            cursor: 'ew-resize',
+            position: 'absolute',
+            top: 0,
+            width: 10,
+            ...(edge === 'start' ? { left: -5 } : { right: -5 }),
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const TrackLabelDividers: React.FC<{ showTop: boolean }> = ({ showTop }) => {
+  const dividerStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    height: 1,
+    backgroundColor: colors.border.default,
+    opacity: 0.72,
+    pointerEvents: 'none',
+  };
+
+  return (
+    <>
+      {showTop ? (
+        <span
+          data-track-label-divider="top"
+          aria-hidden="true"
+          style={{ ...dividerStyle, top: 0 }}
+        />
+      ) : null}
+      <span
+        data-track-label-divider="bottom"
+        aria-hidden="true"
+        style={{ ...dividerStyle, bottom: 0 }}
+      />
+    </>
+  );
+};
+
+const GlobalTranscriptTrackLabel: React.FC<{ showTop: boolean }> = ({ showTop }) => (
+  <div
+    data-global-transcript-label=""
+    style={{
+      alignItems: 'center',
+      backgroundColor: 'transparent',
+      boxSizing: 'border-box',
+      color: colors.text.primary,
+      display: 'flex',
+      fontSize: typography.fontSize.sm,
+      fontWeight: 600,
+      gap: 8,
+      height: GLOBAL_TRANSCRIPT_LANE_HEIGHT,
+      padding: '0 12px',
+      position: 'relative',
+      whiteSpace: 'nowrap',
+    }}
+  >
+    <TrackCategoryIcon category="text" isPrimary={false} />
+    <span>Transcript</span>
+    <TrackLabelDividers showTop={showTop} />
+  </div>
+);
 
 export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = ({
   durationInFrames,
@@ -111,9 +435,12 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
   labelsPortal,
   contentInsetLeftPx,
   externalInsertPosition,
+  onAnnotationTargetContextMenu,
+  showTranscriptTimeline = false,
 }) => {
   const dispatch = useEditorDispatch();
-  const { tracks } = useEditorStaticState();
+  const { beginHistoryGroup, endHistoryGroup } = useEditorHistory();
+  const { tracks, primaryTrackId } = useEditorStaticState();
   const { currentFrameRef } = useEditorPlaybackRefs();
 
   // Track which item is being hovered for roll edit highlighting
@@ -123,16 +450,103 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
   useEffect(() => {
   }, [assetDragPreview]);
 
-  // 不再需要临时 track，与 item 拖动逻辑一致
-  const displayTracks = tracks;
+  const narrationTrack = React.useMemo(
+    () => tracks.find(
+      (track) => track.id !== primaryTrackId && track.role === 'narration',
+    ) ?? null,
+    [primaryTrackId, tracks],
+  );
+  const primaryTrack = React.useMemo(
+    () => tracks.find((track) => track.id === primaryTrackId) ?? null,
+    [primaryTrackId, tracks],
+  );
+  // Voiceover keeps its own audio lane. Its word timing is projected beneath
+  // Media so transcript-based editing stays aligned with the visual spine.
+  const primaryTranscriptSourceTrack = narrationTrack
+    ?? (
+      primaryTrack && isSpokenMediaTrack(primaryTrack, primaryTrackId)
+        ? primaryTrack
+        : null
+    );
+  const displayTracks = React.useMemo(
+    () => tracks.filter((track) => track.role !== 'transition'),
+    [tracks],
+  );
+  const getPresentationTrackHeight = useCallback(
+    (track: Track) => getTrackHeightForTrack(track, primaryTrackId),
+    [primaryTrackId],
+  );
+  const getPresentationTrackBandAtY = useCallback((y: number) => {
+    if (y < 0) return null;
+    let top = 0;
+    for (let displayIndex = 0; displayIndex < displayTracks.length; displayIndex += 1) {
+      const track = displayTracks[displayIndex];
+      const height = getPresentationTrackHeight(track);
+      const bottom = top + height;
+      if (y < bottom) {
+        const trackIndex = tracks.findIndex((candidate) => candidate.id === track.id);
+        return {
+          displayIndex,
+          top,
+          height,
+          bottom,
+          targetTrack: track,
+          insertBefore: trackIndex,
+          insertAfter: trackIndex + 1,
+        };
+      }
+      top = bottom;
+    }
+    return null;
+  }, [
+    displayTracks,
+    getPresentationTrackHeight,
+    tracks,
+  ]);
+  const transitionItems = React.useMemo(
+    () => tracks.flatMap((track) => track.items
+      .filter((item): item is TransitionItem => item.type === 'transition')
+      .map((item) => ({ item, trackId: track.id }))),
+    [tracks],
+  );
+
+  const renderTrackLabel = (track: Track) => {
+    const category = inferTrackCategory(track, primaryTrackId) ?? 'visual';
+    const isPrimary = track.id === primaryTrackId;
+    const label = getTimelineTrackLabel(track, isPrimary, primaryTrackId);
+    return (
+      <div
+        style={{
+          alignItems: 'center',
+          color: colors.text.primary,
+          display: 'flex',
+          fontSize: typography.fontSize.sm,
+          fontWeight: 600,
+          gap: 8,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        <TrackCategoryIcon category={category} isPrimary={isPrimary} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {label}
+        </span>
+      </div>
+    );
+  };
 
   const containerRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const wheelAxisLockRef = useRef(createWheelAxisLock());
   const handleInsertDropRef = useRef<((e: React.DragEvent, position: number) => void) | null>(null);
+
+  const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null);
 
   const setViewportElement = useCallback((node: HTMLDivElement | null) => {
     viewportRef.current = node;
+    setViewportNode(node);
     onViewportElementChange?.(node);
   }, [onViewportElementChange]);
 
@@ -198,6 +612,41 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
       setScrollSync(prev => ({ ...prev, y: scrollTop }));
     }
   }, []);
+
+  // React registers JSX wheel handlers as passive, so preventDefault there
+  // cannot stop the browser's native diagonal scroll. The axis lock must run
+  // on a native non-passive listener to keep scrolling single-axis.
+  useEffect(() => {
+    const viewport = viewportNode;
+    if (!viewport) return undefined;
+
+    const handleWheel = (event: WheelEvent) => {
+      // Preserve Timeline's ctrl/meta-wheel zoom behavior on the parent.
+      if (event.ctrlKey || event.metaKey) return;
+
+      const resolved = wheelAxisLockRef.current.resolve({
+        deltaX: event.deltaX,
+        deltaY: event.deltaY,
+        now: event.timeStamp,
+        shiftKey: event.shiftKey,
+      });
+      const deltaModeScale = event.deltaMode === 1
+        ? 16
+        : event.deltaMode === 2
+          ? (resolved.axis === 'x' ? viewport.clientWidth : viewport.clientHeight)
+          : 1;
+
+      event.preventDefault();
+      if (resolved.axis === 'x') {
+        viewport.scrollLeft += resolved.delta * deltaModeScale;
+      } else {
+        viewport.scrollTop += resolved.delta * deltaModeScale;
+      }
+    };
+
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', handleWheel);
+  }, [viewportNode]);
 
   // Measure on mount and whenever layout-affecting props change
   useEffect(() => {
@@ -273,14 +722,20 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
     if (dragType !== 'item' && !window.currentDraggedItem) {
       const rect = viewportRef.current.getBoundingClientRect();
       const y = e.clientY - rect.top + viewportRef.current.scrollTop;
-      const trackIndex = Math.floor(y / timeline.trackHeight);
-      
-      if (trackIndex >= 0 && trackIndex < tracks.length) {
+      const targetTrack = getPresentationTrackBandAtY(y)?.targetTrack;
+
+      if (targetTrack) {
         // Drop onto existing track
-        onDrop(tracks[trackIndex].id, e);
+        onDrop(targetTrack.id, e);
       }
     }
-  }, [tracks, onEmptyDrop, onDrop, effectiveInsertPosition]);
+  }, [
+    effectiveInsertPosition,
+    getPresentationTrackBandAtY,
+    onDrop,
+    onEmptyDrop,
+    tracks.length,
+  ]);
 
   // 检测鼠标是否在两个轨道之间
   const detectInsertPosition = useCallback((e: React.DragEvent) => {
@@ -294,8 +749,12 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
     const rect = viewportRef.current.getBoundingClientRect();
     const y = e.clientY - rect.top + viewportRef.current.scrollTop;
-    const trackIndex = Math.floor(y / timeline.trackHeight);
-    const relativeY = y % timeline.trackHeight;
+    const band = getPresentationTrackBandAtY(y);
+    if (!band) {
+      setInsertPosition(y < 0 ? 0 : tracks.length);
+      return y < 0 ? 0 : tracks.length;
+    }
+    const relativeY = y - band.top;
 
     // Check if this is an existing item drag (different behavior for new assets)
     const dragType = e.dataTransfer.types.includes('dragType')
@@ -304,11 +763,11 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
     // For existing items, use tighter threshold (only at very edges)
     // For new assets, use wider threshold to make track insertion easier
-    const threshold = dragType === 'item' ? 10 : 20;
+    const threshold = Math.min(dragType === 'item' ? 8 : 12, Math.floor(band.height * 0.25));
 
     // 如果鼠标在轨道边界附近
-    if (relativeY < threshold || relativeY > timeline.trackHeight - threshold) {
-      const position = relativeY < threshold ? trackIndex : trackIndex + 1;
+    if (relativeY < threshold || relativeY > band.height - threshold) {
+      const position = relativeY < threshold ? band.insertBefore : band.insertAfter;
       if (position >= 0 && position <= tracks.length) {
         setInsertPosition(position);
         return position;
@@ -317,7 +776,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
     setInsertPosition(null);
     return null;
-  }, [tracks]);
+  }, [getPresentationTrackBandAtY, tracks.length]);
 
   // 处理轨道间插入
   const handleInsertDrop = useCallback((e: React.DragEvent, position: number) => {
@@ -398,13 +857,25 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         finalQuickAddType = currentDraggedAsset.quickAddType;
       }
     }
+    const droppedAsset = finalIsQuickAdd ? undefined : resolveAssetDropPayload({
+      assetId,
+      dataTransfer: e.dataTransfer,
+      assets,
+      currentDraggedAsset,
+    });
 
 
     // 创建新轨道并插入到指定位置
-    const itemType = (finalIsQuickAdd ? finalQuickAddType : assets.find(a => a.id === assetId)?.type) ?? 'track';
+    const itemType = (finalIsQuickAdd ? finalQuickAddType : droppedAsset?.type) ?? 'track';
+    const category: TrackCategory = itemType === 'text'
+      ? 'text'
+      : itemType === 'audio'
+        ? 'audio'
+        : 'visual';
     const newTrack = {
       id: `track-${Date.now()}`,
       name: itemType.charAt(0).toUpperCase() + itemType.slice(1),
+      category,
       items: []
     };
 
@@ -456,7 +927,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         }
       } else {
         // Handle regular assets
-        const asset = assets.find(a => a.id === assetId) || currentDraggedAsset;
+        const asset = droppedAsset;
         if (!asset) {
           return;
         }
@@ -537,9 +1008,8 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         display: 'flex',
         overflow: 'hidden',
         background: isDraggingOver ? colors.bg.hover : colors.bg.primary,
-        borderRadius: 4,
+        borderRadius: 0,
         margin: 0, // Remove all margins to eliminate gaps
-        boxShadow: shadows.sm,
         // Avoid mixing border shorthand with borderLeft to prevent React warning.
         borderTop: 0,
         borderRight: 0,
@@ -567,8 +1037,9 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
           style={{
             width: timeline.trackLabelWidth,
             flexShrink: 0,
-            background: colors.bg.secondary,
-            borderRight: `1px solid ${colors.border.default}`,
+            background: colors.bg.primary,
+            borderRight: `1px solid ${colors.border.subtle}`,
+            boxSizing: 'border-box',
             overflowY: 'auto',
             overflowX: 'hidden',
             position: 'sticky',
@@ -587,64 +1058,70 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
 
           {tracks.length === 0 ? (
             <div
+              aria-hidden="true"
               style={{
                 height: 200,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: colors.text.secondary,
-                fontSize: 12,
-                padding: spacing.md,
-                textAlign: 'center',
               }}
-            >
-              轨道标签
-            </div>
+            />
           ) : (
-            displayTracks.map((track) => (
+            <>
+            {displayTracks.map((track, index) => {
+              const isPrimary = track.id === primaryTrackId;
+              const trackLabel = getTimelineTrackLabel(track, isPrimary, primaryTrackId);
+              const trackHeight = getPresentationTrackHeight(track);
+              return (
               <div
                 key={track.id}
+                data-primary-track={isPrimary || undefined}
+                data-agent-annotation-object-id={track.id}
+                data-agent-annotation-object-type="timeline-track"
+                data-agent-annotation-object-label={trackLabel}
+                className="select-text"
                 style={{
-                  height: timeline.trackHeight,
-                  borderBottom: `1px solid ${colors.border.default}`,
-                  padding: `${spacing.md}px`,
+                  height: trackHeight,
+                  padding: '0 12px',
                   display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
+                  alignItems: 'center',
                   cursor: 'pointer',
-                  background: selectedTrackId === track.id ? colors.bg.selected : 'transparent',
+                  backgroundColor: 'transparent',
+                  position: 'relative',
+                  boxSizing: 'border-box',
                   transition: 'background-color 0.15s ease',
                 }}
                 onClick={() => onSelectTrack(track.id)}
+                onContextMenu={() => onAnnotationTargetContextMenu?.({
+                  objectId: track.id,
+                  objectType: 'timeline-track',
+                  objectLabel: trackLabel,
+                })}
               >
-                <div
-                  style={{
-                    color: colors.text.primary,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {track.name}
-                </div>
+                <div style={{ minWidth: 0 }}>{renderTrackLabel(track)}</div>
+                <TrackLabelDividers showTop={index === 0} />
               </div>
-            ))
+              );
+            })}
+            {showTranscriptTimeline ? (
+              <GlobalTranscriptTrackLabel showTop={displayTracks.length === 0} />
+            ) : null}
+            </>
           )}
         </div>
       )}
 
       {/* 右侧轨道视口 */}
       <div
+        data-timeline-editing-canvas=""
         ref={setViewportElement}
-        className="tracks-viewport"
+        className="tracks-viewport bg-transparent"
         style={{
           flex: 1,
           overflowX: 'auto',
           overflowY: 'auto',
           position: 'relative',
           minWidth: 0,
+          minHeight: 0,
+          background: colors.bg.primary,
+          scrollbarGutter: 'stable',
           paddingLeft: contentInsetLeftPx ?? 0,
         }}
         onScroll={handleViewportScroll}
@@ -655,6 +1132,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             position: 'relative',
             minWidth: totalWidth,
             minHeight: '100%',
+            background: colors.bg.primary,
           }}
           onClick={(e) => {
             // 点击轨道视口的空白区域时取消选中
@@ -693,22 +1171,28 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: colors.text.tertiary,
-                gap: spacing.lg,
+                gap: spacing.sm,
                 pointerEvents: 'none', // 让拖放事件穿透到父元素
               }}
             >
-              <div style={{ fontSize: 48, opacity: 0.3 }}>🎬</div>
-              <div style={{ fontSize: 16, fontWeight: 500 }}>开始你的创作</div>
-              <div style={{ fontSize: 13, opacity: 0.8 }}>
-                拖放素材到这里开始编辑
+              <div style={{ width: 24, height: 2, borderRadius: 999, background: colors.accent.primary, opacity: 0.72, marginBottom: spacing.sm }} />
+              <div style={{ fontSize: typography.fontSize.lg, fontWeight: 600, color: colors.text.secondary }}>Drop media to start editing</div>
+              <div style={{ fontSize: typography.fontSize.sm, color: colors.text.tertiary }}>
+                Drag from Media, or add text and color from Quick add.
               </div>
             </div>
           ) : (
             // 轨道列表 - 只渲染轨道内容区，不包括标签
-            displayTracks.map((track, index) => (
+            displayTracks.map((track, index) => {
+              const isPrimary = track.id === primaryTrackId;
+              const trackHeight = getPresentationTrackHeight(track);
+              const trackIndex = tracks.findIndex((candidate) => candidate.id === track.id);
+              const insertBeforeIndex = trackIndex;
+              const transitionBoundaries = getContinuousTransitionBoundaries(track);
+              return (
               <Fragment key={track.id}>
                 {/* 插入指示器 - 轨道上方 */}
-                {effectiveInsertPosition === index && (
+                {effectiveInsertPosition === insertBeforeIndex && (
                   <div
                     style={{
                       position: 'relative',
@@ -736,11 +1220,13 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                 )}
 
                 <div
+                  data-track-lane=""
+                  data-primary-track={isPrimary || undefined}
                   style={{
-                    height: timeline.trackHeight,
-                    borderBottom: `1px solid ${colors.border.default}`,
+                    height: trackHeight,
                     position: 'relative',
-                    backgroundColor: selectedTrackId === track.id ? colors.bg.selected : 'transparent',
+                    backgroundColor: 'transparent',
+                    boxSizing: 'border-box',
                   }}
                   onClick={(e) => {
                     // 点击轨道空白区域时取消选中 item
@@ -748,6 +1234,14 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                       onSelectTrack(track.id);
                       onSelectItem(''); // 传空字符串取消选中
                     }
+                  }}
+                  onContextMenu={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    onAnnotationTargetContextMenu?.({
+                      objectId: track.id,
+                      objectType: 'timeline-track',
+                      objectLabel: isPrimary ? 'Media' : track.name,
+                    });
                   }}
                   onDragOver={(e) => {
                     // 检测插入位置
@@ -782,6 +1276,58 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                     }
                   }}
                 >
+                  <TrackLaneBubbleSurface
+                    selected={selectedTrackId === track.id}
+                  />
+                  <div
+                    data-track-leading-gutter=""
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: -1,
+                      left: -(contentInsetLeftPx ?? 0),
+                      width: contentInsetLeftPx ?? 0,
+                      boxSizing: 'border-box',
+                      backgroundColor: 'transparent',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  {transitionBoundaries.map((boundary) => {
+                    const boundTransition = transitionItems.find(({ item }) => (
+                      item.fromItemId === boundary.fromItem.id
+                      && item.toItemId === boundary.toItem.id
+                    ));
+                    if (!boundTransition) return null;
+                    const isSelected = selectedItemId === boundTransition.item.id;
+                    const maxDurationInFrames = Math.max(
+                      1,
+                      Math.min(boundary.fromItem.durationInFrames, boundary.toItem.durationInFrames) * 2,
+                    );
+                    return (
+                      <TransitionRangeOverlay
+                        key={`${boundary.fromItem.id}:${boundary.toItem.id}`}
+                        boundaryFrame={boundary.frame}
+                        fps={fps}
+                        maxDurationInFrames={maxDurationInFrames}
+                        pixelsPerFrame={pixelsPerFrame}
+                        selected={isSelected}
+                        transition={boundTransition.item}
+                        onResizeStart={beginHistoryGroup}
+                        onResizeEnd={endHistoryGroup}
+                        onSelect={() => {
+                          dispatch({ type: 'SET_CURRENT_FRAME', payload: boundary.frame });
+                          onSelectItem(boundTransition.item.id);
+                        }}
+                        onUpdateDuration={(nextDuration) => {
+                          onUpdateItem(boundTransition.trackId, boundTransition.item.id, {
+                            from: boundary.frame - Math.floor(nextDuration / 2),
+                            durationInFrames: nextDuration,
+                          });
+                        }}
+                      />
+                    );
+                  })}
                   {/* 使用 TimelineItem 组件保留所有功能 */}
                   {track.items.map((item) => {
                     // 检测相邻的 item（用于 Roll Edit）
@@ -809,6 +1355,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                       pixelsPerFrame={pixelsPerFrame}
                       isSelected={selectedItemId === item.id}
                       assets={assets}
+                      presentationReservesTranscriptWordbar={false}
                       onSelect={() => onSelectItem(item.id)}
                       onDelete={() => onDeleteItem(track.id, item.id)}
                       onUpdate={(itemId, updates) => onUpdateItem(track.id, itemId, updates)}
@@ -819,6 +1366,9 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                       shouldHighlightLeft={shouldHighlightLeft || undefined}
                       shouldHighlightRight={shouldHighlightRight || undefined}
                       onHoverChange={(isHovered) => setHoveredItemId(isHovered ? item.id : null)}
+                      onResizeStart={beginHistoryGroup}
+                      onResizeEnd={endHistoryGroup}
+                      onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
                       onResize={(edge, deltaFrames) => {
                         // 获取素材总帧数
                         let totalFramesForAsset: number | undefined;
@@ -975,7 +1525,6 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                     />
                   );
                   })}
-
                   {/* Asset拖动预览框（纯视觉预览，不是真实item） */}
                   {/* 与 item 拖动预览保持一致：当要插入新 track 时（externalInsertPosition != null），不显示预览 */}
                   {assetDragPreview && assetDragPreview.trackId === track.id && externalInsertPosition == null && (
@@ -997,7 +1546,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: 'rgba(255,255,255,0.6)',
-                        fontSize: 12,
+                        fontSize: typography.fontSize.sm,
                         opacity: 0.8,
                       }}
                     >
@@ -1015,8 +1564,12 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                         transform: 'translateY(-50%)',
                         width: dragPreview.item.durationInFrames * pixelsPerFrame,
                         height: getPreviewItemHeight(dragPreview.item),
-                        backgroundColor: 'rgba(255,255,255,0.15)',
-                        border: '2px dashed rgba(255,255,255,0.5)',
+                        backgroundColor: dragPreview.invalidTarget
+                          ? 'rgba(248,113,113,0.08)'
+                          : 'rgba(255,255,255,0.15)',
+                        border: dragPreview.invalidTarget
+                          ? '2px dashed rgba(248,113,113,0.75)'
+                          : '2px dashed rgba(255,255,255,0.5)',
                         borderRadius: timeline.itemBorderRadius,
                         pointerEvents: 'none',
                         zIndex: 1,
@@ -1027,7 +1580,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                 </div>
 
                 {/* 插入指示器 - 最后一个轨道下方 */}
-                {effectiveInsertPosition === tracks.length && index === tracks.length - 1 && (
+                {effectiveInsertPosition === tracks.length && index === displayTracks.length - 1 && (
                   <div
                     style={{
                       position: 'relative',
@@ -1053,8 +1606,44 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
                   </div>
                 )}
               </Fragment>
-            ))
+              );
+            })
           )}
+
+          {showTranscriptTimeline ? (
+            <div
+              data-track-lane=""
+              data-global-transcript-lane=""
+              data-transcript-source-track-id={primaryTranscriptSourceTrack?.id}
+              style={{
+                boxSizing: 'border-box',
+                height: GLOBAL_TRANSCRIPT_LANE_HEIGHT,
+                position: 'relative',
+              }}
+            >
+              <TrackLaneBubbleSurface selected={false} />
+              {primaryTranscriptSourceTrack ? (
+                <PrimaryTranscriptWordbar
+                  trackId={primaryTranscriptSourceTrack.id}
+                  pixelsPerFrame={pixelsPerFrame}
+                />
+              ) : (
+                <span
+                  style={{
+                    bottom: timeline.trackBubbleInset,
+                    color: colors.text.tertiary,
+                    fontSize: typography.fontSize.xs,
+                    height: 24,
+                    left: 8,
+                    lineHeight: '24px',
+                    position: 'absolute',
+                  }}
+                >
+                  Recognize speech to show transcript timing
+                </span>
+              )}
+            </div>
+          ) : null}
 
           {/* 垂直吸附指示线（对齐到其他素材边缘时显示） */}
           {dragPreview?.snapGuideFrame != null && (
@@ -1087,7 +1676,7 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: `${colors.accent.primary}10`,
+            background: `color-mix(in srgb, ${colors.accent.primary} 7%, transparent)`,
             border: `2px dashed ${colors.accent.primary}`,
             borderRadius: 4,
             pointerEvents: 'none',
@@ -1101,11 +1690,11 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
               borderRadius: 6,
               boxShadow: shadows.lg,
               color: colors.text.primary,
-              fontSize: 14,
+              fontSize: typography.fontSize.lg,
               fontWeight: 500,
             }}
           >
-            松开以添加到时间轴
+            Release to add to Timeline
           </div>
         </div>
       )}
@@ -1121,8 +1710,9 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         style={{
           width: timeline.trackLabelWidth,
           flexShrink: 0,
-          background: colors.bg.secondary,
-          borderRight: `1px solid ${colors.border.default}`,
+          background: colors.bg.primary,
+          borderRight: `1px solid ${colors.border.subtle}`,
+          boxSizing: 'border-box',
           overflowY: 'auto',
           overflowX: 'hidden',
           position: 'sticky',
@@ -1138,50 +1728,52 @@ export const TimelineTracksContainer: React.FC<TimelineTracksContainerProps> = (
         <style>{TRACK_LABELS_SCROLLBAR_CSS}</style>
         {tracks.length === 0 ? (
           <div
+            aria-hidden="true"
             style={{
               height: 200,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: colors.text.tertiary,
-              fontSize: 12,
-              padding: spacing.md,
-              textAlign: 'center',
             }}
-          >
-            轨道标签
-          </div>
+          />
         ) : (
-          displayTracks.map((track) => (
-            <div
-              key={track.id}
+          <>
+          {displayTracks.map((track, index) => {
+            const isPrimary = track.id === primaryTrackId;
+            const trackLabel = getTimelineTrackLabel(track, isPrimary, primaryTrackId);
+            const trackHeight = getPresentationTrackHeight(track);
+            return (
+             <div
+               key={track.id}
+               data-primary-track={isPrimary || undefined}
+               data-agent-annotation-object-id={track.id}
+               data-agent-annotation-object-type="timeline-track"
+               data-agent-annotation-object-label={trackLabel}
+               className="select-text"
               style={{
-                height: timeline.trackHeight,
-                borderBottom: `1px solid ${colors.border.default}`,
-                padding: `${spacing.md}px`,
+                height: trackHeight,
+                padding: '0 12px',
                 display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
+                alignItems: 'center',
                 cursor: 'pointer',
-                background: selectedTrackId === track.id ? colors.bg.selected : 'transparent',
+                backgroundColor: 'transparent',
+                position: 'relative',
+                boxSizing: 'border-box',
                 transition: 'background-color 0.15s ease',
               }}
               onClick={() => onSelectTrack(track.id)}
+              onContextMenu={() => onAnnotationTargetContextMenu?.({
+                objectId: track.id,
+                objectType: 'timeline-track',
+                objectLabel: trackLabel,
+              })}
             >
-              <div
-                style={{
-                  color: colors.text.primary,
-                  fontSize: 13,
-                  fontWeight: 500,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {track.name}
-              </div>
+              <div style={{ minWidth: 0 }}>{renderTrackLabel(track)}</div>
+              <TrackLabelDividers showTop={index === 0} />
             </div>
-          ))
+            );
+          })}
+          {showTranscriptTimeline ? (
+            <GlobalTranscriptTrackLabel showTop={displayTracks.length === 0} />
+          ) : null}
+          </>
         )}
       </div>
     );

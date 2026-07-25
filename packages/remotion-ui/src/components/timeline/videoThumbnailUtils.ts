@@ -8,6 +8,30 @@ export type FilmstripCacheEntry = {
 };
 
 export const DEFAULT_FILMSTRIP_SAMPLE_COUNT = 40;
+const MAX_FILMSTRIP_BACKING_STORE_WIDTH = 8_192;
+const FILMSTRIP_SAMPLE_BUCKETS = [DEFAULT_FILMSTRIP_SAMPLE_COUNT, 72, 96] as const;
+
+export function getAdaptiveFilmstripSampleCount({
+  fullVideoPixelWidth,
+  thumbnailHeight,
+}: {
+  fullVideoPixelWidth: number;
+  thumbnailHeight: number;
+}): number {
+  const estimatedFrameWidth = Math.max(48, thumbnailHeight * 1.6);
+  const desiredSamples = Math.ceil(
+    Math.max(1, fullVideoPixelWidth) / estimatedFrameWidth,
+  );
+  return FILMSTRIP_SAMPLE_BUCKETS.find((bucket) => desiredSamples <= bucket)
+    ?? FILMSTRIP_SAMPLE_BUCKETS[FILMSTRIP_SAMPLE_BUCKETS.length - 1];
+}
+
+export function getBoundedFilmstripCanvasWidth(fullVideoPixelWidth: number): number {
+  return Math.min(
+    MAX_FILMSTRIP_BACKING_STORE_WIDTH,
+    Math.max(1, Math.ceil(fullVideoPixelWidth)),
+  );
+}
 
 export type FilmstripColumnMapping = {
   destFrameWidth: number;

@@ -44,6 +44,7 @@ import {
   listNodeOwnedEdges,
   reconcileCanvasGraph,
   reconcileProjectTimelineOwnership,
+  reconcileProjectDirectorStageOwnership,
 } from "@clash/shared-types";
 
 /**
@@ -284,9 +285,12 @@ export class ProjectRoom extends DurableObject<Env> {
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);
     const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+    const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
     const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
       timelineRepair.removedActionNodeIds.length > 0 ||
-      timelineRepair.detachedTimelineIds.length > 0;
+      timelineRepair.detachedTimelineIds.length > 0 ||
+      directorRepair.removedActionNodeIds.length > 0 ||
+      directorRepair.detachedStageIds.length > 0;
     const repairUpdate = workspaceRepaired
       ? this.doc.export({ mode: "update", from: repairVersion })
       : null;
@@ -1090,9 +1094,12 @@ export class ProjectRoom extends DurableObject<Env> {
             const repairVersion = this.doc.version();
             const graphRepair = reconcileCanvasGraph(this.doc);
             const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+            const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
             const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
               timelineRepair.removedActionNodeIds.length > 0 ||
-              timelineRepair.detachedTimelineIds.length > 0;
+              timelineRepair.detachedTimelineIds.length > 0 ||
+              directorRepair.removedActionNodeIds.length > 0 ||
+              directorRepair.detachedStageIds.length > 0;
             if (workspaceRepaired) {
               this.doc.commit({ origin: "sys:workspace-reconcile" });
               repairUpdate = this.doc.export({ mode: "update", from: repairVersion });

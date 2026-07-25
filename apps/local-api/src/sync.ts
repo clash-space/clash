@@ -8,6 +8,7 @@ import {
   CustomActionDefinitionSchema,
   reconcileCanvasGraph,
   reconcileProjectTimelineOwnership,
+  reconcileProjectDirectorStageOwnership,
   type ActivityAction,
   type ActivityMessage,
   type ClientType,
@@ -168,9 +169,12 @@ async function loadDoc(options: LocalSyncOptions): Promise<{
 
   const graphRepair = reconcileCanvasGraph(doc);
   const timelineRepair = reconcileProjectTimelineOwnership(doc);
+  const directorRepair = reconcileProjectDirectorStageOwnership(doc);
   const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
     timelineRepair.removedActionNodeIds.length > 0 ||
-    timelineRepair.detachedTimelineIds.length > 0;
+    timelineRepair.detachedTimelineIds.length > 0 ||
+    directorRepair.removedActionNodeIds.length > 0 ||
+    directorRepair.detachedStageIds.length > 0;
 
   return { doc, store, importedRemoteSnapshot, workspaceRepaired };
 }
@@ -239,9 +243,12 @@ export class LocalLoroRoom {
     const repairVersion = this.doc.version();
     const graphRepair = reconcileCanvasGraph(this.doc);
     const timelineRepair = reconcileProjectTimelineOwnership(this.doc);
+    const directorRepair = reconcileProjectDirectorStageOwnership(this.doc);
     const workspaceRepaired = canvasGraphReconciliationChanged(graphRepair) ||
       timelineRepair.removedActionNodeIds.length > 0 ||
-      timelineRepair.detachedTimelineIds.length > 0;
+      timelineRepair.detachedTimelineIds.length > 0 ||
+      directorRepair.removedActionNodeIds.length > 0 ||
+      directorRepair.detachedStageIds.length > 0;
     const repairUpdate = workspaceRepaired
       ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
       : null;

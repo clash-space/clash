@@ -18,10 +18,17 @@ describe("buildFallbackCanvasFromAssets", () => {
         storageKey: "projects/p/assets/video.mp4",
         createdAt: "2026-06-03T00:01:00.000Z",
       },
+      {
+        id: "asset-audio",
+        type: "audio",
+        url: "/assets/voice.wav?signed=1",
+        storageKey: "projects/p/assets/voice.wav",
+        createdAt: "2026-06-03T00:02:00.000Z",
+      },
     ]);
 
     expect(edges).toEqual([]);
-    expect(nodes).toHaveLength(2);
+    expect(nodes).toHaveLength(3);
     expect(nodes[0]).toMatchObject({
       id: "asset-ref-asset-image",
       type: "image",
@@ -37,6 +44,16 @@ describe("buildFallbackCanvasFromAssets", () => {
       data: {
         assetId: "asset-video",
         src: "projects/p/assets/video.mp4",
+        status: "completed",
+      },
+    });
+    expect(nodes[2]).toMatchObject({
+      id: "asset-ref-asset-audio",
+      type: "audio",
+      data: {
+        label: "Recovered Audio",
+        assetId: "asset-audio",
+        src: "projects/p/assets/voice.wav",
         status: "completed",
       },
     });

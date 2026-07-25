@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
-import type { CaptionItem, CompositionItem, DerivedOverlayItem } from '@master-clash/remotion-core';
+import type { CompositionItem, DerivedOverlayItem, SubtitleTextItem } from '@master-clash/remotion-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getRendererForItem, itemRendererRegistry } from './registry';
 
 afterEach(() => cleanup());
 
-const captionItem: CaptionItem = {
+const captionItem: SubtitleTextItem = {
   id: 'caption-main',
-  type: 'caption',
+  type: 'text',
+  text: '别再把字幕当另一种 item type',
+  color: '#ffffff',
   from: 0,
   durationInFrames: 90,
   cues: [
@@ -59,22 +61,29 @@ const derivedOverlayItem: DerivedOverlayItem = {
 
 describe('semantic timeline item renderers', () => {
   it('registers explicit timeline renderers instead of falling back to solid blocks', () => {
-    expect(itemRendererRegistry.caption?.name).toBe('CaptionRenderer');
+    expect(itemRendererRegistry.text?.name).toBe('TextRenderer');
+    expect(getRendererForItem(captionItem).name).toBe('CaptionRenderer');
     expect(itemRendererRegistry.composition?.name).toBe('CompositionRenderer');
     expect(itemRendererRegistry['derived-overlay']?.name).toBe('DerivedOverlayRenderer');
   });
 
-  it('renders caption items as structured caption tracks with cue lineage context', () => {
+  it('renders subtitle-role items as Text while preserving cue lineage context', () => {
     const Renderer = getRendererForItem(captionItem);
     const { container } = render(
       <Renderer item={captionItem} asset={null} width={240} height={44} pixelsPerFrame={2} />,
     );
 
-    expect(screen.getByText('Caption')).toBeTruthy();
-    expect(screen.getByText('1 cue')).toBeTruthy();
+    expect(screen.queryByText('Text')).toBeNull();
+    expect(screen.queryByText('Caption')).toBeNull();
+    expect(screen.queryByText('1 cue')).toBeNull();
     expect(screen.getByText('别再把字幕当 text clip')).toBeTruthy();
-    expect((container.firstElementChild as HTMLElement).dataset.timelineItemType).toBe('caption');
+    expect((container.firstElementChild as HTMLElement).dataset.timelineItemType).toBe('text');
+    expect((container.firstElementChild as HTMLElement).dataset.textKind).toBe('subtitle');
     expect((container.firstElementChild as HTMLElement).title).toContain('1 word ref');
+    expect((container.firstElementChild as HTMLElement).style.backgroundColor)
+      .toBe('rgb(228, 232, 226)');
+    expect((container.firstElementChild as HTMLElement).style.color)
+      .toBe('rgb(51, 70, 58)');
   });
 
   it('renders composition items with runtime, composition id, and first-party layer count', () => {

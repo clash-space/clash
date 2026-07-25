@@ -1,0 +1,36 @@
+{
+  "name": "@clash-space/director-plugin",
+  "version": "0.1.0",
+  "description": "Installable Codex plugin exposing Clash Director Stage tools and an MCP App GUI",
+  "type": "module",
+  "bin": { "clash-director-plugin": "./runtime/index.js" },
+  "main": "./runtime/index.js",
+  "types": "./runtime/index.d.ts",
+  "exports": {
+    ".": { "types": "./runtime/index.d.ts", "import": "./runtime/index.js" },
+    "./adapter": { "types": "./runtime/adapter.d.ts", "import": "./runtime/adapter.js" },
+    "./server": { "types": "./runtime/server.d.ts", "import": "./runtime/server.js" }
+  },
+  "files": [".codex-plugin", ".mcp.json", "runtime", "skills"],
+  "scripts": {
+    "build": "tsup && esbuild src/app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=runtime/app-client.js",
+    "clean": "rm -rf runtime",
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.7.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.23.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.0"
+  },
+  "engines": { "node": ">=22.22.0" },
+  "license": "MIT"
+}

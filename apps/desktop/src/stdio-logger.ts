@@ -10,8 +10,17 @@ export interface DesktopLogger {
   error(...args: unknown[]): void;
 }
 
-export function isEpipe(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "EPIPE";
+const CLOSED_STDIO_ERROR_CODES = new Set([
+  "EPIPE",
+  "EIO",
+  "ERR_STREAM_DESTROYED",
+  "ERR_STREAM_WRITE_AFTER_END",
+]);
+
+export function isClosedStdioError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && CLOSED_STDIO_ERROR_CODES.has(code);
 }
 
 export function createDesktopLogger(
@@ -22,7 +31,7 @@ export function createDesktopLogger(
   let stderrOpen = true;
 
   stdout.on("error", (error) => {
-    if (isEpipe(error)) {
+    if (isClosedStdioError(error)) {
       stdoutOpen = false;
       return;
     }
@@ -30,7 +39,7 @@ export function createDesktopLogger(
   });
 
   stderr.on("error", (error) => {
-    if (isEpipe(error)) {
+    if (isClosedStdioError(error)) {
       stderrOpen = false;
       return;
     }
@@ -45,7 +54,7 @@ export function createDesktopLogger(
       const target = stream === "stdout" ? stdout : stderr;
       target.write(`${format(...args)}\n`);
     } catch (error) {
-      if (isEpipe(error)) {
+      if (isClosedStdioError(error)) {
         if (stream === "stdout") stdoutOpen = false;
         else stderrOpen = false;
         return;

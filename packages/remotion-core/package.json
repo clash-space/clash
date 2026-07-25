@@ -30,6 +30,9 @@
     "state-management"
   ],
   "license": "MIT",
+  "dependencies": {
+    "@clash/shared-types": "workspace:*"
+  },
   "peerDependencies": {
     "react": "^19.2.5"
   },

@@ -1,13 +1,12 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import { promisify } from "node:util";
 import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   providerAccountKey,
   type LocalProviderAccountConfig,
   type LocalProviderOAuthRecord,
+  type LocalUserModelCardConfig,
 } from "./provider-accounts.js";
 
 type SqlitePrimitive = string | number | null;
@@ -28,8 +27,6 @@ const require = createRequire(import.meta.url);
 const PROVIDER_ACCOUNTS_MIGRATION_ID = "provider-accounts-sqlite-v1";
 const PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
 const SECRET_PREFIX = "enc:v1:";
-const KEYCHAIN_SERVICE = "com.master-clash.local-api.provider-store";
-const execFileAsync = promisify(execFile);
 const secretKeyCache = new Map<string, Promise<Buffer>>();
 
 function sqlitePath(dataDir: string): string {
@@ -73,6 +70,7 @@ function applySchema(db: SqliteDatabase): void {
       id TEXT,
       provider_id TEXT NOT NULL,
       upstream_id TEXT,
+      api_shape TEXT,
       region TEXT,
       label TEXT,
       enabled INTEGER NOT NULL,
@@ -105,6 +103,28 @@ function applySchema(db: SqliteDatabase): void {
       model_id TEXT NOT NULL,
       priority REAL NOT NULL,
       PRIMARY KEY (user_id, account_key, model_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS model_card_configs (
+      user_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      custom INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      name TEXT,
+      description TEXT,
+      prompt_guidance TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (user_id, model_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS model_card_provider_bindings (
+      user_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      provider_account_id TEXT NOT NULL,
+      upstream_model TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (user_id, model_id, provider_account_id)
     );
 
     CREATE TABLE IF NOT EXISTS provider_oauth (
@@ -193,6 +213,7 @@ function providerAccountsTableSql(tableName: string): string {
       id TEXT,
       provider_id TEXT NOT NULL,
       upstream_id TEXT,
+      api_shape TEXT,
       region TEXT,
       label TEXT,
       enabled INTEGER NOT NULL,
@@ -278,6 +299,7 @@ function ensureLocalProviderSqliteColumns(db: SqliteDatabase): void {
     "id TEXT",
     "provider_id TEXT NOT NULL DEFAULT ''",
     "upstream_id TEXT",
+    "api_shape TEXT",
     "region TEXT",
     "label TEXT",
     "enabled INTEGER NOT NULL DEFAULT 1",
@@ -334,6 +356,7 @@ function ensureLocalProviderSqliteColumns(db: SqliteDatabase): void {
     "id",
     "provider_id",
     "upstream_id",
+    "api_shape",
     "region",
     "label",
     "enabled",
@@ -413,51 +436,6 @@ function keyFromString(value: string): Buffer {
   return createHash("sha256").update(trimmed).digest();
 }
 
-function shouldUseKeychain(dataDir: string): boolean {
-  if (process.env.CLASH_LOCAL_PROVIDER_SECRET_KEY || process.env.CLASH_LOCAL_SECRET_KEY) return false;
-  if (process.env.CLASH_LOCAL_KEYCHAIN === "0") return false;
-  if (process.env.NODE_ENV === "test" || process.env.VITEST) return false;
-  if (dataDir.includes("/.tmp/") || dataDir.includes("/var/folders/")) return false;
-  return process.platform === "darwin";
-}
-
-function keychainAccount(dataDir: string): string {
-  const digest = createHash("sha256").update(dataDir).digest("hex").slice(0, 24);
-  return `local-api:${digest}`;
-}
-
-async function resolveKeyFromKeychain(dataDir: string): Promise<Buffer | null> {
-  if (!shouldUseKeychain(dataDir)) return null;
-  const account = keychainAccount(dataDir);
-  try {
-    const { stdout } = await execFileAsync("security", [
-      "find-generic-password",
-      "-s",
-      KEYCHAIN_SERVICE,
-      "-a",
-      account,
-      "-w",
-    ]);
-    const value = stdout.trim();
-    if (value) return keyFromString(`base64:${value}`);
-  } catch {
-    // Missing keychain item: create one below.
-  }
-
-  const generated = randomBytes(32).toString("base64");
-  await execFileAsync("security", [
-    "add-generic-password",
-    "-s",
-    KEYCHAIN_SERVICE,
-    "-a",
-    account,
-    "-w",
-    generated,
-    "-U",
-  ]);
-  return keyFromString(`base64:${generated}`);
-}
-
 async function resolveKeyFromFile(dataDir: string): Promise<Buffer> {
   const path = fallbackKeyPath(dataDir);
   try {
@@ -479,8 +457,6 @@ async function resolveProviderSecretKey(dataDir: string): Promise<Buffer> {
   const task = (async () => {
     const envKey = process.env.CLASH_LOCAL_PROVIDER_SECRET_KEY || process.env.CLASH_LOCAL_SECRET_KEY;
     if (envKey) return keyFromString(envKey);
-    const keychainKey = await resolveKeyFromKeychain(dataDir);
-    if (keychainKey) return keychainKey;
     return resolveKeyFromFile(dataDir);
   })();
   secretKeyCache.set(dataDir, task);
@@ -553,6 +529,17 @@ function hasProviderOAuthRows(db: SqliteDatabase): boolean {
   return rowCount(db, "SELECT COUNT(*) AS count FROM provider_oauth") > 0;
 }
 
+function clearProviderAccountsUnsafe(db: SqliteDatabase): void {
+  db.prepare("DELETE FROM provider_account_model_priorities").run();
+  db.prepare("DELETE FROM provider_account_supported_models").run();
+  db.prepare("DELETE FROM provider_account_credentials").run();
+  db.prepare("DELETE FROM provider_accounts").run();
+}
+
+function clearProviderOAuthUnsafe(db: SqliteDatabase): void {
+  db.prepare("DELETE FROM provider_oauth").run();
+}
+
 function hasPlaintextProviderAccountSecrets(db: SqliteDatabase): boolean {
   return rowCount(db, `
     SELECT COUNT(*) AS count
@@ -575,16 +562,13 @@ function hasPlaintextProviderOAuthSecrets(db: SqliteDatabase): boolean {
 }
 
 function replaceProviderAccountsUnsafe(db: SqliteDatabase, accounts: LocalProviderAccountConfig[], secretKey: Buffer): void {
-  db.prepare("DELETE FROM provider_account_model_priorities").run();
-  db.prepare("DELETE FROM provider_account_supported_models").run();
-  db.prepare("DELETE FROM provider_account_credentials").run();
-  db.prepare("DELETE FROM provider_accounts").run();
+  clearProviderAccountsUnsafe(db);
 
   const insertAccount = db.prepare(`
     INSERT INTO provider_accounts (
       user_id, account_key, id, provider_id, upstream_id, region, label,
-      enabled, priority, weight, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      api_shape, enabled, priority, weight, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertCredential = db.prepare(`
     INSERT INTO provider_account_credentials (
@@ -613,6 +597,7 @@ function replaceProviderAccountsUnsafe(db: SqliteDatabase, accounts: LocalProvid
       account.upstreamId ?? null,
       account.region ?? null,
       account.label ?? null,
+      account.apiShape ?? null,
       account.enabled ? 1 : 0,
       account.priority ?? null,
       account.weight ?? null,
@@ -637,7 +622,7 @@ function replaceProviderAccountsUnsafe(db: SqliteDatabase, accounts: LocalProvid
 }
 
 function replaceProviderOAuthUnsafe(db: SqliteDatabase, records: LocalProviderOAuthRecord[], secretKey: Buffer): void {
-  db.prepare("DELETE FROM provider_oauth").run();
+  clearProviderOAuthUnsafe(db);
   const insert = db.prepare(`
     INSERT INTO provider_oauth (
       user_id, provider_id, account_id, status, access_token, refresh_token,
@@ -679,7 +664,7 @@ function replaceProviderOAuthUnsafe(db: SqliteDatabase, records: LocalProviderOA
 
 function readProviderAccountsUnsafe(db: SqliteDatabase, secretKey: Buffer): LocalProviderAccountConfig[] {
   const accountRows = db.prepare(`
-    SELECT user_id, account_key, id, provider_id, upstream_id, region, label,
+    SELECT user_id, account_key, id, provider_id, upstream_id, region, label, api_shape,
            enabled, priority, weight, created_at, updated_at
       FROM provider_accounts
      ORDER BY user_id, provider_id, upstream_id, region, id
@@ -741,6 +726,7 @@ function readProviderAccountsUnsafe(db: SqliteDatabase, secretKey: Buffer): Loca
       ...(rowOptionalString(row, "id") ? { id: rowOptionalString(row, "id") } : {}),
       providerId: rowString(row, "provider_id") as LocalProviderAccountConfig["providerId"],
       ...(rowOptionalString(row, "upstream_id") ? { upstreamId: rowOptionalString(row, "upstream_id") as LocalProviderAccountConfig["upstreamId"] } : {}),
+      ...(rowOptionalString(row, "api_shape") ? { apiShape: rowOptionalString(row, "api_shape") as LocalProviderAccountConfig["apiShape"] } : {}),
       ...(rowOptionalString(row, "region") ? { region: rowOptionalString(row, "region") } : {}),
       ...(rowOptionalString(row, "label") ? { label: rowOptionalString(row, "label") } : {}),
       enabled: row.enabled !== 0,
@@ -757,6 +743,89 @@ function readProviderAccountsUnsafe(db: SqliteDatabase, secretKey: Buffer): Loca
     if (accountModelPriorities && Object.keys(accountModelPriorities).length > 0) account.modelPriorities = accountModelPriorities;
     return account;
   });
+}
+
+function readModelCardConfigsUnsafe(db: SqliteDatabase): LocalUserModelCardConfig[] {
+  const bindingRows = db.prepare(`
+    SELECT user_id, model_id, provider_account_id, upstream_model
+      FROM model_card_provider_bindings
+     ORDER BY user_id, model_id, position
+  `).all();
+  const bindings = new Map<string, LocalUserModelCardConfig["providerBindings"]>();
+  for (const row of bindingRows) {
+    const userId = rowString(row, "user_id");
+    const modelId = rowString(row, "model_id");
+    const key = `${userId}\n${modelId}`;
+    const values = bindings.get(key) ?? [];
+    values.push({
+      providerAccountId: rowString(row, "provider_account_id"),
+      upstreamModel: rowString(row, "upstream_model"),
+    });
+    bindings.set(key, values);
+  }
+  return db.prepare(`
+    SELECT user_id, model_id, custom, kind, name, description, prompt_guidance,
+           created_at, updated_at
+      FROM model_card_configs
+     ORDER BY user_id, model_id
+  `).all().map((row) => {
+    const userId = rowString(row, "user_id");
+    const modelId = rowString(row, "model_id");
+    return {
+      userId,
+      modelId,
+      custom: row.custom === 1,
+      kind: "text" as const,
+      ...(rowOptionalString(row, "name") ? { name: rowOptionalString(row, "name") } : {}),
+      ...(rowOptionalString(row, "description") ? { description: rowOptionalString(row, "description") } : {}),
+      ...(rowOptionalString(row, "prompt_guidance") ? { promptGuidance: rowOptionalString(row, "prompt_guidance") } : {}),
+      providerBindings: bindings.get(`${userId}\n${modelId}`) ?? [],
+      ...(rowOptionalString(row, "created_at") ? { createdAt: rowOptionalString(row, "created_at") } : {}),
+      ...(rowOptionalString(row, "updated_at") ? { updatedAt: rowOptionalString(row, "updated_at") } : {}),
+    };
+  });
+}
+
+function replaceModelCardConfigsUnsafe(
+  db: SqliteDatabase,
+  configs: LocalUserModelCardConfig[],
+): void {
+  db.prepare("DELETE FROM model_card_provider_bindings").run();
+  db.prepare("DELETE FROM model_card_configs").run();
+  const insertConfig = db.prepare(`
+    INSERT INTO model_card_configs (
+      user_id, model_id, custom, kind, name, description, prompt_guidance,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertBinding = db.prepare(`
+    INSERT INTO model_card_provider_bindings (
+      user_id, model_id, provider_account_id, upstream_model, position
+    ) VALUES (?, ?, ?, ?, ?)
+  `);
+  for (const config of configs) {
+    const userId = config.userId ?? "local-user";
+    insertConfig.run(
+      userId,
+      config.modelId,
+      config.custom ? 1 : 0,
+      config.kind,
+      config.name ?? null,
+      config.description ?? null,
+      config.promptGuidance ?? null,
+      config.createdAt ?? null,
+      config.updatedAt ?? null,
+    );
+    config.providerBindings.forEach((binding, position) => {
+      insertBinding.run(
+        userId,
+        config.modelId,
+        binding.providerAccountId,
+        binding.upstreamModel,
+        position,
+      );
+    });
+  }
 }
 
 function decryptOAuthField(
@@ -837,44 +906,48 @@ export function createLocalProviderStore(dataDir: string) {
 
   async function ensureProviderAccountsMigrated(): Promise<void> {
     if (!(await exists())) return;
+    const needsMigration = await withDb((db) => {
+      if (hasMigrationMarker(db, PROVIDER_ACCOUNTS_MIGRATION_ID) && !hasPlaintextProviderAccountSecrets(db)) return false;
+      return hasProviderAccountRows(db);
+    });
+    if (!needsMigration) return;
     const secretKey = await resolveProviderSecretKey(dataDir);
     await withDb((db) => {
       if (hasMigrationMarker(db, PROVIDER_ACCOUNTS_MIGRATION_ID) && !hasPlaintextProviderAccountSecrets(db)) return;
       if (!hasProviderAccountRows(db)) return;
-      if (hasProviderAccountRows(db)) {
-        const accounts = readProviderAccountsUnsafe(db, secretKey);
-        db.exec("BEGIN IMMEDIATE");
-        try {
-          replaceProviderAccountsUnsafe(db, accounts, secretKey);
-          markMigration(db, PROVIDER_ACCOUNTS_MIGRATION_ID, dataDir, "");
-          db.exec("COMMIT");
-        } catch (error) {
-          db.exec("ROLLBACK");
-          throw error;
-        }
-        return;
+      const accounts = readProviderAccountsUnsafe(db, secretKey);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        replaceProviderAccountsUnsafe(db, accounts, secretKey);
+        markMigration(db, PROVIDER_ACCOUNTS_MIGRATION_ID, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
       }
     });
   }
 
   async function ensureProviderOAuthMigrated(): Promise<void> {
     if (!(await exists())) return;
+    const needsMigration = await withDb((db) => {
+      if (hasMigrationMarker(db, PROVIDER_OAUTH_MIGRATION_ID) && !hasPlaintextProviderOAuthSecrets(db)) return false;
+      return hasProviderOAuthRows(db);
+    });
+    if (!needsMigration) return;
     const secretKey = await resolveProviderSecretKey(dataDir);
     await withDb((db) => {
       if (hasMigrationMarker(db, PROVIDER_OAUTH_MIGRATION_ID) && !hasPlaintextProviderOAuthSecrets(db)) return;
       if (!hasProviderOAuthRows(db)) return;
-      if (hasProviderOAuthRows(db)) {
-        const records = readProviderOAuthUnsafe(db, secretKey);
-        db.exec("BEGIN IMMEDIATE");
-        try {
-          replaceProviderOAuthUnsafe(db, records, secretKey);
-          markMigration(db, PROVIDER_OAUTH_MIGRATION_ID, dataDir, "");
-          db.exec("COMMIT");
-        } catch (error) {
-          db.exec("ROLLBACK");
-          throw error;
-        }
-        return;
+      const records = readProviderOAuthUnsafe(db, secretKey);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        replaceProviderOAuthUnsafe(db, records, secretKey);
+        markMigration(db, PROVIDER_OAUTH_MIGRATION_ID, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
       }
     });
   }
@@ -882,12 +955,26 @@ export function createLocalProviderStore(dataDir: string) {
   async function loadProviderAccounts(): Promise<LocalProviderAccountConfig[]> {
     if (!(await exists())) return [];
     await ensureProviderAccountsMigrated();
+    if (!(await withDb((db) => hasProviderAccountRows(db)))) return [];
     const secretKey = await resolveProviderSecretKey(dataDir);
     return withDb((db) => readProviderAccountsUnsafe(db, secretKey));
   }
 
   async function saveProviderAccounts(accounts: LocalProviderAccountConfig[]): Promise<void> {
     if (accounts.length === 0 && !(await exists())) return;
+    if (accounts.length === 0) {
+      await withDb((db) => {
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          clearProviderAccountsUnsafe(db);
+          db.exec("COMMIT");
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      return;
+    }
     const secretKey = await resolveProviderSecretKey(dataDir);
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
@@ -910,12 +997,26 @@ export function createLocalProviderStore(dataDir: string) {
   async function loadProviderOAuth(): Promise<LocalProviderOAuthRecord[]> {
     if (!(await exists())) return [];
     await ensureProviderOAuthMigrated();
+    if (!(await withDb((db) => hasProviderOAuthRows(db)))) return [];
     const secretKey = await resolveProviderSecretKey(dataDir);
     return withDb((db) => readProviderOAuthUnsafe(db, secretKey));
   }
 
   async function saveProviderOAuth(records: LocalProviderOAuthRecord[]): Promise<void> {
     if (records.length === 0 && !(await exists())) return;
+    if (records.length === 0) {
+      await withDb((db) => {
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          clearProviderOAuthUnsafe(db);
+          db.exec("COMMIT");
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+      });
+      return;
+    }
     const secretKey = await resolveProviderSecretKey(dataDir);
     await withDb((db) => {
       db.exec("BEGIN IMMEDIATE");
@@ -935,6 +1036,25 @@ export function createLocalProviderStore(dataDir: string) {
     });
   }
 
+  async function loadModelCardConfigs(): Promise<LocalUserModelCardConfig[]> {
+    if (!(await exists())) return [];
+    return withDb((db) => readModelCardConfigsUnsafe(db));
+  }
+
+  async function saveModelCardConfigs(configs: LocalUserModelCardConfig[]): Promise<void> {
+    if (configs.length === 0 && !(await exists())) return;
+    await withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        replaceModelCardConfigsUnsafe(db, configs);
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
   return {
     path,
     exists,
@@ -942,5 +1062,7 @@ export function createLocalProviderStore(dataDir: string) {
     saveProviderAccounts,
     loadProviderOAuth,
     saveProviderOAuth,
+    loadModelCardConfigs,
+    saveModelCardConfigs,
   };
 }

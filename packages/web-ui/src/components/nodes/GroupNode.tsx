@@ -1,6 +1,6 @@
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Node, NodeProps, NodeResizeControl, useNodes, useReactFlow, useViewport } from '@xyflow/react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Node, NodeProps, NodeResizeControl, useReactFlow, useStore, useViewport } from '@xyflow/react';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { useLayoutActions } from '../LayoutActionsContext';
 import { MagicWand, FrameCorners } from '@phosphor-icons/react';
@@ -26,7 +26,6 @@ const groupBackgroundByDepth = [
 
 const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Group');
-    const nodes = useNodes();
     const { setNodes } = useReactFlow();
     // Counter-scale the action cluster so the buttons stay at constant screen
     // size — matches the floating "Group" pill, which lives in screen-space.
@@ -35,20 +34,20 @@ const GroupNode = ({ selected, data, id }: NodeProps<Node<Record<string, any>>>)
     const { relayoutParent, ungroup } = useLayoutActions();
     const syncTimeoutRef = useRef<number | null>(null);
 
-    // Calculate nesting depth
-    const depth = useMemo(() => {
+    // Return a primitive so unrelated node movement does not re-render this group.
+    const depth = useStore(useCallback((state) => {
         let currentId = id;
         let level = 0;
-
-        while (currentId) {
-            const node = nodes.find((n) => n.id === currentId);
-            if (!node || !node.parentId) break;
+        const visited = new Set<string>();
+        while (currentId && !visited.has(currentId)) {
+            visited.add(currentId);
+            const node = state.nodeLookup.get(currentId);
+            if (!node?.parentId) break;
             currentId = node.parentId;
-            level++;
+            level += 1;
         }
-
         return level;
-    }, [id, nodes]);
+    }, [id]));
 
     useEffect(() => {
         if (typeof data.label === 'string' && data.label !== label) {

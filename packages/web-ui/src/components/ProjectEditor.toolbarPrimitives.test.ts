@@ -57,6 +57,29 @@ describe("ProjectEditor toolbar primitives", () => {
     expect(toolbarSource).not.toContain("title=");
   });
 
+  it("places vertical canvas toolbar tooltips to the right of their controls", () => {
+    const toolbarSource = readCanvasToolbarSource();
+
+    expect(toolbarSource).toMatch(
+      /<Tooltip label="Select mode \(V\)" placement="right">/,
+    );
+    expect(toolbarSource).toMatch(
+      /<Tooltip label="Hand mode \(H\)" placement="right">/,
+    );
+    expect(toolbarSource).toMatch(
+      /<Tooltip\s+key=\{item\.id\}\s+label=\{item\.label\}\s+placement="right"/,
+    );
+    expect(toolbarSource).toMatch(
+      /<Tooltip label="Auto Layout" placement="right">/,
+    );
+    expect(toolbarSource).toMatch(
+      /<Tooltip label="Undo" placement="right">/,
+    );
+    expect(toolbarSource).toMatch(
+      /<Tooltip label="Redo" placement="right">/,
+    );
+  });
+
   it("uses the shared tooltip primitive for project editor icon actions outside the canvas toolbar", () => {
     const editorSource = readSource("packages/web-ui/src/components/ProjectEditor.tsx");
 

@@ -3,6 +3,7 @@ export * from './types';
 
 // Core geometry utilities
 export {
+    ACTION_BADGE_NODE_SIZE,
     getNodeSize,
     rectOverlaps,
     rectContains,

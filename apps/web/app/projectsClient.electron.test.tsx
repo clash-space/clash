@@ -9,6 +9,9 @@ vi.mock("@phosphor-icons/react", () => ({
   Plus: ({ className, ...props }: any) => (
     <span data-testid="plus-icon" className={className} {...props} />
   ),
+  X: ({ className, ...props }: any) => (
+    <span data-testid="close-icon" className={className} {...props} />
+  ),
 }));
 
 vi.mock("@clash/web-ui/lib/clientActions", () => ({
@@ -22,7 +25,7 @@ describe("ProjectsClient desktop behavior", () => {
     vi.clearAllMocks();
   });
 
-  it("creates a blank project without using browser prompt", async () => {
+  it("collects a name and creates the project without starting from a prompt", async () => {
     const promptSpy = vi.fn(() => "prompt from browser dialog");
     Object.defineProperty(window, "prompt", {
       configurable: true,
@@ -33,9 +36,13 @@ describe("ProjectsClient desktop behavior", () => {
     render(<ProjectsClient projects={[]} />);
 
     fireEvent.click(screen.getByRole("button", { name: /create a new project/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /project name/i }), {
+      target: { value: "Campaign cut" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
     await waitFor(() => {
-      expect(createProject).toHaveBeenCalledWith("Untitled project", {
+      expect(createProject).toHaveBeenCalledWith("Campaign cut", {
         startFromPrompt: false,
       });
     });

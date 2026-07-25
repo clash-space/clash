@@ -5,12 +5,14 @@ import DraftPlaceholder from "./DraftPlaceholder";
 import {
   Play,
   Pause,
+  Eye,
   X,
   SpeakerHigh,
   SkipBack,
   SkipForward,
   Spinner,
 } from "@phosphor-icons/react";
+import { useMediaViewer } from "../MediaViewerContext";
 import { useSignedUrl } from "@clash/web-ui/lib/hooks/useSignedUrl";
 import { useAsset } from "@clash/web-ui/lib/hooks/useAsset";
 import {
@@ -22,6 +24,9 @@ import { NodeModalDialog } from "./NodeModalDialog";
 import { IconButton } from "../ui/icon-button";
 import { Input } from "../ui/input";
 import { Slider, SliderRange, SliderThumb, SliderTrack } from "../ui/slider";
+import { Tooltip } from "../ui/tooltip";
+
+const MEDIA_NODE_CONTROL_CLASS = "nodrag nopan bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 focus-visible:ring-white/80 focus-visible:ring-offset-black/20";
 
 const WAVEFORM_BARS = 128;
 const SKIP_SECONDS = 10;
@@ -81,6 +86,7 @@ const AudioNode = ({
   id,
 }: NodeProps<Node<Record<string, any>>>) => {
   const [label, setLabel] = useState(data.label || "Audio Node");
+  const { openAssetPreview } = useMediaViewer();
   const asset = useAsset(data.assetId);
   const audioR2Key = asset?.srcR2Key;
   const [status, setStatus] = useState<AssetStatus>(
@@ -395,13 +401,31 @@ const AudioNode = ({
 
         <div
           className={`w-full bg-warm-surface shadow-md rounded-matrix overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer ${selected ? "ring-4 ring-brand ring-offset-2" : "ring-1 ring-warm-border"}`}
-          onClick={() =>
+          onDoubleClick={() =>
             audioUrl && status === "completed" && setShowModal(true)
           }
         >
-          <div className="flex items-center justify-center h-16 px-4">
+          {typeof data.assetId === "string" && data.assetId && openAssetPreview ? (
+            <div className="absolute right-2 top-2 z-10">
+              <Tooltip label="Preview asset">
+                <IconButton
+                  label="Preview asset"
+                  icon={<Eye size={14} weight="bold" />}
+                  size="sm"
+                  shape="circle"
+                  className={MEDIA_NODE_CONTROL_CLASS}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openAssetPreview(data.assetId);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                />
+              </Tooltip>
+            </div>
+          ) : null}
+          <div className={`flex h-16 items-center justify-center ${status === "draft" ? "" : "px-4"}`}>
             {status === "draft" ? (
-              <DraftPlaceholder nodeId={id} modality="audio" height={64} />
+              <DraftPlaceholder nodeId={id} modality="audio" height={64} compact />
             ) : isActiveStatus(status) && !audioUrl ? (
               <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
                 <Spinner size={24} className="animate-spin" />

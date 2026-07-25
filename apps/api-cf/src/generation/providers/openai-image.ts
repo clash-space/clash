@@ -2,7 +2,7 @@ import { log } from "../../logger";
 import { generateOpenAIImage, type OpenAIInlineImage } from "../../services/openai-image";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 async function loadInlineFromR2(bucket: R2Bucket, key: string): Promise<OpenAIInlineImage | null> {
   const obj = await bucket.get(key);
@@ -19,6 +19,10 @@ export const openaiImageProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "openai-images") {
+      throw new Error(`OpenAI image execution requires a selected OpenAI route for ${params.modelName ?? "unknown model"}`);
+    }
 
     const storageKey = await ctx.step(
       "openai-image-generate",
@@ -36,16 +40,12 @@ export const openaiImageProvider: GenerationProvider = {
           model: params.modelName,
           refs: referenceImages.length,
         });
-        const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
-          upstreamId: "openai",
-          region: "global",
-          modelCode: params.modelName ?? "gpt-image-2",
-        });
+        const credentials = await credentialsForRoute(ctx, route);
         const result = await generateOpenAIImage({
           apiKey: credentials.apiKey,
           baseUrl: credentials.baseUrl,
           prompt: params.prompt ?? "",
-          modelName: params.modelName ?? "gpt-image-2",
+          modelName: route.upstreamModel,
           modelParams: params.modelParams,
           referenceImages: referenceImages.length ? referenceImages : undefined,
         });

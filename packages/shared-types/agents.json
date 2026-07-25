@@ -12,6 +12,7 @@
   },
   "key_files": {
     "src/index.ts": "Main entry point exporting all types.",
+    "src/agent-annotation.ts": "Transient structured annotation blocks that address editable Canvas, Timeline, and Director Stage objects, including exact text-quote selections and viewport highlight hints.",
     "src/models.ts": "AI Model configuration and metadata schemas.",
     "src/tasks.ts": "Task definitions for the Async Job system.",
     "src/pipeline.ts": "Pipeline execution state definitions."

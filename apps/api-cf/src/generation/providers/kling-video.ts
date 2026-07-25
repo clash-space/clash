@@ -2,7 +2,7 @@ import { log } from "../../logger";
 import { generateVideo as generateKlingVideo } from "../../services/kling";
 import type { GenerationProvider } from "../provider";
 import { signedMediaUrl } from "./media-url";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 export const klingVideoProvider: GenerationProvider = {
   name: "kling-video",
@@ -10,6 +10,10 @@ export const klingVideoProvider: GenerationProvider = {
   async execute(ctx) {
     const { params, env } = ctx;
     const modelName = params.videoModel ?? params.modelName ?? "kling-3";
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "kling") {
+      throw new Error(`Kling execution requires a selected Kling route for ${modelName}`);
+    }
 
     const sourceImageUrl = await ctx.step(
       "resolve-source",
@@ -26,10 +30,7 @@ export const klingVideoProvider: GenerationProvider = {
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "10 minutes" },
       async () => {
         log.info("Kling video generate started", { ...ctx.tag, model: modelName });
-        const credentials = await credentialsForProvider(ctx, "kling", ["accessKey", "secretKey"], {
-          upstreamId: "kling",
-          modelCode: modelName,
-        });
+        const credentials = await credentialsForRoute(ctx, route);
         const result = await generateKlingVideo(
           {
             accessKey: credentials.accessKey,
@@ -41,7 +42,7 @@ export const klingVideoProvider: GenerationProvider = {
             prompt: params.prompt,
             duration: typeof params.duration === "number" ? params.duration : Number.parseInt(String(params.duration ?? "5"), 10),
             cfgScale: params.cfgScale,
-            model: "kling-v3",
+            model: route.upstreamModel,
           },
         );
         log.info("Kling video generated", { ...ctx.tag, taskId: result.taskId });

@@ -16,6 +16,8 @@ interface ImageGenParams {
   referenceImageUrls?: string[];
   aspectRatio?: string;
   modelName?: string;
+  /** Exact endpoint selected by the model-provider route. */
+  modelEndpoint?: string;
   modelParams?: Record<string, unknown>;
   /** Called when fal enqueues the request */
   onEnqueue?: (requestId: string) => void;
@@ -23,15 +25,32 @@ interface ImageGenParams {
   onQueueUpdate?: (status: { status: string; position?: number }) => void;
 }
 
-/** Map from shared model card IDs to fal.ai model endpoints. */
-const FAL_IMAGE_MODEL_IDS: Record<string, string> = {
-  'flux-schnell': 'fal-ai/flux/schnell',
-  'flux-dev': 'fal-ai/flux/dev',
-  'nano-banana-2': 'fal-ai/nano-banana-2',
-  'nano-banana-2-edit': 'fal-ai/nano-banana-2/edit',
-  'recraft-v4': 'fal-ai/recraft/v4/pro/text-to-image',
-  'flux-2-pro': 'fal-ai/flux-2-pro',
-  'flux-2-pro-edit': 'fal-ai/flux-2-pro/edit',
+type FalImageContract = {
+  generate: string;
+  edit?: string;
+};
+
+/** Exact endpoint pairs for each public card. There is deliberately no default. */
+const FAL_IMAGE_MODELS: Record<string, FalImageContract> = {
+  'flux-schnell': { generate: 'fal-ai/flux/schnell' },
+  'flux-dev': { generate: 'fal-ai/flux/dev' },
+  'nano-banana-2': {
+    generate: 'fal-ai/nano-banana-2',
+    edit: 'fal-ai/nano-banana-2/edit',
+  },
+  'gpt-image-2': {
+    generate: 'openai/gpt-image-2',
+    edit: 'openai/gpt-image-2/edit',
+  },
+  'seedream-4.5': {
+    generate: 'fal-ai/bytedance/seedream/v4.5/text-to-image',
+    edit: 'fal-ai/bytedance/seedream/v4.5/edit',
+  },
+  'recraft-v4': { generate: 'fal-ai/recraft/v4/pro/text-to-image' },
+  'flux-2-pro': {
+    generate: 'fal-ai/flux-2-pro',
+    edit: 'fal-ai/flux-2-pro/edit',
+  },
 };
 
 /**
@@ -52,6 +71,23 @@ function aspectRatioToImageSize(ar: string): string {
   return map[ar] || 'landscape_16_9';
 }
 
+function gptImageSize(
+  params: Record<string, unknown>,
+  aspectRatio: string | undefined,
+): string | { width: number; height: number } {
+  if (params.image_size && (
+    typeof params.image_size === "string" ||
+    (typeof params.image_size === "object" && !Array.isArray(params.image_size))
+  )) {
+    return params.image_size as string | { width: number; height: number };
+  }
+  const size = typeof params.size === "string" ? params.size : undefined;
+  if (size === "auto") return "auto";
+  const match = size ? /^(\d+)x(\d+)$/.exec(size) : null;
+  if (match) return { width: Number(match[1]), height: Number(match[2]) };
+  return aspectRatioToImageSize(aspectRatio || "1:1");
+}
+
 /**
  * Generate an image using fal.ai.
  * Returns the generated image URL (on fal's CDN).
@@ -63,7 +99,7 @@ export async function generateImage(
   fal.config({ credentials: falApiKey });
 
   const hasRefImages = !!params.referenceImageUrls?.length;
-  const modelId = resolveModelId(params.modelName, hasRefImages);
+  const modelId = resolveModelId(params.modelEndpoint ?? params.modelName, hasRefImages);
 
   let prompt = params.text;
   if (params.systemPrompt) {
@@ -73,7 +109,32 @@ export async function generateImage(
   let input: Record<string, unknown>;
   const extraParams = params.modelParams ?? {};
 
-  if (modelId === 'fal-ai/recraft/v4/pro/text-to-image') {
+  if (modelId === 'openai/gpt-image-2' || modelId === 'openai/gpt-image-2/edit') {
+    input = {
+      prompt,
+      image_size: gptImageSize(extraParams, params.aspectRatio),
+      quality: (extraParams.quality as string) || 'high',
+      num_images: (extraParams.count as number) ?? 1,
+      output_format: (extraParams.output_format as string) || 'png',
+    };
+    if (hasRefImages) {
+      input.image_urls = params.referenceImageUrls;
+    }
+  } else if (
+    modelId === 'fal-ai/bytedance/seedream/v4.5/text-to-image' ||
+    modelId === 'fal-ai/bytedance/seedream/v4.5/edit'
+  ) {
+    input = {
+      prompt,
+      image_size: extraParams.image_size || 'auto_2K',
+      num_images: (extraParams.count as number) ?? 1,
+      max_images: (extraParams.max_images as number) ?? 1,
+      enable_safety_checker: extraParams.enable_safety_checker ?? true,
+    };
+    if (hasRefImages) {
+      input.image_urls = params.referenceImageUrls;
+    }
+  } else if (modelId === 'fal-ai/recraft/v4/pro/text-to-image') {
     input = {
       prompt,
       image_size: (extraParams.image_size as string) || 'square_hd',
@@ -136,14 +197,18 @@ export async function generateImage(
 }
 
 function resolveModelId(modelName: string | undefined, hasRefImages: boolean): string {
-  // When reference images are present, auto-switch text-to-image variants to their /edit sibling.
-  // e.g. nano-banana-2 → nano-banana-2/edit, flux-2-pro → flux-2-pro/edit.
-  if (modelName && FAL_IMAGE_MODEL_IDS[modelName]) {
-    if (hasRefImages) {
-      const editKey = `${modelName}-edit`;
-      if (FAL_IMAGE_MODEL_IDS[editKey]) return FAL_IMAGE_MODEL_IDS[editKey];
-    }
-    return FAL_IMAGE_MODEL_IDS[modelName];
+  const requested = modelName?.trim();
+  if (!requested) {
+    throw new Error("Unsupported fal image model: no model-provider endpoint was selected");
   }
-  return hasRefImages ? "fal-ai/nano-banana-2/edit" : "fal-ai/nano-banana-2";
+  const contract = FAL_IMAGE_MODELS[requested] ?? Object.values(FAL_IMAGE_MODELS)
+    .find((candidate) => candidate.generate === requested || candidate.edit === requested);
+  if (!contract) {
+    throw new Error(`Unsupported fal image model: ${requested}`);
+  }
+  if (!hasRefImages) return contract.generate;
+  if (!contract.edit) {
+    throw new Error(`fal image model does not support editing: ${requested}`);
+  }
+  return contract.edit;
 }

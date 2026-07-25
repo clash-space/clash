@@ -20,6 +20,7 @@ function normalizeAgentId(agentId?: string | null) {
     if (agentId.includes('cursor')) return 'cursor';
     if (agentId.includes('devin')) return 'devin';
     if (agentId.includes('opencode')) return 'opencode';
+    if (agentId.includes('qwen')) return 'qwen-code';
     if (agentId.includes('hermes')) return 'hermes';
     if (agentId.includes('openclaw')) return 'openclaw';
     return agentId;
@@ -44,6 +45,14 @@ const INLINE_ICONS: Record<string, InlineIcon> = {
         title: 'Gemini',
         paths: [{
             d: 'M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81',
+        }],
+    },
+    'qwen-code': {
+        title: 'Qwen Code',
+        viewBox: '0 0 141.38 140',
+        paths: [{
+            // Official mark published by the public ACP registry.
+            d: 'm140.93 85-16.35-28.33-1.93-3.34 8.66-15a3.323 3.323 0 0 0 0-3.34l-9.62-16.67c-.3-.51-.72-.93-1.22-1.22s-1.07-.45-1.67-.45H82.23l-8.66-15a3.33 3.33 0 0 0-2.89-1.67H51.43c-.59 0-1.17.16-1.66.45-.5.29-.92.71-1.22 1.22L32.19 29.98l-1.92 3.33H12.96c-.59 0-1.17.16-1.66.45-.5.29-.93.71-1.22 1.22L.45 51.66a3.323 3.323 0 0 0 0 3.34l18.28 31.67-8.66 15a3.32 3.32 0 0 0 0 3.34l9.62 16.67c.3.51.72.93 1.22 1.22s1.07.45 1.67.45h36.56l8.66 15a3.35 3.35 0 0 0 2.89 1.67h19.25a3.34 3.34 0 0 0 2.89-1.67l18.28-31.67h17.32c.6 0 1.17-.16 1.67-.45s.92-.71 1.22-1.22l9.62-16.67a3.323 3.323 0 0 0 0-3.34ZM51.44 3.33 61.07 20l-9.63 16.66h76.98l-9.62 16.66H45.67l-11.54-20zM57.21 120H22.58l9.63-16.67h19.25l-38.5-66.67h19.25l9.62 16.67L68.78 100l-11.55 20Zm61.59-33.34-9.62-16.67-38.49 66.67-9.63-16.67 9.63-16.66 26.94-46.67h23.1l17.32 30z',
         }],
     },
     opencode: {
@@ -73,6 +82,33 @@ export function AcpAgentLogo({
     title,
 }: AcpAgentLogoProps) {
     const normalizedAgentId = normalizeAgentId(agentId);
+    if (normalizedAgentId === 'openclaw') {
+        return (
+            <svg
+                data-acp-agent-logo=""
+                role="img"
+                aria-label={title ?? 'OpenClaw'}
+                viewBox="0 0 120 120"
+                shapeRendering="geometricPrecision"
+                focusable="false"
+                className={className}
+            >
+                <defs>
+                    <linearGradient id="openclaw-logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ff4d4d" />
+                        <stop offset="100%" stopColor="#991b1b" />
+                    </linearGradient>
+                </defs>
+                <path d="M60 10C30 10 15 35 15 55s15 40 30 45v10h10v-10s5 2 10 0v10h10v-10c15-5 30-25 30-45S90 10 60 10Z" fill="url(#openclaw-logo-gradient)" />
+                <path d="M20 45C5 40 0 50 5 60s15 5 20-5c3-7 0-10-5-10ZM100 45c15-5 20 5 15 15s-15 5-20-5c-3-7 0-10 5-10Z" fill="url(#openclaw-logo-gradient)" />
+                <path d="M45 15Q35 5 30 8M75 15Q85 5 90 8" fill="none" stroke="#ff4d4d" strokeWidth="3" strokeLinecap="round" />
+                <circle cx="45" cy="35" r="6" fill="#050810" />
+                <circle cx="75" cy="35" r="6" fill="#050810" />
+                <circle cx="46" cy="34" r="2.5" fill="#00e5cc" />
+                <circle cx="76" cy="34" r="2.5" fill="#00e5cc" />
+            </svg>
+        );
+    }
     const icon = INLINE_ICONS[normalizedAgentId];
     if (icon) {
         return (
@@ -81,6 +117,8 @@ export function AcpAgentLogo({
                 role="img"
                 aria-label={title ?? icon.title}
                 viewBox={icon.viewBox ?? '0 0 24 24'}
+                shapeRendering="geometricPrecision"
+                focusable="false"
                 fill="currentColor"
                 fillRule="evenodd"
                 className={className}

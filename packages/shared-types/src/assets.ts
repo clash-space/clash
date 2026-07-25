@@ -11,7 +11,7 @@
 import { z } from 'zod';
 import { agentReadToken } from './agent-read-proof';
 
-export const AssetKindSchema = z.enum(['image', 'video', 'audio']);
+export const AssetKindSchema = z.enum(['image', 'video', 'audio', 'model']);
 export type AssetKind = z.infer<typeof AssetKindSchema>;
 
 /**
@@ -42,6 +42,12 @@ export const AssetMetadataSchema = z.object({
   requestId: z.string().optional(),
   modelEndpoint: z.string().optional(),
   remoteUrl: z.string().optional(),
+  /** Parameters used by a copy-on-write image/video edit. */
+  editParams: z.unknown().optional(),
+  /** Whether the edit was represented by a visible canvas node or an implicit asset-preview action. */
+  editOrigin: z.enum(['canvas-node', 'asset-preview']).optional(),
+  /** Validated ActionInvocation envelope that produced this immutable output. */
+  actionInvocation: z.unknown().optional(),
 });
 export type AssetMetadata = z.infer<typeof AssetMetadataSchema>;
 

@@ -5,13 +5,16 @@ packages:
   - 'apps/render-server'
   - 'apps/web'
   - 'packages/remotion-*'
+  - 'packages/director-*'
   - 'packages/shared-*'
   - 'packages/action-sdk'
   - 'packages/clash-sdk/js'
   - 'packages/web-ui'
   - 'packages/cli'
+  - 'packages/mcp-server'
   - 'packages/clash-bridge'
   - 'packages/claude-code-plugin'
+  - 'plugins/*'
 allowBuilds:
   '@swc/core': set this to true or false
   core-js-pure: set this to true or false

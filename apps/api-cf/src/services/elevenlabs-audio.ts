@@ -12,7 +12,7 @@ export interface ElevenLabsAudioResult {
 }
 
 const DEFAULT_ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
-const DEFAULT_ELEVENLABS_MODEL = "eleven_multilingual_v2";
+const DEFAULT_ELEVENLABS_MODEL = "eleven_v3";
 const ELEVENLABS_VOICE_IDS: Record<string, string> = {
   rachel: "21m00Tcm4TlvDq8ikWAM",
   drew: "29vD33N1CtxCmqQRPOHJ",
@@ -53,7 +53,8 @@ export async function generateElevenLabsAudio(
   const text = params.prompt.trim();
   if (!text) throw new Error("Prompt is required for ElevenLabs TTS.");
 
-  const model = stringParam(params.modelParams, "model_id", DEFAULT_ELEVENLABS_MODEL) ?? DEFAULT_ELEVENLABS_MODEL;
+  const routeModel = params.modelName?.trim() || DEFAULT_ELEVENLABS_MODEL;
+  const model = stringParam(params.modelParams, "model_id", routeModel) ?? routeModel;
   const voiceId = resolveVoiceId(stringParam(params.modelParams, "voice_id"));
   const stability = numberParam(params.modelParams, "stability");
   const similarityBoost = numberParam(params.modelParams, "similarity_boost");

@@ -34,10 +34,11 @@ class MemoryD1 {
           },
           async all<T>() {
             if (sql.includes("WHERE user_id = ? AND provider_id = ? AND enabled = 1")) {
-              const [userId, providerId, upstreamId] = args;
+              const [userId, providerId, accountId, _sameAccountId, upstreamId] = args;
               return {
                 results: db.rows
                   .filter((row) => row.user_id === userId && row.provider_id === providerId && row.enabled === 1)
+                  .filter((row) => accountId === null || row.id === accountId)
                   .filter((row) => upstreamId === null || row.upstream_id === upstreamId)
                   .sort((a, b) => (a.priority ?? 1000) - (b.priority ?? 1000)),
               } as T;
@@ -54,6 +55,7 @@ class MemoryD1 {
               const [
                 providerId,
                 upstreamId,
+                apiShape,
                 region,
                 label,
                 enabled,
@@ -72,6 +74,7 @@ class MemoryD1 {
                 Object.assign(row, {
                   provider_id: providerId,
                   upstream_id: upstreamId,
+                  api_shape: apiShape,
                   region,
                   label,
                   enabled,
@@ -91,6 +94,7 @@ class MemoryD1 {
               userId,
               providerId,
               upstreamId,
+              apiShape,
               region,
               label,
               enabled,
@@ -108,6 +112,7 @@ class MemoryD1 {
               user_id: userId,
               provider_id: providerId,
               upstream_id: upstreamId,
+              api_shape: apiShape,
               region,
               label,
               enabled,
@@ -192,6 +197,37 @@ describe("provider accounts", () => {
         requiredCredentials: ["apiKey"],
       }),
     ).resolves.toMatchObject({ apiKey: "fast" });
+  });
+
+  it("loads credentials from an explicitly mounted provider account", async () => {
+    const db = new MemoryD1();
+    const env = { DB: db as unknown as D1Database, ACTION_SECRET_KEY: "secret-key" };
+    await upsertProviderAccount(env, "user-1", {
+      id: "openai-primary",
+      providerId: "custom",
+      upstreamId: "openai",
+      apiShape: "openai-compatible",
+      priority: 1,
+      credentials: { apiKey: "primary", baseUrl: "https://primary.example/v1" },
+    });
+    await upsertProviderAccount(env, "user-1", {
+      id: "openai-editorial",
+      providerId: "custom",
+      upstreamId: "openai",
+      apiShape: "openai-compatible",
+      priority: 20,
+      credentials: { apiKey: "editorial", baseUrl: "https://editorial.example/v1" },
+    });
+
+    await expect(getProviderCredentials(env, "user-1", {
+      accountId: "openai-editorial",
+      providerId: "custom",
+      upstreamId: "openai",
+      requiredCredentials: ["apiKey", "baseUrl"],
+    })).resolves.toEqual({
+      apiKey: "editorial",
+      baseUrl: "https://editorial.example/v1",
+    });
   });
 
   it("stores and exposes per-account supported model filters", async () => {

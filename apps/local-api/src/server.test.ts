@@ -127,17 +127,71 @@ describe("local API server configuration", () => {
     if (discovery.status !== "active") throw new Error("expected active discovery record");
     expect(discovery.record).toMatchObject({
       endpoint: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+$/),
+      agentCliPath: join(dataDir, "agent-bin", "clash"),
       launchMode: "desktop",
       ownerClientId: "desktop-1",
       pid: process.pid,
       protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
     });
+    const shimText = await readFile(join(dataDir, "agent-bin", "clash"), "utf8");
+    expect(shimText).toContain(`CLASH_API_URL='${discovery.record.endpoint}'`);
+    expect(shimText).not.toContain("CLASH_API_URL='http://127.0.0.1:0'");
 
     await new Promise<void>((resolve, reject) => {
       server.close((error?: Error) => error ? reject(error) : resolve());
     });
 
     await expect(readHostDiscovery({ runDir })).resolves.toEqual({ status: "inactive" });
+  });
+
+  it("waits for local ACP disposal before completing server close", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-shutdown-"));
+    let releaseDispose!: () => void;
+    const disposeGate = new Promise<void>((resolve) => {
+      releaseDispose = resolve;
+    });
+    const disposeAll = vi.fn(async () => disposeGate);
+    const localAcp = {
+      updateSpawnEnv() {},
+      async listRuntimes() {
+        return { runtimes: [] };
+      },
+      async createSession() {
+        return { session_id: "unused" };
+      },
+      async listResumeSessions() {
+        return { sessions: [] };
+      },
+      disposeAll,
+    };
+    let server: Awaited<ReturnType<typeof startLocalApiServer>>;
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        port: 0,
+        remotePersistence: null,
+        localAcp: localAcp as never,
+      });
+    } catch (error) {
+      if (errorCode(error) === "EPERM") return;
+      throw error;
+    }
+
+    let closeSettled = false;
+    const closing = new Promise<void>((resolve, reject) => {
+      server.close((error?: Error) => {
+        closeSettled = true;
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const settledBeforeDispose = closeSettled;
+    releaseDispose();
+    await closing;
+
+    expect(disposeAll).toHaveBeenCalledOnce();
+    expect(settledBeforeDispose).toBe(false);
   });
 
   it("creates a local Clash CLI shim and injects it into agent spawn env", async () => {
@@ -337,6 +391,44 @@ describe("local API server configuration", () => {
       { type: "text", text: "Mock ACP reply: hello local agent" },
       expect.objectContaining({ sessionUpdate: "clash.canvas.patch" }),
     ]));
+  });
+
+  it("can stage a managed harness update and session restart for GUI E2E", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-harness-update-e2e-"));
+    const adapter = createConfiguredLocalAcpAdapter({
+      CLASH_E2E_STUB_ACP: "1",
+      CLASH_E2E_STUB_HARNESS_UPDATE: "1",
+      CLASH_LOCAL_DATA_DIR: dataDir,
+    });
+
+    await expect(adapter.listHarnesses()).resolves.not.toMatchObject({
+      harnesses: [expect.objectContaining({ updateAvailable: true })],
+    });
+    await writeFile(join(dataDir, ".e2e-harness-update-ready"), "ready\n");
+    const staged = await adapter.listHarnesses();
+    expect(staged.harnesses.find((harness) => harness.id === "mock-acp")).toMatchObject({
+      installedVersion: "1.0.0",
+      latestVersion: "2.0.0",
+      updateAvailable: true,
+    });
+
+    const created = await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "master-clash",
+      projectId: "mock-project",
+    });
+    await adapter.upgradeHarness("mock-acp");
+    await expect(adapter.getSessionRuntimeStatus(created.session_id)).resolves.toMatchObject({
+      running_version: "1.0.0",
+      installed_version: "2.0.0",
+      restart_required: true,
+    });
+    await adapter.restartSession(created.session_id, { mode: "now" });
+    await expect(adapter.getSessionRuntimeStatus(created.session_id)).resolves.toMatchObject({
+      running_version: "2.0.0",
+      installed_version: "2.0.0",
+      restart_required: false,
+    });
   });
 
   it("can run a one-shot local ACP text task", async () => {

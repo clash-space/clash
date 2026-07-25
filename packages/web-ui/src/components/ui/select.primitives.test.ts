@@ -16,6 +16,15 @@ function readFunction(sourceText: string, functionName: string) {
 }
 
 describe("SelectMenu primitives", () => {
+    it("uses semantic neutral surfaces for dark menus", () => {
+        const selectSource = source();
+
+        expect(selectSource).toContain("dark:bg-warm-surface");
+        expect(selectSource).toContain("dark:hover:bg-warm-muted/80");
+        expect(selectSource).not.toMatch(/dark:bg-slate-(?:8|9)00/);
+        expect(selectSource).not.toMatch(/dark:border-slate-700/);
+    });
+
     it("uses the shared button primitive for the Radix dropdown trigger", () => {
         const selectSource = source();
         const dropdownSource = readFunction(selectSource, "DropdownSelectMenu");

@@ -27,6 +27,7 @@ function normalizedDesktopTabTitle(title: string): string {
 export function titleForDesktopPath(path: string): string {
   if (path === "/") return "Home";
   if (path === "/projects") return "Projects";
+  if (path === "/assets") return "Assets";
   if (path === "/marketplace" || path === "/marketplace/manage") return "Store";
   if (path.startsWith("/projects/")) return "Project";
 

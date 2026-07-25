@@ -1,23 +1,10 @@
 import { log } from "../../logger";
 import { generateModelArkVideo } from "../../services/modelark-video";
-import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
 import { signedMediaUrl, signedMediaUrls } from "./media-url";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 type ModelArkProviderKind = "volcengine";
-
-async function credentialsForModelArk(ctx: GenerationContext, kind: ModelArkProviderKind, modelCode?: string): Promise<Record<string, string>> {
-  if (kind === "volcengine") {
-    return credentialsForProvider(ctx, "volcengine", ["apiKey"], { upstreamId: "volcengine", modelCode });
-  }
-  return {};
-}
-
-function upstreamModelFor(kind: ModelArkProviderKind, modelName: string | undefined): string | undefined {
-  if (kind === "volcengine" && modelName?.startsWith("seedance-2-")) return "doubao-seedance-2-0-pro";
-  return undefined;
-}
 
 function createModelArkVideoProvider(kind: ModelArkProviderKind): GenerationProvider {
   return {
@@ -26,6 +13,10 @@ function createModelArkVideoProvider(kind: ModelArkProviderKind): GenerationProv
     async execute(ctx) {
       const { params, env } = ctx;
       const modelName = params.videoModel ?? params.modelName ?? "seedance-2-ref";
+      const route = params.selectedRoute;
+      if (!route || route.apiShape !== "modelark") {
+        throw new Error(`ModelArk execution requires a selected ModelArk route for ${modelName}`);
+      }
 
       const sources = await ctx.step(
         `${kind}-resolve-sources`,
@@ -48,12 +39,12 @@ function createModelArkVideoProvider(kind: ModelArkProviderKind): GenerationProv
         { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "10 minutes" },
         async () => {
           log.info("ModelArk video generate started", { ...ctx.tag, provider: kind, model: modelName });
-          const credentials = await credentialsForModelArk(ctx, kind, modelName);
+          const credentials = await credentialsForRoute(ctx, route);
           const result = await generateModelArkVideo(credentials.apiKey, {
             baseUrl: credentials.baseUrl ?? "https://ark.cn-beijing.volces.com/api/v3",
             prompt: params.prompt ?? "",
             modelName,
-            upstreamModel: upstreamModelFor(kind, modelName),
+            upstreamModel: route.upstreamModel,
             startFrameUrl: sources.startFrameUrl,
             endFrameUrl: sources.endFrameUrl,
             referenceImageUrls: sources.referenceImageUrls,

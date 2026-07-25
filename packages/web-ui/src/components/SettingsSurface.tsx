@@ -10,6 +10,7 @@ import {
   SignOut,
   CloudArrowUp,
   Microphone,
+  PaintBrush,
 } from '@phosphor-icons/react';
 import betterAuthClient from '@clash/web-ui/lib/betterAuthClient';
 import { getRuntimeConfig } from '@clash/web-ui/lib/runtimeConfig';
@@ -40,6 +41,7 @@ interface NavItem {
 }
 
 export const SETTINGS_NAV_ITEMS: NavItem[] = [
+  { id: 'appearance', label: 'Appearance', icon: PaintBrush },
   { id: 'agents', label: 'Agents', icon: Plug },
   { id: 'sync', label: 'Sync', icon: CloudArrowUp },
   { id: 'audio', label: 'Audio', icon: Microphone },
@@ -255,7 +257,7 @@ export function SettingsSurface({
                   id={item.id}
                   className={`relative flex h-8 w-full items-center gap-2 rounded-md border px-2 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
                     isActive
-                      ? 'border-brand/35 bg-brand-light text-brand shadow-sm dark:border-brand/30 dark:bg-brand/10 dark:text-brand-light'
+                      ? 'border-brand/35 bg-brand-light text-brand shadow-sm dark:border-brand/30 dark:bg-brand/10 dark:text-neutral-100'
                       : 'border-transparent text-stone-700 hover:bg-warm-surface/60 hover:text-stone-900 dark:text-stone-200'
                   }`}
                 >

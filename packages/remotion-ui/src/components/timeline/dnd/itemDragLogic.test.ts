@@ -116,6 +116,18 @@ describe('buildPreview — vertical routing (matches asset-panel mental model)',
     expect(r.previewTrackId).toBe('t2');
   });
 
+  it('routes through semantic variable-height track bands', () => {
+    const r = buildPreview(baseArgs({
+      itemTopY: 38,
+      itemHeightPx: 20,
+      trackHeights: [36, 72, 48],
+    }));
+
+    // center y = 48, after the 36px effect lane and inside the primary lane
+    expect(r.willCreateNewTrack).toBe(false);
+    expect(r.previewTrackId).toBe('t2');
+  });
+
   it('center past the bottom of all tracks → create new track at bottom', () => {
     const r = buildPreview(
       baseArgs({ itemTopY: TRACK_HEIGHT * 3 + 6, itemHeightPx: 60 }),

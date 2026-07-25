@@ -1,0 +1,16 @@
+{
+  "summary": "Serializable Action Specs and validated invocation contracts shared by UI, agents, local execution, and cloud execution.",
+  "context_hints": [
+    "Start here when adding or changing an action; UI components and endpoints are adapters, not the contract.",
+    "Invocation mode is derived from the originating surface: Canvas is explicit, Asset Preview is implicit.",
+    "Read docs/action-spec-system.md before introducing a new editor or generation flow."
+  ],
+  "subdirectories": {},
+  "key_files": {
+    "spec.ts": "Generic serializable ActionSpec and surface/mode schemas.",
+    "asset-edit.ts": "Built-in image/video edit specs, typed invocations, output resolution, and compatibility helpers.",
+    "asset-edit.test.ts": "Executable invariants for action discovery, representation, and output kinds."
+  },
+  "architecture_notes": "Specs contain data only. Executor functions belong to runtime adapters. Successful edit actions create immutable assets with actionInvocation metadata and edit-source lineage."
+}
+

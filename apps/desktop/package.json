@@ -8,17 +8,20 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsup",
-    "dev": "pnpm --filter @master-clash/local-api build && pnpm build && CLASH_WEB_URL=http://127.0.0.1:3001 electron .",
+    "dev": "tsx src/dev.ts",
     "pack:dir": "pnpm prepare:pack && electron-builder --dir --config electron-builder.yml",
     "pack:dmg": "pnpm prepare:pack && electron-builder --mac dmg --config electron-builder.yml --publish never",
     "prepare:harnesses": "node scripts/prepare-acp-harnesses.mjs",
-    "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build && pnpm prepare:harnesses && node scripts/prepare-clash-cli.mjs",
+    "prepare:remotion-bundle": "pnpm --filter @master-clash/render-server build && node ../render-server/dist/prebundle.js",
+    "prepare:pack": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build && pnpm prepare:remotion-bundle && pnpm prepare:harnesses && node scripts/prepare-clash-cli.mjs",
     "start": "pnpm --filter @master-clash/local-api build && pnpm build && electron .",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:agent:real-codex": "pnpm prepare:harnesses && pnpm --filter @clash-space/bridge build && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-acp-backend.mjs",
     "test:e2e": "node e2e/smoke.mjs",
     "test:e2e:agent-browser": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/agent-browser-smoke.mjs",
+    "test:e2e:timeline-keyframes": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && pnpm --filter @master-clash/local-api build && pnpm build && node e2e/timeline-keyframes-agent-browser.mjs",
+    "test:e2e:director-stage-webgl": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/director-stage-webgl-smoke.mjs",
     "test:e2e:agent-first-local-v1": "node e2e/agent-first-local-v1-gate.mjs",
     "test:e2e:asset-receipts": "tsx e2e/agent-first-asset-receipt-smoke.mjs",
     "test:e2e:agent-first-cas": "node e2e/agent-first-cas-smoke.mjs",
@@ -30,6 +33,7 @@
     "test:startup:api": "pnpm --filter @master-clash/local-api test:e2e",
     "test:startup:queue": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/queue-agent-browser-smoke.mjs",
     "test:startup:providers": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/provider-gui-smoke.mjs",
+    "test:startup:harness-update-gui": "pnpm --filter @master-clash/web build && pnpm --filter @master-clash/local-api build && pnpm build && CLASH_E2E_STATIC_WEB=1 node e2e/harness-update-agent-browser.mjs",
     "test:startup:real-codex": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && pnpm --filter @clash-space/bridge build && pnpm --filter @master-clash/local-api build && pnpm build && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-agent-browser.mjs",
     "test:startup:real-codex-resume": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && pnpm --filter @clash-space/bridge build && pnpm --filter @master-clash/local-api build && pnpm build && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-resume-agent-browser.mjs",
     "test:startup:static": "node scripts/prepare-clash-cli.mjs && pnpm prepare:harnesses && node e2e/startup-static.mjs",
@@ -37,6 +41,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@remotion/bundler": "4.0.370",
+    "@remotion/renderer": "4.0.370",
     "@clash-space/cli": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@master-clash/local-api": "workspace:*"
@@ -48,6 +54,7 @@
     "electron": "^42.3.2",
     "electron-builder": "^26.8.1",
     "tsup": "^8.5.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.4"
   }

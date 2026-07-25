@@ -1,7 +1,7 @@
 {
-  "summary": "Application-specific components, Context Providers, and Complex Views used within the Next.js App Router.",
+  "summary": "Application shell components, Context Providers, and React Flow views used within the Next.js App Router.",
   "context_hints": [
-    "Look here for the main 'Editor' logic (ProjectEditor.tsx)",
+    "ProjectEditor.tsx composes the workspace shell; feature business logic belongs under src/features",
     "Contains all Global State Providers (Contexts)",
     "Contains the 'Nodes' implementation for React Flow"
   ],
@@ -12,8 +12,11 @@
   "key_files": {
     "ProjectEditor.tsx": "The primary workspace component integrating React Flow and the Toolbar.",
     "ChatbotCopilot.tsx": "The AI chat interface component.",
+    "copilot/AgentAnnotationBlock.tsx": "Special composer block for editable agent-addressable review notes from Canvas, Timeline, and Director Stage.",
+    "copilot/AgentAnnotationContextMenu.tsx": "Shared context-menu action that sends an addressable workspace object into the composer.",
+    "copilot/AgentSelectionAnnotationOverlay.tsx": "Captures native text selections inside creative surfaces, renders numbered anchored highlights, and queues an optional comment through the shared agent annotation contract.",
     "LoroSyncContext.tsx": "React Context provider for the Loro CRDT sync engine.",
     "VideoEditorContext.tsx": "State management for the video editing timeline."
   },
-  "architecture_notes": "Components here are heavy on business logic and state. Pure UI components should go in apps/web/components."
+  "architecture_notes": "Keep ProjectEditor focused on workspace composition. Asset Preview/Edit, thumbnails, media resolution, and action clients belong in src/features/assets; shared action semantics belong in @clash/shared-types/actions."
 }

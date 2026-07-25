@@ -32,7 +32,7 @@ interface CloneDialogState {
 const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
     const [cloneDialog, setCloneDialog] = useState<CloneDialogState | null>(null);
     const [hasUpstreamTrajectory, setHasUpstreamTrajectory] = useState(false);
-    const { projectId } = useProject();
+    const { enabledModelCatalog, projectId } = useProject();
     const { addEdges, getNodes, getEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
 
@@ -49,8 +49,8 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
     // Filter options by this source's modality — e.g. video source shouldn't
     // offer Image Gen because no mainstream image model accepts video refs.
     const visibleOptions = useMemo(() => {
-        return PIPELINE_MENU_OPTIONS.filter((opt) => opt.isCompatibleWithSource(sourceType));
-    }, [sourceType]);
+        return PIPELINE_MENU_OPTIONS.filter((opt) => opt.isCompatibleWithSource(sourceType, enabledModelCatalog));
+    }, [enabledModelCatalog, sourceType]);
 
     const refreshHasUpstreamTrajectory = useCallback(() => {
         const nodes = getNodes();
@@ -69,7 +69,7 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
                 {
                     id: newNodeId,
                     type: option.nodeType,
-                    data: option.getNodeData(sourceType),
+                    data: option.getNodeData(sourceType, enabledModelCatalog),
                 },
                 nodeId
             );
@@ -97,7 +97,7 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
                 });
             }
         },
-        [nodeId, projectId, addNodeWithAutoLayout, addEdges, loroSync, sourceType]
+        [nodeId, projectId, addNodeWithAutoLayout, addEdges, loroSync, sourceType, enabledModelCatalog]
     );
 
     const handleCloneClick = useCallback(
@@ -153,6 +153,7 @@ const SourceHandleMenu = ({ nodeId, sourceType }: SourceHandleMenuProps) => {
                 contentClassName="min-w-[180px]"
                 handleClassName="!border-warm-surface"
                 onOpenChange={handleOpenChange}
+                ownerId={`${nodeId}:source-handle`}
             >
                 <NodeHandleDropdownMenuHeader>Add next</NodeHandleDropdownMenuHeader>
 

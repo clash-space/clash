@@ -34,6 +34,11 @@ describe("desktop windowing", () => {
     expect(second.y).toBe((first.y ?? 0) + 28);
   });
 
+  it("uses the operating-system theme for the hidden window background", () => {
+    expect(resolveDesktopWindowOptions(0, false).backgroundColor).toBe("#f7f6f2");
+    expect(resolveDesktopWindowOptions(0, true).backgroundColor).toBe("#151515");
+  });
+
   it("tracks registered windows and removes them when closed", () => {
     const registry = createWindowRegistry();
     const listeners = new Map<string, () => void>();

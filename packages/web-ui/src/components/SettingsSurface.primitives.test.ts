@@ -30,4 +30,14 @@ describe("SettingsSurface primitives", () => {
     expect(source).toMatch(/<Button[\s\S]*onClick=\{handleSignOut\}[\s\S]*Sign out/);
     expect(source).not.toMatch(/<button[\s\S]*onClick=\{handleSignOut\}/);
   });
+
+  it("keeps the active section label readable on a tinted dark surface", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("dark:text-neutral-100");
+    expect(source).not.toContain("dark:text-brand-light");
+  });
 });

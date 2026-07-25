@@ -100,7 +100,8 @@ function detectDisfluencies(
 ): DisfluencyRange[] {
   const out: DisfluencyRange[] = [];
   let previousWord: TranscriptWord | null = null;
-  for (const word of words) {
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+    const word = words[wordIndex];
     if (previousWord) {
       const gap = word.startFrame - previousWord.endFrame;
       if (gap >= options.minSilenceFrames) {
@@ -141,13 +142,17 @@ function detectDisfluencies(
         ? "tone-particle"
         : null;
     if (type) {
+      const trailingToken = words[wordIndex + 1];
+      const endFrame = trailingToken && isPunctuationToken(trailingToken.text)
+        ? trailingToken.endFrame
+        : word.endFrame;
       out.push({
         id: `${type}-${word.id}`,
         type,
         wordId: word.id,
         text: word.text,
         startFrame: word.startFrame,
-        endFrame: word.endFrame,
+        endFrame,
         requiresReview: type === "tone-particle",
         confidence: type === "filler" ? 0.92 : 0.72,
         detectionSource: "configured-token",
@@ -239,12 +244,16 @@ function buildCaptionCues(
   disfluencies: DisfluencyRange[],
 ) {
   const deletedWordIds = new Set(disfluencies.map((item) => item.wordId).filter((id): id is string => Boolean(id)));
+  const captionOmittedWordIds = new Set([
+    ...deletedWordIds,
+    ...captionPunctuationCleanupWordIds(words, deletedWordIds),
+  ]);
   return cuts
     .filter((cut) => cut.action === "keep")
     .map((cut, index) => {
       const cueWords = words.filter(
         (word) =>
-          !deletedWordIds.has(word.id) &&
+          !captionOmittedWordIds.has(word.id) &&
           word.startFrame >= cut.sourceStartFrame &&
           word.endFrame <= cut.sourceEndFrame,
       );
@@ -260,6 +269,37 @@ function buildCaptionCues(
       };
     })
     .filter((cue): cue is NonNullable<typeof cue> => cue !== null && cue.durationInFrames > 0 && cue.text.length > 0);
+}
+
+function captionPunctuationCleanupWordIds(
+  words: TranscriptWord[],
+  deletedWordIds: Set<string>,
+): Set<string> {
+  const omitted = new Set<string>();
+  words.forEach((word, index) => {
+    if (!deletedWordIds.has(word.id)) return;
+    let previousIndex = index - 1;
+    while (previousIndex >= 0 && deletedWordIds.has(words[previousIndex].id)) previousIndex -= 1;
+    let nextIndex = index + 1;
+    while (nextIndex < words.length && deletedWordIds.has(words[nextIndex].id)) nextIndex += 1;
+    const previous = words[previousIndex];
+    const next = words[nextIndex];
+    if (!previous || !next || !isPunctuationToken(previous.text) || !isPunctuationToken(next.text)) return;
+    if (isTerminalPunctuation(next.text) && !isTerminalPunctuation(previous.text)) {
+      omitted.add(previous.id);
+      return;
+    }
+    omitted.add(next.id);
+  });
+  return omitted;
+}
+
+function isPunctuationToken(value: string): boolean {
+  return /^[，。！？、,.!?；;：:…]+$/u.test(value.trim());
+}
+
+function isTerminalPunctuation(value: string): boolean {
+  return /^[。！？.!?…]+$/u.test(value.trim());
 }
 
 function joinTranscriptWords(tokens: string[]): string {

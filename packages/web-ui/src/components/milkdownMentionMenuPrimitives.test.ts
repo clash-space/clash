@@ -6,7 +6,7 @@ const readSource = (path: string) =>
   readFileSync(join(process.cwd(), path), "utf8");
 
 describe("Milkdown mention menu primitives", () => {
-  it("uses the shared popover primitive instead of hand-rolled portal positioning", () => {
+  it("uses the shared popover primitive with a body-level anchor for transformed chat panels", () => {
     const source = readSource("packages/web-ui/src/components/MilkdownEditor.tsx");
     const popover = readSource("packages/web-ui/src/components/ui/popover.tsx");
     const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");
@@ -31,7 +31,8 @@ describe("Milkdown mention menu primitives", () => {
     expect(source).not.toContain("document.removeEventListener('keydown'");
     expect(source).not.toContain("selectedIndex");
     expect(source).not.toContain("setSelectedIndex");
-    expect(source).not.toContain("createPortal");
+    expect(source).toContain("createPortal");
+    expect(source).toContain("document.body");
     expect(source).not.toContain("getBoundingClientRect");
     expect(source).not.toContain("querySelector('.ProseMirror')");
     expect(source).not.toContain("<button\n            key={node.id}");

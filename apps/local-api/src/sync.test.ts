@@ -345,6 +345,101 @@ describe("LocalLoroRoom", () => {
     expect(peerUpdates.length).toBeGreaterThan(0);
   });
 
+  it("renders pending Timeline video nodes through the local backend renderer", async () => {
+    const importedAt = Math.floor(Date.now() / 1000);
+    await createLocalMetadataStore(dataDir).upsertAsset({
+      id: "music-asset-1",
+      userId: "local-user",
+      kind: "audio",
+      srcR2Key: "uploads/music.wav",
+      coverR2Key: null,
+      metadata: { contentType: "audio/wav", durationMs: 2000 },
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      signedUrl: "http://127.0.0.1:49431/assets/uploads/music.wav",
+      signedUrlExp: importedAt + 3600,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+      projectId: "project/local-render",
+    }, {
+      assetId: "music-asset-1",
+      projectId: "project/local-render",
+      importedAt,
+    });
+    const renderTimeline = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      contentType: "video/mp4",
+      width: 1920,
+      height: 1080,
+      durationMs: 2000,
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/local-render",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        mediaBaseUrl: "http://127.0.0.1:49321",
+        timelineRenderer: { render: renderTimeline },
+      } as any),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("render-node-1", {
+      canvasId: "main",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actorType: "user",
+        actorUserId: "local-user",
+        timelineDsl: {
+          compositionWidth: 1920,
+          compositionHeight: 1080,
+          fps: 30,
+          durationInFrames: 60,
+          tracks: [{
+            id: "music",
+            role: "music",
+            items: [{
+              id: "music-1",
+              type: "audio",
+              from: 0,
+              durationInFrames: 60,
+              assetId: "music-asset-1",
+              audioDucking: { amountDb: -18, attackFrames: 6, releaseFrames: 12 },
+            }],
+          }],
+        },
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(renderTimeline).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project/local-render",
+      taskId: "local-render-render-node-1",
+      timelineDsl: expect.objectContaining({
+        durationInFrames: 60,
+        tracks: [expect.objectContaining({
+          items: [expect.objectContaining({
+            src: "http://127.0.0.1:49321/assets/uploads/music.wav",
+            audioDucking: { amountDb: -18, attackFrames: 6, releaseFrames: 12 },
+          })],
+        })],
+      }),
+    }));
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    expect(finalDoc.getMap("nodes").get("render-node-1")).toMatchObject({
+      data: {
+        status: "completed",
+        assetId: "local-asset-local-render-render-node-1",
+      },
+    });
+  });
+
   it("rejects generated asset writes when the generated storage parent escapes through a symlink", async () => {
     const outsideDir = await mkdtemp(join(tmpdir(), "clash-local-sync-outside-generated-"));
     try {

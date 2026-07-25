@@ -2,6 +2,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import { LoroDoc } from "loro-crdt";
 import {
   ACTION_PROVIDER_PRESETS,
+  buildGenerationPayload,
   buildPendingAssetNode,
   CustomActionDefinitionSchema,
   CustomActionParameterSchema,
@@ -13,6 +14,7 @@ import {
   getCustomActionId,
 } from "./canvas";
 import { Canvas } from "./canvas-ops";
+import { MODEL_CARDS } from "./models";
 
 describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
@@ -22,6 +24,318 @@ describe("ACTION_TYPE", () => {
   it("has built-in audio and text generation types", () => {
     expect(ACTION_TYPE.AudioGen).toBe("audio-gen");
     expect(ACTION_TYPE.TextGen).toBe("text-gen");
+  });
+});
+
+describe("buildGenerationPayload", () => {
+  it("rejects attached modalities before partitioning unsupported refs away", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "gemini-3.1-flash-tts");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Read this line",
+      refNodes: [{ type: "image", data: { assetId: "source-image" } }],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "audio-gen",
+    });
+
+    expect(result.validationError).toBe("Selected model does not accept reference images.");
+  });
+
+  it("passes an exported Director Stage video to a downstream reference-video model", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "seedance-2-ref");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Keep the blocking and camera language from the reference",
+      refNodes: [{
+        type: "director-stage",
+        data: {
+          stageId: "stage-1",
+          outputVideoAssetId: "director-reference-video-1",
+        },
+      }],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "video-gen",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.partition.videoAssetIds).toEqual(["director-reference-video-1"]);
+    expect(result.pendingInput.referenceVideoAssetIds).toEqual([
+      "director-reference-video-1",
+    ]);
+  });
+
+  it("blocks generation until the connected Director Stage has exported a reference video", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "seedance-2-ref");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Continue this shot",
+      refNodes: [{
+        type: "director-stage",
+        data: { stageId: "stage-without-export" },
+      }],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "video-gen",
+    });
+
+    expect(result.validationError).toBe(
+      "Director Stage has no reference video yet. Export the shot before running generation.",
+    );
+    expect(result.pendingInput.referenceVideoAssetIds).toBeUndefined();
+  });
+
+  it("prefers the Director reference packet video for a video-reference model", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "seedance-2-ref");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Preserve the staged performance and camera plan",
+      refNodes: [{
+        type: "director-stage",
+        data: {
+          stageId: "stage-1",
+          directorReferencePacket: {
+            schemaVersion: 1,
+            stageId: "stage-1",
+            stageRevisionId: "stage-revision-1",
+            exportedAt: "2026-07-24T00:00:00.000Z",
+            aspectRatio: "16:9",
+            durationSeconds: 6,
+            fps: 30,
+            cameraIds: ["camera-a"],
+            referenceVideo: {
+              assetId: "director-reference-video-1",
+              mimeType: "video/webm",
+            },
+            referenceStills: [{
+              assetId: "director-reference-still-1",
+              cameraId: "camera-a",
+              shotId: "shot-a",
+              aspectRatio: "16:9",
+              stageRevisionId: "stage-revision-1",
+              timeSeconds: 0,
+            }],
+            shotSpec: { shots: [] },
+          },
+        },
+      }],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "video-gen",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.pendingInput.referenceVideoAssetIds).toEqual([
+      "director-reference-video-1",
+    ]);
+    expect(result.pendingInput.referenceImageAssetIds).toBeUndefined();
+  });
+
+  it("adds an exported Director shot plan to text-capable generation prompts", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "seedance-2-ref");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Keep the actors grounded and natural.",
+      refNodes: [{
+        type: "director-stage",
+        data: {
+          directorReferencePacket: {
+            schemaVersion: 1,
+            stageId: "stage-1",
+            stageRevisionId: "stage-revision-8",
+            exportedAt: "2026-07-24T00:00:00.000Z",
+            aspectRatio: "16:9",
+            durationSeconds: 6,
+            fps: 30,
+            cameraIds: ["camera-wide", "camera-close"],
+            referenceVideo: {
+              assetId: "director-reference-video-1",
+              mimeType: "video/webm",
+            },
+            referenceStills: [],
+            shotSpec: {
+              shots: [{
+                id: "shot-wide",
+                name: "Opening wide",
+                cameraId: "camera-wide",
+                startTime: 0,
+                durationSeconds: 3,
+                aspectRatio: "16:9",
+                transition: "cut",
+                cameraMove: { preset: "push-in", easing: "ease-in-out" },
+              }, {
+                id: "shot-close",
+                name: "Reaction close-up",
+                cameraId: "camera-close",
+                startTime: 3,
+                durationSeconds: 3,
+                aspectRatio: "16:9",
+                transition: "dissolve",
+              }],
+            },
+          },
+        },
+      }],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "video-gen",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.cleanedPrompt).toContain("Keep the actors grounded and natural.");
+    expect(result.cleanedPrompt).toContain("Director shot plan");
+    expect(result.cleanedPrompt).toContain("Opening wide · 0.00–3.00s · Cut · push-in / ease-in-out");
+    expect(result.cleanedPrompt).toContain("Reaction close-up · 3.00–6.00s · Dissolve");
+    expect(result.cleanedPrompt).toContain("Stage revision: stage-revision-8");
+    expect(result.pendingInput.prompt).toBe(result.cleanedPrompt);
+  });
+
+  it("falls back to Director keyframe stills for an image-reference video model", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "seedance-2-startend");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Generate from the staged opening and closing frames",
+      refNodes: [{
+        type: "director-stage",
+        data: {
+          stageId: "stage-1",
+          directorReferencePacket: {
+            schemaVersion: 1,
+            stageId: "stage-1",
+            stageRevisionId: "stage-revision-1",
+            exportedAt: "2026-07-24T00:00:00.000Z",
+            aspectRatio: "16:9",
+            durationSeconds: 6,
+            fps: 30,
+            cameraIds: ["camera-a"],
+            referenceVideo: {
+              assetId: "director-reference-video-1",
+              mimeType: "video/webm",
+            },
+            referenceStills: [
+              {
+                assetId: "director-reference-still-start",
+                cameraId: "camera-a",
+                shotId: "shot-a",
+                aspectRatio: "16:9",
+                stageRevisionId: "stage-revision-1",
+                timeSeconds: 0,
+              },
+              {
+                assetId: "director-reference-still-middle",
+                cameraId: "camera-a",
+                shotId: "shot-middle",
+                aspectRatio: "16:9",
+                stageRevisionId: "stage-revision-1",
+                timeSeconds: 3,
+              },
+              {
+                assetId: "director-reference-still-end",
+                cameraId: "camera-a",
+                shotId: "shot-b",
+                aspectRatio: "16:9",
+                stageRevisionId: "stage-revision-1",
+                timeSeconds: 6,
+              },
+            ],
+            shotSpec: { shots: [] },
+          },
+        },
+      }],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "video-gen",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.pendingInput.referenceVideoAssetIds).toBeUndefined();
+    expect(result.pendingInput.referenceImageAssetIds).toEqual([
+      "director-reference-still-start",
+      "director-reference-still-end",
+    ]);
+  });
+});
+
+describe("Director reference packet node data", () => {
+  it("persists the structured packet instead of reducing lineage to a video id", () => {
+    expect("stageId" in NodeDataSchema.shape).toBe(true);
+    const data = NodeDataSchema.parse({
+      stageId: "stage-1",
+      directorReferencePacket: {
+        schemaVersion: 1,
+        stageId: "stage-1",
+        stageRevisionId: "stage-revision-1",
+        exportedAt: "2026-07-24T00:00:00.000Z",
+        aspectRatio: "16:9",
+        durationSeconds: 6,
+        fps: 30,
+        cameraIds: ["camera-a"],
+        referenceVideo: {
+          assetId: "director-reference-video-1",
+          mimeType: "video/webm",
+        },
+        referenceStills: [],
+        shotSpec: { shots: [] },
+      },
+    });
+
+    expect(data.directorReferencePacket).toMatchObject({
+      stageId: "stage-1",
+      stageRevisionId: "stage-revision-1",
+      referenceVideo: { assetId: "director-reference-video-1" },
+    });
+    expect(data.stageId).toBe("stage-1");
+  });
+
+  it("persists an ordered set of selected-Shot packets as first-class node data", () => {
+    expect("directorShotReferencePackets" in NodeDataSchema.shape).toBe(true);
+    expect("selectedDirectorShotIds" in NodeDataSchema.shape).toBe(true);
+    expect("sourceDirectorStageId" in NodeDataSchema.shape).toBe(true);
+    expect("sourceDirectorStageRevisionId" in NodeDataSchema.shape).toBe(true);
+    expect("sourceDirectorStageShotId" in NodeDataSchema.shape).toBe(true);
+    expect("directorShotGroupId" in NodeDataSchema.shape).toBe(true);
+    const packet = {
+      schemaVersion: 1,
+      stageId: "stage-1",
+      stageRevisionId: "stage-revision-1",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      aspectRatio: "16:9",
+      durationSeconds: 2,
+      fps: 30,
+      scope: { kind: "shot", selectedShotIds: ["shot-a"] },
+      cameraIds: ["camera-a"],
+      referenceVideo: {
+        assetId: "director-shot-video-a",
+        mimeType: "video/webm",
+      },
+      referenceStills: [],
+      shotSpec: { shots: [] },
+    };
+    const data = NodeDataSchema.parse({
+      stageId: "stage-1",
+      selectedDirectorShotIds: ["shot-a"],
+      directorShotReferencePackets: [packet],
+      sourceDirectorStageId: "stage-1",
+      sourceDirectorStageRevisionId: "stage-revision-1",
+      sourceDirectorStageShotId: "shot-a",
+      directorShotGroupId: "director-shot-group-1",
+    });
+
+    expect(data.selectedDirectorShotIds).toEqual(["shot-a"]);
+    expect(data.directorShotReferencePackets).toEqual([packet]);
+    expect(data).toMatchObject({
+      sourceDirectorStageId: "stage-1",
+      sourceDirectorStageRevisionId: "stage-revision-1",
+      sourceDirectorStageShotId: "shot-a",
+      directorShotGroupId: "director-shot-group-1",
+    });
   });
 });
 
@@ -236,6 +550,36 @@ describe("Canvas.execute", () => {
       actorUserId: "user-1",
       actorAgentId: "agent-1",
     });
+  });
+});
+
+describe("Canvas.moveNode", () => {
+  it("updates spatial position without changing node data", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+    canvas.insertNode(
+      "note-1",
+      RF_NODE_TYPE.Text,
+      { label: "Opening beat", content: "Rain on glass" },
+      null,
+      { x: 40, y: 60 },
+    );
+
+    expect(canvas.moveNode("note-1", { x: 320, y: 180 })).toBe(true);
+    expect(canvas.readNode("note-1")).toMatchObject({
+      position: { x: 320, y: 180 },
+      data: { label: "Opening beat", content: "Rain on glass" },
+    });
+  });
+
+  it("returns false when the target node is outside the selected canvas", () => {
+    const doc = new LoroDoc();
+    const main = new Canvas(doc, () => {}, "main");
+    const selects = new Canvas(doc, () => {}, "selects");
+    main.insertNode("main-note", RF_NODE_TYPE.Text, { label: "Main" }, null, { x: 0, y: 0 });
+
+    expect(selects.moveNode("main-note", { x: 10, y: 20 })).toBe(false);
+    expect(main.readNode("main-note")?.position).toEqual({ x: 0, y: 0 });
   });
 });
 

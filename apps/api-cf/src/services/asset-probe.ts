@@ -36,7 +36,7 @@ export interface ProbeOptions {
 
 export async function probeAsset(
   env: Env,
-  kind: "image" | "video" | "audio",
+  kind: "image" | "video" | "audio" | "model",
   srcR2Key: string,
   projectId: string,
   opts: ProbeOptions = {},

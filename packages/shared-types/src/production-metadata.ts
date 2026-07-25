@@ -119,6 +119,85 @@ export const LyricsAlignmentMetadataSchema = z.object({
   unmatchedRanges: z.array(LyricsUnmatchedRangeSchema).default([]),
 });
 
+export const AsrTimedWordSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  startMs: z.number().int().min(0),
+  endMs: z.number().int().min(0),
+  confidence: z.number().min(0).max(1).optional(),
+  speakerId: z.string().min(1).optional(),
+}).refine((word) => word.endMs > word.startMs, {
+  message: "ASR word endMs must be greater than startMs",
+  path: ["endMs"],
+});
+
+export const AsrTimedSegmentSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  startMs: z.number().int().min(0),
+  endMs: z.number().int().min(0),
+  wordIds: z.array(z.string().min(1)),
+  speakerId: z.string().min(1).optional(),
+}).refine((segment) => segment.endMs > segment.startMs, {
+  message: "ASR segment endMs must be greater than startMs",
+  path: ["endMs"],
+});
+
+export const AsrTimedTranscriptSchema = z.object({
+  schemaVersion: z.literal(1),
+  kind: z.literal("clash.asr.timed-transcript"),
+  timebase: z.literal("milliseconds"),
+  alignment: z.literal("word"),
+  text: z.string().min(1),
+  backendId: z.string().min(1),
+  modelId: z.string().min(1),
+  language: z.string().min(1).optional(),
+  durationMs: z.number().int().min(0),
+  words: z.array(AsrTimedWordSchema).min(1),
+  segments: z.array(AsrTimedSegmentSchema),
+}).superRefine((transcript, context) => {
+  const wordIds = new Set<string>();
+  let previousStartMs = -1;
+  let maxEndMs = 0;
+  transcript.words.forEach((word, index) => {
+    if (wordIds.has(word.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `duplicate ASR word id: ${word.id}`,
+        path: ["words", index, "id"],
+      });
+    }
+    wordIds.add(word.id);
+    if (word.startMs < previousStartMs) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ASR words must be ordered by startMs",
+        path: ["words", index, "startMs"],
+      });
+    }
+    previousStartMs = word.startMs;
+    maxEndMs = Math.max(maxEndMs, word.endMs);
+  });
+  if (transcript.durationMs < maxEndMs) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "ASR durationMs must cover every word",
+      path: ["durationMs"],
+    });
+  }
+  transcript.segments.forEach((segment, segmentIndex) => {
+    segment.wordIds.forEach((wordId, wordIndex) => {
+      if (!wordIds.has(wordId)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `ASR segment references unknown word id: ${wordId}`,
+          path: ["segments", segmentIndex, "wordIds", wordIndex],
+        });
+      }
+    });
+  });
+});
+
 export const TranscriptWordSchema = z.object({
   id: z.string().min(1),
   text: z.string(),
@@ -822,8 +901,32 @@ export type AudioStemType = z.infer<typeof AudioStemTypeSchema>;
 export type AudioStemAsset = z.infer<typeof AudioStemAssetSchema>;
 export type AudioStemSeparationMetadata = z.infer<typeof AudioStemSeparationMetadataSchema>;
 export type LyricsAlignmentMetadata = z.infer<typeof LyricsAlignmentMetadataSchema>;
+export type AsrTimedWord = z.infer<typeof AsrTimedWordSchema>;
+export type AsrTimedSegment = z.infer<typeof AsrTimedSegmentSchema>;
+export type AsrTimedTranscript = z.infer<typeof AsrTimedTranscriptSchema>;
 export type AsrTranscriptMetadata = z.infer<typeof AsrTranscriptMetadataSchema>;
 export type TalkingHeadMetadata = z.infer<typeof TalkingHeadMetadataSchema>;
+
+export function projectAsrTimedTranscriptWords(
+  input: AsrTimedTranscript,
+  fps: number,
+): z.infer<typeof TranscriptWordSchema>[] {
+  if (!Number.isFinite(fps) || fps <= 0) {
+    throw new Error("fps must be a positive number");
+  }
+  const transcript = AsrTimedTranscriptSchema.parse(input);
+  return transcript.words.map((word) => TranscriptWordSchema.parse({
+    id: word.id,
+    text: word.text,
+    startFrame: Math.floor((word.startMs / 1000) * fps),
+    endFrame: Math.max(
+      Math.floor((word.startMs / 1000) * fps) + 1,
+      Math.ceil((word.endMs / 1000) * fps),
+    ),
+    ...(word.confidence === undefined ? {} : { confidence: word.confidence }),
+    ...(word.speakerId === undefined ? {} : { speakerId: word.speakerId }),
+  }));
+}
 export type ReferenceVideoMetadata = z.infer<typeof ReferenceVideoMetadataSchema>;
 export type ReferenceDownloadSourceLedger = z.infer<typeof ReferenceDownloadSourceLedgerSchema>;
 export type ReferenceDownloadFile = z.infer<typeof ReferenceDownloadFileSchema>;
@@ -1055,7 +1158,9 @@ export function buildCaptionItemFromTalkingHeadMetadata(
   );
   return {
     id,
-    type: "caption" as const,
+    type: "text" as const,
+    text: cues.map((cue) => cue.text).join("\n"),
+    color: "#ffffff",
     from,
     durationInFrames,
     cues,
@@ -1105,7 +1210,9 @@ export function buildCaptionItemFromLyricsAlignmentMetadata(
   );
   return {
     id,
-    type: "caption" as const,
+    type: "text" as const,
+    text: cues.map((cue) => cue.text).join("\n"),
+    color: "#ffffff",
     from,
     durationInFrames,
     cues,

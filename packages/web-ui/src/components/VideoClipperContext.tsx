@@ -31,23 +31,25 @@ import { useOptionalLoroSyncContext } from './LoroSyncContext';
 import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { autoInsertNode } from '@clash/web-ui/lib/layout';
-import { applyVideoScreenshot } from '@clash/web-ui/lib/editPipeline';
+import { applyVideoCrop, applyVideoScreenshot, type EditApplyResult } from '../features/assets/action-client';
 import type { VideoClipParams } from '@clash/shared-types';
 import { Button } from './ui/button';
 import { Slider, SliderRange, SliderThumb, SliderTrack } from './ui/slider';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 
-interface OpenVideoClipperInput {
-    editorNodeId: string;
+export interface OpenVideoClipperInput {
+    editorNodeId?: string;
     projectId: string;
     sourceAssetId: string;
     sourceR2Key: string;
     /** Source video duration, used to bound the time slider. */
     durationSec: number;
     initialParams: VideoClipParams | undefined;
-    nodes: Node[];
-    edges: Edge[];
+    nodes?: Node[];
+    edges?: Edge[];
     parentId?: string;
+    onApplied?: (result: EditApplyResult) => void | Promise<void>;
+    origin?: 'canvas-node' | 'asset-preview';
 }
 
 interface VideoClipperContextType {
@@ -71,9 +73,13 @@ export function VideoClipperProvider({ children }: { children: ReactNode }) {
         setOpen(false);
         setInput(null);
     }, []);
+    const contextValue = useMemo(
+        () => ({ isOpen: open, openEditor, closeEditor }),
+        [closeEditor, open, openEditor],
+    );
 
     return (
-        <Ctx.Provider value={{ isOpen: open, openEditor, closeEditor }}>
+        <Ctx.Provider value={contextValue}>
             {children}
             {open && input && (
                 <EditorModalDialog
@@ -99,7 +105,7 @@ export function useVideoClipper() {
 
 const FILMSTRIP_FRAMES = 12;
 
-function VideoClipperPanel({
+export function VideoClipperPanel({
     input, loroSync, onClose,
 }: {
     input: OpenVideoClipperInput;
@@ -162,29 +168,35 @@ function VideoClipperPanel({
         setBusy(true);
         setError(null);
         try {
-            if (loroSync?.connected) {
+            if (loroSync?.connected && input.editorNodeId) {
                 loroSync.updateNode(input.editorNodeId, { data: { editParams: params } });
             }
-            if (params.mode === 'crop') {
-                throw new Error(
-                    'Video crop (time-range trimming) is not implemented yet. Use Screenshot mode for now.',
-                );
+            const result = params.mode === 'crop'
+                ? await applyVideoCrop({
+                    projectId: input.projectId,
+                    sourceAssetId: input.sourceAssetId,
+                    params,
+                    origin: input.origin,
+                })
+                : await applyVideoScreenshot({
+                    projectId: input.projectId,
+                    sourceAssetId: input.sourceAssetId,
+                    sourceR2Key: input.sourceR2Key,
+                    params,
+                    origin: input.origin,
+                });
+            if (input.editorNodeId && input.nodes && input.edges) {
+                await spawnCompletedImageDownstream({
+                    editorNodeId: input.editorNodeId,
+                    parentId: input.parentId,
+                    projectId: input.projectId,
+                    assetId: result.assetId,
+                    nodes: input.nodes,
+                    edges: input.edges,
+                    loroSync,
+                });
             }
-            const result = await applyVideoScreenshot({
-                projectId: input.projectId,
-                sourceAssetId: input.sourceAssetId,
-                sourceR2Key: input.sourceR2Key,
-                params,
-            });
-            await spawnCompletedImageDownstream({
-                editorNodeId: input.editorNodeId,
-                parentId: input.parentId,
-                projectId: input.projectId,
-                assetId: result.assetId,
-                nodes: input.nodes,
-                edges: input.edges,
-                loroSync,
-            });
+            await input.onApplied?.(result);
             onClose();
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
@@ -246,13 +258,13 @@ function VideoClipperPanel({
                         >
                             <ToggleGroupItem
                                 value="screenshot"
-                                className="min-h-0 flex-1 rounded-md border border-slate-300 bg-warm-surface px-2 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 data-[state=on]:border-slate-900 data-[state=on]:bg-slate-900 data-[state=on]:text-white data-[state=on]:hover:bg-slate-900 dark:text-slate-200"
+                                className="min-h-0 flex-1 rounded-md border border-warm-border bg-warm-surface px-2 py-1.5 text-xs font-medium text-content-secondary hover:bg-warm-muted hover:text-content-primary data-[state=on]:border-brand/40 data-[state=on]:bg-brand-light data-[state=on]:text-brand data-[state=on]:hover:bg-brand-light/80"
                             >
                                 Screenshot
                             </ToggleGroupItem>
                             <ToggleGroupItem
                                 value="crop"
-                                className="min-h-0 flex-1 rounded-md border border-slate-300 bg-warm-surface px-2 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 data-[state=on]:border-slate-900 data-[state=on]:bg-slate-900 data-[state=on]:text-white data-[state=on]:hover:bg-slate-900 dark:text-slate-200"
+                                className="min-h-0 flex-1 rounded-md border border-warm-border bg-warm-surface px-2 py-1.5 text-xs font-medium text-content-secondary hover:bg-warm-muted hover:text-content-primary data-[state=on]:border-brand/40 data-[state=on]:bg-brand-light data-[state=on]:text-brand data-[state=on]:hover:bg-brand-light/80"
                             >
                                 Crop
                             </ToggleGroupItem>
@@ -282,9 +294,6 @@ function VideoClipperPanel({
                             </div>
                             <div className="text-[11px] text-slate-700 dark:text-slate-300 mt-2 tabular-nums">
                                 Length {formatTime(Math.max(0, endSec - startSec))}
-                            </div>
-                            <div className="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
-                                Crop mode requires server-side trimming (not yet wired). Apply will fail.
                             </div>
                         </section>
                     )}

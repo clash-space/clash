@@ -33,6 +33,8 @@ const ignoredDirectories = new Set([
   "node_modules",
   "out",
   "release",
+  // Installable plugins commit their built MCP/App artifacts for Codex to launch.
+  "runtime",
 ]);
 
 function collectJavaScriptSourceFiles(directory: string): string[] {

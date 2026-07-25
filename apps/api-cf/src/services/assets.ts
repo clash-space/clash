@@ -30,13 +30,18 @@ export interface AssetMetadata {
   durationMs?: number;
   bytes?: number;
   waveform?: number[];
+  originalName?: string;
+  editParams?: unknown;
+  editOrigin?: "canvas-node" | "asset-preview";
+  /** Validated invocation that produced this immutable asset revision. */
+  actionInvocation?: unknown;
 }
 
 export interface CreateAssetParams {
   userId: string;
   kind: AssetKind;
   srcR2Key: string;
-  projectId: string;             // creates the initial asset_refs row
+  projectId?: string;            // creates the initial asset_refs row when project-scoped
   coverR2Key?: string;
   metadata?: AssetMetadata;
   sourceModel?: string;
@@ -146,8 +151,47 @@ export async function createAsset(
     )
     .run();
 
-  await addAssetRef(db, id, params.projectId);
+  if (params.projectId) await addAssetRef(db, id, params.projectId);
   return { id };
+}
+
+/** List assets explicitly saved in a user's reusable global library. */
+export async function getLibraryAssets(
+  db: D1Database,
+  userId: string,
+): Promise<AssetRecord[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT assets.id, assets.user_id as userId, assets.kind,
+              assets.src_r2_key as srcR2Key, assets.cover_r2_key as coverR2Key,
+              assets.metadata, assets.source_model as sourceModel,
+              assets.source_prompt as sourcePrompt, assets.source_task_id as sourceTaskId,
+              assets.sources, assets.created_at as createdAt, assets.updated_at as updatedAt
+         FROM assets
+         JOIN asset_library_refs ON asset_library_refs.asset_id = assets.id
+        WHERE asset_library_refs.user_id = ? AND assets.user_id = ?
+        ORDER BY asset_library_refs.added_at DESC, assets.created_at DESC`,
+    )
+    .bind(userId, userId)
+    .all<AssetRow>();
+  return (results ?? [])
+    .map((row) => hydrate(row))
+    .filter((asset): asset is AssetRecord => asset !== null);
+}
+
+/** Save an existing owned asset in the reusable global library. */
+export async function addAssetToLibrary(
+  db: D1Database,
+  assetId: string,
+  userId: string,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO asset_library_refs (asset_id, user_id, added_at) VALUES (?, ?, ?)`,
+    )
+    .bind(assetId, userId, now)
+    .run();
 }
 
 /** Insert an asset_refs row. No-op if the (asset_id, project_id) pair already exists. */

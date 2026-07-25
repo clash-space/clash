@@ -26,7 +26,16 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ContentBlock } from "@agentclientprotocol/sdk";
+import type {
+  ContentBlock,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+} from "@agentclientprotocol/sdk";
+import {
+  initialSessionLifecycle,
+  reduceSessionLifecycle,
+  type SessionLifecycle,
+} from "@openma/common/session-kernel";
 import { AcpRuntimeImpl } from "../_acp-runtime/index.js";
 import { NodeSpawner } from "../_acp-runtime/spawners/node.js";
 import { detect } from "../_acp-runtime/registry.js";
@@ -106,6 +115,18 @@ export function applyPermissionModeToAgentSpec(
     CLASH_PERMISSION_MODE: permissionMode,
   };
   return { ...spec, env };
+}
+
+export function selectAcpPermissionOutcome(
+  params: RequestPermissionRequest,
+): RequestPermissionResponse {
+  const option = params.options.find((candidate) => candidate.kind === "allow_always")
+    ?? params.options.find((candidate) => candidate.kind === "allow_once")
+    ?? params.options.find((candidate) => /allow|approve|yes|continue/i.test(candidate.name ?? ""))
+    ?? params.options.find((candidate) => !/deny|cancel|reject|no/i.test(candidate.name ?? ""));
+  return option?.optionId
+    ? { outcome: { outcome: "selected", optionId: option.optionId } }
+    : { outcome: { outcome: "cancelled" } };
 }
 
 async function readProjectAgentContract(cwd: string): Promise<ProjectAgentContract> {
@@ -320,6 +341,11 @@ interface ActiveSession {
   promptContext: ClashPromptContext;
   /** turnId → abort controller for cancel. */
   turns: Map<string, AbortController>;
+  /** ACP prompt turns are request/response transactions and must not overlap
+   * within one session. */
+  promptQueue: Promise<void>;
+  /** Disposal wins over every late prompt/start continuation. */
+  disposed: boolean;
 }
 
 export interface SessionManagerEnv extends Record<string, string | undefined> {
@@ -334,6 +360,7 @@ export class SessionManager {
   #spawner = new NodeSpawner();
   #runtime = new AcpRuntimeImpl(this.#spawner);
   #sessions = new Map<string, ActiveSession>();
+  #lifecycles = new Map<string, SessionLifecycle>();
   #activeTurnBySession = new Map<string, string>();
   #lastDiagnosticBySession = new Map<string, string>();
   /** session_id → Promise that resolves once start() has populated #sessions
@@ -343,6 +370,7 @@ export class SessionManager {
    *  take 10–15s on a fresh cwd); without this queue, prompt() looks up
    *  the session, finds nothing, and silently aborts the turn. */
   #starting = new Map<string, Promise<void>>();
+  #cancelledStarts = new Set<string>();
   #env: SessionManagerEnv = {};
 
   constructor(send: Sender) {
@@ -364,46 +392,70 @@ export class SessionManager {
     return this.#sessions.has(session_id);
   }
 
-  /** Re-announce alive sessions to the server (used after WS reconnect). */
-  announceAll(): void {
-    for (const [session_id] of this.#sessions) {
-      // We don't store acp_session_id locally — the server already has it
-      // in runtime_session.acp_session_id from the original ready event.
-      // Send a generic ack so the server can update its session_state cache.
-      const session = this.#sessions.get(session_id)?.acp;
+  #transition(
+    sessionId: string,
+    event: Parameters<typeof reduceSessionLifecycle>[1],
+  ): void {
+    const current = this.#lifecycles.get(sessionId) ?? initialSessionLifecycle(sessionId);
+    this.#lifecycles.set(sessionId, reduceSessionLifecycle(current, event));
+  }
+
+  #sendReady(sessionId: string, session: ActiveSession, modes = session.acp.modes): void {
+    this.#transition(sessionId, {
+      type: "session.ready",
+      acpSessionId: session.acp.acpSessionId,
+    });
+    this.#send({
+      type: "session.ready",
+      session_id: sessionId,
+      acp_session_id: session.acp.acpSessionId,
+      config_options: [...session.acp.configOptions],
+      ...(modes ? { modes } : {}),
+      ...((session.acp.loadedReplayEvents?.length ?? 0) > 0
+        ? { replay_events: [...session.acp.loadedReplayEvents!] }
+        : {}),
+    });
+  }
+
+  #flushPendingSessionState(sessionId: string, session: ActiveSession): void {
+    if (session.disposed) return;
+    for (const event of session.acp.drainPendingEvents()) {
       this.#send({
-        type: "session.ready",
-        session_id,
-        acp_session_id: "",
-        ...(session?.configOptions ? { config_options: session.configOptions } : {}),
-        ...(session?.modes ? { modes: session.modes } : {}),
+        type: "session.event",
+        session_id: sessionId,
+        turn_id: "",
+        event,
       });
     }
   }
 
+  /** Re-announce alive sessions to the server (used after WS reconnect). */
+  announceAll(): void {
+    for (const [sessionId, session] of this.#sessions) {
+      this.#sendReady(sessionId, session);
+      this.#flushPendingSessionState(sessionId, session);
+    }
+  }
+
   async start(p: SessionStartParams): Promise<void> {
-    if (this.#sessions.has(p.session_id)) {
-      this.#send({
-        type: "session.error",
-        session_id: p.session_id,
-        message: "session already started",
-      });
+    const existing = this.#sessions.get(p.session_id);
+    if (existing) {
+      this.#sendReady(p.session_id, existing);
       return;
     }
-    // Track in-flight start so prompt() can await it (prompts often arrive
-    // before newSession finishes).
-    let resolveStart!: () => void;
-    let rejectStart!: (e: unknown) => void;
-    const startPromise = new Promise<void>((res, rej) => { resolveStart = res; rejectStart = rej; });
+    const inFlight = this.#starting.get(p.session_id);
+    if (inFlight) return inFlight;
+
+    this.#transition(p.session_id, { type: "start.requested" });
+    const startPromise = this.#startInner(p);
     this.#starting.set(p.session_id, startPromise);
     try {
-      await this.#startInner(p);
-      resolveStart();
-    } catch (e) {
-      rejectStart(e);
-      throw e;
+      await startPromise;
     } finally {
-      this.#starting.delete(p.session_id);
+      if (this.#starting.get(p.session_id) === startPromise) {
+        this.#starting.delete(p.session_id);
+        this.#cancelledStarts.delete(p.session_id);
+      }
     }
   }
 
@@ -450,7 +502,11 @@ export class SessionManager {
       // Without these the bundled clash plugin's SessionStart hook
       // (`clash auth status`) prompts the user to log in, even though
       // the daemon itself is already authenticated.
-      const spawnEnv: Record<string, string> = { ...(agent.spec.env ?? {}) };
+      const spawnEnv: Record<string, string> = Object.fromEntries(
+        Object.entries(agent.spec.env ?? {}).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      );
       for (const [key, value] of Object.entries(this.#env)) {
         if (value) spawnEnv[key] = value;
       }
@@ -469,35 +525,57 @@ export class SessionManager {
           onDiagnosticLine: (line) => this.#handleAgentDiagnostic(p.session_id, line),
         },
         resumeAcpSessionId: resumeId,
+        clientCapabilities: {
+          auth: { terminal: true },
+          _meta: {
+            "terminal-auth": true,
+            terminal_output: true,
+          },
+        },
+        clientCallbacks: {
+          requestPermission: async (params) => selectAcpPermissionOutcome(params),
+        },
+        emitPermissionEvents: true,
       });
+      if (this.#cancelledStarts.has(p.session_id)) {
+        await session.dispose().catch(() => undefined);
+        return;
+      }
       let modes = session.modes;
       if (p.permission_mode && modes?.availableModes.some((mode) => mode.id === p.permission_mode)) {
         modes = await session.setMode(p.permission_mode);
       }
+      if (this.#cancelledStarts.has(p.session_id)) {
+        await session.dispose().catch(() => undefined);
+        return;
+      }
       process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
-      this.#sessions.set(p.session_id, {
+      const activeSession: ActiveSession = {
         acp: session,
         promptContext: { cwd: sessionCwd, env: runtimeEnv },
         turns: new Map(),
-      });
+        promptQueue: Promise.resolve(),
+        disposed: false,
+      };
+      this.#sessions.set(p.session_id, activeSession);
       // session.acpSessionId is the id the agent issued via session/new
       // (or echoed back via session/load). Server persists it to
       // runtime_session.acp_session_id so a future resume can re-attach.
-      this.#send({
-        type: "session.ready",
-        session_id: p.session_id,
-        acp_session_id: session.acpSessionId,
-        config_options: session.configOptions,
-        ...(modes ? { modes } : {}),
-        ...(session.loadedReplayEvents.length > 0
-          ? { replay_events: session.loadedReplayEvents }
-          : {}),
-      });
+      this.#sendReady(p.session_id, activeSession, modes);
+      this.#flushPendingSessionState(p.session_id, activeSession);
+      setTimeout(() => {
+        if (this.#sessions.get(p.session_id) === activeSession) {
+          this.#flushPendingSessionState(p.session_id, activeSession);
+        }
+      }, 50);
     } catch (e) {
+      if (this.#cancelledStarts.has(p.session_id)) return;
+      const message = e instanceof Error ? e.message : String(e);
+      this.#transition(p.session_id, { type: "session.error", message });
       this.#send({
         type: "session.error",
         session_id: p.session_id,
-        message: e instanceof Error ? e.message : String(e),
+        message,
       });
     }
   }
@@ -523,7 +601,17 @@ export class SessionManager {
       });
       return;
     }
+    const run = async () => {
+      if (sess.disposed) return;
+      await this.#runPrompt(sess, p);
+    };
+    sess.promptQueue = sess.promptQueue.then(run, run);
+    return sess.promptQueue;
+  }
+
+  async #runPrompt(sess: ActiveSession, p: SessionPromptParams): Promise<void> {
     const ctrl = new AbortController();
+    this.#transition(p.session_id, { type: "prompt.requested", turnId: p.turn_id });
     sess.turns.set(p.turn_id, ctrl);
     this.#activeTurnBySession.set(p.session_id, p.turn_id);
     this.#lastDiagnosticBySession.delete(p.session_id);
@@ -532,7 +620,7 @@ export class SessionManager {
         embeddedContext: sess.acp.promptCapabilities?.embeddedContext === true,
       });
       for await (const ev of sess.acp.prompt(promptContent, { abortSignal: ctrl.signal })) {
-        if (ctrl.signal.aborted) break;
+        if (ctrl.signal.aborted || sess.disposed) break;
         // Filter out AcpSession's iterator-end sentinels — they're an
         // internal "the SDK promise resolved" marker, not real ACP
         // notifications. The outer session.complete / session.error
@@ -565,13 +653,18 @@ export class SessionManager {
           event: ev,
         });
       }
+      if (sess.disposed) return;
+      this.#transition(p.session_id, { type: "session.complete", turnId: p.turn_id });
       this.#send({ type: "session.complete", session_id: p.session_id, turn_id: p.turn_id });
     } catch (e) {
+      if (sess.disposed) return;
+      const message = e instanceof Error ? e.message : String(e);
+      this.#transition(p.session_id, { type: "session.error", turnId: p.turn_id, message });
       this.#send({
         type: "session.error",
         session_id: p.session_id,
         turn_id: p.turn_id,
-        message: e instanceof Error ? e.message : String(e),
+        message,
       });
     } finally {
       sess.turns.delete(p.turn_id);
@@ -600,7 +693,10 @@ export class SessionManager {
   cancel(session_id: string, turn_id: string): void {
     const sess = this.#sessions.get(session_id);
     if (!sess) return;
-    sess.turns.get(turn_id)?.abort();
+    const turn = sess.turns.get(turn_id);
+    if (!turn) return;
+    turn.abort();
+    this.#transition(session_id, { type: "prompt.cancelled", turnId: turn_id });
   }
 
   async setConfigOption(session_id: string, config_id: string, value: string | boolean): Promise<void> {
@@ -622,7 +718,7 @@ export class SessionManager {
       this.#send({
         type: "session.config_options",
         session_id,
-        config_options: configOptions,
+        config_options: [...configOptions],
       });
     } catch (e) {
       this.#send({
@@ -666,17 +762,33 @@ export class SessionManager {
   }
 
   async dispose(session_id: string): Promise<void> {
-    const sess = this.#sessions.get(session_id);
-    if (!sess) return;
-    for (const ctrl of sess.turns.values()) ctrl.abort();
-    await sess.acp.dispose().catch(() => undefined);
-    this.#sessions.delete(session_id);
+    const lifecycle = this.#lifecycles.get(session_id);
+    if (lifecycle?.status === "disposed") return;
+    const starting = this.#starting.get(session_id);
+    if (starting) this.#cancelledStarts.add(session_id);
+    await this.#killChild(session_id);
+    if (starting) await starting.catch(() => undefined);
+    this.#transition(session_id, { type: "session.disposed" });
     this.#send({ type: "session.disposed", session_id });
   }
 
-  /** Best-effort cleanup on daemon shutdown. */
+  async #killChild(sessionId: string): Promise<void> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) return;
+    session.disposed = true;
+    for (const controller of session.turns.values()) controller.abort();
+    await session.acp.dispose().catch(() => undefined);
+    if (this.#sessions.get(sessionId) === session) {
+      this.#sessions.delete(sessionId);
+    }
+    this.#activeTurnBySession.delete(sessionId);
+    this.#lastDiagnosticBySession.delete(sessionId);
+  }
+
+  /** App-shutdown barrier: includes both live sessions and children whose
+   * initialize/new-session handshake is still in flight. */
   async disposeAll(): Promise<void> {
-    const ids = [...this.#sessions.keys()];
-    await Promise.all(ids.map((id) => this.dispose(id)));
+    const ids = new Set([...this.#sessions.keys(), ...this.#starting.keys()]);
+    await Promise.allSettled([...ids].map((id) => this.dispose(id)));
   }
 }

@@ -1,5 +1,6 @@
 
 import { useRef, useCallback, useState, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Editor, rootCtx, defaultValueCtx } from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { nord } from '@milkdown/theme-nord';
@@ -8,7 +9,7 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { prism } from '@milkdown/plugin-prism';
 import { trailing } from '@milkdown/plugin-trailing';
 import { history } from '@milkdown/plugin-history';
-import { $prose } from '@milkdown/utils';
+import { $prose, replaceAll } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { SignedImg } from './SignedMedia';
@@ -16,6 +17,16 @@ import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from './ui/combobox';
 import { Popover, PopoverAnchor, PopoverContent } from './ui/popover';
 import { handleMentionComboboxKeyDown } from './mentionComboboxKeyboard';
+import {
+    FilmStrip,
+    Image as ImageIcon,
+    Lightning,
+    Robot,
+    SpeakerHigh,
+    SquaresFour,
+    TextT,
+} from '@phosphor-icons/react';
+import type { CopilotMentionKind, CopilotMentionScope } from '@clash/web-ui/lib/copilotWorkspaceContext';
 
 import '@milkdown/theme-nord/style.css';
 import 'prismjs/themes/prism.css';
@@ -29,6 +40,11 @@ export interface MentionableNode {
      *  For image nodes: the image itself. For video nodes: the persisted cover frame.
      *  Absent → falls back to a text mention. */
     thumbnail?: string;
+    kind?: CopilotMentionKind;
+    scope?: CopilotMentionScope;
+    description?: string;
+    canvasId?: string;
+    canvasName?: string;
 }
 
 export interface MilkdownEditorHandle {
@@ -82,7 +98,8 @@ interface MentionPluginState {
     cursorCoords: { left: number; top: number; bottom: number } | null;
 }
 
-const mentionItemId = (nodeId: string) => `milkdown-mention-${nodeId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+const mentionValue = (node: MentionableNode) => `${node.kind ?? 'node'}:${node.id}`;
+const mentionItemId = (node: MentionableNode) => `milkdown-mention-${mentionValue(node).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
 function createMentionPlugin(
     onStateChange: (state: MentionPluginState) => void,
@@ -161,6 +178,26 @@ function createMentionPlugin(
     });
 }
 
+function activateMentionAtCursor(view: EditorView): boolean {
+    const { $from } = view.state.selection;
+    if (!$from.parent.isTextblock) return false;
+
+    const startOffset = Math.max(0, $from.parentOffset - 51);
+    const textBefore = $from.parent.textBetween(startOffset, $from.parentOffset, '');
+    const match = textBefore.match(/(?:^|\s)@([^\s@]{0,50})$/);
+    if (!match) return false;
+
+    const query = match[1] ?? '';
+    const from = $from.pos - query.length - 1;
+    view.dispatch(view.state.tr.setMeta(mentionPluginKey, {
+        active: true,
+        query,
+        from,
+        cursorCoords: null,
+    } satisfies MentionPluginState));
+    return true;
+}
+
 // ─── Ensure starting paragraph plugin ────────────────────
 
 const ensureStartingParagraph = $prose(() => {
@@ -201,27 +238,35 @@ function AssetMentionMenu({
     onClose: () => void;
     onKeyboardHandlerChange: (handler: ((event: KeyboardEvent) => boolean) | null) => void;
 }) {
-    // Filter by modalities and query. Agent bypass the modality filter
-    // — they aren't an "asset modality" and the user always wants to
-    // be able to @-address an invited agent member regardless of what
-    // the surrounding action expects as input.
+    // Media respects the selected model's input modalities. Workspace
+    // objects (actions, text/context nodes, timelines, agents) are always
+    // referenceable because mentioning them does not upload their payload.
     const filtered = useMemo(() => nodes.filter((n) => {
-        if (n.type !== 'agent') {
-            const modality = n.type === 'image' ? 'image' : n.type === 'video' ? 'video' : n.type === 'audio' ? 'audio' : 'text';
-            if (!promptModalities.includes(modality)) return false;
+        if (['image', 'video', 'audio'].includes(n.type)) {
+            if (!promptModalities.includes(n.type)) return false;
         }
-        if (query && !n.label.toLowerCase().includes(query.toLowerCase())) return false;
+        const searchable = `${n.label} ${n.description ?? ''} ${n.type}`.toLowerCase();
+        if (query && !searchable.includes(query.toLowerCase())) return false;
         return true;
     }), [nodes, promptModalities, query]);
 
-    // Group: agent first (always at the top — they're who you usually
-    // want to talk to), then assets ordered by connected → other.
-    const agentEntries = useMemo(() => filtered.filter((n) => n.type === 'agent'), [filtered]);
-    const assetEntries = useMemo(() => filtered.filter((n) => n.type !== 'agent'), [filtered]);
-    const connectedAssets = useMemo(() => assetEntries.filter((n) => connectedIds.has(n.id)), [assetEntries, connectedIds]);
-    const otherAssets = useMemo(() => assetEntries.filter((n) => !connectedIds.has(n.id)), [assetEntries, connectedIds]);
-    const sortedAssets = useMemo(() => [...connectedAssets, ...otherAssets], [connectedAssets, otherAssets]);
-    const sorted = useMemo(() => [...agentEntries, ...sortedAssets], [agentEntries, sortedAssets]);
+    const sections = useMemo(() => {
+        const definitions: Array<{ scope: CopilotMentionScope; label: string }> = [
+            { scope: 'agents', label: 'Agents' },
+            { scope: 'current-surface', label: 'Current surface' },
+            { scope: 'current-canvas', label: 'Current canvas' },
+            { scope: 'project-assets', label: 'Project assets' },
+            { scope: 'timelines', label: 'Timelines' },
+            { scope: 'other-canvases', label: 'Other canvases' },
+        ];
+        return definitions.flatMap((definition) => {
+            const entries = filtered
+                .filter((node) => (node.scope ?? (node.type === 'agent' ? 'agents' : 'current-canvas')) === definition.scope)
+                .sort((left, right) => Number(connectedIds.has(right.id)) - Number(connectedIds.has(left.id)));
+            return entries.length > 0 ? [{ ...definition, entries }] : [];
+        });
+    }, [connectedIds, filtered]);
+    const sorted = useMemo(() => sections.flatMap((section) => section.entries), [sections]);
 
     const open = active && !!coords && sorted.length > 0;
 
@@ -231,7 +276,7 @@ function AssetMentionMenu({
         selectedValue: '',
         setSelectedValue(value) {
             if (typeof value !== 'string') return;
-            const node = sorted.find((candidate) => candidate.id === value);
+            const node = sorted.find((candidate) => mentionValue(candidate) === value);
             if (node) onSelect(node);
         },
         focusLoop: true,
@@ -245,13 +290,13 @@ function AssetMentionMenu({
             return;
         }
 
-        const firstItemId = sorted[0] ? mentionItemId(sorted[0].id) : undefined;
+        const firstItemId = sorted[0] ? mentionItemId(sorted[0]) : undefined;
         combobox.setActiveId(firstItemId);
 
         onKeyboardHandlerChange((event) => handleMentionComboboxKeyDown(event, {
             store: combobox,
             items: sorted,
-            getItemId: (node) => mentionItemId(node.id),
+            getItemId: (node) => mentionItemId(node),
             onSelect,
             onClose,
         }));
@@ -261,13 +306,6 @@ function AssetMentionMenu({
 
     if (!open || !coords) return null;
 
-    const typeIcon = (type: string) => {
-        if (type === 'image') return '🖼';
-        if (type === 'video') return '🎬';
-        if (type === 'audio') return '🔊';
-        return '📝';
-    };
-
     const initialsOf = (label: string): string => {
         const words = label.split(/\s+/).filter(Boolean);
         if (words.length === 0) return '?';
@@ -275,19 +313,31 @@ function AssetMentionMenu({
         return (words[0][0] + words[1][0]).toUpperCase();
     };
 
+    const typeIcon = (node: MentionableNode) => {
+        const iconClass = 'h-4 w-4';
+        if (node.kind === 'agent' || node.type === 'agent') return <Robot className={iconClass} weight="bold" />;
+        if (node.kind === 'timeline' || node.type === 'timeline') return <FilmStrip className={iconClass} weight="bold" />;
+        if (node.type === 'image') return <ImageIcon className={iconClass} weight="bold" />;
+        if (node.type === 'video') return <FilmStrip className={iconClass} weight="bold" />;
+        if (node.type === 'audio') return <SpeakerHigh className={iconClass} weight="bold" />;
+        if (node.type === 'action' || node.type.toLowerCase().includes('action')) return <Lightning className={iconClass} weight="fill" />;
+        if (node.type === 'group') return <SquaresFour className={iconClass} weight="bold" />;
+        return <TextT className={iconClass} weight="bold" />;
+    };
+
     const renderRow = (node: MentionableNode) => (
         <ComboboxItem
-            id={mentionItemId(node.id)}
-            key={node.id}
-            value={node.id}
+            id={mentionItemId(node)}
+            key={mentionValue(node)}
+            value={mentionValue(node)}
             focusOnHover
             hideOnClick={false}
             setValueOnClick={false}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-warm-muted/70 data-[active-item]:bg-warm-muted"
+            className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-warm-muted/80 data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
         >
             {node.type === 'agent' ? (
                 <span
-                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-brand-light text-[10px] font-bold text-slate-950 ring-1 ring-brand/20 dark:bg-brand/20 dark:text-slate-50"
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-brand/20 bg-brand-light text-[11px] font-bold text-slate-950 dark:bg-brand/20 dark:text-slate-50"
                     aria-hidden="true"
                 >
                     {initialsOf(node.label)}
@@ -296,19 +346,19 @@ function AssetMentionMenu({
                 <SignedImg
                     src={node.thumbnail}
                     alt=""
-                    className="w-6 h-6 rounded object-cover border border-warm-border flex-shrink-0"
+                    className="h-9 w-9 flex-shrink-0 rounded-xl border border-warm-border object-cover"
                 />
             ) : (
-                <span className="w-6 h-6 flex items-center justify-center text-sm flex-shrink-0">
-                    {typeIcon(node.type)}
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-warm-border bg-warm-page text-stone-600 group-data-[active-item]:border-brand/20 group-data-[active-item]:text-brand dark:text-stone-300">
+                    {typeIcon(node)}
                 </span>
             )}
-            <span className="text-sm text-slate-800 dark:text-slate-100 truncate flex-1">{node.label}</span>
-            {node.type === 'agent' && (
-                <span className="text-[9px] uppercase tracking-wider text-stone-700 dark:text-stone-300 font-medium">
-                    Agent
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-50">{node.label}</span>
+                <span className="mt-0.5 block truncate text-xs text-stone-500 dark:text-stone-400">
+                    {node.description ?? (node.type === 'agent' ? 'Agent' : node.type)}
                 </span>
-            )}
+            </span>
         </ComboboxItem>
     );
 
@@ -319,41 +369,41 @@ function AssetMentionMenu({
                 if (!nextOpen) onClose();
             }}
         >
-            <PopoverAnchor asChild>
-                <span
-                    aria-hidden="true"
-                    style={{
-                        position: 'fixed',
-                        left: coords.left,
-                        top: coords.bottom,
-                        width: 1,
-                        height: 1,
-                        pointerEvents: 'none',
-                    }}
-                />
-            </PopoverAnchor>
+            {typeof document !== 'undefined' ? createPortal(
+                <PopoverAnchor asChild>
+                    <span
+                        data-mention-anchor=""
+                        aria-hidden="true"
+                        style={{
+                            position: 'fixed',
+                            left: coords.left,
+                            top: coords.bottom,
+                            width: 1,
+                            height: 1,
+                            pointerEvents: 'none',
+                        }}
+                    />
+                </PopoverAnchor>,
+                document.body,
+            ) : null}
             <PopoverContent
-                side="bottom"
+                side="top"
                 align="start"
-                sideOffset={4}
-                collisionPadding={8}
+                sideOffset={12}
+                collisionPadding={16}
                 onOpenAutoFocus={(event) => event.preventDefault()}
-                className="w-64 max-h-60 overflow-y-auto rounded-xl p-0"
+                className="max-h-[min(26rem,55vh)] w-[min(42rem,calc(100vw-2rem))] overflow-y-auto rounded-[22px] border border-warm-border bg-warm-surface/98 p-2 shadow-[0_24px_70px_rgba(35,29,20,0.16)] backdrop-blur-xl"
             >
                 <ComboboxProvider store={combobox}>
-                    <ComboboxList aria-label="Mention matches" alwaysVisible className="w-full">
-                        {agentEntries.length > 0 && (
-                            <div className="px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted border-b border-warm-border">
-                                Agent
-                            </div>
-                        )}
-                        {agentEntries.map((node) => renderRow(node))}
-                        {sortedAssets.length > 0 && (
-                            <div className={`px-3 py-1 text-[10px] font-medium text-stone-600 dark:text-stone-300 uppercase tracking-wider bg-warm-muted ${agentEntries.length > 0 ? 'border-t border-warm-border' : ''}`}>
-                                Canvas
-                            </div>
-                        )}
-                        {sortedAssets.map((node) => renderRow(node))}
+                    <ComboboxList aria-label="Mention matches" alwaysVisible className="w-full space-y-1">
+                        {sections.map((section) => (
+                            <section key={section.scope} aria-label={section.label}>
+                                <div className="sticky top-0 z-10 bg-warm-surface/95 px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-stone-500 backdrop-blur dark:text-stone-400">
+                                    {section.label}
+                                </div>
+                                {section.entries.map((node) => renderRow(node))}
+                            </section>
+                        ))}
                     </ComboboxList>
                 </ComboboxProvider>
             </PopoverContent>
@@ -377,9 +427,12 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     });
     const editorViewRef = useRef<EditorView | null>(null);
     const mentionKeyHandlerRef = useRef<((event: KeyboardEvent) => boolean) | null>(null);
+    const currentMarkdownRef = useRef(value);
 
     const onSubmitRef = useRef(onSubmit);
     onSubmitRef.current = onSubmit;
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
 
     const connectedSet = new Set(connectedNodeIds);
 
@@ -421,7 +474,7 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         return createMentionPlugin(setMentionState, (event) => mentionKeyHandlerRef.current?.(event) ?? false);
     }, [showMentions]);
 
-    const { get } = useEditor((root) =>
+    const { get, loading } = useEditor((root) =>
         Editor.make()
             .config((ctx) => {
                 ctx.set(rootCtx, root);
@@ -439,10 +492,20 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             .use(mentionPlugin())
             .config((ctx) => {
                 ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-                    onChange(markdown);
+                    currentMarkdownRef.current = markdown;
+                    onChangeRef.current(markdown);
                 });
             })
     );
+
+    useEffect(() => {
+        if (loading || currentMarkdownRef.current === value) return;
+        const editor = get();
+        if (!editor) return;
+
+        currentMarkdownRef.current = value;
+        editor.action(replaceAll(value));
+    }, [get, loading, value]);
 
     // Capture EditorView via a plugin (more reliable than ctx.get)
     const captureViewPlugin = useCallback(() => {
@@ -457,7 +520,10 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
 
     useImperativeHandle(ref, () => ({
         focus() {
-            editorViewRef.current?.focus();
+            const view = editorViewRef.current;
+            if (!view) return;
+            view.focus();
+            activateMentionAtCursor(view);
         },
         clear() {
             const view = editorViewRef.current;
@@ -559,8 +625,12 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             view.focus();
         }
 
-        // Auto-connect if not already connected
-        if (!connectedSet.has(node.id) && onMentionAdded) {
+        // Only current-canvas node references can become graph edges. Project
+        // assets, timelines and nodes on other canvases remain prompt context.
+        const isCurrentCanvasNode =
+            (node.kind ?? 'node') === 'node' &&
+            (node.scope ?? 'current-canvas') === 'current-canvas';
+        if (isCurrentCanvasNode && !connectedSet.has(node.id) && onMentionAdded) {
             onMentionAdded(node.id);
         }
     }, [connectedSet, onMentionAdded]);
@@ -575,7 +645,10 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
     }, []);
 
     const handleClick = () => {
-        editorViewRef.current?.focus();
+        const view = editorViewRef.current;
+        if (!view) return;
+        view.focus();
+        activateMentionAtCursor(view);
     };
 
     return (

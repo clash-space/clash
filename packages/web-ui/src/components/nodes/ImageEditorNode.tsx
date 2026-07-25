@@ -11,7 +11,7 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { Handle, Position, NodeProps, useReactFlow, useNodes, useEdges, type Node } from '@xyflow/react';
+import { Handle, Position, NodeProps, useNodeConnections, useReactFlow, useStore, type Node } from '@xyflow/react';
 import { PencilSimple, ImageSquare } from '@phosphor-icons/react';
 import { useImageEditor } from '../ImageEditorContext';
 import { useAsset } from '@clash/web-ui/lib/hooks/useAsset';
@@ -24,25 +24,17 @@ const ImageEditorNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) => 
     const { openEditor } = useImageEditor();
     const { projectId } = useProject();
     const reactFlow = useReactFlow();
-    const allNodes = useNodes();
-    const allEdges = useEdges();
+    const connections = useNodeConnections({ id });
 
-    // Resolve the upstream image node connected to our target handle.
-    // ImageEditor accepts at most one upstream image — `useEdges` is reactive,
-    // so adding/removing an edge updates the preview immediately.
     const upstreamImageNodeId = useMemo(() => {
-        const incoming = allEdges.filter((e) => e.target === id);
-        for (const e of incoming) {
-            const src = allNodes.find((n) => n.id === e.source);
-            if (src?.type === 'image') return src.id;
-        }
-        return undefined;
-    }, [allEdges, allNodes, id]);
-
-    const upstreamNode = upstreamImageNodeId
-        ? allNodes.find((n) => n.id === upstreamImageNodeId)
-        : undefined;
-    const upstreamAssetId = (upstreamNode?.data as Record<string, unknown> | undefined)?.assetId as string | undefined;
+        return connections.find((connection) => connection.target === id)?.source;
+    }, [connections, id]);
+    const upstreamAssetId = useStore(useCallback((state) => {
+        if (!upstreamImageNodeId) return undefined;
+        const upstreamNode = state.nodeLookup.get(upstreamImageNodeId);
+        if (upstreamNode?.type !== 'image') return undefined;
+        return (upstreamNode.data as Record<string, unknown> | undefined)?.assetId as string | undefined;
+    }, [upstreamImageNodeId]));
     const upstreamAsset = useAsset(upstreamAssetId);
     const previewR2Key = upstreamAsset?.srcR2Key;
 

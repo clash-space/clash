@@ -126,7 +126,7 @@ export function SearchableSelect<Value extends SelectValue = string>({
                     aria-label={ariaLabel}
                     disabled={options.length === 0}
                     className={cn(
-                        'clash-select-trigger flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-slate-50 dark:hover:bg-slate-800',
+                        'clash-select-trigger flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface disabled:cursor-not-allowed disabled:opacity-45 dark:text-neutral-100 dark:hover:bg-warm-muted/80',
                         triggerClassName,
                     )}
                 >
@@ -146,13 +146,13 @@ export function SearchableSelect<Value extends SelectValue = string>({
                     fitViewport
                     portal
                     className={cn(
-                        'z-[90] max-h-[min(var(--popover-available-height),18rem)] overflow-y-auto rounded-2xl border border-warm-border/90 bg-warm-surface p-1.5 shadow-[0_18px_48px_rgba(35,31,25,0.14)] outline-none dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
+                        'z-[90] max-h-[min(var(--popover-available-height),18rem)] overflow-y-auto rounded-2xl border border-overlay-border bg-overlay-surface p-1.5 text-content-primary shadow-overlay outline-none',
                         contentClassName,
                         listClassName,
                     )}
                     style={matchTriggerWidth ? undefined : { width: contentWidth }}
                 >
-                    <div className="sticky top-0 z-[1] bg-warm-surface p-1 dark:bg-slate-900">
+                    <div className="sticky top-0 z-[1] bg-warm-surface p-1 dark:bg-warm-surface">
                         <div className="relative min-w-0">
                             <MagnifyingGlass
                                 className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-stone-400"
@@ -192,8 +192,8 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                         className={cn(
                                             'flex min-h-[42px] w-full cursor-default items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors outline-none',
                                             selected
-                                                ? 'bg-warm-muted/80 text-slate-950 dark:bg-slate-800 dark:text-slate-50'
-                                                : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80 dark:data-[active-item]:bg-slate-800/80',
+                                                ? 'bg-brand/[0.08] text-slate-950 dark:bg-brand/[0.12] dark:text-neutral-50'
+                                                : 'text-slate-900 hover:bg-warm-muted/75 data-[active-item]:bg-warm-muted/75 dark:text-neutral-100 dark:hover:bg-warm-muted/80 dark:data-[active-item]:bg-warm-muted/80',
                                             option.disabled && 'opacity-45',
                                         )}
                                     >
@@ -212,7 +212,7 @@ export function SearchableSelect<Value extends SelectValue = string>({
                                         </span>
                                         <Check
                                             className={cn(
-                                                'h-4 w-4 flex-shrink-0 text-slate-700 transition-opacity dark:text-slate-200',
+                                                'h-4 w-4 flex-shrink-0 text-brand transition-opacity',
                                                 selected ? 'opacity-100' : 'opacity-0',
                                             )}
                                             aria-hidden="true"

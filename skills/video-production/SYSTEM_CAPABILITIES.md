@@ -24,14 +24,19 @@ timeline CAS apply, and canvas/timeline projections.
   exports. TVC delivery validation can also consume ffprobe media probes for
   rendered variants; full render-server/provider export and broader
   referenced-media validation remain missing.
-- `audio.word-timestamps`: partially available through `clash production
-  plan-text-cut`, which records existing ASR transcript provenance on
-  `talking-head.analysis` metadata: source path/hash, backend/model, language,
-  word count, and optional confidence/speaker fields. `clash production
-  apply-metadata` also writes a readable
+- `audio.word-timestamps`: partially available through the built-in local
+  FunASR runtime and `/api/v1/local/audio/transcriptions`, which return a
+  validated `clash.asr.timed-transcript` with millisecond word/token ranges,
+  segments, stable ids, model/backend provenance, and an explicit `word`
+  alignment marker. Model status distinguishes an installed Python runtime
+  from a downloaded model. `clash production plan-text-cut` accepts this raw
+  form, deterministically projects it to frames, and records source path/hash,
+  backend/model, language, word count, and optional confidence/speaker fields
+  on `talking-head.analysis`. `clash production apply-metadata` also writes a
+  readable
   `clash.talking-head.asr-transcript.projection` under
-  `projections/transcripts`. Executing ASR backends, transcript correction UI,
-  diarization review, and durable transcript storage are still missing.
+  `projections/transcripts`. Transcript correction UI, diarization review,
+  persistent model workers, and durable transcript storage are still missing.
 - `render.remotion-composition`: partially available through Remotion packages,
   render-server, and preview rendering for structural `composition`, `caption`,
   and `derived-overlay` timeline items. The preview keeps structural item types

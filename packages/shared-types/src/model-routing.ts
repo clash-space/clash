@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { MOCK_MODEL_CARDS, MODEL_CARDS, normalizeModelId, type ModelCard, type ModelKind } from "./models";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind } from "./models";
+import { findCompatibleModels, type Modality } from "./model-capabilities";
 
 export const ModelUpstreamIdSchema = z.enum([
   "local",
@@ -18,11 +19,13 @@ export const ModelUpstreamIdSchema = z.enum([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
 ]);
 export type ModelUpstreamId = z.infer<typeof ModelUpstreamIdSchema>;
 
 export const ModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
+  "local-tts",
   "fal",
   "google-agent-platform",
   "google-ai-studio",
@@ -36,6 +39,7 @@ export const ModelUpstreamApiShapeSchema = z.enum([
   "modelark",
   "dreamina-cli",
   "elevenlabs",
+  "suno",
 ]);
 export type ModelUpstreamApiShape = z.infer<typeof ModelUpstreamApiShapeSchema>;
 
@@ -55,6 +59,7 @@ export const ProviderAccountIdSchema = z.enum([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom",
 ]);
@@ -66,6 +71,8 @@ export interface ModelUpstreamRoute {
   kind: ModelKind;
   /** User-facing account bucket. `official` can still route to OpenAI/Google/etc. adapters. */
   providerId?: ProviderAccountId;
+  /** Pins a user-defined model implementation to one concrete provider account. */
+  accountId?: string;
   /** Optional account region/channel, e.g. official global vs domestic. */
   region?: "global" | "cn" | string;
   upstreamId: ModelUpstreamId;
@@ -115,6 +122,7 @@ export interface ProviderAccountAvailability {
   id?: string;
   providerId: ProviderAccountId;
   upstreamId?: ModelUpstreamId;
+  apiShape?: ModelUpstreamApiShape;
   region?: string;
   label?: string;
   enabled?: boolean;
@@ -136,6 +144,7 @@ export interface ProviderAccountAvailability {
 export interface ModelUpstreamRouteQuery {
   modelCode: string;
   kind?: ModelKind;
+  models?: readonly ModelCard[];
   configuredUpstreams?: UpstreamAvailability[];
   configuredProviders?: ProviderAccountAvailability[];
   allowMock?: boolean;
@@ -158,6 +167,120 @@ export interface ModelCatalogEntry {
   candidateProviders: ProviderAccountId[];
   missingCredentials: string[];
   missingOAuth: ProviderOAuthId[];
+}
+
+export const ModelCardProviderBindingSchema = z.object({
+  providerAccountId: z.string().trim().min(1),
+  upstreamModel: z.string().trim().min(1),
+});
+export type ModelCardProviderBinding = z.infer<typeof ModelCardProviderBindingSchema>;
+
+export const UserModelCardConfigSchema = z.object({
+  modelId: z.string().trim().min(1),
+  custom: z.boolean().default(false),
+  name: z.string().trim().min(1).optional(),
+  kind: z.literal("text").default("text"),
+  description: z.string().trim().optional(),
+  promptGuidance: z.string().trim().optional(),
+  providerBindings: z.array(ModelCardProviderBindingSchema).default([]),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+export type UserModelCardConfig = z.infer<typeof UserModelCardConfigSchema>;
+
+function compatibleTextApiShape(
+  provider: Pick<ProviderAccountAvailability, "apiShape" | "upstreamId">,
+): "openai-compatible" | "anthropic-compatible" | null {
+  if (provider.apiShape === "openai-compatible" || provider.apiShape === "anthropic-compatible") {
+    return provider.apiShape;
+  }
+  if (provider.upstreamId === "openai") return "openai-compatible";
+  if (provider.upstreamId === "anthropic") return "anthropic-compatible";
+  return null;
+}
+
+function customTextModelCard(
+  config: UserModelCardConfig,
+  providers: readonly ProviderAccountAvailability[],
+): ModelCard | null {
+  if (!config.custom || !config.name || MODEL_CARDS.some((model) => model.id === config.modelId)) return null;
+  const providerByAccountId = new Map(
+    providers
+      .filter((provider): provider is ProviderAccountAvailability & { id: string } => !!provider.id)
+      .map((provider) => [provider.id, provider]),
+  );
+  const providerImplementations = config.providerBindings.flatMap((binding, index) => {
+    const provider = providerByAccountId.get(binding.providerAccountId);
+    const apiShape = provider ? compatibleTextApiShape(provider) : null;
+    if (!provider || !provider.upstreamId || !apiShape) return [];
+    return [{
+      providerId: provider.providerId,
+      accountId: provider.id,
+      upstreamId: provider.upstreamId,
+      ...(provider.region ? { region: provider.region } : {}),
+      upstreamModel: binding.upstreamModel,
+      apiShape,
+      priority: (index + 1) * 10,
+      requiredCredentials: provider.providerId === "custom"
+        ? [API_KEY_CREDENTIAL, BASE_URL_CREDENTIAL]
+        : [API_KEY_CREDENTIAL],
+    }];
+  });
+  if (providerImplementations.length === 0) return null;
+  const availableProviders = [...new Set(providerImplementations.map((implementation) => implementation.providerId))];
+  return ModelCardSchema.parse({
+    id: config.modelId,
+    name: config.name,
+    provider: "Custom",
+    custom: true,
+    kind: "text",
+    description: config.description,
+    promptGuidance: config.promptGuidance,
+    parameters: [
+      {
+        id: "system_prompt",
+        label: "System prompt",
+        type: "text",
+        placeholder: "Optional instructions for tone, format, or role",
+        defaultValue: "",
+      },
+    ],
+    defaultParams: { system_prompt: "" },
+    defaultAspectRatio: "1:1",
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { max: 20 } },
+      promptModalities: ["text", "image"],
+    },
+    availableProviders,
+    defaultProvider: availableProviders[0],
+    providerImplementations,
+    maxRuntimeMs: 5 * 60 * 1000,
+  });
+}
+
+export function buildEffectiveModelCards(options: {
+  configs?: readonly UserModelCardConfig[];
+  providers?: readonly ProviderAccountAvailability[];
+  baseModels?: readonly ModelCard[];
+} = {}): ModelCard[] {
+  const configs = z.array(UserModelCardConfigSchema).parse(options.configs ?? []);
+  const baseModels = options.baseModels ?? MODEL_CARDS;
+  const configByModelId = new Map(configs.map((config) => [config.modelId, config]));
+  const builtInModels = baseModels.map((model) => {
+    const config = configByModelId.get(model.id);
+    if (!config || config.custom) return model;
+    return ModelCardSchema.parse({
+      ...model,
+      ...(config.description !== undefined ? { description: config.description } : {}),
+      ...(config.promptGuidance !== undefined ? { promptGuidance: config.promptGuidance } : {}),
+    });
+  });
+  const customModels = configs.flatMap((config) => {
+    const model = customTextModelCard(config, options.providers ?? []);
+    return model ? [model] : [];
+  });
+  return [...builtInModels, ...customModels];
 }
 
 const API_KEY_CREDENTIAL = "apiKey";
@@ -186,11 +309,11 @@ function falMock(
 const FAL_IMAGE_ROUTES: Array<[string, string]> = [
   ["flux-schnell", "fal-ai/flux/schnell"],
   ["flux-dev", "fal-ai/flux/dev"],
+  ["gpt-image-2", "openai/gpt-image-2"],
   ["nano-banana-2", "fal-ai/nano-banana-2"],
-  ["nano-banana-2-edit", "fal-ai/nano-banana-2/edit"],
+  ["seedream-4.5", "fal-ai/bytedance/seedream/v4.5/text-to-image"],
   ["recraft-v4", "fal-ai/recraft/v4/pro/text-to-image"],
   ["flux-2-pro", "fal-ai/flux-2-pro"],
-  ["flux-2-pro-edit", "fal-ai/flux-2-pro/edit"],
 ];
 
 const FAL_VIDEO_ROUTES: Array<[string, string]> = [
@@ -214,16 +337,12 @@ const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [
   ["veo-3.1-fast-startend", "veo-3.1-fast-generate-001"],
 ];
 
-const GOOGLE_AUDIO_ROUTES: Array<[string, string]> = [
-  ["gemini-3.1-flash-tts", "gemini-3.1-flash-tts-preview"],
-  ["gemini-2.5-pro-tts", "gemini-2.5-pro-tts"],
-];
-
 function routesFromModelCard(model: ModelCard): ModelUpstreamRoute[] {
   return (model.providerImplementations ?? []).map((implementation) => ({
     modelCode: model.id,
     kind: model.kind,
     providerId: implementation.providerId,
+    ...(implementation.accountId ? { accountId: implementation.accountId } : {}),
     ...(implementation.region ? { region: implementation.region } : {}),
     upstreamId: ModelUpstreamIdSchema.parse(implementation.upstreamId),
     upstreamModel: implementation.upstreamModel,
@@ -241,11 +360,23 @@ function routesFromModelCards(models: readonly ModelCard[]): ModelUpstreamRoute[
   return models.flatMap(routesFromModelCard);
 }
 
+export function listDeclaredModelUpstreamRoutes(
+  models: readonly ModelCard[],
+): ModelUpstreamRoute[] {
+  return routesFromModelCards(models);
+}
+
 export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
   {
     providerId: "local",
     upstreamId: "local",
     apiShape: "local-asr",
+    priority: 1,
+  },
+  {
+    providerId: "local",
+    upstreamId: "local",
+    apiShape: "local-tts",
     priority: 1,
   },
   {
@@ -344,6 +475,13 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     priority: 8,
     requiredCredentials: [API_KEY_CREDENTIAL],
   },
+  {
+    providerId: "suno",
+    upstreamId: "suno",
+    apiShape: "suno",
+    priority: 8,
+    requiredCredentials: [API_KEY_CREDENTIAL, "callbackUrl"],
+  },
 ];
 
 const MODEL_DECLARED_ROUTES = routesFromModelCards(MODEL_CARDS);
@@ -354,8 +492,6 @@ const MOCK_ROUTES: ModelUpstreamRoute[] = [
   ...FAL_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "video", upstreamModel)),
   ...GOOGLE_IMAGE_ROUTES.map(([modelCode]) => falMock(modelCode, "image", "fal-ai/nano-banana-2")),
   ...GOOGLE_VIDEO_ROUTES.map(([modelCode]) => falMock(modelCode, "video", modelCode.includes("fast") ? "fal-ai/veo3/fast" : "fal-ai/veo3")),
-  ...GOOGLE_AUDIO_ROUTES.map(([modelCode]) => falMock(modelCode, "audio", "fal-ai/minimax/speech-02-hd")),
-  falMock("gpt-image-2", "image", "fal-ai/nano-banana-2"),
   falMock("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("elevenlabs-tts", "audio", "fal-ai/minimax/speech-02-hd"),
 ];
@@ -520,6 +656,7 @@ function upstreamConfig(
 
 function matchesProviderAccount(route: ModelUpstreamRoute, provider: ProviderAccountAvailability): boolean {
   if (provider.providerId !== providerIdForRoute(route)) return false;
+  if (route.accountId && provider.id !== route.accountId) return false;
   if (provider.upstreamId && provider.upstreamId !== route.upstreamId) return false;
   if (provider.region && route.region && provider.region !== route.region) return false;
   if (
@@ -553,6 +690,20 @@ function compareProviderCandidates(a: ProviderAccountCandidate, b: ProviderAccou
   return a.index - b.index;
 }
 
+function compareProviderCandidatesForModel(
+  a: ProviderAccountCandidate,
+  b: ProviderAccountCandidate,
+  modelCode: string,
+): number {
+  const aModelPriority = modelPriority(a.provider, modelCode);
+  const bModelPriority = modelPriority(b.provider, modelCode);
+  if (aModelPriority !== undefined || bModelPriority !== undefined) {
+    const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+    if (priority !== 0) return priority;
+  }
+  return compareProviderCandidates(a, b);
+}
+
 function canServeRoute(route: ModelUpstreamRoute, provider: ProviderAccountAvailability): boolean {
   return provider.enabled !== false && hasRequiredCredentials(route, provider) && hasRequiredOAuth(route, provider);
 }
@@ -563,15 +714,17 @@ function providerCandidate(
 ): ProviderAccountCandidate | undefined {
   const candidates = providerCandidates(configuredProviders, route);
   if (!candidates.length) return undefined;
+  const compare = (a: ProviderAccountCandidate, b: ProviderAccountCandidate) =>
+    compareProviderCandidatesForModel(a, b, route.modelCode);
   const runnable = candidates
     .filter((candidate) => canServeRoute(route, candidate.provider))
-    .sort(compareProviderCandidates);
+    .sort(compare);
   if (runnable[0]) return runnable[0];
   const enabled = candidates
     .filter((candidate) => candidate.provider.enabled !== false)
-    .sort(compareProviderCandidates);
+    .sort(compare);
   if (enabled[0]) return enabled[0];
-  return candidates.sort(compareProviderCandidates)[0];
+  return candidates.sort(compare)[0];
 }
 
 function providerIndex(configuredProviders: ProviderAccountAvailability[] | undefined, route: ModelUpstreamRoute): number {
@@ -668,9 +821,15 @@ function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): b
 function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
   const direct = directFalRoute(query);
   const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
+  const routes = query.models
+    ? [
+        ...routesFromModelCards(query.models),
+        ...(query.allowMock ? MOCK_ROUTES : []),
+      ]
+    : MODEL_UPSTREAM_ROUTES;
   return direct
     ? [direct]
-    : MODEL_UPSTREAM_ROUTES.filter(
+    : routes.filter(
         (route) =>
           route.modelCode === modelCode &&
           (!query.kind || route.kind === query.kind),
@@ -681,7 +840,7 @@ export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUp
   const candidates = candidateRoutes(query);
   const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
 
-  return candidates
+  const sorted = candidates
     .filter((route) => isEnabled(route, query))
     .sort((a, b) => {
       const aConfig = configForRoute(query, a);
@@ -695,6 +854,12 @@ export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUp
       const aWeight = (aConfig?.weight ?? 0) + (a.weight ?? 0);
       const bWeight = (bConfig?.weight ?? 0) + (b.weight ?? 0);
       if (aWeight !== bWeight) return bWeight - aWeight;
+      if (aConfig?.priority !== undefined || bConfig?.priority !== undefined) {
+        const priority =
+          (aConfig?.priority ?? Number.POSITIVE_INFINITY) -
+          (bConfig?.priority ?? Number.POSITIVE_INFINITY);
+        if (priority !== 0) return priority;
+      }
       const aIndex = query.configuredProviders
         ? providerIndex(query.configuredProviders, a)
         : upstreamIndex(query.configuredUpstreams, a.upstreamId);
@@ -702,11 +867,15 @@ export function listModelUpstreamRoutes(query: ModelUpstreamRouteQuery): ModelUp
         ? providerIndex(query.configuredProviders, b)
         : upstreamIndex(query.configuredUpstreams, b.upstreamId);
       if (aIndex !== bIndex) return aIndex - bIndex;
-      const aUpstreamPriority = aConfig?.priority ?? 0;
-      const bUpstreamPriority = bConfig?.priority ?? 0;
-      if (aUpstreamPriority !== bUpstreamPriority) return aUpstreamPriority - bUpstreamPriority;
       return a.priority - b.priority;
     });
+  if (!query.configuredProviders) return sorted;
+  return sorted.map((route) => {
+    const account = providerConfig(query.configuredProviders, route);
+    return account?.id && !route.accountId
+      ? { ...route, accountId: account.id }
+      : route;
+  });
 }
 
 export function resolveModelUpstreamRoute(query: ModelUpstreamRouteQuery): ModelUpstreamRoute | null {
@@ -739,11 +908,12 @@ export function listModelCatalogEntries(options: {
     const query: ModelUpstreamRouteQuery = {
       modelCode: model.id,
       kind: model.kind,
+      models,
       configuredProviders: options.configuredProviders,
       configuredUpstreams: options.configuredUpstreams,
       allowMock,
     };
-    const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, allowMock });
+    const allRoutes = candidateRoutes({ modelCode: model.id, kind: model.kind, models, allowMock });
     const routes = listModelUpstreamRoutes(query);
     const selectedRoute = routes[0] ?? null;
     const configuredCandidates = allRoutes.filter((route) => {
@@ -771,6 +941,66 @@ export function listModelCatalogEntries(options: {
       missingOAuth,
     };
   });
+}
+
+export interface UserEnabledCanvasModelIdsQuery {
+  models?: readonly ModelCard[];
+  configuredProviders?: ProviderAccountAvailability[];
+  allowMock?: boolean;
+}
+
+/**
+ * Models the user has enabled for canvas authoring.
+ *
+ * This intentionally ignores credentials/OAuth readiness: those gate Run,
+ * while canvas model visibility follows provider-account enablement and its
+ * `supportedModelIds` selection.
+ */
+export function listUserEnabledCanvasModelIds(
+  options: UserEnabledCanvasModelIdsQuery = {},
+): string[] {
+  const models = options.models ?? MODEL_CARDS;
+  const providers = (options.configuredProviders ?? []).filter((provider) => provider.enabled !== false);
+  if (providers.length === 0) {
+    return models.map((model) => model.id);
+  }
+
+  const allowMock = options.allowMock ?? shouldAllowMockCatalogRoutes({
+    configuredProviders: options.configuredProviders,
+  });
+  const declaredRoutes = routesFromModelCards(models);
+  const routes = allowMock ? [...declaredRoutes, ...MOCK_ROUTES] : declaredRoutes;
+  const enabledModelIds = new Set(routes
+    .filter((route) => providers.some((provider) => matchesProviderAccount(route, provider)))
+    .map((route) => route.modelCode));
+
+  return models.filter((model) => enabledModelIds.has(model.id)).map((model) => model.id);
+}
+
+export interface CompatibleModelCatalogQuery {
+  outputKind: "image" | "video" | "audio" | "text";
+  sourceKind?: Modality | string;
+  referenceCounts?: Partial<Record<Modality, number>>;
+  enforceMinimums?: boolean;
+  models?: readonly ModelCard[];
+  configuredProviders?: ProviderAccountAvailability[];
+  configuredUpstreams?: UpstreamAvailability[];
+  allowMock?: boolean;
+}
+
+/** Capability filter on the existing model catalog anti-corruption layer. */
+export function listCompatibleModelCatalogEntries(
+  options: CompatibleModelCatalogQuery,
+): ModelCatalogEntry[] {
+  const entries = listModelCatalogEntries(options);
+  const compatibleIds = new Set(findCompatibleModels({
+    outputKind: options.outputKind,
+    sourceKind: options.sourceKind,
+    referenceCounts: options.referenceCounts,
+    enforceMinimums: options.enforceMinimums,
+    cards: entries.map((entry) => entry.model),
+  }).map((model) => model.id));
+  return entries.filter((entry) => compatibleIds.has(entry.model.id));
 }
 
 export const listModelProviderRoutes = listModelUpstreamRoutes;

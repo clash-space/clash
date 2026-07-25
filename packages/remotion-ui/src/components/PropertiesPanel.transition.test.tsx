@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Tests for the transition section of PropertiesPanel: when a TransitionItem
- * is selected, type / from-id / to-id controls are visible and editing them
- * dispatches UPDATE_ITEM into the editor reducer.
+ * is selected, its clip boundary stays structural while the user can resize
+ * the centered transition range.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -60,10 +60,8 @@ describe('PropertiesPanel — transition section', () => {
   // placeholder/role and pull the type select via its display value.
   const getTypeSelect = () =>
     screen.getByRole('combobox') as HTMLSelectElement;
-  const getFromInput = () =>
-    screen.getByPlaceholderText('clip leaving') as HTMLInputElement;
-  const getToInput = () =>
-    screen.getByPlaceholderText('clip entering') as HTMLInputElement;
+  const getDurationInput = () =>
+    screen.getByRole('spinbutton', { name: 'Transition duration in frames' }) as HTMLInputElement;
 
   it('shows the transition section when a transition item is selected', () => {
     render(
@@ -74,8 +72,10 @@ describe('PropertiesPanel — transition section', () => {
 
     expect(screen.getByText('Transition')).toBeTruthy();
     expect(getTypeSelect().value).toBe('push-left');
-    expect(getFromInput().value).toBe('clip-A');
-    expect(getToInput().value).toBe('clip-B');
+    expect(screen.getByText('clip-A')).toBeTruthy();
+    expect(screen.getByText('clip-B')).toBeTruthy();
+    expect(screen.queryByText('Transform')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Split' })).toBeNull();
   });
 
   it('lists all 9 transitionType options', () => {
@@ -111,14 +111,15 @@ describe('PropertiesPanel — transition section', () => {
     fireEvent.change(getTypeSelect(), { target: { value: 'circle-wipe' } });
 
     expect(getTypeSelect().value).toBe('circle-wipe');
-    const lastCallState = onChange.mock.calls.at(-1)?.[0] as EditorState;
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1];
+    const lastCallState = lastCall?.[0] as EditorState;
     const tx = lastCallState.tracks
       .flatMap((t) => t.items)
       .find((i) => i.id === 'tx1') as TransitionItem;
     expect(tx.transitionType).toBe('circle-wipe');
   });
 
-  it('changing fromItemId / toItemId dispatches UPDATE_ITEM', () => {
+  it('keeps the clip refs read-only and recenters a duration edit on the continuous boundary', () => {
     const onChange = vi.fn();
     render(
       <EditorProvider
@@ -128,16 +129,54 @@ describe('PropertiesPanel — transition section', () => {
         <PropertiesPanel />
       </EditorProvider>,
     );
-    fireEvent.change(getFromInput(), { target: { value: 'shot-1' } });
-    fireEvent.change(getToInput(), { target: { value: 'shot-2' } });
+    expect(screen.queryByPlaceholderText('clip leaving')).toBeNull();
+    expect(screen.queryByPlaceholderText('clip entering')).toBeNull();
+    expect(getDurationInput().max).toBe('200');
+    fireEvent.change(getDurationInput(), { target: { value: '40' } });
 
-    expect(getFromInput().value).toBe('shot-1');
-    expect(getToInput().value).toBe('shot-2');
-
-    const finalState = onChange.mock.calls.at(-1)?.[0] as EditorState;
+    const finalCall = onChange.mock.calls[onChange.mock.calls.length - 1];
+    const finalState = finalCall?.[0] as EditorState;
     const tx = finalState.tracks.flatMap((t) => t.items).find((i) => i.id === 'tx1') as TransitionItem;
-    expect(tx.fromItemId).toBe('shot-1');
-    expect(tx.toItemId).toBe('shot-2');
+    expect(tx.fromItemId).toBe('clip-A');
+    expect(tx.toItemId).toBe('clip-B');
+    expect(tx.from).toBe(80);
+    expect(tx.durationInFrames).toBe(40);
+    expect(screen.getByText('00:02.66–00:04.00')).toBeTruthy();
+  });
+
+  it('clamps the duration to the two adjacent clip handles', () => {
+    const onChange = vi.fn();
+    render(
+      <EditorProvider
+        initialState={stateWithSelectedTransition()}
+        onStateChange={onChange}
+      >
+        <PropertiesPanel />
+      </EditorProvider>,
+    );
+
+    fireEvent.change(getDurationInput(), { target: { value: '500' } });
+
+    const finalCall = onChange.mock.calls[onChange.mock.calls.length - 1];
+    const finalState = finalCall?.[0] as EditorState;
+    const tx = finalState.tracks.flatMap((t) => t.items).find((i) => i.id === 'tx1') as TransitionItem;
+    expect(tx.from).toBe(0);
+    expect(tx.durationInFrames).toBe(200);
+  });
+
+  it('formats exact decimal frame boundaries without floating-point drift', () => {
+    render(
+      <EditorProvider
+        initialState={stateWithSelectedTransition({
+          from: 72,
+          durationInFrames: 16,
+        })}
+      >
+        <PropertiesPanel />
+      </EditorProvider>,
+    );
+
+    expect(screen.getByText('00:02.40–00:02.93')).toBeTruthy();
   });
 
   it('does not show the transition section when a regular item is selected', () => {
@@ -158,7 +197,8 @@ describe('PropertiesPanel — transition section', () => {
       </EditorProvider>,
     );
     expect(screen.queryByText('Transition')).toBeNull();
-    // But the Fades & Transitions section should be present (clip-A is a video)
-    expect(screen.getByText('Fades & Transitions')).toBeTruthy();
+    // Video entrance/exit presentation is a clip animation, not an audio fade.
+    expect(screen.getByText('Animation')).toBeTruthy();
+    expect(screen.queryByText('Fades')).toBeNull();
   });
 });

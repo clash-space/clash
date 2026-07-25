@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, redirect } from "react-router";
 import AppLayout, { loader as appLayoutLoader } from "./layouts/AppLayout";
 import { ErrorBoundary, HydrateFallback } from "./root";
 
@@ -37,6 +37,7 @@ export const router = createBrowserRouter([
       { path: "download", lazy: lazyRoute(() => import("./routes/download")) },
       { path: "login", lazy: lazyRoute(() => import("./routes/login")) },
       { path: "projects", lazy: lazyRoute(() => import("./routes/projects")) },
+      { path: "assets", loader: () => redirect("/projects") },
       { path: "settings", lazy: lazyRoute(() => import("./routes/settings")) },
       {
         path: "projects/:id",

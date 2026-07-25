@@ -1,0 +1,20 @@
+{
+  "summary": "Cohesive asset workspace feature: Preview/Edit composition, navigable provenance, thumbnails, media resolution, and browser action adapters.",
+  "context_hints": [
+    "Use this feature from ProjectEditor instead of embedding asset business logic in the canvas shell.",
+    "Preview and Edit are states of one workspace; Canvas and Preview invoke the same shared Action Spec.",
+    "Keep media URL resolution and thumbnail fallback centralized here.",
+    "Asset relations merge immutable Asset lineage with project-wide Loro Canvas and Timeline state; do not inspect only the active Canvas."
+  ],
+  "subdirectories": {},
+  "key_files": {
+    "AssetWorkspace.tsx": "Single Preview/Edit feature entry point.",
+    "AssetThumbnail.tsx": "Shared image/video thumbnail and type fallback component.",
+    "AssetRelationsPanel.tsx": "Docked Preview provenance rail and relation navigation controls.",
+    "relations.ts": "Headless project-wide lineage and Canvas/Timeline relation projection.",
+    "media-url.ts": "Canonical media URL resolver for preview, thumbnails, and players.",
+    "action-client.ts": "Feature boundary for browser/server asset action executor clients.",
+    "AssetWorkspace.test.tsx": "Feature-level workspace behavior tests."
+  },
+  "architecture_notes": "The feature collects user intent and calls executor adapters. Shared-types owns action identity and invocation semantics; APIs own immutable result persistence. ProjectEditor may provide raw project state and navigation callbacks, but relation inference belongs in this feature."
+}

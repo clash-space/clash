@@ -237,6 +237,35 @@ test("asset import can register the content-addressed blob with local metadata",
   }]);
 });
 
+test("asset import registers GLB files as Director model assets", async () => {
+  const homeDir = await tempDir();
+  const cwd = await tempDir();
+  await initProject({ cwd, projectId: "asset_project" });
+  const source = join(await tempDir(), "horse.glb");
+  await writeFile(source, "glb-bytes", "utf8");
+  const registrations: unknown[] = [];
+
+  const result = await importAssetFile({
+    filePath: source,
+    cwd,
+    env: {},
+    homeDir,
+    kind: "model",
+    link: false,
+    registerImportedAsset: async (payload) => {
+      registrations.push(payload);
+      return { id: payload.assetId, srcR2Key: "local-models/horse.glb" };
+    },
+  });
+
+  assert.equal(result.registered, true);
+  assert.equal(registrations.length, 1);
+  assert.equal((registrations[0] as { projectId: string }).projectId, "asset_project");
+  assert.equal((registrations[0] as { kind: string }).kind, "model");
+  assert.equal((registrations[0] as { contentType: string }).contentType, "model/gltf-binary");
+  assert.equal((registrations[0] as { originalName: string }).originalName, "horse.glb");
+});
+
 test("asset replace imports a file then calls copy-on-write canvas replacement with read proof", async () => {
   const source = join(await tempDir(), "replacement.png");
   await writeFile(source, "replacement-bytes", "utf8");

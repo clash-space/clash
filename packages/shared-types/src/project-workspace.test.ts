@@ -613,6 +613,51 @@ describe("Project workspace model", () => {
     expect(attached.timeline.revisionId).toBe(revisionBeforeAttach);
   });
 
+  it("deletes a Timeline with CAS and removes every owned Canvas Action edge", () => {
+    expect((workspace as any).deleteProjectTimeline).toBeTypeOf("function");
+
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {}, "main");
+    (workspace as any).createProjectTimeline(doc, {
+      id: "timeline-delete",
+      name: "Temporary proof",
+      state: { tracks: [] },
+    });
+    (workspace as any).attachTimelineToCanvas(doc, {
+      timelineId: "timeline-delete",
+      canvasId: "main",
+      actionNodeId: "timeline-action-delete",
+      position: { x: 0, y: 0 },
+    });
+    canvas.insertNode("render-target", "image_gen", {}, null, { x: 200, y: 0 });
+    canvas.insertEdge("timeline-render", "timeline-action-delete", "render-target");
+    const timeline = (workspace as any).readProjectTimeline(doc, "timeline-delete");
+    const readToken = (workspace as any).projectTimelineReadToken(timeline);
+
+    expect((workspace as any).deleteProjectTimeline(
+      doc,
+      "timeline-delete",
+      "stale-token",
+    )).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("STALE_READ"),
+    });
+    expect(canvas.readNode("timeline-action-delete")).not.toBeNull();
+
+    expect((workspace as any).deleteProjectTimeline(
+      doc,
+      "timeline-delete",
+      readToken,
+    )).toEqual({
+      ok: true,
+      timelineId: "timeline-delete",
+    });
+    expect((workspace as any).readProjectTimeline(doc, "timeline-delete")).toBeNull();
+    expect(canvas.readNode("timeline-action-delete")).toBeNull();
+    expect(canvas.readNode("render-target")?.upstream).toEqual([]);
+    expect(canvas.listEdges()).toEqual([]);
+  });
+
   it("copies a Timeline Action across canvases with new Action and Timeline identities", () => {
     expect((workspace as any).copyTimelineActionToCanvas).toBeTypeOf("function");
 

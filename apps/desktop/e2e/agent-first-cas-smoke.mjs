@@ -907,7 +907,7 @@ function runProjectionPathGuards() {
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 0",
     "        durationInFrames: 30",
     "        cues:",

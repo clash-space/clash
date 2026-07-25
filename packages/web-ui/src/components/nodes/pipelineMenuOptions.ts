@@ -1,7 +1,7 @@
 import { Image as ImageIcon, VideoCamera, FilmSlate, SpeakerHigh, TextT, PencilSimple, FilmStrip } from '@phosphor-icons/react';
 import {
-    capability,
-    pickDefaultModel,
+    listCompatibleModelCatalogEntries,
+    type ModelCatalogEntry,
     type Modality,
 } from '@clash/shared-types';
 
@@ -12,18 +12,17 @@ export interface PipelineMenuOption {
     nodeType: string;
     /**
      * Spawn payload for the new node. Source-aware so the chosen default
-     * model can actually consume the upstream node's modality (e.g. video
-     * source → seedance-ref instead of sora-2). For modality-agnostic
+     * model can actually consume the upstream node's modality. For modality-agnostic
      * options (video-editor, plain text), `sourceKind` is ignored.
      */
-    getNodeData: (sourceKind?: Modality) => Record<string, unknown>;
+    getNodeData: (sourceKind: Modality | undefined, catalog: ReadonlyArray<ModelCatalogEntry>) => Record<string, unknown>;
     /**
      * Whether the option is sensible for a given source modality. Derived
      * from the model registry — an option is shown only if some model of
      * the right output kind can consume `sourceKind`. Modality-agnostic
      * options (video-editor) accept anything.
      */
-    isCompatibleWithSource: (sourceKind?: Modality) => boolean;
+    isCompatibleWithSource: (sourceKind: Modality | undefined, catalog: ReadonlyArray<ModelCatalogEntry>) => boolean;
 }
 
 /** Build the spawn payload for a generation action-badge. */
@@ -31,8 +30,13 @@ function buildGenNodeData(
     actionType: 'image-gen' | 'video-gen' | 'audio-gen' | 'text-gen',
     outputKind: 'image' | 'video' | 'audio' | 'text',
     sourceKind?: Modality,
+    catalog: ReadonlyArray<ModelCatalogEntry> = [],
 ): Record<string, unknown> {
-    const card = pickDefaultModel({ outputKind, sourceKind });
+    const card = listCompatibleModelCatalogEntries({
+        outputKind,
+        sourceKind,
+        models: catalog.map((entry) => entry.model),
+    })[0]?.model;
     const modelId = card?.id ?? '';
     const labelByAction = {
         'image-gen': 'Image Prompt',
@@ -50,6 +54,18 @@ function buildGenNodeData(
     };
 }
 
+function hasCompatibleGenerationModel(
+    outputKind: 'image' | 'video' | 'audio' | 'text',
+    sourceKind?: Modality,
+    catalog: ReadonlyArray<ModelCatalogEntry> = [],
+): boolean {
+    return listCompatibleModelCatalogEntries({
+        outputKind,
+        sourceKind,
+        models: catalog.map((entry) => entry.model),
+    }).length > 0;
+}
+
 /**
  * Downstream-action options shared by SourceHandleMenu (on data nodes) and
  * ActionBadgePipelineMenu (on action-badge output handle).
@@ -60,44 +76,34 @@ export const PIPELINE_MENU_OPTIONS: PipelineMenuOption[] = [
         label: 'Image Gen',
         icon: ImageIcon,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind) => buildGenNodeData('image-gen', 'image', sourceKind),
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('image-gen', 'image', sourceKind, catalog),
         // Visible only when some image-output model can consume the source.
         // Without a source (manual placement), always visible.
-        isCompatibleWithSource: (sourceKind) => {
-            if (!sourceKind) return true;
-            const card = pickDefaultModel({ outputKind: 'image', sourceKind });
-            return !!card && capability(card).ref[sourceKind].accepts;
-        },
+        isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('image', sourceKind, catalog),
     },
     {
         id: 'video-gen',
         label: 'Video Gen',
         icon: VideoCamera,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind) => buildGenNodeData('video-gen', 'video', sourceKind),
-        isCompatibleWithSource: (sourceKind) => {
-            if (!sourceKind) return true;
-            const card = pickDefaultModel({ outputKind: 'video', sourceKind });
-            return !!card && capability(card).ref[sourceKind].accepts;
-        },
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('video-gen', 'video', sourceKind, catalog),
+        isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('video', sourceKind, catalog),
     },
     {
         id: 'audio-gen',
         label: 'Audio Gen',
         icon: SpeakerHigh,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind) => buildGenNodeData('audio-gen', 'audio', sourceKind),
-        // TTS is prompt-first today; keep this available as a downstream
-        // lineage step even when the upstream media is not consumed as a ref.
-        isCompatibleWithSource: () => true,
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('audio-gen', 'audio', sourceKind, catalog),
+        isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('audio', sourceKind, catalog),
     },
     {
         id: 'text-gen',
         label: 'Text Gen',
         icon: TextT,
         nodeType: 'action-badge',
-        getNodeData: (sourceKind) => buildGenNodeData('text-gen', 'text', sourceKind),
-        isCompatibleWithSource: () => true,
+        getNodeData: (sourceKind, catalog) => buildGenNodeData('text-gen', 'text', sourceKind, catalog),
+        isCompatibleWithSource: (sourceKind, catalog) => hasCompatibleGenerationModel('text', sourceKind, catalog),
     },
     {
         id: 'video-editor',

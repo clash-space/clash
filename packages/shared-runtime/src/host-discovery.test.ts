@@ -10,6 +10,7 @@ import {
 function record(
   launchMode: LocalHostDiscoveryRecord["launchMode"],
   ownerClientId = "desktop-1",
+  startedBy: LocalHostDiscoveryRecord["startedBy"] = "desktop",
 ): LocalHostDiscoveryRecord {
   return {
     schemaVersion: LOCAL_HOST_RECORD_SCHEMA_VERSION,
@@ -19,7 +20,7 @@ function record(
     endpoint: "http://127.0.0.1:49321",
     pid: 1234,
     launchMode,
-    startedBy: "desktop",
+    startedBy,
     ownerClientId,
     startedAt: "2026-06-20T00:00:00.000Z",
     updatedAt: "2026-06-20T00:00:00.000Z",
@@ -46,6 +47,23 @@ describe("local host lifecycle helpers", () => {
         clientId: "desktop-1",
       })).toBe(false);
     }
+  });
+
+  it("lets a plugin close only the embedded host instance it owns", () => {
+    const pluginHost = record("plugin", "plugin-1", "plugin");
+
+    expect(shouldClientOwnShutdown(pluginHost, {
+      clientKind: "plugin",
+      clientId: "plugin-1",
+    })).toBe(true);
+    expect(shouldClientOwnShutdown(pluginHost, {
+      clientKind: "plugin",
+      clientId: "other-plugin",
+    })).toBe(false);
+    expect(shouldClientOwnShutdown(pluginHost, {
+      clientKind: "desktop",
+      clientId: "plugin-1",
+    })).toBe(false);
   });
 
   it("checks host protocol compatibility", () => {

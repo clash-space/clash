@@ -8,7 +8,7 @@ import { log } from "../../logger";
 import { generateImage as generateFalImage } from "../../services/fal-image";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
   fal.config({ credentials: falApiKey });
@@ -24,10 +24,11 @@ export const falImageProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
-    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], {
-      upstreamId: "fal",
-      modelCode: params.modelName,
-    })).apiKey;
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "fal") {
+      throw new Error(`fal image execution requires a selected fal route for ${params.modelName ?? "unknown model"}`);
+    }
+    const falKey = (await credentialsForRoute(ctx, route)).apiKey;
 
     const referenceImageUrls = await ctx.step(
       "resolve-references",
@@ -56,6 +57,7 @@ export const falImageProvider: GenerationProvider = {
           referenceImageUrls,
           aspectRatio: params.aspectRatio,
           modelName: params.modelName,
+          modelEndpoint: route.upstreamModel,
           modelParams: params.modelParams,
         });
         log.info("fal-image generated", { ...ctx.tag, model: result.model });

@@ -222,6 +222,10 @@ export interface InteractiveAuthLaunchOptions {
 
 interface LocalAcpSession {
   id: string;
+  startParams: LocalAcpCreateSessionParams;
+  harnessId: string;
+  harnessLabel: string;
+  harnessVersion?: string;
   manager: SessionManagerLike;
   clients: Set<WebSocket>;
   backlog: unknown[];
@@ -234,6 +238,10 @@ interface LocalAcpSession {
   queuedPrompts: QueuedPrompt[];
   scheduledPromptCount: number;
   activePromptTurnId: string | null;
+  acpSessionId?: string;
+  restartPending: boolean;
+  restartReadySent: boolean;
+  restarting?: boolean;
   projectId?: string;
   agentMemberId?: string;
   persistQueue: Promise<void>;
@@ -306,8 +314,18 @@ function sessionIndexKey(projectId: string, agentMemberId: string): string {
   return `${projectId}\0${agentMemberId}`;
 }
 
-function defaultDetectAgents(env: Record<string, string | undefined> = process.env): Promise<DetectedAcpAgent[]> {
-  return detectAll({ env: env as NodeJS.ProcessEnv }) as Promise<KnownAgentEntry[]>;
+async function defaultDetectAgents(env: Record<string, string | undefined> = process.env): Promise<DetectedAcpAgent[]> {
+  const detected = await detectAll({ env: env as NodeJS.ProcessEnv });
+  return detected.map((agent) => {
+    const { env: agentEnv, ...spec } = agent.spec;
+    return {
+      ...agent,
+      spec: {
+        ...spec,
+        ...(agentEnv ? { env: mergedStringEnv(agentEnv) } : {}),
+      },
+    };
+  });
 }
 
 function normalizeEnabledHarnessIds(ids: string[], allowedIds: string[]): string[] {
@@ -536,6 +554,7 @@ function mergeAgentEntries(entries: KnownAgentEntry[]): KnownAgentEntry[] {
       ...entry,
       ...existing,
       registryVersion: existing.registryVersion ?? entry.registryVersion,
+      registryNpmPackage: existing.registryNpmPackage ?? entry.registryNpmPackage,
       registryId: existing.registryId ?? entry.registryId,
       installSource: existing.installSource ?? entry.installSource,
       homepage: existing.homepage ?? entry.homepage,
@@ -742,6 +761,11 @@ function publicSessionMessage(msg: unknown): unknown {
 function shouldPersistSessionEvent(event: unknown): boolean {
   const update = getSessionUpdateType(event);
   return !update || !NON_TRANSCRIPT_SESSION_UPDATES.has(update);
+}
+
+function replayCapabilityEvents(msg: unknown): unknown[] {
+  if (!isSessionReadyMessage(msg) || !Array.isArray(msg.replay_events)) return [];
+  return msg.replay_events.filter((event) => !shouldPersistSessionEvent(event));
 }
 
 function eventKey(event: unknown): string {
@@ -969,7 +993,10 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private detectedAgentsPromiseProbeScope: DetectedAgentProbeScope | null = null;
   private registryAgentCatalogCache: KnownAgentEntry[] | null = null;
   private registryAgentCatalogPromise: Promise<KnownAgentEntry[]> | null = null;
+  private readonly npmPackageVersionCache = new Map<string, string | null>();
   private sessionMessageStore: LocalAcpSessionMessageStore | null = null;
+  private shutdownPromise: Promise<void> | null = null;
+  private shuttingDown = false;
 
   constructor(options: LocalAcpAdapterOptions = {}) {
     this.spawnEnv = options.spawnEnv ?? {};
@@ -1102,6 +1129,10 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     this.fetchImpl = options.fetch ?? fetch;
   }
 
+  updateSpawnEnv(env: Record<string, string | undefined>): void {
+    Object.assign(this.spawnEnv, env);
+  }
+
   async warmup(): Promise<void> {
     await this.refreshDetectedAgents({
       probeAuth: true,
@@ -1232,6 +1263,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
             },
             registryId: agent.id,
             ...(agent.version ? { registryVersion: agent.version } : {}),
+            ...(agent.npmPackage ? { registryNpmPackage: agent.npmPackage } : {}),
             installSource: "registry" as const,
             ...(agent.homepage ? { homepage: agent.homepage } : {}),
           } satisfies KnownAgentEntry;
@@ -1335,11 +1367,11 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     latestVersion?: string;
     updateAvailable?: boolean;
   }> {
-    const latestVersion = entry.registryVersion;
+    const registryLatestVersion = entry.registryVersion;
     if (!this.harnessDownloadDir || !entry.installSource) {
       return {
         installed: false,
-        ...(latestVersion ? { latestVersion } : {}),
+        ...(registryLatestVersion ? { latestVersion: registryLatestVersion } : {}),
       };
     }
     const shimPath = join(this.harnessDownloadDir, basename(entry.spec.command));
@@ -1347,17 +1379,26 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     if (!installed) {
       return {
         installed: false,
-        ...(latestVersion ? { latestVersion } : {}),
+        ...(registryLatestVersion ? { latestVersion: registryLatestVersion } : {}),
       };
     }
-    const metadata = entry.installSource === "registry" && entry.registryId
-      ? await readAcpRegistryInstallMetadata({
-        registryId: entry.registryId,
-        binDir: this.harnessDownloadDir,
-        installRoot: this.harnessDownloadDir,
-      })
-      : null;
-    const installedVersion = metadata?.version;
+    const [metadata, installedNpmVersion, latestNpmVersion] = await Promise.all([
+      entry.installSource === "registry" && entry.registryId
+        ? readAcpRegistryInstallMetadata({
+          registryId: entry.registryId,
+          binDir: this.harnessDownloadDir,
+          installRoot: this.harnessDownloadDir,
+        })
+        : Promise.resolve(null),
+      entry.installSource === "registry" && entry.registryId && entry.registryNpmPackage
+        ? this.installedNpmPackageVersion(entry.registryId, entry.registryNpmPackage)
+        : Promise.resolve(undefined),
+      entry.installSource === "registry" && entry.registryNpmPackage
+        ? this.latestNpmPackageVersion(entry.registryNpmPackage)
+        : Promise.resolve(undefined),
+    ]);
+    const installedVersion = installedNpmVersion ?? metadata?.version;
+    const latestVersion = latestNpmVersion ?? registryLatestVersion;
     const updateAvailable = entry.installSource === "registry" && !!latestVersion && installedVersion !== latestVersion;
     return {
       installed: true,
@@ -1367,9 +1408,68 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     };
   }
 
+  private async installedHarnessVersion(agentId: string): Promise<string | undefined> {
+    const entry = (await this.fullAgentCatalog()).find((candidate) => candidate.id === agentId);
+    if (!entry) return undefined;
+    return (await this.managedInstallInfo(entry)).installedVersion;
+  }
+
+  private async installedNpmPackageVersion(registryId: string, packageName: string): Promise<string | undefined> {
+    if (!this.harnessDownloadDir) return undefined;
+    try {
+      const packageJson = JSON.parse(await readFile(join(
+        this.harnessDownloadDir,
+        "registry",
+        registryId,
+        "npx",
+        "node_modules",
+        ...packageName.split("/"),
+        "package.json",
+      ), "utf8")) as { version?: unknown };
+      return typeof packageJson.version === "string" && packageJson.version.length > 0
+        ? packageJson.version
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async latestNpmPackageVersion(packageName: string): Promise<string | undefined> {
+    if (this.npmPackageVersionCache.has(packageName)) {
+      return this.npmPackageVersionCache.get(packageName) ?? undefined;
+    }
+    try {
+      const response = await this.fetchImpl(
+        `https://registry.npmjs.org/${encodeURIComponent(packageName)}/latest`,
+      );
+      if (!response.ok) throw new Error(`NPM registry unavailable: HTTP ${response.status}`);
+      const payload = await response.json() as {
+        version?: unknown;
+        "dist-tags"?: { latest?: unknown };
+      };
+      const version = payload.version ?? payload["dist-tags"]?.latest;
+      const normalized = typeof version === "string" && version.length > 0 ? version : null;
+      this.npmPackageVersionCache.set(packageName, normalized);
+      return normalized ?? undefined;
+    } catch {
+      this.npmPackageVersionCache.set(packageName, null);
+      return undefined;
+    }
+  }
+
   private async buildHarnesses(opts: LocalAcpHarnessListOptions = {}): Promise<LocalAcpHarness[]> {
-    const probeAuth = opts.probe === true || opts.probe === "auth" || opts.probe === "config";
+    const probeAuth =
+      opts.probe === true || opts.probe === "auth" || opts.probe === "config";
     const probeConfigOptions = opts.probe === "config";
+    const checksForUpdates =
+      opts.refresh === true ||
+      (opts.probe !== undefined &&
+        opts.probe !== false &&
+        opts.probe !== "none");
+    if (checksForUpdates) {
+      this.registryAgentCatalogCache = null;
+      this.npmPackageVersionCache.clear();
+    }
     const agents = await this.getDetectedAgents({
       probeAuth,
       probeConfigOptions,
@@ -1476,7 +1576,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         installRoot: this.harnessDownloadDir,
         fetchImpl: this.fetchImpl,
         shimArgs: entry.spec.args,
-        shimEnv: entry.spec.env,
+        shimEnv: entry.spec.env ? mergedStringEnv(entry.spec.env) : undefined,
         env: this.spawnEnv as NodeJS.ProcessEnv,
       });
     } else if (entry.installSource === "adapter" && entry.downloadUrl) {
@@ -1606,11 +1706,13 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   }
 
   private async startSession(params: LocalAcpCreateSessionParams, sessionId: string) {
+    if (this.shuttingDown) throw new Error("Local ACP runtime is shutting down");
     if (params.runtimeId !== DESKTOP_LOCAL_RUNTIME_ID) {
       throw new Error(`Unknown local runtime: ${params.runtimeId}`);
     }
 
     const agents = await this.detectEnabledAgents({ probeAuth: true, probeScope: "enabled" });
+    if (this.shuttingDown) throw new Error("Local ACP runtime is shutting down");
     let agent = params.agentId
       ? agents.find((candidate) => candidate.id === params.agentId)
       : chooseDefaultAgent(agents);
@@ -1626,6 +1728,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     }
     if (!agent) throw new Error("No enabled local agent harness found");
     const agentIdForConfigUpdates = agent.id;
+    const harnessVersion = await this.installedHarnessVersion(agent.id);
 
     let entry: LocalAcpSession;
     const send: SessionSender = (msg) => {
@@ -1633,6 +1736,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       const persisted = this.persistManagerMessage(entry, msg);
       const publicMsg = publicSessionMessage(msg);
       if (isSessionReadyMessage(msg)) {
+        if (msg.acp_session_id) entry.acpSessionId = msg.acp_session_id;
         entry.readyMessage = publicMsg;
         if (Array.isArray(msg.config_options)) {
           this.updateCachedAgentConfigOptions(agentIdForConfigUpdates, msg.config_options);
@@ -1664,18 +1768,30 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         entry.errorMessage = publicMsg;
         void params.onError?.({ sessionId, message: msg.message });
       }
-      if (
+      const sessionDisposed =
         publicMsg &&
         typeof publicMsg === "object" &&
-        (publicMsg as { type?: unknown }).type === "session.disposed"
-      ) {
+        (publicMsg as { type?: unknown }).type === "session.disposed";
+      if (sessionDisposed) {
         entry.disposedSent = true;
+        if (entry.restarting) return;
       }
       this.sendToSession(entry, publicMsg);
+      for (const event of replayCapabilityEvents(msg)) {
+        this.sendToSession(entry, {
+          type: "session.event",
+          session_id: sessionId,
+          event,
+        });
+      }
       if (persisted) void persisted.catch(() => undefined);
     };
     entry = {
       id: sessionId,
+      startParams: { ...params, sessionId },
+      harnessId: agent.id,
+      harnessLabel: agent.label,
+      ...(harnessVersion ? { harnessVersion } : {}),
       manager: this.createSessionManager(send),
       clients: new Set(),
       backlog: [],
@@ -1684,6 +1800,8 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       queuedPrompts: [],
       scheduledPromptCount: 0,
       activePromptTurnId: null,
+      restartPending: false,
+      restartReadySent: false,
       persistQueue: Promise.resolve(),
       promptQueue: Promise.resolve(),
       ...(params.projectId ? { projectId: params.projectId } : {}),
@@ -1696,6 +1814,10 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     }
 
     agent = await this.probeAgentMetadata(agent, { auth: true, configOptions: false });
+    if (this.shuttingDown) {
+      await this.disposeSession(sessionId);
+      throw new Error("Local ACP runtime is shutting down");
+    }
     if (agent.auth?.status === "needs-auth") {
       send({
         type: "session.error",
@@ -1854,6 +1976,16 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     return entry.scheduledPromptCount > 0 || entry.activePromptTurnId !== null;
   }
 
+  private notifyRestartReadyIfIdle(entry: LocalAcpSession): boolean {
+    if (!entry.restartPending || entry.restartReadySent || this.promptBusy(entry)) return false;
+    entry.restartReadySent = true;
+    this.sendToSession(entry, {
+      type: "session.restart_ready",
+      session_id: entry.id,
+    });
+    return true;
+  }
+
   private schedulePrompt(
     entry: LocalAcpSession,
     turnId: string,
@@ -1890,7 +2022,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         if (entry.activePromptTurnId === turnId) entry.activePromptTurnId = null;
         entry.scheduledPromptCount = Math.max(0, entry.scheduledPromptCount - 1);
         this.sendPromptQueueUpdate(entry);
-        if (!this.promptBusy(entry)) this.drainQueuedPrompts(entry);
+        if (!this.notifyRestartReadyIfIdle(entry) && !this.promptBusy(entry)) this.drainQueuedPrompts(entry);
       }
     };
     entry.promptQueue = entry.promptQueue.then(runPrompt, runPrompt);
@@ -1937,7 +2069,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       } finally {
         entry.scheduledPromptCount = Math.max(0, entry.scheduledPromptCount - 1);
         this.sendPromptQueueUpdate(entry);
-        if (!this.promptBusy(entry)) this.drainQueuedPrompts(entry);
+        if (!this.notifyRestartReadyIfIdle(entry) && !this.promptBusy(entry)) this.drainQueuedPrompts(entry);
       }
     })();
   }
@@ -2112,6 +2244,64 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     this.sessions.delete(sessionId);
   }
 
+  async restartSession(
+    sessionId: string,
+    options: { mode: "now" | "after-turn" },
+  ): Promise<{ session_id: string; status: "pending" | "restarted" }> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) throw new Error("local session not found");
+    if (options.mode === "after-turn" && this.promptBusy(entry)) {
+      entry.restartPending = true;
+      entry.restartReadySent = false;
+      return { session_id: sessionId, status: "pending" };
+    }
+
+    const startParams: LocalAcpCreateSessionParams = {
+      ...entry.startParams,
+      sessionId,
+      ...(entry.acpSessionId ? { resumeAcpSessionId: entry.acpSessionId } : {}),
+    };
+    entry.restarting = true;
+    for (const client of entry.clients) {
+      try {
+        client.close(1012, "ACP session restarting");
+      } catch {
+        // A stale browser socket must not prevent the ACP child from restarting.
+      }
+    }
+    await Promise.resolve(entry.manager.dispose(sessionId));
+    this.removeSession(sessionId);
+    await this.startSession(startParams, sessionId);
+    return { session_id: sessionId, status: "restarted" };
+  }
+
+  async getSessionRuntimeStatus(sessionId: string): Promise<{
+    session_id: string;
+    harness_id: string;
+    harness_label: string;
+    running_version?: string;
+    installed_version?: string;
+    restart_required: boolean;
+    busy: boolean;
+    restart_pending: boolean;
+  } | null> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return null;
+    const installedVersion = await this.installedHarnessVersion(entry.harnessId);
+    return {
+      session_id: sessionId,
+      harness_id: entry.harnessId,
+      harness_label: entry.harnessLabel,
+      ...(entry.harnessVersion ? { running_version: entry.harnessVersion } : {}),
+      ...(installedVersion ? { installed_version: installedVersion } : {}),
+      restart_required: Boolean(
+        entry.harnessVersion && installedVersion && entry.harnessVersion !== installedVersion
+      ),
+      busy: this.promptBusy(entry),
+      restart_pending: entry.restartPending,
+    };
+  }
+
   private disposeSession(sessionId: string): Promise<void> {
     const entry = this.sessions.get(sessionId);
     if (!entry) return Promise.resolve();
@@ -2136,6 +2326,27 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         });
     }
     return entry.disposePromise;
+  }
+
+  disposeAll(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    this.shuttingDown = true;
+    this.shutdownPromise = (async () => {
+      while (this.sessions.size > 0) {
+        const entries = [...this.sessions.values()];
+        for (const entry of entries) {
+          for (const client of entry.clients) {
+            try {
+              client.close(1001, "Clash local API shutdown");
+            } catch {
+              // Continue shutting down the ACP process if a client is already gone.
+            }
+          }
+        }
+        await Promise.all(entries.map((entry) => this.disposeSession(entry.id)));
+      }
+    })();
+    return this.shutdownPromise;
   }
 
   async listResumeSessions(runtimeId: string) {

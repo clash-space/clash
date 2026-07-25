@@ -141,6 +141,18 @@ test("canvas exposes one generic copy command for immutable nodes", () => {
   assert.match(daemonSource, /case "copy_node"/);
 });
 
+test("canvas exposes the same persisted spatial move used by MCP Canvas App", () => {
+  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+  const daemonSource = readFileSync(new URL("../lib/daemon.ts", import.meta.url), "utf8");
+
+  assert.match(source, /\.command\("move"\)/);
+  assert.match(source, /\.requiredOption\("--x <number>"/);
+  assert.match(source, /\.requiredOption\("--y <number>"/);
+  assert.match(source, /action: "move"/);
+  assert.match(daemonSource, /case "move"/);
+  assert.match(daemonSource, /client\.canvas\.moveNode/);
+});
+
 test("canvas add fallback checks createNode errors before wiring reference edges", () => {
   const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
 

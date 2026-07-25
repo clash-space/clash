@@ -20,6 +20,7 @@ import {
   createProjectCanvas,
   createProjectTimeline,
   deleteProjectCanvas,
+  deleteProjectTimeline,
   detachTimelineFromCanvas,
   ensureProjectCanvas,
   listProjectCanvases,
@@ -28,6 +29,14 @@ import {
   renameProjectCanvas,
   updateProjectTimelineState,
 } from "./project-workspace";
+import {
+  attachDirectorStageToCanvas,
+  createProjectDirectorStage,
+  detachDirectorStageFromCanvas,
+  listProjectDirectorStages,
+  reconcileProjectDirectorStageOwnership,
+  updateProjectDirectorStageState,
+} from "./director-stage";
 
 const CONNECT_TIMEOUT_MS = 10_000;
 const FLUSH_TIMEOUT_MS = 5_000;
@@ -173,6 +182,12 @@ export class LoroSyncClient {
     return result;
   }
 
+  deleteTimeline(timelineId: string, expectedReadToken?: string) {
+    const result = deleteProjectTimeline(this.doc, timelineId, expectedReadToken);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
   attachTimeline(input: {
     timelineId: string;
     canvasId: string;
@@ -198,6 +213,39 @@ export class LoroSyncClient {
     position: { x: number; y: number };
   }) {
     const result = copyTimelineActionToCanvas(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  listDirectorStages() {
+    return listProjectDirectorStages(this.doc);
+  }
+
+  createDirectorStage(input: { id: string; name: string; state: unknown }) {
+    const result = createProjectDirectorStage(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  updateDirectorStageState(stageId: string, state: unknown) {
+    const result = updateProjectDirectorStageState(this.doc, stageId, state);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  attachDirectorStage(input: {
+    stageId: string;
+    canvasId: string;
+    actionNodeId: string;
+    position: { x: number; y: number };
+  }) {
+    const result = attachDirectorStageToCanvas(this.doc, input);
+    if (result.ok) this.doc.commit();
+    return result;
+  }
+
+  detachDirectorStage(stageId: string) {
+    const result = detachDirectorStageFromCanvas(this.doc, stageId);
     if (result.ok) this.doc.commit();
     return result;
   }
@@ -239,9 +287,13 @@ export class LoroSyncClient {
 
           const graphReconciliation = reconcileCanvasGraph(this.doc);
           const reconciliation = reconcileProjectTimelineOwnership(this.doc);
+          const directorReconciliation = reconcileProjectDirectorStageOwnership(this.doc);
           let workspaceChanged = canvasGraphReconciliationChanged(graphReconciliation) ||
             reconciliation.removedActionNodeIds.length > 0 ||
             reconciliation.detachedTimelineIds.length > 0;
+          workspaceChanged = workspaceChanged ||
+            directorReconciliation.removedActionNodeIds.length > 0 ||
+            directorReconciliation.detachedStageIds.length > 0;
           if (this.doc.getMap("canvases").size === 0) {
             ensureProjectCanvas(this.doc);
             workspaceChanged = true;

@@ -7,9 +7,11 @@ import { fileURLToPath } from "node:url";
 import {
   clickButtonByLabel,
   clickComposerSubmitButton,
+  openSessionHistoryMenu,
   recoverAgentBrowserTarget,
   runtimeSessionPathObservation,
   startVite,
+  submitProjectCreateDialog,
   typeComposer,
 } from "./startup-shared.mjs";
 
@@ -44,6 +46,22 @@ const assetDragScreenshot = path.join(
 );
 const localSettingsScreenshot = path.join(captureDir, "local-settings-agent-browser-desktop.png");
 const agentFollowScreenshot = path.join(captureDir, "agent-follow-agent-browser-desktop.png");
+const transientUiScreenshot = path.join(
+  captureDir,
+  "canvas-transient-ui-agent-browser-desktop.png",
+);
+const toolbarTooltipScreenshot = path.join(
+  captureDir,
+  "canvas-toolbar-tooltip-agent-browser-desktop.png",
+);
+const popupInteractionsScreenshot = path.join(
+  captureDir,
+  "popup-interactions-agent-browser-desktop.png",
+);
+const scopedAssetPickerScreenshot = path.join(
+  captureDir,
+  "scoped-asset-picker-agent-browser-desktop.png",
+);
 let electronTargetRecovery = null;
 
 function sleep(ms) {
@@ -245,11 +263,12 @@ async function sendPrompt(text) {
   if (!electronTargetRecovery) {
     throw new Error("Electron target recovery is not configured");
   }
+  recoverAgentBrowserTarget(agentBrowser, electronTargetRecovery);
   await waitForEval(
      `document.body.innerText.includes(${JSON.stringify(text)}) &&
        document.body.innerText.includes(${JSON.stringify(`Mock ACP reply: ${text}`)})`,
      `mock ACP reply for ${text}`,
-     30000,
+     45000,
    );
 }
 
@@ -370,6 +389,7 @@ async function main() {
     await waitForEval(`location.pathname === "/projects"`, "projects route");
     if (!clickVisibleLinkOrButtonByText("New Project"))
       throw new Error("Could not create project");
+    await submitProjectCreateDialog(agentBrowser, "Stub Desktop E2E");
     const projectId = await waitForEval(
       `location.pathname.startsWith("/projects/") &&
         location.pathname !== "/projects" &&
@@ -406,6 +426,79 @@ async function main() {
       `document.body.innerText.includes("Mock ACP")`,
       "mock ACP runtime ready",
       20000,
+    );
+    await waitForEval(
+      `!!document.querySelector('[aria-label="Canvas tools"] [aria-label="Assets"]')`,
+      "Canvas asset tool ready",
+      20000,
+    );
+
+    if (!evalJson(`(() => {
+      const button = document.querySelector('[aria-label="Canvas tools"] button[aria-label="Assets"]');
+      if (!(button instanceof HTMLButtonElement)) return false;
+      button.click();
+      return true;
+    })()`)) {
+      throw new Error("Could not open the Canvas asset picker");
+    }
+    await waitForEval(
+      `(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const tabs = [...(dialog?.querySelectorAll('[role="tab"]') ?? [])].map((node) => node.textContent?.trim());
+        return !!dialog?.querySelector('[data-layout="command-grid"]') &&
+          !!dialog.querySelector('[role="searchbox"][aria-label="Search media"]') &&
+          tabs.includes('Project') && tabs.includes('More sources') &&
+          !tabs.includes('Current Canvas');
+      })()`,
+      "large Canvas command-grid asset picker",
+      10000,
+    );
+    agentBrowser(["screenshot", scopedAssetPickerScreenshot]);
+    agentBrowser(["press", "Escape"]);
+
+    const sessionConfigSelector = '[data-testid="session-harness-config-trigger"]';
+    const sessionHistorySelector = '[aria-label="Session history"]';
+    agentBrowser(["click", sessionConfigSelector]);
+    await waitForEval(
+      `document.querySelector(${JSON.stringify(sessionConfigSelector)})?.getAttribute('data-state') === 'open'`,
+      "session config menu open",
+    );
+    agentBrowser(["click", sessionConfigSelector]);
+    await waitForEval(
+      `document.querySelector(${JSON.stringify(sessionConfigSelector)})?.getAttribute('data-state') === 'closed' &&
+       !document.querySelector('[role="menu"][data-state="open"]')`,
+      "session config menu closed by its trigger",
+    );
+
+    agentBrowser(["click", sessionConfigSelector]);
+    await waitForEval(
+      `document.querySelector(${JSON.stringify(sessionConfigSelector)})?.getAttribute('data-state') === 'open'`,
+      "session config menu reopened",
+    );
+    agentBrowser(["click", sessionHistorySelector]);
+    const popupInteractions = await waitForEval(
+      `(() => {
+        const sessionConfig = document.querySelector(${JSON.stringify(sessionConfigSelector)});
+        const sessionHistory = document.querySelector(${JSON.stringify(sessionHistorySelector)});
+        const openMenus = [...document.querySelectorAll('[role="menu"][data-state="open"]')];
+        if (sessionConfig?.getAttribute('data-state') !== 'closed') return false;
+        if (sessionHistory?.getAttribute('data-state') !== 'open') return false;
+        if (openMenus.length !== 1) return false;
+        return {
+          sameTriggerToggle: true,
+          crossTriggerSwitch: true,
+          openMenuCount: openMenus.length,
+          activeTrigger: sessionHistory.getAttribute('aria-label'),
+        };
+      })()`,
+      "single-action popup trigger switch",
+    );
+    agentBrowser(["screenshot", popupInteractionsScreenshot]);
+    agentBrowser(["press", "Escape"]);
+    await waitForEval(
+      `document.querySelector(${JSON.stringify(sessionHistorySelector)})?.getAttribute('data-state') === 'closed' &&
+       !document.querySelector('[role="menu"][data-state="open"]')`,
+      "popup dismissed with Escape",
     );
 
     const firstPrompt = "agent-browser desktop first turn";
@@ -451,6 +544,158 @@ async function main() {
     );
     agentBrowser(["screenshot", agentFollowScreenshot]);
 
+    const transientTargets = evalJson(`(() => {
+      const lower = [...document.querySelectorAll('[data-id^="mock-agent-action-"]')].at(-1);
+      const upper = [...document.querySelectorAll('[data-id^="mock-agent-brief-"]')].at(-1);
+      return {
+        lowerId: lower?.getAttribute('data-id') ?? null,
+        upperId: upper?.getAttribute('data-id') ?? null,
+      };
+    })()`);
+    if (!transientTargets.lowerId || !transientTargets.upperId) {
+      throw new Error(`Could not identify action nodes for transient UI checks: ${JSON.stringify(transientTargets)}`);
+    }
+    const configureSelector = (nodeId) =>
+      `[data-id="${nodeId}"] button[aria-label="Configure action"]`;
+
+    agentBrowser(["click", configureSelector(transientTargets.lowerId)]);
+    await waitForEval(
+      `document.querySelectorAll('[data-action-config-panel]').length === 1 &&
+       !!document.querySelector(${JSON.stringify(`[data-action-config-panel="${transientTargets.lowerId}"]`)})`,
+      "lower action config panel",
+    );
+    agentBrowser(["click", configureSelector(transientTargets.upperId)]);
+    await waitForEval(
+      `document.querySelectorAll('[data-action-config-panel]').length === 1 &&
+       !!document.querySelector(${JSON.stringify(`[data-action-config-panel="${transientTargets.upperId}"]`)})`,
+      "single action config owner after switching nodes",
+    );
+    const selectedCapsuleFill = await waitForEval(
+      `(() => {
+        const configure = document.querySelector(${JSON.stringify(configureSelector(transientTargets.upperId))});
+        const capsule = configure?.parentElement?.parentElement;
+        const runRegion = configure?.nextElementSibling;
+        if (!configure || !capsule || !runRegion) return false;
+        const configureBackground = getComputedStyle(configure).backgroundColor;
+        const runRegionBackground = getComputedStyle(runRegion).backgroundColor;
+        const capsuleBackground = getComputedStyle(capsule).backgroundColor;
+        if (configureBackground !== runRegionBackground || capsuleBackground === 'rgba(0, 0, 0, 0)') return false;
+        return {
+          capsuleBackground,
+          configureBackground,
+          runRegionBackground,
+          uniform: true,
+        };
+      })()`,
+      "uniform selected action capsule fill",
+    );
+
+    const tooltipPoints = evalJson(`(() => {
+      const flow = document.querySelector('#project-workspace-inset .react-flow')?.getBoundingClientRect();
+      const actions = document.querySelector('[aria-label="Canvas tools"] [aria-label="Actions"]')?.getBoundingClientRect();
+      if (!flow || !actions) return null;
+      return {
+        actions: {
+          x: Math.round(actions.left + actions.width / 2),
+          y: Math.round(actions.top + actions.height / 2),
+        },
+        exit: {
+          x: Math.round(flow.right - 24),
+          y: Math.round(flow.top + 24),
+        },
+      };
+    })()`);
+    if (!tooltipPoints) throw new Error("Could not calculate canvas toolbar tooltip points");
+    agentBrowser(["mouse", "move", String(tooltipPoints.exit.x), String(tooltipPoints.exit.y)]);
+    agentBrowser(["mouse", "move", String(tooltipPoints.actions.x), String(tooltipPoints.actions.y)]);
+    const toolbarTooltip = await waitForEval(
+      `(() => {
+        const button = document.querySelector('[aria-label="Canvas tools"] [aria-label="Actions"]')?.getBoundingClientRect();
+        const tooltipElement = [...document.querySelectorAll('[role="tooltip"]')].find((tooltip) => tooltip.textContent?.trim() === 'Actions');
+        const tooltip = tooltipElement?.getBoundingClientRect();
+        if (!button || !tooltip || tooltip.left < button.right + 6) return false;
+        return {
+          placement: tooltipElement.getAttribute('data-placement'),
+          sideGap: Math.round((tooltip.left - button.right) * 10) / 10,
+          verticallyAligned: tooltip.top < button.bottom && tooltip.bottom > button.top,
+        };
+      })()`,
+      "right-side canvas toolbar tooltip",
+    );
+    agentBrowser(["screenshot", toolbarTooltipScreenshot]);
+    agentBrowser(["mouse", "move", String(tooltipPoints.exit.x), String(tooltipPoints.exit.y)]);
+    await waitForEval(
+      `![...document.querySelectorAll('[role="tooltip"]')].some((tooltip) => tooltip.textContent?.trim() === "Actions")`,
+      "canvas toolbar tooltip dismissal",
+    );
+
+    agentBrowser(["click", '[aria-label="Canvas tools"] [aria-label="Actions"]']);
+    await waitForEval(
+      `!!document.querySelector('[role="menu"][aria-label="Actions tools"]') &&
+       document.querySelectorAll('[data-action-config-panel]').length === 0`,
+      "toolbar menu replacing node-owned overlay",
+    );
+    agentBrowser(["press", "Escape"]);
+
+    agentBrowser(["click", configureSelector(transientTargets.upperId)]);
+    await waitForEval(
+      `!!document.querySelector(${JSON.stringify(`[data-action-config-panel="${transientTargets.upperId}"]`)})`,
+      "action panel before live drag",
+    );
+    const dragPoints = evalJson(`(() => {
+      const flow = document.querySelector('#project-workspace-inset .react-flow')?.getBoundingClientRect();
+      const node = document.querySelector(${JSON.stringify(`[data-id="${transientTargets.upperId}"]`)})?.getBoundingClientRect();
+      if (!flow || !node) return null;
+      const start = { x: Math.round(node.left + 18), y: Math.round(node.top + node.height / 2) };
+      const direction = start.x < flow.left + flow.width / 2 ? 140 : -140;
+      return {
+        start,
+        target: {
+          x: Math.round(Math.max(flow.left + 80, Math.min(flow.right - 80, start.x + direction))),
+          y: Math.round(Math.max(flow.top + 80, Math.min(flow.bottom - 180, start.y - 70))),
+        },
+        initialNodeLeft: Math.round(node.left),
+        initialNodeTop: Math.round(node.top),
+      };
+    })()`);
+    if (!dragPoints) throw new Error("Could not calculate action drag points");
+
+    let transientUi;
+    agentBrowser(["mouse", "move", String(dragPoints.start.x), String(dragPoints.start.y)]);
+    agentBrowser(["mouse", "down", "left"]);
+    try {
+      agentBrowser([
+        "mouse",
+        "move",
+        String(Math.round((dragPoints.start.x + dragPoints.target.x) / 2)),
+        String(Math.round((dragPoints.start.y + dragPoints.target.y) / 2)),
+      ]);
+      agentBrowser(["mouse", "move", String(dragPoints.target.x), String(dragPoints.target.y)]);
+      transientUi = await waitForEval(
+        `(() => {
+          const node = document.querySelector(${JSON.stringify(`[data-id="${transientTargets.upperId}"]`)})?.getBoundingClientRect();
+          const panel = document.querySelector(${JSON.stringify(`[data-action-config-panel="${transientTargets.upperId}"]`)})?.getBoundingClientRect();
+          if (!node || !panel) return false;
+          const moved = Math.hypot(node.left - ${Number(dragPoints.initialNodeLeft)}, node.top - ${Number(dragPoints.initialNodeTop)});
+          const centerDelta = Math.abs((node.left + node.width / 2) - (panel.left + panel.width / 2));
+          const verticalGap = panel.top - node.bottom;
+          if (moved < 40 || centerDelta > 2 || Math.abs(verticalGap - 12) > 2) return false;
+          return {
+            ownerId: ${JSON.stringify(transientTargets.upperId)},
+            panelCount: document.querySelectorAll('[data-action-config-panel]').length,
+            moved: Math.round(moved),
+            centerDelta: Math.round(centerDelta * 10) / 10,
+            verticalGap: Math.round(verticalGap * 10) / 10,
+            tooltipVisible: [...document.querySelectorAll('[role="tooltip"]')].some((tooltip) => tooltip.textContent?.trim() === "Actions"),
+          };
+        })()`,
+        "action panel tracking a live node drag",
+      );
+      agentBrowser(["screenshot", transientUiScreenshot]);
+    } finally {
+      agentBrowser(["mouse", "up", "left"], { allowFailure: true });
+    }
+
     agentBrowser(["click", `#project-asset-${seededAsset.id}`]);
     await waitForEval(
       `document.querySelector('#project-workspace-shell')?.getAttribute('data-following-agent') === 'false' &&
@@ -481,16 +726,13 @@ async function main() {
     await sendPrompt(secondPrompt);
     const secondHistory = await assertRuntimeHistory(projectId, apiOrigin, 2);
 
-    if (
-      !clickButtonByLabel(agentBrowser, "Session history") &&
-      !clickButtonByLabel(agentBrowser, "历史会话")
-    ) {
-      throw new Error("Could not open session history");
-    }
+    await openSessionHistoryMenu(agentBrowser);
     await waitForEval(
       `(() => {
         const menu = document.querySelector('[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]');
-        return !!menu && !menu.innerText.toLowerCase().includes("no history yet");
+        const rect = menu?.getBoundingClientRect();
+        return !!menu && !!rect && rect.width > 0 && rect.height > 0 &&
+          !menu.innerText.toLowerCase().includes("no history yet");
       })()`,
       "session history panel",
       10000,
@@ -540,6 +782,31 @@ async function main() {
       runtime: window.__CLASH_RUNTIME_CONFIG__ ?? null,
     }))()`);
     agentBrowser(["screenshot", latestScreenshot]);
+
+    if (!evalJson(`(() => {
+      const button = document.querySelector('[aria-label="Canvas tools"] button[aria-label="Assets"]');
+      if (!(button instanceof HTMLButtonElement)) return false;
+      button.click();
+      return true;
+    })()`)) {
+      throw new Error("Could not reopen the Canvas asset picker");
+    }
+    await waitForEval(
+      `(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const tabs = [...(dialog?.querySelectorAll('[role="tab"]') ?? [])].map((node) => node.textContent?.trim());
+        const rect = dialog?.getBoundingClientRect();
+        return !!dialog?.querySelector('[data-layout="command-grid"]') &&
+          !!dialog.querySelector('[role="searchbox"][aria-label="Search media"]') &&
+          !!rect && rect.width >= window.innerWidth * 0.68 &&
+          tabs.includes('Project') && tabs.includes('More sources') &&
+          !tabs.includes('Current Canvas') &&
+          !['projects/', 'generated/', 'uploads/'].some((fragment) => (dialog?.textContent ?? '').includes(fragment));
+      })()`,
+      "Canvas scope-aware asset picker without storage addresses",
+      10000,
+    );
+    agentBrowser(["press", "Escape"]);
 
     if (
       !clickButtonByLabel(agentBrowser, "Collapse AI Copilot") &&
@@ -916,11 +1183,28 @@ async function main() {
        !document.querySelector('[role="dialog"][aria-label="Video editor"]') &&
        !document.querySelector('[aria-label^="Open parent Canvas"]') &&
        !!document.querySelector('[data-desktop-chrome="true"] [aria-label="Collapse project sidebar"]') &&
-       document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'docked' &&
+       document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay' &&
        document.body.innerText.includes(${JSON.stringify(draftMarker)})`,
-      "embedded Timeline editor with docked persistent chat",
+      "embedded Timeline editor with floating persistent chat",
       20000,
     );
+    if (!clickButtonByLabel(agentBrowser, "Add media")) {
+      throw new Error("Could not open the standalone Timeline asset picker");
+    }
+    await waitForEval(
+      `(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const tabs = [...(dialog?.querySelectorAll('[role="tab"]') ?? [])].map((node) => node.textContent?.trim());
+        return !!dialog?.querySelector('[data-layout="command-grid"]') &&
+          !!dialog.querySelector('[role="searchbox"][aria-label="Search media"]') &&
+          tabs.includes('Project') && tabs.includes('More sources') &&
+          !tabs.includes('Current Canvas') &&
+          !![...(dialog?.querySelectorAll('button') ?? [])].find((button) => button.textContent?.includes('Upload from Mac'));
+      })()`,
+      "standalone Timeline scope-aware asset picker",
+      10000,
+    );
+    agentBrowser(["press", "Escape"]);
     if (!clickVisibleLinkOrButtonByText("+ Text")) {
       throw new Error("Could not add text in Timeline editor");
     }
@@ -933,9 +1217,16 @@ async function main() {
       throw new Error("Could not switch from Timeline to Main Canvas");
     }
     await waitForEval(
-      `document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay' &&
-       document.body.innerText.includes(${JSON.stringify(draftMarker)})`,
-      "Canvas overlay with persistent chat draft",
+      `(() => {
+        const workspace = document.querySelector('#project-workspace-shell')?.getBoundingClientRect();
+        const copilot = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
+        return document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay' &&
+          document.body.innerText.includes(${JSON.stringify(draftMarker)}) &&
+          !!workspace && !!copilot &&
+          Math.abs(window.innerWidth - workspace.right) <= 1 &&
+          copilot.left < workspace.right;
+      })()`,
+      "full-width Canvas under the persistent chat overlay",
       10000,
     );
     if (!clickVisibleLinkOrButtonByText("E2E Rough Cut")) {
@@ -949,14 +1240,23 @@ async function main() {
         const workspace = document.querySelector('#project-workspace-shell')?.getBoundingClientRect();
         const copilot = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
         const editor = document.querySelector('[data-testid="project-timeline-editor"]')?.getBoundingClientRect();
+        const media = document.querySelector('[data-editor-region="media"]')?.getBoundingClientRect();
+        const preview = document.querySelector('[data-editor-region="preview"]')?.getBoundingClientRect();
+        const timelineSurface = document.querySelector('[data-editor-region="timeline"]')?.getBoundingClientRect();
         const navigator = document.querySelector('[aria-label="Project navigator"]')?.getBoundingClientRect();
         const footer = document.querySelector('.clash-project-sidebar-footer')?.getBoundingClientRect();
         const settings = document.querySelector('.clash-project-sidebar-footer [aria-label="Settings"]')?.getBoundingClientRect();
         const itemCount = document.querySelectorAll('[aria-label^="text:"]').length;
         if (navigatorCount !== 1 || footerCount !== 1 || launcherCount > 1) return false;
-        if (!workspace || !copilot || !editor || !navigator || !footer || !settings || itemCount !== 1) return false;
-        const gap = copilot.left - workspace.right;
-        if (gap < -1 || gap > 1) return false;
+        if (!workspace || !copilot || !editor || !media || !preview || !timelineSurface || !navigator || !footer || !settings || itemCount !== 1) return false;
+        const workspaceOverlap = workspace.right - copilot.left;
+        const surfaceGap = copilot.left - preview.right;
+        const topBaselineDelta = Math.abs(media.top - copilot.top);
+        const bottomBaselineDelta = Math.abs(timelineSurface.bottom - copilot.bottom);
+        if (Math.abs(window.innerWidth - workspace.right) > 1 || workspaceOverlap <= 0) return false;
+        if (surfaceGap < 7 || surfaceGap > 9) return false;
+        if (topBaselineDelta > 1 || bottomBaselineDelta > 1) return false;
+        if (Math.abs((window.innerWidth - copilot.right) - 8) > 1) return false;
         if (Math.abs(navigator.bottom - footer.bottom) > 1) return false;
         if (settings.top < footer.top || settings.bottom > footer.bottom) return false;
         if (document.querySelector('#project-top-actions')) return false;
@@ -965,13 +1265,17 @@ async function main() {
           workspace: { left: workspace.left, right: workspace.right, width: workspace.width },
           copilot: { left: copilot.left, right: copilot.right, width: copilot.width },
           editor: { left: editor.left, right: editor.right, width: editor.width },
+          surfaces: { mediaTop: media.top, timelineBottom: timelineSurface.bottom },
           sidebarFooter: { top: footer.top, bottom: footer.bottom, settingsLeft: settings.left },
           singletonChrome: { navigatorCount, footerCount, launcherCount },
-          gap,
+          workspaceOverlap,
+          surfaceGap,
+          topBaselineDelta,
+          bottomBaselineDelta,
           itemCount,
         };
       })()`,
-      "persisted Timeline item and dock geometry",
+      "persisted Timeline item and floating geometry",
       15000,
     );
     agentBrowser(["screenshot", timelineDockScreenshot]);
@@ -992,6 +1296,30 @@ async function main() {
       "second Canvas with persistent chat draft",
       10000,
     );
+    if (!evalJson(`(() => {
+      const button = document.querySelector('[aria-label="Canvas tools"] button[aria-label="Assets"]');
+      if (!(button instanceof HTMLButtonElement)) return false;
+      button.click();
+      return true;
+    })()`)) {
+      throw new Error("Could not open the second Canvas asset picker");
+    }
+    await waitForEval(
+      `(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const tabs = [...(dialog?.querySelectorAll('[role="tab"]') ?? [])].map((node) => node.textContent?.trim());
+        const rect = dialog?.getBoundingClientRect();
+        return !!dialog?.querySelector('[data-layout="command-grid"]') &&
+          !!dialog.querySelector('[role="searchbox"][aria-label="Search media"]') &&
+          !!rect && rect.width >= window.innerWidth * 0.68 &&
+          tabs.includes('Project') && tabs.includes('More sources') &&
+          !tabs.includes('Current Canvas') &&
+          !['projects/', 'generated/', 'uploads/'].some((fragment) => (dialog?.textContent ?? '').includes(fragment));
+      })()`,
+      "Canvas scope-aware asset picker without storage addresses",
+      10000,
+    );
+    agentBrowser(["press", "Escape"]);
     const populatedChrome = evalJson(`(() => {
       const sidebar = document.querySelector('[aria-label="Project navigator"]');
       const toolbar = document.querySelector('[aria-label="Canvas tools"]');
@@ -1108,9 +1436,9 @@ async function main() {
        !!document.querySelector('[aria-label="explicit-target.png preview"]') &&
        ![...document.querySelectorAll('#project-workspace-inset h1, #project-workspace-inset h2')].some((heading) => (heading.textContent || '').trim() === 'Assets') &&
        !!document.querySelector('[data-desktop-chrome="true"] [aria-label="Collapse project sidebar"]') &&
-       document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'docked' &&
+       document.querySelector('#project-workspace-shell')?.getAttribute('data-copilot-layout') === 'overlay' &&
        document.body.innerText.includes(${JSON.stringify(draftMarker)})`,
-      "direct asset preview with docked persistent chat",
+      "direct asset preview with floating persistent chat",
       10000,
     );
     const assetPreview = evalJson(`(() => ({
@@ -1311,6 +1639,22 @@ async function main() {
       "[desktop-agent-browser] agent follow",
       JSON.stringify(agentFollow),
     );
+    console.log(
+      "[desktop-agent-browser] canvas transient UI",
+      JSON.stringify(transientUi),
+    );
+    console.log(
+      "[desktop-agent-browser] selected capsule fill",
+      JSON.stringify(selectedCapsuleFill),
+    );
+    console.log(
+      "[desktop-agent-browser] canvas toolbar tooltip",
+      JSON.stringify(toolbarTooltip),
+    );
+    console.log(
+      "[desktop-agent-browser] popup interactions",
+      JSON.stringify(popupInteractions),
+    );
     console.log(`[desktop-agent-browser] screenshot ${latestScreenshot}`);
     console.log(
       `[desktop-agent-browser] history screenshot ${historyScreenshot}`,
@@ -1338,6 +1682,15 @@ async function main() {
     );
     console.log(
       `[desktop-agent-browser] agent follow screenshot ${agentFollowScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] canvas transient UI screenshot ${transientUiScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] canvas toolbar tooltip screenshot ${toolbarTooltipScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] popup interactions screenshot ${popupInteractionsScreenshot}`,
     );
     assertNoForbiddenRendererIssues(electronLogs);
   } catch (error) {

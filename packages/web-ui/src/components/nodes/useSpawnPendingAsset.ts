@@ -4,6 +4,7 @@ import {
     buildGenerationPayload,
     buildPendingAssetNode,
     ACTION_TYPE,
+    type DirectorReferencePacket,
     type GenerationConfig,
     type ModelCard,
     type CustomActionDefinition,
@@ -30,6 +31,7 @@ export interface UseSpawnPendingAssetInput {
     refNodeIds: string[];
     getNodes: () => RFNode[];
     addNodeWithAutoLayout: (node: Partial<RFNode> & { id: string; type: string; data: Record<string, unknown> }, parentId: string, offset?: { x: number; y: number }) => RFNode | null;
+    addNodeWithLayout: (node: Partial<RFNode> & { id: string; type: string; data: Record<string, unknown> }, targetPosition: { x: number; y: number }, parentId?: string) => RFNode;
     addEdges: (edge: { id: string; source: string; target: string; type: string }) => void;
     setNodes: (updater: (nds: RFNode[]) => RFNode[]) => void;
     loroSync: LoroSync;
@@ -40,6 +42,15 @@ export interface SpawnOpts {
     assetId?: string;
     /** Override the extracted label. Run uses this to append `(N)` for batch siblings. */
     labelOverride?: string;
+    /** Revision-pinned Director payload for one selected Shot. */
+    directorReferencePacket?: DirectorReferencePacket;
+    sourceDirectorStageId?: string;
+    sourceDirectorStageRevisionId?: string;
+    sourceDirectorStageShotId?: string;
+    /** Visual and semantic grouping for a multi-Shot generation run. */
+    directorShotGroupId?: string;
+    parentGroupId?: string;
+    groupIndex?: number;
 }
 
 export interface AdoptOpts {
@@ -96,6 +107,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
         refNodeIds,
         getNodes,
         addNodeWithAutoLayout,
+        addNodeWithLayout,
         addEdges,
         setNodes,
         loroSync,
@@ -143,10 +155,24 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
      * strict validation runs and throws on failure.
      */
     const buildShape = useCallback(
-        (status: 'draft' | 'pending', labelOverride: string | undefined): { type: 'image' | 'video' | 'audio' | 'text'; data: Record<string, unknown> } => {
+        (status: 'draft' | 'pending', opts?: SpawnOpts): { type: 'image' | 'video' | 'audio' | 'text'; data: Record<string, unknown> } => {
             const refNodes = refNodeIds
                 .map((nid) => getNodes().find((n) => n.id === nid))
                 .filter((n): n is NonNullable<typeof n> => !!n);
+            const scopedRefNodes = opts?.directorReferencePacket
+                ? refNodes.map((node) =>
+                    node.type === 'director-stage'
+                        ? {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                directorReferencePacket: opts.directorReferencePacket,
+                                directorShotReferencePackets: undefined,
+                            },
+                        }
+                        : node,
+                )
+                : refNodes;
 
             const rawPrompt = (content && content.trim() !== '' ? content : '') || dataPrompt || '';
 
@@ -165,7 +191,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
 
             const { pendingInput, validationError, cleanedPrompt } = buildGenerationPayload({
                 prompt: rawPrompt,
-                refNodes,
+                refNodes: scopedRefNodes,
                 configId,
                 config,
                 actionType: actionType as
@@ -174,7 +200,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                     | typeof ACTION_TYPE.AudioGen
                     | typeof ACTION_TYPE.TextGen
                     | `custom:${string}`,
-                label: labelOverride,
+                label: opts?.labelOverride,
             });
 
             if (status === 'pending') {
@@ -195,6 +221,16 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
             // and the CLI path stamps in commands/canvas.ts.
             node.data.actorType = 'user';
             node.data.actorUserId = currentUserId;
+            if (opts?.directorReferencePacket) {
+                node.data.directorReferencePacket = opts.directorReferencePacket;
+                node.data.sourceDirectorStageId = opts.sourceDirectorStageId
+                    ?? opts.directorReferencePacket.stageId;
+                node.data.sourceDirectorStageRevisionId = opts.sourceDirectorStageRevisionId
+                    ?? opts.directorReferencePacket.stageRevisionId;
+                node.data.sourceDirectorStageShotId = opts.sourceDirectorStageShotId
+                    ?? opts.directorReferencePacket.scope?.selectedShotIds[0];
+                node.data.directorShotGroupId = opts.directorShotGroupId;
+            }
 
             // Pending media nodes intentionally omit `data.src`. Asset
             // identity lives on `referenceImage/Video/AudioAssetIds`; the
@@ -221,7 +257,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
 
     const createAndWire = useCallback(
         async (status: 'draft' | 'pending', opts?: SpawnOpts): Promise<RFNode | null> => {
-            const { type, data } = buildShape(status, opts?.labelOverride);
+            const { type, data } = buildShape(status, opts);
             const newId = opts?.assetId ?? (await generateSemanticId(projectId));
 
             // Offset from the action-badge's actual width + a consistent gap,
@@ -237,7 +273,16 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                     : 260;
             const offset = { x: parentWidth + 80, y: 0 };
 
-            const newNode = addNodeWithAutoLayout({ id: newId, type, data }, actionBadgeId, offset);
+            const newNode = opts?.parentGroupId
+                ? addNodeWithLayout(
+                    { id: newId, type, data },
+                    {
+                        x: 32,
+                        y: 64 + Math.max(0, opts.groupIndex ?? 0) * 360,
+                    },
+                    opts.parentGroupId,
+                )
+                : addNodeWithAutoLayout({ id: newId, type, data }, actionBadgeId, offset);
             if (!newNode) return null;
 
             if (loroSync?.connected) {
@@ -252,7 +297,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
 
             return newNode;
         },
-        [actionBadgeId, buildShape, projectId, addNodeWithAutoLayout, addEdges, loroSync, getNodes],
+        [actionBadgeId, buildShape, projectId, addNodeWithAutoLayout, addNodeWithLayout, addEdges, loroSync, getNodes],
     );
 
     const spawnPending = useCallback(
@@ -267,7 +312,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
 
     const adoptDraft = useCallback(
         async (draftId: string, opts?: AdoptOpts): Promise<RFNode | null> => {
-            const { data: nextData } = buildShape('pending', opts?.labelOverride);
+            const { data: nextData } = buildShape('pending', {
+                labelOverride: opts?.labelOverride,
+            });
             const payload: Record<string, unknown> = { ...nextData };
             if (opts?.cascadeToken) {
                 payload.cascadeToken = opts.cascadeToken;

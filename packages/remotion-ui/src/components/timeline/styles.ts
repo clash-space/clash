@@ -1,54 +1,80 @@
 /**
  * Timeline Design System
- * Light theme aligned with main app (white bg, slate borders, red/coral accent)
+ * Warm Canvas theme shared with the project workspace.
  */
 
 export const colors = {
-  // 背景层次（亮色主题）
+  // Theme-aware surfaces. Fallbacks keep standalone Remotion renders stable.
   bg: {
-    primary: '#ffffff',     // 主背景
-    secondary: '#fffdfb',   // 次级背景（暖白）
-    elevated: '#f8f3ee',    // 悬浮元素
-    hover: '#f0e7de',       // 悬停状态
-    selected: '#fff3f0',    // 选中状态背景（带品牌色调）
+    primary: 'var(--clash-warm-surface, #fffefd)',
+    secondary: 'var(--clash-warm-page, #fbfaf7)',
+    elevated: 'var(--clash-warm-surface, #fffefd)',
+    hover: 'var(--clash-warm-muted, #f4f1eb)',
+    selected: 'var(--clash-brand-light, #fff0ed)',
   },
 
   // 强调色（与主应用品牌色对齐）
   accent: {
-    primary: '#FF6B50',     // 主色（品牌红/珊瑚）
+    primary: 'var(--clash-accent, #ff6b50)',
     success: '#22c55e',     // 成功（green-500）
     warning: '#f59e0b',     // 警告（amber-500）
     danger: '#ef4444',      // 危险（red-500）
   },
 
-  // 素材类型色（柔和，适配亮色背景）
+  // Material colors stay intentionally muted. The playhead/selection owns the
+  // coral accent; clips use low-saturation type cues so mixed lanes do not
+  // become a wall of competing color.
   item: {
-    video: '#3b82f6',       // 蓝（与主应用 video token 对齐）
-    audio: '#f5a623',       // 琥珀（与主应用 audio token 对齐）
-    image: '#FF6B50',       // 珊瑚（与主应用 image/brand token 对齐）
-    text: '#22c55e',        // 绿 (green-500)
-    solid: '#94a3b8',       // 灰 (slate-400)
+    video: 'var(--clash-timeline-item-video, #cfd9dc)',
+    audio: 'var(--clash-timeline-item-audio, #294454)',
+    voice: 'var(--clash-timeline-item-audio, #294454)',
+    sound: 'var(--clash-timeline-item-audio, #294454)',
+    image: 'var(--clash-timeline-item-image, #dec5bd)',
+    text: 'var(--clash-timeline-item-text, #e4e2de)',
+    effect: 'var(--clash-timeline-item-effect, #d8d2dc)',
+    overlay: 'var(--clash-timeline-item-overlay, #dccdd2)',
+    solid: 'var(--clash-timeline-item-solid, #d2d6d9)',
+  },
+
+  itemText: {
+    video: 'var(--clash-timeline-item-video-foreground, #293c42)',
+    audio: 'var(--clash-timeline-item-audio-foreground, #f1f4f5)',
+    voice: 'var(--clash-timeline-item-audio-foreground, #f1f4f5)',
+    sound: 'var(--clash-timeline-item-audio-foreground, #f1f4f5)',
+    image: 'var(--clash-timeline-item-image-foreground, #493530)',
+    text: 'var(--clash-timeline-item-text-foreground, #343434)',
+    effect: 'var(--clash-timeline-item-effect-foreground, #403b44)',
+    overlay: 'var(--clash-timeline-item-overlay-foreground, #493b40)',
+    solid: 'var(--clash-timeline-item-solid-foreground, #30363a)',
+  },
+
+  audio: {
+    waveform: 'var(--clash-timeline-audio-waveform, #68858d)',
+    fadeEdge: 'var(--clash-timeline-audio-fade-edge, #9bb0b5)',
+    fadeMask: 'rgba(0, 0, 0, 0.82)',
+    volumeLine: 'rgba(255, 255, 255, 0.92)',
   },
 
   // 文字层次
   text: {
-    primary: '#0f172a',     // slate-900
-    secondary: '#475569',   // slate-600
-    tertiary: '#94a3b8',    // slate-400
-    disabled: '#cbd5e1',    // slate-300
+    primary: 'var(--foreground, #171717)',
+    secondary: 'var(--clash-timeline-text-secondary, #57534e)',
+    tertiary: 'var(--clash-timeline-text-tertiary, #a8a29e)',
+    disabled: 'var(--clash-timeline-text-disabled, #d6d3d1)',
   },
 
   // 边框
   border: {
-    default: '#e2e8f0',     // slate-200
-    active: '#FF6B50',      // 品牌色
-    hover: '#cbd5e1',       // slate-300
+    default: 'var(--clash-warm-border, #e1ddd5)',
+    subtle: 'var(--clash-timeline-border-subtle, #f0ede7)',
+    active: 'var(--clash-accent, #ff6b50)',
+    hover: 'var(--canvas-dot, #d6d1c8)',
   },
 
   // 辅助线和指示器
   guide: {
     snap: '#f59e0b',        // 吸附辅助线（琥珀）
-    insert: '#FF6B50',      // 插入指示线（品牌色）
+    insert: 'var(--clash-accent, #ff6b50)',
   }
 } as const;
 
@@ -97,21 +123,26 @@ export const typography = {
   },
 } as const;
 
+const PLAYHEAD_TRIANGLE_SIZE = 12;
+
 export const timeline = {
-  headerHeight: 48,
-  rulerHeight: 32,
-  trackHeight: 72,
-  trackLabelWidth: 180,
+  headerHeight: 44,
+  rulerHeight: 28,
+  trackHeight: 56,
+  trackLabelWidth: 140,
+  contentInsetLeft: spacing.xl,
+  trackBubbleInset: 4,
+  trackBubbleRadius: 10,
 
   itemMinWidth: 30,
   itemVerticalPadding: 6,
-  itemBorderRadius: 6,
+  itemBorderRadius: 8,
 
   playheadWidth: 2,
-  playheadTriangleSize: 12,
+  playheadTriangleSize: PLAYHEAD_TRIANGLE_SIZE,
 
-  zoomMin: 0.25,
-  zoomMax: 5,
+  zoomMin: 0.02,
+  zoomMax: 8,
   zoomDefault: 1,
 
   snapThreshold: 5,
@@ -122,11 +153,29 @@ export const timeline = {
   scrollbarThickness: 12,
 } as const;
 
+export type TimelineTrackCategory = 'effect' | 'text' | 'visual' | 'primary' | 'audio';
+
+export const timelineTrackHeights = {
+  effect: 36,
+  text: 40,
+  visual: timeline.trackHeight,
+  primary: 88,
+  audio: 48,
+} as const satisfies Record<TimelineTrackCategory, number>;
+
+export function getTimelineTrackHeight(category: TimelineTrackCategory | null | undefined): number {
+  return category ? timelineTrackHeights[category] : timeline.trackHeight;
+}
+
 export const shadows = {
   sm: '0 1px 2px rgba(0, 0, 0, 0.05)',
   md: '0 2px 4px rgba(0, 0, 0, 0.08)',
   lg: '0 4px 8px rgba(0, 0, 0, 0.1)',
-  selected: `0 0 0 2px #FF6B50, 0 4px 12px rgba(255, 107, 80, 0.2)`,
+  trackBubble: 'var(--clash-timeline-track-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 3px 9px -6px rgba(74, 60, 47, 0.2))',
+  itemRest: 'var(--clash-timeline-item-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 2px 5px rgba(74, 60, 47, 0.12))',
+  itemHover: 'var(--clash-timeline-item-hover-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 4px 9px rgba(74, 60, 47, 0.16))',
+  itemSelected: '0 0 0 2px var(--clash-accent, #ff6b50), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 5px 12px color-mix(in srgb, var(--clash-accent, #ff6b50) 18%, transparent)',
+  selected: '0 0 0 2px var(--clash-accent, #ff6b50), 0 4px 12px color-mix(in srgb, var(--clash-accent, #ff6b50) 20%, transparent)',
   hover: '0 2px 8px rgba(0, 0, 0, 0.08)',
 } as const;
 
@@ -153,11 +202,55 @@ export const animations = {
   },
 } as const;
 
-export function getItemColor(type: 'video' | 'audio' | 'image' | 'text' | 'solid', customColor?: string): string {
+export type TimelineItemVisualType =
+  | 'video'
+  | 'audio'
+  | 'image'
+  | 'text'
+  | 'solid'
+  | 'composition'
+  | 'derived-overlay'
+  | 'sticker'
+  | 'transition';
+
+function readableForeground(background: string): string {
+  const hex = background.replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return colors.itemText.solid;
+  const channels = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+  const luminance = (channels[0] * 0.299 + channels[1] * 0.587 + channels[2] * 0.114) / 255;
+  return luminance > 0.58 ? '#2f2925' : '#fffefd';
+}
+
+export function getTimelineItemTone(
+  type: TimelineItemVisualType | string | null | undefined,
+  customColor?: string,
+): { background: string; foreground: string } {
   if (type === 'solid' && customColor) {
-    return customColor;
+    return { background: customColor, foreground: readableForeground(customColor) };
   }
-  return colors.item[type];
+  switch (type) {
+    case 'audio':
+      return { background: colors.item.audio, foreground: colors.itemText.audio };
+    case 'image':
+      return { background: colors.item.image, foreground: colors.itemText.image };
+    case 'text':
+      return { background: colors.item.text, foreground: colors.itemText.text };
+    case 'composition':
+    case 'transition':
+      return { background: colors.item.effect, foreground: colors.itemText.effect };
+    case 'derived-overlay':
+    case 'sticker':
+      return { background: colors.item.overlay, foreground: colors.itemText.overlay };
+    case 'solid':
+      return { background: colors.item.solid, foreground: colors.itemText.solid };
+    case 'video':
+    default:
+      return { background: colors.item.video, foreground: colors.itemText.video };
+  }
+}
+
+export function getItemColor(type: TimelineItemVisualType, customColor?: string): string {
+  return getTimelineItemTone(type, customColor).background;
 }
 
 export function withOpacity(color: string, opacity: number): string {

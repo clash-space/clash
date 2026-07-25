@@ -24,19 +24,19 @@ import {
 } from "../../services/google-gen";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider, vertexCredentialsFromProvider } from "./provider-credentials";
+import { credentialsForRoute, vertexCredentialsFromProvider } from "./provider-credentials";
 
 export const veoProvider: GenerationProvider = {
   name: "veo",
 
   async execute(ctx: GenerationContext): Promise<void> {
     const { params } = ctx;
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "google-agent-platform") {
+      throw new Error(`Veo execution requires a selected Agent Platform route for ${params.videoModel ?? params.modelName ?? "unknown model"}`);
+    }
     const creds = vertexCredentialsFromProvider(
-      await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
-        upstreamId: "google-agent-platform",
-        region: "global",
-        modelCode: params.videoModel ?? params.modelName,
-      }),
+      await credentialsForRoute(ctx, route),
     );
 
     // Step 1: submit. Inline image bytes (R2 reads kept inside the step —
@@ -58,7 +58,7 @@ export const veoProvider: GenerationProvider = {
           read(params.endFrameR2Key),
           readAll(params.referenceImageR2Keys),
         ]);
-        const modelName = params.videoModel ?? params.modelName;
+        const modelName = route.upstreamModel;
         log.info("Veo submit", {
           ...ctx.tag,
           model: modelName,

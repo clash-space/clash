@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import * as modelRouting from "./model-routing";
 
 import {
   MODEL_UPSTREAM_ROUTES,
   MODEL_PROVIDER_DEFINITIONS,
+  listCompatibleModelCatalogEntries,
   listModelCatalogEntries,
   listProviderModelSupport,
   listModelUpstreamRoutes,
@@ -10,9 +12,205 @@ import {
   type ProviderAccountAvailability,
   type UpstreamAvailability,
 } from "./model-routing";
-import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema } from "./models";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard } from "./models";
 
 describe("model upstream routing", () => {
+  it("does not expose the local ACP agent as a model card", () => {
+    expect(MODEL_CARDS.some((model) => model.id === "local-acp")).toBe(false);
+  });
+
+  it("builds a custom text model card that is mounted to compatible provider accounts", () => {
+    const buildEffectiveModelCards = (modelRouting as Record<string, unknown>).buildEffectiveModelCards;
+    expect(buildEffectiveModelCards).toBeTypeOf("function");
+    if (typeof buildEffectiveModelCards !== "function") return;
+
+    const providers = [
+      {
+        id: "custom-openai-primary",
+        providerId: "custom",
+        upstreamId: "openai",
+        apiShape: "openai-compatible",
+        label: "Studio proxy",
+        enabled: true,
+        configuredCredentials: ["apiKey", "baseUrl"],
+      },
+      {
+        id: "custom-anthropic-primary",
+        providerId: "custom",
+        upstreamId: "anthropic",
+        apiShape: "anthropic-compatible",
+        label: "Claude proxy",
+        enabled: true,
+        configuredCredentials: ["apiKey", "baseUrl"],
+      },
+    ];
+    const models = (buildEffectiveModelCards as (input: unknown) => ModelCard[])({
+      providers,
+      configs: [
+        {
+          modelId: "editorial-reasoner",
+          custom: true,
+          name: "Editorial Reasoner",
+          kind: "text",
+          description: "A house model for structured edit decisions.",
+          promptGuidance: "State the audience, desired cut, and non-negotiable constraints.",
+          providerBindings: [
+            {
+              providerAccountId: "custom-openai-primary",
+              upstreamModel: "editorial/reasoner-v2",
+            },
+            {
+              providerAccountId: "custom-anthropic-primary",
+              upstreamModel: "editorial-reasoner-2026-07",
+            },
+          ],
+        },
+      ],
+    });
+
+    const model = models.find((candidate) => candidate.id === "editorial-reasoner");
+    expect(model).toMatchObject({
+      id: "editorial-reasoner",
+      name: "Editorial Reasoner",
+      kind: "text",
+      custom: true,
+      description: "A house model for structured edit decisions.",
+      promptGuidance: "State the audience, desired cut, and non-negotiable constraints.",
+    });
+
+    const entry = listModelCatalogEntries({
+      models,
+      configuredProviders: providers as ProviderAccountAvailability[],
+    }).find((candidate) => candidate.model.id === "editorial-reasoner");
+    expect(entry).toMatchObject({
+      tier: "available",
+      selectedRoute: {
+        accountId: "custom-openai-primary",
+        providerId: "custom",
+        upstreamId: "openai",
+        apiShape: "openai-compatible",
+        upstreamModel: "editorial/reasoner-v2",
+      },
+    });
+    expect(entry?.routes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        accountId: "custom-anthropic-primary",
+        apiShape: "anthropic-compatible",
+        upstreamModel: "editorial-reasoner-2026-07",
+      }),
+    ]));
+  });
+
+  it("applies user description and prompt guidance to a built-in model card without replacing its routes", () => {
+    const buildEffectiveModelCards = (modelRouting as Record<string, unknown>).buildEffectiveModelCards;
+    expect(buildEffectiveModelCards).toBeTypeOf("function");
+    if (typeof buildEffectiveModelCards !== "function") return;
+
+    const models = (buildEffectiveModelCards as (input: unknown) => ModelCard[])({
+      providers: [],
+      configs: [
+        {
+          modelId: "gpt-5.4",
+          custom: false,
+          description: "Use for final narrative synthesis.",
+          promptGuidance: "Lead with the desired deliverable, then provide source context.",
+          providerBindings: [],
+        },
+      ],
+    });
+    const model = models.find((candidate) => candidate.id === "gpt-5.4");
+
+    expect(model).toMatchObject({
+      description: "Use for final narrative synthesis.",
+      promptGuidance: "Lead with the desired deliverable, then provide source context.",
+    });
+    expect(model?.providerImplementations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerId: "official",
+          upstreamId: "openai",
+          apiShape: "openai-compatible",
+        }),
+      ]),
+    );
+  });
+
+  it("lists canvas models from the user's enabled model ids without requiring runnable credentials", () => {
+    const listUserEnabledCanvasModelIds = (modelRouting as Record<string, unknown>).listUserEnabledCanvasModelIds;
+    expect(listUserEnabledCanvasModelIds).toBeTypeOf("function");
+
+    const template = MODEL_CARDS.find((model) => model.kind === "video")!;
+    const canvasModel = (id: string): ModelCard => ({
+      ...template,
+      id,
+      name: id,
+      providerImplementations: [{
+        providerId: "fal",
+        upstreamId: "fal",
+        upstreamModel: `test/${id}`,
+        apiShape: "fal",
+      }],
+    });
+
+    const enabledIds = (listUserEnabledCanvasModelIds as (options: unknown) => string[])({
+      models: [canvasModel("enabled-canvas-model"), canvasModel("disabled-canvas-model")],
+      configuredProviders: [{
+        providerId: "fal",
+        upstreamId: "fal",
+        enabled: true,
+        supportedModelIds: ["enabled-canvas-model"],
+      }],
+    });
+
+    expect(enabledIds).toEqual(["enabled-canvas-model"]);
+  });
+
+  it("keeps the default canvas model set when the user has no explicit model filter", () => {
+    const models = MODEL_CARDS.slice(0, 3);
+
+    const enabledIds = (modelRouting as unknown as {
+      listUserEnabledCanvasModelIds: (options: unknown) => string[];
+    }).listUserEnabledCanvasModelIds({
+      models,
+      configuredProviders: [],
+    });
+
+    expect(enabledIds).toEqual(models.map((model) => model.id));
+  });
+
+  it("filters injected future models by declared input and output modalities", () => {
+    const template = MODEL_CARDS.find((model) => model.kind === "video")!;
+    const audioVideo = (id: string): ModelCard => ({
+      ...template,
+      id,
+      name: id,
+      input: {
+        requiresPrompt: true,
+        inputMode: { audios: { max: 1 } },
+        promptModalities: ["text", "audio"],
+      },
+    });
+    const imageVideo: ModelCard = {
+      ...audioVideo("future-image-video"),
+      input: {
+        requiresPrompt: true,
+        inputMode: { images: { max: 1 } },
+        promptModalities: ["text", "image"],
+      },
+    };
+
+    const entries = listCompatibleModelCatalogEntries({
+      outputKind: "video",
+      sourceKind: "audio",
+      models: [audioVideo("future-audio-video-a"), imageVideo, audioVideo("future-audio-video-b")],
+    });
+
+    expect(entries.map((entry) => entry.model.id)).toEqual([
+      "future-audio-video-a",
+      "future-audio-video-b",
+    ]);
+  });
+
   it("allows model cards to declare current provider account implementations", () => {
     const parsed = ModelCardSchema.parse({
       id: "seedance-2-text",
@@ -356,6 +554,28 @@ describe("model upstream routing", () => {
     expect(route).not.toHaveProperty("requiredSecretIds");
   });
 
+  it("routes GPT Image 2 through the real fal endpoint", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "fal",
+      upstreamId: "fal",
+      upstreamModel: "openai/gpt-image-2",
+      apiShape: "fal",
+    });
+  });
+
   it("routes official Google AI Studio image models when a Gemini API key is configured", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "gemini-3.1-flash-image",
@@ -425,6 +645,100 @@ describe("model upstream routing", () => {
     });
   });
 
+  it("keeps selectable local Piper TTS voices available without hosted credentials", () => {
+    const entries = listModelCatalogEntries({ configuredProviders: [] });
+    const localTtsEntries = entries.filter((entry) =>
+      entry.selectedRoute?.apiShape === "local-tts"
+    );
+
+    expect(localTtsEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        model: expect.objectContaining({
+          id: "piper-huayan-tts",
+          kind: "audio",
+          defaultParams: expect.objectContaining({
+            tts_model: "zh_CN-huayan-medium",
+          }),
+        }),
+        tier: "available",
+        selectedRoute: expect.objectContaining({
+          providerId: "local",
+          upstreamId: "local",
+          upstreamModel: "zh_CN-huayan-medium",
+          apiShape: "local-tts",
+        }),
+        missingCredentials: [],
+      }),
+      expect.objectContaining({
+        model: expect.objectContaining({
+          id: "piper-lessac-tts",
+          kind: "audio",
+          defaultParams: expect.objectContaining({
+            tts_model: "en_US-lessac-medium",
+          }),
+        }),
+      }),
+    ]));
+  });
+
+  it("exposes a real local speech quality ladder with Whisper, VibeVoice, and Kokoro", () => {
+    const entries = listModelCatalogEntries({ configuredProviders: [] });
+    const expected = [
+      ["whisper-large-v3-turbo-asr", "asr", "local-asr", "mlx-community/whisper-large-v3-turbo"],
+      ["whisper-small-asr", "asr", "local-asr", "mlx-community/whisper-small-mlx"],
+      ["vibevoice-asr", "asr", "local-asr", "mlx-community/VibeVoice-ASR-4bit"],
+      ["kokoro-82m-tts", "audio", "local-tts", "mlx-community/Kokoro-82M-4bit"],
+    ] as const;
+
+    for (const [id, kind, apiShape, upstreamModel] of expected) {
+      expect(entries.find((entry) => entry.model.id === id)).toMatchObject({
+        model: { id, kind },
+        tier: "available",
+        selectedRoute: {
+          providerId: "local",
+          upstreamId: "local",
+          upstreamModel,
+          apiShape,
+        },
+        missingCredentials: [],
+      });
+    }
+
+    expect(MODEL_CARDS.find((model) => model.id === "vibevoice-asr")?.description).toMatch(/speaker/i);
+    expect(MODEL_CARDS.find((model) => model.id === "kokoro-82m-tts")?.defaultParams).toMatchObject({
+      voice_name: "af_heart",
+      tts_model: "mlx-community/Kokoro-82M-4bit",
+    });
+  });
+
+  it("publishes Parakeet v3 as a local European-language ASR model with an honest download warning", () => {
+    const entry = listModelCatalogEntries({ configuredProviders: [] })
+      .find((candidate) => candidate.model.id === "parakeet-tdt-0.6b-v3-asr");
+
+    expect(entry).toMatchObject({
+      model: {
+        id: "parakeet-tdt-0.6b-v3-asr",
+        name: "Parakeet TDT 0.6B v3",
+        provider: "NVIDIA",
+        kind: "asr",
+        defaultParams: {
+          asr_model: "mlx-community/parakeet-tdt-0.6b-v3",
+        },
+      },
+      tier: "available",
+      selectedRoute: {
+        providerId: "local",
+        upstreamId: "local",
+        upstreamModel: "mlx-community/parakeet-tdt-0.6b-v3",
+        apiShape: "local-asr",
+      },
+      missingCredentials: [],
+    });
+    expect(entry?.model.description).toMatch(/25 European languages/i);
+    expect(entry?.model.description).toMatch(/2\.5 GB/i);
+    expect(`${entry?.model.description} ${entry?.model.promptGuidance}`).toMatch(/does not support Chinese/i);
+  });
+
   it("routes hosted official media providers from configured provider accounts", () => {
     const cases = [
       {
@@ -450,7 +764,7 @@ describe("model upstream routing", () => {
         kind: "audio" as const,
         providerId: "elevenlabs",
         upstreamId: "elevenlabs",
-        upstreamModel: "eleven_multilingual_v2",
+        upstreamModel: "eleven_v3",
         apiShape: "elevenlabs",
         credentials: ["apiKey"],
       },
@@ -666,7 +980,7 @@ describe("model upstream routing", () => {
     expect(providersWithModelLists).toEqual([]);
   });
 
-  it("falls back Gemini TTS model codes to fal when only the fal key is configured", () => {
+  it("does not substitute MiniMax audio for Gemini TTS when only fal is configured", () => {
     const route = resolveModelUpstreamRoute({
       modelCode: "gemini-3.1-flash-tts",
       kind: "audio",
@@ -675,11 +989,7 @@ describe("model upstream routing", () => {
       ],
     });
 
-    expect(route).toMatchObject({
-      upstreamId: "fal",
-      upstreamModel: "fal-ai/minimax/speech-02-hd",
-      apiShape: "fal",
-    });
+    expect(route).toBeNull();
   });
 
   it("resolves weighted provider accounts before static route priority", () => {
@@ -737,6 +1047,36 @@ describe("model upstream routing", () => {
       "replicate/replicate",
       "official/openai",
     ]);
+  });
+
+  it("uses explicit provider priority before incidental account array order", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          priority: 30,
+          configuredCredentials: ["apiKey"],
+        },
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          priority: 10,
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+
+    expect(route).toMatchObject({
+      providerId: "official",
+      upstreamId: "openai",
+      upstreamModel: "gpt-image-2",
+    });
   });
 
   it("honors per-account supported model filters before provider priority", () => {
@@ -1268,9 +1608,13 @@ describe("model upstream routing", () => {
       },
     });
     expect(gptImage).toMatchObject({
-      tier: "configured-provider",
-      missingCredentials: ["apiKey"],
-      candidateProviders: ["official"],
+      tier: "available",
+      selectedRoute: {
+        providerId: "fal",
+        upstreamId: "fal",
+        upstreamModel: "openai/gpt-image-2",
+      },
+      candidateProviders: ["fal", "official"],
     });
   });
 
@@ -1310,6 +1654,106 @@ describe("model upstream routing", () => {
       selectedRoute: null,
       missingOAuth: ["dreamina"],
       candidateProviders: ["jimeng"],
+    });
+  });
+
+  it("exposes one Seedream card that switches between fal generation and edit endpoints", () => {
+    const seedreamCards = MODEL_CARDS.filter((model) => model.id.startsWith("seedream-4.5"));
+    expect(seedreamCards).toHaveLength(1);
+    expect(seedreamCards[0]).toMatchObject({
+      id: "seedream-4.5",
+      kind: "image",
+      availableProviders: ["fal"],
+      input: {
+        inputMode: { images: { max: 10 } },
+        promptModalities: ["text", "image"],
+      },
+    });
+    expect(normalizeModelId("seedream-4.5-edit")).toBeNull();
+    expect(resolveModelUpstreamRoute({
+      modelCode: "seedream-4.5",
+      kind: "image",
+      configuredProviders: [{
+        id: "fal-primary",
+        providerId: "fal",
+        upstreamId: "fal",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    })).toMatchObject({
+      accountId: "fal-primary",
+      providerId: "fal",
+      upstreamId: "fal",
+      upstreamModel: "fal-ai/bytedance/seedream/v4.5/text-to-image",
+      apiShape: "fal",
+    });
+  });
+
+  it("does not expose legacy fal edit IDs as cards or aliases", () => {
+    expect(MODEL_CARDS.some((model) => model.id === "nano-banana-2-edit")).toBe(false);
+    expect(MODEL_CARDS.some((model) => model.id === "flux-2-pro-edit")).toBe(false);
+    expect(MODEL_CARDS.some((model) => model.id === "seedream-4.5-edit")).toBe(false);
+    expect(normalizeModelId("nano-banana-2-edit")).toBeNull();
+    expect(normalizeModelId("flux-2-pro-edit")).toBeNull();
+    expect(normalizeModelId("seedream-4.5-edit")).toBeNull();
+  });
+
+  it("declares Suno API as a first-class ordered provider route", () => {
+    const suno = MODEL_CARDS.find((model) => model.id === "suno-v5.5");
+    expect(suno).toMatchObject({
+      kind: "audio",
+      availableProviders: ["suno"],
+      defaultProvider: "suno",
+    });
+    expect(resolveModelUpstreamRoute({
+      modelCode: "suno-v5.5",
+      kind: "audio",
+      configuredProviders: [{
+        id: "suno-secondary",
+        providerId: "suno",
+        upstreamId: "suno",
+        enabled: true,
+        priority: 40,
+        configuredCredentials: ["apiKey", "callbackUrl"],
+      }],
+    })).toMatchObject({
+      accountId: "suno-secondary",
+      providerId: "suno",
+      upstreamId: "suno",
+      upstreamModel: "V5_5",
+      apiShape: "suno",
+    });
+  });
+
+  it("binds the selected provider account after applying per-model order", () => {
+    const route = resolveModelUpstreamRoute({
+      modelCode: "gpt-image-2",
+      kind: "image",
+      configuredProviders: [
+        {
+          id: "fal-general",
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          priority: 1,
+          modelPriorities: { "gpt-image-2": 50 },
+          configuredCredentials: ["apiKey"],
+        },
+        {
+          id: "fal-images",
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          priority: 20,
+          modelPriorities: { "gpt-image-2": 5 },
+          configuredCredentials: ["apiKey"],
+        },
+      ],
+    });
+    expect(route).toMatchObject({
+      accountId: "fal-images",
+      providerId: "fal",
+      upstreamModel: "openai/gpt-image-2",
     });
   });
 });

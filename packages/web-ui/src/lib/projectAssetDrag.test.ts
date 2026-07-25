@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ProjectAsset } from './types';
 import {
     PROJECT_ASSET_DRAG_MIME,
     hasProjectAssetDragData,
     readProjectAssetDrag,
+    readProjectAssetDragId,
     writeProjectAssetDrag,
 } from './projectAssetDrag';
+
+afterEach(() => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
+});
 
 function createDataTransfer(): DataTransfer {
     const values = new Map<string, string>();
@@ -29,6 +34,7 @@ describe('project asset drag contract', () => {
     const asset: ProjectAsset = {
         id: 'asset-ref-1',
         assetId: 'sha256-source-1',
+        name: 'Edited image',
         url: '/assets/hero.png',
         type: 'image',
         storageKey: 'shots/hero.png',
@@ -47,7 +53,7 @@ describe('project asset drag contract', () => {
             id: 'asset-ref-1',
             backingAssetId: 'sha256-source-1',
             sourceNodeId: 'asset-ref-1',
-            name: 'shots/hero.png',
+            name: 'Edited image',
             src: '/assets/hero.png',
             type: 'image',
         });
@@ -55,11 +61,45 @@ describe('project asset drag contract', () => {
         expect(hasProjectAssetDragData(transfer)).toBe(true);
     });
 
+    it('writes a desktop-local API URL instead of a Vite-relative media URL', () => {
+        globalThis.__CLASH_RUNTIME_CONFIG__ = {
+            mode: 'desktop',
+            apiBaseUrl: 'http://127.0.0.1:49920',
+        };
+        const transfer = createDataTransfer();
+
+        writeProjectAssetDrag(transfer, asset);
+
+        expect(JSON.parse(transfer.getData('asset'))).toMatchObject({
+            src: 'http://127.0.0.1:49920/assets/hero.png',
+        });
+    });
+
+    it('drags the playable video source instead of its cover preview', () => {
+        const transfer = createDataTransfer();
+
+        writeProjectAssetDrag(transfer, {
+            id: 'video-ref',
+            assetId: 'video-asset',
+            name: 'Talking head',
+            url: '/assets/covers/talking-head.png',
+            thumbnailUrl: '/assets/covers/talking-head.png',
+            type: 'video',
+            storageKey: 'local-blobs/video/original.mp4',
+            createdAt: null,
+        });
+
+        expect(JSON.parse(transfer.getData('asset'))).toMatchObject({
+            src: '/assets/local-blobs/video/original.mp4',
+        });
+    });
+
     it('resolves a drop back to the canonical project asset', () => {
         const transfer = createDataTransfer();
         writeProjectAssetDrag(transfer, asset);
 
         expect(readProjectAssetDrag(transfer, [asset])).toBe(asset);
+        expect(readProjectAssetDragId(transfer)).toBe(asset.id);
         expect(readProjectAssetDrag(createDataTransfer(), [asset])).toBeUndefined();
     });
 
@@ -69,5 +109,13 @@ describe('project asset drag contract', () => {
 
         expect(hasProjectAssetDragData(transfer)).toBe(true);
         expect(readProjectAssetDrag(transfer, [asset])).toBe(asset);
+    });
+
+    it('does not misclassify a Timeline Library drag as a Project Asset', () => {
+        const transfer = createDataTransfer();
+        transfer.setData('application/x-clash-timeline-library', 'transition-prism-split');
+        transfer.setData('text/plain', 'transition-prism-split');
+
+        expect(hasProjectAssetDragData(transfer)).toBe(false);
     });
 });

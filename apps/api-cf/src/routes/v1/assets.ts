@@ -14,7 +14,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Env } from "../../config";
 import type { AssetKind } from "@clash/shared-types/assets";
-import { createAsset, getAssetById, getAssetsByIds, removeAssetRef, updateAssetCover } from "../../services/assets";
+import { addAssetRef, addAssetToLibrary, createAsset, getAssetById, getAssetsByIds, getLibraryAssets, removeAssetRef, updateAssetCover } from "../../services/assets";
 import { probeAsset } from "../../services/asset-probe";
 import { SIGNED_URL_TTL, computeSignature, getSigningKey } from "../../services/asset-signing";
 import { log } from "../../logger";
@@ -67,17 +67,21 @@ async function attachSignedUrls(env: Env, asset: AssetRecord) {
 
 // ─── Schemas ────────────────────────────────────────────────
 
-const AssetKindSchema = z.enum(["image", "video", "audio"]) satisfies z.ZodType<AssetKind>;
+const AssetKindSchema = z.enum(["image", "video", "audio", "model"]) satisfies z.ZodType<AssetKind>;
 
 const CreateAssetSchema = z.object({
-  projectId: z.string().min(1),
+  projectId: z.string().min(1).optional(),
+  addToLibrary: z.boolean().optional(),
   kind: AssetKindSchema,
   srcR2Key: z.string().min(1),
+  originalName: z.string().min(1).max(512).optional(),
   sourceModel: z.string().optional(),
   sourcePrompt: z.string().optional(),
   /** Override id — useful for deterministic re-create on retry. */
   id: z.string().optional(),
 });
+
+const AddAssetRefSchema = z.object({ projectId: z.string().min(1) });
 
 const PatchCoverSchema = z.object({
   coverR2Key: z.string().min(1),
@@ -93,25 +97,42 @@ const BatchAssetsSchema = z.object({
  *
  *  Metadata is server-probed from the R2 object by `probeAsset`; clients do
  *  NOT supply width/height/durationMs/waveform/bytes. */
+assetsRoutes.get("/", async (c) => {
+  try {
+    const userId = getUserId(c);
+    const assets = await getLibraryAssets(c.env.DB, userId);
+    const exp = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
+    const key = await getSigningKey(c.env);
+    return c.json({ assets: await Promise.all(assets.map((asset) => attachSignedUrlsWithKey(asset, key, exp))) });
+  } catch (e) {
+    log.warn("GET /assets failed", { error: String(e) });
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
 assetsRoutes.post("/", async (c) => {
   try {
     const userId = getUserId(c);
     const body = CreateAssetSchema.parse(await c.req.json());
-    await assertProjectOwner(c.env, body.projectId, userId);
+    if (!body.projectId && !body.addToLibrary) {
+      throw new Error("projectId or addToLibrary required");
+    }
+    if (body.projectId) await assertProjectOwner(c.env, body.projectId, userId);
 
     const { metadata, coverR2Key } = await probeAsset(
       c.env,
       body.kind,
       body.srcR2Key,
-      body.projectId,
+      body.projectId ?? `library-${userId}`,
     );
 
     const { id } = await createAsset(c.env.DB, {
       ...body,
       userId,
-      metadata,
+      metadata: { ...metadata, ...(body.originalName ? { originalName: body.originalName } : {}) },
       coverR2Key,
     });
+    if (body.addToLibrary) await addAssetToLibrary(c.env.DB, id, userId);
     log.info("POST /assets created", {
       id,
       kind: body.kind,
@@ -121,6 +142,34 @@ assetsRoutes.post("/", async (c) => {
     return c.json({ id });
   } catch (e) {
     log.warn("POST /assets failed", { error: String(e) });
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
+assetsRoutes.post("/:id/library", async (c) => {
+  try {
+    const userId = getUserId(c);
+    const asset = await getAssetById(c.env.DB, c.req.param("id"));
+    if (!asset) return c.json({ error: "not found" }, 404);
+    if (asset.userId !== userId) return c.json({ error: "forbidden" }, 403);
+    await addAssetToLibrary(c.env.DB, asset.id, userId);
+    return c.json({ ok: true });
+  } catch (e) {
+    return c.json({ error: String(e) }, 400);
+  }
+});
+
+assetsRoutes.post("/:id/ref", async (c) => {
+  try {
+    const userId = getUserId(c);
+    const { projectId } = AddAssetRefSchema.parse(await c.req.json());
+    await assertProjectOwner(c.env, projectId, userId);
+    const asset = await getAssetById(c.env.DB, c.req.param("id"));
+    if (!asset) return c.json({ error: "not found" }, 404);
+    if (asset.userId !== userId) return c.json({ error: "forbidden" }, 403);
+    await addAssetRef(c.env.DB, asset.id, projectId);
+    return c.json({ ok: true });
+  } catch (e) {
     return c.json({ error: String(e) }, 400);
   }
 });

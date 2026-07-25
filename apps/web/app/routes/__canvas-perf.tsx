@@ -587,7 +587,7 @@ export default function CanvasPerfRoute() {
         <MediaViewerProvider>
           <LayoutActionsProvider value={{ relayoutParent: () => {}, ungroup: () => {} }}>
             <main className="h-[calc(100vh-2rem)] w-full overflow-hidden bg-[var(--canvas-bg)]">
-              <div className="absolute left-4 top-4 z-10 rounded-lg border border-warm-border bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm">
+              <div className="absolute left-4 top-4 z-10 rounded-lg border border-overlay-border bg-overlay-surface px-3 py-2 text-xs text-content-secondary shadow-overlay">
                 <span className="font-semibold">Canvas perf</span>
                 <span className="ml-2">{nodes.length} nodes</span>
                 <span className="ml-2">{edges.length} edges</span>

@@ -23,6 +23,7 @@
     "@ai-sdk/react": "^3.0.140",
     "@ariakit/react": "^0.4.31",
     "@clash/shared-layout": "workspace:^",
+    "@clash/director-ui": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@cloudflare/ai-chat": "^0.2.5",

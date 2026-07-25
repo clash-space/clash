@@ -33,7 +33,7 @@ function SettingsOnlyControl({ compact = false, projectChrome = false }: UserCon
           projectChrome
             ? 'clash-project-top-action inline-flex h-10 w-10 items-center justify-center rounded-xl text-slate-900 transition-colors hover:bg-black/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
             : compact
-            ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+            ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
             : 'inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-warm-border bg-warm-surface text-stone-800 shadow-sm transition-all hover:border-brand/35 hover:bg-warm-muted hover:text-slate-950 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page'
         }
       >

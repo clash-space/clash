@@ -1,6 +1,12 @@
 import type { LayoutNode } from '../types';
 import type { Rect, Point, Size, NodeRect } from '../types';
 
+/** Screen-space bounds of the compact generation action capsule. */
+export const ACTION_BADGE_NODE_SIZE: Readonly<Size> = Object.freeze({
+    width: 260,
+    height: 58,
+});
+
 /**
  * Default node sizes by type.
  *
@@ -25,7 +31,7 @@ export function getNodeSize(type: string): Size {
         case 'action-badge':
         case 'action-badge-image':
         case 'action-badge-video':
-            return { width: 320, height: 220 };
+            return { ...ACTION_BADGE_NODE_SIZE };
         case 'video-editor':
             return { width: 400, height: 225 };
         // Backend generation types — use the same defaults as their media

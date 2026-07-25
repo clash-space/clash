@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { visibleUserPromptText } from '@clash/shared-runtime';
 import { appendAcpEvent, getAcpEventBlockKey, parseAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
+import {
+  HARNESS_UPDATED_EVENT,
+  SESSION_RESTART_COMPLETE_VISIBLE_MS,
+  type SessionRestartMode,
+  type SessionRestartPhase,
+  type SessionRuntimeStatus,
+} from '../lib/sessionRuntime';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -187,6 +195,10 @@ export interface UseClashRuntimeReturn {
   sessionConfigOptions: AcpSessionConfigOption[];
   /** ACP-native session modes reported by the current agent. */
   sessionModes: AcpSessionModeState | null;
+  /** Version state of the ACP child currently holding this session. */
+  sessionRuntimeStatus: SessionRuntimeStatus | null;
+  /** Restart lifecycle shown in the session-scoped update notice. */
+  sessionRestartPhase: SessionRestartPhase;
   /** True iff status === connected/sending/streaming. */
   ready: boolean;
   /** Re-fetch the runtime list. Cheap; safe to call from a settings page. */
@@ -197,6 +209,8 @@ export interface UseClashRuntimeReturn {
   select: (runtimeId: string | null, agentMemberId?: string, opts?: ClashRuntimeSelectOptions) => Promise<void>;
   /** Prepare a blank local-runtime draft. The ACP session is created on first prompt. */
   startDraft: (runtimeId: string | null, agentMemberId?: string, opts?: ClashRuntimeSelectOptions) => void;
+  /** Start the selected ACP draft without sending a user prompt (for capability-driven UI such as slash commands). */
+  prepareSession?: () => void;
   /** Attach to an already-created local runtime session without creating or disposing it. */
   attachSession: (session: RuntimeSessionInfo) => Promise<void>;
   /** RPC the daemon for resumeable local CC sessions. Returns [] if the
@@ -213,6 +227,7 @@ export interface UseClashRuntimeReturn {
   clearPromptQueue: () => void;
   setConfigOption: (configId: string, value: string | boolean) => void;
   setSessionMode: (modeId: string) => void;
+  restartSession: (mode: SessionRestartMode) => Promise<void>;
   cancel: () => void;
   shutdown: () => void;
 }
@@ -232,7 +247,7 @@ function readPromptQueueEnabled(): boolean {
 }
 
 function runtimeTitleFromPrompt(text: string): string | null {
-  const trimmed = text.trim();
+  const trimmed = visibleUserPromptText(text);
   if (!trimmed) return null;
   return trimmed.length > 52 ? `${trimmed.slice(0, 52)}...` : trimmed;
 }
@@ -533,6 +548,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [promptQueueMode, setPromptQueueModeState] = useState<RuntimePromptQueueMode>('single');
   const [sessionConfigOptions, setSessionConfigOptions] = useState<AcpSessionConfigOption[]>([]);
   const [sessionModes, setSessionModes] = useState<AcpSessionModeState | null>(null);
+  const [sessionRuntimeStatus, setSessionRuntimeStatus] = useState<SessionRuntimeStatus | null>(null);
+  const [sessionRestartPhase, setSessionRestartPhase] = useState<SessionRestartPhase>('idle');
 
   const wsRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -548,12 +565,19 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const pendingTitleRef = useRef<string | null>(null);
   const pendingConfigOptionsRef = useRef(new Map<string, string | boolean>());
   const pendingSessionModeRef = useRef<string | null>(null);
+  const resendQueuedAfterRestartRef = useRef(false);
   const turnSeq = useRef(0);
   const queuedPromptSeq = useRef(0);
   const turnToMsgIdx = useRef(new Map<string, number>());
   const eventBlockToMsgIdx = useRef(new Map<string, number>());
   const turnFallbackSegment = useRef(new Map<string, number>());
   const activeTurnIds = useRef(new Set<string>());
+  /** Monotonic selection token. Backchat keys lifecycle state by session;
+   * this single-session surface uses the same rule by rejecting async work
+   * started for an older selection. */
+  const sessionOperationSeq = useRef(0);
+  const restartSessionRef = useRef<((mode: SessionRestartMode) => Promise<void>) | null>(null);
+  const restartCompletionTimerRef = useRef<number | null>(null);
 
   const ready = status === 'connected' || status === 'sending' || status === 'streaming';
 
@@ -599,14 +623,47 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     }
   }, []);
 
+  const refreshSessionRuntimeStatus = useCallback(async (targetSessionId: string) => {
+    try {
+      const response = await fetch(runtimeApiUrl(
+        `${SESSIONS_BASE}/${encodeURIComponent(targetSessionId)}/runtime-status`,
+      ), { credentials: 'include' });
+      if (!response.ok || sessionIdRef.current !== targetSessionId) return;
+      setSessionRuntimeStatus(await response.json() as SessionRuntimeStatus);
+    } catch {
+      // A status check must never disconnect an otherwise healthy ACP chat.
+    }
+  }, []);
+
   // Initial fetch should make the local machine visible quickly. Agent auth and
   // model metadata probes run from explicit settings refreshes or session flows.
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    if (!sessionId) {
+      setSessionRuntimeStatus(null);
+      setSessionRestartPhase('idle');
+      return undefined;
+    }
+    void refreshSessionRuntimeStatus(sessionId);
+    const onHarnessUpdated = (event: Event) => {
+      const harnessId = (event as CustomEvent<{ id?: unknown }>).detail?.id;
+      if (typeof harnessId !== 'string' || !currentSession?.agentId || harnessId === currentSession.agentId) {
+        void refreshSessionRuntimeStatus(sessionId);
+      }
+    };
+    window.addEventListener(HARNESS_UPDATED_EVENT, onHarnessUpdated);
+    return () => window.removeEventListener(HARNESS_UPDATED_EVENT, onHarnessUpdated);
+  }, [currentSession?.agentId, refreshSessionRuntimeStatus, sessionId]);
+
   // Tear down on unmount so the WS doesn't leak across page changes.
   useEffect(() => {
     return () => {
+      sessionOperationSeq.current += 1;
       try { wsRef.current?.close(); } catch { /* ignore */ }
+      if (restartCompletionTimerRef.current !== null) {
+        window.clearTimeout(restartCompletionTimerRef.current);
+      }
     };
   }, []);
 
@@ -785,6 +842,8 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     replacePromptQueue([]);
     setSessionConfigOptions([]);
     setSessionModes(null);
+    setSessionRuntimeStatus(null);
+    setSessionRestartPhase('idle');
     setErrorMessage(null);
     setTransientStatus(null);
     setDiagnostics([]);
@@ -862,6 +921,15 @@ export function useClashRuntime(): UseClashRuntimeReturn {
               replacePromptQueue([]);
             }
             return;
+          }
+          if (resendQueuedAfterRestartRef.current) {
+            resendQueuedAfterRestartRef.current = false;
+            for (const queued of promptQueueRef.current) {
+              sendPromptFrame(queued, {
+                queueMode: promptQueueModeRef.current,
+                markActive: false,
+              });
+            }
           }
         }
         setRuntimeStatus('connected');
@@ -965,6 +1033,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           else setRuntimeStatus('connected');
         }
         return;
+      case 'session.restart_ready':
+        void restartSessionRef.current?.('now');
+        return;
       case 'session.error':
         {
           const message = msg.message ?? 'unknown error';
@@ -1004,7 +1075,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     const replayQuery = opts.replayBacklog === false ? '?replay=0' : '';
     const ws = new WebSocket(runtimeWebSocketUrl(`${SESSIONS_BASE}/${encodeURIComponent(id)}/_stream${replayQuery}`));
     wsRef.current = ws;
-    ws.onmessage = (ev) => onWsMessage(ev.data);
+    ws.onmessage = (ev) => {
+      if (wsRef.current !== ws) return;
+      onWsMessage(ev.data);
+    };
     ws.onclose = () => {
       if (wsRef.current !== ws) return;
       wsRef.current = null;
@@ -1012,11 +1086,62 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     };
   }, [onWsMessage]);
 
+  const restartSession = useCallback(async (mode: SessionRestartMode) => {
+    const targetSessionId = sessionIdRef.current;
+    if (!targetSessionId) return;
+    setSessionRestartPhase(mode === 'after-turn' ? 'pending' : 'restarting');
+    try {
+      const response = await fetch(runtimeApiUrl(
+        `${SESSIONS_BASE}/${encodeURIComponent(targetSessionId)}/restart`,
+      ), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      if (!response.ok) throw new Error(await readRuntimeErrorMessage(response));
+      const result = await response.json() as { status?: unknown };
+      if (result.status === 'pending') {
+        setSessionRuntimeStatus((current) => current ? {
+          ...current,
+          restart_pending: true,
+        } : current);
+        setSessionRestartPhase('pending');
+        return;
+      }
+
+      closeSessionSocket();
+      setRuntimeStatus('connecting');
+      resendQueuedAfterRestartRef.current = promptQueueRef.current.length > 0;
+      setSessionRuntimeStatus((current) => current ? {
+        ...current,
+        running_version: current.installed_version ?? current.running_version,
+        restart_required: false,
+        restart_pending: false,
+        busy: false,
+      } : current);
+      openSessionStream(targetSessionId, { replayBacklog: false });
+      setSessionRestartPhase('complete');
+      if (restartCompletionTimerRef.current !== null) {
+        window.clearTimeout(restartCompletionTimerRef.current);
+      }
+      restartCompletionTimerRef.current = window.setTimeout(() => {
+        setSessionRestartPhase('idle');
+        restartCompletionTimerRef.current = null;
+      }, SESSION_RESTART_COMPLETE_VISIBLE_MS);
+    } catch (error) {
+      setSessionRestartPhase('idle');
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [closeSessionSocket, openSessionStream, setRuntimeStatus]);
+  restartSessionRef.current = restartSession;
+
   const createRuntimeSession = useCallback(async (
     runtimeId: string | null,
     agentMemberId?: string,
     opts?: ClashRuntimeSelectOptions,
   ) => {
+    const operation = ++sessionOperationSeq.current;
     setRuntimeSessionId(null);
     const runtime = runtimeId ? runtimes.find((candidate) => candidate.id === runtimeId) : undefined;
     const resolvedAgent = resolveRuntimeAgent(runtime, opts?.agentId);
@@ -1052,6 +1177,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           ...(resumeAcpSessionId ? { resume_session_id: resumeAcpSessionId } : {}),
         }),
       });
+      if (sessionOperationSeq.current !== operation) return;
       if (!res.ok) {
         const message = await readRuntimeErrorMessage(res);
         if (isAuthSetupMessage(message)) {
@@ -1062,6 +1188,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         return;
       }
       const json = (await res.json()) as CreateSessionResponse;
+      if (sessionOperationSeq.current !== operation) return;
       setRuntimeSessionId(json.session_id);
       setCurrentSession({
         id: json.session_id,
@@ -1079,6 +1206,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
       openSessionStream(json.session_id);
     } catch (e) {
+      if (sessionOperationSeq.current !== operation) return;
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setRuntimeStatus('error');
     }
@@ -1100,6 +1228,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     agentMemberId?: string,
     opts?: ClashRuntimeSelectOptions,
   ) => {
+    sessionOperationSeq.current += 1;
     resetRuntimeState();
     acpSessionIdRef.current = null;
     pendingConfigOptionsRef.current.clear();
@@ -1125,6 +1254,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   }, [resetRuntimeState, runtimes]);
 
   const attachSession = useCallback(async (session: RuntimeSessionInfo) => {
+    const operation = ++sessionOperationSeq.current;
     resetRuntimeState();
     const runtime = runtimes.find((candidate) => candidate.id === session.runtimeId);
     setSelectedRuntimeId(session.runtimeId);
@@ -1137,6 +1267,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setRuntimeStatus('connecting');
 
     const history = await fetchRuntimeSessionMessages(session.id);
+    if (sessionOperationSeq.current !== operation) return;
     const historyLoaded = history !== null;
     if (historyLoaded) {
       messagesRef.current = history;
@@ -1150,6 +1281,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     });
+    if (sessionOperationSeq.current !== operation) return;
     if (!attach.ok) {
       const message = await readRuntimeErrorMessage(attach);
       setErrorMessage(`session attach failed: ${message.slice(0, 200)}`);
@@ -1208,6 +1340,14 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     }
     sendPromptFrame(prompt);
   }, [createRuntimeSession, enqueuePrompt, makePrompt, sendPromptFrame, sendQueuedPromptFrame]);
+
+  const prepareSession = useCallback(() => {
+    if (statusRef.current !== 'draft' || !draftRef.current) return;
+    setTransientStatus(null);
+    setRuntimeStatus('connecting');
+    const draft = draftRef.current;
+    void createRuntimeSession(draft.runtimeId, draft.agentMemberId, draft.opts);
+  }, [createRuntimeSession, setRuntimeStatus]);
 
   const steerQueuedPrompt = useCallback((turnId: string) => {
     const queued = promptQueueRef.current.find((prompt) => prompt.turnId === turnId)
@@ -1323,6 +1463,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   }, []);
 
   const shutdown = useCallback(() => {
+    sessionOperationSeq.current += 1;
     resetRuntimeState({ disposeSocket: true });
         setRuntimeSessionId(null);
     setCurrentSession(null);
@@ -1364,9 +1505,12 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     promptQueueMode,
     sessionConfigOptions,
     sessionModes,
+    sessionRuntimeStatus,
+    sessionRestartPhase,
     ready,
     refresh,
     startDraft,
+    prepareSession,
     select,
     attachSession,
     loadResumeOptions,
@@ -1380,6 +1524,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     clearPromptQueue,
     setConfigOption,
     setSessionMode,
+    restartSession,
     cancel,
     shutdown,
   };

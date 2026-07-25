@@ -9,6 +9,20 @@ Use this skill after ASR has produced word-level timestamps. It produces a cut
 plan, caption projection, and optionally a new non-destructive rendered video
 asset.
 
+Clash's built-in local ASR endpoint returns the canonical millisecond form:
+
+```http
+POST /api/v1/local/audio/transcriptions
+Content-Type: multipart/form-data
+
+file=<audio-or-video-file>
+language=zh
+```
+
+The selected model must first be installed and enabled under local Audio
+settings. The built-in FunASR adapter requests timestamp output and refuses to
+silently downgrade to a text-only transcript.
+
 For Clash's current local planner:
 
 ```bash
@@ -24,8 +38,9 @@ metadata and caption timeline projections. The caption projection uses
 `caption` items with cue `wordIds`, source frame ranges, `wordRefs`, and
 `sourceToOutputMap`. Do not mutate canvas/timeline state without the explicit
 CAS apply step. The transcript JSON may include `backendId`, `modelId`,
-`language`, `durationFrames`, and `averageConfidence`; `plan-text-cut` records
-the transcript file path/hash and those ASR fields in `talking-head.analysis`.
+`language`, `durationMs`/`durationFrames`, and `averageConfidence`;
+`plan-text-cut` records the transcript file path/hash and those ASR fields in
+`talking-head.analysis`.
 
 After review, create a media cut package or ffprobe-validated rendered clean
 clip. `export-text-cut-media --render` refuses to render while the action still
@@ -67,9 +82,45 @@ analysis/transcripts/words.json
 media/source.mp4
 ```
 
-Each word should include `id`, `text`, `startFrame`, and `endFrame`. Words may
-also include `confidence` and `speakerId`; transcript-level provenance can
-include backend/model/language and average confidence.
+Prefer the canonical raw-ASR form:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "clash.asr.timed-transcript",
+  "timebase": "milliseconds",
+  "alignment": "word",
+  "text": "你好 Clash",
+  "backendId": "funasr",
+  "modelId": "iic/SenseVoiceSmall",
+  "language": "zh",
+  "durationMs": 500,
+  "words": [
+    { "id": "word-000001", "text": "你", "startMs": 0, "endMs": 160 },
+    { "id": "word-000002", "text": "好", "startMs": 160, "endMs": 280 }
+  ],
+  "segments": [
+    {
+      "id": "segment-000001",
+      "text": "你好 Clash",
+      "startMs": 0,
+      "endMs": 500,
+      "wordIds": ["word-000001", "word-000002"]
+    }
+  ]
+}
+```
+
+`plan-text-cut --fps <fps>` converts millisecond ranges with floor-for-start,
+ceil-for-end semantics and guarantees every word covers at least one frame.
+The legacy frame form (`id`, `text`, `startFrame`, `endFrame`) remains accepted.
+Words may also include `confidence` and `speakerId`.
+
+For multi-clip text-based editing, keep these files as source transcripts and
+derive a `clash.timeline.transcript.projection` with
+`buildTimelineTranscriptProjection()`. Each projected word must retain both
+`assetId + assetWordId + source frames` and `clipId + timeline frames`. Timeline
+text edits change the sequence; they must not mutate the source transcript.
 
 ## Output Contract
 
@@ -93,6 +144,8 @@ reviews/cut-plan-review.md
 
 - `subtitle-only` mode is allowed without video cuts.
 - Audio/video cuts require word timestamps.
+- Keep the raw millisecond transcript immutable. Correct recognized text in a
+  reviewed derivative/action while retaining stable word ids and time ranges.
 - Do not delete discourse markers that carry meaning.
 - Every proposed deletion needs reason, confidence, and preview metadata.
 - Filler words and word-gap silences may be automatic delete suggestions;

@@ -228,6 +228,77 @@ export function clickButtonByLabel(agentBrowser, label) {
   })()`);
 }
 
+export async function submitProjectCreateDialog(
+  agentBrowser,
+  projectName = "Desktop E2E Project",
+) {
+  const selector = "input[placeholder='Untitled project']";
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const input = document.querySelector(${JSON.stringify(selector)});
+      const rect = input?.getBoundingClientRect();
+      return !!input && !!rect && rect.width > 0 && rect.height > 0;
+    })()`,
+    "project name dialog",
+  );
+
+  agentBrowser(["click", selector]);
+  agentBrowser(["press", "Meta+A"], { allowFailure: true });
+  agentBrowser(["press", "Control+A"], { allowFailure: true });
+  agentBrowser(["press", "Backspace"], { allowFailure: true });
+  agentBrowser(["keyboard", "type", projectName]);
+
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const input = document.querySelector(${JSON.stringify(selector)});
+      const create = [...document.querySelectorAll("button")].find((button) =>
+        (button.innerText || button.textContent || "").trim() === "Create"
+      );
+      return input?.value === ${JSON.stringify(projectName)} && !!create && !create.disabled;
+    })()`,
+    "enabled project create action",
+  );
+  if (!clickButtonByLabel(agentBrowser, "Create")) {
+    throw new Error("Could not submit the project creation dialog");
+  }
+}
+
+export async function openSessionHistoryMenu(agentBrowser) {
+  const visibleMenuExpression = `(() => {
+    const menu = document.querySelector(
+      '[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]'
+    );
+    const rect = menu?.getBoundingClientRect();
+    const style = menu ? getComputedStyle(menu) : null;
+    return !!menu && !!rect && rect.width > 0 && rect.height > 0 &&
+      style?.display !== "none" && style?.visibility !== "hidden";
+  })()`;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const clicked = clickButtonByLabel(agentBrowser, "Session history") ||
+      clickButtonByLabel(agentBrowser, "历史会话");
+    if (clicked) {
+      try {
+        await waitForEval(
+          agentBrowser,
+          visibleMenuExpression,
+          "visible session history menu",
+          3_000,
+        );
+        return;
+      } catch {
+        // A render boundary can replace the trigger after its pointer event.
+        // Retry through another real button click rather than DOM mutation.
+      }
+    }
+    agentBrowser(["press", "Escape"], { allowFailure: true });
+    await sleep(250);
+  }
+  throw new Error("Could not open a visible session history menu");
+}
+
 export function typeComposer(agentBrowser, text) {
   const selector = ".milkdown-chat-input [contenteditable='true']";
   const expectedPlainText = text.replaceAll("`", "");
@@ -341,9 +412,16 @@ export function clickComposerSubmitButton(agentBrowser) {
 export async function startVite({ webPort, logs }) {
   const viteBin = path.join(repoRoot, "node_modules", ".bin", process.platform === "win32" ? "vite.cmd" : "vite");
   const persistStateDir = path.join(repoRoot, ".tmp", "desktop-vite-state", String(webPort));
+  const useStaticPreview = process.env.CLASH_E2E_STATIC_WEB === "1";
   await rm(persistStateDir, { recursive: true, force: true });
   await mkdir(persistStateDir, { recursive: true });
-  const web = spawn(viteBin, ["--host", "127.0.0.1", "--port", String(webPort)], {
+  const web = spawn(viteBin, [
+    ...(useStaticPreview ? ["preview"] : []),
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(webPort),
+  ], {
     cwd: webDir,
     env: {
       ...process.env,
@@ -367,7 +445,13 @@ export async function startVite({ webPort, logs }) {
 
 export async function startElectron({ cdpPort, webOrigin, apiPort, dataDir, captureDir, logs, env = {} }) {
   const electronBin = require("electron");
-  const electron = spawn(electronBin, [`--remote-debugging-port=${cdpPort}`, desktopDir], {
+  const electronUserDataDir = path.join(dataDir, "electron-user-data");
+  await mkdir(electronUserDataDir, { recursive: true });
+  const electron = spawn(electronBin, [
+    `--remote-debugging-port=${cdpPort}`,
+    `--user-data-dir=${electronUserDataDir}`,
+    desktopDir,
+  ], {
     cwd: repoRoot,
     env: {
       ...process.env,

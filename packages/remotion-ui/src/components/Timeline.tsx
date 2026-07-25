@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -16,12 +16,15 @@ import type {
   DragMoveEvent,
 } from './ui/dnd';
 import {
+  canTrackAcceptItem,
   useEditorDispatch,
+  useEditorHistory,
   useEditorPlayback,
   useEditorPlaybackRefs,
   useEditorStaticState,
 } from '@master-clash/remotion-core';
-import type { Item } from '@master-clash/remotion-core';
+import type { EditorState, Item, TrackCategory } from '@master-clash/remotion-core';
+import type { AgentAnnotationObjectRef } from '@clash/shared-types';
 import { TimelineHeader } from './timeline/TimelineHeader';
 import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineTracksContainer } from './timeline/TimelineTracksContainer';
@@ -32,7 +35,28 @@ import { colors, timeline as timelineStyles } from './timeline/styles';
 import { getPixelsPerFrame, pixelsToFrame, frameToPixels, secondsToFrames } from './timeline/utils/timeFormatter';
 import { calculateSnap } from './timeline/utils/snapCalculator';
 import { buildPreview as buildItemDragPreview, finalizeDrop as finalizeItemDrop } from './timeline/dnd/itemDragLogic';
+import {
+  anchoredTimelineScrollLeft,
+  clampTimelineZoom,
+  fitTimelineZoom,
+  stepTimelineZoom,
+} from './timeline/zoom';
 import { currentDraggedAsset, currentAssetDragOffset } from './AssetPanel';
+import { currentDraggedLibraryRecord } from './TimelineLibraryPanel';
+import { buildTimelineLibraryApplication } from '../library/applyTimelineLibraryItem';
+import { resolveAssetDropPayload } from './timeline/assetDropPayload';
+import {
+  buildTimelineAssetInsertion,
+  hasTimelineAssetInsertReceipt,
+  type TimelineAssetInsertRequest,
+} from './timeline/insertAssetRequest';
+import {
+  getTrackBandAtY,
+  getTimelineTrackHeights,
+  getTimelineTracksHeight,
+} from './timeline/trackGeometry';
+import { createBrollTrack } from './timeline/brollTrackNaming';
+import { TIMELINE_NOTICE_EVENT } from './timeline/timelineNotice';
 
 // 声明全局window属性
 declare global {
@@ -64,38 +88,71 @@ const TIMELINE_ROOT_STYLES = `
   }
 `;
 
-type TimelineHeaderPlaybackProps = {
-  fps: number;
-  durationInFrames: number;
+const TIMELINE_ZOOM_LIMITS = {
+  min: timelineStyles.zoomMin,
+  max: timelineStyles.zoomMax,
+};
+
+type TimelineHeaderControlsProps = {
   zoom: number;
   snapEnabled: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  selectedItem: Item | null;
+  selectedTrackId: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
+  onSplitSelected: (trackId: string, item: Item, frame: number) => void;
+  onTrimLeftSelected: (trackId: string, item: Item, frame: number) => void;
+  onTrimRightSelected: (trackId: string, item: Item, frame: number) => void;
+  onDeleteSelected: (trackId: string, itemId: string) => void;
+  onAddVideoTrack: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomToFit: () => void;
   onZoomReset: () => void;
   onToggleSnap: () => void;
-  onTogglePlay: (playing: boolean) => void;
   onZoomChange: (zoom: number) => void;
   zoomLimits: { min: number; max: number };
 };
 
-const TimelineHeaderPlayback: React.FC<TimelineHeaderPlaybackProps> = React.memo((props) => {
-  const { currentFrame, playing } = useEditorPlayback();
-
+const TimelineHeaderControls: React.FC<TimelineHeaderControlsProps> = React.memo((props) => {
+  const { currentFrame } = useEditorPlayback();
+  const canEditSelected = Boolean(
+    props.selectedItem
+    && props.selectedItem.type !== 'transition'
+    && currentFrame > props.selectedItem.from
+    && currentFrame < props.selectedItem.from + props.selectedItem.durationInFrames,
+  );
+  const invokeSelected = (
+    callback: (trackId: string, item: Item, frame: number) => void,
+  ) => {
+    if (!props.selectedTrackId || !props.selectedItem || !canEditSelected) return;
+    callback(props.selectedTrackId, props.selectedItem, currentFrame);
+  };
   return (
     <TimelineHeader
-      currentFrame={currentFrame}
-      fps={props.fps}
-      durationInFrames={props.durationInFrames}
-      playing={playing}
       zoom={props.zoom}
       snapEnabled={props.snapEnabled}
+      canUndo={props.canUndo}
+      canRedo={props.canRedo}
+      canEditSelected={canEditSelected}
+      hasSelectedItem={Boolean(props.selectedItem && props.selectedTrackId)}
+      onUndo={props.onUndo}
+      onRedo={props.onRedo}
+      onSplitSelected={() => invokeSelected(props.onSplitSelected)}
+      onTrimLeftSelected={() => invokeSelected(props.onTrimLeftSelected)}
+      onTrimRightSelected={() => invokeSelected(props.onTrimRightSelected)}
+      onDeleteSelected={() => {
+        if (!props.selectedTrackId || !props.selectedItem) return;
+        props.onDeleteSelected(props.selectedTrackId, props.selectedItem.id);
+      }}
+      onAddVideoTrack={props.onAddVideoTrack}
       onZoomIn={props.onZoomIn}
       onZoomOut={props.onZoomOut}
       onZoomToFit={props.onZoomToFit}
       onZoomReset={props.onZoomReset}
       onToggleSnap={props.onToggleSnap}
-      onTogglePlay={() => props.onTogglePlay(playing)}
       onZoomChange={props.onZoomChange}
       zoomLimits={props.zoomLimits}
     />
@@ -131,22 +188,44 @@ const TimelinePlayheadOverlay: React.FC<TimelinePlayheadOverlayProps> = React.me
   );
 });
 
-export const Timeline: React.FC = () => {
+export const Timeline: React.FC<{
+  insertAssetRequest?: TimelineAssetInsertRequest;
+  onInsertAssetRequestHandled?: (requestId: string) => void;
+  onAnnotationTargetContextMenu?: (target: AgentAnnotationObjectRef) => void;
+  showTranscriptTimeline?: boolean;
+}> = ({
+  insertAssetRequest,
+  onInsertAssetRequestHandled,
+  onAnnotationTargetContextMenu,
+  showTranscriptTimeline = false,
+}) => {
   const dispatch = useEditorDispatch();
+  const {
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    beginHistoryGroup,
+    endHistoryGroup,
+  } = useEditorHistory();
   const { currentFrameRef, playingRef } = useEditorPlaybackRefs();
   const {
     tracks,
+    primaryTrackId,
     selectedItemId,
     selectedTrackId,
     zoom,
     fps,
     durationInFrames,
     assets,
+    assetTranscripts,
     compositionWidth,
     compositionHeight,
   } = useEditorStaticState();
 
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [timelineNotice, setTimelineNotice] = useState<string | null>(null);
+  const timelineNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draggedItem, setDraggedItem] = useState<{ trackId: string; item: Item } | null>(null);
   // const [dragOffset, setDragOffset] = useState<number>(0); // Unused
   // const [assetDragOffset, setAssetDragOffset] = useState<number>(0); // Unused
@@ -165,6 +244,7 @@ export const Timeline: React.FC = () => {
     snapEdge?: 'left' | 'right' | null;
     snapTargetType?: 'item-start' | 'item-end' | 'playhead' | 'track-start' | 'grid' | undefined | null;
     snapGuideFrame?: number | null; // vertical guide line frame (only for item-start/item-end)
+    invalidTarget?: boolean;
   } | null>(null);
   const [insertPosition, setInsertPosition] = useState<number | null>(null);
   
@@ -176,7 +256,58 @@ export const Timeline: React.FC = () => {
     insertIndex?: number;
   } | null>(null);
 
+  const showTimelineNotice = useCallback((message: string) => {
+    if (timelineNoticeTimerRef.current) clearTimeout(timelineNoticeTimerRef.current);
+    setTimelineNotice(message);
+    timelineNoticeTimerRef.current = setTimeout(() => {
+      setTimelineNotice(null);
+      timelineNoticeTimerRef.current = null;
+    }, 2400);
+  }, []);
+
+  useEffect(() => () => {
+    if (timelineNoticeTimerRef.current) clearTimeout(timelineNoticeTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    const handleNotice = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      if (typeof message === 'string' && message) showTimelineNotice(message);
+    };
+    window.addEventListener(TIMELINE_NOTICE_EVENT, handleNotice);
+    return () => window.removeEventListener(TIMELINE_NOTICE_EVENT, handleNotice);
+  }, [showTimelineNotice]);
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const handledInsertRequestRef = useRef<string | null>(null);
+  const insertRequestCommitted = insertAssetRequest
+    ? hasTimelineAssetInsertReceipt(tracks, insertAssetRequest.requestId)
+    : false;
+
+  useEffect(() => {
+    if (
+      !insertAssetRequest ||
+      insertRequestCommitted ||
+      handledInsertRequestRef.current === insertAssetRequest.requestId
+    ) return;
+    handledInsertRequestRef.current = insertAssetRequest.requestId;
+    const insertion = buildTimelineAssetInsertion({
+      ...insertAssetRequest,
+      frame: currentFrameRef.current,
+      fps,
+      compositionWidth,
+      compositionHeight,
+    });
+    dispatch({ type: 'UPSERT_ASSET', payload: insertion.asset });
+    dispatch({ type: 'INSERT_TRACK', payload: { track: insertion.track, index: tracks.length } });
+    dispatch({ type: 'SELECT_ITEM', payload: insertion.track.items[0].id });
+  }, [compositionHeight, compositionWidth, currentFrameRef, dispatch, fps, insertAssetRequest, insertRequestCommitted, tracks.length]);
+
+  useEffect(() => {
+    if (!insertAssetRequest || !insertRequestCommitted) return;
+    handledInsertRequestRef.current = insertAssetRequest.requestId;
+    onInsertAssetRequestHandled?.(insertAssetRequest.requestId);
+  }, [insertAssetRequest, insertRequestCommitted, onInsertAssetRequestHandled]);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const tracksViewportRef = useRef<HTMLDivElement | null>(null);
   // Mount point for labels (left column) when externalized from tracks container
@@ -195,8 +326,15 @@ export const Timeline: React.FC = () => {
   // Sync horizontal scroll position of tracks viewport with ruler and playhead
   const [scrollLeft, setScrollLeft] = useState(0);
   const [viewportContentWidth, setViewportContentWidth] = useState(0);
+  const pendingZoomAnchorRef = useRef<{
+    targetZoom: number;
+    anchorOffset: number;
+    oldPixelsPerFrame: number;
+    oldScrollLeft: number;
+    resetScroll: boolean;
+  } | null>(null);
   // Visual inset to shift right-pane content without changing layout
-  const contentInsetLeftPx = 12;
+  const contentInsetLeftPx = timelineStyles.contentInsetLeft;
 
   const pixelsPerFrame = getPixelsPerFrame(zoom);
   // dnd-kit sensors
@@ -251,7 +389,11 @@ export const Timeline: React.FC = () => {
     // (viewport position is visual, we need absolute position in the entire scrollable content)
     const topY = (topOnViewport - viewportRect.top) + viewportEl.scrollTop;
 
-    const insertThresholdPx = Math.min(12, Math.floor(timelineStyles.trackHeight * 0.15));
+    const trackHeights = getTimelineTrackHeights(tracks, primaryTrackId);
+    const shortestTrackHeight = trackHeights.length > 0
+      ? Math.min(...trackHeights)
+      : timelineStyles.trackHeight;
+    const insertThresholdPx = Math.min(8, Math.floor(shortestTrackHeight * 0.2));
     const preview = buildItemDragPreview({
       leftWithinTracksPx: leftWithinTracks,
       itemTopY: topY,
@@ -264,8 +406,13 @@ export const Timeline: React.FC = () => {
       currentFrame: currentFrameRef.current,
       snapEnabled: !!snapEnabled,
       trackHeight: timelineStyles.trackHeight,
+      trackHeights,
       insertThresholdPx: insertThresholdPx,
     });
+    const previewTrack = tracks.find((track) => track.id === preview.previewTrackId);
+    const invalidTarget = !preview.willCreateNewTrack && Boolean(
+      previewTrack && !canTrackAcceptItem(previewTrack, draggedItem.item, primaryTrackId)
+    );
 
     setInsertPosition(preview.willCreateNewTrack ? preview.insertIndex : null);
     setDragPreview({
@@ -276,9 +423,10 @@ export const Timeline: React.FC = () => {
       snapEdge: undefined,
       snapTargetType: undefined,
       snapGuideFrame: preview.snapGuideFrame,
+      invalidTarget,
     });
     lastDragTopRef.current = topY;
-  }, [draggedItem, dragPreview, pixelsPerFrame, tracks, snapEnabled, currentFrameRef]);
+  }, [draggedItem, dragPreview, pixelsPerFrame, tracks, primaryTrackId, snapEnabled, currentFrameRef]);
 
   const onDndItemMove = useCallback((event: DragMoveEvent) => {
     const translated = event.active.rect.current.translated;
@@ -306,6 +454,14 @@ export const Timeline: React.FC = () => {
       return;
     }
 
+    if (dragPreview.invalidTarget) {
+      setDraggedItem(null);
+      setDragPreview(null);
+      setInsertPosition(null);
+      window.currentDraggedItem = null;
+      return;
+    }
+
     const { item, originalTrackId } = dragPreview;
     const drop = finalizeItemDrop(
       {
@@ -321,6 +477,7 @@ export const Timeline: React.FC = () => {
     );
 
     if (drop.type === 'create-track') {
+      beginHistoryGroup();
       const newTrack = {
         id: `track-${Date.now()}`,
         name: item.type.charAt(0).toUpperCase() + item.type.slice(1),
@@ -328,6 +485,7 @@ export const Timeline: React.FC = () => {
       };
       dispatch({ type: 'INSERT_TRACK', payload: { track: newTrack, index: drop.insertIndex } });
       dispatch({ type: 'REMOVE_ITEM', payload: { trackId: originalTrackId, itemId: item.id } });
+      endHistoryGroup();
     } else if (drop.type === 'move-within-track') {
       dispatch({
         type: 'UPDATE_ITEM',
@@ -341,9 +499,15 @@ export const Timeline: React.FC = () => {
           payload: { trackId: drop.targetTrackId, itemId: item.id, updates: { from: drop.frame } },
         });
       } else {
-        const updatedItem = { ...item, from: drop.frame };
-        dispatch({ type: 'ADD_ITEM', payload: { trackId: drop.targetTrackId, item: updatedItem } });
-        dispatch({ type: 'REMOVE_ITEM', payload: { trackId: originalTrackId, itemId: item.id } });
+        dispatch({
+          type: 'MOVE_ITEM',
+          payload: {
+            sourceTrackId: originalTrackId,
+            targetTrackId: drop.targetTrackId,
+            itemId: item.id,
+            from: drop.frame,
+          },
+        });
       }
     }
 
@@ -353,7 +517,7 @@ export const Timeline: React.FC = () => {
     setDragPreview(null);
     setInsertPosition(null);
     window.currentDraggedItem = null;
-  }, [dragPreview, dispatch, insertPosition, tracks]);
+  }, [beginHistoryGroup, dragPreview, dispatch, endHistoryGroup, insertPosition, tracks]);
 
   // Measure available content width (excluding the fixed track label gutter).
   // We use it to:
@@ -367,8 +531,16 @@ export const Timeline: React.FC = () => {
       setViewportContentWidth(Math.max(0, Math.floor(width)));
     };
     measure();
+    const el = workspaceRef.current ?? containerRef.current;
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(measure);
+    if (el) resizeObserver?.observe(el);
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
 
   // Derive display length for UI (ruler + tracks)
@@ -408,81 +580,91 @@ export const Timeline: React.FC = () => {
   // no extra alignment
 
   // ==================== 缩放控制 ====================
-  // Adaptive zoom step: use smaller increments at lower zoom levels for better control
-  const getAdaptiveZoomStep = useCallback((currentZoom: number): number => {
-    if (currentZoom < 0.5) return 0.1;
-    if (currentZoom < 1) return 0.15;
-    if (currentZoom < 2) return 0.25;
-    if (currentZoom < 4) return 0.5;
-    return 1;
-  }, []);
-
-  // Calculate zoom level needed to fit all content in viewport
   const calculateFitZoom = useCallback(() => {
-    if (contentEndInFrames === 0 || viewportContentWidth === 0) return timelineStyles.zoomDefault;
-
-    // Calculate pixels per frame needed to fit content in viewport
-    const neededPixelsPerFrame = viewportContentWidth / (contentEndInFrames * 1.1); // 1.1x for padding
-    // Convert to zoom multiplier (base is 2px per frame at zoom=1)
-    const fitZoom = neededPixelsPerFrame / 2;
-
-    // Clamp between min and max
-    return Math.max(timelineStyles.zoomMin, Math.min(timelineStyles.zoomMax, fitZoom));
+    return fitTimelineZoom({
+      contentEndInFrames,
+      viewportWidth: viewportContentWidth,
+      ...TIMELINE_ZOOM_LIMITS,
+    });
   }, [contentEndInFrames, viewportContentWidth]);
 
-  // Smart zoom limits based on content
-  const getSmartZoomLimits = useCallback(() => {
-    if (contentEndInFrames === 0) {
-      return { min: timelineStyles.zoomMin, max: timelineStyles.zoomMax };
-    }
-
-    // Calculate minimum zoom that prevents timeline from being too small
-    const minPxWidth = 200; // minimum timeline width
-    const minZoom = Math.max(timelineStyles.zoomMin, minPxWidth / (contentEndInFrames * 2));
-
-    // Calculate maximum zoom that prevents excessive horizontal scrolling
-    const maxFramesVisible = 300; // reasonable viewport size in frames
-    const maxZoom = Math.min(timelineStyles.zoomMax, (viewportContentWidth / maxFramesVisible) / 2);
-
-    return {
-      min: Math.max(timelineStyles.zoomMin, minZoom),
-      max: Math.max(minZoom, maxZoom)
+  const applyZoom = useCallback((requestedZoom: number, options?: {
+    anchorOffset?: number;
+    resetScroll?: boolean;
+  }) => {
+    const nextZoom = clampTimelineZoom(
+      requestedZoom,
+      TIMELINE_ZOOM_LIMITS.min,
+      TIMELINE_ZOOM_LIMITS.max,
+    );
+    if (Math.abs(nextZoom - zoom) < 0.000001) return;
+    const viewport = tracksViewportRef.current;
+    pendingZoomAnchorRef.current = {
+      targetZoom: nextZoom,
+      anchorOffset: options?.anchorOffset ?? ((viewport?.clientWidth ?? viewportContentWidth) / 2),
+      oldPixelsPerFrame: pixelsPerFrame,
+      oldScrollLeft: viewport?.scrollLeft ?? scrollLeft,
+      resetScroll: options?.resetScroll ?? false,
     };
-  }, [contentEndInFrames, viewportContentWidth]);
+    dispatch({ type: 'SET_ZOOM', payload: nextZoom });
+  }, [dispatch, pixelsPerFrame, scrollLeft, viewportContentWidth, zoom]);
+
+  useLayoutEffect(() => {
+    const pending = pendingZoomAnchorRef.current;
+    if (!pending || Math.abs(pending.targetZoom - zoom) > 0.000001) return;
+    const viewport = tracksViewportRef.current;
+    if (!viewport) {
+      pendingZoomAnchorRef.current = null;
+      return;
+    }
+    const nextScrollLeft = pending.resetScroll
+      ? 0
+      : anchoredTimelineScrollLeft({
+          scrollLeft: pending.oldScrollLeft,
+          anchorOffset: pending.anchorOffset,
+          contentInset: contentInsetLeftPx,
+          oldPixelsPerFrame: pending.oldPixelsPerFrame,
+          newPixelsPerFrame: pixelsPerFrame,
+          maxScrollLeft: Math.max(0, viewport.scrollWidth - viewport.clientWidth),
+        });
+    viewport.scrollLeft = nextScrollLeft;
+    setScrollLeft(nextScrollLeft);
+    pendingZoomAnchorRef.current = null;
+  }, [pixelsPerFrame, zoom]);
 
   const handleZoomIn = useCallback(() => {
-    const limits = getSmartZoomLimits();
-    const step = getAdaptiveZoomStep(zoom);
-    if (zoom < limits.max) {
-      const newZoom = Math.min(zoom + step, limits.max);
-      dispatch({ type: 'SET_ZOOM', payload: newZoom });
-    }
-  }, [zoom, dispatch, getSmartZoomLimits, getAdaptiveZoomStep]);
+    applyZoom(stepTimelineZoom(zoom, 'in', TIMELINE_ZOOM_LIMITS.min, TIMELINE_ZOOM_LIMITS.max));
+  }, [applyZoom, zoom]);
 
   const handleZoomOut = useCallback(() => {
-    const limits = getSmartZoomLimits();
-    const step = getAdaptiveZoomStep(zoom);
-    if (zoom > limits.min) {
-      const newZoom = Math.max(zoom - step, limits.min);
-      dispatch({ type: 'SET_ZOOM', payload: newZoom });
-    }
-  }, [zoom, dispatch, getSmartZoomLimits, getAdaptiveZoomStep]);
+    applyZoom(stepTimelineZoom(zoom, 'out', TIMELINE_ZOOM_LIMITS.min, TIMELINE_ZOOM_LIMITS.max));
+  }, [applyZoom, zoom]);
 
   // Zoom to fit all content
   const handleZoomToFit = useCallback(() => {
-    const fitZoom = calculateFitZoom();
-    dispatch({ type: 'SET_ZOOM', payload: fitZoom });
-  }, [dispatch, calculateFitZoom]);
+    applyZoom(calculateFitZoom(), { resetScroll: true });
+  }, [applyZoom, calculateFitZoom]);
 
   // Reset zoom to default
   const handleZoomReset = useCallback(() => {
-    dispatch({ type: 'SET_ZOOM', payload: timelineStyles.zoomDefault });
-  }, [dispatch]);
+    applyZoom(timelineStyles.zoomDefault);
+  }, [applyZoom]);
 
   // Handle zoom change from slider
   const handleZoomChange = useCallback((newZoom: number) => {
-    dispatch({ type: 'SET_ZOOM', payload: newZoom });
-  }, [dispatch]);
+    applyZoom(newZoom);
+  }, [applyZoom]);
+
+  const handleZoomWheel = useCallback((event: React.WheelEvent) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    const viewport = tracksViewportRef.current;
+    if (!viewport) return;
+    event.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const anchorOffset = Math.max(0, Math.min(viewport.clientWidth, event.clientX - rect.left));
+    const factor = Math.exp(-event.deltaY * 0.002);
+    applyZoom(zoom * factor, { anchorOffset });
+  }, [applyZoom, zoom]);
 
   // ==================== 播放头控制 ====================
   const handleSeek = useCallback(
@@ -492,15 +674,6 @@ export const Timeline: React.FC = () => {
     [dispatch, durationInFrames]
   );
 
-  // const handleAddTrack = useCallback(() => {
-  //   const newTrack = {
-  //     id: `track-${Date.now()}`,
-  //     name: 'Track',
-  //     items: [],
-  //   };
-  //   dispatch({ type: 'ADD_TRACK', payload: newTrack });
-  // }, [dispatch]);
-
   const handleSelectTrack = useCallback(
     (trackId: string) => {
       dispatch({ type: 'SELECT_TRACK', payload: trackId });
@@ -508,6 +681,20 @@ export const Timeline: React.FC = () => {
     },
     [dispatch]
   );
+
+  const handleAddVideoTrack = useCallback(() => {
+    const track = createBrollTrack({
+      id: `b-roll-${Date.now().toString(36)}`,
+      tracks,
+      primaryTrackId,
+    });
+    dispatch({
+      type: 'ADD_TRACK',
+      payload: track,
+    });
+    dispatch({ type: 'SELECT_TRACK', payload: track.id });
+    dispatch({ type: 'SELECT_ITEM', payload: null });
+  }, [dispatch, primaryTrackId, tracks]);
 
   // ==================== 素材项操作 ====================
   const handleSelectItem = useCallback(
@@ -537,6 +724,55 @@ export const Timeline: React.FC = () => {
     [dispatch]
   );
 
+  const selectedTimelineEntry = useMemo(() => {
+    if (!selectedItemId) return null;
+    for (const track of tracks) {
+      const item = track.items.find((candidate) => candidate.id === selectedItemId);
+      if (item) return { trackId: track.id, item };
+    }
+    return null;
+  }, [selectedItemId, tracks]);
+
+  const splitSelectedAtPlayhead = useCallback((
+    trackId: string,
+    item: Item,
+    frame: number,
+  ) => {
+    if (frame <= item.from || frame >= item.from + item.durationInFrames) return;
+    dispatch({
+      type: 'SPLIT_ITEM',
+      payload: { trackId, itemId: item.id, splitFrame: frame },
+    });
+  }, [dispatch]);
+
+  const trimSelectedStartToPlayhead = useCallback((
+    trackId: string,
+    item: Item,
+    frame: number,
+  ) => {
+    const endFrame = item.from + item.durationInFrames;
+    if (frame <= item.from || frame >= endFrame) return;
+    const consumedFrames = frame - item.from;
+    handleUpdateItem(trackId, item.id, {
+      from: frame,
+      durationInFrames: endFrame - frame,
+      ...(item.type === 'video' || item.type === 'audio'
+        ? { sourceStartInFrames: (item.sourceStartInFrames ?? 0) + consumedFrames }
+        : {}),
+    } as Partial<Item>);
+  }, [handleUpdateItem]);
+
+  const trimSelectedEndToPlayhead = useCallback((
+    trackId: string,
+    item: Item,
+    frame: number,
+  ) => {
+    if (frame <= item.from || frame >= item.from + item.durationInFrames) return;
+    handleUpdateItem(trackId, item.id, {
+      durationInFrames: frame - item.from,
+    } as Partial<Item>);
+  }, [handleUpdateItem]);
+
   // ==================== 拖放处理（从 AssetPanel 拖入素材 + Timeline内移动）====================
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -545,6 +781,12 @@ export const Timeline: React.FC = () => {
     // 如果是拖动已有item，不处理（由dnd-kit处理）
     if (draggedItem) {
       if (assetDragPreview) setAssetDragPreview(null);
+      return;
+    }
+
+    if (currentDraggedLibraryRecord) {
+      if (assetDragPreview) setAssetDragPreview(null);
+      setInsertPosition(null);
       return;
     }
 
@@ -585,15 +827,23 @@ export const Timeline: React.FC = () => {
     );
     const frame = Math.max(0, snapResult.snappedFrame);
 
-    const trackIndex = Math.floor(y / timelineStyles.trackHeight);
-    const relativeY = y % timelineStyles.trackHeight;
-    const threshold = 20;
+    const band = getTrackBandAtY(y, tracks, primaryTrackId);
+    const tracksHeight = getTimelineTracksHeight(tracks, primaryTrackId);
+    const trackIndex = band?.index ?? -1;
+    const relativeY = band ? y - band.top : 0;
+    const threshold = band ? Math.min(12, Math.floor(band.height * 0.25)) : 0;
 
     let targetTrackId: string | null = null;
     let insertIdx: number | null = null;
 
     // 与 item 拖动逻辑保持一致：检测是否在轨道边界附近（要插入新 track）
-    if (tracks.length > 0 && (relativeY < threshold || relativeY > timelineStyles.trackHeight - threshold)) {
+    if (!band && tracks.length > 0 && y >= tracksHeight) {
+      insertIdx = tracks.length;
+      setInsertPosition(insertIdx);
+      if (assetDragPreview) setAssetDragPreview(null);
+      return;
+    }
+    if (band && tracks.length > 0 && (relativeY < threshold || relativeY > band.height - threshold)) {
       // 在轨道边界附近 - 准备插入新 track
       insertIdx = relativeY < threshold ? trackIndex : trackIndex + 1;
       if (insertIdx >= 0 && insertIdx <= tracks.length) {
@@ -692,13 +942,20 @@ export const Timeline: React.FC = () => {
       } as Item;
     }
 
+    const targetTrack = tracks.find((track) => track.id === targetTrackId);
+    if (!targetTrack || !canTrackAcceptItem(targetTrack, previewItem, primaryTrackId)) {
+      e.dataTransfer.dropEffect = 'none';
+      if (assetDragPreview) setAssetDragPreview(null);
+      return;
+    }
+
     setAssetDragPreview({
       item: previewItem,
       trackId: targetTrackId,
       isTemporaryTrack: false, // 始终为 false，与 item 拖动逻辑一致
       insertIndex: undefined,
     });
-  }, [draggedItem, assets, tracks, snapEnabled, pixelsPerFrame, fps, assetDragPreview, currentFrameRef]);
+  }, [draggedItem, assets, tracks, primaryTrackId, snapEnabled, pixelsPerFrame, fps, assetDragPreview, currentFrameRef]);
 
   // 创建素材项的辅助函数
   //
@@ -779,23 +1036,101 @@ export const Timeline: React.FC = () => {
     }
   }, [compositionWidth, compositionHeight]);
 
+  const applyLibraryDrop = useCallback((frame: number, targetTrackId?: string): boolean => {
+    const record = currentDraggedLibraryRecord;
+    if (!record) return false;
+
+    const targetTrack = targetTrackId
+      ? tracks.find((track) => track.id === targetTrackId)
+      : undefined;
+    const needsItemTarget = [
+      'transitions',
+      'fx',
+      'zoom',
+      'luts',
+      'audio-fx',
+      'captions',
+      'filters',
+      'adjustments',
+    ].includes(record.item.category);
+    let dropSelectedItemId = selectedItemId;
+    if (needsItemTarget && targetTrack) {
+      const exact = targetTrack.items.find((item) => (
+        frame >= item.from && frame < item.from + item.durationInFrames
+      ));
+      if (exact) {
+        dropSelectedItemId = exact.id;
+      }
+    }
+
+    const stateForDrop: EditorState = {
+      tracks,
+      primaryTrackId,
+      selectedItemId: dropSelectedItemId,
+      selectedTrackId,
+      currentFrame: frame,
+      playing: false,
+      zoom,
+      assets,
+      assetTranscripts,
+      compositionWidth,
+      compositionHeight,
+      fps,
+      durationInFrames,
+    };
+    let idIndex = 0;
+    const application = buildTimelineLibraryApplication({
+      state: stateForDrop,
+      record,
+      targetTrackId,
+      transitionTarget: record.item.category === 'transitions'
+        ? { trackId: targetTrackId ?? '', frame }
+        : undefined,
+      createId: (prefix) => `${prefix}-${Date.now().toString(36)}-${++idIndex}`,
+    });
+    if (application.disabledReason) {
+      showTimelineNotice(application.disabledReason);
+      setAssetDragPreview(null);
+      setInsertPosition(null);
+      return true;
+    }
+    application.actions.forEach(dispatch);
+    setAssetDragPreview(null);
+    setInsertPosition(null);
+    return true;
+  }, [assetTranscripts, assets, compositionHeight, compositionWidth, dispatch, durationInFrames, fps, primaryTrackId, selectedItemId, selectedTrackId, showTimelineNotice, tracks, zoom]);
+
   // 处理拖放到空白时间轴区域（自动创建轨道）
   const handleTimelineDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
 
+      if (applyLibraryDrop(currentFrameRef.current)) return;
+
       const isQuickAdd = e.dataTransfer.getData('quickAdd') === 'true';
       const quickAddType = e.dataTransfer.getData('quickAddType');
       const assetId = e.dataTransfer.getData('assetId');
+      const droppedAsset = isQuickAdd ? undefined : resolveAssetDropPayload({
+        assetId,
+        dataTransfer: e.dataTransfer,
+        assets,
+        currentDraggedAsset,
+      });
 
 
       // 如果没有轨道，先创建一个
       if (tracks.length === 0) {
         const itemType = isQuickAdd ? quickAddType :
-                        (assets.find(a => a.id === assetId)?.type || 'Track');
+                        (droppedAsset?.type || 'Track');
+        const category: TrackCategory = itemType === 'text'
+          ? 'text'
+          : itemType === 'audio'
+            ? 'audio'
+            : 'visual';
         const newTrack = {
           id: `track-${Date.now()}`,
           name: itemType.charAt(0).toUpperCase() + itemType.slice(1),
+          category,
           items: [],
         };
         dispatch({ type: 'ADD_TRACK', payload: newTrack });
@@ -838,7 +1173,7 @@ export const Timeline: React.FC = () => {
             }
           } else {
             // Handle regular assets
-            const asset = assets.find((a) => a.id === assetId);
+            const asset = droppedAsset;
             if (!asset) {
               return;
             }
@@ -859,7 +1194,7 @@ export const Timeline: React.FC = () => {
         }, 0);
       }
     },
-    [assets, tracks, dispatch, createItemFromAsset]
+    [applyLibraryDrop, assets, tracks, dispatch, createItemFromAsset, currentFrameRef]
   );
 
 
@@ -907,6 +1242,8 @@ export const Timeline: React.FC = () => {
 
       const frame = Math.max(0, snapResult.snappedFrame);
 
+      if (applyLibraryDrop(frame, trackId)) return;
+
       let newItem: Item | null = null;
 
       if (isQuickAdd) {
@@ -943,7 +1280,12 @@ export const Timeline: React.FC = () => {
         }
       } else {
         // Handle regular assets
-        const asset = assets.find((a) => a.id === assetId);
+        const asset = resolveAssetDropPayload({
+          assetId,
+          dataTransfer: e.dataTransfer,
+          assets,
+          currentDraggedAsset,
+        });
         if (!asset) {
           return;
         }
@@ -951,6 +1293,13 @@ export const Timeline: React.FC = () => {
       }
 
       if (!newItem) return;
+
+      const targetTrack = tracks.find((track) => track.id === trackId);
+      if (!targetTrack || !canTrackAcceptItem(targetTrack, newItem, primaryTrackId)) {
+        setAssetDragPreview(null);
+        setInsertPosition(null);
+        return;
+      }
 
       dispatch({
         type: 'ADD_ITEM',
@@ -964,7 +1313,7 @@ export const Timeline: React.FC = () => {
       setAssetDragPreview(null);
       setInsertPosition(null);
     },
-    [draggedItem, assets, tracks, snapEnabled, pixelsPerFrame, dispatch, createItemFromAsset, currentFrameRef]
+    [applyLibraryDrop, draggedItem, assets, tracks, primaryTrackId, snapEnabled, pixelsPerFrame, dispatch, createItemFromAsset, currentFrameRef]
   );
 
   // ==================== 键盘快捷键 ====================
@@ -990,12 +1339,11 @@ export const Timeline: React.FC = () => {
       },
       onZoomIn: handleZoomIn,
       onZoomOut: handleZoomOut,
-      // Reserved shortcuts (no-op for now to avoid console noise in production)
       onCopy: () => {},
       onPaste: () => {},
       onDuplicate: () => {},
-      onUndo: () => {},
-      onRedo: () => {},
+      onUndo: undo,
+      onRedo: redo,
     },
     true
   );
@@ -1023,20 +1371,56 @@ export const Timeline: React.FC = () => {
       }}
     >
       <style>{TIMELINE_ROOT_STYLES}</style>
+      {timelineNotice ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-timeline-notice=""
+          style={{
+            position: 'absolute',
+            top: timelineStyles.headerHeight + 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 80,
+            maxWidth: 'min(420px, calc(100% - 32px))',
+            border: `1px solid ${colors.border.default}`,
+            borderRadius: 999,
+            background: colors.bg.primary,
+            boxShadow: '0 8px 24px rgba(66, 48, 35, 0.14)',
+            color: colors.text.primary,
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: '18px',
+            padding: '8px 14px',
+            pointerEvents: 'none',
+            textAlign: 'center',
+          }}
+        >
+          {timelineNotice}
+        </div>
+      ) : null}
       {/* 头部工具栏 - 固定高度 */}
-      <TimelineHeaderPlayback
-        fps={fps}
-        durationInFrames={contentEndInFrames > 0 ? contentEndInFrames : durationInFrames}
+      <TimelineHeaderControls
         zoom={zoom}
         snapEnabled={snapEnabled}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        selectedItem={selectedTimelineEntry?.item ?? null}
+        selectedTrackId={selectedTimelineEntry?.trackId ?? null}
+        onUndo={undo}
+        onRedo={redo}
+        onSplitSelected={splitSelectedAtPlayhead}
+        onTrimLeftSelected={trimSelectedStartToPlayhead}
+        onTrimRightSelected={trimSelectedEndToPlayhead}
+        onDeleteSelected={handleDeleteItem}
+        onAddVideoTrack={handleAddVideoTrack}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onZoomToFit={handleZoomToFit}
         onZoomReset={handleZoomReset}
         onToggleSnap={() => setSnapEnabled(!snapEnabled)}
-        onTogglePlay={(playing) => dispatch({ type: 'SET_PLAYING', payload: !playing })}
         onZoomChange={handleZoomChange}
-        zoomLimits={getSmartZoomLimits()}
+        zoomLimits={TIMELINE_ZOOM_LIMITS}
       />
 
       {/* 工作区域：两列布局（左：标签列；右：标尺+轨道） */}
@@ -1058,8 +1442,9 @@ export const Timeline: React.FC = () => {
             flexShrink: 0,
             display: 'flex',
             flexDirection: 'column',
-            borderRight: `1px solid ${colors.border.default}`,
-            background: colors.bg.secondary,
+            background: colors.bg.primary,
+            borderRight: `1px solid ${colors.border.subtle}`,
+            boxSizing: 'border-box',
           }}
         >
           {/* 左侧 ruler 顶部占位 */}
@@ -1070,8 +1455,7 @@ export const Timeline: React.FC = () => {
               position: 'sticky',
               top: 0,
               zIndex: 30,
-              background: `linear-gradient(180deg, ${colors.bg.secondary} 0%, ${colors.bg.elevated} 100%)`,
-              borderBottom: `1px solid ${colors.border.default}`,
+              background: colors.bg.primary,
             }}
           />
           {/* 标签面板挂载点 */}
@@ -1087,8 +1471,10 @@ export const Timeline: React.FC = () => {
             minWidth: 0,
             position: 'relative',
             overflow: 'hidden', // clip playhead/ruler overflow to right column
+            background: colors.bg.primary,
           }}
           data-playhead-container
+          onWheel={handleZoomWheel}
         >
           {/* 标尺 */}
           <div
@@ -1098,7 +1484,7 @@ export const Timeline: React.FC = () => {
               position: 'sticky',
               top: 0,
               zIndex: 15,
-              background: `linear-gradient(180deg, ${colors.bg.secondary} 0%, ${colors.bg.elevated} 100%)`,
+              background: colors.bg.primary,
               overflow: 'hidden',
             }}
           >
@@ -1156,6 +1542,8 @@ export const Timeline: React.FC = () => {
               labelsPortal={labelsPortalEl}
               contentInsetLeftPx={contentInsetLeftPx}
               externalInsertPosition={insertPosition}
+              onAnnotationTargetContextMenu={onAnnotationTargetContextMenu}
+              showTranscriptTimeline={showTranscriptTimeline}
             />
             
             <DragOverlay dropAnimation={null}>
@@ -1172,9 +1560,11 @@ export const Timeline: React.FC = () => {
                   onUpdate={() => {}}
                   isDragOverlay={true}
                   style={{
-                    cursor: 'grabbing',
-                    opacity: 0.95,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                    cursor: dragPreview?.invalidTarget ? 'not-allowed' : 'grabbing',
+                    opacity: dragPreview?.invalidTarget ? 0.45 : 0.95,
+                    boxShadow: dragPreview?.invalidTarget
+                      ? '0 0 0 1px rgba(248,113,113,0.8)'
+                      : '0 8px 24px rgba(0,0,0,0.4)',
                   }}
                 />
               ) : null}
@@ -1196,7 +1586,7 @@ export const Timeline: React.FC = () => {
             <TimelinePlayheadOverlay
               pixelsPerFrame={pixelsPerFrame}
               fps={fps}
-              timelineHeight={tracks.length * timelineStyles.trackHeight + timelineStyles.rulerHeight}
+              timelineHeight={getTimelineTracksHeight(tracks, primaryTrackId) + timelineStyles.rulerHeight}
               onSeek={handleSeek}
               scrollLeft={scrollLeft}
               leftOffset={contentInsetLeftPx}

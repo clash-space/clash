@@ -7,7 +7,6 @@
 import { createServer, createConnection, type Server } from "node:net";
 import { existsSync, unlinkSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import WebSocket from "ws";
 import {
@@ -16,6 +15,7 @@ import {
   LoroSyncClient,
   createMediaAssetCowNodeData,
   isMediaNodeType,
+  projectDirectorStageReadToken,
   projectCanvasReadToken,
   projectTimelineReadToken,
   validateAgentObservation,
@@ -27,7 +27,6 @@ import { CliActionsHost, readBridgeRuntimeId, type ActionsHostEnv } from "./acti
 import { resolveClashRoot } from "./clash-home";
 import {
   canvasBatchDeleteReadToken,
-  canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
   isCanvasNodeImmutable,
@@ -43,7 +42,6 @@ import {
   type CanvasReadProofEdgeLike,
 } from "./canvas-update-guardrails";
 import {
-  assertTextNotReferenced,
   createTextAppliedRevision,
   createTextCowNodeData,
   textHash,
@@ -88,6 +86,22 @@ function getPidPath(
   return join(daemonSocketDir(env), `${daemonProjectKey(projectId)}.pid`);
 }
 
+function getMcpPath(
+  projectId: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return join(daemonSocketDir(env), `${daemonProjectKey(projectId)}.mcp.json`);
+}
+
+export function getDaemonMcpEndpoint(projectId: string): string | undefined {
+  try {
+    const record = JSON.parse(readFileSync(getMcpPath(projectId), "utf8")) as { url?: unknown };
+    return typeof record.url === "string" ? record.url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Check if a daemon is already running for this project.
  */
@@ -109,19 +123,14 @@ export function isDaemonRunning(projectId: string): boolean {
 function cleanup(projectId: string) {
   const sockPath = getSocketPath(projectId);
   const pidPath = getPidPath(projectId);
-  try { unlinkSync(sockPath); } catch {}
-  try { unlinkSync(pidPath); } catch {}
+  try { unlinkSync(sockPath); } catch { /* best-effort stale socket cleanup */ }
+  try { unlinkSync(pidPath); } catch { /* best-effort stale pid cleanup */ }
+  try { unlinkSync(getMcpPath(projectId)); } catch { /* best-effort stale MCP metadata cleanup */ }
 }
 
 function daemonCanvasReadReceipt(readToken: string): string {
   return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
     .update(`canvas-node:${readToken}`)
-    .digest("base64url");
-}
-
-function daemonCanvasEdgeReadReceipt(readToken: string): string {
-  return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
-    .update(`canvas-edge:${readToken}`)
     .digest("base64url");
 }
 
@@ -142,22 +151,6 @@ function canvasNodeReceiptReadToken(node: Parameters<typeof canvasNodeReadToken>
   return agentReadReceiptToken({
     readToken,
     receipt: daemonCanvasReadReceipt(readToken),
-  });
-}
-
-function canvasEdgeReceiptReadToken(edge: Parameters<typeof canvasEdgeReadToken>[0]): string {
-  const readToken = canvasEdgeReadToken(edge);
-  return agentReadReceiptToken({
-    readToken,
-    receipt: daemonCanvasEdgeReadReceipt(readToken),
-  });
-}
-
-function canvasEdgesReceiptReadToken(edges: Parameters<typeof canvasEdgesReadToken>[0]): string {
-  const readToken = canvasEdgesReadToken(edges);
-  return agentReadReceiptToken({
-    readToken,
-    receipt: daemonCanvasEdgesReadReceipt(readToken),
   });
 }
 
@@ -246,6 +239,56 @@ function validateDaemonProjectTimelineRead(options: {
       });
 }
 
+function daemonProjectDirectorStageReadReceipt(readToken: string): string {
+  return createHmac("sha256", DAEMON_READ_RECEIPT_SECRET)
+    .update(`project-director-stage:${readToken}`)
+    .digest("base64url");
+}
+
+function projectDirectorStageReceiptReadToken(
+  stage: Parameters<typeof projectDirectorStageReadToken>[0],
+): string {
+  const readToken = projectDirectorStageReadToken(stage);
+  return agentReadReceiptToken({
+    readToken,
+    receipt: daemonProjectDirectorStageReadReceipt(readToken),
+  });
+}
+
+function verifyDaemonProjectDirectorStageReadReceipt(proof: AgentReadReceiptProof): boolean {
+  return proof.namespace === "director-stage" &&
+    proof.receipt === daemonProjectDirectorStageReadReceipt(proof.baseReadToken);
+}
+
+function validateDaemonProjectDirectorStageRead(options: {
+  cmd: Record<string, unknown>;
+  currentVersion: string;
+  operation: string;
+}) {
+  return typeof options.cmd.ifMatch === "string"
+    ? validateAgentReadProof({
+        actorClientType: typeof options.cmd.actorClientType === "string"
+          ? options.cmd.actorClientType
+          : undefined,
+        operation: options.operation,
+        currentReadToken: options.currentVersion,
+        expectedReadToken: options.cmd.ifMatch,
+        requireReceipt: true,
+        readReceiptVerifier: verifyDaemonProjectDirectorStageReadReceipt,
+        readCommandHint: "Run `clash director list --json` or `clash director pull --stage <id>` first.",
+      })
+    : validateAgentObservation({
+        actorClientType: typeof options.cmd.actorClientType === "string"
+          ? options.cmd.actorClientType
+          : undefined,
+        operation: options.operation,
+        observedVersion: typeof options.cmd.observedVersion === "string"
+          ? options.cmd.observedVersion
+          : undefined,
+        currentVersion: options.currentVersion,
+      });
+}
+
 function guardError(guard: { ok: false; error: string; code?: string }): object {
   return {
     error: guard.error,
@@ -274,10 +317,6 @@ function textNodeReceiptReadToken(options: {
 function verifyDaemonTextReadReceipt(proof: AgentReadReceiptProof): boolean {
   return proof.namespace === "text" &&
     proof.receipt === daemonTextReadReceipt(proof.baseReadToken);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function listCanvasEdgesWithVersion(client: LoroSyncClient): {
@@ -417,6 +456,23 @@ export async function startDaemon(
 
   await client.connect();
 
+  const mcpPortValue = process.env.CLASH_MCP_PORT ?? "0";
+  const mcpPort = Number(mcpPortValue);
+  if (!Number.isInteger(mcpPort) || mcpPort < 0 || mcpPort > 65535) {
+    throw new Error("CLASH_MCP_PORT must be an integer between 0 and 65535");
+  }
+  const { startClashMcpHttpServer } = await import("@clash-space/mcp-server/server");
+  const cliEntry = process.argv[1];
+  const mcpHttp = await startClashMcpHttpServer({
+    host: process.env.CLASH_MCP_HOST ?? "127.0.0.1",
+    port: mcpPort,
+    command: cliEntry ? process.execPath : undefined,
+    argsPrefix: cliEntry ? [cliEntry] : undefined,
+    cwd: process.cwd(),
+    env: { ...process.env, CLASH_PROJECT_ID: projectId },
+  });
+  writeFileSync(getMcpPath(projectId), JSON.stringify({ url: mcpHttp.url, port: mcpHttp.port }), "utf8");
+
   // Custom-action host: spawns one python subprocess per
   // $CLASH_HOME/actions/<id>/manifest.json. Reuses the bridge's runtime_id
   // from credentials.json — same machine, same runtime row. If no
@@ -480,7 +536,7 @@ export async function startDaemon(
   // Write PID file
   writeFileSync(getPidPath(projectId), String(process.pid));
 
-  console.log(JSON.stringify({ status: "connected", projectId, socket: sockPath, pid: process.pid }));
+  console.log(JSON.stringify({ status: "connected", projectId, socket: sockPath, pid: process.pid, mcp: mcpHttp.url }));
 
   // Graceful shutdown
   let shutdownCalled = false;
@@ -490,6 +546,7 @@ export async function startDaemon(
     clearTimeout(idleTimer);
     clearInterval(heartbeat);
     server.close();
+    await mcpHttp.close();
     cleanup(projectId);
     // Tear down action subprocesses BEFORE closing the LoroSyncClient
     // so they get SIGTERM and disconnect their WS — the server then
@@ -524,7 +581,12 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
     action === "update_timeline_state" ||
     action === "attach_timeline" ||
     action === "detach_timeline" ||
-    action === "copy_timeline_action";
+    action === "copy_timeline_action" ||
+    action === "list_director_stages" ||
+    action === "create_director_stage" ||
+    action === "update_director_stage_state" ||
+    action === "attach_director_stage" ||
+    action === "detach_director_stage";
   if (!projectWorkspaceAction) {
     client.selectCanvas(
       typeof cmd.canvasId === "string" && cmd.canvasId.trim()
@@ -729,6 +791,93 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         : { error: result.error };
     }
 
+    case "list_director_stages": {
+      const stages = client.listDirectorStages();
+      return {
+        stages,
+        versions: Object.fromEntries(
+          stages.map((stage) => [stage.id, projectDirectorStageReceiptReadToken(stage)]),
+        ),
+      };
+    }
+
+    case "create_director_stage": {
+      const result = client.createDirectorStage({
+        id: cmd.stageId,
+        name: cmd.name,
+        state: cmd.state,
+      });
+      return result.ok
+        ? {
+            stage: result.stage,
+            version: projectDirectorStageReadToken(result.stage),
+            readToken: projectDirectorStageReceiptReadToken(result.stage),
+          }
+        : { error: result.error };
+    }
+
+    case "update_director_stage_state": {
+      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
+      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const guard = validateDaemonProjectDirectorStageRead({
+        cmd,
+        operation: "Director Stage apply",
+        currentVersion: projectDirectorStageReadToken(current),
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.updateDirectorStageState(cmd.stageId, cmd.state);
+      return result.ok
+        ? {
+            stage: result.stage,
+            version: projectDirectorStageReadToken(result.stage),
+            readToken: projectDirectorStageReceiptReadToken(result.stage),
+          }
+        : { error: result.error };
+    }
+
+    case "attach_director_stage": {
+      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
+      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const guard = validateDaemonProjectDirectorStageRead({
+        cmd,
+        operation: "Director Stage attach",
+        currentVersion: projectDirectorStageReadToken(current),
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.attachDirectorStage({
+        stageId: cmd.stageId,
+        canvasId: cmd.canvasId,
+        actionNodeId: cmd.actionNodeId,
+        position: cmd.position ?? { x: 0, y: 0 },
+      });
+      return result.ok
+        ? {
+            stage: result.stage,
+            version: projectDirectorStageReadToken(result.stage),
+            readToken: projectDirectorStageReceiptReadToken(result.stage),
+          }
+        : { error: result.error };
+    }
+
+    case "detach_director_stage": {
+      const current = client.listDirectorStages().find((stage) => stage.id === cmd.stageId);
+      if (!current) return { error: `Director Stage ${cmd.stageId} not found` };
+      const guard = validateDaemonProjectDirectorStageRead({
+        cmd,
+        operation: "Director Stage detach",
+        currentVersion: projectDirectorStageReadToken(current),
+      });
+      if (!guard.ok) return guardError(guard);
+      const result = client.detachDirectorStage(cmd.stageId);
+      return result.ok
+        ? {
+            stage: result.stage,
+            version: projectDirectorStageReadToken(result.stage),
+            readToken: projectDirectorStageReceiptReadToken(result.stage),
+          }
+        : { error: result.error };
+    }
+
     case "list": {
       const nodes = client.listNodes(cmd.type ?? undefined);
       return { nodes };
@@ -863,6 +1012,21 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
           afterHash: observedVersion ? version : undefined,
           afterReadToken,
         }),
+      };
+    }
+
+    case "move": {
+      const x = Number(cmd.position?.x);
+      const y = Number(cmd.position?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return { error: "Canvas move requires finite x and y coordinates" };
+      }
+      const moved = client.canvas.moveNode(cmd.nodeId, { x, y });
+      if (!moved) return { error: `Node not found: ${cmd.nodeId}` };
+      return {
+        moved: true,
+        nodeId: cmd.nodeId,
+        position: { x, y },
       };
     }
 

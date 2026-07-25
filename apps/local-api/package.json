@@ -4,15 +4,15 @@
   "private": true,
   "type": "module",
   "main": "dist/server.js",
-  "types": "src/server.ts",
+  "types": "dist/server.d.ts",
   "exports": {
     ".": {
-      "types": "./src/server.ts",
+      "types": "./dist/server.d.ts",
       "import": "./dist/server.js",
       "default": "./dist/server.js"
     },
     "./app": {
-      "types": "./src/app.ts",
+      "types": "./dist/app.d.ts",
       "import": "./dist/app.js",
       "default": "./dist/app.js"
     }

@@ -1,7 +1,8 @@
 import React from 'react';
 import { TimelineIconButton, TimelineRangeInput } from '../ui/controls';
 import { Tooltip } from '../ui/tooltip';
-import { colors } from './styles';
+import { colors, typography } from './styles';
+import { sliderValueToZoom, zoomToSliderValue } from './zoom';
 
 // Hoisted CSS — built once per module rather than re-templated on every render.
 const ZOOM_SLIDER_STYLES = `
@@ -22,7 +23,7 @@ const ZOOM_SLIDER_STYLES = `
     margin-top: -6px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     transition: all 0.15s ease;
-    border: 2px solid #fff;
+    border: 2px solid var(--clash-accent-foreground, #fffefd);
   }
 
   .zoom-slider:hover::-webkit-slider-thumb {
@@ -50,7 +51,7 @@ const ZOOM_SLIDER_STYLES = `
     border-radius: 50%;
     background: ${colors.accent.primary};
     cursor: grab;
-    border: 2px solid #fff;
+    border: 2px solid var(--clash-accent-foreground, #fffefd);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     transition: all 0.15s ease;
   }
@@ -87,6 +88,8 @@ interface ZoomControlProps {
   onZoomChange: (zoom: number) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  onZoomToFit?: () => void;
+  onZoomReset?: () => void;
 }
 
 export const ZoomControl: React.FC<ZoomControlProps> = ({
@@ -96,16 +99,20 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
   onZoomChange,
   onZoomIn,
   onZoomOut,
+  onZoomToFit,
+  onZoomReset,
 }) => {
   const canZoomIn = zoom < max;
   const canZoomOut = zoom > min;
+  const sliderValue = zoomToSliderValue(zoom, min, max);
+  const zoomPercent = `${Math.round(zoom * 100)}%`;
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      gap: 12,
-      height: 32, // 固定容器高度确保对齐
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      height: 32,
     }}>
       {/* Zoom Out Button */}
       <TimelineIconButton
@@ -147,22 +154,22 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
       </TimelineIconButton>
 
       {/* Slider */}
-      <div style={{ 
-        position: 'relative', 
-        width: 180,
-        height: 28, // 与按钮高度一致
+      <div style={{
+        position: 'relative',
+        width: 112,
+        height: 28,
         display: 'flex',
-        alignItems: 'center', // 垂直居中对齐
+        alignItems: 'center',
       }}>
-        <Tooltip label={`${zoom.toFixed(2)}×`}>
+        <Tooltip label={`Zoom ${zoomPercent}`}>
           <TimelineRangeInput
-            min={min}
-            max={max}
-            step={0.01}
-            value={zoom}
-            onChange={(e) => onZoomChange(parseFloat(e.target.value))}
+            min={0}
+            max={100}
+            step={0.1}
+            value={sliderValue}
+            onChange={(e) => onZoomChange(sliderValueToZoom(parseFloat(e.target.value), min, max))}
             aria-label="Timeline zoom"
-            aria-valuetext={`${zoom.toFixed(2)} times`}
+            aria-valuetext={zoomPercent}
             className="zoom-slider"
             style={{
               width: '100%',
@@ -172,7 +179,7 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
               appearance: 'none',
               background: 'transparent',
               cursor: 'pointer',
-              margin: 0, // 移除默认margin
+              margin: 0,
             }}
           />
         </Tooltip>
@@ -218,6 +225,57 @@ export const ZoomControl: React.FC<ZoomControlProps> = ({
       >
         +
       </TimelineIconButton>
+
+      {onZoomReset ? (
+        <Tooltip label="Reset zoom to 100%">
+          <TimelineIconButton
+            onClick={onZoomReset}
+            aria-label="Reset zoom to 100%"
+            className="timeline-icon-btn"
+            style={{
+              minWidth: 40,
+              height: 28,
+              padding: '0 6px',
+              backgroundColor: 'transparent',
+              border: 0,
+              borderRadius: 6,
+              color: colors.text.secondary,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: typography.fontSize.xs,
+              fontVariantNumeric: 'tabular-nums',
+              fontWeight: 600,
+            }}
+          >
+            {zoomPercent}
+          </TimelineIconButton>
+        </Tooltip>
+      ) : null}
+
+      {onZoomToFit ? (
+        <Tooltip label="Zoom to fit">
+          <TimelineIconButton
+            onClick={onZoomToFit}
+            aria-label="Zoom to fit"
+            className="timeline-icon-btn"
+            style={{
+              width: 32,
+              height: 28,
+              padding: 0,
+              backgroundColor: 'transparent',
+              border: `1px solid ${colors.border.default}`,
+              borderRadius: 6,
+              color: colors.text.secondary,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: typography.fontSize.xs,
+              fontWeight: 600,
+            }}
+          >
+            Fit
+          </TimelineIconButton>
+        </Tooltip>
+      ) : null}
 
     </div>
   );

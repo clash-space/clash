@@ -697,7 +697,7 @@ test("projects talking-head metadata into a caption timeline YAML view", async (
   const timeline = parsed.dsl;
   const captionItem = timeline.tracks[0].items[0] as any;
   assert.equal(timeline.tracks[0].role, "subtitle");
-  assert.equal(captionItem.type, "caption");
+  assert.equal(captionItem.type, "text");
   assert.equal(captionItem.cues[0].text, "大家好");
   assert.deepEqual(captionItem.cues[0].wordIds, ["w1", "w2"]);
   assert.deepEqual([captionItem.cues[0].sourceStartFrame, captionItem.cues[0].sourceEndFrame], [0, 18]);
@@ -2979,6 +2979,34 @@ test("plans talking-head filler, tone-particle, and silence cuts from ASR words"
   ]);
 });
 
+test("cleans duplicate punctuation around a deleted filler in caption text", () => {
+  const action = planTalkingHeadTextCutAction({
+    targetAssetId: "asset-talk",
+    fps: 30,
+    minSilenceFrames: 30,
+    words: [
+      { id: "w1", text: "大家好", startFrame: 0, endFrame: 10 },
+      { id: "w2", text: "，", startFrame: 10, endFrame: 11 },
+      { id: "w3", text: "嗯", startFrame: 11, endFrame: 13 },
+      { id: "w4", text: "，", startFrame: 13, endFrame: 14 },
+      { id: "w5", text: "我们开始", startFrame: 14, endFrame: 24 },
+    ],
+  });
+
+  assert.equal(action.metadata.kind, "talking-head.analysis");
+  if (action.metadata.kind !== "talking-head.analysis") return;
+  assert.deepEqual(
+    action.metadata.cuts
+      .filter((cut) => cut.action === "delete")
+      .map((cut) => [cut.sourceStartFrame, cut.sourceEndFrame, cut.reason]),
+    [[11, 14, "filler"]],
+  );
+  assert.deepEqual(action.metadata.captionCues.map((cue) => [cue.text, cue.wordIds]), [
+    ["大家好，", ["w1", "w2"]],
+    ["我们开始", ["w5"]],
+  ]);
+});
+
 test("plans adjacent repeated words as text-based cuts while preserving the later word", () => {
   const action = planTalkingHeadTextCutAction({
     targetAssetId: "asset-talk",
@@ -3116,7 +3144,7 @@ test("runs production plan-text-cut then applies the generated caption timeline 
     { sourceStartFrame: 30, sourceEndFrame: 42, outputStartFrame: 12, outputEndFrame: 24 },
     { sourceStartFrame: 48, sourceEndFrame: 72, outputStartFrame: 24, outputEndFrame: 48 },
   ]);
-  assert.equal(transcriptCutPlan.captionTrack.type, "caption");
+  assert.equal(transcriptCutPlan.captionTrack.type, "text");
   assert.deepEqual(transcriptCutPlan.captionTrack.cues.map((cue: any) => [cue.text, cue.wordIds]), [
     ["大家", ["w1"]],
     ["今天", ["w3"]],
@@ -3158,6 +3186,70 @@ test("runs production plan-text-cut then applies the generated caption timeline 
     ["w5", "我们", 48, 60],
     ["w6", "开始", 60, 72],
   ]);
+});
+
+test("runs production plan-text-cut directly from a millisecond word-aligned ASR transcript", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "clash-production-timed-transcript-cli-"));
+  await writeJson(join(cwd, "analysis", "transcripts", "timed.json"), {
+    schemaVersion: 1,
+    kind: "clash.asr.timed-transcript",
+    timebase: "milliseconds",
+    alignment: "word",
+    text: "你好 Clash",
+    backendId: "funasr",
+    modelId: "iic/SenseVoiceSmall",
+    language: "zh",
+    durationMs: 721,
+    words: [
+      { id: "word-000001", text: "你", startMs: 40, endMs: 180 },
+      { id: "word-000002", text: "好", startMs: 180, endMs: 360 },
+      { id: "word-000003", text: "Clash", startMs: 420, endMs: 721, confidence: 0.96 },
+    ],
+    segments: [
+      {
+        id: "segment-000001",
+        text: "你好 Clash",
+        startMs: 40,
+        endMs: 721,
+        wordIds: ["word-000001", "word-000002", "word-000003"],
+      },
+    ],
+  });
+  const cliEntry = new URL("../index.ts", import.meta.url);
+  const require = createRequire(import.meta.url);
+  const tsxLoader = require.resolve("tsx");
+
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      tsxLoader,
+      cliEntry.pathname,
+      "production",
+      "plan-text-cut",
+      "--transcript",
+      "analysis/transcripts/timed.json",
+      "--target-asset",
+      "asset-talk",
+      "--fps",
+      "30",
+      "--out",
+      "actions/timed-text-cut.json",
+      "--json",
+    ],
+    { cwd, encoding: "utf8" },
+  );
+
+  assert.equal(child.status, 0, child.stderr);
+  const action = JSON.parse(await readFile(join(cwd, "actions", "timed-text-cut.json"), "utf8"));
+  assert.deepEqual(action.metadata.words, [
+    { id: "word-000001", text: "你", startFrame: 1, endFrame: 6 },
+    { id: "word-000002", text: "好", startFrame: 5, endFrame: 11 },
+    { id: "word-000003", text: "Clash", startFrame: 12, endFrame: 22, confidence: 0.96 },
+  ]);
+  assert.equal(action.metadata.asr.durationFrames, 22);
+  assert.equal(action.metadata.asr.backendId, "funasr");
+  assert.equal(action.metadata.asr.wordCount, 3);
 });
 
 test("text-cut planning rejects symlinked action paths that resolve outside cwd", async () => {
@@ -3284,7 +3376,7 @@ test("runs production export-captions from structured caption timeline to SRT, V
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 30",
     "        durationInFrames: 60",
     "        language: zh-CN",
@@ -3434,7 +3526,7 @@ test("caption export rejects symlinked output paths that resolve outside cwd", a
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 0",
     "        durationInFrames: 30",
     "        cues:",
@@ -3506,7 +3598,7 @@ test("runs production verify-caption-lineage and blocks plain text captions", as
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 0",
     "        durationInFrames: 60",
     "        language: zh-CN",
@@ -3622,7 +3714,7 @@ test("runs production verify-caption-lineage and blocks plain text captions", as
   assert.equal(blockedPayload.captionItems, 0);
   const blockedReport = JSON.parse(await readFile(blockedPayload.reportPath, "utf8"));
   assert.equal(blockedReport.status, "blocked");
-  assert.match(blockedReport.blockedReasons.join("\n"), /must contain caption items, not text/);
+  assert.match(blockedReport.blockedReasons.join("\n"), /subtitle text item.*cues.*wordRefs.*sourceToOutputMap/i);
 });
 
 test("projects structured captions into a CAS-required timeline overlay manifest", async () => {
@@ -3641,7 +3733,7 @@ test("projects structured captions into a CAS-required timeline overlay manifest
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 30",
     "        durationInFrames: 60",
     "        language: zh-CN",
@@ -3718,7 +3810,7 @@ test("projects structured captions into a CAS-required timeline overlay manifest
   if (!parsedTimeline.ok) return;
   assert.equal(parsedTimeline.dsl.tracks[0].role, "subtitle");
   const item = parsedTimeline.dsl.tracks[0].items[0] as any;
-  assert.equal(item.type, "caption");
+  assert.equal(item.type, "text");
   assert.equal(item.id, "clean-caption");
   assert.equal(item.cues.length, 2);
   assert.deepEqual(item.wordRefs.map((word: any) => word.id), ["w1", "w2", "w3"]);
@@ -3733,14 +3825,14 @@ test("projects structured captions into a CAS-required timeline overlay manifest
     manifest.casApply,
     expectedTimelineCasApply("projections/timelines/asset-talk.caption-overlay.timeline.yaml"),
   );
-  assert.equal(manifest.validation.timelineItemType, "caption");
+  assert.equal(manifest.validation.timelineItemType, "text");
   assert.equal(manifest.validation.captionItems, 1);
   assert.equal(manifest.validation.cues, 2);
   assert.equal(manifest.validation.wordRefs, 3);
   assert.equal(manifest.validation.sourceToOutputMaps, 1);
   assert.equal(manifest.rendering.previewRenderer, "remotion-components.caption");
   assert.equal(manifest.rendering.burnInRequires, "clash production export-caption-burn");
-  assert.equal(manifest.timelineItems[0].type, "caption");
+  assert.equal(manifest.timelineItems[0].type, "text");
 
 });
 
@@ -3758,7 +3850,7 @@ test("rejects caption overlay projection when caption items lack structured cue 
     "    role: subtitle",
     "    items:",
     "      - id: fake-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 0",
     "        durationInFrames: 60",
     "        text: this is not a structured caption system",
@@ -3786,7 +3878,7 @@ test("rejects caption overlay projection when caption items lack structured cue 
   );
 
   assert.equal(child.status, 1);
-  assert.match(child.stderr, /requires structured caption items with cues, wordRefs, and sourceToOutputMap|Caption item fake-caption must include cues, wordRefs, and sourceToOutputMap/i);
+  assert.match(child.stderr, /requires structured text items on subtitle tracks with cues, wordRefs, and sourceToOutputMap|Subtitle text item fake-caption must include cues, wordRefs, and sourceToOutputMap/i);
   assert.equal(existsSync(join(cwd, "projections", "timelines", "asset-talk.caption-overlay.timeline.yaml")), false);
 });
 
@@ -3816,7 +3908,7 @@ test("exports structured captions as a non-destructive caption-burn derived asse
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 30",
     "        durationInFrames: 60",
     "        language: zh-CN",
@@ -3989,7 +4081,7 @@ test("caption-burn export rejects symlinked sidecar paths that resolve outside c
     "    role: subtitle",
     "    items:",
     "      - id: clean-caption",
-    "        type: caption",
+    "        type: text",
     "        from: 0",
     "        durationInFrames: 30",
     "        language: zh-CN",
@@ -4071,6 +4163,8 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
     "        durationInFrames: 60",
     "        assetId: asset-shot-1",
     "        src: assets/video/shot-1.mp4",
+    "  - id: motion-graphics",
+    "    items:",
     "      - id: mg-lower",
     "        type: composition",
     "        from: 60",
@@ -4091,7 +4185,7 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
     "    role: subtitle",
     "    items:",
     "      - id: cap-1",
-    "        type: caption",
+    "        type: text",
     "        from: 30",
     "        durationInFrames: 60",
     "        cues:",
@@ -4146,8 +4240,8 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
   assert.equal(await readFile(join(cwd, "exports", "handoff", "episode.timeline.csv"), "utf8"), [
     "trackId,itemId,type,startFrame,endFrame,startTimecode,endTimecode,durationFrames,assetId,source,notes",
     "video,shot-1,video,0,60,00:00:00:00,00:00:02:00,60,asset-shot-1,assets/video/shot-1.mp4,",
-    "video,mg-lower,composition,60,90,00:00:02:00,00:00:03:00,30,,projections/mg/lower-third/index.html,composition lower-third",
-    "captions,cap-1,caption,30,90,00:00:01:00,00:00:03:00,60,,,开场重点",
+    "motion-graphics,mg-lower,composition,60,90,00:00:02:00,00:00:03:00,30,,projections/mg/lower-third/index.html,composition lower-third",
+    "captions,cap-1,text,30,90,00:00:01:00,00:00:03:00,60,,,开场重点",
     "",
   ].join("\n"));
   const manifest = JSON.parse(await readFile(join(cwd, "exports", "handoff", "episode.timeline.handoff.json"), "utf8"));
@@ -4170,7 +4264,7 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
   });
   assert.equal(manifest.sourceTimelinePath, "projections/timelines/episode.timeline.yaml");
   assert.equal(manifest.format, "csv");
-  assert.deepEqual(manifest.itemTypes, { caption: 1, composition: 1, video: 1 });
+  assert.deepEqual(manifest.itemTypes, { composition: 1, text: 1, video: 1 });
   assert.deepEqual(manifest.outputs, ["exports/handoff/episode.timeline.csv"]);
 
 });
@@ -5206,7 +5300,7 @@ test("runs production plan-lyrics-alignment and applies a lyric caption timeline
   if (!parsedTimeline.ok) return;
   assert.equal(parsedTimeline.dsl.tracks[0].role, "subtitle");
   const captions = parsedTimeline.dsl.tracks[0].items[0] as any;
-  assert.equal(captions.type, "caption");
+  assert.equal(captions.type, "text");
   assert.deepEqual(captions.cues.map((cue: any) => [cue.text, cue.startFrame, cue.durationInFrames]), [
     ["tonight we rise", 0, 60],
     ["into the light", 60, 60],

@@ -35,7 +35,9 @@
     "remotion": "^4.0.0"
   },
   "dependencies": {
-    "@master-clash/remotion-core": "workspace:*"
+    "@clash/shared-types": "workspace:*",
+    "@master-clash/remotion-core": "workspace:*",
+    "@master-clash/remotion-effects": "workspace:*"
   },
   "devDependencies": {
     "@remotion/cli": "4.0.370",

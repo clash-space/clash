@@ -219,6 +219,13 @@ user-hosted:
 - user declares which model cards it can serve
 - user maps Clash parameters to the provider's wire parameters
 
+Current product scope is deliberately narrower than the eventual adapter
+matrix: users can create custom **text** providers with either the
+`openai-compatible` or `anthropic-compatible` shape, then create text model
+cards and bind each card to one or more concrete provider accounts. Audio can
+follow once a bounded request/parameter mapping is defined. Image and video do
+not reuse the text compatibility switch.
+
 ## Built-In vs Custom
 
 ### Built-In Provider

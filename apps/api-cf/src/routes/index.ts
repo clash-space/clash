@@ -23,6 +23,11 @@ export const api = new Hono<{ Bindings: Env }>();
 
 api.use("/*", cors());
 
+// Suno requires a public callback URL even when the client polls task state.
+// Generation completion remains polling-driven; this endpoint intentionally
+// acknowledges callbacks without mutating workflow state.
+api.post("/api/v1/provider-callbacks/suno", (c) => c.json({ ok: true }));
+
 api.onError((err, c) => {
   if (err instanceof ZodError) {
     return c.json({ error: "Validation failed", details: err.issues }, 400);
@@ -140,7 +145,7 @@ api.post("/api/generate/image", async (c) => {
     prompt: body.prompt,
     systemPrompt: body.system_prompt,
     aspectRatio: body.aspect_ratio,
-    modelName: body.model_name ?? undefined,
+    modelName: body.model_name ?? DEFAULT_IMAGE_MODEL,
     referenceImageR2Keys: referenceImageR2Keys.length ? referenceImageR2Keys : undefined,
     actorType: "user",
     actorUserId,

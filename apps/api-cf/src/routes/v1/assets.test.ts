@@ -78,6 +78,85 @@ describe("assetsRoutes", () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue("11111111-2222-3333-4444-555555555555");
   });
 
+  it("lists only assets explicitly added to the user's global library", async () => {
+    const dbMock = makeDb();
+    dbMock.responses.assets = [{
+      id: "global-a",
+      userId: "user-1",
+      kind: "image",
+      srcR2Key: "uploads/a.png",
+      coverR2Key: null,
+      metadata: null,
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }];
+    const env = makeEnv({ db: dbMock.db });
+    const { app } = makeApp(env);
+
+    const res = await app.request("/v1/assets", { headers: AUTH }, env);
+    expect(res.status).toBe(200);
+    expect((await res.json() as { assets: Array<{ id: string }> }).assets[0]?.id).toBe("global-a");
+    expect(dbMock.calls.some(({ sql }) => sql.includes("asset_library_refs"))).toBe(true);
+  });
+
+  it("adds an owned project asset to the global library", async () => {
+    const dbMock = makeDb();
+    dbMock.responses.asset = {
+      id: "asset-1",
+      userId: "user-1",
+      kind: "image",
+      srcR2Key: "uploads/a.png",
+      coverR2Key: null,
+      metadata: null,
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const env = makeEnv({ db: dbMock.db });
+    const { app } = makeApp(env);
+    const res = await app.request("/v1/assets/asset-1/library", { method: "POST", headers: AUTH }, env);
+
+    expect(res.status).toBe(200);
+    expect(dbMock.calls.some(({ sql }) => sql.includes("INSERT OR IGNORE INTO asset_library_refs"))).toBe(true);
+  });
+
+  it("attaches a global asset to an owned project without copying it", async () => {
+    const dbMock = makeDb();
+    dbMock.responses.project = { ownerId: "user-1" };
+    dbMock.responses.asset = {
+      id: "asset-1",
+      userId: "user-1",
+      kind: "image",
+      srcR2Key: "uploads/a.png",
+      coverR2Key: null,
+      metadata: null,
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const env = makeEnv({ db: dbMock.db });
+    const { app } = makeApp(env);
+    const res = await app.request("/v1/assets/asset-1/ref", {
+      method: "POST",
+      headers: { ...AUTH, "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-1" }),
+    }, env);
+
+    expect(res.status).toBe(200);
+    expect(dbMock.calls.some(({ sql }) => sql.includes("INSERT OR IGNORE INTO asset_refs"))).toBe(true);
+    expect(dbMock.calls.filter(({ sql }) => sql.includes("INSERT OR REPLACE INTO assets"))).toHaveLength(0);
+  });
+
   // ─── POST /v1/assets ─────────────────────────────────────
 
   describe("POST /v1/assets", () => {
@@ -147,6 +226,27 @@ describe("assetsRoutes", () => {
       expect(sqls.some((s) => /FROM project/.test(s))).toBe(true);
       expect(sqls.some((s) => /INSERT OR REPLACE INTO assets/.test(s))).toBe(true);
       expect(sqls.some((s) => /INSERT OR IGNORE INTO asset_refs/.test(s))).toBe(true);
+    });
+
+    it("registers a 3D model without requiring a media-specific probe", async () => {
+      const dbMock = makeDb();
+      dbMock.responses.project = { ownerId: "user-1" };
+      const env = makeEnv({ db: dbMock.db });
+      const { app } = makeApp(env);
+
+      const res = await app.request("/v1/assets", {
+        method: "POST",
+        headers: { ...AUTH, "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: "p1",
+          kind: "model",
+          srcR2Key: "uploads/blocking.glb",
+          originalName: "blocking.glb",
+        }),
+      }, env);
+
+      expect(res.status).toBe(200);
+      expect(dbMock.calls.some(({ binds }) => binds.includes("model"))).toBe(true);
     });
 
     it("validates required fields via zod", async () => {

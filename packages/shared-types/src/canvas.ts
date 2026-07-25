@@ -12,12 +12,20 @@ import { resolveAspectRatio, type ModelCard } from './models';
 import {
   validateRefs,
   partitionRefs,
+  referenceModality,
   capability as capabilityFromCard,
   capabilityFromCustom,
+  directorReferencePacket,
+  hasDirectorReferenceOutput,
   type Capability,
   type RefNodeLike,
   type RefPartition,
 } from './model-capabilities';
+import {
+  DirectorReferencePacketSchema,
+  directorReferencePromptContext,
+  type DirectorReferencePacket,
+} from './director-reference';
 import {
   composePromptWithTextRefs,
   extractPromptText,
@@ -61,48 +69,18 @@ export const ACTION_TYPE = {
   Custom: 'custom',
 } as const;
 
-/**
- * Edit-node ReactFlow types. Distinct from action-badge generation: these
- * carry their own UI (full-screen editor modal) and copy-on-write semantics
- * — output is always a fresh asset, source is left untouched.
- */
-export const EDIT_KIND = {
-  ImageEditor: 'image-editor',
-  VideoClipper: 'video-clipper',
-} as const;
-export type EditKind = (typeof EDIT_KIND)[keyof typeof EDIT_KIND];
-
-/** Pixel-space crop rectangle on the source asset's natural dimensions. */
-export const CropRectSchema = z.object({
-  x: z.number().int().nonnegative(),
-  y: z.number().int().nonnegative(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-});
-export type CropRect = z.infer<typeof CropRectSchema>;
-
-/** Parameters for `image-editor`. Both fields optional → identity edit. */
-export const ImageEditParamsSchema = z.object({
-  crop: CropRectSchema.optional(),
-  /** Clockwise degrees; only multiples of 90 are honored at apply time. */
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
-});
-export type ImageEditParams = z.infer<typeof ImageEditParamsSchema>;
-
-/** Parameters for `video-clipper`. */
-export const VideoClipParamsSchema = z.discriminatedUnion('mode', [
-  z.object({
-    mode: z.literal('screenshot'),
-    /** Time within the source video, in seconds. */
-    frameTimeSec: z.number().nonnegative(),
-  }),
-  z.object({
-    mode: z.literal('crop'),
-    startSec: z.number().nonnegative(),
-    endSec: z.number().positive(),
-  }),
-]);
-export type VideoClipParams = z.infer<typeof VideoClipParamsSchema>;
+export {
+  ASSET_ACTION_ID,
+  EDIT_KIND,
+  CropRectSchema,
+  ImageEditParamsSchema,
+  VideoClipParamsSchema,
+  type AssetActionId,
+  type EditKind,
+  type CropRect,
+  type ImageEditParams,
+  type VideoClipParams,
+} from './actions/asset-edit';
 
 /**
  * Map from agent-facing node type names to the ReactFlow type + actionType
@@ -142,6 +120,27 @@ export const NodeDataSchema = z.object({
   poster: z.string().optional(),
   status: NodeStatusSchema.optional(),
   assetId: z.string().optional(),
+  stageId: z.string().optional(),
+  /** Latest registered reference-video output from a Director Stage node. */
+  outputVideoAssetId: z.string().optional(),
+  outputVideoSrc: z.string().optional(),
+  outputVideoPreviewUrl: z.string().optional(),
+  outputVideoDurationSeconds: z.number().optional(),
+  outputVideoFps: z.number().optional(),
+  outputVideoStageRevisionId: z.string().optional(),
+  /** Canonical, revision-pinned Director output for downstream generation. */
+  directorReferencePacket: DirectorReferencePacketSchema.optional(),
+  /** Ordered, individually rendered Shot packets selected for batch generation. */
+  directorShotReferencePackets: z.array(DirectorReferencePacketSchema).optional(),
+  selectedDirectorShotIds: z.array(z.string().min(1)).optional(),
+  /** Per-output lineage back to the exact Stage revision and Shot. */
+  sourceDirectorStageId: z.string().min(1).optional(),
+  sourceDirectorStageRevisionId: z.string().min(1).optional(),
+  sourceDirectorStageShotId: z.string().min(1).optional(),
+  sourceDirectorStageShotIds: z.array(z.string().min(1)).optional(),
+  sourceDirectorStageCameraId: z.string().min(1).optional(),
+  /** Shared Canvas group identity for independently regeneratable Shot outputs. */
+  directorShotGroupId: z.string().min(1).optional(),
   taskId: z.string().optional(),
   actionType: z.string().optional(),
   upstreamNodeIds: z.array(z.string()).optional(),
@@ -555,6 +554,44 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
         : undefined
       : capabilityFromCustom(input.config.customDef);
 
+  // Validate the graph edges before partitioning. partitionRefs intentionally
+  // omits unsupported modalities from provider payloads, but treating that as
+  // success would preserve a misleading lineage edge (for example image ->
+  // text-only TTS) while silently sending no image to the model.
+  const attachedRefCounts = input.refNodes.reduce(
+    (counts, node) => {
+      if (node.type === 'director-stage' && cap) {
+        const adapted = partitionRefs([node], cap);
+        const adaptedCount =
+          adapted.imageAssetIds.length
+          + adapted.videoAssetIds.length
+          + adapted.audioAssetIds.length;
+        if (adaptedCount > 0) {
+          counts.image += adapted.imageAssetIds.length;
+          counts.video += adapted.videoAssetIds.length;
+          counts.audio += adapted.audioAssetIds.length;
+          return counts;
+        }
+      }
+      const modality = referenceModality(node);
+      if (modality) {
+        counts[modality] += 1;
+      }
+      return counts;
+    },
+    { text: 0, image: 0, video: 0, audio: 0 },
+  );
+  const attachedRefValidationError = cap
+    ? validateRefs(cap, attachedRefCounts)
+    : null;
+  const unexportedDirectorStageError = input.refNodes.some(
+    (node) =>
+      node.type === 'director-stage'
+      && !hasDirectorReferenceOutput(node),
+  )
+    ? 'Director Stage has no reference video yet. Export the shot before running generation.'
+    : null;
+
   // 2. Partition refs by modality. Without a capability the caller is
   //    deliberately running unconstrained (e.g. a model card hasn't
   //    loaded yet, or a custom def is mid-install) — bucket nothing.
@@ -566,16 +603,33 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
   //    The text bucket is consumed here and never reaches the
   //    pending-asset data — that's intentional.
   const composedPrompt = composePromptWithTextRefs(input.prompt, partition.texts);
+  const directorPromptContexts = cap?.promptModalities.includes('text')
+    ? [...new Map(
+        input.refNodes
+          .map((node) => directorReferencePacket(node))
+          .filter((packet): packet is DirectorReferencePacket =>
+            Boolean(packet && packet.shotSpec.shots.length > 0),
+          )
+          .map((packet) => [
+            `${packet.stageId}:${packet.stageRevisionId}`,
+            directorReferencePromptContext(packet),
+          ]),
+      ).values()]
+    : [];
+  const promptWithDirectorPlan = [
+    composedPrompt,
+    ...directorPromptContexts,
+  ].filter((part) => part.trim()).join('\n\n');
 
   // 4. Strip the `@[Label](node:id)` markdown markers and replace with
   //    just the label. Models don't speak our mention syntax; sending
   //    them the raw markdown confuses prompt adherence ("the user
   //    mentioned @[..] is that important?").
-  const cleanedPrompt = extractPromptText(parsePromptParts(composedPrompt));
+  const cleanedPrompt = extractPromptText(parsePromptParts(promptWithDirectorPlan));
 
   // 5. Validate against the capability. Skipped when we don't have
   //    one (custom mid-install / model card not loaded).
-  const validationError = cap
+  const validationError = unexportedDirectorStageError ?? attachedRefValidationError ?? (cap
     ? validateGenerationInput({
         prompt: cleanedPrompt,
         referenceTextSnippets: partition.texts,
@@ -584,7 +638,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
         referenceAudioAssetIds: partition.audioAssetIds,
         capability: cap,
       })
-    : null;
+    : null);
 
   const totalAssetRefs =
     partition.imageAssetIds.length + partition.videoAssetIds.length + partition.audioAssetIds.length;

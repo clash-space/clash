@@ -18,15 +18,15 @@ function canonicalLocalAuthUrl(path: string): string | null {
 }
 
 const authInputClass =
-  "clash-auth-input w-full rounded-2xl px-5 py-3 text-base text-slate-950 placeholder:text-stone-400 focus:outline-none";
+  "clash-auth-input w-full rounded-2xl px-5 py-3 text-base text-slate-950 placeholder:text-stone-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500";
 const authPrimaryClass =
   "clash-auth-primary flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-semibold disabled:cursor-not-allowed";
 const authSecondaryClass =
   "clash-auth-secondary flex w-full items-center justify-center gap-3 rounded-2xl px-6 py-4 text-base font-medium disabled:cursor-not-allowed";
 const authTextButtonClass =
-  "text-stone-600 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+  "text-stone-600 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page dark:text-neutral-400";
 const authInlineLinkClass =
-  "font-medium text-slate-950 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page";
+  "font-medium text-slate-950 transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-page dark:text-neutral-100";
 
 export default function LoginRoute() {
   const [stage, setStage] = useState<Stage>("email");
@@ -176,18 +176,26 @@ export default function LoginRoute() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <img
-                src="/brand/logo-mark.svg"
-                alt=""
-                className="h-10 w-10 object-contain"
-                draggable={false}
-              />
-              <span className="font-display text-2xl font-semibold leading-none text-slate-950">
+              <span className="relative block h-10 w-10">
+                <img
+                  src="/brand/logo-mark.svg"
+                  alt=""
+                  className="h-10 w-10 object-contain dark:hidden"
+                  draggable={false}
+                />
+                <img
+                  src="/brand/logo-mark-dark.svg"
+                  alt=""
+                  className="hidden h-10 w-10 object-contain dark:block"
+                  draggable={false}
+                />
+              </span>
+              <span className="font-display text-2xl font-semibold leading-none text-slate-950 dark:text-neutral-50">
                 Clash
               </span>
             </motion.div>
           </Link>
-          <h1 className="mb-2 font-display text-2xl font-bold text-slate-950">
+          <h1 className="mb-2 font-display text-2xl font-bold text-slate-950 dark:text-neutral-50">
             {stage === "otp"
               ? "Check your email"
               : stage === "password"
@@ -196,7 +204,7 @@ export default function LoginRoute() {
                   : "Create account"
                 : "Welcome"}
           </h1>
-          <p className="text-stone-600">
+          <p className="text-stone-600 dark:text-neutral-400">
             {stage === "otp"
               ? `We sent a 6-digit code to ${email}`
               : stage === "password"
@@ -390,7 +398,7 @@ export default function LoginRoute() {
           <span>Continue with Google</span>
         </Button>
 
-        <p className="mt-6 text-center text-xs text-stone-500">
+        <p className="mt-6 text-center text-xs text-stone-500 dark:text-neutral-500">
           By continuing, you agree to our{" "}
           <Link to="/terms" className={authInlineLinkClass}>
             Terms of Service

@@ -1,4 +1,4 @@
-import { type ComponentPropsWithoutRef, type ReactNode } from 'react';
+import { type ComponentPropsWithoutRef, type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { Handle, Position } from '@xyflow/react';
 
 import { cn } from '../ai-elements/utils';
@@ -9,7 +9,9 @@ import {
     DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { IconButton } from '../ui/icon-button';
-import { Tooltip } from '../ui/tooltip';
+import { useCanvasTransientUiOwner } from '../CanvasTransientUiContext';
+
+const HOVER_CLOSE_DELAY_MS = 200;
 
 interface NodeHandleDropdownMenuProps {
     ariaLabel: string;
@@ -18,6 +20,7 @@ interface NodeHandleDropdownMenuProps {
     handleClassName?: string;
     handleSurfaceClassName?: string;
     onOpenChange?: (open: boolean) => void;
+    ownerId: string;
     triggerLabel?: string;
 }
 
@@ -28,44 +31,84 @@ export function NodeHandleDropdownMenu({
     handleClassName,
     handleSurfaceClassName,
     onOpenChange,
+    ownerId,
     triggerLabel = ariaLabel,
 }: NodeHandleDropdownMenuProps) {
+    const {
+        close,
+        isOpen,
+        open,
+    } = useCanvasTransientUiOwner('node-menu', ownerId);
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const cancelScheduledClose = useCallback(() => {
+        if (closeTimerRef.current === null) return;
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+    }, []);
+
+    const openFromHover = useCallback(() => {
+        cancelScheduledClose();
+        open();
+        onOpenChange?.(true);
+    }, [cancelScheduledClose, onOpenChange, open]);
+
+    const scheduleClose = useCallback(() => {
+        cancelScheduledClose();
+        closeTimerRef.current = setTimeout(() => {
+            closeTimerRef.current = null;
+            close();
+            onOpenChange?.(false);
+        }, HOVER_CLOSE_DELAY_MS);
+    }, [cancelScheduledClose, close, onOpenChange]);
+
+    useEffect(() => cancelScheduledClose, [cancelScheduledClose]);
+
     return (
-        <DropdownMenu onOpenChange={onOpenChange}>
+        <DropdownMenu
+            open={isOpen}
+            onOpenChange={(nextOpen) => {
+                if (nextOpen) open();
+                else close();
+                onOpenChange?.(nextOpen);
+            }}
+        >
             <div
                 className="absolute"
                 style={{ top: '50%', right: '-8px', transform: 'translateY(-50%)' }}
+                onMouseEnter={openFromHover}
+                onMouseLeave={scheduleClose}
             >
-                <Tooltip label={triggerLabel}>
-                    <DropdownMenuTrigger asChild>
-                        <IconButton
-                            label={triggerLabel}
-                            shape="circle"
-                            size="sm"
-                            className={cn(
-                                'group/handle-trigger relative h-4 min-h-4 w-4 min-w-4 border-0 bg-transparent p-0 text-current shadow-none hover:bg-transparent focus-visible:ring-offset-warm-surface',
-                                handleSurfaceClassName,
-                            )}
-                            icon={
-                                <Handle
-                                    type="source"
-                                    position={Position.Right}
-                                    style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
-                                    className={cn(
-                                        '!h-4 !w-4 !border-4 !bg-stone-400 transition-all duration-200 shadow-sm hover:!bg-brand hover:scale-125 group-data-[state=open]/handle-trigger:!bg-brand group-data-[state=open]/handle-trigger:scale-[1.3]',
-                                        handleClassName,
-                                    )}
-                                />
-                            }
-                        />
-                    </DropdownMenuTrigger>
-                </Tooltip>
+                <DropdownMenuTrigger asChild>
+                    <IconButton
+                        label={triggerLabel}
+                        shape="circle"
+                        size="sm"
+                        className={cn(
+                            'group/handle-trigger relative h-4 min-h-4 w-4 min-w-4 border-0 bg-transparent p-0 text-current shadow-none hover:bg-transparent focus-visible:ring-offset-warm-surface',
+                            handleSurfaceClassName,
+                        )}
+                        icon={
+                            <Handle
+                                type="source"
+                                position={Position.Right}
+                                style={{ position: 'relative', top: 0, right: 0, transform: 'none' }}
+                                className={cn(
+                                    '!h-4 !w-4 !border-4 !bg-stone-400 transition-all duration-200 shadow-sm hover:!bg-brand hover:scale-125 group-data-[state=open]/handle-trigger:!bg-brand group-data-[state=open]/handle-trigger:scale-[1.3]',
+                                    handleClassName,
+                                )}
+                            />
+                        }
+                    />
+                </DropdownMenuTrigger>
             </div>
             <DropdownMenuContent
                 aria-label={ariaLabel}
                 side="right"
                 align="center"
                 sideOffset={16}
+                onMouseEnter={cancelScheduledClose}
+                onMouseLeave={scheduleClose}
                 onCloseAutoFocus={(event) => event.preventDefault()}
                 className={cn('min-w-[200px]', contentClassName)}
             >

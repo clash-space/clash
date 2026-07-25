@@ -22,8 +22,7 @@ export const PopoverContent = forwardRef<
                 sideOffset={sideOffset}
                 collisionPadding={collisionPadding}
                 className={cn(
-                    'z-[80] rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)] outline-none',
-                    'dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
+                    'z-[80] rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay outline-none',
                     'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
                     className,
                 )}

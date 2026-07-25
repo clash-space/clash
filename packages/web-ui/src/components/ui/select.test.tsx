@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,133 @@ afterEach(() => {
 });
 
 describe("SelectMenu", () => {
+    it("closes a controlled section menu when its trigger is pressed again", () => {
+        Object.defineProperties(HTMLElement.prototype, {
+            hasPointerCapture: { configurable: true, value: () => false },
+            releasePointerCapture: { configurable: true, value: () => undefined },
+            setPointerCapture: { configurable: true, value: () => undefined },
+        });
+
+        function ControlledSectionMenu() {
+            const [open, setOpen] = useState(false);
+
+            return (
+                <SelectMenu
+                    value="mock-acp"
+                    ariaLabel="Harness"
+                    open={open}
+                    onOpenChange={setOpen}
+                    onValueChange={() => undefined}
+                    triggerTestId="harness-trigger"
+                    sections={[
+                        {
+                            id: "harness",
+                            label: "Harness",
+                            options: [{ value: "mock-acp", label: "Mock ACP" }],
+                        },
+                    ]}
+                />
+            );
+        }
+
+        render(<ControlledSectionMenu />);
+
+        const trigger = screen.getByTestId("harness-trigger");
+        fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+        expect(screen.getByRole("menu", { name: "Harness" })).toBeTruthy();
+
+        fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+        expect(screen.queryByRole("menu", { name: "Harness" })).toBeNull();
+    });
+
+    it("keeps section menus on one interaction primitive when submenu data changes", () => {
+        const { rerender } = render(
+            <SelectMenu
+                value="mock-acp"
+                ariaLabel="Session config"
+                onValueChange={() => undefined}
+                sections={[
+                    {
+                        id: "harness",
+                        options: [{ value: "mock-acp", label: "Mock ACP" }],
+                    },
+                ]}
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "Session config" })).toBeTruthy();
+        expect(screen.queryByRole("combobox", { name: "Session config" })).toBeNull();
+
+        rerender(
+            <SelectMenu
+                value="mock-acp"
+                ariaLabel="Session config"
+                onValueChange={() => undefined}
+                sections={[
+                    {
+                        id: "harness",
+                        options: [{ value: "mock-acp", label: "Mock ACP" }],
+                    },
+                    {
+                        id: "model",
+                        options: [
+                            {
+                                value: "model",
+                                label: "Model",
+                                hasSubmenu: true,
+                                submenuSections: [
+                                    {
+                                        id: "models",
+                                        options: [{ value: "gpt", label: "GPT" }],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ]}
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "Session config" })).toBeTruthy();
+        expect(screen.queryByRole("combobox", { name: "Session config" })).toBeNull();
+    });
+
+    it("switches between section menu triggers in one pointer action", () => {
+        render(
+            <>
+                <SelectMenu
+                    value="mock-acp"
+                    ariaLabel="Harness"
+                    onValueChange={() => undefined}
+                    sections={[
+                        {
+                            id: "harness",
+                            options: [{ value: "mock-acp", label: "Mock ACP" }],
+                        },
+                    ]}
+                />
+                <SelectMenu
+                    value="agent"
+                    ariaLabel="Permission"
+                    onValueChange={() => undefined}
+                    sections={[
+                        {
+                            id: "permission",
+                            options: [{ value: "agent", label: "Agent" }],
+                        },
+                    ]}
+                />
+            </>,
+        );
+
+        fireEvent.pointerDown(screen.getByRole("button", { name: "Harness" }), { button: 0, ctrlKey: false });
+        expect(screen.getByRole("menu", { name: "Harness" })).toBeTruthy();
+
+        fireEvent.pointerDown(screen.getByRole("button", { name: "Permission" }), { button: 0, ctrlKey: false });
+        expect(screen.queryByRole("menu", { name: "Harness" })).toBeNull();
+        expect(screen.getByRole("menu", { name: "Permission" })).toBeTruthy();
+    });
+
     it("routes trigger help text through the shared tooltip primitive instead of browser title attributes", () => {
         const source = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui/select.tsx"), "utf8");
         const tooltipSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"), "utf8");
@@ -55,6 +183,48 @@ describe("SelectMenu", () => {
         fireEvent.click(screen.getByRole("option", { name: "Beta" }));
 
         expect(onValueChange).toHaveBeenCalledWith("beta", expect.objectContaining({ value: "beta" }));
+    });
+
+    it("keeps trigger focus when a simple select is opened by pointer", () => {
+        render(
+            <SelectMenu
+                value="alpha"
+                ariaLabel="Pointer select"
+                options={[
+                    { value: "alpha", label: "Alpha" },
+                    { value: "beta", label: "Beta" },
+                ]}
+                onValueChange={() => undefined}
+            />,
+        );
+
+        const trigger = screen.getByRole("combobox", { name: "Pointer select" });
+        trigger.focus();
+        fireEvent.click(trigger);
+
+        expect(screen.getByRole("listbox", { name: "Pointer select" })).toBeTruthy();
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    it("keeps the combobox as the stable focus owner when opened from the keyboard", () => {
+        render(
+            <SelectMenu
+                value="alpha"
+                ariaLabel="Keyboard select"
+                options={[
+                    { value: "alpha", label: "Alpha" },
+                    { value: "beta", label: "Beta" },
+                ]}
+                onValueChange={() => undefined}
+            />,
+        );
+
+        const trigger = screen.getByRole("combobox", { name: "Keyboard select" });
+        trigger.focus();
+        fireEvent.keyDown(trigger, { key: "ArrowDown" });
+
+        expect(screen.getByRole("listbox", { name: "Keyboard select" })).toBeTruthy();
+        expect(document.activeElement).toBe(trigger);
     });
 
     it("uses Radix dropdown positioning for nested option menus", () => {

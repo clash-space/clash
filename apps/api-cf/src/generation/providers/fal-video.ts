@@ -7,7 +7,7 @@ import { log } from "../../logger";
 import { generateFalVideo } from "../../services/fal-video";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
   fal.config({ credentials: falApiKey });
@@ -23,10 +23,11 @@ export const falVideoProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
-    const falKey = (await credentialsForProvider(ctx, "fal", ["apiKey"], {
-      upstreamId: "fal",
-      modelCode: params.videoModel ?? params.modelName,
-    })).apiKey;
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "fal") {
+      throw new Error(`fal video execution requires a selected fal route for ${params.videoModel ?? params.modelName ?? "unknown model"}`);
+    }
+    const falKey = (await credentialsForRoute(ctx, route)).apiKey;
 
     // Cached in Workflow DO state → on generate retry we don't re-upload.
     const sources = await ctx.step(
@@ -69,6 +70,7 @@ export const falVideoProvider: GenerationProvider = {
           duration: params.duration,
           aspectRatio: params.aspectRatio,
           videoModel: model,
+          modelEndpoint: route.upstreamModel,
           modelParams: params.modelParams,
         });
         log.info("fal-video generated", { ...ctx.tag, model: result.model, hasCover: !!result.coverImageUrl });

@@ -12,6 +12,10 @@ function epipe(): Error & { code: string } {
   return Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
 }
 
+function eio(): Error & { code: string } {
+  return Object.assign(new Error("write EIO"), { code: "EIO" });
+}
+
 describe("desktop stdio logger", () => {
   it("formats successful stdout writes", () => {
     const stdout = fakeStream();
@@ -40,6 +44,16 @@ describe("desktop stdio logger", () => {
 
     stderr.emit("error", epipe());
     expect(() => logger.error("after close")).not.toThrow();
+
+    expect(stderr.write).not.toHaveBeenCalled();
+  });
+
+  it("treats an asynchronous macOS PTY EIO as a closed stderr stream", () => {
+    const stderr = fakeStream();
+    const logger = createDesktopLogger(fakeStream(), stderr);
+
+    expect(() => stderr.emit("error", eio())).not.toThrow();
+    expect(() => logger.error("after PTY close")).not.toThrow();
 
     expect(stderr.write).not.toHaveBeenCalled();
   });

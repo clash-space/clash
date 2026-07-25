@@ -1,0 +1,10 @@
+{
+  "agents": [
+    {
+      "id": "master-clash",
+      "label": "Master Clash",
+      "summary": "Runs the Clash project through the local clash CLI.",
+      "agent_id": "codex-acp"
+    }
+  ]
+}

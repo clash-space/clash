@@ -41,10 +41,10 @@ const OUTPUT_ICON = {
  * here produces exactly one click's worth of nodes; the `xN` batch chip is a
  * Run concern and intentionally ignored.
  */
-const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputKind }: ActionBadgePipelineMenuProps) => {
+const ActionBadgePipelineMenu = ({ nodeId, spawnDraft, canSpawn, disabledReason, outputKind }: ActionBadgePipelineMenuProps) => {
     const [isBusy, setIsBusy] = useState(false);
     const busyRef = useRef(false);
-    const { projectId } = useProject();
+    const { enabledModelCatalog, projectId } = useProject();
     const { addEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
 
@@ -108,7 +108,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                     // action picks a model that can actually consume it.
                     const sourceKind = outputKind;
                     const nextNode = addNodeWithAutoLayout(
-                        { id: nextId, type: option.nodeType, data: option.getNodeData(sourceKind) },
+                        { id: nextId, type: option.nodeType, data: option.getNodeData(sourceKind, enabledModelCatalog) },
                         draftNode.id,
                         { x: draftWidth + 80, y: 0 },
                     );
@@ -133,7 +133,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
                 }
             });
         },
-        [canSpawn, spawnDraft, projectId, outputKind, addNodeWithAutoLayout, addEdges, loroSync, runLocked],
+        [canSpawn, spawnDraft, projectId, outputKind, addNodeWithAutoLayout, addEdges, loroSync, runLocked, enabledModelCatalog],
     );
 
     const PrimaryIcon = OUTPUT_ICON[outputKind];
@@ -146,6 +146,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
             triggerLabel="Open pipeline actions"
             contentClassName="min-w-[220px]"
             handleClassName="!border-white"
+            ownerId={`${nodeId}:pipeline`}
         >
             <NodeHandleDropdownMenuHeader>Extend pipeline</NodeHandleDropdownMenuHeader>
 
@@ -167,7 +168,7 @@ const ActionBadgePipelineMenu = ({ spawnDraft, canSpawn, disabledReason, outputK
             <NodeHandleDropdownMenuSeparator>then chain</NodeHandleDropdownMenuSeparator>
 
             {PIPELINE_MENU_OPTIONS
-                .filter((opt) => opt.isCompatibleWithSource(outputKind === 'text' ? undefined : outputKind))
+                .filter((opt) => opt.isCompatibleWithSource(outputKind === 'text' ? undefined : outputKind, enabledModelCatalog))
                 .map((option) => {
                     const Icon = option.icon;
                     const rowDisabled = disabled;

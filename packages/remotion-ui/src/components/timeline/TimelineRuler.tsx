@@ -7,6 +7,13 @@ import {
   pixelsToFrame,
 } from './utils/timeFormatter';
 
+export interface TimelineRulerTokens {
+  background: string;
+  minorTick: string;
+  majorTick: string;
+  label: string;
+}
+
 interface TimelineRulerProps {
   durationInFrames: number;
   pixelsPerFrame: number;
@@ -21,6 +28,9 @@ interface TimelineRulerProps {
   contentEndInFrames?: number;
   // Left inset to visually shift ruler content right without changing layout
   leftOffset?: number;
+  // Semantic visual tokens let other editors reuse timing behavior without
+  // inheriting the media Timeline palette.
+  tokens?: Partial<TimelineRulerTokens>;
 }
 
 // Timeline ruler renders scalable ticks/labels with pixel-driven spacing.
@@ -38,6 +48,7 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
   viewportWidth,
   contentEndInFrames,
   leftOffset = 0,
+  tokens,
 }) => {
   const [hoveredFrame, setHoveredFrame] = useState<number | null>(null);
   const [mouseX, setMouseX] = useState<number>(0);
@@ -140,13 +151,14 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
 
   return (
     <div
+      data-timeline-ruler=""
       style={{
         position: 'sticky',
         top: 0,
         left: 0,
         right: 0,
         height: timeline.rulerHeight,
-        background: `linear-gradient(180deg, ${colors.bg.secondary} 0%, ${colors.bg.elevated} 100%)`,
+        background: tokens?.background ?? colors.bg.primary,
         // Use the track container's top border as the only separator
         boxShadow: 'none',
         zIndex: zIndex.ruler,
@@ -173,10 +185,10 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
           <line
             key={`sub-${tick.frame}`}
             x1={crisp(tick.position)}
-            y1={timeline.rulerHeight - 6}
+            y1={0}
             x2={crisp(tick.position)}
-            y2={timeline.rulerHeight}
-            stroke={colors.border.default}
+            y2={6}
+            stroke={tokens?.minorTick ?? colors.border.subtle}
             strokeWidth={1}
           />
         ))}
@@ -186,16 +198,16 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({
           <g key={`main-${tick.frame}`}>
             <line
               x1={crisp(tick.position)}
-              y1={timeline.rulerHeight - 10}
+              y1={0}
               x2={crisp(tick.position)}
-              y2={timeline.rulerHeight}
-              stroke={colors.text.tertiary}
+              y2={10}
+              stroke={tokens?.majorTick ?? colors.text.tertiary}
               strokeWidth={1}
             />
             <text
               x={Math.round(tick.position) + 4}
-              y={14}
-              fill={colors.text.secondary}
+              y={24}
+              fill={tokens?.label ?? colors.text.secondary}
               fontSize={typography.fontSize.xs}
               fontFamily={typography.fontFamily.mono}
             >

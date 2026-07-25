@@ -24,6 +24,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers, enabled
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 
@@ -77,6 +78,13 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers, enabled
 
       // Cmd/Ctrl + Shift + Z - 重做
       if (e.key === 'z' && cmdOrCtrl && e.shiftKey) {
+        e.preventDefault();
+        handlers.onRedo?.();
+        return;
+      }
+
+      // Ctrl + Y - Windows/Linux redo convention
+      if (e.key.toLowerCase() === 'y' && e.ctrlKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault();
         handlers.onRedo?.();
         return;

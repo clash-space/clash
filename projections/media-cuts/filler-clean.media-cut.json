@@ -1,0 +1,79 @@
+{
+  "kind": "clash.talking-head.media-cut-export",
+  "version": 1,
+  "sourceAssetId": "filler-source",
+  "outputAssetId": "filler-clean",
+  "sourcePath": "artifacts/asr-demo/filler-source.mp4",
+  "outputPath": "artifacts/asr-demo/filler-clean.mp4",
+  "actionId": "talking-head-text-cut-filler-source",
+  "sourceActionPath": "artifacts/asr-demo/filler-text-cut-action.json",
+  "sourceActionHash": "8111fe7a7bd22d05",
+  "metadataKind": "talking-head.analysis",
+  "fps": 30,
+  "rendered": true,
+  "renderMode": "ffmpeg-trim-concat",
+  "artifacts": {
+    "packagePath": "projections/media-cuts/filler-clean.media-cut.json",
+    "concatPath": "projections/media-cuts/filler-clean.ffconcat",
+    "ffmpegPlanPath": "projections/media-cuts/filler-clean.ffmpeg-plan.json",
+    "outputPath": "artifacts/asr-demo/filler-clean.mp4"
+  },
+  "keepSegments": [
+    {
+      "id": "keep-1",
+      "sourceStartFrame": 0,
+      "sourceEndFrame": 26,
+      "outputStartFrame": 0,
+      "outputEndFrame": 26,
+      "startSeconds": 0,
+      "endSeconds": 0.8666666666666667,
+      "durationSeconds": 0.8666666666666667
+    },
+    {
+      "id": "keep-2",
+      "sourceStartFrame": 36,
+      "sourceEndFrame": 99,
+      "outputStartFrame": 26,
+      "outputEndFrame": 89,
+      "startSeconds": 1.2,
+      "endSeconds": 3.3,
+      "durationSeconds": 2.0999999999999996
+    }
+  ],
+  "deletedRanges": [
+    {
+      "id": "delete-1",
+      "sourceStartFrame": 26,
+      "sourceEndFrame": 36,
+      "reason": "filler",
+      "confidence": 0.92,
+      "detectionSource": "configured-token",
+      "startSeconds": 0.8666666666666667,
+      "endSeconds": 1.2
+    }
+  ],
+  "reviewRanges": [],
+  "sourceToOutputMap": [
+    {
+      "sourceStartFrame": 0,
+      "sourceEndFrame": 26,
+      "outputStartFrame": 0,
+      "outputEndFrame": 26
+    },
+    {
+      "sourceStartFrame": 36,
+      "sourceEndFrame": 99,
+      "outputStartFrame": 26,
+      "outputEndFrame": 89
+    }
+  ],
+  "probe": {
+    "durationSeconds": 2.967,
+    "hasVideo": true,
+    "hasAudio": true,
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "width": 720,
+    "height": 1280
+  }
+}

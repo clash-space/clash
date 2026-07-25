@@ -2,9 +2,19 @@ import React from 'react';
 
 export type TimelineIconButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
 
+const TIMELINE_ICON_BUTTON_INTERACTION_CLASS =
+  'transition-[filter] duration-150 ease-out hover:brightness-95 active:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:hover:brightness-100 motion-reduce:transition-none';
+
 export const TimelineIconButton = React.forwardRef<HTMLButtonElement, TimelineIconButtonProps>(
-  function TimelineIconButton({ type = 'button', ...props }, ref) {
-    return <button ref={ref} type={type} {...props} />;
+  function TimelineIconButton({ type = 'button', className, ...props }, ref) {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        className={[className, TIMELINE_ICON_BUTTON_INTERACTION_CLASS].filter(Boolean).join(' ')}
+        {...props}
+      />
+    );
   },
 );
 

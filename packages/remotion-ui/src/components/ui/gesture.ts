@@ -1,1 +1,1 @@
-export { useDrag as useDragGesture, useMove as useMoveGesture } from '@use-gesture/react';
+export { useDrag as useDragGesture } from '@use-gesture/react';

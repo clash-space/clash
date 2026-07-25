@@ -1,5 +1,37 @@
 import { describe, it, expect } from 'vitest';
-import { computeTransitionStyle } from './VideoComposition';
+import { computeTransitionEffectStyle, computeTransitionStyle } from './VideoComposition';
+
+it('lets a versioned Timeline effect reference supersede the legacy transition type', () => {
+  expect(
+    computeTransitionEffectStyle({
+      legacyType: 'crossfade',
+      effect: { effectId: 'clash/push-right', effectVersion: 1, params: {} },
+      progress: 0.5,
+      role: 'to',
+      frame: 5,
+      width: 1920,
+      height: 1080,
+    }),
+  ).toEqual({ transform: 'translateX(-50%)' });
+});
+
+it('uses the declared fallback when the Timeline renderer cannot present a shader effect', () => {
+  expect(
+    computeTransitionEffectStyle({
+      legacyType: 'push-left',
+      effect: {
+        effectId: 'clash/displacement-warp',
+        effectVersion: 1,
+        params: { intensity: 0.72, frequency: 7 },
+      },
+      progress: 0.25,
+      role: 'to',
+      frame: 5,
+      width: 1920,
+      height: 1080,
+    }),
+  ).toEqual({ opacity: 0.25 });
+});
 
 describe('computeTransitionStyle', () => {
   describe('crossfade', () => {
@@ -45,10 +77,10 @@ describe('computeTransitionStyle', () => {
         clipPath: 'circle(0% at 50% 50%)',
       });
       expect(computeTransitionStyle('circle-wipe', 0.5, 'to')).toEqual({
-        clipPath: 'circle(35.5% at 50% 50%)',
+        clipPath: 'circle(37.5% at 50% 50%)',
       });
       expect(computeTransitionStyle('circle-wipe', 1, 'to')).toEqual({
-        clipPath: 'circle(71% at 50% 50%)',
+        clipPath: 'circle(150% at 50% 50%)',
       });
     });
   });

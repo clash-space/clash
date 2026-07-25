@@ -1,27 +1,28 @@
 import { log } from "../../logger";
 import { generateMiniMaxAudio } from "../../services/minimax-audio";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 export const minimaxAudioProvider: GenerationProvider = {
   name: "minimax-audio",
 
   async execute(ctx) {
-    const { params, env } = ctx;
+    const { params } = ctx;
     const modelName = params.modelName ?? "minimax-tts";
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "minimax") {
+      throw new Error(`MiniMax execution requires a selected MiniMax route for ${modelName}`);
+    }
 
     const storageKey = await ctx.step(
       "minimax-audio-generate",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
       async () => {
         log.info("MiniMax TTS started", { ...ctx.tag, model: modelName });
-        const credentials = await credentialsForProvider(ctx, "minimax", ["apiKey"], {
-          upstreamId: "minimax",
-          modelCode: modelName,
-        });
+        const credentials = await credentialsForRoute(ctx, route);
         const result = await generateMiniMaxAudio(credentials.apiKey, {
           prompt: params.prompt ?? "",
-          modelName,
+          modelName: route.upstreamModel,
           modelParams: params.modelParams,
           baseUrl: credentials.baseUrl,
         });

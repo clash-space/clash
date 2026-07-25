@@ -19,7 +19,7 @@ import {
   buildGenerationPayload,
   type UpstreamRef,
 } from "./canvas";
-import { MODEL_CARDS, type ModelCard } from "./models";
+import { MODEL_CARDS, normalizeModelId, type ModelCard } from "./models";
 import { ensureProjectCanvas, readProjectTimeline } from "./project-workspace";
 import {
   clearNodeUpstreamRefs,
@@ -325,6 +325,19 @@ export class Canvas {
     return true;
   }
 
+  moveNode(nodeId: string, position: { x: number; y: number }): boolean {
+    const node = this.readNode(nodeId);
+    if (!node) return false;
+    const nodesMap = this.doc.getMap("nodes");
+    const raw = nodesMap.get(nodeId) as Record<string, unknown> | undefined;
+    if (!raw) return false;
+    const versionBefore = this.doc.version();
+    nodesMap.set(nodeId, { ...raw, position });
+    const update = this.doc.export({ mode: "update", from: versionBefore });
+    this.broadcast(update);
+    return true;
+  }
+
   deleteNode(nodeId: string): boolean {
     if (!this.readNode(nodeId)) return false;
     return this.deleteNodes([nodeId]).deletedNodeIds.length === 1;
@@ -618,8 +631,17 @@ export class Canvas {
       const customActionParams = (nodeData.customActionParams as Record<string, string | number | boolean>) || {};
       config = { kind: "custom", customDef, customActionParams };
     } else {
-      const modelId = (nodeData.modelId as string) || (nodeData.model as string) || "";
+      const requestedModelId = (nodeData.modelId as string) || (nodeData.model as string) || "";
+      const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
       const modelCard = MODEL_CARDS.find((c: ModelCard) => c.id === modelId);
+      if (!modelCard) {
+        return {
+          assetNodeId: "",
+          assetNodeType: "",
+          position: { x: 0, y: 0 },
+          error: `Unknown model: ${requestedModelId || "(missing)"}`,
+        };
+      }
       const modelParams = (nodeData.modelParams as Record<string, string | number | boolean>) || {};
       config = { kind: "model", modelCard, modelParams };
     }
@@ -667,7 +689,7 @@ export class Canvas {
 
     const configId =
       config.kind === "model"
-        ? ((nodeData.modelId as string) || (nodeData.model as string) || "")
+        ? (config.modelCard?.id ?? ((nodeData.modelId as string) || (nodeData.model as string) || ""))
         : config.customDef.id;
     const { pendingInput, validationError } = buildGenerationPayload({
       prompt,

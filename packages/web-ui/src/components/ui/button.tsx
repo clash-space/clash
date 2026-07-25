@@ -13,7 +13,7 @@ export const buttonVariants = cva(
         primary:
           'bg-brand text-brand-foreground shadow-md hover:bg-brand/90 focus-visible:ring-brand focus-visible:ring-offset-warm-surface',
         destructive:
-          'border border-red-200 bg-white text-red-600 shadow-sm hover:bg-red-50 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300 dark:hover:bg-red-950/35 focus-visible:ring-red-500 focus-visible:ring-offset-warm-surface',
+          'border border-red-500/25 bg-red-500/5 text-red-700 shadow-sm hover:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/15 focus-visible:ring-red-500 focus-visible:ring-offset-warm-surface',
       },
       size: {
         sm: 'min-h-9 px-3 py-1.5 text-xs',

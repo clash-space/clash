@@ -190,6 +190,7 @@ export const ProviderSchema = z.enum([
   'jimeng',
   'volcengine',
   'elevenlabs',
+  'suno',
   'mock',
   'custom',
 ]);
@@ -204,6 +205,7 @@ export type ModelProviderConfig = z.infer<typeof ModelProviderConfigSchema>;
 
 export const ModelProviderImplementationSchema = z.object({
   providerId: ProviderSchema,
+  accountId: z.string().optional(),
   upstreamId: z.string(),
   region: z.string().optional(),
   upstreamModel: z.string(),
@@ -258,6 +260,9 @@ export type ModelParameter = z.infer<typeof ModelParameterSchema>;
 const RefSpecSchema = z.object({
   max: z.number().int().positive(),
   min: z.number().int().nonnegative().optional(),
+  /** When this modality is present, at least one of these companion
+   * modalities must also be present. */
+  requiresAnyOf: z.array(z.enum(['image', 'video', 'audio'])).min(1).optional(),
 });
 
 export const ModelInputModeSchema = z.object({
@@ -284,7 +289,9 @@ export const ModelCardSchema = z.object({
   name: z.string(),
   provider: z.string(),
   kind: ModelKindSchema,
+  custom: z.boolean().optional(),
   description: z.string().optional(),
+  promptGuidance: z.string().optional(),
   parameters: z.array(ModelParameterSchema),
   defaultParams: z.record(z.union([z.string(), z.number(), z.boolean()])).default({}),
   /**
@@ -490,56 +497,12 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ['text', 'image'] },
   },
 
-  // ─── Image: Nano Banana 2 Edit (fal.ai) ─────────────────────
-  {
-    id: 'nano-banana-2-edit',
-    name: 'Nano Banana 2 Edit',
-    provider: 'fal.ai',
-    availableProviders: ['fal'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '16:9',
-    description: 'Nano Banana 2 image editing with one or more reference images.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: NANO_BANANA_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: NANO_BANANA_RESOLUTIONS.map(s => ({ label: s.label, value: s.value })),
-        defaultValue: '1K',
-      },
-      {
-        id: 'count',
-        label: 'Count',
-        type: 'number',
-        min: 1,
-        max: 4,
-        step: 1,
-        defaultValue: 1,
-        description: 'How many edited images to generate.',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-      resolution: '1K',
-      count: 1,
-    },
-    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ['text', 'image'] },
-  },
-
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
   {
     id: 'gpt-image-2',
     name: 'GPT Image 2',
     provider: 'OpenAI',
-    availableProviders: ['official', 'kie', 'replicate'],
+    availableProviders: ['official', 'fal', 'kie', 'replicate'],
     defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '1:1',
@@ -617,6 +580,61 @@ const MODEL_CARD_DEFINITIONS = [
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ['text', 'image'] },
     maxRuntimeMs: 3 * 60 * 1000,
+  },
+
+  // ─── Image: Seedream 4.5 (fal.ai) ───────────────────────────
+  {
+    id: 'seedream-4.5',
+    name: 'Seedream 4.5',
+    provider: 'ByteDance',
+    availableProviders: ['fal'],
+    defaultProvider: 'fal',
+    kind: 'image',
+    defaultAspectRatio: '1:1',
+    aspectRatioParam: 'image_size',
+    description: 'ByteDance Seedream 4.5 image generation and editing through fal.ai.',
+    parameters: [
+      {
+        id: 'image_size',
+        label: 'Size',
+        type: 'select',
+        options: [
+          { label: 'Auto 2K', value: 'auto_2K' },
+          { label: 'Auto 4K', value: 'auto_4K' },
+          { label: '1:1', value: 'square_hd' },
+          { label: '4:3', value: 'landscape_4_3' },
+          { label: '16:9', value: 'landscape_16_9' },
+          { label: '3:4', value: 'portrait_4_3' },
+          { label: '9:16', value: 'portrait_16_9' },
+        ],
+        defaultValue: 'auto_2K',
+      },
+      {
+        id: 'count',
+        label: 'Count',
+        type: 'number',
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1,
+      },
+      {
+        id: 'max_images',
+        label: 'Images per generation',
+        type: 'number',
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1,
+      },
+    ],
+    defaultParams: {
+      image_size: 'auto_2K',
+      count: 1,
+      max_images: 1,
+    },
+    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ['text', 'image'] },
+    maxRuntimeMs: 4 * 60 * 1000,
   },
 
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
@@ -948,7 +966,11 @@ const MODEL_CARD_DEFINITIONS = [
     },
     input: {
       requiresPrompt: true,
-      inputMode: { images: { max: 9 }, videos: { max: 3 }, audios: { max: 3 } },
+      inputMode: {
+        images: { max: 9 },
+        videos: { max: 3 },
+        audios: { max: 3 },
+      },
       promptModalities: ['text', 'image', 'video', 'audio'],
     },
   },
@@ -1052,46 +1074,6 @@ const MODEL_CARD_DEFINITIONS = [
       safety_tolerance: '2',
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
-  },
-
-  // ─── Image: FLUX 2 Pro Edit (fal.ai) ─────────────────────────
-  {
-    id: 'flux-2-pro-edit',
-    name: 'FLUX 2 Pro Edit',
-    provider: 'fal.ai',
-    availableProviders: ['fal'],
-    defaultProvider: 'fal',
-    kind: 'image',
-    defaultAspectRatio: '4:3',
-    aspectRatioParam: 'image_size',
-    description: 'FLUX 2 Pro image editing with reference images.',
-    parameters: [
-      {
-        id: 'image_size',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: FLUX2_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: 'landscape_4_3',
-      },
-      {
-        id: 'safety_tolerance',
-        label: 'Safety Tolerance',
-        type: 'select',
-        options: [
-          { label: 'Strict (1)', value: '1' },
-          { label: 'Moderate (2)', value: '2' },
-          { label: 'Balanced (3)', value: '3' },
-          { label: 'Relaxed (4)', value: '4' },
-          { label: 'Permissive (5)', value: '5' },
-        ],
-        defaultValue: '2',
-      },
-    ],
-    defaultParams: {
-      image_size: 'landscape_4_3',
-      safety_tolerance: '2',
-    },
-    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ['text', 'image'] },
   },
 
   // ─── Image: Nano Banana Pro (Google) ────────────────────────
@@ -1533,42 +1515,6 @@ const MODEL_CARD_DEFINITIONS = [
     },
     maxRuntimeMs: 5 * 60 * 1000,
   },
-  {
-    id: 'local-acp',
-    name: 'Local Agent',
-    provider: 'Local ACP',
-    kind: 'text',
-    defaultAspectRatio: '1:1',
-    description: 'Generate text through the selected local ACP agent instead of a cloud provider.',
-    parameters: [
-      {
-        id: 'acp_model',
-        label: 'ACP model',
-        type: 'text',
-        placeholder: 'Use agent default',
-        defaultValue: '',
-        description: 'Optional local agent model value passed to the ACP model config.',
-      },
-      {
-        id: 'system_prompt',
-        label: 'System prompt',
-        type: 'text',
-        placeholder: 'Optional instructions for tone, format, or role',
-        defaultValue: '',
-      },
-    ],
-    defaultParams: {
-      acp_model: '',
-      system_prompt: '',
-    },
-    input: {
-      requiresPrompt: true,
-      inputMode: { images: { max: 10 } },
-      promptModalities: ['text', 'image'],
-    },
-    maxRuntimeMs: 5 * 60 * 1000,
-  },
-
   // ─── ASR ─────────────────────────────────────────────────────
   {
     id: 'sensevoice-small-asr',
@@ -1588,13 +1534,184 @@ const MODEL_CARD_DEFINITIONS = [
     },
     maxRuntimeMs: 2 * 60 * 1000,
   },
+  {
+    id: 'whisper-large-v3-turbo-asr',
+    name: 'Whisper Large v3 Turbo',
+    provider: 'OpenAI',
+    kind: 'asr',
+    defaultAspectRatio: '1:1',
+    description: 'High-accuracy multilingual transcription optimized for Apple Silicon with MLX and word-level timestamps.',
+    promptGuidance: 'Best for multilingual interviews, dialogue, and production audio where accurate word timing matters.',
+    parameters: [],
+    defaultParams: {
+      asr_model: 'mlx-community/whisper-large-v3-turbo',
+    },
+    input: {
+      requiresPrompt: false,
+      inputMode: { audios: { max: 1, min: 1 } },
+      promptModalities: ['audio'],
+    },
+    maxRuntimeMs: 10 * 60 * 1000,
+  },
+  {
+    id: 'whisper-small-asr',
+    name: 'Whisper Small',
+    provider: 'OpenAI',
+    kind: 'asr',
+    defaultAspectRatio: '1:1',
+    description: 'A lighter multilingual Whisper model for lower-memory Macs, with real word-level timestamps.',
+    promptGuidance: 'Choose this on 8 GB Macs or for faster drafts; use Whisper Large v3 Turbo when accuracy matters more.',
+    parameters: [],
+    defaultParams: {
+      asr_model: 'mlx-community/whisper-small-mlx',
+    },
+    input: {
+      requiresPrompt: false,
+      inputMode: { audios: { max: 1, min: 1 } },
+      promptModalities: ['audio'],
+    },
+    maxRuntimeMs: 10 * 60 * 1000,
+  },
+  {
+    id: 'parakeet-tdt-0.6b-v3-asr',
+    name: 'Parakeet TDT 0.6B v3',
+    provider: 'NVIDIA',
+    kind: 'asr',
+    defaultAspectRatio: '1:1',
+    description: 'Fast local transcription for 25 European languages with real word-level timestamps. Approx. 2.5 GB download; does not support Chinese.',
+    promptGuidance: 'Use for supported European-language audio on Apple Silicon. It does not support Chinese; choose SenseVoice or Whisper for Chinese recordings.',
+    parameters: [],
+    defaultParams: {
+      asr_model: 'mlx-community/parakeet-tdt-0.6b-v3',
+    },
+    input: {
+      requiresPrompt: false,
+      inputMode: { audios: { max: 1, min: 1 } },
+      promptModalities: ['audio'],
+    },
+    maxRuntimeMs: 20 * 60 * 1000,
+  },
+  {
+    id: 'vibevoice-asr',
+    name: 'VibeVoice ASR',
+    provider: 'Microsoft',
+    kind: 'asr',
+    defaultAspectRatio: '1:1',
+    description: 'Advanced long-form transcription with speaker diarization, segment timestamps, and Whisper word alignment.',
+    promptGuidance: 'Use for meetings, podcasts, and long multi-speaker recordings. This is a large download and also requires Whisper Small for word alignment.',
+    parameters: [],
+    defaultParams: {
+      asr_model: 'mlx-community/VibeVoice-ASR-4bit',
+      alignment_model: 'mlx-community/whisper-small-mlx',
+    },
+    input: {
+      requiresPrompt: false,
+      inputMode: { audios: { max: 1, min: 1 } },
+      promptModalities: ['audio'],
+    },
+    maxRuntimeMs: 60 * 60 * 1000,
+  },
 
   // ─── Audio ───────────────────────────────────────────────────
+  {
+    id: 'kokoro-82m-tts',
+    name: 'Kokoro 82M',
+    provider: 'Hexgrad',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'High-quality lightweight local speech with multilingual voices, accelerated by MLX on Apple Silicon.',
+    promptGuidance: 'Choose a voice whose language prefix matches the script: a/b for English, z for Mandarin, and j for Japanese.',
+    parameters: [
+      {
+        id: 'voice_name',
+        label: 'Voice',
+        type: 'select',
+        options: [
+          { label: 'Heart · US English', value: 'af_heart' },
+          { label: 'Bella · US English', value: 'af_bella' },
+          { label: 'Adam · US English', value: 'am_adam' },
+          { label: 'Emma · British English', value: 'bf_emma' },
+          { label: 'Xiaobei · Mandarin', value: 'zf_xiaobei' },
+          { label: 'Yunxi · Mandarin', value: 'zm_yunxi' },
+          { label: 'Alpha · Japanese', value: 'jf_alpha' },
+        ],
+        defaultValue: 'af_heart',
+      },
+      {
+        id: 'speed',
+        label: 'Speed',
+        type: 'slider',
+        min: 0.6,
+        max: 1.6,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    defaultParams: {
+      tts_model: 'mlx-community/Kokoro-82M-4bit',
+      voice_name: 'af_heart',
+      speed: 1,
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 10 * 60 * 1000,
+  },
+  {
+    id: 'piper-huayan-tts',
+    name: 'Piper Huayan',
+    provider: 'Local',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Downloadable Mandarin voice running fully on-device with Piper ONNX.',
+    parameters: [
+      {
+        id: 'speed',
+        label: 'Speed',
+        type: 'slider',
+        min: 0.6,
+        max: 1.6,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    defaultParams: {
+      tts_model: 'zh_CN-huayan-medium',
+      voice_name: 'huayan',
+      speed: 1,
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 2 * 60 * 1000,
+  },
+  {
+    id: 'piper-lessac-tts',
+    name: 'Piper Lessac',
+    provider: 'Local',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Downloadable English voice running fully on-device with Piper ONNX.',
+    parameters: [
+      {
+        id: 'speed',
+        label: 'Speed',
+        type: 'slider',
+        min: 0.6,
+        max: 1.6,
+        step: 0.05,
+        defaultValue: 1,
+      },
+    ],
+    defaultParams: {
+      tts_model: 'en_US-lessac-medium',
+      voice_name: 'lessac',
+      speed: 1,
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 2 * 60 * 1000,
+  },
   {
     id: 'gemini-3.1-flash-tts',
     name: 'Gemini 3.1 Flash TTS',
     provider: 'Google',
-    availableProviders: ['official', 'fal'],
+    availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'audio',
     defaultAspectRatio: '1:1',
@@ -1610,7 +1727,7 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'gemini-2.5-pro-tts',
     name: 'Gemini 2.5 Pro TTS',
     provider: 'Google',
-    availableProviders: ['official', 'fal'],
+    availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'audio',
     defaultAspectRatio: '1:1',
@@ -1673,6 +1790,45 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: {} },
   },
   {
+    id: 'suno-v5.5',
+    name: 'Suno V5.5',
+    provider: 'Suno API',
+    availableProviders: ['suno'],
+    defaultProvider: 'suno',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Generate complete songs with Suno V5.5 through SunoAPI.org.',
+    parameters: [
+      {
+        id: 'instrumental',
+        label: 'Instrumental',
+        type: 'boolean',
+        defaultValue: false,
+      },
+      {
+        id: 'style',
+        label: 'Style',
+        type: 'text',
+        placeholder: 'Optional genre, mood, instrumentation, or vocal style',
+        defaultValue: '',
+      },
+      {
+        id: 'title',
+        label: 'Title',
+        type: 'text',
+        placeholder: 'Optional song title',
+        defaultValue: '',
+      },
+    ],
+    defaultParams: {
+      instrumental: false,
+      style: '',
+      title: '',
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 10 * 60 * 1000,
+  },
+  {
     id: 'elevenlabs-tts',
     name: 'ElevenLabs TTS',
     provider: 'ElevenLabs',
@@ -1699,11 +1855,11 @@ const MODEL_CARD_DEFINITIONS = [
         label: 'Model',
         type: 'select',
         options: [
+          { label: 'Eleven v3', value: 'eleven_v3' },
           { label: 'Multilingual v2', value: 'eleven_multilingual_v2' },
-          { label: 'English v2', value: 'eleven_monolingual_v1' },
-          { label: 'Turbo v2', value: 'eleven_turbo_v2' },
+          { label: 'Flash v2.5', value: 'eleven_flash_v2_5' },
         ],
-        defaultValue: 'eleven_multilingual_v2',
+        defaultValue: 'eleven_v3',
       },
       {
         id: 'stability',
@@ -1728,7 +1884,7 @@ const MODEL_CARD_DEFINITIONS = [
     ],
     defaultParams: {
       voice_id: 'rachel',
-      model_id: 'eleven_multilingual_v2',
+      model_id: 'eleven_v3',
       stability: 0.5,
       similarity_boost: 0.75,
     },
@@ -1752,21 +1908,26 @@ type ModelProviderImplementationRow = readonly [
 
 const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['sensevoice-small-asr', 'local', 'local', 'local-asr', 'iic/SenseVoiceSmall', 1],
+  ['whisper-large-v3-turbo-asr', 'local', 'local', 'local-asr', 'mlx-community/whisper-large-v3-turbo', 1],
+  ['whisper-small-asr', 'local', 'local', 'local-asr', 'mlx-community/whisper-small-mlx', 1],
+  ['parakeet-tdt-0.6b-v3-asr', 'local', 'local', 'local-asr', 'mlx-community/parakeet-tdt-0.6b-v3', 1],
+  ['vibevoice-asr', 'local', 'local', 'local-asr', 'mlx-community/VibeVoice-ASR-4bit', 1],
+  ['kokoro-82m-tts', 'local', 'local', 'local-tts', 'mlx-community/Kokoro-82M-4bit', 1],
+  ['piper-huayan-tts', 'local', 'local', 'local-tts', 'zh_CN-huayan-medium', 1],
+  ['piper-lessac-tts', 'local', 'local', 'local-tts', 'en_US-lessac-medium', 1],
 
   ['flux-schnell', 'fal', 'fal', 'fal', 'fal-ai/flux/schnell', 20, { credentials: ['apiKey'] }],
   ['flux-dev', 'fal', 'fal', 'fal', 'fal-ai/flux/dev', 20, { credentials: ['apiKey'] }],
+  ['gpt-image-2', 'fal', 'fal', 'fal', 'openai/gpt-image-2', 20, { credentials: ['apiKey'] }],
   ['nano-banana-2', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2', 20, { credentials: ['apiKey'] }],
-  ['nano-banana-2-edit', 'fal', 'fal', 'fal', 'fal-ai/nano-banana-2/edit', 20, { credentials: ['apiKey'] }],
+  ['seedream-4.5', 'fal', 'fal', 'fal', 'fal-ai/bytedance/seedream/v4.5/text-to-image', 20, { credentials: ['apiKey'] }],
   ['recraft-v4', 'fal', 'fal', 'fal', 'fal-ai/recraft/v4/pro/text-to-image', 20, { credentials: ['apiKey'] }],
   ['flux-2-pro', 'fal', 'fal', 'fal', 'fal-ai/flux-2-pro', 20, { credentials: ['apiKey'] }],
-  ['flux-2-pro-edit', 'fal', 'fal', 'fal', 'fal-ai/flux-2-pro/edit', 20, { credentials: ['apiKey'] }],
   ['sora-2', 'fal', 'fal', 'fal', 'fal-ai/sora-2/text-to-video', 20, { credentials: ['apiKey'] }],
   ['kling-3', 'fal', 'fal', 'fal', 'fal-ai/kling-video/v3/pro/image-to-video', 20, { credentials: ['apiKey'] }],
   ['seedance-2-text', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/text-to-video', 20, { credentials: ['apiKey'] }],
   ['seedance-2-startend', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/image-to-video', 20, { credentials: ['apiKey'] }],
   ['seedance-2-ref', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/reference-to-video', 20, { credentials: ['apiKey'] }],
-  ['gemini-3.1-flash-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 30, { credentials: ['apiKey'] }],
-  ['gemini-2.5-pro-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 30, { credentials: ['apiKey'] }],
   ['minimax-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 20, { credentials: ['apiKey'] }],
 
   ['nano-banana-2', 'kie', 'kie', 'kie', 'nano-banana-2', 25, { credentials: ['apiKey'] }],
@@ -1817,7 +1978,8 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['seedance-2-startend', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
   ['seedance-2-ref', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
   ['minimax-tts', 'minimax', 'minimax', 'minimax', 'speech-02-hd', 8, { credentials: ['apiKey'] }],
-  ['elevenlabs-tts', 'elevenlabs', 'elevenlabs', 'elevenlabs', 'eleven_multilingual_v2', 8, { credentials: ['apiKey'] }],
+  ['suno-v5.5', 'suno', 'suno', 'suno', 'V5_5', 8, { credentials: ['apiKey', 'callbackUrl'] }],
+  ['elevenlabs-tts', 'elevenlabs', 'elevenlabs', 'elevenlabs', 'eleven_v3', 8, { credentials: ['apiKey'] }],
 ];
 
 function implementationFromRow(row: ModelProviderImplementationRow): ModelProviderImplementation {

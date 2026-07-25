@@ -19,6 +19,122 @@ async function createTestPrivateKeyPem(): Promise<string> {
 }
 
 describe("local mock AIGC", () => {
+  it("routes a custom text model through its mounted compatible provider account", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [{
+        id: "custom-openai-account",
+        providerId: "custom",
+        upstreamId: "openai",
+        apiShape: "openai-compatible",
+        enabled: true,
+        configuredCredentials: ["apiKey", "baseUrl"],
+        credentials: {
+          apiKey: "sk-custom",
+          baseUrl: "https://proxy.example/v1",
+        },
+      }],
+      modelCards: async () => [{
+        id: "editorial-pro",
+        aliases: [],
+        name: "Editorial Pro",
+        provider: "Custom",
+        kind: "text",
+        custom: true,
+        parameters: [],
+        defaultParams: {},
+        defaultAspectRatio: "16:9",
+        input: {
+          requiresPrompt: true,
+          inputMode: {},
+          promptModalities: ["text"],
+        },
+        availableProviders: ["custom"],
+        defaultProvider: "custom",
+        providerImplementations: [{
+          providerId: "custom",
+          accountId: "custom-openai-account",
+          upstreamId: "openai",
+          upstreamModel: "editorial/pro-v2",
+          apiShape: "openai-compatible",
+          requiredCredentials: ["apiKey", "baseUrl"],
+        }],
+      }],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        return Response.json({
+          model: "editorial/pro-v2",
+          choices: [{ message: { content: "Custom provider response" } }],
+        });
+      },
+    });
+
+    const result = await service.generateText({
+      taskId: "task-custom-text",
+      prompt: "Draft an editorial.",
+      model: "editorial-pro",
+    });
+
+    expect(result).toEqual({
+      text: "Custom provider response",
+      provider: "openai-compatible",
+      modelEndpoint: "editorial/pro-v2",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://proxy.example/v1/chat/completions");
+    expect(calls[0]?.init?.headers).toMatchObject({
+      authorization: "Bearer sk-custom",
+      "content-type": "application/json",
+    });
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({
+      model: "editorial/pro-v2",
+    });
+  });
+
+  it("routes local TTS model generation through the installed speech runtime", async () => {
+    const calls: unknown[] = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [{
+        providerId: "local",
+        upstreamId: "local",
+        enabled: true,
+      }],
+      localTts: async (input) => {
+        calls.push(input);
+        return {
+          bytes: new TextEncoder().encode("local-wav"),
+          contentType: "audio/wav",
+          durationMs: 1280,
+          transcript: input.prompt,
+          provider: "piper",
+          modelEndpoint: input.model,
+        };
+      },
+    });
+
+    const result = await service.generateAudio({
+      taskId: "task-local-tts",
+      prompt: "Clash 本地语音",
+      model: "piper-huayan-tts",
+      modelParams: { voice_name: "huayan", speed: 1.1 },
+    });
+
+    expect(calls).toEqual([{
+      taskId: "task-local-tts",
+      prompt: "Clash 本地语音",
+      model: "zh_CN-huayan-medium",
+      modelParams: { voice_name: "huayan", speed: 1.1 },
+    }]);
+    expect(result).toMatchObject({
+      contentType: "audio/wav",
+      durationMs: 1280,
+      transcript: "Clash 本地语音",
+      provider: "piper",
+      modelEndpoint: "zh_CN-huayan-medium",
+    });
+  });
+
   it("maps GPT Image 2 to the fal-shaped local mock provider", async () => {
     const service = createMockExternalAigcService({ origin: "http://local.test" });
 
@@ -30,11 +146,26 @@ describe("local mock AIGC", () => {
     });
 
     expect(result.provider).toBe("fal-mock");
-    expect(result.modelEndpoint).toBe("fal-ai/nano-banana-2");
+    expect(result.modelEndpoint).toBe("openai/gpt-image-2");
     expect(result.remoteUrl).toContain("http://local.test/fal/media/");
     expect(result.contentType).toBe("image/svg+xml");
     expect(result.width).toBe(1024);
     expect(result.height).toBe(1024);
+  });
+
+  it("preserves an exact 2:1 Director panorama ratio in the local fal mock", async () => {
+    const service = createMockExternalAigcService({ origin: "http://local.test" });
+
+    const result = await service.generateImage({
+      taskId: "task-director-panorama",
+      prompt: "Director panorama local mock",
+      model: "nano-banana-2",
+      aspectRatio: "2:1",
+    });
+
+    expect(result.provider).toBe("fal-mock");
+    expect(result.width).toBe(1024);
+    expect(result.height).toBe(512);
   });
 
   it("keeps fal queue/media shape while resolving model codes through shared routing", async () => {
@@ -573,6 +704,98 @@ describe("local mock AIGC", () => {
     });
   });
 
+  it("submits an exact 2:1 custom size to GPT Image 2 on fal", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [
+        {
+          providerId: "official",
+          upstreamId: "openai",
+          region: "global",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "openai-local-key" },
+        },
+        {
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          configuredCredentials: ["apiKey"],
+          credentials: { apiKey: "fal-local-key" },
+        },
+      ],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://queue.fal.run/openai/gpt-image-2") {
+          return Response.json({ request_id: "fal-gpt-image-2-panorama" });
+        }
+        if (url === "https://queue.fal.run/openai/gpt-image-2/requests/fal-gpt-image-2-panorama/status") {
+          return Response.json({ status: "COMPLETED" });
+        }
+        if (url === "https://queue.fal.run/openai/gpt-image-2/requests/fal-gpt-image-2-panorama") {
+          return Response.json({
+            images: [{
+              url: "https://fal-cdn.test/director-panorama.webp",
+              width: 2048,
+              height: 1024,
+            }],
+          });
+        }
+        if (url === "https://fal-cdn.test/director-panorama.webp") {
+          return new Response("real-fal-gpt-image-2", { headers: { "content-type": "image/webp" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-director-panorama",
+      prompt: "A seamless equirectangular studio panorama",
+      model: "gpt-image-2",
+      aspectRatio: "2:1",
+      modelParams: {
+        width: 2048,
+        height: 1024,
+        quality: "high",
+        output_format: "webp",
+        count: 1,
+        provider_id: "fal",
+        require_real_provider: true,
+      },
+    });
+
+    expect(result.provider).toBe("fal");
+    expect(result.modelEndpoint).toBe("openai/gpt-image-2");
+    expect(result.width).toBe(2048);
+    expect(result.height).toBe(1024);
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      prompt: "A seamless equirectangular studio panorama",
+      image_size: { width: 2048, height: 1024 },
+      quality: "high",
+      num_images: 1,
+      output_format: "webp",
+    });
+  });
+
+  it("rejects a Director panorama instead of silently using mock media", async () => {
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [],
+    });
+
+    await expect(service.generateImage({
+      taskId: "task-director-panorama-no-provider",
+      prompt: "Director panorama",
+      model: "gpt-image-2",
+      aspectRatio: "2:1",
+      modelParams: {
+        width: 2048,
+        height: 1024,
+        require_real_provider: true,
+      },
+    })).rejects.toThrow("requires a configured real provider");
+  });
+
   it("honors configured provider account availability when selecting a local route", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const service = createMockExternalAigcService({
@@ -606,15 +829,13 @@ describe("local mock AIGC", () => {
       },
     } as never);
 
-    const result = await service.generateImage({
+    await expect(service.generateImage({
       taskId: "task-weighted-fal-image",
       prompt: "weighted image route",
       model: "nano-banana-2",
       aspectRatio: "1:1",
-    });
+    })).rejects.toThrow("requires a configured real provider");
 
-    expect(result.provider).toBe("fal-mock");
-    expect(result.modelEndpoint).toBe("fal-ai/nano-banana-2");
     expect(calls).toEqual([]);
   });
 
@@ -958,6 +1179,163 @@ describe("local mock AIGC", () => {
     expect(calls[0].init?.headers).toMatchObject({
       authorization: "Bearer r8-gpt-priority-token",
       "content-type": "application/json",
+    });
+  });
+
+  it("runs Suno through its selected provider account without an audio fallback", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [{
+        id: "suno-primary",
+        providerId: "suno",
+        upstreamId: "suno",
+        apiShape: "suno",
+        enabled: true,
+        configuredCredentials: ["apiKey", "callbackUrl"],
+        credentials: {
+          apiKey: "suno-local-key",
+          callbackUrl: "https://api.clash.test/api/v1/provider-callbacks/suno",
+        },
+      }],
+      modelCards: async () => [{
+        id: "suno-v5.5",
+        aliases: [],
+        name: "Suno V5.5",
+        provider: "Suno API",
+        kind: "audio",
+        parameters: [],
+        defaultParams: {},
+        defaultAspectRatio: "1:1",
+        input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+        availableProviders: ["suno"],
+        defaultProvider: "suno",
+        providerImplementations: [{
+          providerId: "suno",
+          upstreamId: "suno",
+          upstreamModel: "V5_5",
+          apiShape: "suno",
+          priority: 8,
+          requiredCredentials: ["apiKey", "callbackUrl"],
+        }],
+      }],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://api.sunoapi.org/api/v1/generate") {
+          return Response.json({ code: 200, msg: "success", data: { taskId: "suno-local-1" } });
+        }
+        if (url === "https://api.sunoapi.org/api/v1/generate/record-info?taskId=suno-local-1") {
+          return Response.json({
+            code: 200,
+            msg: "success",
+            data: {
+              taskId: "suno-local-1",
+              status: "SUCCESS",
+              response: {
+                sunoData: [{
+                  audioUrl: "https://suno-cdn.test/song.mp3",
+                  duration: 128.25,
+                }],
+              },
+            },
+          });
+        }
+        if (url === "https://suno-cdn.test/song.mp3") {
+          return new Response("real-suno-audio", { headers: { "content-type": "audio/mpeg" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateAudio({
+      taskId: "task-suno-local",
+      prompt: "dreamy synth pop",
+      model: "suno-v5.5",
+    });
+
+    expect(result.provider).toBe("suno");
+    expect(result.modelEndpoint).toBe("V5_5");
+    expect(result.requestId).toBe("suno-local-1");
+    expect(result.durationMs).toBe(128250);
+    expect(Buffer.from(result.bytes).toString("utf8")).toBe("real-suno-audio");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      customMode: false,
+      instrumental: false,
+      model: "V5_5",
+      callBackUrl: "https://api.clash.test/api/v1/provider-callbacks/suno",
+      prompt: "dreamy synth pop",
+    });
+  });
+
+  it("switches the single Seedream fal card to its edit endpoint when images are attached", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const service = createMockExternalAigcService({
+      providerAccounts: async () => [{
+        id: "fal-primary",
+        providerId: "fal",
+        upstreamId: "fal",
+        apiShape: "fal",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+        credentials: { apiKey: "fal-local-key" },
+      }],
+      modelCards: async () => [{
+        id: "seedream-4.5",
+        aliases: [],
+        name: "Seedream 4.5",
+        provider: "ByteDance",
+        kind: "image",
+        parameters: [],
+        defaultParams: {},
+        defaultAspectRatio: "1:1",
+        input: {
+          requiresPrompt: true,
+          inputMode: { images: { max: 10 } },
+          promptModalities: ["text", "image"],
+        },
+        availableProviders: ["fal"],
+        defaultProvider: "fal",
+        providerImplementations: [{
+          providerId: "fal",
+          upstreamId: "fal",
+          upstreamModel: "fal-ai/bytedance/seedream/v4.5/text-to-image",
+          apiShape: "fal",
+          priority: 20,
+          requiredCredentials: ["apiKey"],
+        }],
+      }],
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://queue.fal.run/fal-ai/bytedance/seedream/v4.5/edit") {
+          return Response.json({ request_id: "seedream-edit-1" });
+        }
+        if (url.endsWith("/requests/seedream-edit-1/status")) {
+          return Response.json({ status: "COMPLETED" });
+        }
+        if (url.endsWith("/requests/seedream-edit-1")) {
+          return Response.json({ images: [{ url: "https://fal-cdn.test/seedream.png" }] });
+        }
+        if (url === "https://fal-cdn.test/seedream.png") {
+          return new Response("seedream-edit", { headers: { "content-type": "image/png" } });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    } as never);
+
+    const result = await service.generateImage({
+      taskId: "task-seedream-edit",
+      prompt: "change the coat",
+      model: "seedream-4.5",
+      referenceImageUrls: ["http://127.0.0.1:4312/assets/projects/p/source.png"],
+      modelParams: { image_size: "auto_4K" },
+    });
+
+    expect(result.modelEndpoint).toBe("fal-ai/bytedance/seedream/v4.5/edit");
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
+      prompt: "change the coat",
+      image_size: "auto_4K",
+      image_urls: ["http://127.0.0.1:4312/assets/projects/p/source.png"],
     });
   });
 });

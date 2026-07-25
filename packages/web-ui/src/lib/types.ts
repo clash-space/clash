@@ -8,8 +8,10 @@
 export interface ProjectAsset {
   id: string;
   assetId?: string;
+  name?: string;
   url: string;
-  type: "image" | "video";
+  thumbnailUrl?: string;
+  type: "image" | "video" | "audio";
   storageKey: string | null;
   createdAt: Date | string | number | null;
 }

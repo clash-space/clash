@@ -13,6 +13,9 @@ import { textCommand } from "./commands/text";
 import { productionCommand } from "./commands/production";
 import { assetsCommand } from "./commands/assets";
 import { auditCommand } from "./commands/audit";
+import { mcpCommand } from "./commands/mcp";
+import { effectCommand } from "./commands/effects";
+import { directorCommand } from "./commands/director";
 
 const program = new Command();
 
@@ -54,5 +57,8 @@ program.addCommand(textCommand);
 program.addCommand(productionCommand);
 program.addCommand(assetsCommand);
 program.addCommand(auditCommand);
+program.addCommand(mcpCommand);
+program.addCommand(effectCommand);
+program.addCommand(directorCommand);
 
 program.parse();

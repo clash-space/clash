@@ -1,9 +1,8 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { ArrowBendDownRight, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning } from '@phosphor-icons/react';
+import { ArrowBendDownRight, BookOpen, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning, SlidersHorizontal } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { Command } from '@clash/web-ui/lib/clientActions';
 import { UserMessage } from './copilot/UserMessage';
 import { AgentCard, type AgentLog } from './copilot/AgentCard';
 import { ToolCall } from './copilot/ToolCall';
@@ -18,6 +17,7 @@ import { AcpAgentLogo } from './copilot/AcpAgentLogo';
 import { CopilotRailSlot } from './copilot/CopilotRail';
 import { MessageErrorBoundary } from './copilot/MessageErrorBoundary';
 import { RuntimePickerDialog } from './copilot/RuntimePickerDialog';
+import { SessionHarnessUpdateControl } from './copilot/SessionHarnessUpdateControl';
 import { Dialog } from './ui/dialog';
 import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
@@ -35,12 +35,17 @@ import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
-import { useSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
-import { useAsset, getAsset } from '@clash/web-ui/lib/hooks/useAsset';
+import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { useIsBelowLg } from '@clash/web-ui/lib/hooks/useMediaQuery';
 import { useAgentCopilot, type CustomEvent } from '@clash/web-ui/hooks/useAgentCopilot';
 import { getRuntimeConfig, runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
-import { buildMention } from '@clash/shared-types';
+import { type AgentAnnotationDraft } from '@clash/shared-types';
+import { visibleUserPromptText } from '@clash/shared-runtime';
+import {
+    buildCopilotPrompt,
+    type CopilotMentionSource,
+    type CopilotWorkspaceContext,
+} from '@clash/web-ui/lib/copilotWorkspaceContext';
 import {
     REVISION_RESTORE_REQUEST_EVENT,
     type RevisionRestoreRequest,
@@ -55,30 +60,32 @@ interface Message {
     createdAt: Date;
 }
 
+type CopilotNodeRef = Pick<RFNode, 'id' | 'type' | 'data'>;
+
 interface ChatbotCopilotProps {
     projectId: string;
     threadId: string;
     initialMessages: Message[];
-    onCommand?: (command: Command) => void;
     width: number;
     onWidthChange: (width: number) => void;
     isCollapsed: boolean;
     onCollapseChange: (collapsed: boolean) => void;
+    collapsedLauncherPlacement?: 'canvas' | 'header';
     layoutMode?: 'floating' | 'docked';
     followingAgent?: boolean;
     onFollowingAgentChange?: (following: boolean) => void;
     onAgentCanvasTarget?: (nodeId: string) => void;
-    selectedNodes?: RFNode[];
     onAddNode?: (type: string, extraData?: any) => string;
     onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
     onAddEdge?: (params: RFEdge | RFConnection, options?: { actorClientType?: string; ifMatch?: string }) => void;
     onUpdateEdge?: (edgeId: string, patch: Record<string, unknown>, options?: { actorClientType?: string; ifMatch?: string }) => void;
     onRemoveEdge?: (edgeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
     onApplyTimeline?: (nodeId: string, timelineDsl: unknown, options?: { actorClientType?: string; ifMatch?: string }) => void;
-    onUpdateNode?: (nodeId: string, updates: Partial<RFNode>, options?: { actorClientType?: string; ifMatch?: string }) => void;
-    findNodeIdByName?: (name: string) => string | undefined;
-    nodes?: RFNode[];
-    edges?: RFEdge[];
+    nodes?: CopilotNodeRef[];
+    /** Project-wide mention inventory, already ranked by active workspace scope. */
+    mentionSources?: CopilotMentionSource[];
+    /** Surface identity included with every prompt so the agent knows where the user is. */
+    workspaceContext?: CopilotWorkspaceContext;
     initialPrompt?: string;
     /** Session history + actions passed from parent */
     sessionHistory?: Array<CopilotSessionHistoryItem>;
@@ -92,6 +99,11 @@ interface ChatbotCopilotProps {
     onUploadFiles?: (attachments: import('./copilot/ChatInput').UploadedAttachment[]) => void;
     /** Human user represented by the selected local agent. */
     actorUserId?: string;
+    annotationBlocks?: AgentAnnotationDraft[];
+    onAnnotationChange?: (annotationId: string, note: string) => void;
+    onAnnotationRemove?: (annotationId: string) => void;
+    onAnnotationLocate?: (annotationId: string) => void;
+    onAnnotationsSubmitted?: (annotationIds: string[]) => void;
 }
 
 const COPILOT_PANEL_MIN_WIDTH = 420;
@@ -101,6 +113,10 @@ const ACTIVITY_DURATION_MINUTE_MS = 60_000;
 
 function displayErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+function isLocalHarnessUnavailableMessage(message: string): boolean {
+    return /no (?:enabled )?local (?:acp )?agent|local agent .*not enabled or available|agent harness .*unavailable/i.test(message);
 }
 
 type CompletedActivity = {
@@ -181,38 +197,6 @@ const markdownComponents = {
     a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface rounded-sm">{children}</a>,
 };
 
-/** Thumbnail for a selected node — resolves media via the asset row.
- *  Images show srcR2Key, videos show coverR2Key. Nodes without an assetId
- *  (drafts, text) render an empty tile. */
-function SelectedNodeThumbnail({ node }: { node: RFNode }) {
-    const data = (node.data ?? {}) as Record<string, unknown>;
-    const assetId = typeof data.assetId === 'string' ? data.assetId : undefined;
-    const asset = useAsset(assetId);
-    const isVideo = node.type === 'video' || data.actionType === 'video-gen';
-    const r2Key = isVideo ? (asset?.coverR2Key ?? asset?.srcR2Key) : asset?.srcR2Key;
-    const signedUrl = useSignedUrl(r2Key ?? undefined);
-    const label = typeof data.label === 'string' && data.label
-        ? data.label
-        : node.type ?? 'media';
-    return (
-        <div className="w-6 h-6 rounded-md ring-2 ring-warm-surface overflow-hidden bg-warm-muted flex items-center justify-center">
-            {isVideo && asset?.srcR2Key && !asset?.coverR2Key && signedUrl ? (
-                <video
-                    src={`${signedUrl}#t=0.1`}
-                    className="w-full h-full object-cover"
-                    preload="metadata"
-                    muted
-                    playsInline
-                    aria-label={label}
-                />
-            ) : signedUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={signedUrl} alt={label} className="w-full h-full object-cover" />
-            ) : null}
-        </div>
-    );
-}
-
 type MentionNodeRef = { id: string; type: string; label: string; thumbnail?: string };
 
 const DESKTOP_LOCAL_RUNTIME_ID = 'desktop-local';
@@ -226,14 +210,28 @@ const COPILOT_PANEL_TRANSITION = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as co
 const COPILOT_PANEL_COLLAPSE_TRANSITION = { duration: 0.34, ease: [0.22, 1, 0.36, 1] as const, times: [0, 0.52, 1] };
 const COPILOT_LAUNCHER_ENTER_TRANSITION = { duration: 0.24, delay: 0.12, ease: [0.22, 1, 0.36, 1] as const };
 const COPILOT_LAUNCHER_EXIT_TRANSITION = { duration: 0.12, ease: [0.25, 1, 0.5, 1] as const };
+const COPILOT_LAUNCHER_RELOCATION_TRANSITION = {
+    layout: { duration: 0.42, ease: [0.16, 1, 0.3, 1] as const },
+    opacity: COPILOT_LAUNCHER_ENTER_TRANSITION,
+    scale: COPILOT_LAUNCHER_ENTER_TRANSITION,
+    y: COPILOT_LAUNCHER_ENTER_TRANSITION,
+};
 const COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX = 44;
-const COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN =
+const COPILOT_COMPOSER_RAIL_WIDTH_CLASS = 'mx-auto w-[calc(100%-6rem)] max-w-[940px]';
+const COPILOT_PANEL_CANVAS_TRANSFORM_ORIGIN =
     `calc(100% - ${COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX}px) calc(100% - ${COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX}px)`;
-const COPILOT_PANEL_COLLAPSED_DESKTOP_STATE = {
+const COPILOT_PANEL_HEADER_TRANSFORM_ORIGIN = 'calc(100% - 16px) calc(0% + 14px)';
+const COPILOT_PANEL_COLLAPSED_CANVAS_STATE = {
     opacity: [1, 0.76, 0],
     scale: [1, 0.56, 0.08],
     x: [0, 0, 42],
     y: [0, 34, 34],
+};
+const COPILOT_PANEL_COLLAPSED_HEADER_STATE = {
+    opacity: [1, 0.76, 0],
+    scale: [1, 0.56, 0.08],
+    x: 0,
+    y: 0,
 };
 const COPILOT_PANEL_EXPANDED_DESKTOP_STATE = {
     opacity: 1,
@@ -395,28 +393,25 @@ function titleFromRuntimeMessages(messages: RuntimeMessage[]): string | null {
     for (const message of messages) {
         if (message.role !== 'user') continue;
         const textPart = message.parts.find((part) => part.type === 'text');
-        const text = textPart?.text?.trim();
+        const text = textPart?.text ? visibleUserPromptText(textPart.text) : '';
         if (!text) continue;
         return text.length > 52 ? `${text.slice(0, 52)}...` : text;
     }
     return null;
 }
 
-function labelForMentionNode(node: RFNode): string {
-    const data = (node.data ?? {}) as Record<string, unknown>;
-    if (typeof data.label === 'string' && data.label.trim()) return data.label.trim();
-    if (typeof data.name === 'string' && data.name.trim()) return data.name.trim();
-    return node.id;
-}
-
-function withSelectedNodeMentions(prompt: string, selectedNodes: RFNode[]): string {
-    if (selectedNodes.length === 0) return prompt;
-    const mentions = selectedNodes
-        .filter((node) => !prompt.includes(`node:${node.id}`))
-        .map((node) => buildMention(labelForMentionNode(node), node.id));
-    if (mentions.length === 0) return prompt;
-    const selectedContext = `Selected context: ${mentions.join(' ')}`;
-    return prompt ? `${prompt}\n\n${selectedContext}` : selectedContext;
+function annotationOnlyPrompt(annotations: readonly AgentAnnotationDraft[]): string {
+    return annotations
+        .map((annotation) => {
+            const note = annotation.note.trim();
+            if (note) return `${annotation.target.objectLabel}: ${note}`;
+            const quote = annotation.target.selection?.exact.trim();
+            return quote
+                ? `${annotation.target.objectLabel}: Review the selected text “${quote}”.`
+                : '';
+        })
+        .filter(Boolean)
+        .join('\n');
 }
 
 const PERSONA_MAP: Record<string, string> = {
@@ -435,6 +430,33 @@ const PERSONA_MAP: Record<string, string> = {
  * ReactMarkdown parse and AgentCard logs rebuild on every token tick.
  */
 const MessagePart = memo(function MessagePart({ part }: { part: any }) {
+    if (part.type === 'event_note') {
+        const isError = part.tone === 'error';
+        return (
+            <div
+                role={isError ? 'alert' : undefined}
+                className={`flex gap-3 rounded-2xl border px-4 py-3.5 ${
+                    isError
+                        ? 'border-status-down/25 bg-status-down/5 text-slate-900 dark:bg-status-down/10 dark:text-slate-50'
+                        : 'border-warm-border bg-warm-muted/50 text-slate-800 dark:text-slate-100'
+                }`}
+            >
+                <ShieldWarning
+                    aria-hidden="true"
+                    className={`mt-0.5 h-5 w-5 shrink-0 ${isError ? 'text-status-down' : 'text-stone-500'}`}
+                    weight="fill"
+                />
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-5">{part.title}</p>
+                    {part.detail ? (
+                        <p className="mt-1 text-sm font-normal leading-5 text-stone-600 dark:text-stone-300">
+                            {part.detail}
+                        </p>
+                    ) : null}
+                </div>
+            </div>
+        );
+    }
     if (part.type === 'text' && part.text) {
         return (
             <div className="text-base text-slate-800 leading-relaxed px-1 font-medium dark:text-slate-100">
@@ -566,30 +588,28 @@ const MessageRow = memo(function MessageRow({
     );
 });
 
-export default function ChatbotCopilot({
+function ChatbotCopilot({
     projectId,
     threadId,
     initialMessages,
-    onCommand: _onCommand,
     width,
     onWidthChange,
     isCollapsed,
     onCollapseChange,
+    collapsedLauncherPlacement = 'canvas',
     layoutMode = 'floating',
     followingAgent = false,
     onFollowingAgentChange,
     onAgentCanvasTarget,
-    selectedNodes = [],
     onAddNode,
     onRemoveNode,
     onAddEdge,
     onUpdateEdge,
     onRemoveEdge,
     onApplyTimeline,
-    onUpdateNode,
-    findNodeIdByName: _findNodeIdByName,
     nodes = [],
-    edges: _edges = [],
+    mentionSources = [],
+    workspaceContext,
     initialPrompt,
     sessionHistory = [],
     onNewSession,
@@ -599,15 +619,38 @@ export default function ChatbotCopilot({
     onCreateSession,
     onUploadFiles,
     actorUserId,
+    annotationBlocks = [],
+    onAnnotationChange,
+    onAnnotationRemove,
+    onAnnotationLocate,
+    onAnnotationsSubmitted,
 }: ChatbotCopilotProps) {
     const { t } = useTranslation();
     const feedback = useAppFeedback();
+    const lastHarnessSetupIssueNotifiedRef = useRef<string | null>(null);
+    const notifyAgentHarnessRequired = useCallback(() => {
+        feedback.notify({
+            variant: 'info',
+            title: t('copilot.status.agentHarnessRequiredTitle'),
+            message: t('copilot.status.agentHarnessRequired'),
+            actionLabel: t('copilot.actions.openAgents'),
+            actionHref: '/settings?section=agents',
+        });
+    }, [feedback, t]);
     // Below Tailwind's `lg` (1024px), the panel switches to a full-screen
     // sheet over the canvas. Desktop keeps a resizable bottom-right popover.
     const isMobile = useIsBelowLg();
     const isDocked = !isMobile && layoutMode === 'docked';
+    const collapsesIntoHeader = collapsedLauncherPlacement === 'header';
+    const desktopTransformOrigin = collapsesIntoHeader
+        ? COPILOT_PANEL_HEADER_TRANSFORM_ORIGIN
+        : COPILOT_PANEL_CANVAS_TRANSFORM_ORIGIN;
+    const collapsedDesktopState = collapsesIntoHeader
+        ? COPILOT_PANEL_COLLAPSED_HEADER_STATE
+        : COPILOT_PANEL_COLLAPSED_CANVAS_STATE;
     // ─── UI State ──────────────────────────────────────────────
     const [input, setInput] = useState(() => initialPrompt ?? '');
+    const [dismissedSlashCommand, setDismissedSlashCommand] = useState<string | null>(null);
     const [isResizing, setIsResizing] = useState(false);
     const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
     const [suggestions, setSuggestions] = useState<Array<{ label: string; message: string }>>([]);
@@ -626,14 +669,25 @@ export default function ChatbotCopilot({
     const clashRt = useClashRuntime();
     const slashCommandQuery = useMemo(() => {
         if (chatMode === 'cloud') return null;
-        if (!input.startsWith('/')) return null;
-        const query = input.slice(1);
+        const draft = input.replace(/[\r\n]+$/g, '');
+        if (!draft.startsWith('/')) return null;
+        const query = draft.slice(1);
         if (/\s/.test(query)) return null;
+        if (draft === dismissedSlashCommand) return null;
         return query.toLowerCase();
-    }, [chatMode, input]);
+    }, [chatMode, dismissedSlashCommand, input]);
+    const slashCommandCandidates = useMemo(() => {
+        const seen = new Set<string>();
+        return (clashRt.availableCommands ?? []).filter((command) => {
+            const name = normalizeSlashCommandName(command).toLowerCase();
+            if (!name || seen.has(name)) return false;
+            seen.add(name);
+            return true;
+        });
+    }, [clashRt.availableCommands]);
     const slashCommandOptions = useMemo(() => {
         if (slashCommandQuery === null) return [];
-        return (clashRt.availableCommands ?? [])
+        return slashCommandCandidates
             .filter((command) => {
                 const name = normalizeSlashCommandName(command);
                 if (!name) return false;
@@ -641,10 +695,15 @@ export default function ChatbotCopilot({
                 return name.toLowerCase().startsWith(slashCommandQuery);
             })
             .slice(0, 12);
-    }, [clashRt.availableCommands, slashCommandQuery]);
+    }, [slashCommandCandidates, slashCommandQuery]);
+    useEffect(() => {
+        if (slashCommandQuery === null || clashRt.status !== 'draft') return;
+        clashRt.prepareSession?.();
+    }, [clashRt.prepareSession, clashRt.status, slashCommandQuery]);
     const handlePickSlashCommand = useCallback((command: AvailableCommand) => {
         const name = normalizeSlashCommandName(command);
         if (!name) return;
+        setDismissedSlashCommand(`/${name}`);
         setInput(`/${name} `);
     }, []);
     const isDesktopLocalMode = useMemo(() => getRuntimeConfig().mode === 'desktop', []);
@@ -772,8 +831,8 @@ export default function ChatbotCopilot({
                     variant: 'error',
                     title: 'Could not check agent auth',
                     message: displayErrorMessage(error),
-                    actionLabel: 'Open Runtimes',
-                    actionHref: '/settings?section=runtimes',
+                    actionLabel: 'Open Agents',
+                    actionHref: '/settings?section=agents',
                 });
             });
             return;
@@ -827,8 +886,8 @@ export default function ChatbotCopilot({
                     variant: 'error',
                     title: 'Could not refresh local agents',
                     message: displayErrorMessage(error),
-                    actionLabel: 'Open Runtimes',
-                    actionHref: '/settings?section=runtimes',
+                    actionLabel: 'Open Agents',
+                    actionHref: '/settings?section=agents',
                 });
             });
         }
@@ -882,8 +941,8 @@ export default function ChatbotCopilot({
                 variant: 'error',
                 title: 'Could not check agent auth',
                 message: displayErrorMessage(error),
-                actionLabel: 'Open Runtimes',
-                actionHref: '/settings?section=runtimes',
+                actionLabel: 'Open Agents',
+                actionHref: '/settings?section=agents',
             });
         }
     }, [clashRt.refresh, feedback]);
@@ -1193,6 +1252,15 @@ export default function ChatbotCopilot({
     );
     const runtimeAlertMessage = chatMode === 'runtime' && !isDesktopLocalMode ? clashRt.errorMessage : null;
     const desktopLocalSetupIssue = chatMode === 'runtime' && isDesktopLocalMode ? clashRt.errorMessage : null;
+    useEffect(() => {
+        if (!desktopLocalSetupIssue || !isLocalHarnessUnavailableMessage(desktopLocalSetupIssue)) {
+            lastHarnessSetupIssueNotifiedRef.current = null;
+            return;
+        }
+        if (lastHarnessSetupIssueNotifiedRef.current === desktopLocalSetupIssue) return;
+        lastHarnessSetupIssueNotifiedRef.current = desktopLocalSetupIssue;
+        notifyAgentHarnessRequired();
+    }, [desktopLocalSetupIssue, notifyAgentHarnessRequired]);
     const showRuntimeComposerCompanion =
         chatMode === 'runtime' &&
         clashRt.messages.length === 0 &&
@@ -1394,9 +1462,12 @@ export default function ChatbotCopilot({
     // module-level pending state. queueMessageOnOpen waits for the WS handshake
     // to land before firing; subsequent sends just hit `sendMessage` directly.
     const initialMessageRef = useRef(initialPrompt);
+    const initialRuntimePromptHandledRef = useRef(false);
     useEffect(() => {
         const msg = initialMessageRef.current;
-        if (chatMode === 'cloud' && msg && threadId) queueMessageOnOpen(msg);
+        if (chatMode === 'cloud' && msg && threadId) {
+            queueMessageOnOpen(buildCopilotPrompt(msg, workspaceContext, mentionableNodes));
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1605,16 +1676,21 @@ export default function ChatbotCopilot({
     }, [nodes]);
 
     const mentionableNodes = useMemo(() => {
-        if (!nodes) return [];
-        return nodes
-            .filter((n) => ['image', 'video', 'text'].includes(n.type as string))
-            .map((n) => ({
+        if (mentionSources.length > 0) {
+            return mentionSources.map((source) => ({
+                ...source,
+                thumbnail: source.thumbnail ?? assetThumbsByNodeId.get(source.id),
+            }));
+        }
+        return nodes.map((n) => ({
                 id: n.id,
                 type: n.type as string,
                 label: (n.data.label as string) || n.id,
                 thumbnail: assetThumbsByNodeId.get(n.id),
+                kind: 'node' as const,
+                scope: 'current-canvas' as const,
             }));
-    }, [nodes, assetThumbsByNodeId]);
+    }, [nodes, mentionSources, assetThumbsByNodeId]);
 
     // ─── Submit ──────────────────────────────────────────────
     const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -1633,8 +1709,13 @@ export default function ChatbotCopilot({
                             ? 'review'
                             : 'idle';
 
-    const handleSubmit = async (text: string, attachments: import('./copilot/ChatInput').UploadedAttachment[] = []) => {
-        const value = text.trim();
+    const handleSubmit = async (
+        text: string,
+        attachments: import('./copilot/ChatInput').UploadedAttachment[] = [],
+        annotations: AgentAnnotationDraft[] = [],
+    ) => {
+        const rawValue = text.trim();
+        const value = rawValue || annotationOnlyPrompt(annotations);
         if (!value && attachments.length === 0) return;
         if ((chatMode !== 'runtime' && isProcessing) || isCreatingSession) return;
         if (chatMode === 'runtime' && editingQueuedTurnId) {
@@ -1650,9 +1731,14 @@ export default function ChatbotCopilot({
 
         // Persistent-runtime mode: raw prompt, daemon handles the local ACP session.
         if (chatMode === 'runtime') {
-            const runtimePrompt = withSelectedNodeMentions(value, selectedNodes);
+            const runtimePrompt = buildCopilotPrompt(
+                value,
+                workspaceContext,
+                mentionableNodes,
+                annotations,
+            );
             if (selectedSessionHarnessAuth) {
-                setInput(runtimePrompt);
+                setInput(rawValue);
                 return;
             }
             if (!clashRt.ready) {
@@ -1665,18 +1751,24 @@ export default function ChatbotCopilot({
                             ...permissionModeOption(sessionPermissionModeId),
                         });
                     }
+                } else if (isDesktopLocalMode && runtime && runtime.agents.length === 0) {
+                    setInput(rawValue);
+                    notifyAgentHarnessRequired();
+                    void clashRt.refresh({ probe: 'config', refresh: true });
+                    return;
                 } else if (isDesktopLocalMode) {
-                    setInput(runtimePrompt);
+                    setInput(rawValue);
                     void clashRt.refresh();
                     return;
                 } else {
-                    setInput(runtimePrompt);
+                    setInput(rawValue);
                     setSessionError(t('copilot.status.localRuntimeRequired'));
                     return;
                 }
             }
             setInput('');
             clashRt.sendMessage(runtimePrompt);
+            onAnnotationsSubmitted?.(annotations.map((annotation) => annotation.id));
             return;
         }
 
@@ -1689,26 +1781,41 @@ export default function ChatbotCopilot({
 
         // Message text is already markdown with inline images: ![name](storageKey)
         // The agent can parse these directly
-        const msgText = value;
+        const msgText = buildCopilotPrompt(value, workspaceContext, mentionableNodes, annotations);
 
         if (!threadId) {
             setIsCreatingSession(true);
             try {
                 await onCreateSession?.(msgText);
+                onAnnotationsSubmitted?.(annotations.map((annotation) => annotation.id));
             } catch {
                 setSessionError('Failed to create session. Please try again.');
-                setInput(value);
+                setInput(rawValue);
             } finally {
                 setIsCreatingSession(false);
             }
         } else {
             try {
                 await sendMessage({ text: msgText });
+                onAnnotationsSubmitted?.(annotations.map((annotation) => annotation.id));
             } catch {
-                setInput(value);
+                setInput(rawValue);
             }
         }
     };
+
+    // A prompt created on Home is still a normal Project composer submit.
+    // Wait until the desktop runtime inventory arrives so an empty list does
+    // not briefly masquerade as a missing harness during the initial fetch.
+    useEffect(() => {
+        const message = initialMessageRef.current?.trim();
+        if (!message || chatMode !== 'runtime' || initialRuntimePromptHandledRef.current) return;
+        if (isDesktopLocalMode && !desktopLocalRuntime) return;
+        initialRuntimePromptHandledRef.current = true;
+        void handleSubmit(message);
+        // handleSubmit intentionally uses the render that supplied the now-known runtime inventory.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chatMode, desktopLocalRuntime, isDesktopLocalMode]);
 
     // Strip the ?prompt= query param after first use so a manual reload
     // doesn't re-send the original landing prompt.
@@ -1756,22 +1863,30 @@ export default function ChatbotCopilot({
                     {isCollapsed && (
                         <motion.div
                             key="copilot-launcher"
-                            className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50"
+                            layout="position"
+                            layoutDependency={collapsedLauncherPlacement}
+                            data-copilot-launcher-placement={collapsedLauncherPlacement}
+                            className={collapsedLauncherPlacement === 'header'
+                                ? 'fixed right-2 top-[calc(var(--clash-desktop-chrome-height,0px)+0.375rem)] z-50'
+                                : 'fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50'}
                             initial={{ opacity: 0, scale: 0.86, y: 8 }}
-                            animate={{ opacity: 1, scale: 1, y: 0, transition: COPILOT_LAUNCHER_ENTER_TRANSITION }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.92, y: 6, transition: COPILOT_LAUNCHER_EXIT_TRANSITION }}
+                            transition={COPILOT_LAUNCHER_RELOCATION_TRANSITION}
                             whileHover={{ scale: 1.035, y: -1 }}
                             whileTap={{ scale: 0.965 }}
                         >
                             <CollapsibleTrigger asChild>
                                 <IconButton
                                     label={t('copilot.panel.expand')}
-                                    size="lg"
+                                    size={collapsedLauncherPlacement === 'header' ? 'sm' : 'lg'}
                                     shape="rounded"
-                                    icon={<AgentMotion state="idle" className="h-16 w-16" />}
+                                    icon={<AgentMotion state="idle" className={collapsedLauncherPlacement === 'header' ? 'h-6 w-6' : 'h-16 w-16'} />}
                                     // Clears the iPhone home-indicator gesture zone with safe-area-inset-bottom
                                     // while keeping the same bottom-right launcher position on desktop.
-                                    className="clash-copilot-launcher h-20 min-h-20 w-20 min-w-20 rounded-[26px] bg-transparent hover:bg-transparent focus-visible:ring-offset-warm-page"
+                                    className={collapsedLauncherPlacement === 'header'
+                                        ? 'clash-copilot-launcher clash-copilot-launcher--header h-8 min-h-8 w-8 min-w-8 rounded-lg bg-transparent hover:bg-transparent focus-visible:ring-offset-warm-page'
+                                        : 'clash-copilot-launcher h-20 min-h-20 w-20 min-w-20 rounded-[26px] bg-transparent hover:bg-transparent focus-visible:ring-offset-warm-page'}
                                 />
                             </CollapsibleTrigger>
                         </motion.div>
@@ -1818,23 +1933,23 @@ export default function ChatbotCopilot({
                             isMobile
                                 // Mobile: bg-warm-page extends to the unsafe areas so the system bars blend with the panel; padding shrinks the positioning context so absolute children land inside the safe zone. All four insets cover portrait (notch top, home indicator bottom) and landscape (notch on left or right).
                                 ? `fixed inset-0 z-50 flex flex-col bg-warm-page h-[100dvh] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] ${isCollapsed ? 'pointer-events-none' : ''}`
-                                : `clash-copilot-panel-shell fixed z-50 flex flex-col overflow-hidden bg-warm-surface ${isDocked
+                                : `clash-copilot-panel-shell fixed z-50 flex flex-col overflow-hidden bg-warm-page ${isDocked
                                     ? 'clash-copilot-panel-shell--docked bottom-0 right-0 rounded-none'
-                                    : 'bottom-3 right-3 rounded-matrix'
+                                    : 'bottom-2 right-2 rounded-matrix'
                                 } ${isCollapsed ? 'pointer-events-none' : 'pointer-events-auto'}`
                         }
                         style={isMobile ? undefined : {
                             width: `${width}px`,
                             height: isDocked
                                 ? 'calc(100dvh - var(--clash-desktop-chrome-height, 0px))'
-                                : 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1.5rem)',
-                            transformOrigin: COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN,
+                                : 'calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 1rem)',
+                            transformOrigin: desktopTransformOrigin,
                         }}
                         animate={
                             isMobile
                                 ? { x: isCollapsed ? '100%' : 0 }
                                 : isCollapsed
-                                    ? COPILOT_PANEL_COLLAPSED_DESKTOP_STATE
+                                    ? collapsedDesktopState
                                     : COPILOT_PANEL_EXPANDED_DESKTOP_STATE
                         }
                         initial={false}
@@ -1878,6 +1993,18 @@ export default function ChatbotCopilot({
                                         outputs={acpGlobalState.outputs}
                                         className="shrink-0"
                                     />
+                                    {chatMode === 'runtime' && (
+                                        <SessionHarnessUpdateControl
+                                            status={clashRt.sessionRuntimeStatus}
+                                            phase={clashRt.sessionRestartPhase}
+                                            busy={
+                                                clashRt.sessionRuntimeStatus?.busy === true ||
+                                                clashRt.status === 'sending' ||
+                                                clashRt.status === 'streaming'
+                                            }
+                                            onRestart={(mode) => { void clashRt.restartSession(mode); }}
+                                        />
+                                    )}
                                     <IconButton
                                         onClick={handleNewSession}
                                         label={t('copilot.header.newSession')}
@@ -2001,7 +2128,7 @@ export default function ChatbotCopilot({
                                                                 />
                                                             );
                                                         })}
-                                                        <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-slate-700" />
+                                                        <div role="separator" className="my-1.5 border-t border-warm-border/80 dark:border-warm-border" />
                                                         <RuntimeMenuRow
                                                             label={t('copilot.runtime.addMachine.label')}
                                                             sub={t('copilot.runtime.addMachine.sub')}
@@ -2109,36 +2236,6 @@ export default function ChatbotCopilot({
                                 </div>
                             </div>
 
-                            {/* Selected Context Badge */}
-                            <AnimatePresence>
-                                {selectedNodes.length > 0 && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 10, scale: 0.9 }}
-                                        className="absolute bottom-[8.75rem] right-6 z-20 pointer-events-auto"
-                                    >
-                                        <div
-                                            role="status"
-                                            aria-live="polite"
-	                                            className="bg-warm-surface text-slate-800 text-xs font-medium px-3 py-1.5 rounded-xl border border-warm-border shadow-md flex items-center gap-2 dark:text-slate-100"
-                                        >
-                                            <div className="flex -space-x-2" aria-hidden="true">
-                                                {selectedNodes.filter(n => !!n.data?.assetId).slice(0, 3).map((node) => (
-                                                    <SelectedNodeThumbnail key={node.id} node={node} />
-                                                ))}
-                                            </div>
-                                            <span>{t('copilot.selectedContext.count', { count: selectedNodes.length })}</span>
-                                            {selectedNodes.length === 1 && (
-                                                <span className="text-stone-600 border-l border-warm-border pl-2 max-w-[100px] truncate dark:text-stone-300">
-                                                    {(typeof selectedNodes[0].data?.label === 'string' ? selectedNodes[0].data.label : undefined) || selectedNodes[0].type}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-
                             {/* Todo List Overlay */}
                             <AnimatePresence>
                                 {todoItems.length > 0 && (
@@ -2147,10 +2244,31 @@ export default function ChatbotCopilot({
                             </AnimatePresence>
 
                             <div className="clash-copilot-composer-stack absolute bottom-0 left-0 right-0">
-                                {slashCommandOptions.length > 0 && (
+                                {showRuntimeComposerCompanion && (
+                                    <motion.div
+                                        className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion relative z-20 mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 6 }}
+                                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                                    >
+                                        <AgentActivitySlot
+                                            label={showRuntimeActivityRow ? activityStatusLabel : null}
+                                            state={showRuntimeActivityRow ? agentMotionState : 'idle'}
+                                            gazeTarget={null}
+                                            emptyLabel={t('copilot.status.readyWhenYouAre')}
+                                        />
+                                    </motion.div>
+                                )}
+                                {slashCommandQuery !== null && (
                                     <SlashCommandPalette
                                         commands={slashCommandOptions}
                                         onPick={handlePickSlashCommand}
+                                        emptyLabel={t(
+                                            slashCommandCandidates.length > 0
+                                                ? 'copilot.slash.noMatches'
+                                                : 'copilot.slash.noCommands',
+                                        )}
                                     />
                                 )}
                                 {chatMode === 'runtime' && clashRt.promptQueueEnabled && visibleRuntimePromptQueue.length > 0 && (
@@ -2166,22 +2284,6 @@ export default function ChatbotCopilot({
                                     />
                                 )}
                                 <div className="relative z-20">
-                                    {showRuntimeComposerCompanion && (
-                                        <motion.div
-                                            className="clash-copilot-agent-activity-empty-anchor clash-copilot-agent-activity-composer-companion mx-auto w-full max-w-[68rem] px-4 pb-1 sm:px-6"
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: 6 }}
-                                            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                                        >
-                                            <AgentActivitySlot
-                                                label={showRuntimeActivityRow ? activityStatusLabel : null}
-                                                state={showRuntimeActivityRow ? agentMotionState : 'idle'}
-                                                gazeTarget={null}
-                                                emptyLabel={t('copilot.status.readyWhenYouAre')}
-                                            />
-                                        </motion.div>
-                                    )}
                                     <div
                                         aria-hidden="true"
                                         data-testid="composer-bottom-fade"
@@ -2199,15 +2301,14 @@ export default function ChatbotCopilot({
                                             error={chatMode === 'cloud' ? (sessionError || connectionError) : sessionError}
                                             onDismissError={() => { setSessionError(null); clearConnectionError(); }}
                                             allowSubmitWhileProcessing={chatMode === 'runtime'}
-                                            disabled={chatMode === 'runtime' && !clashRt.ready && !(
-                                                isDesktopLocalMode &&
-                                                desktopLocalRuntime?.status === 'online' &&
-                                                desktopLocalRuntime.agents.length > 0 &&
-                                                (clashRt.status === 'draft' || clashRt.status === 'idle' || clashRt.status === 'disconnected')
-                                            )}
-                                            placeholder={selectedNodes.length > 0 ? 'Ask anything about selected files...' : 'Ask anything...'}
+                                            disabled={chatMode === 'runtime' && !isDesktopLocalMode && !clashRt.ready}
+                                            placeholder={'Ask anything...'}
                                             mentionableNodes={mentionableNodes}
                                             projectId={projectId}
+                                            annotationBlocks={annotationBlocks}
+                                            onAnnotationChange={onAnnotationChange}
+                                            onAnnotationRemove={onAnnotationRemove}
+                                            onAnnotationLocate={onAnnotationLocate}
                                             toolbarAccessory={(
                                                 <div className="flex min-w-0 items-center gap-1">
                                                     {onFollowingAgentChange ? (
@@ -2362,10 +2463,24 @@ function normalizeSlashCommandName(command: AvailableCommand): string {
 function SlashCommandPalette({
     commands,
     onPick,
+    emptyLabel,
 }: {
     commands: AvailableCommand[];
     onPick: (command: AvailableCommand) => void;
+    emptyLabel: string;
 }) {
+    const sections = [
+        {
+            id: 'agent',
+            label: 'Agent commands & skills',
+            commands: commands.filter((command) => normalizeSlashCommandName(command) !== 'model'),
+        },
+        {
+            id: 'session',
+            label: 'Session',
+            commands: commands.filter((command) => normalizeSlashCommandName(command) === 'model'),
+        },
+    ].filter((section) => section.commands.length > 0);
     const commandStore = useComboboxStore({
         value: '',
         setValue: () => undefined,
@@ -2383,29 +2498,48 @@ function SlashCommandPalette({
             <ComboboxList
                 aria-label="Slash commands"
                 alwaysVisible
-                className="mx-5 mb-2 max-h-64 overflow-y-auto rounded-2xl border border-warm-border bg-warm-surface/95 p-1.5 shadow-[0_18px_48px_rgba(23,19,13,0.12)] backdrop-blur"
+                className="relative z-30 mx-5 mb-2 max-h-[min(24rem,48vh)] overflow-y-auto rounded-[22px] border border-warm-border bg-warm-surface p-2 shadow-[0_24px_70px_rgba(35,29,20,0.16)]"
             >
-                {commands.map((command) => {
-                    const name = normalizeSlashCommandName(command);
-                    const description = command.description ?? command.input?.hint;
-                    return (
-                        <Tooltip key={command.name} label={description ?? `/${name}`}>
-                            <ComboboxItem
-                                value={command.name}
-                                focusOnHover
-                                setValueOnClick={false}
-                                onMouseDown={(event) => event.preventDefault()}
-                                aria-label={description ? `/${name} ${description}` : `/${name}`}
-                                className="grid w-full cursor-default grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-4 rounded-xl px-3 py-2 text-left transition-colors outline-none hover:bg-warm-muted data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
-                            >
-                                <span className="font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
-                                {description ? (
-                                    <span className="min-w-0 truncate text-sm text-stone-500 dark:text-stone-400">{description}</span>
-                                ) : null}
-                            </ComboboxItem>
-                        </Tooltip>
-                    );
-                })}
+                {commands.length === 0 ? (
+                    <div role="status" className="px-3 py-2 text-sm text-stone-500 dark:text-stone-400">
+                        {emptyLabel}
+                    </div>
+                ) : null}
+                {sections.map((section) => (
+                    <section key={section.id} aria-label={section.label}>
+                        <div className="sticky top-0 z-10 bg-warm-surface/95 px-3 pb-1 pt-2 text-[11px] font-semibold tracking-wide text-stone-500 backdrop-blur dark:text-stone-400">
+                            {section.label}
+                        </div>
+                        {section.commands.map((command) => {
+                            const name = normalizeSlashCommandName(command);
+                            const description = command.description ?? command.input?.hint;
+                            return (
+                                <Tooltip key={command.name} label={description ?? `/${name}`}>
+                                    <ComboboxItem
+                                        value={command.name}
+                                        focusOnHover
+                                        setValueOnClick={false}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        aria-label={description ? `/${name} ${description}` : `/${name}`}
+                                        className="group flex min-h-14 w-full cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-warm-muted/80 data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
+                                    >
+                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warm-border bg-warm-page text-stone-600 group-data-[active-item]:border-brand/20 group-data-[active-item]:text-brand dark:text-stone-300">
+                                            {section.id === 'session'
+                                                ? <SlidersHorizontal className="h-4 w-4" weight="bold" aria-hidden="true" />
+                                                : <BookOpen className="h-4 w-4" weight="bold" aria-hidden="true" />}
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">/{name}</span>
+                                            <span className="mt-0.5 block truncate text-xs text-stone-500 dark:text-stone-400">
+                                                {description ?? 'Agent command'}
+                                            </span>
+                                        </span>
+                                    </ComboboxItem>
+                                </Tooltip>
+                            );
+                        })}
+                    </section>
+                ))}
             </ComboboxList>
         </ComboboxProvider>
     );
@@ -2471,7 +2605,7 @@ function RuntimeAuthNotice({
                     onClick={onAuthenticate}
                     disabled={busy}
                     size="sm"
-                    className="rounded-lg border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-none hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-300/30 dark:bg-amber-300/10 dark:text-amber-100"
+                    className="rounded-lg border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-none hover:bg-amber-500/15 disabled:cursor-wait disabled:opacity-60 dark:text-amber-100"
                 >
                     {busy ? "Opening..." : "Sign in"}
                 </Button>
@@ -2545,21 +2679,19 @@ function SessionConfigSelector({
                 })),
             }]
             : [];
-        if (comboHarnesses.length > 0) {
+        if (!harnessLocked && comboHarnesses.length > 0) {
             sections.push({
                 id: 'harness',
                 label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Harness</span>,
                 options: comboHarnesses.map((agent) => ({
                     value: JSON.stringify({ type: 'harness', agentId: agent.id }),
                     label: agent.label ?? agentDisplayName(agent.id),
-                    description: harnessLocked
-                        ? 'Locked for this session'
-                        : agent.auth?.status === 'needs-auth'
+                    description:
+                        agent.auth?.status === 'needs-auth'
                             ? 'Auth needed'
                             : undefined,
                     icon: <AcpAgentLogo agentId={agent.id} title={agent.label ?? agentDisplayName(agent.id)} className="h-4 w-4" />,
                     selected: agent.id === selectedHarnessId,
-                    disabled: harnessLocked,
                 })),
             });
         }
@@ -2572,21 +2704,16 @@ function SessionConfigSelector({
                     </span>
                 ),
                 options: modelGroups.flatMap((group) => group.options).map((value) => {
-                    const selected = value.value === modelConfigOption.currentValue;
                     return {
                         value: JSON.stringify({ type: 'config', configId: modelConfigOption.id, value: value.value }),
                         label: value.name,
-                        selected,
-                        ...(selected && thoughtSubmenuSections.length > 0
-                            ? {
-                                hasSubmenu: true,
-                                submenuLabel: 'Effort',
-                                submenuSections: thoughtSubmenuSections,
-                            }
-                            : {}),
+                        selected: value.value === modelConfigOption.currentValue,
                     };
                 }),
             });
+        }
+        if (modelConfigOption && thoughtSubmenuSections.length > 0) {
+            sections.push(...thoughtSubmenuSections);
         }
         if (!modelConfigOption && thoughtLevelConfigOption && thoughtValues.length > 0) {
             sections.push({
@@ -2653,8 +2780,8 @@ function SessionConfigSelector({
             stopPropagation
             triggerPrefix={(
                 <>
-                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-200">
-                    <AcpAgentLogo agentId={selectedHarnessId} title={agentDisplayName(selectedHarnessId)} className="h-4 w-4" />
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center text-slate-700 dark:text-slate-200">
+                    <AcpAgentLogo agentId={selectedHarnessId} title={agentDisplayName(selectedHarnessId)} className="h-[18px] w-[18px]" />
                 </span>
                 <span
                     data-session-config-status-slot=""
@@ -2786,7 +2913,7 @@ function RuntimeMenuRow({
             aria-current={active ? 'true' : undefined}
             disabled={disabled}
             onSelect={onSelect}
-            className={`min-h-[44px] ${active ? 'bg-warm-muted/80 dark:bg-slate-800' : ''}`}
+            className={`min-h-[44px] ${active ? 'bg-brand/[0.08] dark:bg-brand/[0.12]' : ''}`}
         >
             <span
                 aria-hidden="true"
@@ -2953,7 +3080,7 @@ function RuntimePromptQueueBar({
     const itemIds = useMemo(() => items.map((item) => item.turnId), [items]);
 
     return (
-        <div className="clash-runtime-prompt-queue relative z-0 mx-auto -mb-10 w-[calc(100%-6rem)] max-w-[940px] overflow-visible rounded-t-[20px] px-3 pb-[3.25rem] pt-2.5 text-xs">
+        <div className={`${COPILOT_COMPOSER_RAIL_WIDTH_CLASS} clash-runtime-prompt-queue relative z-0 -mb-10 overflow-visible rounded-t-[20px] px-3 pb-[3.25rem] pt-2.5 text-xs`}>
             <SortableList items={itemIds} onReorder={onReorder}>
                 <div className="flex flex-col gap-1">
                     {items.map((item, index) => (
@@ -3071,7 +3198,7 @@ function AgentActivityRow({
                 <CopilotRailSlot className="h-8">
                     <AgentMotion
                         state={state}
-                        className="h-6 w-6"
+                        className="clash-agent-motion--compact h-6 w-6"
                         gazeTarget={gazeTarget ?? null}
                     />
                 </CopilotRailSlot>
@@ -3139,3 +3266,5 @@ function RuntimeLoadingStatus({ label }: { label: string }) {
         <div role="status" aria-label={label} aria-live="polite" className="sr-only" />
     );
 }
+
+export default memo(ChatbotCopilot);

@@ -103,6 +103,7 @@ export const providerAccounts = sqliteTable(
         userId: text("user_id").notNull(),
         providerId: text("provider_id").notNull(),
         upstreamId: text("upstream_id"),
+        apiShape: text("api_shape"),
         region: text("region"),
         label: text("label"),
         enabled: integer("enabled").notNull().default(1),
@@ -118,6 +119,42 @@ export const providerAccounts = sqliteTable(
     (table) => ({
         providerAccountUserIdx: index("provider_account_user_idx").on(table.userId),
         providerAccountProviderIdx: index("provider_account_provider_idx").on(table.userId, table.providerId, table.upstreamId),
+    })
+)
+
+export const modelCardConfigs = sqliteTable(
+    "model_card_config",
+    {
+        userId: text("user_id").notNull(),
+        modelId: text("model_id").notNull(),
+        custom: integer("custom").notNull().default(0),
+        kind: text("kind").notNull().default("text"),
+        name: text("name"),
+        description: text("description"),
+        promptGuidance: text("prompt_guidance"),
+        createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+        updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        modelCardConfigPk: primaryKey({ columns: [table.userId, table.modelId] }),
+        modelCardConfigUserIdx: index("model_card_config_user_idx").on(table.userId),
+    })
+)
+
+export const modelCardProviderBindings = sqliteTable(
+    "model_card_provider_binding",
+    {
+        userId: text("user_id").notNull(),
+        modelId: text("model_id").notNull(),
+        providerAccountId: text("provider_account_id").notNull(),
+        upstreamModel: text("upstream_model").notNull(),
+        position: integer("position").notNull().default(0),
+    },
+    (table) => ({
+        modelCardProviderBindingPk: primaryKey({
+            columns: [table.userId, table.modelId, table.providerAccountId],
+        }),
+        modelCardProviderBindingUserIdx: index("model_card_provider_binding_user_idx").on(table.userId),
     })
 )
 
@@ -226,7 +263,7 @@ export const assets = sqliteTable(
  * Asset References — M:N junction. One row per (asset, project) pair.
  * Cross-project import = INSERT here; R2 blob shared via assets.srcR2Key.
  * Delete a row when its project no longer references the asset; mark-and-sweep
- * GC reclaims R2 blobs once no asset_refs row points to them.
+ * GC reclaims R2 blobs once neither project nor library refs point to them.
  */
 export const assetRefs = sqliteTable(
     "asset_refs",
@@ -239,6 +276,21 @@ export const assetRefs = sqliteTable(
         pk: primaryKey({ columns: [table.assetId, table.projectId] }),
         assetRefsProjectIdx: index("asset_refs_project_idx").on(table.projectId),
         assetRefsAssetIdx: index("asset_refs_asset_idx").on(table.assetId),
+    })
+)
+
+/** Explicit membership in a user's reusable global asset library. */
+export const assetLibraryRefs = sqliteTable(
+    "asset_library_refs",
+    {
+        assetId: text("asset_id").notNull(),
+        userId: text("user_id").notNull(),
+        addedAt: integer("added_at", { mode: "timestamp" }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        pk: primaryKey({ columns: [table.assetId, table.userId] }),
+        assetLibraryRefsUserIdx: index("asset_library_refs_user_idx").on(table.userId, table.addedAt),
+        assetLibraryRefsAssetIdx: index("asset_library_refs_asset_idx").on(table.assetId),
     })
 )
 

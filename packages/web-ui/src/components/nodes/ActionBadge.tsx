@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Handle, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
+import { Handle, NodeToolbar, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT } from '@phosphor-icons/react';
 import { motion, Reorder } from 'framer-motion';
 import { useProject } from '../ProjectContext';
@@ -11,7 +11,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
-import { MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
+import { listCompatibleModelCatalogEntries, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, directorReferencePackets, referenceAssetId, referenceModality, type DirectorReferencePacket, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { useProjectCustomActions } from '../CustomActionsContext';
 import {
@@ -39,11 +39,10 @@ import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
 import { getModelDropdownSecondaryText } from './modelDisplay';
 import { NodeModalDialog } from './NodeModalDialog';
+import { useCanvasTransientUiOwner } from '../CanvasTransientUiContext';
 
 type ModelParams = Record<string, string | number | boolean>;
 type BuiltInActionKind = 'image' | 'video' | 'audio' | 'text';
-const REF_MODALITIES: readonly Modality[] = ['text', 'image', 'video', 'audio'];
-
 const getBuiltInActionKind = (actionType: string): BuiltInActionKind => {
     if (actionType === 'video-gen') return 'video';
     if (actionType === 'audio-gen') return 'audio';
@@ -206,7 +205,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // `data.openPanel` is a one-shot handoff from `handleCopy` — a freshly
     // cloned node mounts with its config panel already open, then clears the
     // flag in an effect so subsequent loads don't re-open.
-    const [showPanel, setShowPanel] = useState<boolean>(() => !!data.openPanel);
+    const {
+        close: closeActionPanel,
+        isOpen: showPanel,
+        open: openActionPanel,
+        toggle: toggleActionPanel,
+    } = useCanvasTransientUiOwner('action-panel', id);
     const [showModal, setShowModal] = useState(false);
     // Peers (other connected users) who currently have this node selected.
     const peersSelecting = usePeersSelectingNode(id);
@@ -222,7 +226,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [refPickerTarget, setRefPickerTarget] = useState<null | 'append' | 'start' | 'end'>(null);
 
     // React Flow hooks
-    const { projectId } = useProject();
+    const { enabledModelCatalog, projectId } = useProject();
     const { getNode, getNodes, getEdges, addEdges, setNodes, setEdges } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     const connections = useNodeConnections({ id });
@@ -244,7 +248,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         },
         [loroSync]
     );
-    const { addNodeWithAutoLayout } = useLayoutManager({ onNodesMutated });
+    const { addNodeWithAutoLayout, addNodeWithLayout } = useLayoutManager({ onNodesMutated });
 
     // Prompt editing state
     const cleanContent = (val: string | undefined) => {
@@ -278,18 +282,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
 
-    // Collapse retired -edit variants into their base card (backend auto-switches to /edit when refs present).
-    const LEGACY_MODEL_REMAP: Record<string, string> = {
-        'nano-banana-2-edit': 'nano-banana-2',
-        'flux-2-pro-edit': 'flux-2-pro',
-    };
-
-    const mapLegacyModelId = (
+    const resolveConfiguredModelId = (
         type: 'image-gen' | 'video-gen',
         explicitId?: string,
         legacyName?: string
     ): string | undefined => {
-        if (explicitId) return LEGACY_MODEL_REMAP[explicitId] ?? explicitId;
+        if (explicitId) return explicitId;
         if (!legacyName) return undefined;
         const lower = legacyName.toLowerCase();
         if (type === 'video-gen') return 'sora-2';
@@ -328,7 +326,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const actionKind = getBuiltInActionKind(actionType);
     const initialModelId = isCustom ? '' :
         (actionKind === 'image' || actionKind === 'video'
-            ? mapLegacyModelId(actionType as 'image-gen' | 'video-gen', data.modelId as string | undefined, data.modelName)
+            ? resolveConfiguredModelId(actionType as 'image-gen' | 'video-gen', data.modelId as string | undefined, data.modelName)
             : (data.modelId as string | undefined)) ||
         (MODEL_CARDS.find((card) => card.kind === actionKind)?.id ?? FALLBACK_MODEL_BY_KIND[actionKind]);
 
@@ -385,8 +383,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     : 'bg-image hover:opacity-90';
 
     const availableModels = useMemo(
-        () => MODEL_CARDS.filter((card) => card.kind === actionKind),
-        [actionKind]
+        () => enabledModelCatalog
+            .map((entry) => entry.model)
+            .filter((card) => card.kind === actionKind),
+        [actionKind, enabledModelCatalog]
     );
     const selectedModel = useMemo<ModelCard | undefined>(
         // For custom actions, fall back to `undefined` rather than the
@@ -395,7 +395,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         // returned nothing and `?? availableModels[0]` picked a random
         // image model. Custom actions have their own name source
         // (`customDef.name`) — see modelDisplay below.
-        () => isCustom ? undefined : (availableModels.find((card) => card.id === modelId) ?? availableModels[0]),
+        () => isCustom ? undefined : (MODEL_CARDS.find((card) => card.id === modelId) ?? availableModels[0]),
         [availableModels, modelId, isCustom]
     );
 
@@ -425,9 +425,14 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const resolveRefSrc = useCallback(
         (node: { type?: string; data?: Record<string, unknown> } | undefined): string | undefined => {
             if (!node || !cap) return undefined;
-            const t = node.type;
+            const t = referenceModality(node);
             if (t === 'image' && cap.ref.image.accepts) return node.data?.src as string | undefined;
-            if (t === 'video' && cap.ref.video.accepts) return node.data?.src as string | undefined;
+            if (t === 'video' && cap.ref.video.accepts) {
+                return node.type === 'director-stage'
+                    ? node.data?.outputVideoPreviewUrl as string | undefined
+                        ?? node.data?.outputVideoSrc as string | undefined
+                    : node.data?.src as string | undefined;
+            }
             if (t === 'audio' && cap.ref.audio.accepts) return node.data?.src as string | undefined;
             return undefined;
         },
@@ -447,12 +452,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // the node has a real src yet — drafts count, since their src will be
     // resolved at run time by the cascade runner's gate.)
     const hasCompatibleModality = useCallback(
-        (node: { type?: string } | undefined): boolean => {
+        (node: { type?: string; data?: Record<string, unknown> } | undefined): boolean => {
             if (!node || !cap) return false;
-            const t = node.type as Modality | undefined;
-            return t === 'text' || t === 'image' || t === 'video' || t === 'audio'
-                ? cap.ref[t].accepts
-                : false;
+            const t = referenceModality(node);
+            return t ? cap.ref[t].accepts : false;
         },
         [cap],
     );
@@ -481,26 +484,34 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         const byKind: Record<Modality, number> = { text: 0, image: 0, video: 0, audio: 0 };
         for (const nid of refNodeIds) {
             const n = getNode(nid);
-            const t = n?.type as Modality | undefined;
-            if (t === 'text' || t === 'image' || t === 'video' || t === 'audio') byKind[t] += 1;
+            const t = n ? referenceModality(n) : undefined;
+            if (t) byKind[t] += 1;
         }
         return byKind;
     }, [refNodeIds, getNode]);
 
-    // Whether `card` can consume the currently attached refs as-is. Used to
-    // mark (not hide) incompatible models in the dropdown — picking one prompts
-    // to clear refs rather than silently dropping them. Only checks acceptance
-    // + max: under-min is fine here (user can still fill more later).
+    const compatibleModelIds = useMemo(
+        () => new Set(listCompatibleModelCatalogEntries({
+            outputKind: actionKind,
+            referenceCounts: refKindCounts,
+            enforceMinimums: false,
+            models: enabledModelCatalog.map((entry) => entry.model),
+        }).map((entry) => entry.model.id)),
+        [actionKind, enabledModelCatalog, refKindCounts],
+    );
+
+    // Whether `card` can consume the currently attached refs as-is. The UI
+    // sees only candidate IDs returned by the catalog anti-corruption layer.
     const isModelCompatibleWithRefs = useCallback((card: ModelCard): boolean => {
-        const c = capability(card);
-        for (const m of REF_MODALITIES) {
-            const count = refKindCounts[m];
-            if (count === 0) continue;
-            if (!c.ref[m].accepts) return false;
-            if (count > c.ref[m].max) return false;
-        }
-        return true;
-    }, [refKindCounts]);
+        return compatibleModelIds.has(card.id);
+    }, [compatibleModelIds]);
+
+    const compatibleAvailableModels = useMemo(
+        () => refNodeIds.length === 0
+            ? availableModels
+            : availableModels.filter(isModelCompatibleWithRefs),
+        [availableModels, isModelCompatibleWithRefs, refNodeIds.length],
+    );
 
     const clearAllRefs = useCallback(() => {
         const edgeIds = connectedEdges.filter(e => e.target === id).map(e => e.id);
@@ -659,13 +670,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         return getNodes().filter(n => {
             if (attached.has(n.id)) return false;
             if (downstream.has(n.id)) return false;
-            const t = n.type;
-            if (t === 'text' && !acceptsTextRef) return false;
-            if (t === 'image' && !acceptsImageRef) return false;
-            if (t === 'video' && !acceptsVideoRef) return false;
-            if (t === 'audio' && !acceptsAudioRef) return false;
-            if (t !== 'text' && t !== 'image' && t !== 'video' && t !== 'audio') return false;
-            return true;
+            const t = referenceModality(n);
+            if (t === 'text') return acceptsTextRef;
+            if (t === 'image') return acceptsImageRef;
+            if (t === 'video') return acceptsVideoRef;
+            if (t === 'audio') return acceptsAudioRef;
+            return false;
         });
     }, [shouldComputeRefPickerCandidates, refNodeIds, getNodes, getEdges, connectedEdges, id, acceptsTextRef, acceptsImageRef, acceptsVideoRef, acceptsAudioRef]);
 
@@ -697,11 +707,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const next = new Map<string, string>();
             for (const nid of refNodeIds) {
                 const n = getNode(nid);
-                const assetId = typeof n?.data?.assetId === 'string' ? n.data.assetId : undefined;
+                if (!n) continue;
+                const assetId = referenceAssetId(n);
                 if (!assetId) continue;
+                const modality = referenceModality(n);
                 try {
                     const asset = await getAsset(assetId);
-                    const r2Key = n?.type === 'video'
+                    const r2Key = modality === 'video'
                         ? (asset.coverR2Key ?? asset.srcR2Key)
                         : asset.srcR2Key;
                     if (r2Key) next.set(nid, r2Key);
@@ -718,7 +730,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const mentionableNodes = useMemo(() => {
         return refNodeIds.map((nodeId, i) => {
             const node = getNode(nodeId);
-            const type = (node?.type as string) || 'image';
+            const type = (node ? referenceModality(node) : undefined) || 'image';
             const prefix = type === 'text'
                 ? 'Text'
                 : type === 'video'
@@ -1011,6 +1023,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // re-hydrating from Loro doesn't force the panel open on every mount.
     useEffect(() => {
         if (!data.openPanel) return;
+        openActionPanel();
         setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, openPanel: undefined } } : n));
         if (loroSync?.connected) {
             loroSync.updateNode(id, { data: { openPanel: undefined } });
@@ -1038,7 +1051,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             }
             return;
         }
-        const incomingModelId = mapLegacyModelId(actionType, data.modelId as string | undefined, data.modelName);
+        const incomingModelId = resolveConfiguredModelId(actionType, data.modelId as string | undefined, data.modelName);
         if (incomingModelId && incomingModelId !== modelId) {
             const nextModel = MODEL_CARDS.find((card) => card.id === incomingModelId) || selectedModel;
             const nextParams = { ...(nextModel?.defaultParams ?? {}), ...(data.modelParams ?? {}) } as ModelParams;
@@ -1118,18 +1131,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             }
         });
         setShowModal(false);
-        setShowPanel(false);
-    }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNode, setNodes, addEdges, loroSync]);
+        closeActionPanel();
+    }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNode, setNodes, addEdges, loroSync, closeActionPanel]);
 
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
         const newLabel = evt.target.value;
         setLabel(newLabel);
     };
 
-    // Shared pending-asset primitives. Run loops `spawnPending` (fallback) or
-    // `adoptDraft` (when a downstream idle draft already exists); the `+`
-    // flyout uses `spawnDraft` for the lazy unix-pipe draft.
-    const { spawnPending, spawnDraft, adoptDraft, canSpawn, disabledReason, outputKind } = useSpawnPendingAsset({
+    // Shared pending-asset primitives. Run always creates a fresh pending
+    // output; only a draft node's Build action may adopt that draft.
+    const { spawnPending, spawnDraft, canSpawn, disabledReason, outputKind } = useSpawnPendingAsset({
         actionBadgeId: id,
         actionType,
         isCustom,
@@ -1144,29 +1156,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         refNodeIds,
         getNodes,
         addNodeWithAutoLayout,
+        addNodeWithLayout,
         addEdges,
         setNodes,
         loroSync,
     });
-
-    /** Find a downstream idle draft of matching modality — Run will adopt it
-     *  in place of creating a fresh pending node. First match wins. */
-    const findIdleDownstreamDraft = useCallback((): RFNode | null => {
-        const outgoing = connectedEdges.filter((e) => e.source === id);
-        for (const e of outgoing) {
-            const n = getNode(e.target);
-            if (!n) continue;
-            if (n.type !== outputKind) continue;
-            const d = n.data as Record<string, unknown> | undefined;
-            if (!d) continue;
-            if (d.status !== 'draft' && d.status !== 'idle') continue;
-            // Media drafts: still empty if no asset has been attached.
-            // text drafts: empty/idle is the only reusable state (handled by status check above).
-            if (outputKind !== 'text' && d.assetId != null) continue;
-            return n;
-        }
-        return null;
-    }, [connectedEdges, id, getNode, outputKind]);
 
     // Auto-run effect
     const handleExecute = useCallback(async () => {
@@ -1206,23 +1200,75 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                 baseLabel = extractLabelFromPrompt(promptText, 'Generated Image');
             }
 
-            const batchCount = (isCustom && customDef) ? 1 : countValue;
-            const existingDraft = findIdleDownstreamDraft();
-            for (let i = 0; i < batchCount; i++) {
-                const labelOverride = batchCount > 1 ? `${baseLabel} (${i + 1})` : baseLabel;
-                let created: RFNode | null = null;
-                if (i === 0 && existingDraft) {
-                    // Unix-pipe adoption: reuse the user-staged draft; re-partition
-                    // refs so upstream that completed after the draft was created
-                    // gets picked up. `preAllocatedAssetId` is ignored here — the
-                    // draft already has an id.
-                    created = await adoptDraft(existingDraft.id, { labelOverride });
-                } else {
-                    const assetId = i === 0 ? preAllocatedAssetId : undefined;
-                    created = await spawnPending({ assetId, labelOverride });
+            const directorShotItems = actionType === 'video-gen'
+                ? refNodeIds.flatMap((nodeId) => {
+                    const node = getNode(nodeId);
+                    if (!node || node.type !== 'director-stage') return [];
+                    return directorReferencePackets(node)
+                        .filter((packet): packet is DirectorReferencePacket & {
+                            scope: { kind: 'shot'; selectedShotIds: [string, ...string[]] };
+                        } => packet.scope?.kind === 'shot' && packet.scope.selectedShotIds.length === 1)
+                        .map((packet) => ({
+                            packet,
+                            sourceNodeId: node.id,
+                            shotId: packet.scope.selectedShotIds[0],
+                            shotName: packet.shotSpec.shots[0]?.name,
+                        }));
+                })
+                : [];
+
+            if (directorShotItems.length > 0) {
+                const groupId = await generateSemanticId(projectId);
+                const selectedShotIds = directorShotItems.map((item) => item.shotId);
+                const firstPacket = directorShotItems[0].packet;
+                const groupNode = addNodeWithAutoLayout({
+                    id: groupId,
+                    type: 'group',
+                    data: {
+                        label: `Director shots · ${directorShotItems.length}`,
+                        directorShotGroupId: groupId,
+                        sourceDirectorStageId: firstPacket.stageId,
+                        sourceDirectorStageRevisionId: firstPacket.stageRevisionId,
+                        selectedDirectorShotIds: selectedShotIds,
+                    },
+                    style: {
+                        width: 560,
+                        height: Math.max(420, 112 + directorShotItems.length * 360),
+                    },
+                }, id, { x: 340, y: 0 });
+                if (!groupNode) {
+                    throw new Error('Failed to create Director Shot Group.');
                 }
-                if (!created && i === 0) {
-                    throw new Error('Failed to create pending node.');
+                if (loroSync?.connected) {
+                    loroSync.addNode(groupNode.id, groupNode);
+                }
+
+                for (let i = 0; i < directorShotItems.length; i++) {
+                    const item = directorShotItems[i];
+                    const created = await spawnPending({
+                        assetId: i === 0 ? preAllocatedAssetId : undefined,
+                        directorReferencePacket: item.packet,
+                        directorShotGroupId: groupId,
+                        groupIndex: i,
+                        labelOverride: item.shotName || `${baseLabel} · ${item.shotId}`,
+                        parentGroupId: groupId,
+                        sourceDirectorStageId: item.sourceNodeId,
+                        sourceDirectorStageRevisionId: item.packet.stageRevisionId,
+                        sourceDirectorStageShotId: item.shotId,
+                    });
+                    if (!created && i === 0) {
+                        throw new Error('Failed to create pending Director Shot node.');
+                    }
+                }
+            } else {
+                const batchCount = (isCustom && customDef) ? 1 : countValue;
+                for (let i = 0; i < batchCount; i++) {
+                    const labelOverride = batchCount > 1 ? `${baseLabel} (${i + 1})` : baseLabel;
+                    const assetId = i === 0 ? preAllocatedAssetId : undefined;
+                    const created = await spawnPending({ assetId, labelOverride });
+                    if (!created && i === 0) {
+                        throw new Error('Failed to create pending node.');
+                    }
                 }
             }
 
@@ -1254,10 +1300,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         customDef,
         countValue,
         spawnPending,
-        adoptDraft,
-        findIdleDownstreamDraft,
         setNodes,
         loroSync,
+        projectId,
+        addNodeWithAutoLayout,
     ]);
 
     // Helper to extract meaningful label from prompt content (already moved outside)
@@ -1293,7 +1339,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             open={showModal}
             onClose={handleCancel}
             ariaLabel="Expanded prompt editor"
-            overlayClassName="bg-white/80"
+            overlayClassName="bg-warm-page/80"
         >
                     {/* Header with Title Input */}
                     <div className="px-12 pt-8 pb-2 flex justify-between items-start">
@@ -1406,7 +1452,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             icon={<Plus size={16} weight="bold" />}
                                             size="lg"
                                             shape="rounded"
-                                            className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-slate-300 text-slate-700 hover:border-slate-500 hover:bg-transparent hover:text-slate-600 dark:text-slate-300"
+                                            className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-warm-border text-content-secondary hover:border-brand/45 hover:bg-transparent hover:text-content-primary"
                                         />
                                     </PopoverTrigger>
                                     <PopoverContent
@@ -1504,14 +1550,31 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         setRefPickerTarget(null);
     }, []);
 
-    // Chat-style config panel. The surrounding Popover owns portal, Escape,
-    // outside interaction, and focus restoration.
+    useEffect(() => {
+        if (showPanel) return;
+        closeConfigPanelControls();
+        setShowMentionMenu(false);
+    }, [closeConfigPanelControls, showPanel]);
+
+    useEffect(() => {
+        if (!showPanel) return;
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            closeActionPanel();
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [closeActionPanel, showPanel]);
+
+    // ReactFlow's NodeToolbar owns screen-space positioning, so this panel
+    // follows node drag and viewport transforms without a floating-ui poll.
     const configPanel = (
         <motion.div
             initial={{ y: 16, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-            className="w-full max-w-2xl flex flex-col items-start"
+            data-action-config-panel={id}
+            className="w-[min(42rem,calc(100vw-2rem))] max-w-none flex flex-col items-start"
         >
                     {/* Reference images strip above the prompt panel.
                         - startEnd models: two labeled Start/End slots joined by ⇌, always visible.
@@ -1562,7 +1625,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                                 size="lg"
                                                                 shape="rounded"
                                                                 disabled={isCheckpointLocked}
-                                                                className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-slate-300 bg-white/60 text-slate-700 shadow-sm hover:border-slate-400 hover:bg-white dark:text-slate-300"
+                                                                className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-warm-border bg-warm-surface text-content-secondary shadow-sm hover:border-brand/45 hover:bg-warm-muted hover:text-content-primary"
                                                             />
                                                         </PopoverTrigger>
                                                         <PopoverContent
@@ -1676,7 +1739,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                 icon={<Plus size={14} weight="bold" />}
                                                 size="lg"
                                                 shape="rounded"
-                                                className="h-10 min-h-10 w-10 min-w-10 flex-shrink-0 rounded-lg border border-dashed border-slate-300 bg-white/60 text-slate-700 shadow-sm hover:border-slate-400 hover:bg-white dark:text-slate-300"
+                                                className="h-10 min-h-10 w-10 min-w-10 flex-shrink-0 rounded-lg border border-dashed border-warm-border bg-warm-surface text-content-secondary shadow-sm hover:border-brand/45 hover:bg-warm-muted hover:text-content-primary"
                                             />
                                         </PopoverTrigger>
                                         <PopoverContent
@@ -1747,20 +1810,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         className="relative"
                                         triggerClassName="px-2.5 py-1 text-xs"
                                         value={modelId}
-                                        options={[...availableModels]
-                                            .sort((a, b) => {
-                                                // Compatible first, incompatible after — keeps the "broken" options
-                                                // discoverable without pushing the good choices offscreen.
-                                                const ca = refNodeIds.length === 0 || isModelCompatibleWithRefs(a) ? 0 : 1;
-                                                const cb = refNodeIds.length === 0 || isModelCompatibleWithRefs(b) ? 0 : 1;
-                                                return ca - cb;
-                                            })
+                                        options={compatibleAvailableModels
                                             .map((card) => {
-                                                const compat = refNodeIds.length === 0 || isModelCompatibleWithRefs(card);
                                                 return {
                                                     value: card.id,
                                                     label: card.name,
-                                                    description: getModelDropdownSecondaryText(compat),
+                                                    description: getModelDropdownSecondaryText(true),
                                                 };
                                             })}
                                         onValueChange={(nextModelId) => {
@@ -1974,17 +2029,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
     return (
         <>
-            <Popover
-                open={showPanel}
-                onOpenChange={(nextOpen) => {
-                    setShowPanel(nextOpen);
-                    if (!nextOpen) closeConfigPanelControls();
-                }}
-            >
-                {/* Outer width matches the capsule so left/right handles snap to
-                    the visible edges. Without `w-[260px]`, the wrapper inherits
-                    the wider React Flow bounding rect and the handle floats. */}
-                <div className="group relative w-[260px]">
+            {/* Outer width matches the capsule so left/right handles snap to
+                the visible edges. Without `w-[260px]`, the wrapper inherits
+                the wider React Flow bounding rect and the handle floats. */}
+            <div className="group relative w-[260px]">
                     {/* Peer selection rings — drawn behind the capsule. Local
                         blue ring is inset on the capsule itself, so peer rings
                         on the outside don't visually fight it. */}
@@ -1996,13 +2044,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         }`}
                     >
                         <div className="flex items-stretch">
-                            <PopoverTrigger asChild>
-                                <Button
-                                    aria-label="Configure action"
-                                    size="sm"
-                                    shape="rounded"
-                                    className="h-auto min-h-0 min-w-0 flex-1 cursor-pointer justify-start gap-2.5 rounded-none border-0 bg-transparent px-3.5 py-4 text-left shadow-none focus-visible:ring-inset"
-                                >
+                            <Button
+                                aria-label="Configure action"
+                                size="sm"
+                                shape="rounded"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleActionPanel();
+                                }}
+                                className="h-auto min-h-0 min-w-0 flex-1 cursor-pointer justify-start gap-2.5 rounded-none border-0 bg-transparent px-3.5 py-4 text-left shadow-none hover:bg-transparent focus-visible:ring-inset"
+                            >
                                     <div className={`flex-shrink-0 ${colorClass}`}>
                                         <Icon size={16} weight="fill" />
                                     </div>
@@ -2020,8 +2071,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             actorAgentId={data.actorAgentId as string | undefined}
                                         />
                                     </div>
-                                </Button>
-                            </PopoverTrigger>
+                            </Button>
                             <div className="flex flex-shrink-0 items-center pr-3.5">
                                 {/* Run button — separate click target */}
                                 <Tooltip label={panelRunLabel}>
@@ -2068,20 +2118,20 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         disabledReason={disabledReason}
                         outputKind={outputKind}
                     />
-                </div>
-                <PopoverContent
-                    side="bottom"
-                    align="center"
-                    sideOffset={12}
-                    collisionPadding={16}
-                    className="z-[9998] w-[min(42rem,calc(100vw-2rem))] overflow-visible border-none bg-transparent p-0 shadow-none"
-                    onOpenAutoFocus={(event) => event.preventDefault()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => event.stopPropagation()}
-                >
-                    {configPanel}
-                </PopoverContent>
-            </Popover>
+            </div>
+            <NodeToolbar
+                nodeId={id}
+                isVisible={showPanel}
+                position={Position.Bottom}
+                align="center"
+                offset={12}
+                className="nodrag nopan nowheel pointer-events-auto z-[9998]"
+                style={{ zIndex: 9998 }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+            >
+                {configPanel}
+            </NodeToolbar>
 
             {modalContent}
         </>

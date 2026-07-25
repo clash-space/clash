@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -92,6 +92,87 @@ describe("desktop startup test suite", () => {
     expect(pkg.scripts["test:e2e:qa-agent"]).toContain(
       "qa-agent-codex.mjs",
     );
+  });
+
+  it("owns one strict-port renderer for the Desktop dev lifecycle", () => {
+    const pkg = JSON.parse(readText("package.json")) as {
+      scripts: Record<string, string>;
+    };
+    const source = existsSync(join(desktopPath, "src/dev.ts"))
+      ? readText("src/dev.ts")
+      : "";
+
+    expect(pkg.scripts.dev).toBe("tsx src/dev.ts");
+    expect(source).toContain('"--strictPort"');
+    expect(source).toContain("waitForHttp");
+    expect(source).toContain("assertPortAvailable");
+    expect(source).toContain("CLASH_WEB_URL: rendererUrl");
+    expect(source).toContain("shutdownProcessTree");
+    expect(source).not.toContain("shell: true");
+  });
+
+  it("keeps Director and Timeline rendering active while the desktop window is occluded", () => {
+    const source = readText("src/main.ts");
+    expect(source).toContain("backgroundThrottling: false");
+  });
+
+  it("waits for the embedded local API lifecycle during app shutdown", () => {
+    const source = readText("src/main.ts");
+
+    expect(source).toContain('app.on("before-quit"');
+    expect(source).toContain("event.preventDefault()");
+    expect(source).toContain("shutdownBarrierStarted");
+    expect(source).toContain("localApiServer.close");
+  });
+
+  it("injects the packaged Python SDK into local-model subprocess discovery", () => {
+    const source = readText("src/main.ts");
+
+    expect(source).toContain("resolveClashSdkPythonPath");
+    expect(source).toContain("prependPythonPath");
+    expect(source).toMatch(/process\.env\.PYTHONPATH\s*=\s*prependPythonPath/);
+  });
+
+  it("exposes read-only NLE availability detection through the desktop bridge", () => {
+    const main = readText("src/main.ts");
+    const preload = readText("src/preload.ts");
+
+    expect(main).toContain('ipcMain.handle("clash:get-nle-availability"');
+    expect(main).toContain("detectNleAvailability()");
+    expect(preload).toContain('getNleAvailability: () => ipcRenderer.invoke("clash:get-nle-availability")');
+  });
+
+  it("provides the Timeline renderer to the local backend without a renderer IPC", () => {
+    const main = readText("src/main.ts");
+    const preload = readText("src/preload.ts");
+
+    expect(main).toContain("timelineRenderer: createDesktopTimelineRenderer");
+    expect(main).not.toContain('ipcMain.handle("clash:export-timeline-video"');
+    expect(preload).not.toContain("exportTimelineVideo");
+  });
+
+  it("exports a recorded Director camera video through the desktop bridge", () => {
+    const main = readText("src/main.ts");
+    const preload = readText("src/preload.ts");
+
+    expect(main).toContain('ipcMain.handle("clash:export-director-video"');
+    expect(main).toContain("safeDirectorVideoExportName");
+    expect(main).toContain('filters: [{ name: "WebM video", extensions: ["webm"] }]');
+    expect(preload).toContain('exportDirectorVideo: (request: unknown) => ipcRenderer.invoke("clash:export-director-video", request)');
+  });
+
+  it("selects a Node runtime with the capabilities required by the renderer", () => {
+    const source = readText("src/dev.ts");
+    const rootPkg = JSON.parse(readRootText("package.json")) as {
+      engines?: { node?: string };
+    };
+
+    expect(readRootText(".nvmrc").trim()).toBe("22.22.0");
+    expect(rootPkg.engines?.node).toBe(">=22.22.0");
+    expect(source).toContain("registerHooks");
+    expect(source).toContain("nvm install && nvm use");
+    expect(source).toContain("process.execPath");
+    expect(source).toContain("process.env.npm_execpath");
   });
 
   it("keeps startup levels as checked-in runnable scripts", () => {
@@ -365,6 +446,28 @@ describe("desktop startup test suite", () => {
     expect(helperSource).toContain('rm(persistStateDir, { recursive: true, force: true })');
   });
 
+  it("can freeze the web UI to a static build snapshot for long real-agent E2E runs", () => {
+    const helperSource = readText("e2e/startup-shared.mjs");
+
+    expect(helperSource).toContain('process.env.CLASH_E2E_STATIC_WEB === "1"');
+    expect(helperSource).toContain('useStaticPreview ? ["preview"] : []');
+  });
+
+  it("keeps a dedicated Electron GUI E2E for harness update and session restart", () => {
+    const source = readText("e2e/harness-update-agent-browser.mjs");
+
+    expect(source).toContain('CLASH_E2E_STUB_HARNESS_UPDATE: "1"');
+    expect(source).toContain('CLASH_E2E_STUB_ACP_DELAY_MS: "15000"');
+    expect(source).toContain('"01-active-turn-update-control.png"');
+    expect(source).toContain('"02-expanded-updates.png"');
+    expect(source).toContain('"03-restart-after-turn.png"');
+    expect(source).toContain('"04-restart-queued.png"');
+    expect(source).toContain('"05-session-restarted.png"');
+    expect(source).toContain('clickButtonByLabel(agentBrowser, "1 ACP update available")');
+    expect(source).toContain('clickButtonByLabel(agentBrowser, "Update Mock ACP")');
+    expect(source).toContain('clickButtonByLabel(agentBrowser, "Restart after this turn")');
+  });
+
   it("keeps a permanent narrow-window project chrome check", () => {
     const source = readText("e2e/agent-browser-smoke.mjs");
 
@@ -388,6 +491,17 @@ describe("desktop startup test suite", () => {
     expect(source).not.toContain("clickComposerSend");
   });
 
+  it("recovers the real Codex Electron target before post-turn session controls", () => {
+    const source = readText("e2e/real-codex-agent-browser.mjs");
+    const finalCapture = source.indexOf('agentBrowser(["screenshot", finalScreenshot])');
+    const recovery = source.indexOf("recoverAgentBrowserTarget(agentBrowser", finalCapture);
+    const newSession = source.indexOf('clickButtonByLabel(agentBrowser, "New session")', recovery);
+
+    expect(finalCapture).toBeGreaterThanOrEqual(0);
+    expect(recovery).toBeGreaterThan(finalCapture);
+    expect(newSession).toBeGreaterThan(recovery);
+  });
+
   it("types the real Codex prompt through agent-browser keyboard input", () => {
     const helperSource = readText("e2e/startup-shared.mjs");
 
@@ -401,6 +515,37 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("typeComposer(agentBrowser, text)");
     expect(source).toContain("clickComposerSubmitButton(agentBrowser)");
     expect(source).not.toContain('execCommand("insertText"');
+  });
+
+  it("creates projects through the named project dialog in every desktop UI E2E", () => {
+    const helperSource = readText("e2e/startup-shared.mjs");
+    const sources = [
+      readText("e2e/agent-browser-smoke.mjs"),
+      readText("e2e/real-codex-agent-browser.mjs"),
+      readText("e2e/real-codex-resume-agent-browser.mjs"),
+    ];
+
+    expect(helperSource).toContain("submitProjectCreateDialog");
+    expect(helperSource).toContain("input[placeholder='Untitled project']");
+    expect(helperSource).toContain('["keyboard", "type", projectName]');
+    for (const source of sources) {
+      expect(source).toContain("submitProjectCreateDialog(agentBrowser");
+    }
+  });
+
+  it("requires a visibly open history menu in every desktop UI E2E", () => {
+    const helperSource = readText("e2e/startup-shared.mjs");
+    const sources = [
+      readText("e2e/agent-browser-smoke.mjs"),
+      readText("e2e/real-codex-agent-browser.mjs"),
+      readText("e2e/real-codex-resume-agent-browser.mjs"),
+    ];
+
+    expect(helperSource).toContain("openSessionHistoryMenu");
+    expect(helperSource).toContain("rect.width > 0 && rect.height > 0");
+    for (const source of sources) {
+      expect(source).toContain("openSessionHistoryMenu(agentBrowser)");
+    }
   });
 
   it("recovers an Electron agent-browser session that falls back to about:blank", async () => {
@@ -531,10 +676,10 @@ describe("desktop startup test suite", () => {
     })).toThrow(/placeholder session id/i);
   });
 
-  it("opens stub session history with the shared pointer helper and waits for the menu role", () => {
+  it("opens stub session history with the shared visible-menu helper", () => {
     const source = readText("e2e/agent-browser-smoke.mjs");
 
-    expect(source).toContain("clickButtonByLabel(agentBrowser, \"Session history\")");
+    expect(source).toContain("openSessionHistoryMenu(agentBrowser)");
     expect(source).toContain("[role=\"menu\"][aria-label=\"Session history\"]");
     expect(source).toContain("clickHistoryMenuItemByText(firstPrompt)");
     expect(source).toContain("restored first session transcript");

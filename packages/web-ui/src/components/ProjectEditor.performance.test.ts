@@ -6,6 +6,10 @@ function projectEditorSource() {
   return readFileSync(new URL("./ProjectEditor.tsx", import.meta.url), "utf8");
 }
 
+function chatbotCopilotSource() {
+  return readFileSync(new URL("./ChatbotCopilot.tsx", import.meta.url), "utf8");
+}
+
 describe("ProjectEditor canvas performance", () => {
   it("keeps ReactFlow viewport virtualization enabled", () => {
     const source = projectEditorSource();
@@ -13,15 +17,56 @@ describe("ProjectEditor canvas performance", () => {
     expect(source).toMatch(/onlyRenderVisibleElements/);
   });
 
-  it("loads ELK only when a full graph layout is requested", () => {
+  it("keeps drag-only node changes from rerendering the Copilot tree", () => {
+    const editorSource = projectEditorSource();
+    const copilotSource = chatbotCopilotSource();
+    const copilotUsage =
+      editorSource.match(/<ChatbotCopilot[\s\S]*?\/>/)?.[0] ?? "";
+
+    expect(editorSource).toContain("const copilotNodes = useMemo(");
+    expect(editorSource).toContain(
+      "const selectedNodesForInsertion = selectedNodesRef.current;",
+    );
+    expect(copilotUsage).toContain("nodes={copilotNodes}");
+    // Canvas selection no longer flows into the copilot implicitly; the
+    // right-click annotate flow is the single add-to-chat path.
+    expect(copilotUsage).not.toContain("selectedNodes=");
+    expect(copilotUsage).not.toContain("initialMessages={[]}");
+    expect(copilotUsage).not.toContain("findNodeIdByName={findNodeIdByName}");
+    expect(copilotUsage).not.toContain("edges={edges}");
+    expect(copilotSource).toContain("export default memo(ChatbotCopilot);");
+  });
+
+  it("short-circuits multi-selection geometry while a node is dragging", () => {
+    const source = projectEditorSource();
+
+    expect(source).toContain("const [isNodeDragging, setIsNodeDragging] = useState(false)");
+    expect(source).toMatch(
+      /const selectionBounds = useMemo\(\(\) => \{[\s\S]*?if \(isNodeDragging \|\| isMarqueeing\) return null;/,
+    );
+  });
+
+  it("does not eagerly load ELK with the editor", () => {
     const source = projectEditorSource();
 
     expect(source).not.toContain(
       "import { getLayoutedElements } from '@clash/web-ui/lib/utils/elkLayout';",
     );
-    expect(source).toMatch(
-      /await import\(["']@clash\/web-ui\/lib\/utils\/elkLayout["']\)/,
-    );
+  });
+
+  it("warms the Timeline editor before every immediate Timeline navigation", () => {
+    const source = projectEditorSource();
+    for (const callbackName of [
+      "openTimelineFromCanvasAction",
+      "openAssetRelationTimeline",
+      "createTimelineFromNavigator",
+    ]) {
+      const callback = source.match(new RegExp(`const ${callbackName} = useCallback\\([\\s\\S]*?\\n  \\);`))?.[0] ?? "";
+      expect(callback).toContain("void preloadTimelineEditor();");
+      expect(callback.indexOf("void preloadTimelineEditor();")).toBeLessThan(
+        callback.indexOf('setWorkspaceSurface({ kind: "timeline"'),
+      );
+    }
   });
 
   it("normalizes canvas nodes at write boundaries instead of rescanning on render", () => {
@@ -34,6 +79,40 @@ describe("ProjectEditor canvas performance", () => {
     expect(source).toContain("nodes={nodes}");
     expect(source).toContain("setNodesInternal(processedNodes as AppNode[]);");
     expect(source).toContain("setNodesInternal(nextNodes);");
+  });
+
+  it("skips structural sanitization for position and selection-only frames", () => {
+    const source = projectEditorSource();
+
+    expect(source).toContain("nodeChangesRequireStructuralSanitize(changes)");
+    expect(source).toMatch(
+      /nodeChangesRequireStructuralSanitize\(changes\)[\s\S]*?sanitizeNodes\(updatedNodes\)[\s\S]*?: updatedNodes/,
+    );
+  });
+
+  it("reuses unchanged node and edge objects across Loro snapshots", () => {
+    const source = projectEditorSource();
+
+    expect(source).toContain("reconcileSyncedCanvasNodes(");
+    expect(source).toContain("reconcileSyncedCanvasEdges(");
+  });
+
+  it("dismisses node-owned overlays when a canvas toolbar menu opens", () => {
+    const source = projectEditorSource();
+
+    expect(source).toContain("dismissTransientUiOnMenuOpen");
+    expect(source).toMatch(
+      /<DropdownMenu[\s\S]*?key=\{item\.id\}[\s\S]*?onOpenChange=\{\s*dismissTransientUiOnMenuOpen\s*\}/,
+    );
+  });
+
+  it("does not normalize every node z-index from a nodes-dependent effect", () => {
+    const source = projectEditorSource();
+
+    expect(source).not.toMatch(
+      /useEffect\(\(\) => \{[\s\S]*?applyAutoZIndex\(nodes\)[\s\S]*?\}, \[nodes,/,
+    );
+    expect(source).toContain("nodeChangesRequireZIndexNormalization(changes)");
   });
 
   it("keeps Loro mutations outside React state updater functions", () => {

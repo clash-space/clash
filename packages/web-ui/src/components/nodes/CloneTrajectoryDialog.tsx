@@ -25,6 +25,7 @@ import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { IconButton } from '../ui/icon-button';
 import { Tooltip } from '../ui/tooltip';
+import { CanvasTransientUiProvider } from '../CanvasTransientUiContext';
 
 interface CloneTrajectoryDialogProps {
     open: boolean;
@@ -336,24 +337,26 @@ const PreviewCanvas = ({
 
     return (
         <PreviewCtx.Provider value={ctxValue}>
-            <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                nodeTypes={previewNodeTypes as unknown as Record<string, ComponentType<NodeProps>>}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                elementsSelectable={false}
-                panOnDrag
-                zoomOnScroll
-                fitView
-                minZoom={0.3}
-                maxZoom={1.5}
-                proOptions={{ hideAttribution: true }}
-            >
-                <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#e2e8f0" />
-            </ReactFlow>
+            <CanvasTransientUiProvider>
+                <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    nodeTypes={previewNodeTypes as unknown as Record<string, ComponentType<NodeProps>>}
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    elementsSelectable={false}
+                    panOnDrag
+                    zoomOnScroll
+                    fitView
+                    minZoom={0.3}
+                    maxZoom={1.5}
+                    proOptions={{ hideAttribution: true }}
+                >
+                    <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#e2e8f0" />
+                </ReactFlow>
+            </CanvasTransientUiProvider>
         </PreviewCtx.Provider>
     );
 };

@@ -8,15 +8,19 @@
  *
  * Now: one function `capability(card)` produces a normalized profile. Every
  * consumer reads `cap.ref.video.accepts` / `cap.ref.image.max` directly. The
- * other three exports (`validateRefs`, `partitionRefs`, `pickDefaultModel`)
+ * other exports (`validateRefs`, `partitionRefs`, `findCompatibleModels`,
+ * `pickDefaultModel`)
  * compose on top of `capability` and replace what would otherwise be a
  * sprawling utils module.
  */
 
 import type { ModelCard } from "./models";
-import { MODEL_CARDS } from "./models";
 import { normalizePromptInput } from "./prompt";
 import type { CustomActionDefinition } from "./canvas";
+import {
+  DirectorReferencePacketSchema,
+  type DirectorReferencePacket,
+} from "./director-reference";
 
 export type Modality = "text" | "image" | "video" | "audio";
 
@@ -31,6 +35,8 @@ export interface RefBound {
   min: number;
   /** Maximum allowed. */
   max: number;
+  /** If this ref is present, at least one listed companion modality is required. */
+  requiresAnyOf?: ReadonlyArray<Modality>;
   /** True iff the image bucket is satisfied via the start/end frame
    *  convention (start required, end optional). */
   isStartEnd?: boolean;
@@ -70,17 +76,32 @@ export function capability(card: ModelCard): Capability {
   if (im.startEnd) {
     image = { accepts: true, min: 1, max: 2, isStartEnd: true };
   } else if (im.images) {
-    image = { accepts: true, min: im.images.min ?? 0, max: im.images.max };
+    image = {
+      accepts: true,
+      min: im.images.min ?? 0,
+      max: im.images.max,
+      requiresAnyOf: im.images.requiresAnyOf,
+    };
   } else {
     image = NO_BOUND;
   }
 
   const video: RefBound = im.videos
-    ? { accepts: true, min: im.videos.min ?? 0, max: im.videos.max }
+    ? {
+        accepts: true,
+        min: im.videos.min ?? 0,
+        max: im.videos.max,
+        requiresAnyOf: im.videos.requiresAnyOf,
+      }
     : NO_BOUND;
 
   const audio: RefBound = im.audios
-    ? { accepts: true, min: im.audios.min ?? 0, max: im.audios.max }
+    ? {
+        accepts: true,
+        min: im.audios.min ?? 0,
+        max: im.audios.max,
+        requiresAnyOf: im.audios.requiresAnyOf,
+      }
     : NO_BOUND;
   const text: RefBound = promptModalities.includes("text")
     ? { accepts: true, min: 0, max: Number.MAX_SAFE_INTEGER }
@@ -142,7 +163,7 @@ export function capabilityFromCustom(def: CustomActionDefinition): Capability {
 export function validateRefs(
   cardOrCap: ModelCard | Capability,
   counts: { text?: number; image?: number; video?: number; audio?: number },
-  opts: { prompt?: string } = {},
+  opts: { prompt?: string; enforceMinimums?: boolean } = {},
 ): string | null {
   // Accept either a card (legacy callers) or a pre-derived capability
   // (the new path for custom actions). Detection: capabilities have a
@@ -160,6 +181,12 @@ export function validateRefs(
   const vidCount = counts.video ?? 0;
   const audCount = counts.audio ?? 0;
   const textCount = counts.text ?? 0;
+  const countsByModality: Record<Modality, number> = {
+    text: textCount,
+    image: imgCount,
+    video: vidCount,
+    audio: audCount,
+  };
 
   if (textCount > 0 && !cap.ref.text.accepts) {
     return "Selected model does not accept reference text.";
@@ -174,8 +201,21 @@ export function validateRefs(
     return "Selected model does not accept reference audio.";
   }
 
+  for (const modality of ["image", "video", "audio"] as const) {
+    const required = cap.ref[modality].requiresAnyOf;
+    if (countsByModality[modality] === 0 || !required?.length) continue;
+    if (!required.some((companion) => countsByModality[companion] > 0)) {
+      const requirement = required.length === 1
+        ? `reference ${required[0]}`
+        : `reference ${required.slice(0, -1).join(", ")} or ${required[required.length - 1]}`;
+      return `Selected model requires at least one ${requirement} when reference ${modality} is attached.`;
+    }
+  }
+
+  const enforceMinimums = opts.enforceMinimums ?? true;
+
   if (cap.ref.image.isStartEnd) {
-    if (imgCount < 1) {
+    if (enforceMinimums && imgCount < 1) {
       return "Selected model needs a start frame. Attach one via @-mention in the prompt.";
     }
     if (imgCount > 2) {
@@ -183,7 +223,7 @@ export function validateRefs(
     }
   } else if (cap.ref.image.accepts) {
     const { min, max } = cap.ref.image;
-    if (imgCount < min) {
+    if (enforceMinimums && imgCount < min) {
       return min === 1
         ? "Selected model requires a reference image. Attach one via @-mention in the prompt."
         : `Selected model requires at least ${min} reference images.`;
@@ -195,21 +235,21 @@ export function validateRefs(
 
   if (cap.ref.video.accepts) {
     const { min, max } = cap.ref.video;
-    if (vidCount < min) return `Selected model requires at least ${min} reference video(s).`;
+    if (enforceMinimums && vidCount < min) return `Selected model requires at least ${min} reference video(s).`;
     if (vidCount > max) {
       return `Selected model accepts at most ${max} reference video(s) (got ${vidCount}).`;
     }
   }
   if (cap.ref.audio.accepts) {
     const { min, max } = cap.ref.audio;
-    if (audCount < min) return `Selected model requires at least ${min} reference audio clip(s).`;
+    if (enforceMinimums && audCount < min) return `Selected model requires at least ${min} reference audio clip(s).`;
     if (audCount > max) {
       return `Selected model accepts at most ${max} reference audio clip(s) (got ${audCount}).`;
     }
   }
   if (cap.ref.text.accepts) {
     const { min, max } = cap.ref.text;
-    if (textCount < min) return `Selected model requires at least ${min} reference text node(s).`;
+    if (enforceMinimums && textCount < min) return `Selected model requires at least ${min} reference text node(s).`;
     if (textCount > max) {
       return `Selected model accepts at most ${max} reference text node(s) (got ${textCount}).`;
     }
@@ -226,7 +266,15 @@ export function validateRefs(
  */
 export interface RefNodeLike {
   type?: string;
-  data?: { content?: string; prompt?: string; label?: string; assetId?: string } & Record<string, unknown>;
+  data?: {
+    content?: string;
+    prompt?: string;
+    label?: string;
+    assetId?: string;
+    outputVideoAssetId?: string;
+    directorReferencePacket?: DirectorReferencePacket | unknown;
+    directorShotReferencePackets?: ReadonlyArray<DirectorReferencePacket | unknown>;
+  } & Record<string, unknown>;
 }
 
 export interface RefPartition {
@@ -238,6 +286,89 @@ export interface RefPartition {
   videoAssetIds: string[];
   /** Audio refs: D1 asset IDs. */
   audioAssetIds: string[];
+}
+
+/**
+ * Resolve the reference modality exposed by a Canvas node.
+ *
+ * Director Stage is an editor node rather than a media node, but after an
+ * export its source handle represents the latest reference video. Keeping
+ * that adapter here lets every generation entry point consume the same graph
+ * contract without inserting a synthetic video or Timeline node.
+ */
+export function referenceModality(node: RefNodeLike): Modality | undefined {
+  if (
+    node.type === "text"
+    || node.type === "image"
+    || node.type === "video"
+    || node.type === "audio"
+  ) {
+    return node.type;
+  }
+  if (node.type === "director-stage") return "video";
+  return undefined;
+}
+
+/** Return the registered project asset carried by a reference node. */
+export function referenceAssetId(node: RefNodeLike): string | undefined {
+  const packet = node.type === "director-stage"
+    ? directorReferencePackets(node)[0]
+    : undefined;
+  const value = node.type === "director-stage"
+    ? packet?.referenceVideo.assetId ?? node.data?.outputVideoAssetId
+    : node.data?.assetId;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+export function directorReferencePacket(
+  node: RefNodeLike,
+): DirectorReferencePacket | undefined {
+  return directorReferencePackets(node)[0];
+}
+
+export function directorReferencePackets(
+  node: RefNodeLike,
+): DirectorReferencePacket[] {
+  if (node.type !== "director-stage") return [];
+  const shotPackets = Array.isArray(node.data?.directorShotReferencePackets)
+    ? node.data.directorShotReferencePackets.flatMap((packet) => {
+        const parsed = DirectorReferencePacketSchema.safeParse(packet);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : [];
+  if (shotPackets.length > 0) return shotPackets;
+  const parsed = DirectorReferencePacketSchema.safeParse(
+    node.data?.directorReferencePacket,
+  );
+  return parsed.success ? [parsed.data] : [];
+}
+
+export function hasDirectorReferenceOutput(node: RefNodeLike): boolean {
+  if (node.type !== "director-stage") return false;
+  const packet = directorReferencePacket(node);
+  if (packet?.referenceVideo.assetId) return true;
+  return Boolean(
+    typeof node.data?.outputVideoAssetId === "string"
+    && node.data.outputVideoAssetId.trim(),
+  );
+}
+
+function selectDirectorReferenceStillAssetIds(
+  packet: DirectorReferencePacket,
+  maximum: number,
+): string[] {
+  const stills = [...packet.referenceStills].sort(
+    (left, right) =>
+      (left.timeSeconds ?? 0) - (right.timeSeconds ?? 0)
+      || left.assetId.localeCompare(right.assetId),
+  );
+  if (stills.length <= maximum) return stills.map((still) => still.assetId);
+  if (maximum <= 0) return [];
+  if (maximum === 1) return [stills[0]!.assetId];
+  const indexes = Array.from({ length: maximum }, (_, index) =>
+    Math.round(index * (stills.length - 1) / (maximum - 1)),
+  );
+  return [...new Set(indexes.map((index) => stills[index]!.assetId))];
 }
 
 /**
@@ -263,18 +394,32 @@ export function partitionRefs(
     audioAssetIds: [],
   };
   for (const n of refs) {
-    if (n.type === "text" && cap.ref.text.accepts) {
+    if (n.type === "director-stage") {
+      const packet = directorReferencePacket(n);
+      if (packet) {
+        if (cap.ref.video.accepts) {
+          out.videoAssetIds.push(packet.referenceVideo.assetId);
+        } else if (cap.ref.image.accepts) {
+          out.imageAssetIds.push(
+            ...selectDirectorReferenceStillAssetIds(packet, cap.ref.image.max),
+          );
+        }
+        continue;
+      }
+    }
+    const modality = referenceModality(n);
+    if (modality === "text" && cap.ref.text.accepts) {
       const text = normalizePromptInput(n.data?.content ?? n.data?.prompt ?? n.data?.label).trim();
       if (text) out.texts.push(text);
       continue;
     }
-    const aid = typeof n.data?.assetId === 'string' ? n.data.assetId : undefined;
+    const aid = referenceAssetId(n);
     if (!aid) continue;
-    if (n.type === "image" && cap.ref.image.accepts) {
+    if (modality === "image" && cap.ref.image.accepts) {
       out.imageAssetIds.push(aid);
-    } else if (n.type === "video" && cap.ref.video.accepts) {
+    } else if (modality === "video" && cap.ref.video.accepts) {
       out.videoAssetIds.push(aid);
-    } else if (n.type === "audio" && cap.ref.audio.accepts) {
+    } else if (modality === "audio" && cap.ref.audio.accepts) {
       out.audioAssetIds.push(aid);
     }
   }
@@ -282,25 +427,41 @@ export function partitionRefs(
 }
 
 /**
- * Pick a sensible default model for a "spawn downstream action" gesture.
- * If `sourceKind` is given, prefers a model that can also consume that
- * modality as a reference (so the spawn doesn't immediately produce a
- * silently-dropped ref edge).
+ * Find every candidate that satisfies a downstream generation request.
+ * The candidate set is injected deliberately: capability policy is a pure
+ * domain rule and must not import the provider/model registry.
  *
- * Falls back to the first model of the right `outputKind` if no candidate
- * accepts the source — better to spawn something the user can fix than to
- * spawn nothing.
+ * Returns undefined when no model can consume the source by itself. This
+ * keeps downstream menus from creating actions whose only incoming ref is
+ * invalid or would be silently discarded.
  */
+export function findCompatibleModels(opts: {
+  outputKind: "image" | "video" | "audio" | "text";
+  sourceKind?: Modality | string;
+  referenceCounts?: Partial<Record<Modality, number>>;
+  enforceMinimums?: boolean;
+  cards: ReadonlyArray<ModelCard>;
+}): ModelCard[] {
+  const sameKind = opts.cards.filter((card) => card.kind === opts.outputKind);
+  if (opts.referenceCounts) {
+    return sameKind.filter((card) => validateRefs(card, opts.referenceCounts!, {
+      enforceMinimums: opts.enforceMinimums,
+    }) === null);
+  }
+  if (!opts.sourceKind) return sameKind;
+  const sourceKind = opts.sourceKind;
+  if (!isReferenceModality(sourceKind)) return sameKind;
+  const counts = { [sourceKind]: 1 } as Partial<Record<Modality, number>>;
+  return sameKind.filter((card) => validateRefs(card, counts) === null);
+}
+
+/** Pick the first result from an injected, already-ordered candidate set. */
 export function pickDefaultModel(opts: {
   outputKind: "image" | "video" | "audio" | "text";
   sourceKind?: Modality | string;
-  cards?: ReadonlyArray<ModelCard>;
+  referenceCounts?: Partial<Record<Modality, number>>;
+  enforceMinimums?: boolean;
+  cards: ReadonlyArray<ModelCard>;
 }): ModelCard | undefined {
-  const cards = opts.cards ?? MODEL_CARDS;
-  const sameKind = cards.filter((c) => c.kind === opts.outputKind);
-  if (sameKind.length === 0) return undefined;
-  if (!opts.sourceKind) return sameKind[0];
-  const sourceKind = opts.sourceKind;
-  if (!isReferenceModality(sourceKind)) return sameKind[0];
-  return sameKind.find((c) => capability(c).ref[sourceKind].accepts) ?? sameKind[0];
+  return findCompatibleModels(opts)[0];
 }

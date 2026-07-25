@@ -2,10 +2,14 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import type { HostLaunchMode, HostStartedBy } from "@clash/shared-runtime";
-import { createLocalApiApp } from "./app.js";
+import { buildEffectiveModelCards } from "@clash/shared-types";
+import {
+  createLocalApiApp,
+  createLocalTtsGenerationHandler,
+} from "./app.js";
 import {
   createHostDiscoveryRecord,
   removeHostDiscovery,
@@ -17,11 +21,15 @@ import {
   attachLocalAcpSessions,
   createLocalAcpAdapter,
   createLocalHarnessConfigStore,
+  type LocalAcpRuntimeAdapter,
   type SessionManagerLike,
   type SessionSender,
 } from "./local-acp.js";
 import { createMockFalQueueService } from "./fal-mock.js";
-import { createLocalWorkflowProcessor } from "./local-processor.js";
+import {
+  createLocalWorkflowProcessor,
+  type LocalTimelineRenderer,
+} from "./local-processor.js";
 import {
   providerAccountsForRuntime,
   publicProviderAccounts,
@@ -32,10 +40,10 @@ import {
   type RemoteLoroPersistenceSource,
 } from "./sync.js";
 import { createLocalSyncConfigStore } from "./sync-config.js";
+import { createLocalAudioConfigStore } from "./audio-config.js";
 
 const port = Number(process.env.PORT ?? 49321);
 const dataDir = defaultLocalApiDataDir();
-const require = createRequire(import.meta.url);
 
 export function defaultLocalApiDataDir(
   env: Record<string, string | undefined> = process.env,
@@ -49,6 +57,8 @@ export function defaultLocalApiDataDir(
 export interface LocalApiServerOptions {
   port: number;
   dataDir: string;
+  timelineRenderer?: LocalTimelineRenderer;
+  localAcp?: LocalAcpRuntimeAdapter;
   remotePersistence?: RemoteLoroPersistenceSource | null;
   discovery?: {
     enabled?: boolean;
@@ -64,7 +74,8 @@ function shellQuote(value: string): string {
 }
 
 function resolveClashCliEntry(env: Record<string, string | undefined>): string {
-  return env.CLASH_CLI_ENTRY_PATH || require.resolve("@clash-space/cli");
+  if (env.CLASH_CLI_ENTRY_PATH) return env.CLASH_CLI_ENTRY_PATH;
+  return createRequire(import.meta.url).resolve("@clash-space/cli");
 }
 
 export function createLocalAgentToolEnv({
@@ -372,12 +383,67 @@ function createMockAcpSessionManager(send: SessionSender): SessionManagerLike {
   };
 }
 
+function withMockHarnessUpdateFixture(
+  adapter: LocalAcpRuntimeAdapter,
+  localDataDir: string,
+): LocalAcpRuntimeAdapter {
+  const readyPath = join(localDataDir, ".e2e-harness-update-ready");
+  const listHarnesses = adapter.listHarnesses.bind(adapter);
+  const getSessionRuntimeStatus = adapter.getSessionRuntimeStatus.bind(adapter);
+  const restartSession = adapter.restartSession.bind(adapter);
+  let upgraded = false;
+  let restarted = false;
+
+  adapter.listHarnesses = async (options) => {
+    const result = await listHarnesses(options);
+    if (!existsSync(readyPath)) return result;
+    const mock = result.harnesses.find((harness) => harness.id === "mock-acp");
+    if (!mock) return result;
+    return {
+      harnesses: [
+        {
+          ...mock,
+          installed: true,
+          installedVersion: upgraded ? "2.0.0" : "1.0.0",
+          latestVersion: "2.0.0",
+          ...(upgraded ? {} : { updateAvailable: true }),
+        },
+        ...result.harnesses.filter((harness) => harness.id !== "mock-acp"),
+      ],
+    };
+  };
+  adapter.upgradeHarness = async (id) => {
+    if (id !== "mock-acp") throw new Error(`Unknown mock harness: ${id}`);
+    upgraded = true;
+    return adapter.listHarnesses({ probe: true, refresh: true });
+  };
+  adapter.getSessionRuntimeStatus = async (sessionId) => {
+    const status = await getSessionRuntimeStatus(sessionId);
+    if (!status) return null;
+    return {
+      ...status,
+      harness_id: "mock-acp",
+      harness_label: "Mock ACP",
+      running_version: restarted ? "2.0.0" : "1.0.0",
+      installed_version: upgraded ? "2.0.0" : "1.0.0",
+      restart_required: upgraded && !restarted,
+    };
+  };
+  adapter.restartSession = async (sessionId, options) => {
+    const result = await restartSession(sessionId, options);
+    if (result.status === "restarted") restarted = true;
+    return result;
+  };
+  return adapter;
+}
+
 export function createConfiguredLocalAcpAdapter(
   env: Record<string, string | undefined> = process.env,
   options: { apiBaseUrl?: string } = {},
 ) {
+  const localDataDir = env.CLASH_LOCAL_DATA_DIR ?? dataDir;
   if (env.CLASH_E2E_STUB_ACP === "1") {
-    return createLocalAcpAdapter({
+    const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
           id: "mock-acp",
@@ -390,8 +456,10 @@ export function createConfiguredLocalAcpAdapter(
       hostname: () => "Mock Desktop",
       osTag: () => "mock/e2e",
     });
+    return env.CLASH_E2E_STUB_HARNESS_UPDATE === "1"
+      ? withMockHarnessUpdateFixture(adapter, localDataDir)
+      : adapter;
   }
-  const localDataDir = env.CLASH_LOCAL_DATA_DIR ?? dataDir;
   const harnessDownloadDir = join(localDataDir, "acp-bin");
   const acpBinDir = [env.CLASH_ACP_TEST_BIN_DIR, env.CLASH_ACP_BIN_DIR, harnessDownloadDir]
     .filter(Boolean)
@@ -423,8 +491,27 @@ async function loadLocalProviderAccounts(
   return providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
 }
 
+async function loadLocalModelCards(
+  dataDir: string,
+  userId = "local-user",
+) {
+  const store = createLocalProviderStore(dataDir);
+  const [providerAccounts, providerOAuth, modelCardConfigs] = await Promise.all([
+    store.loadProviderAccounts(),
+    store.loadProviderOAuth(),
+    store.loadModelCardConfigs(),
+  ]);
+  const providers = providerAccountsForRuntime(providerAccounts, userId, providerOAuth);
+  return buildEffectiveModelCards({
+    configs: modelCardConfigs
+      .filter((config) => (config.userId ?? userId) === userId)
+      .map(({ userId: _userId, ...config }) => config),
+    providers,
+  });
+}
+
 export function startLocalApiServer(options: LocalApiServerOptions) {
-  const localAcp = createConfiguredLocalAcpAdapter(process.env, {
+  const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
   });
   void Promise.resolve(localAcp.warmup?.()).catch(() => undefined);
@@ -433,11 +520,16 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     dataDir: options.dataDir,
     env: process.env,
   });
+  const audioConfig = createLocalAudioConfigStore({
+    dataDir: options.dataDir,
+  });
+  const localTts = createLocalTtsGenerationHandler(audioConfig);
   const app = createLocalApiApp({
     dataDir: options.dataDir,
     localAcp,
     falMock,
     syncConfig,
+    audioConfig,
     providerOAuth: {
       dreamina: createDreaminaCliOAuthDriver(),
     },
@@ -451,6 +543,8 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   });
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
+    mediaBaseUrl: `http://127.0.0.1:${options.port}`,
+    timelineRenderer: options.timelineRenderer,
     textAgent: localAcp.runTextTask
       ? {
           generate: async (input) => {
@@ -477,9 +571,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       fal: falMock,
       origin: `http://127.0.0.1:${options.port}`,
       providerAccounts: () => loadLocalProviderAccounts(options.dataDir),
+      modelCards: () => loadLocalModelCards(options.dataDir),
       openAiBaseUrl: process.env.OPENAI_BASE_URL,
       anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL,
       falQueueBaseUrl: process.env.CLASH_FAL_QUEUE_URL,
+      localTts,
     }),
   });
   const remotePersistence = options.remotePersistence === undefined
@@ -495,6 +591,11 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   let discoveryHostId: string | undefined;
   const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
     settled = true;
+    localAcp.updateSpawnEnv(createLocalAgentToolEnv({
+      dataDir: options.dataDir,
+      apiBaseUrl: `http://127.0.0.1:${info.port}`,
+      env: process.env,
+    }));
     console.log(`[local-api] listening on http://127.0.0.1:${info.port}`);
     console.log(`[local-api] data dir: ${options.dataDir}`);
     void syncConfig.getPublicConfig().then((config) => {
@@ -512,7 +613,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       rejectListening(error);
     });
   });
-  wrapServerCloseWithDiscoveryCleanup(server, () => discoveryHostId, options.discovery?.runDir);
+  wrapServerCloseWithLifecycleCleanup(
+    server,
+    () => localAcp.disposeAll(),
+    () => discoveryHostId,
+    options.discovery?.runDir,
+  );
   server.once("error", (error) => {
     if (settled) {
       console.error("[local-api] server error", error);
@@ -531,6 +637,7 @@ async function writeServerDiscoveryRecord(
 ): Promise<string> {
   const record = createHostDiscoveryRecord({
     endpoint: `http://127.0.0.1:${actualPort}`,
+    agentCliPath: join(options.dataDir, "agent-bin", "clash"),
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
@@ -539,27 +646,34 @@ async function writeServerDiscoveryRecord(
   return record.hostId;
 }
 
-function wrapServerCloseWithDiscoveryCleanup(
+function wrapServerCloseWithLifecycleCleanup(
   server: ReturnType<typeof serve>,
+  disposeLocalAcp: () => Promise<void> | void,
   getHostId: () => string | undefined,
   runDir: string | undefined,
 ): void {
   const originalClose = server.close.bind(server);
+  let cleanupPromise: Promise<void> | null = null;
+  const cleanup = () => {
+    if (cleanupPromise) return cleanupPromise;
+    cleanupPromise = Promise.all([
+      Promise.resolve(disposeLocalAcp()).catch(() => undefined),
+      Promise.resolve().then(async () => {
+        const hostId = getHostId();
+        if (hostId) await removeHostDiscovery(hostId, { runDir });
+      }).catch(() => undefined),
+    ]).then(() => undefined);
+    return cleanupPromise;
+  };
   server.close = ((callback?: (error?: Error) => void) => {
+    const lifecycleCleanup = cleanup();
     return originalClose((error?: Error) => {
-      const hostId = getHostId();
-      if (!hostId) {
-        callback?.(error);
-        return;
-      }
-      void removeHostDiscovery(hostId, { runDir })
-        .catch(() => undefined)
-        .finally(() => callback?.(error));
+      void lifecycleCleanup.finally(() => callback?.(error));
     });
   }) as typeof server.close;
 }
 
 const directRunUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
-if (import.meta.url === directRunUrl) {
+if (import.meta.url === directRunUrl && !process.env.CLASH_PLUGIN_OWNER_CLIENT_ID) {
   void startLocalApiServer({ port, dataDir });
 }

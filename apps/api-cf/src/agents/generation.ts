@@ -13,6 +13,7 @@ import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from "cloudflare:work
 import type { Env } from "../config";
 import { log } from "../logger";
 import { GenerationContext } from "../generation/context";
+import { resolveGenerationModelProviderRoute } from "../generation/model-provider-route";
 import type { GenerationParams } from "../generation/params";
 import { resolveProvider } from "../generation/registry";
 import { getPlugins } from "../plugins/registry";
@@ -23,7 +24,15 @@ export type { GenerationParams } from "../generation/params";
 
 export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams> {
   async run(event: WorkflowEvent<GenerationParams>, step: WorkflowStep): Promise<void> {
-    const params = event.payload;
+    const selectedRoute = await step.do(
+      "resolve-model-provider-route",
+      { retries: { limit: 2, delay: "2 seconds" }, timeout: "30 seconds" },
+      () => resolveGenerationModelProviderRoute(this.env, event.payload),
+    );
+    const params: GenerationParams = {
+      ...event.payload,
+      ...(selectedRoute ? { selectedRoute } : {}),
+    };
     const tag = { taskId: params.taskId, nodeId: params.nodeId, type: params.type };
     const startedAt = Date.now();
     log.info("Workflow started", tag);

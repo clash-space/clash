@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "clash-director": {
+      "command": "node",
+      "args": ["./runtime/index.js"],
+      "cwd": "."
+    }
+  }
+}

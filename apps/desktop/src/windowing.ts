@@ -19,7 +19,10 @@ export interface WindowRegistry<TWindow extends TrackableWindow> {
 const windowOffset = 28;
 const initialWindowPosition = { x: 96, y: 48 };
 
-export function resolveDesktopWindowOptions(windowIndex: number): BrowserWindowConstructorOptions {
+export function resolveDesktopWindowOptions(
+  windowIndex: number,
+  prefersDark = false,
+): BrowserWindowConstructorOptions {
   const offset = windowIndex * windowOffset;
 
   return {
@@ -33,7 +36,7 @@ export function resolveDesktopWindowOptions(windowIndex: number): BrowserWindowC
     frame: true,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: desktopTrafficLightPosition,
-    backgroundColor: "#f7f6f2",
+    backgroundColor: prefersDark ? "#151515" : "#f7f6f2",
     show: false,
   };
 }

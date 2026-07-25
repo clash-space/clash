@@ -458,8 +458,8 @@ describe("Canvas class", () => {
         label: "Edit Badge",
         actionType: "image-gen",
         content: "Edit this",
-        modelId: "nano-banana-2-edit",
-        model: "nano-banana-2-edit",
+        modelId: "nano-banana-2",
+        model: "nano-banana-2",
         modelParams: { aspect_ratio: "16:9" },
         referenceMode: "multi",
         referenceImageAssetIds: ["asset-ref-1"],
@@ -469,6 +469,15 @@ describe("Canvas class", () => {
       expect(result.error).toBeNull();
       expect(result.assetNodeId).toBe("gen-1");
       expect(canvas.readNode("gen-1")?.data.referenceImageAssetIds).toEqual(["asset-ref-1"]);
+    });
+
+    it("rejects retired edit model IDs instead of remapping them", () => {
+      const canvas = makeCanvasWithBadge("nano-banana-2-edit", "Edit this");
+
+      const result = canvas.executeGeneration("badge1", generateId);
+
+      expect(result.error).toMatch(/unknown model/i);
+      expect(result.assetNodeId).toBe("");
     });
 
     it("handles video generation", () => {

@@ -4,6 +4,8 @@
  * it actually needs.
  */
 
+import type { ModelUpstreamRoute } from "@clash/shared-types";
+
 export interface GenerationParams {
   taskId: string;
   nodeId: string;
@@ -46,6 +48,8 @@ export interface GenerationParams {
   aspectRatio?: string;
   modelName?: string;
   modelParams?: Record<string, unknown>;
+  /** Provider-account route resolved for this actor before execution. */
+  selectedRoute?: ModelUpstreamRoute;
 
   /** Ordered prompt parts preserving text + image_ref interleaving. */
   promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;

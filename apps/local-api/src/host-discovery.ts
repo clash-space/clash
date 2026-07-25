@@ -39,6 +39,7 @@ export function createHostDiscoveryRecord(options: {
   endpoint: string;
   launchMode: HostLaunchMode;
   startedBy: HostStartedBy;
+  agentCliPath?: string;
   ownerClientId?: string;
   pid?: number;
   hostId?: string;
@@ -54,6 +55,7 @@ export function createHostDiscoveryRecord(options: {
     pid: options.pid ?? process.pid,
     launchMode: options.launchMode,
     startedBy: options.startedBy,
+    agentCliPath: options.agentCliPath,
     ownerClientId: options.ownerClientId,
     startedAt: now,
     updatedAt: now,
