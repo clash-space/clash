@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Clash logo">
+  <rect x="34" y="34" width="444" height="444" rx="126" fill="#242424" stroke="#3A3A3A" stroke-width="8"/>
+  <path
+    d="M 394 232
+       L 394 151
+       A 42 43 0 0 0 352 108
+       L 160 108
+       A 43 43 0 0 0 117 151
+       L 117 350
+       A 43 42 0 0 0 160 392
+       L 309 392"
+    fill="none"
+    stroke="#A3A3A3"
+    stroke-width="24"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+  <ellipse cx="218" cy="242" rx="19" ry="34" fill="#A3A3A3"/>
+  <ellipse cx="294" cy="242" rx="19" ry="34" fill="#A3A3A3"/>
+  <rect x="350" y="268" width="39" height="157" rx="19.5" fill="#FF6B50" transform="rotate(26.06 369.5 346.5)"/>
+</svg>

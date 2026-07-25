@@ -173,7 +173,7 @@ describe("local API app", () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user", syncEnv: {} });
 
     const initial = await app.request("/api/v1/local/sync");
-    expect(await initial.json()).toEqual({
+    expect(await initial.json()).toMatchObject({
       mode: "local-only",
       remote_loro: {
         enabled: false,
@@ -195,7 +195,7 @@ describe("local API app", () => {
       }),
     });
     expect(updated.status).toBe(200);
-    expect(await updated.json()).toEqual({
+    expect(await updated.json()).toMatchObject({
       mode: "cloud-sync",
       remote_loro: {
         enabled: true,
@@ -406,7 +406,7 @@ describe("local API app", () => {
     const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
 
     const initial = await app.request("/api/v1/local/audio");
-    expect(await initial.json()).toEqual({
+    expect(await initial.json()).toMatchObject({
       asr: expect.objectContaining({
         enabled: false,
         provider: "builtin-funasr",
@@ -433,7 +433,7 @@ describe("local API app", () => {
       }),
     });
     expect(updated.status).toBe(200);
-    expect(await updated.json()).toEqual({
+    expect(await updated.json()).toMatchObject({
       asr: expect.objectContaining({
         enabled: true,
         provider: "builtin-funasr",
@@ -469,7 +469,7 @@ describe("local API app", () => {
       }),
     });
     expect(legacyEndpointConfig.status).toBe(200);
-    expect(await legacyEndpointConfig.json()).toEqual({
+    expect(await legacyEndpointConfig.json()).toMatchObject({
       asr: expect.objectContaining({
         enabled: true,
         provider: "builtin-funasr",
@@ -492,7 +492,7 @@ describe("local API app", () => {
     });
     const reopened = createLocalApiApp({ dataDir, userId: "local-user", audioConfig: reopenedAudioConfig });
     const persisted = await reopened.request("/api/v1/local/audio");
-    expect(await persisted.json()).toEqual({
+    expect(await persisted.json()).toMatchObject({
       asr: expect.objectContaining({
         enabled: true,
         provider: "builtin-funasr",
@@ -674,7 +674,7 @@ describe("local API app", () => {
     });
 
     expect(install.status).toBe(200);
-    expect(await install.json()).toEqual({
+    expect(await install.json()).toMatchObject({
       asr: expect.objectContaining({
         enabled: false,
         provider: "builtin-funasr",
@@ -695,6 +695,117 @@ describe("local API app", () => {
       },
     });
     expect(builtinInstall).toHaveBeenCalledWith({ model: "iic/SenseVoiceSmall", pythonBinary: "python3" });
+  });
+
+  it("installs, synthesizes by node-selected model, and removes local TTS through the generalized speech API", async () => {
+    let installed = false;
+    const ttsRuntime = {
+      status: vi.fn(async () => ({
+        available: installed,
+        ...(installed ? {} : { message: "Piper voice is not downloaded" }),
+      })),
+      deploy: vi.fn(async () => {
+        installed = true;
+      }),
+      remove: vi.fn(async () => {
+        installed = false;
+      }),
+      synthesize: vi.fn(async ({ model, outputPath, voice }: {
+        model: string;
+        outputPath: string;
+        voice?: string | null;
+      }) => {
+        await writeFile(outputPath, Buffer.from("RIFF-api-local-wav"));
+        return {
+          schemaVersion: 1 as const,
+          kind: "clash.tts.audio" as const,
+          backendId: "piper",
+          modelId: model,
+          ...(voice ? { voiceId: voice } : {}),
+          format: "wav" as const,
+          sampleRate: 22050,
+          durationMs: 750,
+          outputPath,
+        };
+      }),
+    };
+    const audioConfig = createLocalAudioConfigStore({
+      dataDir,
+      asrRuntime: {
+        status: vi.fn(async () => ({ available: false })),
+        deploy: vi.fn(async () => undefined),
+        transcribe: vi.fn(async () => {
+          throw new Error("not used");
+        }),
+      },
+      ttsRuntime,
+    });
+    const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
+
+    const install = await app.request("/api/v1/local/audio/install", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        capability: "text-to-speech",
+        model: "zh_CN-huayan-medium",
+      }),
+    });
+    expect(install.status).toBe(200);
+    expect(await install.json()).toMatchObject({
+      tts: {
+        capability: "text-to-speech",
+        model: "zh_CN-huayan-medium",
+        setup: {
+          provider: "piper",
+          available: true,
+        },
+      },
+    });
+
+    const status = await app.request(
+      "/api/v1/local/audio/models/status?capability=text-to-speech&model=zh_CN-huayan-medium",
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      capability: "text-to-speech",
+      model: "zh_CN-huayan-medium",
+      available: true,
+    });
+
+    const synthesis = await app.request("/api/v1/local/audio/speech", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "zh_CN-huayan-medium",
+        text: "Clash 本地语音",
+        voice: "huayan",
+        speed: 1.1,
+      }),
+    });
+    expect(synthesis.status).toBe(200);
+    expect(synthesis.headers.get("content-type")).toBe("audio/wav");
+    expect(synthesis.headers.get("x-clash-tts-backend")).toBe("piper");
+    expect(synthesis.headers.get("x-clash-tts-model")).toBe("zh_CN-huayan-medium");
+    expect(synthesis.headers.get("x-clash-tts-voice")).toBe("huayan");
+    expect(synthesis.headers.get("x-clash-tts-duration-ms")).toBe("750");
+    expect(Buffer.from(await synthesis.arrayBuffer()).toString()).toBe("RIFF-api-local-wav");
+
+    const remove = await app.request("/api/v1/local/audio/remove", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        capability: "text-to-speech",
+        model: "zh_CN-huayan-medium",
+      }),
+    });
+    expect(remove.status).toBe(200);
+    expect(await remove.json()).toMatchObject({
+      tts: {
+        model: "zh_CN-huayan-medium",
+        ready: false,
+        setup: { available: false },
+      },
+    });
   });
 
   it("requires a receipt-bearing audio config read token before agent audio installs", async () => {
@@ -845,7 +956,31 @@ describe("local API app", () => {
       expect(input.language).toBeNull();
       expect(input.file.name).toBe("voice.webm");
       expect(await input.file.text()).toBe("voice-bytes");
-      return { text: "你好 Clash" };
+      return {
+        schemaVersion: 1 as const,
+        kind: "clash.asr.timed-transcript" as const,
+        timebase: "milliseconds" as const,
+        alignment: "word" as const,
+        text: "你好 Clash",
+        backendId: "funasr",
+        modelId: input.model,
+        language: "zh",
+        durationMs: 500,
+        words: [
+          { id: "word-000001", text: "你", startMs: 0, endMs: 160 },
+          { id: "word-000002", text: "好", startMs: 160, endMs: 280 },
+          { id: "word-000003", text: "Clash", startMs: 300, endMs: 500 },
+        ],
+        segments: [
+          {
+            id: "segment-000001",
+            text: "你好 Clash",
+            startMs: 0,
+            endMs: 500,
+            wordIds: ["word-000001", "word-000002", "word-000003"],
+          },
+        ],
+      };
     });
     const audioConfig = createLocalAudioConfigStore({ dataDir, builtinTranscribe });
     const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
@@ -869,7 +1004,29 @@ describe("local API app", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
+      schemaVersion: 1,
+      kind: "clash.asr.timed-transcript",
+      timebase: "milliseconds",
+      alignment: "word",
       text: "你好 Clash",
+      backendId: "funasr",
+      modelId: "iic/SenseVoiceSmall",
+      language: "zh",
+      durationMs: 500,
+      words: [
+        { id: "word-000001", text: "你", startMs: 0, endMs: 160 },
+        { id: "word-000002", text: "好", startMs: 160, endMs: 280 },
+        { id: "word-000003", text: "Clash", startMs: 300, endMs: 500 },
+      ],
+      segments: [
+        {
+          id: "segment-000001",
+          text: "你好 Clash",
+          startMs: 0,
+          endMs: 500,
+          wordIds: ["word-000001", "word-000002", "word-000003"],
+        },
+      ],
       mutation: {
         operation: "local_audio_transcription",
         entity: { kind: "local-action", id: "audio-transcription" },
@@ -1378,6 +1535,258 @@ describe("local API app", () => {
     });
     const body = await loaded.json() as { assets: Array<{ srcR2Key: string }> };
     expect(body.assets.map((asset) => asset.srcR2Key).sort()).toEqual([...keys].sort());
+  });
+
+  it("persists global library membership and attaches a library asset to a project by reference", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const createdAsset = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        addToLibrary: true,
+        kind: "image",
+        srcR2Key: "uploads/library.png",
+        originalName: "Opening frame.png",
+      }),
+    });
+    expect(createdAsset.status).toBe(200);
+    const { id: assetId } = await createdAsset.json() as { id: string };
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const library = await reopened.request("/api/v1/assets");
+    expect(library.status).toBe(200);
+    expect(await library.json()).toMatchObject({ assets: [{ id: assetId, srcR2Key: "uploads/library.png" }] });
+    const gcPreview = await reopened.request("/api/v1/assets/gc", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: true }),
+    });
+    expect(await gcPreview.json()).toMatchObject({ deletedAssets: [] });
+
+    const createdProject = await reopened.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Library target" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+    const attached = await reopened.request(`/api/v1/assets/${assetId}/ref`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    });
+    expect(attached.status).toBe(200);
+
+    const project = await reopened.request(`/api/v1/projects/${projectId}`);
+    expect(await project.json()).toMatchObject({
+      assets: [
+        {
+          id: assetId,
+          name: "Opening frame.png",
+          thumbnailUrl: "/assets/uploads/library.png",
+          storageKey: "uploads/library.png",
+        },
+      ],
+    });
+  });
+
+  it("includes audio assets in the project asset collection", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const createdProject = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Audio assets" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+    const createdAsset = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId, kind: "audio", srcR2Key: "generated/voice.wav" }),
+    });
+    const { id: assetId } = await createdAsset.json() as { id: string };
+
+    const project = await app.request(`/api/v1/projects/${projectId}`);
+    expect(await project.json()).toMatchObject({
+      assets: [
+        {
+          id: assetId,
+          name: "Generated audio",
+          type: "audio",
+          storageKey: "generated/voice.wav",
+        },
+      ],
+    });
+  });
+
+  it("persists authoritative local media probe metadata and a generated video cover", async () => {
+    const assetProbe = vi.fn(async () => ({
+      metadata: {
+        width: 1920,
+        height: 1080,
+        durationMs: 32_661,
+        bytes: 4_096,
+      },
+      coverR2Key: "covers/talking-head.jpg",
+    }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      assetProbe,
+    });
+
+    const created = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-video-probe",
+        kind: "video",
+        srcR2Key: "uploads/talking-head.mp4",
+        originalName: "Talking head.mp4",
+      }),
+    });
+    expect(created.status).toBe(200);
+    const { id } = await created.json() as { id: string };
+
+    expect(assetProbe).toHaveBeenCalledWith(expect.objectContaining({
+      assetId: id,
+      kind: "video",
+      projectId: "project-video-probe",
+      srcR2Key: "uploads/talking-head.mp4",
+    }));
+    const loaded = await app.request(`/api/v1/assets/${id}`);
+    expect(await loaded.json()).toMatchObject({
+      id,
+      coverR2Key: "covers/talking-head.jpg",
+      metadata: {
+        originalName: "Talking head.mp4",
+        width: 1920,
+        height: 1080,
+        durationMs: 32_661,
+        bytes: 4_096,
+      },
+    });
+  });
+
+  it("persists uploaded 3D models as assets while keeping the media collection typed", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const createdProject = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Director models" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+    const createdAsset = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        kind: "model",
+        srcR2Key: "uploads/blocking.glb",
+        originalName: "blocking.glb",
+      }),
+    });
+    expect(createdAsset.status).toBe(200);
+    const { id: assetId } = await createdAsset.json() as { id: string };
+
+    const asset = await app.request(`/api/v1/assets/${assetId}`);
+    expect(await asset.json()).toMatchObject({
+      id: assetId,
+      kind: "model",
+      srcR2Key: "uploads/blocking.glb",
+      metadata: { originalName: "blocking.glb" },
+    });
+    const project = await app.request(`/api/v1/projects/${projectId}`);
+    expect(await project.json()).toMatchObject({ assets: [] });
+  });
+
+  it("generates a real Director GLB through a configured fal account and persists it as a project model asset", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/fal-ai/hunyuan3d-v3/text-to-3d") && init?.method === "POST") {
+        return new Response(JSON.stringify({ request_id: "director-model-request" }), { status: 200 });
+      }
+      if (url.endsWith("/requests/director-model-request/status")) {
+        return new Response(JSON.stringify({ status: "COMPLETED" }), { status: 200 });
+      }
+      if (url.endsWith("/requests/director-model-request")) {
+        return new Response(JSON.stringify({
+          model_glb: {
+            url: "https://v3b.fal.media/director/horse.glb",
+            content_type: "model/gltf-binary",
+            file_name: "horse.glb",
+          },
+        }), { status: 200 });
+      }
+      if (url === "https://v3b.fal.media/director/horse.glb") {
+        return new Response(new Uint8Array([0x67, 0x6c, 0x54, 0x46]), {
+          status: 200,
+          headers: { "content-type": "model/gltf-binary" },
+        });
+      }
+      throw new Error(`Unexpected model generation request ${url}`);
+    });
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      directorModelGenerationFetch: fetchMock as typeof fetch,
+      directorModelPollIntervalMs: 0,
+    } as any);
+    const createdProject = await app.request("/api/v1/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Generated Director models" }),
+    });
+    const { id: projectId } = await createdProject.json() as { id: string };
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [{
+          id: "fal-director",
+          providerId: "fal",
+          upstreamId: "fal",
+          enabled: true,
+          priority: 1,
+          credentials: { apiKey: "fal-director-secret" },
+        }],
+      }),
+    });
+
+    const generated = await app.request("/api/v1/director-model-generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        prompt: "A chestnut horse with a production saddle",
+        quality: "low-poly",
+        pbr: true,
+        faceCount: 120000,
+      }),
+    });
+
+    expect(generated.status).toBe(200);
+    const receipt = await generated.json() as { assetId: string; sourceUrl: string };
+    expect(receipt).toMatchObject({
+      assetId: expect.any(String),
+      name: "horse.glb",
+      sourceUrl: expect.stringContaining("/assets/projects/"),
+      provider: "fal",
+      modelEndpoint: "fal-ai/hunyuan3d-v3/text-to-3d",
+      requestId: "director-model-request",
+    });
+    const asset = await app.request(`/api/v1/assets/${receipt.assetId}`);
+    expect(await asset.json()).toMatchObject({
+      id: receipt.assetId,
+      kind: "model",
+      sourceModel: "fal-ai/hunyuan3d-v3/text-to-3d",
+      sourcePrompt: "A chestnut horse with a production saddle",
+      sourceTaskId: "director-model-request",
+      metadata: {
+        contentType: "model/gltf-binary",
+        bytes: 4,
+        provider: "fal",
+        requestId: "director-model-request",
+        modelEndpoint: "fal-ai/hunyuan3d-v3/text-to-3d",
+      },
+    });
   });
 
   it("indexes applied text revisions with immutable content blobs without creating media asset rows", async () => {
@@ -1986,6 +2395,53 @@ describe("local API app", () => {
     } finally {
       sqlite.close();
     }
+  });
+
+  it("creates copy-on-write edit assets with implicit edit-source lineage", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const sourceResponse = await app.request("/api/v1/assets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: "project-edit", kind: "image", srcR2Key: "uploads/source.png" }),
+    });
+    const source = await sourceResponse.json() as { id: string };
+    const form = new FormData();
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "edit.png", { type: "image/png" }));
+    form.set("projectId", "project-edit");
+    form.set("sourceAssetId", source.id);
+    form.set("editKind", "image-editor");
+    form.set("outputKind", "image");
+    form.set("editParams", JSON.stringify({ rotation: 90 }));
+    form.set("origin", "asset-preview");
+    form.set("invocation", JSON.stringify({
+      actionId: "image-editor",
+      projectId: "project-edit",
+      source: { assetId: source.id, kind: "image" },
+      params: { rotation: 90 },
+      surface: "asset-preview",
+      mode: "implicit",
+    }));
+
+    const editedResponse = await app.request("/api/v1/edits", { method: "POST", body: form });
+    expect(editedResponse.status).toBe(200);
+    const edited = await editedResponse.json() as { assetId: string; srcR2Key: string };
+    expect(edited.assetId).not.toBe(source.id);
+    expect(edited.srcR2Key).toMatch(/^projects\/project-edit\/edits\/.+\.png$/);
+
+    const read = await app.request(`/api/v1/assets/${edited.assetId}`);
+    expect(await read.json()).toMatchObject({
+      id: edited.assetId,
+      sourceModel: "implicit:image-editor",
+      sourceTaskId: null,
+      sources: [{ assetId: source.id, role: "edit-source" }],
+      metadata: expect.objectContaining({
+        actionInvocation: expect.objectContaining({
+          actionId: "image-editor",
+          mode: "implicit",
+          surface: "asset-preview",
+        }),
+      }),
+    });
   });
 
   it("registers content-addressed local blobs as SQLite assets and project refs", async () => {
@@ -4063,9 +4519,107 @@ describe("local API app", () => {
       selectedRoute: { providerId: "fal", upstreamId: "fal" },
     });
     expect(gptImage).toMatchObject({
-      tier: "configured-provider",
-      candidateProviders: ["official"],
+      tier: "available",
+      selectedRoute: { providerId: "fal", upstreamId: "fal" },
+      candidateProviders: ["fal", "official"],
       missingCredentials: ["apiKey"],
+    });
+  });
+
+  it("persists a compatible custom provider and a mounted custom text model card", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const provider = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "custom-openai-primary",
+            providerId: "custom",
+            upstreamId: "openai",
+            apiShape: "openai-compatible",
+            label: "Studio proxy",
+            enabled: true,
+            credentials: {
+              apiKey: "sk-studio",
+              baseUrl: "https://studio-proxy.example/v1",
+            },
+          },
+        ],
+      }),
+    });
+    expect(provider.status).toBe(200);
+    expect(await provider.json()).toMatchObject({
+      providers: [
+        {
+          id: "custom-openai-primary",
+          providerId: "custom",
+          upstreamId: "openai",
+          apiShape: "openai-compatible",
+          label: "Studio proxy",
+          configuredCredentials: ["apiKey", "baseUrl"],
+        },
+      ],
+    });
+
+    const savedModel = await app.request("/api/v1/model-cards/editorial-reasoner", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        custom: true,
+        name: "Editorial Reasoner",
+        kind: "text",
+        description: "A house model for edit decisions.",
+        promptGuidance: "Name the audience and the desired editorial outcome.",
+        providerBindings: [
+          {
+            providerAccountId: "custom-openai-primary",
+            upstreamModel: "editorial/reasoner-v2",
+          },
+        ],
+      }),
+    });
+    expect(savedModel.status).toBe(200);
+    expect(await savedModel.json()).toMatchObject({
+      config: {
+        modelId: "editorial-reasoner",
+        custom: true,
+        name: "Editorial Reasoner",
+        description: "A house model for edit decisions.",
+        promptGuidance: "Name the audience and the desired editorial outcome.",
+      },
+    });
+
+    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const catalog = await reopened.request("/api/v1/models/catalog");
+    expect(catalog.status).toBe(200);
+    const catalogJson = await catalog.json() as {
+      models: Array<{
+        model: {
+          id: string;
+          description?: string;
+          promptGuidance?: string;
+          custom?: boolean;
+        };
+        selectedRoute?: {
+          accountId?: string;
+          apiShape?: string;
+          upstreamModel?: string;
+        } | null;
+      }>;
+    };
+    expect(catalogJson.models.find((entry) => entry.model.id === "editorial-reasoner")).toMatchObject({
+      model: {
+        id: "editorial-reasoner",
+        custom: true,
+        description: "A house model for edit decisions.",
+        promptGuidance: "Name the audience and the desired editorial outcome.",
+      },
+      selectedRoute: {
+        accountId: "custom-openai-primary",
+        apiShape: "openai-compatible",
+        upstreamModel: "editorial/reasoner-v2",
+      },
     });
   });
 
@@ -8034,7 +8588,7 @@ describe("local API app", () => {
 
     expect(created.status).toBe(503);
     const body = await created.json() as { error: string; session_id: string; mutation?: unknown };
-    expect(body.error).toBe("No local agent found. Install or enable an agent in Settings > Runtimes, then retry.");
+    expect(body.error).toBe("No local agent found. Install or enable an agent in Settings > Agents, then retry.");
     expect(body.session_id).toEqual(expect.any(String));
     expect(body.mutation).toEqual({
       operation: "runtime_session_create",
@@ -8109,6 +8663,64 @@ describe("local API app", () => {
 
     const missing = await app.request("/api/v1/local-sessions/missing/messages");
     expect(missing.status).toBe(404);
+  });
+
+  it("exposes held ACP version status and restarts the selected local session", async () => {
+    const restartSession = vi.fn(async () => ({
+      session_id: "local-session-update",
+      status: "pending" as const,
+    }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "unused" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        async getSessionRuntimeStatus(sessionId: string) {
+          return sessionId === "local-session-update"
+            ? {
+                session_id: sessionId,
+                harness_id: "codex-acp",
+                harness_label: "Codex",
+                running_version: "1.0.1",
+                installed_version: "1.0.2",
+                restart_required: true,
+                busy: true,
+                restart_pending: false,
+              }
+            : null;
+        },
+        restartSession,
+      } as any,
+    });
+
+    const status = await app.request("/api/v1/local-sessions/local-session-update/runtime-status");
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual(expect.objectContaining({
+      harness_id: "codex-acp",
+      installed_version: "1.0.2",
+      restart_required: true,
+      busy: true,
+    }));
+
+    const restart = await app.request("/api/v1/local-sessions/local-session-update/restart", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "after-turn" }),
+    });
+    expect(restart.status).toBe(200);
+    expect(await restart.json()).toEqual({
+      session_id: "local-session-update",
+      status: "pending",
+    });
+    expect(restartSession).toHaveBeenCalledWith("local-session-update", { mode: "after-turn" });
   });
 
   it("reattaches a persisted runtime ACP session without creating another history row", async () => {
@@ -8374,6 +8986,56 @@ describe("local API app", () => {
     });
   });
 
+  it("uses the visible user prompt for a session title instead of protocol comments", async () => {
+    let messageStore: any = null;
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-protocol-title" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        setSessionMessageStore(store: any) {
+          messageStore = store;
+        },
+      } as any,
+    });
+
+    await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_id: "codex-acp",
+        project_id: "project-protocol-title",
+      }),
+    });
+    await messageStore.appendUserPrompt("local-session-protocol-title", {
+      id: "turn-protocol-user",
+      sender_kind: "user",
+      sender_id: "local-user",
+      turn_id: "turn-protocol",
+      events: [{
+        type: "text",
+        text: '<!-- clash-workspace-context {"version":1,"projectId":"project-protocol-title"} -->\nRun pwd with your shell tool.',
+      }],
+      created_at: 1_700_000_000,
+    });
+
+    const listed = await app.request("/api/v1/sessions?projectId=project-protocol-title");
+    expect(await listed.json()).toMatchObject({
+      sessions: [{
+        id: "local-session-protocol-title",
+        title: "Run pwd with your sh...",
+      }],
+    });
+  });
+
   it("persists runtime ACP transcript messages in the local DB for cold restore", async () => {
     let messageStore: any = null;
     const app = createLocalApiApp({
@@ -8632,6 +9294,7 @@ describe("local API app", () => {
     const listed = await app.request("/api/v1/projects");
     const listedJson = (await listed.json()) as { projects: Array<{
       id: string;
+      ownerId: string;
       name: string;
       description: string;
       assets: unknown[];
@@ -8641,6 +9304,7 @@ describe("local API app", () => {
     expect(projects).toHaveLength(1);
     expect(projects[0]).toMatchObject({
       id,
+      ownerId: "local-user",
       name: "A local-first video project",
       description: "A local-first video project",
       assets: [],
@@ -8666,7 +9330,12 @@ describe("local API app", () => {
     });
 
     const loaded = await app.request(`/api/v1/projects/${id}`);
-    expect(await loaded.json()).toMatchObject({ id, name: "Renamed", readToken: renamedJson.readToken });
+    expect(await loaded.json()).toMatchObject({
+      id,
+      ownerId: "local-user",
+      name: "Renamed",
+      readToken: renamedJson.readToken,
+    });
 
     const deleted = await app.request(`/api/v1/projects/${id}`, { method: "DELETE" });
     expect(deleted.status).toBe(200);
@@ -10082,6 +10751,30 @@ describe("local API app", () => {
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toContain("text/plain");
     expect(await served.text()).toBe("hello");
+  });
+
+  it("serves byte ranges for media assets", async () => {
+    const app = createLocalApiApp({ dataDir, userId: "local-user" });
+    const form = new FormData();
+    form.append(
+      "file",
+      new File(["0123456789"], "sample.mp4", { type: "video/mp4" }),
+    );
+
+    const upload = await app.request("/upload", {
+      method: "POST",
+      body: form,
+    });
+    const { storageKey } = (await upload.json()) as { storageKey: string };
+    const served = await app.request(`/assets/${storageKey}`, {
+      headers: { range: "bytes=2-5" },
+    });
+
+    expect(served.status).toBe(206);
+    expect(served.headers.get("accept-ranges")).toBe("bytes");
+    expect(served.headers.get("content-range")).toBe("bytes 2-5/10");
+    expect(served.headers.get("content-length")).toBe("4");
+    expect(await served.text()).toBe("2345");
   });
 
   it("rejects local asset uploads when the storage parent escapes through a symlink", async () => {

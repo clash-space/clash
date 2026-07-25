@@ -46,6 +46,20 @@ describe("desktop Electron runtime", () => {
     expect(builderConfig).toMatch(/-\s+from:\s+build\/acp-bin\n\s+to:\s+acp-bin/m);
   });
 
+  it("packages the local-model Python SDK as an unpacked desktop resource", () => {
+    const builderConfig = readFileSync(
+      new URL("../electron-builder.yml", import.meta.url),
+      "utf8",
+    );
+
+    expect(builderConfig).toMatch(
+      /-\s+from:\s+\.\.\/\.\.\/packages\/clash-sdk\/python\n\s+to:\s+clash-sdk\/python/m,
+    );
+    expect(builderConfig).toMatch(/-\s+"clash_sdk\/\*\*\/\*"/m);
+    expect(builderConfig).toContain('- "!**/__pycache__/**"');
+    expect(builderConfig).toContain('- "!**/*.py[cod]"');
+  });
+
   it("ships a Clash desktop app icon instead of the Electron default", () => {
     const iconUrl = new URL("../build/icon.icns", import.meta.url);
     expect(existsSync(iconUrl)).toBe(true);

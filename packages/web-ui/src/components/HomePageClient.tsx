@@ -1,7 +1,8 @@
 
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import type { Project } from '@clash/web-ui/lib/types';
-import HeroSection, { type HeroSectionHandle } from './HeroSection';
+import { createProject } from '@clash/web-ui/lib/clientActions';
+import HeroSection from './HeroSection';
 import RecentProjects from './RecentProjects';
 
 interface HomePageClientProps {
@@ -9,16 +10,14 @@ interface HomePageClientProps {
 }
 
 export default function HomePageClient({ initialProjects }: HomePageClientProps) {
-    const heroRef = useRef<HeroSectionHandle>(null);
-    const handleStartNewProject = useCallback(() => {
-        heroRef.current?.focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    const handleCreateProject = useCallback(async (projectName: string) => {
+        await createProject(projectName, { startFromPrompt: false });
     }, []);
 
     return (
         <div className="text-slate-950 dark:text-slate-50">
-            <HeroSection ref={heroRef} />
-            <RecentProjects projects={initialProjects} onStartNewProject={handleStartNewProject} />
+            <HeroSection />
+            <RecentProjects projects={initialProjects} onCreateProject={handleCreateProject} />
         </div>
     );
 }

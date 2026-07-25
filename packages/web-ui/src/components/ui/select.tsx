@@ -11,6 +11,7 @@ import { DropdownMenu as DropdownMenuPrimitive, Select as SelectPrimitive } from
 import { cn } from '../ai-elements/utils';
 import { Button } from './button';
 import { Tooltip } from './tooltip';
+import { useExclusivePopupOpen, usePopupFocusPolicy } from './popup-focus';
 
 export type SelectValue = string | number | boolean;
 
@@ -70,9 +71,9 @@ const triggerVariantClasses = {
     inline:
         'h-9 max-w-full justify-start rounded-md bg-transparent px-1.5 text-sm font-semibold text-slate-800 hover:text-slate-950 dark:text-slate-100 dark:hover:text-white',
     pill:
-        'h-9 justify-between rounded-2xl border border-warm-border/80 bg-warm-surface px-3 text-sm font-medium text-slate-900 shadow-[0_1px_2px_rgba(35,31,25,0.06)] hover:bg-warm-muted/65 dark:text-slate-50 dark:hover:bg-slate-800',
+        'h-9 justify-between rounded-2xl border border-warm-border/80 bg-warm-surface px-3 text-sm font-medium text-content-primary shadow-sm hover:bg-warm-muted/65',
     field:
-        'min-h-[34px] w-full justify-between rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] hover:bg-warm-muted/45 dark:text-slate-50 dark:hover:bg-slate-800',
+        'min-h-[34px] w-full justify-between rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-xs font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] hover:bg-warm-muted/45 dark:text-neutral-100 dark:hover:bg-warm-muted/80',
 };
 
 const triggerSizeClasses = {
@@ -96,10 +97,10 @@ function menuItemClassName({
     return cn(
         'flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
-        'data-[state=open]:bg-warm-muted/75 dark:data-[state=open]:bg-slate-800/80',
+        'data-[state=open]:bg-warm-muted/75 dark:data-[state=open]:bg-warm-muted/80',
         selected
-            ? 'text-slate-950 hover:bg-warm-muted/75 dark:text-slate-50 dark:hover:bg-slate-800/80'
-            : 'text-slate-900 hover:bg-warm-muted/75 dark:text-slate-100 dark:hover:bg-slate-800/80',
+            ? 'bg-brand/[0.08] text-slate-950 hover:bg-brand/[0.12] dark:bg-brand/[0.12] dark:text-neutral-50 dark:hover:bg-brand/[0.16]'
+            : 'text-slate-900 hover:bg-warm-muted/75 dark:text-neutral-100 dark:hover:bg-warm-muted/80',
         disabled && 'cursor-not-allowed opacity-45',
         className,
     );
@@ -133,6 +134,8 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
     triggerTestId,
     menuClassName,
 }: SelectMenuProps<Value>) {
+    const focusPolicy = usePopupFocusPolicy<HTMLButtonElement>();
+    const popup = useExclusivePopupOpen({ open: controlledOpen, onOpenChange });
     const normalizedSections = useMemo<SelectSection<Value>[]>(() => {
         if (sections) return sections;
         return [{ id: 'options', options: options ?? [] }];
@@ -166,6 +169,7 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
     const trigger = (
         <DropdownMenuPrimitive.Trigger asChild>
             <Button
+                ref={focusPolicy.composeTriggerRef()}
                 variant={null}
                 size={null}
                 shape={null}
@@ -173,7 +177,11 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
                 data-testid={triggerTestId}
                 disabled={isDisabled}
                 onClick={handleEventBoundary}
-                onPointerDown={handleEventBoundary}
+                onPointerDown={(event) => {
+                    focusPolicy.markPointerOpen();
+                    handleEventBoundary(event);
+                }}
+                onKeyDown={(event) => focusPolicy.markKeyboardOpen(event.key)}
                 className={cn(
                     'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
@@ -193,8 +201,9 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
 
     return (
         <DropdownMenuPrimitive.Root
-            open={controlledOpen}
-            onOpenChange={onOpenChange}
+            modal={false}
+            open={popup.open}
+            onOpenChange={popup.setOpen}
         >
             <div className={cn('relative inline-flex min-w-0', className)}>
                 {title ? <Tooltip label={title}>{trigger}</Tooltip> : trigger}
@@ -206,13 +215,15 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
                     align={align}
                     sideOffset={MENU_OFFSET}
                     collisionPadding={VIEWPORT_MARGIN}
+                    onCloseAutoFocus={focusPolicy.handleCloseAutoFocus}
+                    onFocusCapture={focusPolicy.handleContentFocusCapture}
+                    onFocusOutside={focusPolicy.handleFocusOutside}
                     style={{
                         width: contentWidth,
                         maxHeight: `min(var(--radix-dropdown-menu-content-available-height), ${maxMenuHeight}px)`,
                     }}
                     className={cn(
-                        'z-[80] overflow-hidden rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)]',
-                        'dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
+                        'z-[80] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay',
                         menuWidth === 'auto' && 'min-w-[min(var(--radix-dropdown-menu-trigger-width),calc(100vw-24px))]',
                         menuClassName,
                     )}
@@ -264,6 +275,8 @@ function RadixSelectMenu<Value extends SelectValue = string>({
     triggerTestId,
     menuClassName,
 }: SelectMenuProps<Value>) {
+    const focusPolicy = usePopupFocusPolicy<HTMLButtonElement>();
+    const popup = useExclusivePopupOpen({ open: controlledOpen, onOpenChange });
     const normalizedSections = useMemo<SelectSection<Value>[]>(() => {
         if (sections) return sections;
         return [{ id: 'options', options: options ?? [] }];
@@ -295,10 +308,15 @@ function RadixSelectMenu<Value extends SelectValue = string>({
 
     const trigger = (
         <SelectPrimitive.Trigger
+            ref={focusPolicy.composeTriggerRef()}
             aria-label={ariaLabel}
             data-testid={triggerTestId}
             onClick={handleEventBoundary}
-            onPointerDown={handleEventBoundary}
+            onPointerDown={(event) => {
+                focusPolicy.markPointerOpen();
+                handleEventBoundary(event);
+            }}
+            onKeyDown={(event) => focusPolicy.markKeyboardOpen(event.key)}
             className={cn(
                 'clash-select-trigger inline-flex min-w-0 items-center gap-1.5 transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface',
@@ -322,8 +340,8 @@ function RadixSelectMenu<Value extends SelectValue = string>({
     return (
         <SelectPrimitive.Root
             value={selectedStringValue}
-            open={controlledOpen}
-            onOpenChange={onOpenChange}
+            open={popup.open}
+            onOpenChange={popup.setOpen}
             onValueChange={handleValueChange}
             disabled={isDisabled}
         >
@@ -338,13 +356,13 @@ function RadixSelectMenu<Value extends SelectValue = string>({
                     align={align}
                     sideOffset={MENU_OFFSET}
                     collisionPadding={VIEWPORT_MARGIN}
+                    onCloseAutoFocus={focusPolicy.handleCloseAutoFocus}
                     style={{
                         width: contentWidth,
                         maxHeight: `min(var(--radix-select-content-available-height), ${maxMenuHeight}px)`,
                     }}
                     className={cn(
-                        'z-[80] overflow-hidden rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)]',
-                        'dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]',
+                        'z-[80] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay',
                         menuWidth === 'auto' && 'min-w-[min(var(--radix-select-trigger-width),calc(100vw-24px))]',
                         menuClassName,
                     )}
@@ -355,7 +373,7 @@ function RadixSelectMenu<Value extends SelectValue = string>({
                         {normalizedSections.map((section, sectionIndex) => (
                             <SelectPrimitive.Group
                                 key={section.id}
-                                className={cn(sectionIndex > 0 && 'mt-1.5 border-t border-warm-border/80 pt-1.5 dark:border-slate-700')}
+                                className={cn(sectionIndex > 0 && 'mt-1.5 border-t border-warm-border/80 pt-1.5 dark:border-warm-border')}
                             >
                                 {section.label ? (
                                     <SelectPrimitive.Label className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
@@ -389,7 +407,7 @@ function RadixSelectMenu<Value extends SelectValue = string>({
                                                         </span>
                                                     ) : null}
                                                 </span>
-                                                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-stone-600 dark:text-stone-300" aria-hidden="true">
+                                                <span className={cn('flex h-5 w-5 flex-shrink-0 items-center justify-center', selected ? 'text-brand' : 'text-stone-600 dark:text-neutral-300')} aria-hidden="true">
                                                     {option.rightAdornment ?? (
                                                         <SelectPrimitive.ItemIndicator>
                                                             <Check className="h-4 w-4" weight="bold" />
@@ -426,7 +444,7 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
 
     return (
         <DropdownMenuPrimitive.Group
-            className={cn(sectionIndex > 0 && 'mt-1.5 border-t border-warm-border/80 pt-1.5 dark:border-slate-700')}
+            className={cn(sectionIndex > 0 && 'mt-1.5 border-t border-warm-border/80 pt-1.5 dark:border-warm-border')}
         >
             {section.label ? (
                 <DropdownMenuPrimitive.Label className="px-3 pb-1 pt-1 text-sm font-medium text-stone-500 dark:text-stone-400">
@@ -461,7 +479,7 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
                                             </span>
                                         ) : null}
                                     </span>
-                                    <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-stone-600 dark:text-stone-300" aria-hidden="true">
+                                    <span className={cn('flex h-5 w-5 flex-shrink-0 items-center justify-center', selected ? 'text-brand' : 'text-stone-600 dark:text-neutral-300')} aria-hidden="true">
                                         {option.rightAdornment ?? <CaretRight className="h-4 w-4" />}
                                     </span>
                                 </DropdownMenuPrimitive.SubTrigger>
@@ -471,7 +489,7 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
                                         sideOffset={MENU_OFFSET}
                                         collisionPadding={VIEWPORT_MARGIN}
                                         style={{ width: submenuWidth }}
-                                        className="z-[90] overflow-hidden rounded-2xl border border-warm-border/90 bg-warm-surface shadow-[0_18px_48px_rgba(35,31,25,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_48px_rgba(0,0,0,0.36)]"
+                                        className="z-[90] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay"
                                     >
                                         <div className="max-h-[min(var(--radix-dropdown-menu-content-available-height),320px)] overflow-y-auto p-1.5">
                                             {(option.submenuSections ?? []).map((submenuSection, submenuIndex) => (
@@ -512,7 +530,7 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
                                     </span>
                                 ) : null}
                             </span>
-                            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center text-stone-600 dark:text-stone-300" aria-hidden="true">
+                            <span className={cn('flex h-5 w-5 flex-shrink-0 items-center justify-center', selected ? 'text-brand' : 'text-stone-600 dark:text-neutral-300')} aria-hidden="true">
                                 {option.rightAdornment ?? (
                                     <DropdownMenuPrimitive.ItemIndicator>
                                         <Check className="h-4 w-4" weight="bold" />
@@ -536,7 +554,7 @@ function hasSubmenuOptions<Value extends SelectValue>(
 }
 
 export function SelectMenu<Value extends SelectValue = string>(props: SelectMenuProps<Value>) {
-    if (hasSubmenuOptions(props.options, props.sections)) {
+    if (props.sections || hasSubmenuOptions(props.options, props.sections)) {
         return <DropdownSelectMenu {...props} />;
     }
     return <RadixSelectMenu {...props} />;

@@ -1,0 +1,190 @@
+{
+  "actionId": "talking-head-text-cut-filler-source",
+  "targetAssetId": "filler-source",
+  "metadataKind": "talking-head.analysis",
+  "metadata": {
+    "kind": "talking-head.analysis",
+    "fps": 30,
+    "asr": {
+      "kind": "asr-transcript",
+      "sourcePath": "artifacts/asr-demo/filler-transcript.json",
+      "sourceHash": "sha256:801a6d47c19ad622e79d56633089214103f900bd4e5dfa6a2196ad4afd33ac5c",
+      "backendId": "funasr",
+      "modelId": "iic/SenseVoiceSmall",
+      "language": "zh",
+      "durationFrames": 99,
+      "wordCount": 15
+    },
+    "words": [
+      {
+        "id": "word-000001",
+        "text": "大",
+        "startFrame": 0,
+        "endFrame": 3
+      },
+      {
+        "id": "word-000002",
+        "text": "家",
+        "startFrame": 6,
+        "endFrame": 9
+      },
+      {
+        "id": "word-000003",
+        "text": "好",
+        "startFrame": 11,
+        "endFrame": 14
+      },
+      {
+        "id": "word-000004",
+        "text": "，",
+        "startFrame": 18,
+        "endFrame": 21
+      },
+      {
+        "id": "word-000005",
+        "text": "嗯",
+        "startFrame": 26,
+        "endFrame": 28
+      },
+      {
+        "id": "word-000006",
+        "text": "，",
+        "startFrame": 33,
+        "endFrame": 36
+      },
+      {
+        "id": "word-000007",
+        "text": "我",
+        "startFrame": 42,
+        "endFrame": 45
+      },
+      {
+        "id": "word-000008",
+        "text": "们",
+        "startFrame": 47,
+        "endFrame": 50
+      },
+      {
+        "id": "word-000009",
+        "text": "现",
+        "startFrame": 53,
+        "endFrame": 55
+      },
+      {
+        "id": "word-000010",
+        "text": "在",
+        "startFrame": 60,
+        "endFrame": 63
+      },
+      {
+        "id": "word-000011",
+        "text": "开",
+        "startFrame": 69,
+        "endFrame": 72
+      },
+      {
+        "id": "word-000012",
+        "text": "始",
+        "startFrame": 74,
+        "endFrame": 77
+      },
+      {
+        "id": "word-000013",
+        "text": "测",
+        "startFrame": 81,
+        "endFrame": 84
+      },
+      {
+        "id": "word-000014",
+        "text": "试",
+        "startFrame": 87,
+        "endFrame": 90
+      },
+      {
+        "id": "word-000015",
+        "text": "。",
+        "startFrame": 96,
+        "endFrame": 99
+      }
+    ],
+    "cuts": [
+      {
+        "id": "keep-1",
+        "sourceStartFrame": 0,
+        "sourceEndFrame": 26,
+        "outputStartFrame": 0,
+        "outputEndFrame": 26,
+        "action": "keep"
+      },
+      {
+        "id": "delete-1",
+        "sourceStartFrame": 26,
+        "sourceEndFrame": 36,
+        "outputStartFrame": 26,
+        "outputEndFrame": 26,
+        "action": "delete",
+        "reason": "filler",
+        "requiresReview": false,
+        "confidence": 0.92,
+        "detectionSource": "configured-token"
+      },
+      {
+        "id": "keep-2",
+        "sourceStartFrame": 36,
+        "sourceEndFrame": 99,
+        "outputStartFrame": 26,
+        "outputEndFrame": 89,
+        "action": "keep"
+      }
+    ],
+    "captionCues": [
+      {
+        "id": "cue-1",
+        "startFrame": 0,
+        "durationInFrames": 26,
+        "text": "大家好，",
+        "wordIds": [
+          "word-000001",
+          "word-000002",
+          "word-000003",
+          "word-000004"
+        ],
+        "sourceStartFrame": 0,
+        "sourceEndFrame": 21
+      },
+      {
+        "id": "cue-2",
+        "startFrame": 26,
+        "durationInFrames": 63,
+        "text": "我们现在开始测试。",
+        "wordIds": [
+          "word-000007",
+          "word-000008",
+          "word-000009",
+          "word-000010",
+          "word-000011",
+          "word-000012",
+          "word-000013",
+          "word-000014",
+          "word-000015"
+        ],
+        "sourceStartFrame": 42,
+        "sourceEndFrame": 99
+      }
+    ],
+    "disfluencies": [
+      {
+        "id": "filler-word-000005",
+        "wordId": "word-000005",
+        "startFrame": 26,
+        "endFrame": 36,
+        "text": "嗯",
+        "type": "filler",
+        "requiresReview": false,
+        "confidence": 0.92,
+        "detectionSource": "configured-token"
+      }
+    ]
+  },
+  "producer": "clash-production-plan-text-cut"
+}

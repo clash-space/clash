@@ -1,6 +1,10 @@
 import React from 'react';
 import { Composition, registerRoot, getInputProps } from 'remotion';
 import { VideoComposition } from './VideoComposition';
+import { EffectSdkDemo } from './effect-demo/EffectSdkDemo';
+import { buildEffectDemoPlan } from './effect-demo/effectDemoPlan';
+import { TimelineLibraryDemo } from './library-demo/TimelineLibraryDemo';
+import { buildTimelineLibraryDemoPlan } from './library-demo/timelineLibraryDemoPlan';
 
 /**
  * Input props for Remotion CLI rendering
@@ -55,6 +59,22 @@ export const RemotionRoot: React.FC<RemotionInputProps> = (props) => {
           selectionBoxRef: undefined,
           itemsDomMapRef: undefined,
         }}
+      />
+      <Composition
+        id="EffectSdkDemo"
+        component={EffectSdkDemo}
+        width={1280}
+        height={720}
+        fps={30}
+        durationInFrames={buildEffectDemoPlan(30).totalFrames}
+      />
+      <Composition
+        id="TimelineLibraryDemo"
+        component={TimelineLibraryDemo}
+        width={1280}
+        height={720}
+        fps={30}
+        durationInFrames={buildTimelineLibraryDemoPlan(30).totalFrames}
       />
     </>
   );

@@ -1,17 +1,26 @@
 import {
+  buildEffectiveModelCards,
   invalidProviderModelFilters,
   listModelCatalogEntries,
+  listDeclaredModelUpstreamRoutes,
   listProviderModelSupport,
   MODEL_CARDS,
-  MODEL_UPSTREAM_ROUTES,
   normalizeModelId,
+  UserModelCardConfigSchema,
   ProviderOAuthIdSchema,
   type ProviderOAuthId,
   type ProviderAccountAvailability,
+  type ModelCard,
   type ModelUpstreamRoute,
+  type UserModelCardConfig,
 } from "@clash/shared-types";
 import { Hono } from "hono";
 import type { Env } from "../../config";
+import {
+  deleteModelCardConfig,
+  listModelCardConfigs,
+  upsertModelCardConfig,
+} from "../../services/model-card-configs";
 import {
   listProviderAccounts,
   normalizeProviderAccountInput,
@@ -62,6 +71,7 @@ function displayProviderName(provider: Pick<ProviderAccountInput, "providerId" |
     jimeng: "Dreamina",
     volcengine: "Volcengine",
     elevenlabs: "ElevenLabs",
+    suno: "Suno API",
   };
   if (names[provider.providerId]) return names[provider.providerId];
   return provider.upstreamId && provider.upstreamId !== provider.providerId
@@ -96,11 +106,14 @@ function routeProviderId(route: ModelUpstreamRoute): string {
 }
 
 function modelRoutesForProviderAccount(
-  account: Pick<ProviderAccountInput, "providerId" | "upstreamId" | "region">,
+  account: Pick<ProviderAccountInput, "id" | "providerId" | "upstreamId" | "region">,
   modelId: string,
+  models: readonly ModelCard[] = MODEL_CARDS,
 ): ModelUpstreamRoute[] {
-  return MODEL_UPSTREAM_ROUTES.filter((route) =>
+  const routes = listDeclaredModelUpstreamRoutes(models);
+  return routes.filter((route) =>
     route.modelCode === modelId &&
+    (!route.accountId || route.accountId === account.id) &&
     routeProviderId(route) === account.providerId &&
     (!account.upstreamId || route.upstreamId === account.upstreamId) &&
     (route.region ?? "") === (account.region ?? "")
@@ -118,6 +131,36 @@ async function listProviderAccountsWithOAuth(env: Env, userId: string) {
 function providerAccountAvailability(account: PublicProviderAccount): ProviderAccountAvailability {
   const { createdAt: _createdAt, updatedAt: _updatedAt, ...availability } = account;
   return availability;
+}
+
+function normalizeModelCardConfigInput(
+  modelId: string,
+  value: unknown,
+  accounts: PublicProviderAccount[],
+): UserModelCardConfig | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const builtIn = MODEL_CARDS.some((model) => model.id === modelId);
+  const parsed = UserModelCardConfigSchema.safeParse({
+    ...raw,
+    modelId,
+    custom: raw.custom ?? !builtIn,
+  });
+  if (!parsed.success) return null;
+  const config = parsed.data;
+  if (builtIn) {
+    return !config.custom && config.providerBindings.length === 0 ? config : null;
+  }
+  if (!config.custom || !config.name || config.providerBindings.length === 0) return null;
+  const accountsById = new Map(accounts.map((account) => [account.id, account]));
+  const validBindings = config.providerBindings.every((binding) => {
+    const account = accountsById.get(binding.providerAccountId);
+    if (!account) return false;
+    if (account.apiShape === "openai-compatible" || account.apiShape === "anthropic-compatible") return true;
+    return account.providerId === "official" &&
+      (account.upstreamId === "openai" || account.upstreamId === "anthropic");
+  });
+  return validBindings ? config : null;
 }
 
 modelProviderRoutes.get("/model-providers", async (c) => {
@@ -157,6 +200,30 @@ modelProviderRoutes.delete("/model-providers/:accountId", async (c) => {
   return new Response(null, { status: 204 });
 });
 
+modelProviderRoutes.put("/model-cards/:modelId", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const modelId = stringField(c.req.param("modelId"));
+  if (!modelId) return c.json({ error: "Invalid model card config" }, 400);
+  const [body, accounts] = await Promise.all([
+    c.req.json().catch(() => null),
+    listProviderAccountsWithOAuth(c.env, userId),
+  ]);
+  const config = normalizeModelCardConfigInput(modelId, body, accounts);
+  if (!config) return c.json({ error: "Invalid model card config" }, 400);
+  return c.json({ config: await upsertModelCardConfig(c.env.DB, userId, config) });
+});
+
+modelProviderRoutes.delete("/model-cards/:modelId", async (c) => {
+  const userId = c.req.header("x-user-id");
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+  const modelId = stringField(c.req.param("modelId"));
+  if (!modelId) return c.json({ error: "Model card config not found" }, 404);
+  const deleted = await deleteModelCardConfig(c.env.DB, userId, modelId);
+  if (!deleted) return c.json({ error: "Model card config not found" }, 404);
+  return new Response(null, { status: 204 });
+});
+
 modelProviderRoutes.post("/model-providers/test", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
@@ -169,19 +236,29 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
   const modelId = normalizeModelId(rawModelId) ?? rawModelId;
   if (!provider || !modelId) return c.json({ error: "provider and modelId are required" }, 400);
 
-  const accounts = await listProviderAccountsWithOAuth(c.env, userId);
+  const [accounts, configs] = await Promise.all([
+    listProviderAccountsWithOAuth(c.env, userId),
+    listModelCardConfigs(c.env.DB, userId),
+  ]);
+  const effectiveModels = buildEffectiveModelCards({
+    configs,
+    providers: accounts.map(providerAccountAvailability),
+  });
   const stored = accounts.find((account) => sameProviderAccount(provider, account));
   const enabled = rawProvider.enabled === false ? false : stored?.enabled ?? provider.enabled;
   const configuredCredentials = new Set([
     ...(stored?.configuredCredentials ?? []),
     ...Object.keys(provider.credentials ?? {}).filter((key) => provider.credentials?.[key]?.trim()),
   ]);
-  const support = listProviderModelSupport({ includeMock: provider.providerId === "mock" }).find((row) =>
+  const support = listProviderModelSupport({
+    models: effectiveModels,
+    includeMock: provider.providerId === "mock",
+  }).find((row) =>
     row.providerId === provider.providerId &&
     (!provider.upstreamId || row.upstreamId === provider.upstreamId) &&
     (row.region ?? "") === (provider.region ?? "")
   );
-  const modelName = displayModelName(modelId);
+  const modelName = effectiveModels.find((model) => model.id === modelId)?.name ?? displayModelName(modelId);
   const baseResult = {
     providerId: provider.providerId,
     ...(provider.upstreamId ? { upstreamId: provider.upstreamId } : {}),
@@ -217,7 +294,7 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
       message: `${displayProviderName(provider)} is not enabled for ${modelName}.`,
     });
   }
-  const routeRequirements = modelRoutesForProviderAccount(provider, modelId);
+  const routeRequirements = modelRoutesForProviderAccount(provider, modelId, effectiveModels);
   const requirementCandidates = routeRequirements.length > 0
     ? routeRequirements.map((route) => ({
       requiredCredentials: route.requiredCredentials ?? [],
@@ -277,12 +354,20 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
 modelProviderRoutes.get("/models/catalog", async (c) => {
   const userId = c.req.header("x-user-id");
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
-  const providers = await listProviderAccountsWithOAuth(c.env, userId);
+  const [providers, configs] = await Promise.all([
+    listProviderAccountsWithOAuth(c.env, userId),
+    listModelCardConfigs(c.env.DB, userId),
+  ]);
+  const configuredProviders = providers
+    .filter((provider) => provider.providerId !== "mock")
+    .map(providerAccountAvailability);
   return c.json({
     models: listModelCatalogEntries({
-      configuredProviders: providers
-        .filter((provider) => provider.providerId !== "mock")
-        .map(providerAccountAvailability),
+      models: buildEffectiveModelCards({
+        configs,
+        providers: configuredProviders,
+      }),
+      configuredProviders,
     }),
   });
 });

@@ -12,6 +12,8 @@
     "local-loro-host-architecture.md": "Local-first Loro architecture: Local Host, actors, persistent replicas, cloud alignment, and presence boundaries.",
     "local-host-cli-implementation-plan.md": "Implementation plan for project context, Local Host persistence, CLI commands, actor presence, and cloud code reuse.",
     "official-custom-views-action-runtime-plan.md": "Implementation plan for Official Views, Custom HTML Views, Media Pool and Bins, and extracting one headless Action planner/executor shared by Canvas and every View.",
+    "action-spec-system.md": "Canonical ActionSpec, ActionInvocation, executor adapter, immutable result, and explicit-vs-implicit representation contract.",
+    "asset-workspace-spec.md": "Product contract for project/global assets, thumbnails, Preview/Edit, Canvas persistence, minimap, and group-backed Canvas folders.",
     "project-canvas-timeline-asset-model.md": "Accepted ownership and execution model for Projects, Canvases, Timeline Actions, standalone Timelines, ActionRuns, and immutable AssetRevisions.",
     "group-logic-7ef9.md": "Explanation of the complex grouping logic for canvas nodes.",
     "loro-sync-python-improvements.md": "Notes on Python integration with Loro Sync."

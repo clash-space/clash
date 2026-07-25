@@ -17,6 +17,14 @@ files:
 extraResources:
   - from: ../web/dist/client
     to: web-dist
+  - from: ../../.remotion-bundle
+    to: remotion-bundle
+  - from: ../../packages/clash-sdk/python
+    to: clash-sdk/python
+    filter:
+      - "clash_sdk/**/*"
+      - "!**/__pycache__/**"
+      - "!**/*.py[cod]"
   - from: build/acp-bin
     to: acp-bin
     filter:

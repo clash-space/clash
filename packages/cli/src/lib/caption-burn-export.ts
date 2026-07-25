@@ -105,7 +105,7 @@ export async function exportCaptionBurn(
   }
   const stats = collectCaptionBurnStats(parsed.dsl);
   if (stats.captionItems === 0 || stats.cues === 0) {
-    throw new Error("Caption burn export requires structured timeline items with type: caption and cues.");
+    throw new Error("Caption burn export requires structured type: text items with cues on a subtitle track.");
   }
   const timelineProvenance = createTimelineSourceProvenance({
     cwd,
@@ -237,8 +237,9 @@ function collectCaptionBurnStats(dsl: ResolvedTimelineDsl): CaptionBurnStats {
     sourceToOutputMap: [],
   };
   for (const track of dsl.tracks) {
+    if (track.role !== "subtitle") continue;
     for (const item of track.items) {
-      if (item.type !== "caption") continue;
+      if (item.type !== "text") continue;
       stats.captionItems += 1;
       stats.cues += Array.isArray(item.cues) ? item.cues.length : 0;
       stats.wordRefs += Array.isArray(item.wordRefs) ? item.wordRefs.length : 0;

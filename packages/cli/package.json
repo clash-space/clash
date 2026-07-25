@@ -21,7 +21,9 @@
     "test:e2e": "node --test e2e/canvas-add-refs.test.mjs"
   },
   "dependencies": {
+    "@clash-space/mcp-server": "workspace:*",
     "@clash/shared-runtime": "workspace:*",
+    "@master-clash/remotion-effects": "workspace:*",
     "commander": "^13.0.0",
     "loro-crdt": "^1.10.3",
     "ws": "^8.18.0"

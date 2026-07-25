@@ -2,7 +2,7 @@
 
 Status: Accepted
 
-Last updated: 2026-07-10
+Last updated: 2026-07-15
 
 ## Purpose
 
@@ -126,11 +126,21 @@ The asset catalog and an asset browsing surface are different layers:
   media locations, proxies, and analysis metadata.
 - A Project Media Pool is the set of catalog assets explicitly linked into a
   Project. It does not duplicate media blobs.
+- A Global Asset Library is the set of catalog assets a user explicitly marks
+  reusable across Projects. `asset_library_refs` records this membership;
+  it does not own or duplicate media blobs.
+- Adding a Global Library asset from the Project `Assets` add menu first creates
+  the Project asset reference. It then behaves like any other Project asset and
+  may be previewed or dragged into a Canvas. Promoting a Project asset to the
+  Global Library creates only the library membership row.
 - A Bin or Collection stores Project asset references. The same asset may
   appear in multiple Bins without being copied.
 - A Smart Bin stores a query over Project assets and metadata.
 - The built-in Assets screen is the default Media Pool browser. It is a UI
   projection, not a persisted generic View entity.
+- The home `Assets` tab manages the Global Asset Library. A Project navigator
+  shows only its Project-scoped `Assets` folder; the folder's add menu offers
+  both local upload and selection from the Global Asset Library.
 
 The product exposes two kinds of View:
 
@@ -152,6 +162,39 @@ ViewRef =
   | OfficialViewRef(definitionId, target?)
   | CustomViewRef(customViewId)
 ```
+
+### Scope-aware asset acquisition and propagation
+
+Asset selection follows the persisted ownership path of the destination. It is
+not a separate import rule implemented by each editor:
+
+```text
+Canvas destination:                 Project -> Canvas
+Standalone Timeline destination:    Project -> Timeline
+Canvas-owned Timeline destination:  Project -> Canvas -> Timeline
+```
+
+The picker exposes only valid ancestors of that path. A Canvas can select from
+Project assets or the external source tier. A standalone Timeline has the same
+choices. A Canvas-owned Timeline additionally exposes placements on its current
+Canvas. `Global Library` and `Upload from Mac` are two acquisition methods in
+one external source tier; the Global Library is not a parent of a Project.
+
+Selection extends the reference chain from the source to the destination:
+
+- Global Library selection ensures a Project asset reference first.
+- Local upload creates the catalog asset and Project reference, but never
+  creates Global Library membership implicitly.
+- Entering a Canvas creates or reuses an Asset placement.
+- Entering a Canvas-owned Timeline connects that exact placement to its owning
+  Timeline Action; the placement identity is passed forward by the cascade.
+- Entering a standalone Timeline creates a direct Timeline media reference.
+
+Every step is idempotent. Re-selecting an asset reuses an existing Project
+reference, Canvas placement, or Timeline input. Canvas has no parent Canvas,
+and a current-Canvas source is valid only for the Timeline owned by that same
+Canvas. The scope planner is domain logic shared by all surfaces; UI components
+only present sources and storage adapters only apply the planned mutations.
 
 Projects may contain multiple `CustomView` objects. A CustomView is a saved
 HTML-based work surface for organizing and acting on Project entities.

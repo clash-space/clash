@@ -84,14 +84,23 @@
       ],
       "localAgentReady": "Local agent connected. Send a message to start.",
       "desktopLocalStarting": "Connecting to the local agent on this Mac…",
-      "desktopLocalRequired": "No local agent is available on this Mac.",
-      "desktopLocalSetupRequired": "Local agent needs setup on this Mac. Sign in to the agent or add the required API keys, then try again.",
-      "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
-      "slashCommandsMore": "+{{count}} more"
-    },
+    "desktopLocalRequired": "No local agent is available on this Mac.",
+    "desktopLocalSetupRequired": "Local agent needs setup on this Mac. Sign in to the agent or add the required API keys, then try again.",
+    "agentHarnessRequiredTitle": "Set up a local agent",
+    "agentHarnessRequired": "Install or enable an agent harness before starting a project chat.",
+    "localRuntimeRequired": "Select or connect a local runtime to chat. Cloud Agent is coming soon.",
+    "slashCommandsMore": "+{{count}} more"
+  },
+  "actions": {
+    "openAgents": "Open Agents"
+  },
     "errors": {
       "createSession": "Failed to create session. Please try again.",
       "warningPrefix": "⚠"
+    },
+    "slash": {
+      "noCommands": "This agent has no slash commands.",
+      "noMatches": "No matching slash commands."
     },
     "chatInput": {
       "placeholderDefault": "Ask anything...",

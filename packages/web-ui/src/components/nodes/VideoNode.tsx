@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import DraftPlaceholder from './DraftPlaceholder';
-import { ArrowClockwise, FilmSlate, TextT } from '@phosphor-icons/react';
+import { ArrowClockwise, Eye, FilmSlate, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { normalizeStatus, isActiveStatus, type AssetStatus } from '@clash/web-ui/lib/assetStatus';
@@ -26,7 +26,7 @@ const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan bg-black/50 text-white backdrop-b
 
 const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Video Node');
-    const { openViewer } = useMediaViewer();
+    const { openAssetPreview, openViewer } = useMediaViewer();
     const { setNodes } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     const [status, setStatus] = useState<AssetStatus>(normalizeStatus(data.status) || (data.assetId ? 'completed' : 'generating'));
@@ -399,6 +399,22 @@ const VideoNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
 
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
+                            {nodeAssetId && openAssetPreview ? (
+                                <Tooltip label="Preview asset">
+                                    <IconButton
+                                        label="Preview asset"
+                                        icon={<Eye size={14} weight="bold" />}
+                                        size="sm"
+                                        shape="circle"
+                                        className={MEDIA_NODE_CONTROL_CLASS}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            openAssetPreview(nodeAssetId);
+                                        }}
+                                        onDoubleClick={(event) => event.stopPropagation()}
+                                    />
+                                </Tooltip>
+                            ) : null}
                             <Tooltip label="Toggle description">
                                 <CollapsibleTrigger asChild>
                                     <IconButton

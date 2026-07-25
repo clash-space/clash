@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { useLoroSync } from "./useLoroSync";
 import {
@@ -9,6 +11,7 @@ import {
   canvasBatchDeleteReadToken,
   canvasNodeReadToken,
   projectTimelineReadToken,
+  projectDirectorStageReadToken,
   readProjectTimeline,
   type HostMutationRecord,
 } from "@clash/shared-types";
@@ -42,6 +45,17 @@ class FakeWebSocket {
 }
 
 describe("useLoroSync guardrails", () => {
+  it("never deletes the local project snapshot just because the schema marker changed", () => {
+    const source = readFileSync(join(process.cwd(), "packages/web-ui/src/hooks/useLoroSync.ts"), "utf8");
+    const migrationStart = source.indexOf("const versionKey = `loro-schema-version-${projectId}`");
+    const loadStart = source.indexOf("const snapshot = await loadFromDB(projectId)", migrationStart);
+    const migrationSource = source.slice(migrationStart, loadStart);
+
+    expect(migrationStart).toBeGreaterThan(-1);
+    expect(migrationSource).not.toContain("deleteFromDB(projectId)");
+    expect(migrationSource).toContain("localStorage.setItem(versionKey, LORO_SCHEMA_VERSION)");
+  });
+
   beforeEach(() => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -53,6 +67,93 @@ describe("useLoroSync guardrails", () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.localStorage.clear();
+  });
+
+  it("keeps its public API object stable across parent-only renders", async () => {
+    const { result, rerender } = renderHook(
+      ({ renderToken }) => {
+        void renderToken;
+        return useLoroSync({
+          projectId: "stable-public-api-hook",
+          canvasId: "main",
+          syncServerUrl: "ws://localhost:7777",
+        });
+      },
+      { initialProps: { renderToken: 0 } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isInitialized).toBe(true);
+      expect(result.current.connected).toBe(true);
+      expect(result.current.canvases.length).toBeGreaterThan(0);
+    });
+    const before = result.current;
+
+    rerender({ renderToken: 1 });
+
+    expect(result.current).toBe(before);
+  });
+
+  it("manages independently revisioned Director Stages through the live Project replica", async () => {
+    const { result } = renderHook(() => useLoroSync({
+      projectId: "director-stage-hook",
+      canvasId: "main",
+      syncServerUrl: "ws://localhost:7777",
+    }));
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    const initialState = {
+      schemaVersion: 1 as const,
+      scene: {
+        backgroundColor: "#101114",
+        grid: { visible: true, snap: false, size: 1 },
+      },
+      objects: [],
+      cameras: [{
+        id: "camera-1",
+        name: "Camera 1",
+        position: [0, 2, 8] as [number, number, number],
+        rotation: [0, 0, 0] as [number, number, number],
+        fov: 45,
+      }],
+      shots: [],
+      activeCameraId: "camera-1",
+      animation: { durationSeconds: 10, fps: 30, tracks: [] },
+    };
+
+    act(() => {
+      expect(result.current.createDirectorStage({
+        id: "stage-1",
+        name: "Opening blocking",
+        state: initialState,
+      }).ok).toBe(true);
+      expect(result.current.attachDirectorStage({
+        stageId: "stage-1",
+        actionNodeId: "director-action-1",
+        position: { x: 160, y: 120 },
+      }).ok).toBe(true);
+    });
+
+    const attached = result.current.directorStages[0];
+    expect(attached?.owner).toEqual({
+      kind: "canvas-action",
+      canvasId: "main",
+      actionNodeId: "director-action-1",
+    });
+    const before = projectDirectorStageReadToken(attached!);
+
+    act(() => {
+      expect(result.current.applyDirectorStageState("stage-1", {
+        ...initialState,
+        scene: { ...initialState.scene, backgroundColor: "#202126" },
+      })).toBe(true);
+    });
+    expect(projectDirectorStageReadToken(result.current.directorStages[0]!)).not.toBe(before);
+
+    act(() => {
+      expect(result.current.detachDirectorStage("stage-1").ok).toBe(true);
+    });
+    expect(result.current.standaloneDirectorStages[0]?.owner).toEqual({ kind: "project" });
   });
 
   it("writes nodes into the selected Canvas scope in one Project document", async () => {
@@ -878,6 +979,58 @@ describe("useLoroSync guardrails", () => {
       resultEntityId: "scratch-1",
       accepted: true,
     });
+  });
+
+  it("rejects a stale desktop Timeline autosave instead of overwriting a newer Agent revision", async () => {
+    const mutations: HostMutationRecord[] = [];
+    const { result } = renderHook(() =>
+      useLoroSync({
+        projectId: "guardrail-desktop-timeline-cas",
+        syncServerUrl: "ws://localhost:7777",
+        onMutation: (mutation) => mutations.push(mutation),
+      }),
+    );
+
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+    act(() => {
+      result.current.createTimeline({
+        id: "timeline-cas",
+        name: "Timeline CAS",
+        state: { tracks: [], durationInFrames: 90 },
+      });
+    });
+    const desktopReadToken = projectTimelineReadToken(
+      result.current.timelines.find((timeline) => timeline.id === "timeline-cas")!,
+    );
+
+    act(() => {
+      result.current.applyTimelineState("timeline-cas", {
+        tracks: [],
+        durationInFrames: 980,
+      });
+    });
+    const agentState = readProjectTimeline(result.current.doc!, "timeline-cas")!.state;
+    mutations.length = 0;
+
+    let accepted: unknown;
+    act(() => {
+      accepted = result.current.applyTimelineState(
+        "timeline-cas",
+        { tracks: [], durationInFrames: 120 },
+        { actorClientType: "desktop", ifMatch: desktopReadToken },
+      );
+    });
+
+    expect(accepted).toBe(false);
+    expect(readProjectTimeline(result.current.doc!, "timeline-cas")!.state).toEqual(agentState);
+    expect(mutations).toContainEqual(expect.objectContaining({
+      operation: "timeline_apply",
+      entity: { kind: "timeline", id: "timeline-cas" },
+      expectedReadToken: desktopReadToken,
+      accepted: false,
+      error: "STALE_READ: The target changed after it was read. Read it again before applying Timeline state.",
+    }));
   });
 
   it("requires agent runtime edge mutations to carry matching read tokens", async () => {

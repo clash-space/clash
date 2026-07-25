@@ -10,7 +10,9 @@ import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
+import type { AgentAnnotationDraft } from '@clash/shared-types';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
+import { AgentAnnotationTray } from './AgentAnnotationBlock';
 
 // Lazy load MilkdownEditor to avoid SSR issues
 const MilkdownEditor = lazy(() => import('../MilkdownEditor'));
@@ -32,7 +34,11 @@ interface ChatInputProps {
     input: string;
     onInputChange: (value: string) => void;
     /** Called with markdown text + extracted asset keys on send */
-    onSubmit: (text: string, attachments: UploadedAttachment[]) => void;
+    onSubmit: (
+        text: string,
+        attachments: UploadedAttachment[],
+        annotations: AgentAnnotationDraft[],
+    ) => void;
     onStop?: () => void;
     isProcessing?: boolean;
     isCreatingSession?: boolean;
@@ -54,6 +60,12 @@ interface ChatInputProps {
     /** Optional controls rendered on the right side before voice/send. */
     rightToolbarAccessory?: ReactNode;
     onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
+    /** Structured review context attached from Canvas, Timeline, or Director Stage. */
+    annotationBlocks?: AgentAnnotationDraft[];
+    onAnnotationChange?: (annotationId: string, note: string) => void;
+    onAnnotationRemove?: (annotationId: string) => void;
+    /** Jumps the workspace to the annotated object and flashes a highlight. */
+    onAnnotationLocate?: (annotationId: string) => void;
 }
 
 export interface ChatInputHandle {
@@ -307,6 +319,10 @@ function ChatInputInner({
     toolbarAccessory,
     rightToolbarAccessory,
     onCaretTargetChange,
+    annotationBlocks = [],
+    onAnnotationChange,
+    onAnnotationRemove,
+    onAnnotationLocate,
 }: ChatInputProps, ref: ForwardedRef<ChatInputHandle>) {
     const { t } = useTranslation();
     const editorRef = useRef<MilkdownEditorHandle>(null);
@@ -356,21 +372,33 @@ function ChatInputInner({
 
     const actionLocked = isCreatingSession || disabled;
     const submitLocked = actionLocked || (isProcessing && !allowSubmitWhileProcessing);
-    const canSend = input.trim() && !submitLocked && uploading === 0;
+    const hasAnnotationContent = annotationBlocks.some(
+        (annotation) => annotation.note.trim() || annotation.target.selection?.exact.trim(),
+    );
+    const canSend = Boolean(input.trim() || hasAnnotationContent) && !submitLocked && uploading === 0;
     const showQueuedSend = isProcessing && allowSubmitWhileProcessing && canSend;
     const isHero = variant === 'hero';
 
     // ─── Submit ──────────────────────────────────────────────
     const handleFormSubmit = useCallback(() => {
         const raw = input.trim();
-        if (!raw || uploading > 0 || submitLocked) return;
+        if ((!raw && !hasAnnotationContent) || uploading > 0 || submitLocked) return;
         const text = restoreMentions(raw);
         const attachments = extractAssetKeys(text);
         onInputChange('');
         editorRef.current?.clear();
         onCaretTargetChange?.(null);
-        onSubmit(text, attachments);
-    }, [input, uploading, submitLocked, onInputChange, onSubmit, onCaretTargetChange]);
+        onSubmit(text, attachments, annotationBlocks);
+    }, [
+        annotationBlocks,
+        hasAnnotationContent,
+        input,
+        onCaretTargetChange,
+        onInputChange,
+        onSubmit,
+        submitLocked,
+        uploading,
+    ]);
 
     const updateCaretTarget = useCallback(() => {
         if (!onCaretTargetChange) return;
@@ -606,7 +634,7 @@ function ChatInputInner({
             {/* Main input card */}
             <div
                 {...getRootProps({
-                    className: `clash-chat-input-surface ${isHero ? 'rounded-[2rem] p-2' : 'rounded-[18px]'} ${isDragActive ? 'ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface' : ''}`,
+                    className: `clash-chat-input-surface ${isHero ? 'p-2' : ''} ${isDragActive ? 'ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface' : ''}`,
                 })}
             >
                 {isListening ? (
@@ -645,10 +673,17 @@ function ChatInputInner({
                 ) : (
                     /* ─── Rich text input ─── */
                     <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
+                        <AgentAnnotationTray
+                            annotations={annotationBlocks}
+                            disabled={actionLocked}
+                            onChange={onAnnotationChange}
+                            onRemove={onAnnotationRemove}
+                            onLocate={onAnnotationLocate}
+                        />
                         <div
                             ref={editorHostRef}
                             aria-disabled={actionLocked || undefined}
-                            className={`clash-chat-input-editor ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto ${actionLocked ? 'pointer-events-none opacity-60' : ''}`}
+                            className={`clash-chat-input-editor relative ${isHero ? 'clash-chat-input-editor--hero' : 'clash-chat-input-editor--default'} milkdown-chat-input w-full text-left chat-scroll-hidden ${isHero ? 'min-h-[100px] flex-1 px-5 pt-4' : 'min-h-[52px] max-h-[200px]'} overflow-y-auto ${actionLocked ? 'pointer-events-none opacity-60' : ''}`}
                             onFocusCapture={() => window.requestAnimationFrame(updateCaretTarget)}
                             onBlurCapture={(event) => {
                                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -660,7 +695,7 @@ function ChatInputInner({
                             onInput={() => window.requestAnimationFrame(updateCaretTarget)}
                         >
                             {disabledPlaceholder ? (
-                                <div className="px-[18px] py-4 text-sm text-stone-500 dark:text-stone-400">
+                                <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-[18px] py-4 text-sm text-stone-500 dark:text-stone-400">
                                     {disabledPlaceholder}
                                 </div>
                             ) : null}
@@ -669,7 +704,7 @@ function ChatInputInner({
                                 value={input}
                                 onChange={onInputChange}
                                 onSubmit={handleFormSubmit}
-                                promptModalities={['text', 'image']}
+                                promptModalities={['text', 'image', 'video', 'audio']}
                                 mentionableNodes={mentionableNodes}
                                 connectedNodeIds={connectedNodeIds}
                                 onMentionAdded={onMentionAdded}

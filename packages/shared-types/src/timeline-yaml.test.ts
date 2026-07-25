@@ -158,6 +158,136 @@ tracks:
 });
 
 describe("timelineDslToYaml round-trip", () => {
+  it("preserves typed track categories for agent-authored timelines", () => {
+    const yaml = timelineDslToYaml({
+      primaryTrackId: "story",
+      tracks: [
+        { id: "titles", category: "text", items: [] },
+        { id: "story", category: "primary", items: [] },
+        { id: "music", category: "audio", items: [] },
+      ],
+    } as any);
+
+    expect(yaml).toContain("category: text");
+    expect(yaml).toContain("category: primary");
+    expect(yaml).toContain("category: audio");
+    const parsed = timelineDslFromYaml(yaml);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.dsl.tracks.map((track) => (track as any).category)).toEqual([
+      "text",
+      "primary",
+      "audio",
+    ]);
+  });
+
+  it("rejects unknown track categories", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: mystery
+    category: anything
+    items: []
+`);
+    expect(parsed).toEqual({ ok: false, error: "Track mystery has invalid category" });
+  });
+
+  it("rejects items placed in an incompatible typed track", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: music
+    category: audio
+    items:
+      - id: wrong-video
+        type: video
+        from: 0
+        durationInFrames: 30
+`);
+    expect(parsed).toEqual({
+      ok: false,
+      error: "Track music category audio cannot contain video items",
+    });
+  });
+
+  it("rejects typed tracks outside the canonical vertical order", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: titles
+    category: text
+    items: []
+  - id: fx
+    category: effect
+    items: []
+`);
+    expect(parsed).toEqual({
+      ok: false,
+      error: "Track categories must follow effect, text, visual, primary, audio order",
+    });
+  });
+
+  it("rejects an untyped legacy track that mixes structural item categories", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: legacy-mixed
+    items:
+      - id: video
+        type: video
+        from: 0
+        durationInFrames: 30
+      - id: title
+        type: text
+        from: 0
+        durationInFrames: 30
+`);
+    expect(parsed).toEqual({
+      ok: false,
+      error: "Track legacy-mixed mixes incompatible item categories",
+    });
+  });
+
+  it("preserves the main storyline id for agent-authored timelines", () => {
+    const yaml = timelineDslToYaml({
+      primaryTrackId: "dialogue",
+      tracks: [
+        { id: "overlay", items: [] },
+        { id: "dialogue", role: "primary-video", items: [] },
+      ],
+    } as any);
+
+    expect(yaml).toContain("primaryTrackId: dialogue");
+    const parsed = timelineDslFromYaml(yaml);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect((parsed.dsl as any).primaryTrackId).toBe("dialogue");
+  });
+
+  it("rejects a main storyline id that does not reference a track", () => {
+    const parsed = timelineDslFromYaml(`
+primaryTrackId: missing
+tracks:
+  - id: dialogue
+    items: []
+`);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: "primaryTrackId must reference an existing track",
+    });
+  });
+
+  it("rejects a primary id that points at a non-primary typed lane", () => {
+    const parsed = timelineDslFromYaml(`
+primaryTrackId: music
+tracks:
+  - id: music
+    category: audio
+    items: []
+`);
+    expect(parsed).toEqual({
+      ok: false,
+      error: "primaryTrackId must reference the primary track category",
+    });
+  });
+
   it("preserves fromExpr through a round trip", () => {
     const dsl = {
       compositionWidth: 1920,
@@ -222,7 +352,9 @@ describe("timelineDslToYaml round-trip", () => {
           items: [
             {
               id: "captions-main",
-              type: "caption",
+              type: "text",
+              text: "大家好",
+              color: "#ffffff",
               from: 0,
               durationInFrames: 45,
               cues: [
@@ -251,7 +383,7 @@ describe("timelineDslToYaml round-trip", () => {
     expect(parsed.dsl.tracks[0].role).toBe("subtitle");
   });
 
-  it("rejects caption items that do not carry structured cue lineage", () => {
+  it("rejects the removed caption item taxonomy", () => {
     const parsed = timelineDslFromYaml(`
 tracks:
   - id: subtitles
@@ -266,7 +398,7 @@ tracks:
 
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error).toMatch(/caption.*cues.*wordRefs.*sourceToOutputMap/i);
+    expect(parsed.error).toMatch(/subtitle.*structured text.*caption/i);
   });
 
   it("rejects plain text clips on subtitle tracks", () => {
@@ -280,11 +412,12 @@ tracks:
         from: 0
         durationInFrames: 60
         text: hello
+        color: "#ffffff"
 `);
 
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error).toMatch(/subtitle.*caption/i);
+    expect(parsed.error).toMatch(/subtitle text item.*cues.*wordRefs.*sourceToOutputMap/i);
   });
 
   it("rejects derived overlay items without copy-on-write lineage", () => {
@@ -565,8 +698,19 @@ describe("YAML edge cases", () => {
               durationInFrames: 60,
               sourceStartInFrames: 30,
               volume: 0.5,
+              audioGainDb: 8.6,
+              audioFadeInFrames: 12,
+              audioFadeOutFrames: 18,
               videoFadeIn: 10,
               videoFadeOutColor: "white",
+              entranceAnimation: {
+                type: "zoom-in",
+                durationInFrames: 14,
+              },
+              exitAnimation: {
+                type: "fade",
+                durationInFrames: 9,
+              },
             },
           ],
         },
@@ -579,8 +723,107 @@ describe("YAML edge cases", () => {
     const item = r.dsl.tracks[0].items[0] as Record<string, unknown>;
     expect(item.sourceStartInFrames).toBe(30);
     expect(item.volume).toBe(0.5);
+    expect(item.audioGainDb).toBe(8.6);
+    expect(item.audioFadeInFrames).toBe(12);
+    expect(item.audioFadeOutFrames).toBe(18);
     expect(item.videoFadeIn).toBe(10);
     expect(item.videoFadeOutColor).toBe("white");
+    expect(item.entranceAnimation).toEqual({
+      type: "zoom-in",
+      durationInFrames: 14,
+    });
+    expect(item.exitAnimation).toEqual({
+      type: "fade",
+      durationInFrames: 9,
+    });
+  });
+
+  it("rejects malformed entrance and exit animation fields", () => {
+    const r = timelineDslFromYaml(`
+tracks:
+  - id: video
+    category: visual
+    items:
+      - id: clip
+        type: video
+        from: 0
+        durationInFrames: 60
+        entranceAnimation:
+          type: spin-forever
+          durationInFrames: 12
+`);
+
+    expect(r).toEqual({
+      ok: false,
+      error: "Timeline item clip entranceAnimation.type is unsupported",
+    });
+  });
+
+  it("rejects audioGainDb outside the editor audio range", () => {
+    const r = timelineDslFromYaml(`
+tracks:
+  - id: audio
+    category: audio
+    items:
+      - id: voice
+        type: audio
+        from: 0
+        durationInFrames: 60
+        audioGainDb: 12.1
+`);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/audioGainDb.*-60.*12/i);
+  });
+
+  it("rejects malformed audio ducking settings", () => {
+    const r = timelineDslFromYaml(`
+tracks:
+  - id: music
+    role: music
+    category: audio
+    items:
+      - id: bed
+        type: audio
+        from: 0
+        durationInFrames: 60
+        audioDucking:
+          amountDb: 1
+          attackFrames: 6
+          releaseFrames: 12
+`);
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(/audioDucking\.amountDb.*-60.*0/i);
+  });
+
+  it("round-trips valid ducking settings on a music item", () => {
+    const r = timelineDslFromYaml(`
+tracks:
+  - id: music
+    role: music
+    category: audio
+    items:
+      - id: bed
+        type: audio
+        src: music.wav
+        from: 0
+        durationInFrames: 120
+        audioDucking:
+          amountDb: -18
+          attackFrames: 6
+          releaseFrames: 12
+`);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.dsl.tracks[0]?.items[0]?.audioDucking).toEqual({
+      amountDb: -18,
+      attackFrames: 6,
+      releaseFrames: 12,
+    });
   });
 
   it("when `from` is a numeric YAML value it stays numeric and clears any stale fromExpr", () => {
@@ -604,6 +847,133 @@ describe("YAML edge cases", () => {
     expect(r.dsl.tracks[0].items[0].from).toBe(100);
     expect(r.dsl.tracks[0].items[0].fromExpr).toBeUndefined();
     void dsl;
+  });
+});
+
+describe("timeline item keyframes", () => {
+  it("round-trips valid item-local transform channels", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    category: visual
+    items:
+      - id: title-card
+        type: image
+        from: 30
+        durationInFrames: 60
+        keyframes:
+          position:
+            - frame: 0
+              value: [0, 0]
+              interpolation: linear
+            - frame: 59
+              value: [120, 80]
+              interpolation: hold
+          opacity:
+            - frame: 0
+              value: 0
+              interpolation: linear
+            - frame: 15
+              value: 1
+              interpolation: linear
+`);
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const yaml = timelineDslToYaml(parsed.dsl);
+    const roundTrip = timelineDslFromYaml(yaml);
+    expect(roundTrip).toEqual(parsed);
+  });
+
+  it("rejects duplicate frames within one keyframe channel", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    category: visual
+    items:
+      - id: title-card
+        type: image
+        from: 0
+        durationInFrames: 60
+        keyframes:
+          position:
+            - frame: 12
+              value: [0, 0]
+              interpolation: linear
+            - frame: 12
+              value: [120, 80]
+              interpolation: hold
+`);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: "Timeline item title-card keyframes.position contains duplicate frame 12",
+    });
+  });
+
+  it("rejects keyframes on audio items", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: music
+    category: audio
+    items:
+      - id: bed
+        type: audio
+        from: 0
+        durationInFrames: 60
+        keyframes:
+          opacity:
+            - frame: 0
+              value: 1
+              interpolation: linear
+`);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: "Timeline item bed keyframes are only valid on visual transform items",
+    });
+  });
+
+  it("validates keyframes on structured subtitle text items", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: subtitles
+    role: subtitle
+    items:
+      - id: subtitle
+        type: text
+        text: hello
+        from: 0
+        durationInFrames: 30
+        cues:
+          - id: cue
+            startFrame: 0
+            durationInFrames: 30
+            text: hello
+            wordIds: [word]
+            sourceStartFrame: 0
+            sourceEndFrame: 30
+        wordRefs:
+          - id: word
+            text: hello
+            sourceStartFrame: 0
+            sourceEndFrame: 30
+        sourceToOutputMap:
+          - sourceStartFrame: 0
+            sourceEndFrame: 30
+            outputStartFrame: 0
+            outputEndFrame: 30
+        keyframes:
+          opacity:
+            - frame: 30
+              value: 0
+              interpolation: linear
+`);
+
+    expect(parsed).toEqual({
+      ok: false,
+      error: "Timeline item subtitle keyframes.opacity frame must be an integer between 0 and 29",
+    });
   });
 });
 

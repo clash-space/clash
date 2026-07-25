@@ -1,0 +1,20 @@
+{
+  "name": "Clash Codex Plugin",
+  "purpose": "Package the complete Clash MCP tool and focused App surface as one installable Codex Plugin.",
+  "runtimeBoundary": "Reuse an active Desktop/local-api host or start the bundled local-api as a plugin-owned third client. Share the same local replica and close only a host whose plugin ownership record matches this process.",
+  "entrypoints": [
+    ".codex-plugin/plugin.json",
+    ".mcp.json",
+    "src/index.ts",
+    "src/server.ts",
+    "src/host-runner.ts",
+    "src/plugin-host.ts",
+    "src/local-api-entry.ts",
+    "scripts/build-host-runtime.ts"
+  ],
+  "verification": [
+    "pnpm --filter @clash-space/codex-plugin test",
+    "pnpm --filter @clash-space/codex-plugin typecheck",
+    "pnpm --filter @clash-space/codex-plugin build"
+  ]
+}

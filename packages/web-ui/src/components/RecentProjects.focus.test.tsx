@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import RecentProjects from "./RecentProjects";
 
-describe("RecentProjects new project focus", () => {
+describe("RecentProjects new project creation", () => {
   afterEach(cleanup);
 
   beforeEach(() => {
@@ -27,16 +27,20 @@ describe("RecentProjects new project focus", () => {
     expect(source).not.toContain('document.querySelector("textarea")');
   });
 
-  it("delegates new project intent to the owner of the hero composer", () => {
-    let calls = 0;
+  it("delegates the entered project name to its owner", async () => {
+    const onCreateProject = vi.fn().mockResolvedValue(undefined);
     render(
       <MemoryRouter>
-        <RecentProjects projects={[]} onStartNewProject={() => { calls += 1; }} />
+        <RecentProjects projects={[]} onCreateProject={onCreateProject} />
       </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /start a new project/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /project name/i }), {
+      target: { value: "Storyboard" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^create$/i }));
 
-    expect(calls).toBe(1);
+    expect(onCreateProject).toHaveBeenCalledWith("Storyboard");
   });
 });

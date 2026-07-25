@@ -1,19 +1,26 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef, type FormEvent, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Key, Plus, Trash, Copy, Check, ArrowLeft, ArrowUp, ArrowDown, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp, MagnifyingGlass, CaretDown, CaretRight, Microphone, X, ImageSquare, VideoCamera, SpeakerHigh, TextT } from '@phosphor-icons/react';
+import { Key, Plus, Trash, Copy, Check, ArrowLeft, ArrowUp, ArrowDown, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp, MagnifyingGlass, CaretDown, CaretRight, Microphone, X, ImageSquare, VideoCamera, SpeakerHigh, TextT, Desktop, Moon, Sun } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
-import { Link, useSearchParams } from 'react-router';
-import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId, type ProviderOAuthId } from '@clash/shared-types';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
     uninstallAction, type InstalledActionInfo,
     uninstallSkill, type InstalledSkillInfo,
-    updateModelProviders, deleteModelProvider, listModelProviders, listModelCatalog, listProviderOAuth, startProviderOAuth, completeProviderOAuth, testModelProvider,
+    updateModelProviders, deleteModelProvider, listModelProviders, listModelCatalog, saveModelCardConfig, deleteModelCardConfig, listProviderOAuth, startProviderOAuth, completeProviderOAuth, testModelProvider,
     type ModelProviderAccountInfo, type ModelCatalogEntryInfo, type ProviderOAuthInfo, type ModelProviderTestResult,
 } from '@clash/web-ui/lib/clientActions';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
+import {
+    clearHarnessOperation,
+    setHarnessOperation,
+    useHarnessOperations,
+    type HarnessOperationAction,
+} from '@clash/web-ui/lib/harnessOperations';
+import { HARNESS_UPDATED_EVENT } from '@clash/web-ui/lib/sessionRuntime';
 import { cn } from './ai-elements/utils';
 import { Dialog } from './ui/dialog';
 import { Button } from './ui/button';
@@ -26,13 +33,15 @@ import { Switch } from './ui/switch';
 import { Textarea } from './ui/textarea';
 import { Tooltip } from './ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { useAppFeedback } from './AppFeedback';
+import { useTheme } from './ThemeProvider';
+import { DEFAULT_ACCENT_COLOR, normalizeAccentColor, type ThemePreference } from '../lib/theme';
 
 /** Stable identifiers for each section pane — shared between the legacy
  *  SettingsSurface. The host uses these as its sidebar nav keys. */
 export type SettingsSection =
+    | 'appearance'
     | 'agents'
     | 'sync'
     | 'audio'
@@ -79,6 +88,8 @@ const settingsMonoFieldClass =
     `${settingsFieldClass} font-mono`;
 const settingsTextareaFieldClass =
     `${settingsMonoFieldClass} resize-y leading-5`;
+const settingsProseTextareaFieldClass =
+    `${settingsFieldClass} resize-y leading-5`;
 const settingsSecondaryButtonClass =
     'clash-settings-secondary inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60';
 const settingsCompactSecondaryButtonClass =
@@ -90,10 +101,24 @@ function formatProviderTestPayload(payload: Record<string, unknown>): string {
     return JSON.stringify(payload, null, 2);
 }
 
-const MODEL_PROVIDER_FILTER_OPTIONS: SelectOption<'all' | 'ready' | 'missing'>[] = [
-    { value: 'all', label: 'All provider states' },
-    { value: 'ready', label: 'Provider ready' },
-    { value: 'missing', label: 'Provider missing' },
+const MODEL_AVAILABILITY_FILTER_OPTIONS: SelectOption<'all' | 'enabled' | 'unavailable'>[] = [
+    { value: 'all', label: 'All availability' },
+    { value: 'enabled', label: 'Enabled' },
+    { value: 'unavailable', label: 'Unavailable' },
+];
+
+const MODEL_INPUT_FILTER_OPTIONS: SelectOption<'all' | 'text-only' | 'image' | 'video' | 'audio'>[] = [
+    { value: 'all', label: 'All accepted inputs' },
+    { value: 'text-only', label: 'Text only' },
+    { value: 'image', label: 'Can use images' },
+    { value: 'video', label: 'Can use video' },
+    { value: 'audio', label: 'Can use audio' },
+];
+
+const MODEL_ORIGIN_FILTER_OPTIONS: SelectOption<'all' | 'built-in' | 'custom'>[] = [
+    { value: 'all', label: 'All origins' },
+    { value: 'built-in', label: 'Built-in cards' },
+    { value: 'custom', label: 'Custom cards' },
 ];
 
 const AUTH_LAUNCH_OPENING_TIMEOUT_MS = 8_000;
@@ -139,6 +164,205 @@ function SettingsAnimatedBody({
         >
             {children}
         </motion.div>
+    );
+}
+
+const APPEARANCE_OPTIONS: Array<{
+    value: ThemePreference;
+    label: string;
+    description: string;
+    icon: typeof Desktop;
+}> = [
+    {
+        value: 'system',
+        label: 'System',
+        description: 'Follow this device automatically.',
+        icon: Desktop,
+    },
+    {
+        value: 'light',
+        label: 'Light',
+        description: 'Warm studio surfaces for bright rooms.',
+        icon: Sun,
+    },
+    {
+        value: 'dark',
+        label: 'Dark',
+        description: 'Low-glare surfaces for focused editing.',
+        icon: Moon,
+    },
+];
+
+const ACCENT_PRESETS = [
+    { color: '#FF6B50', label: 'Clash coral' },
+    { color: '#339CFF', label: 'Studio blue' },
+    { color: '#3D8B72', label: 'Editing green' },
+    { color: '#C88719', label: 'Timeline gold' },
+] as const;
+
+const TEXT_PROTOCOL_OPTIONS: SelectOption<'openai-compatible' | 'anthropic-compatible'>[] = [
+    { value: 'openai-compatible', label: 'OpenAI-compatible' },
+    { value: 'anthropic-compatible', label: 'Anthropic-compatible' },
+];
+
+function ThemePreview({ theme }: { theme: ThemePreference }) {
+    const lightPane = (
+        <span className="relative block h-full overflow-hidden bg-[#f4f1eb]">
+            <span className="absolute inset-x-2 bottom-2 top-5 rounded-md border border-[#ddd8ce] bg-[#fffefd]" />
+            <span className="absolute left-4 top-8 h-1 w-7 rounded-full bg-[#c8c2b8]" />
+            <span className="absolute left-4 top-11 h-1 w-10 rounded-full bg-[#ded9d0]" />
+        </span>
+    );
+    const darkPane = (
+        <span className="relative block h-full overflow-hidden bg-[#262626]">
+            <span className="absolute inset-x-2 bottom-2 top-5 rounded-md border border-[#444444] bg-[#1c1c1c]" />
+            <span className="absolute left-4 top-8 h-1 w-7 rounded-full bg-[#7a7a7a]" />
+            <span className="absolute left-4 top-11 h-1 w-10 rounded-full bg-[#4d4d4d]" />
+        </span>
+    );
+
+    return (
+        <span
+            aria-hidden="true"
+            className={`grid h-24 w-full overflow-hidden rounded-lg border border-warm-border ${theme === 'system' ? 'grid-cols-2' : 'grid-cols-1'}`}
+        >
+            {theme !== 'dark' ? lightPane : null}
+            {theme !== 'light' ? darkPane : null}
+        </span>
+    );
+}
+
+export function AppearanceSection() {
+    const { accentColor, preference, resolvedTheme, setAccentColor, setPreference } = useTheme();
+    const [accentDraft, setAccentDraft] = useState(accentColor);
+
+    useEffect(() => {
+        setAccentDraft(accentColor);
+    }, [accentColor]);
+
+    const commitAccent = useCallback((value: string) => {
+        const normalized = normalizeAccentColor(value);
+        if (!normalized) {
+            setAccentDraft(accentColor);
+            return;
+        }
+        setAccentDraft(normalized);
+        setAccentColor(normalized);
+    }, [accentColor, setAccentColor]);
+
+    return (
+        <section className="max-w-3xl space-y-8" aria-labelledby="appearance-heading">
+            <div>
+                <div className="mb-4">
+                    <h3 id="appearance-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                        Theme
+                    </h3>
+                    <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">
+                        Canvas media and the Director viewport keep their presentation colors.
+                    </p>
+                </div>
+                <RadioGroup
+                    value={preference}
+                    onValueChange={(value) => setPreference(value as ThemePreference)}
+                    aria-label="Interface theme"
+                    className="grid gap-3 sm:grid-cols-3"
+                >
+                    {APPEARANCE_OPTIONS.map((option) => {
+                        const Icon = option.icon;
+                        return (
+                            <RadioGroupItem
+                                key={option.value}
+                                value={option.value}
+                                className="relative flex-col gap-3 rounded-xl p-3 [&>span:first-child]:absolute [&>span:first-child]:right-3 [&>span:first-child]:top-3"
+                            >
+                                <ThemePreview theme={option.value} />
+                                <span className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                    <Icon className="h-4 w-4 text-brand" weight="bold" aria-hidden="true" />
+                                    {option.label}
+                                </span>
+                                <span className="block text-xs leading-5 text-stone-600 dark:text-stone-300">
+                                    {option.description}
+                                </span>
+                            </RadioGroupItem>
+                        );
+                    })}
+                </RadioGroup>
+                <p className="mt-3 text-xs text-stone-500 dark:text-stone-400" aria-live="polite">
+                    Currently using {resolvedTheme} appearance.
+                </p>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface">
+                <div className="border-b border-warm-border px-4 py-3">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Accent color</h3>
+                    <p className="mt-1 text-xs text-stone-600 dark:text-stone-300">
+                        Used for primary actions, focus rings, selections, and active tools.
+                    </p>
+                </div>
+                <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2" aria-label="Accent color presets">
+                        {ACCENT_PRESETS.map((preset) => {
+                            const selected = preset.color === accentColor;
+                            return (
+                                <Button
+                                    key={preset.color}
+                                    type="button"
+                                    aria-label={preset.label}
+                                    aria-pressed={selected}
+                                    title={`${preset.label} ${preset.color}`}
+                                    onClick={() => commitAccent(preset.color)}
+                                    className="relative h-8 min-h-8 w-8 min-w-8 rounded-full border-2 border-warm-surface p-0 shadow-[0_0_0_1px_var(--clash-warm-border)] transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                                    style={{ backgroundColor: preset.color }}
+                                >
+                                    {selected ? (
+                                        <Check
+                                            className="h-4 w-4"
+                                            weight="bold"
+                                            style={{ color: 'var(--clash-accent-foreground)' }}
+                                            aria-hidden="true"
+                                        />
+                                    ) : null}
+                                </Button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-2">
+                        <label className="relative h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-warm-border shadow-sm">
+                            <span className="sr-only">Choose a custom accent color</span>
+                            <input
+                                type="color"
+                                value={accentColor}
+                                onChange={(event) => commitAccent(event.target.value)}
+                                className="absolute -inset-2 h-14 w-14 cursor-pointer border-0 bg-transparent p-0"
+                            />
+                        </label>
+                        <Input
+                            aria-label="Custom accent hex color"
+                            value={accentDraft}
+                            onChange={(event) => {
+                                const next = event.target.value;
+                                setAccentDraft(next);
+                                const normalized = normalizeAccentColor(next);
+                                if (normalized) setAccentColor(normalized);
+                            }}
+                            onBlur={() => commitAccent(accentDraft)}
+                            className={`${settingsMonoFieldClass} h-9 w-28 py-1.5 uppercase`}
+                            spellCheck={false}
+                        />
+                        {accentColor !== DEFAULT_ACCENT_COLOR ? (
+                            <Button
+                                type="button"
+                                onClick={() => commitAccent(DEFAULT_ACCENT_COLOR)}
+                                className={`${settingsCompactSecondaryButtonClass} h-9`}
+                            >
+                                Reset
+                            </Button>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+        </section>
     );
 }
 
@@ -300,7 +524,7 @@ interface LocalHarnessInfo {
     };
 }
 
-type HarnessSavingAction = "toggle" | "probe" | "install" | "uninstall" | "upgrade" | "auth";
+type HarnessSavingAction = HarnessOperationAction;
 
 function harnessBusyMessage(label: string, action: HarnessSavingAction | null): string | null {
     if (action === "probe") return `Checking ${label} auth…`;
@@ -318,6 +542,16 @@ function harnessBusyStatusLabel(action: HarnessSavingAction | null): string | nu
     if (action === "uninstall") return "Uninstalling…";
     if (action === "toggle") return "Saving enablement…";
     return null;
+}
+
+function mergeHarnessResult(
+    current: LocalHarnessInfo[],
+    incoming: LocalHarnessInfo[],
+    harnessId: string,
+): LocalHarnessInfo[] {
+    const updatedHarness = incoming.find((candidate) => candidate.id === harnessId);
+    if (!updatedHarness) return current;
+    return current.map((candidate) => candidate.id === harnessId ? updatedHarness : candidate);
 }
 
 type AuthLaunchStatus = "opening" | "waiting" | "attention";
@@ -535,6 +769,7 @@ export default function SettingsClient({
     const [modelProviders, setModelProviders] = useState<ModelProviderAccountInfo[]>(initialModelProviders);
     const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntryInfo[]>(initialModelCatalog);
     const [isSavingModelProviders, setIsSavingModelProviders] = useState(false);
+    const [isSavingModelCard, setIsSavingModelCard] = useState(false);
     const [modelProviderError, setModelProviderError] = useState<string | null>(null);
     const [providerOAuth, setProviderOAuth] = useState<ProviderOAuthInfo[]>([]);
     const feedback = useAppFeedback();
@@ -551,7 +786,6 @@ export default function SettingsClient({
             ? modelCatalog
             : listModelCatalogEntries({ configuredProviders: modelCatalogProviderInputs })
     ), [modelCatalog, modelCatalogProviderInputs]);
-    const modelTierCounts = useMemo(() => countModelCatalogTiers(effectiveModelCatalog), [effectiveModelCatalog]);
     const asrModelEntries = useMemo(
         () => effectiveModelCatalog.filter((entry) => (entry.model.kind as string) === 'asr'),
         [effectiveModelCatalog],
@@ -691,6 +925,49 @@ export default function SettingsClient({
         return saveModelProviders(nextProviders);
     }, [modelProviders, saveModelProviders]);
 
+    const handleCreateModelProvider = useCallback((provider: ModelProviderAccountInfo) => (
+        saveModelProviders([...modelProviders, provider])
+    ), [modelProviders, saveModelProviders]);
+
+    const handleSaveModelCard = useCallback(async (
+        modelId: string,
+        config: Omit<UserModelCardConfig, 'modelId'>,
+    ) => {
+        setIsSavingModelCard(true);
+        setModelProviderError(null);
+        try {
+            const saved = await saveModelCardConfig(modelId, config);
+            setModelCatalog(await listModelCatalog());
+            feedback.notify({
+                variant: 'success',
+                title: config.custom ? 'Text model saved' : 'Model card saved',
+            });
+            return saved;
+        } catch (err) {
+            const message = displayErrorMessage(err);
+            setModelProviderError(message);
+            feedback.notify({
+                variant: 'error',
+                title: 'Could not save model card',
+                message,
+            });
+            throw err;
+        } finally {
+            setIsSavingModelCard(false);
+        }
+    }, [feedback]);
+
+    const handleDeleteModelCard = useCallback(async (modelId: string) => {
+        setIsSavingModelCard(true);
+        try {
+            await deleteModelCardConfig(modelId);
+            setModelCatalog(await listModelCatalog());
+            feedback.notify({ variant: 'success', title: 'Custom model removed' });
+        } finally {
+            setIsSavingModelCard(false);
+        }
+    }, [feedback]);
+
     const handleDeleteModelProvider = useCallback(async (accountId: string) => {
         const previousProviders = modelProviders;
         setModelProviders((prev) => prev.filter((provider) => provider.id !== accountId));
@@ -803,6 +1080,11 @@ export default function SettingsClient({
     // host (SettingsSurface) provides its own chrome.
     const content = (
         <div className={embedded ? 'space-y-12' : 'mx-auto max-w-3xl px-6 py-10 space-y-12'}>
+
+                {/* ── Appearance ── */}
+                {showSection('appearance') && <AppearanceSection />}
+
+                {showAll && <hr className="border-warm-border" />}
 
                 {/* ── Agents ── */}
                 {showSection('agents') && <AgentsSection />}
@@ -923,14 +1205,16 @@ export default function SettingsClient({
                     providers={modelProviderRows}
                     providerAccounts={modelProviders}
                     catalog={effectiveModelCatalog}
-                    tierCounts={modelTierCounts}
                     providerOAuth={providerOAuth}
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
                     onPatchProvider={handlePatchModelProvider}
                     onPatchProviders={handlePatchModelProviders}
+                    onCreateProvider={handleCreateModelProvider}
                     onDeleteProvider={handleDeleteModelProvider}
-                    saving={isSavingModelProviders}
+                    onSaveModelCard={handleSaveModelCard}
+                    onDeleteModelCard={handleDeleteModelCard}
+                    saving={isSavingModelProviders || isSavingModelCard}
                     error={modelProviderError}
                 />
                 )}
@@ -1052,14 +1336,16 @@ export default function SettingsClient({
                     providers={modelProviderRows}
                     providerAccounts={modelProviders}
                     catalog={effectiveModelCatalog}
-                    tierCounts={modelTierCounts}
                     providerOAuth={providerOAuth}
                     onStartProviderOAuth={handleStartProviderOAuth}
                     onCompleteProviderOAuth={handleCompleteProviderOAuth}
                     onPatchProvider={handlePatchModelProvider}
                     onPatchProviders={handlePatchModelProviders}
+                    onCreateProvider={handleCreateModelProvider}
                     onDeleteProvider={handleDeleteModelProvider}
-                    saving={isSavingModelProviders}
+                    onSaveModelCard={handleSaveModelCard}
+                    onDeleteModelCard={handleDeleteModelCard}
+                    saving={isSavingModelProviders || isSavingModelCard}
                     error={modelProviderError}
                 />
                 )}
@@ -1225,7 +1511,7 @@ export default function SettingsClient({
     return (
         <div className="min-h-screen bg-warm-surface">
             {/* Sticky header */}
-            <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-warm-border">
+            <header className="sticky top-0 z-40 border-b border-warm-border bg-warm-surface/90 backdrop-blur-xl">
                 <div className="mx-auto max-w-3xl px-6 py-4 flex items-center gap-4">
                     <Link
                         to="/"
@@ -1254,9 +1540,11 @@ const MODEL_PROVIDER_PRESETS: ModelProviderAccountInfo[] = [
     { providerId: 'jimeng', upstreamId: 'jimeng', enabled: false, priority: 80 },
     { providerId: 'volcengine', upstreamId: 'volcengine', enabled: false, priority: 90 },
     { providerId: 'elevenlabs', upstreamId: 'elevenlabs', enabled: false, priority: 100 },
+    { providerId: 'suno', upstreamId: 'suno', enabled: false, priority: 110 },
 ];
 
-function modelProviderKey(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): string {
+function modelProviderKey(provider: Pick<ModelProviderAccountInfo, 'id' | 'providerId' | 'upstreamId' | 'region'>): string {
+    if (provider.providerId === 'custom' && provider.id) return `custom-account:${provider.id}`;
     return [provider.providerId, provider.upstreamId ?? '', provider.region ?? ''].join(':');
 }
 
@@ -1281,6 +1569,7 @@ function isGoogleAiStudio(provider: Pick<ModelProviderAccountInfo, 'providerId' 
 }
 
 function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): string[] {
+    if (provider.providerId === 'custom') return ['apiKey', 'baseUrl'];
     if (provider.providerId === 'fal') return ['apiKey'];
     if (provider.providerId === 'kie') return ['apiKey'];
     if (provider.providerId === 'replicate') return ['apiKey'];
@@ -1289,6 +1578,7 @@ function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInf
     if (provider.providerId === 'jimeng') return [];
     if (provider.providerId === 'volcengine') return ['apiKey'];
     if (provider.providerId === 'elevenlabs') return ['apiKey'];
+    if (provider.providerId === 'suno') return ['apiKey', 'callbackUrl'];
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') return ['apiKey'];
     if (isGoogleAiStudio(provider)) return ['apiKey'];
@@ -1326,7 +1616,23 @@ function modelProviderCredentialFields(setup: ModelProviderSetup): ModelProvider
     ];
 }
 
-function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): ModelProviderSetup | null {
+function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region' | 'label' | 'apiShape'>): ModelProviderSetup | null {
+    if (
+        provider.providerId === 'custom' &&
+        (provider.apiShape === 'openai-compatible' || provider.apiShape === 'anthropic-compatible')
+    ) {
+        return {
+            title: provider.label ?? 'Custom text provider',
+            description: provider.apiShape === 'openai-compatible'
+                ? 'Text models served through an OpenAI-compatible endpoint.'
+                : 'Text models served through an Anthropic-compatible endpoint.',
+            apiKey: 'apiKey',
+            baseUrlKey: 'baseUrl',
+            baseUrlPlaceholder: provider.apiShape === 'openai-compatible'
+                ? 'https://provider.example/v1'
+                : 'https://provider.example',
+        };
+    }
     if (provider.providerId === 'mock') {
         return {
             title: 'Mock Provider',
@@ -1410,6 +1716,32 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
             title: 'ElevenLabs',
             description: 'Official ElevenLabs speech generation through Clash-hosted execution.',
             apiKey: 'apiKey',
+        };
+    }
+    if (provider.providerId === 'suno') {
+        return {
+            title: 'Suno API',
+            description: 'Suno V5.5 music generation through SunoAPI.org.',
+            apiKey: 'apiKey',
+            credentials: [
+                {
+                    key: 'apiKey',
+                    label: 'API key',
+                    ariaLabel: 'Suno API key',
+                    placeholder: 'Paste SunoAPI.org key',
+                    allowMultiple: false,
+                },
+                {
+                    key: 'callbackUrl',
+                    label: 'Callback URL',
+                    ariaLabel: 'Suno callback URL',
+                    placeholder: 'https://your-public-endpoint.example/suno-callback',
+                    allowMultiple: false,
+                },
+            ],
+            requiresAllCredentials: true,
+            baseUrlKey: 'baseUrl',
+            baseUrlPlaceholder: 'https://api.sunoapi.org',
         };
     }
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') {
@@ -1556,16 +1888,6 @@ function upsertProviderOAuthRow(rows: ProviderOAuthInfo[], next: ProviderOAuthIn
         row.providerId !== next.providerId ||
         (row.accountId ?? '') !== (next.accountId ?? '')
     ))];
-}
-
-function countModelCatalogTiers(catalog: ModelCatalogEntryInfo[]) {
-    return catalog.reduce(
-        (acc, entry) => {
-            acc[entry.tier] += 1;
-            return acc;
-        },
-        { available: 0, 'configured-provider': 0, all: 0 },
-    );
 }
 
 type ProviderSupportRow = ReturnType<typeof listProviderModelSupport>[number];
@@ -1865,6 +2187,15 @@ function providerModelsHref(providerKey: string): string {
     return `/settings?section=models&provider=${encodeURIComponent(providerKey)}`;
 }
 
+function providerSettingsHref(providerKey: string): string {
+    return `/settings?section=providers&provider=${encodeURIComponent(providerKey)}`;
+}
+
+function modelKindLabel(kind: string): string {
+    if (kind === 'asr') return 'ASR';
+    return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
+}
+
 function supportForProvider(
     supports: ProviderSupportRow[],
     provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>,
@@ -1894,7 +2225,8 @@ function providerIdForModelRoute(route: NonNullable<ModelCatalogEntryInfo['selec
         route.upstreamId === 'minimax' ||
         route.upstreamId === 'jimeng' ||
         route.upstreamId === 'volcengine' ||
-        route.upstreamId === 'elevenlabs'
+        route.upstreamId === 'elevenlabs' ||
+        route.upstreamId === 'suno'
     ) {
         return route.upstreamId;
     }
@@ -1910,6 +2242,7 @@ function modelRouteProviderKey(route: NonNullable<ModelCatalogEntryInfo['selecte
 }
 
 type ModelProviderLogoId =
+    | 'local'
     | 'openai'
     | 'anthropic'
     | 'google'
@@ -1923,6 +2256,9 @@ type ModelProviderLogoId =
     | 'elevenlabs';
 
 function modelProviderLogo(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>): { id: ModelProviderLogoId; src: string } | null {
+    if (provider.providerId === 'local' || provider.upstreamId === 'local') {
+        return { id: 'local', src: '/brand/providers/local.svg' };
+    }
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') {
         return { id: 'openai', src: '/brand/providers/openai.svg' };
     }
@@ -1962,18 +2298,205 @@ function modelProviderLogo(provider: Pick<ModelProviderAccountInfo, 'providerId'
     return null;
 }
 
+function modelProviderFilterLabel(id: string, fallback?: string): string {
+    const labels: Record<string, string> = {
+        openai: 'OpenAI',
+        anthropic: 'Anthropic',
+        google: 'Google',
+        fal: 'fal.ai',
+        kie: 'KIE',
+        replicate: 'Replicate',
+        kling: 'Kling',
+        minimax: 'MiniMax',
+        jimeng: 'Dreamina',
+        volcengine: 'Volcengine',
+        elevenlabs: 'ElevenLabs',
+        suno: 'Suno API',
+        local: 'Local',
+        custom: 'Custom',
+        mock: 'Mock',
+    };
+    return labels[id] ?? fallback ?? id;
+}
+
+type ModelBrand = {
+    id: ModelProviderLogoId | 'flux' | 'bytedance' | 'recraft' | 'clash' | 'vibevoice' | 'sensevoice' | 'piper' | 'kokoro' | 'nvidia' | 'custom';
+    label: string;
+    src?: string;
+};
+
+function modelCardBrand(model: ModelCatalogEntryInfo['model']): ModelBrand {
+    const identity = `${model.id} ${model.name} ${model.provider}`.toLowerCase();
+    if (/(parakeet)/.test(identity)) {
+        return { id: 'nvidia', label: 'NVIDIA', src: '/brand/models/nvidia.svg' };
+    }
+    if (/(vibevoice)/.test(identity)) {
+        return { id: 'vibevoice', label: 'VibeVoice', src: '/brand/models/vibevoice.svg' };
+    }
+    if (/(sensevoice)/.test(identity)) {
+        return { id: 'sensevoice', label: 'FunAudioLLM', src: '/brand/models/sensevoice.svg' };
+    }
+    if (/(kokoro)/.test(identity)) {
+        return { id: 'kokoro', label: 'Kokoro', src: '/brand/models/kokoro.svg' };
+    }
+    if (/(piper)/.test(identity)) {
+        return { id: 'piper', label: 'Piper', src: '/brand/models/piper.svg' };
+    }
+    if (/(whisper)/.test(identity)) {
+        return { id: 'openai', label: 'OpenAI', src: '/brand/providers/openai.svg' };
+    }
+    if (/(flux)/.test(identity)) {
+        return { id: 'flux', label: 'Black Forest Labs', src: '/brand/models/flux.svg' };
+    }
+    if (/(seedance)/.test(identity)) {
+        return { id: 'bytedance', label: 'ByteDance Seed', src: '/brand/models/bytedance.svg' };
+    }
+    if (/(recraft)/.test(identity)) {
+        return { id: 'recraft', label: 'Recraft', src: '/brand/models/recraft.svg' };
+    }
+    if (/(clash mock|mock image|mock text)/.test(identity)) {
+        return { id: 'clash', label: 'Clash', src: '/brand/logo-mark.svg' };
+    }
+    if (/(nano-banana|gemini|veo|google)/.test(identity)) {
+        return { id: 'google', label: 'Google', src: '/brand/providers/google.svg' };
+    }
+    if (/(gpt|openai|sora|dall-e)/.test(identity)) {
+        return { id: 'openai', label: 'OpenAI', src: '/brand/providers/openai.svg' };
+    }
+    if (/(claude|anthropic)/.test(identity)) {
+        return { id: 'anthropic', label: 'Anthropic', src: '/brand/providers/anthropic.svg' };
+    }
+    if (/(elevenlabs)/.test(identity)) {
+        return { id: 'elevenlabs', label: 'ElevenLabs', src: '/brand/providers/elevenlabs.svg' };
+    }
+    if (/(minimax|hailuo)/.test(identity)) {
+        return { id: 'minimax', label: 'MiniMax', src: '/brand/providers/minimax.svg' };
+    }
+    if (/(kling|kuaishou)/.test(identity)) {
+        return { id: 'kling', label: 'Kling', src: '/brand/providers/kling.svg' };
+    }
+    if (/(jimeng|dreamina)/.test(identity)) {
+        return { id: 'jimeng', label: 'Dreamina', src: '/brand/providers/jimeng.svg' };
+    }
+    if (/(volcengine|volcano|bytedance)/.test(identity)) {
+        return { id: 'volcengine', label: 'Volcengine', src: '/brand/providers/volcengine.svg' };
+    }
+    if (/(replicate)/.test(identity)) {
+        return { id: 'replicate', label: 'Replicate', src: '/brand/providers/replicate.svg' };
+    }
+    if (/(fal\\.ai|\\bfal\\b)/.test(identity)) {
+        return { id: 'fal', label: 'fal', src: '/brand/providers/fal.svg' };
+    }
+    if (/(\\bkie\\b)/.test(identity)) {
+        return { id: 'kie', label: 'KIE', src: '/brand/providers/kie.png' };
+    }
+    if (/(local|mlx|whisper|kokoro|piper)/.test(identity)) {
+        if (/(local agent)/.test(identity)) {
+            return { id: 'clash', label: 'Clash', src: '/brand/logo-mark.svg' };
+        }
+        return { id: 'local', label: 'Local' };
+    }
+    return { id: 'custom', label: model.provider || 'Custom' };
+}
+
+type ModelProviderStackLogo = {
+    id: string;
+    label: string;
+    src?: string;
+};
+
+function modelCardProviderLogos(
+    entry: ModelCatalogEntryInfo,
+    supports: ProviderSupportRow[] = [],
+): ModelProviderStackLogo[] {
+    const brand = modelCardBrand(entry.model);
+    const candidates: Array<{ providerId: string; upstreamId: string; label: string }> = [];
+    for (const support of supports) {
+        if (!support.models.some((model) => model.id === entry.model.id)) continue;
+        candidates.push({
+            providerId: support.providerId,
+            upstreamId: support.upstreamId,
+            label: modelProviderFilterLabel(support.providerId, support.upstreamId),
+        });
+    }
+    for (const route of entry.routes) {
+        candidates.push({
+            providerId: providerIdForModelRoute(route),
+            upstreamId: route.upstreamId,
+            label: route.providerId ?? route.upstreamId,
+        });
+    }
+    for (const candidate of entry.candidateProviders) {
+        const normalized = candidate.toLowerCase();
+        if (normalized === 'official') {
+            const upstreamId = brand.id === 'google'
+                ? 'google-ai-studio'
+                : brand.id === 'anthropic'
+                    ? 'anthropic'
+                    : 'openai';
+            candidates.push({ providerId: 'official', upstreamId, label: brand.label });
+            continue;
+        }
+        candidates.push({
+            providerId: normalized === 'google' ? 'official' : normalized,
+            upstreamId: normalized === 'google' ? 'google-ai-studio' : normalized,
+            label: candidate,
+        });
+    }
+
+    const seen = new Set<string>();
+    return candidates.flatMap((candidate) => {
+        const logo = modelProviderLogo(candidate as Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>);
+        const fallbackId = candidate.providerId === 'local'
+            ? 'local'
+            : candidate.providerId === 'custom'
+                ? 'custom'
+                : candidate.providerId === 'mock'
+                    ? 'mock'
+                    : `${candidate.providerId}-${candidate.upstreamId}`;
+        const id = logo?.id ?? fallbackId;
+        if (seen.has(id)) return [];
+        seen.add(id);
+        return [{
+            id,
+            label: modelProviderFilterLabel(id, candidate.label),
+            ...(logo ? { src: logo.src } : {}),
+        }];
+    });
+}
+
+function modelAcceptsInput(
+    entry: ModelCatalogEntryInfo,
+    input: 'text-only' | 'image' | 'video' | 'audio',
+): boolean {
+    const promptModalities = new Set(entry.model.input.promptModalities);
+    const inputMode = entry.model.input.inputMode;
+    const accepts = {
+        image: promptModalities.has('image') || !!inputMode.images || !!inputMode.startEnd,
+        video: promptModalities.has('video') || !!inputMode.videos,
+        audio: promptModalities.has('audio') || !!inputMode.audios,
+    };
+    if (input === 'text-only') return !accepts.image && !accepts.video && !accepts.audio;
+    return accepts[input];
+}
+
 interface ModelRoutingSectionProps {
     mode: 'providers' | 'models';
     providers: ModelProviderAccountInfo[];
     providerAccounts: ModelProviderAccountInfo[];
     catalog: ModelCatalogEntryInfo[];
-    tierCounts: ReturnType<typeof countModelCatalogTiers>;
     providerOAuth: ProviderOAuthInfo[];
     onStartProviderOAuth: (providerId: string, accountId?: string, accountLabel?: string) => Promise<void>;
     onCompleteProviderOAuth: (providerId: string, deviceCode?: string, accountId?: string) => Promise<void>;
     onPatchProvider: (key: string, patch: Partial<ModelProviderAccountInfo>) => Promise<ModelProviderAccountInfo[]>;
     onPatchProviders: (patches: ModelProviderPatch[]) => Promise<ModelProviderAccountInfo[]>;
+    onCreateProvider: (provider: ModelProviderAccountInfo) => Promise<ModelProviderAccountInfo[]>;
     onDeleteProvider: (accountId: string) => Promise<void>;
+    onSaveModelCard: (
+        modelId: string,
+        config: Omit<UserModelCardConfig, 'modelId'>,
+    ) => Promise<UserModelCardConfig>;
+    onDeleteModelCard: (modelId: string) => Promise<void>;
     saving: boolean;
     error: string | null;
 }
@@ -1983,17 +2506,20 @@ function ModelRoutingSection({
     providers,
     providerAccounts,
     catalog,
-    tierCounts,
     providerOAuth,
     onStartProviderOAuth,
     onCompleteProviderOAuth,
     onPatchProvider,
     onPatchProviders,
+    onCreateProvider,
     onDeleteProvider,
+    onSaveModelCard,
+    onDeleteModelCard,
     saving,
     error,
 }: ModelRoutingSectionProps) {
     const feedback = useAppFeedback();
+    const navigate = useNavigate();
     const [providerDrafts, setProviderDrafts] = useState<Record<string, ProviderDraft>>({});
     const [providerTestModelIds, setProviderTestModelIds] = useState<Record<string, string>>({});
     const [providerTestBusyKey, setProviderTestBusyKey] = useState<string | null>(null);
@@ -2007,17 +2533,90 @@ function ModelRoutingSection({
     const [editingProviderAccountKey, setEditingProviderAccountKey] = useState<{ providerKey: string; accountKey: string } | null>(null);
     const [modelQuery, setModelQuery] = useState('');
     const [modelKindFilter, setModelKindFilter] = useState<'all' | string>('all');
-    const [modelProviderFilter, setModelProviderFilter] = useState<'all' | 'ready' | 'missing'>('all');
-    const [localAudioConfig, setLocalAudioConfig] = useState<LocalAudioConfig | null>(null);
-    const [localAsrBusyModelId, setLocalAsrBusyModelId] = useState<string | null>(null);
+    const [modelAvailabilityFilter, setModelAvailabilityFilter] = useState<'all' | 'enabled' | 'unavailable'>('all');
+    const [modelServingProviderFilter, setModelServingProviderFilter] = useState('all');
+    const [modelInputFilter, setModelInputFilter] = useState<'all' | 'text-only' | 'image' | 'video' | 'audio'>('all');
+    const [modelOriginFilter, setModelOriginFilter] = useState<'all' | 'built-in' | 'custom'>('all');
+    const [showCustomProviderForm, setShowCustomProviderForm] = useState(false);
+    const [customProviderDraft, setCustomProviderDraft] = useState({
+        label: '',
+        apiShape: 'openai-compatible' as 'openai-compatible' | 'anthropic-compatible',
+        baseUrl: '',
+        apiKey: '',
+    });
+    const [modelCardDraft, setModelCardDraft] = useState<{
+        modelId: string;
+        name: string;
+        description: string;
+        promptGuidance: string;
+        providerBindings: Array<{ providerAccountId: string; upstreamModel: string }>;
+    }>({
+        modelId: '',
+        name: '',
+        description: '',
+        promptGuidance: '',
+        providerBindings: [],
+    });
+    const [localSpeechModelStatuses, setLocalSpeechModelStatuses] = useState<Record<string, boolean>>({});
+    const [localSpeechBusy, setLocalSpeechBusy] = useState<{
+        modelId: string;
+        action: 'install' | 'remove';
+    } | null>(null);
     const providerKeyInputRef = useRef<HTMLInputElement | null>(null);
-    const localAsrConfigVersionRef = useRef(0);
+    const localSpeechConfigVersionRef = useRef(0);
     const providerSupports = useMemo(() => listProviderModelSupport({ includeMock: true }), []);
     const showProviders = mode === 'providers';
     const showModels = mode === 'models';
     const [searchParams] = useSearchParams();
     const focusedModelId = showModels ? searchParams.get('model') : null;
     const focusedProviderKey = showModels ? searchParams.get('provider') : null;
+    const requestedProviderKey = showProviders ? searchParams.get('provider') : null;
+    const focusedModelEntry = focusedModelId && focusedModelId !== 'new'
+        ? catalog.find((entry) => entry.model.id === focusedModelId) ?? null
+        : null;
+    const compatibleTextAccounts = useMemo(() => providerAccounts.filter((account) => (
+        !!account.id &&
+        account.enabled !== false &&
+        (
+            account.apiShape === 'openai-compatible' ||
+            account.apiShape === 'anthropic-compatible' ||
+            (
+                account.providerId === 'official' &&
+                (account.upstreamId === 'openai' || account.upstreamId === 'anthropic')
+            )
+        )
+    )), [providerAccounts]);
+    useEffect(() => {
+        if (requestedProviderKey) setSelectedProviderKey(requestedProviderKey);
+    }, [requestedProviderKey]);
+    useEffect(() => {
+        if (!focusedModelId) return;
+        if (focusedModelId === 'new') {
+            setModelCardDraft({
+                modelId: '',
+                name: '',
+                description: '',
+                promptGuidance: '',
+                providerBindings: [],
+            });
+            return;
+        }
+        if (!focusedModelEntry) return;
+        setModelCardDraft({
+            modelId: focusedModelEntry.model.id,
+            name: focusedModelEntry.model.name,
+            description: focusedModelEntry.model.description ?? '',
+            promptGuidance: focusedModelEntry.model.promptGuidance ?? '',
+            providerBindings: focusedModelEntry.routes.flatMap((route) => (
+                route.accountId
+                    ? [{
+                        providerAccountId: route.accountId,
+                        upstreamModel: route.upstreamModel,
+                    }]
+                    : []
+            )),
+        });
+    }, [focusedModelEntry, focusedModelId]);
     useEffect(() => {
         if (!addingProviderKey) return;
         providerKeyInputRef.current?.focus();
@@ -2162,7 +2761,25 @@ function ModelRoutingSection({
 	    const configuredProviderRows = providerViewRows.filter((row) => row.configured);
 	    const availableProviderRows = providerViewRows.filter((row) => !row.configured);
 	    const selectedProviderRow = providerViewRows.find((row) => row.key === selectedProviderKey) ?? null;
-        const focusedProviderRow = focusedProviderKey
+        const focusedModelSupportedProviderRows = focusedModelEntry
+            ? providerViewRows.filter((row) => (
+                focusedModelEntry.routes.some((route) => modelRouteProviderKey(route) === row.key) ||
+                row.support?.models.some((model) => model.id === focusedModelEntry.model.id)
+            ))
+            : [];
+        const focusedModelConfiguredProviderRows = focusedModelSupportedProviderRows.filter((row) => (
+            row.configured && row.accounts.some((account) => (
+                !account.supportedModelIds?.length || account.supportedModelIds.includes(focusedModelEntry!.model.id)
+            ))
+        ));
+        const focusedModelUnconfiguredProviderRows = focusedModelSupportedProviderRows.filter((row) => (
+            !focusedModelConfiguredProviderRows.some((configuredRow) => configuredRow.key === row.key)
+        ));
+        const focusedModelUsesLocalRuntime = !!focusedModelEntry && isLocalSpeechModelEntry(focusedModelEntry);
+        const focusedModelLocalRuntimeReady = !!focusedModelEntry &&
+            focusedModelUsesLocalRuntime &&
+            localSpeechModelStatuses[focusedModelEntry.model.id] === true;
+	    const focusedProviderRow = focusedProviderKey
             ? providerViewRows.find((row) => row.key === focusedProviderKey) ?? null
             : null;
         const focusedProviderModelIds = useMemo(
@@ -2170,16 +2787,24 @@ function ModelRoutingSection({
             [focusedProviderRow],
         );
     useEffect(() => {
-        if (!showModels || !catalog.some(isLocalAsrModelEntry)) return;
+        if (!showModels || !catalog.some(isLocalSpeechModelEntry)) return;
         let cancelled = false;
-        const version = ++localAsrConfigVersionRef.current;
-        fetchLocalAudioConfig()
-            .then((config) => {
-                if (cancelled || localAsrConfigVersionRef.current !== version) return;
-                setLocalAudioConfig((prev) => {
-                    if (prev?.asr.setup.available && !config.asr.setup.available) return prev;
-                    return config;
-                });
+        const version = ++localSpeechConfigVersionRef.current;
+        const localModels = catalog.filter(isLocalSpeechModelEntry);
+        Promise.all(localModels.map(async (entry) => {
+            const capability = localSpeechCapability(entry);
+            if (!capability) return null;
+            const available = await fetchLocalSpeechModelStatus(
+                capability,
+                localSpeechModelValue(entry),
+            ).catch(() => false);
+            return [entry.model.id, available] as const;
+        }))
+            .then((statuses) => {
+                if (cancelled || localSpeechConfigVersionRef.current !== version) return;
+                setLocalSpeechModelStatuses(Object.fromEntries(
+                    statuses.filter((status): status is readonly [string, boolean] => status !== null),
+                ));
             })
             .catch(() => undefined);
         return () => {
@@ -2194,8 +2819,34 @@ function ModelRoutingSection({
         ],
         [modelKindOptions],
     );
+    const modelSupportedProviderLogos = useMemo(() => new Map(
+        catalog.map((entry) => [entry.model.id, modelCardProviderLogos(entry, providerSupports)] as const),
+    ), [catalog, providerSupports]);
+    const modelServingProviderOptions = useMemo<SelectOption<string>[]>(() => {
+        const providersById = new Map<string, string>();
+        for (const logos of modelSupportedProviderLogos.values()) {
+            for (const provider of logos) providersById.set(provider.id, provider.label);
+        }
+        return [
+            { value: 'all', label: 'All supported providers' },
+            ...[...providersById]
+                .sort((a, b) => a[1].localeCompare(b[1]))
+                .map(([value, label]) => ({ value, label })),
+        ];
+    }, [modelSupportedProviderLogos]);
     const modelNeedsProvider = useCallback((entry: ModelCatalogEntryInfo) =>
         !entry.selectedRoute || entry.missingCredentials.length > 0 || entry.tier !== 'available', []);
+    const modelIsEnabled = useCallback((entry: ModelCatalogEntryInfo) => {
+        if (isLocalSpeechModelEntry(entry)) {
+            return localSpeechModelStatuses[entry.model.id] === true;
+        }
+        return !modelNeedsProvider(entry);
+    }, [localSpeechModelStatuses, modelNeedsProvider]);
+    const enabledModelCount = useMemo(
+        () => catalog.filter(modelIsEnabled).length,
+        [catalog, modelIsEnabled],
+    );
+    const unavailableModelCount = catalog.length - enabledModelCount;
     const filteredModelCatalog = useMemo(() => catalog
         .filter((entry) => !focusedProviderRow || focusedProviderModelIds.has(entry.model.id))
         .filter((entry) => {
@@ -2210,10 +2861,36 @@ function ModelRoutingSection({
         })
         .filter((entry) => modelKindFilter === 'all' || entry.model.kind === modelKindFilter)
         .filter((entry) => {
-            if (modelProviderFilter === 'ready') return !modelNeedsProvider(entry);
-            if (modelProviderFilter === 'missing') return modelNeedsProvider(entry);
+            if (modelAvailabilityFilter === 'enabled') return modelIsEnabled(entry);
+            if (modelAvailabilityFilter === 'unavailable') return !modelIsEnabled(entry);
             return true;
-        }), [catalog, focusedProviderModelIds, focusedProviderRow, modelKindFilter, modelProviderFilter, modelNeedsProvider, modelQuery]);
+        })
+        .filter((entry) => (
+            modelServingProviderFilter === 'all' ||
+            modelSupportedProviderLogos.get(entry.model.id)?.some((provider) => provider.id === modelServingProviderFilter)
+        ))
+        .filter((entry) => modelInputFilter === 'all' || modelAcceptsInput(entry, modelInputFilter))
+        .filter((entry) => {
+            if (modelOriginFilter === 'custom') return entry.model.custom === true;
+            if (modelOriginFilter === 'built-in') return entry.model.custom !== true;
+            return true;
+        }), [catalog, focusedProviderModelIds, focusedProviderRow, modelAvailabilityFilter, modelInputFilter, modelIsEnabled, modelKindFilter, modelOriginFilter, modelQuery, modelServingProviderFilter, modelSupportedProviderLogos]);
+    const enabledModelCatalog = filteredModelCatalog.filter(modelIsEnabled);
+    const unavailableModelCatalog = filteredModelCatalog.filter((entry) => !modelIsEnabled(entry));
+    const hasActiveModelFilters = !!modelQuery.trim()
+        || modelKindFilter !== 'all'
+        || modelAvailabilityFilter !== 'all'
+        || modelServingProviderFilter !== 'all'
+        || modelInputFilter !== 'all'
+        || modelOriginFilter !== 'all';
+    const clearModelFilters = () => {
+        setModelQuery('');
+        setModelKindFilter('all');
+        setModelAvailabilityFilter('all');
+        setModelServingProviderFilter('all');
+        setModelInputFilter('all');
+        setModelOriginFilter('all');
+    };
     useEffect(() => {
         if (!showModels || !focusedModelId) return;
         const frame = window.requestAnimationFrame(() => {
@@ -2221,236 +2898,222 @@ function ModelRoutingSection({
         });
         return () => window.cancelAnimationFrame(frame);
     }, [focusedModelId, showModels, filteredModelCatalog.length]);
-    const deployLocalAsrModel = useCallback(async (entry: ModelCatalogEntryInfo) => {
-        const asrModel = asrModelValue(entry);
-        localAsrConfigVersionRef.current += 1;
-        setLocalAsrBusyModelId(entry.model.id);
+    const mutateLocalSpeechModel = useCallback(async (
+        entry: ModelCatalogEntryInfo,
+        action: 'install' | 'remove',
+    ) => {
+        const capability = localSpeechCapability(entry);
+        const model = localSpeechModelValue(entry);
+        if (!capability || !model) return;
+        const label = capability === 'speech-to-text' ? 'ASR' : 'TTS';
+        const actionLabel = action === 'install'
+            ? capability === 'speech-to-text' ? 'deploy' : 'download'
+            : 'remove';
+        localSpeechConfigVersionRef.current += 1;
+        setLocalSpeechBusy({ modelId: entry.model.id, action });
         try {
-            const res = await fetch(runtimeApiUrl('/api/v1/local/audio/install'), {
+            const res = await fetch(runtimeApiUrl(`/api/v1/local/audio/${action}`), {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ asr_model: asrModel }),
+                body: JSON.stringify({ capability, model }),
             });
             if (!res.ok) {
                 const json = await res.json().catch(() => null) as { error?: string } | null;
                 throw new Error(json?.error ?? `HTTP ${res.status}`);
             }
-            const config = (await res.json()) as LocalAudioConfig;
-            setLocalAudioConfig(config);
+            await res.json();
+            const available = await fetchLocalSpeechModelStatus(capability, model);
+            if (action === 'install' && !available) {
+                throw new Error(`The local ${label} runtime did not report this model as ready after ${actionLabel}.`);
+            }
+            setLocalSpeechModelStatuses((current) => ({
+                ...current,
+                [entry.model.id]: available,
+            }));
             feedback.notify({
                 variant: 'success',
-                title: 'Local ASR model deployed',
+                title: action === 'install'
+                    ? `Local ${label} model ${actionLabel === 'deploy' ? 'deployed' : 'downloaded'}`
+                    : `Local ${label} model removed`,
             });
         } catch (err) {
             feedback.notify({
                 variant: 'error',
-                title: 'Could not deploy local ASR model',
+                title: `Could not ${actionLabel} local ${label} model`,
                 message: displayErrorMessage(err),
             });
         } finally {
-            setLocalAsrBusyModelId(null);
+            setLocalSpeechBusy(null);
         }
     }, [feedback]);
     const renderModelCard = (entry: ModelCatalogEntryInfo) => {
-        const needsProvider = modelNeedsProvider(entry);
+        const needsProvider = !modelIsEnabled(entry);
         const focused = focusedModelId === entry.model.id;
-        const route = entry.selectedRoute;
-        const selectedRouteKey = route ? modelRouteProviderKey(route) : null;
-        const routeOrder = new Map(entry.routes.map((candidate, index) => [modelRouteProviderKey(candidate), index]));
-        const modelOrderAccounts = (row: typeof providerViewRows[number]) => (
-            row.accounts.length > 0
-                ? row.accounts.filter((account) =>
-                    !account.supportedModelIds?.length || account.supportedModelIds.includes(entry.model.id),
-                )
-                : [row.provider]
-        );
-        const providerRowModelPriority = (row: typeof providerViewRows[number]) => {
-            const priorities = modelOrderAccounts(row)
-                .map((account) => account.modelPriorities?.[entry.model.id])
-                .filter((priority): priority is number => typeof priority === 'number' && Number.isFinite(priority));
-            return priorities.length ? Math.min(...priorities) : undefined;
-        };
-        const providerOrderRows = providerViewRows
-            .filter((row) => (
-                row.support?.models.some((model) => model.id === entry.model.id) &&
-                modelOrderAccounts(row).length > 0
-            ))
-            .sort((a, b) => {
-                const aModelPriority = providerRowModelPriority(a);
-                const bModelPriority = providerRowModelPriority(b);
-                if (aModelPriority !== undefined || bModelPriority !== undefined) {
-                    const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
-                    if (priority !== 0) return priority;
-                }
-                const aRouteIndex = routeOrder.get(a.key) ?? Number.POSITIVE_INFINITY;
-                const bRouteIndex = routeOrder.get(b.key) ?? Number.POSITIVE_INFINITY;
-                if (aRouteIndex !== bRouteIndex) return aRouteIndex - bRouteIndex;
-                if (a.configured !== b.configured) return a.configured ? -1 : 1;
-                const aWeight = a.accounts[0]?.weight ?? a.provider.weight ?? 0;
-                const bWeight = b.accounts[0]?.weight ?? b.provider.weight ?? 0;
-                if (aWeight !== bWeight) return bWeight - aWeight;
-                return (a.provider.priority ?? 999) - (b.provider.priority ?? 999);
-            });
-        const moveModelProvider = (fromIndex: number, toIndex: number) => {
-            if (saving) return;
-            const ordered = moveItem(providerOrderRows, fromIndex, toIndex);
-            if (!ordered) return;
-            void onPatchProviders(ordered.flatMap((providerRow, index) => {
-                const priority = (index + 1) * 10;
-                const targets = modelOrderAccounts(providerRow);
-                return targets.map((account) => ({
-                    key: providerRow.key,
-                    patch: {
-                        ...(account.id ? { id: account.id } : {}),
-                        ...(account.label ? { label: account.label } : {}),
-                        modelPriorities: {
-                            ...(account.modelPriorities ?? {}),
-                            [entry.model.id]: priority,
-                        },
-                    },
-                }));
-            }));
-        };
-        const localAsr = isLocalAsrModelEntry(entry);
-        const localAsrModel = asrModelValue(entry);
-        const localAsrBusy = localAsrBusyModelId === entry.model.id;
-        const localAsrDeployed = localAsr && localAudioConfig?.asr.setup.available === true && localAudioConfig.asr.model === localAsrModel;
-        const routeLabel = route
-            ? `${route.providerId ?? route.upstreamId}/${route.upstreamId}`
-            : entry.candidateProviders.length > 0
-                ? entry.candidateProviders.join(', ')
-                : 'No provider';
+        const brand = modelCardBrand(entry.model);
+        const supportedProviderLogos = modelSupportedProviderLogos.get(entry.model.id) ?? [];
+        const localSpeechCapabilityValue = localSpeechCapability(entry);
+        const localSpeechBusyForModel = localSpeechBusy?.modelId === entry.model.id;
+        const localSpeechInstalled = !!localSpeechCapabilityValue &&
+            localSpeechModelStatuses[entry.model.id] === true;
+        const localSpeechIsAsr = localSpeechCapabilityValue === 'speech-to-text';
+        const KindIcon = entry.model.kind === 'image'
+            ? ImageSquare
+            : entry.model.kind === 'video'
+                ? VideoCamera
+                : entry.model.kind === 'audio'
+                    ? SpeakerHigh
+                    : TextT;
         return (
-            <AccordionItem
+            <article
                 key={entry.model.id}
-                value={entry.model.id}
                 id={`model-card-${entry.model.id}`}
-                className={`rounded-xl border bg-warm-surface p-4 transition-colors ${
+                data-model-state={needsProvider ? 'unavailable' : 'enabled'}
+                className={`group/model-card relative overflow-hidden rounded-xl border bg-warm-surface transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-brand/35 hover:shadow-[0_12px_30px_rgba(31,26,23,0.07)] ${
                     focused
                         ? 'border-brand/45 bg-brand-light/35 ring-2 ring-brand/15'
-                        : 'border-warm-border'
+                        : needsProvider
+                            ? 'border-warm-border/75 bg-warm-muted/20'
+                            : 'border-warm-border'
                 }`}
             >
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{entry.model.name}</span>
-                            <span className="rounded-full bg-warm-muted px-2 py-0.5 text-[10px] font-medium text-stone-600 dark:text-stone-300">
+                <Link
+                    to={modelCardHref(entry.model.id)}
+                    aria-label={`Configure ${entry.model.name}`}
+                    className="block min-h-[148px] p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+                >
+                    <div className="flex items-start gap-3.5">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-black/[0.06] bg-white p-2.5 shadow-[0_4px_14px_rgba(31,26,23,0.08)] dark:border-white/10 dark:bg-white">
+                            {brand.src ? (
+                                <img
+                                    src={brand.src}
+                                    alt=""
+                                    aria-hidden="true"
+                                    data-model-logo={brand.id}
+                                    draggable={false}
+                                    className="h-full w-full object-contain"
+                                />
+                            ) : (
+                                <KindIcon
+                                    data-model-logo={brand.id}
+                                    aria-hidden="true"
+                                    className="h-6 w-6 text-brand"
+                                />
+                            )}
+                        </span>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                            <div className="flex min-w-0 items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <h4 className="truncate text-[15px] font-semibold leading-5 text-slate-900 dark:text-slate-50">
+                                        {entry.model.name}
+                                    </h4>
+                                    <p className="mt-0.5 truncate text-[11px] font-medium text-stone-400 dark:text-stone-500">
+                                        {brand.label}
+                                    </p>
+                                </div>
+                                <CaretRight className="mt-0.5 h-4 w-4 shrink-0 text-stone-400 transition-transform group-hover/model-card:translate-x-0.5 group-hover/model-card:text-brand" />
+                            </div>
+                            <p className="mt-3 line-clamp-2 min-h-8 text-xs leading-4 text-stone-600 dark:text-stone-300">
+                                {entry.model.description || entry.model.id}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                        <span className="truncate font-mono text-[10px] text-stone-400 dark:text-stone-500">
+                            {entry.model.id}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2.5">
+                            {supportedProviderLogos.length > 0 && (
+                                <span
+                                    aria-label={`Supported providers: ${supportedProviderLogos.map((provider) => provider.label).join(', ')}`}
+                                    className="flex flex-row-reverse items-center"
+                                >
+                                    {supportedProviderLogos.map((provider, index) => (
+                                        <span
+                                            key={provider.id}
+                                            title={provider.label}
+                                            className={`flex h-6 w-6 items-center justify-center rounded-full border-2 border-warm-surface bg-white p-1 shadow-sm ${
+                                                index === 0 ? '' : '-mr-1.5'
+                                            }`}
+                                        >
+                                            {provider.src ? (
+                                                <img
+                                                    src={provider.src}
+                                                    alt=""
+                                                    aria-hidden="true"
+                                                    data-model-provider-logo={provider.id}
+                                                    draggable={false}
+                                                    className="h-full w-full object-contain"
+                                                />
+                                            ) : (
+                                                <span
+                                                    data-model-provider-logo={provider.id}
+                                                    aria-hidden="true"
+                                                    className="text-[8px] font-bold uppercase text-stone-600"
+                                                >
+                                                    {provider.label.slice(0, 1)}
+                                                </span>
+                                            )}
+                                        </span>
+                                    ))}
+                                </span>
+                            )}
+                            <span className="flex items-center gap-1.5 rounded-full bg-warm-muted px-2 py-1 text-[10px] font-medium capitalize text-stone-600 dark:text-stone-300">
+                                <KindIcon className="h-3 w-3" aria-hidden="true" />
                                 {entry.model.kind}
                             </span>
-                        </div>
-                        <p className="mt-1 truncate text-xs text-stone-500 dark:text-stone-400">{entry.model.id}</p>
+                        </span>
                     </div>
-                </div>
-                <div className="mt-3 text-xs text-stone-500 dark:text-stone-400">
-                    {needsProvider
-                        ? `Provider not configured: ${entry.missingCredentials.length > 0 ? 'credential required' : routeLabel}`
-                        : `Provider ready: ${routeLabel}`}
-                </div>
-                {providerOrderRows.length > 1 && (
-                    <div className="mt-3 border-t border-warm-border pt-3">
-                        <AccordionTrigger asChild>
-                            <Button
-                                aria-label={`Edit provider order for ${entry.model.name}`}
-                                className="group/provider-order flex h-auto min-h-0 w-full items-center justify-between gap-3 rounded-lg border-transparent bg-transparent px-2 py-1.5 text-left shadow-none hover:bg-warm-muted/55"
-                            >
-                                <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">Provider order</span>
-                                <span className="flex min-w-0 items-center gap-2 text-xs text-stone-500 dark:text-stone-400">
-                                    <span className="truncate">{providerOrderRows.map((row) => row.title).join(', ')}</span>
-                                    <CaretDown className="h-3.5 w-3.5 shrink-0 transition-transform group-data-[state=open]/provider-order:rotate-180" aria-hidden="true" />
-                                </span>
-                            </Button>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                            <ul aria-label={`${entry.model.name} provider order`} className="mt-2 overflow-hidden rounded-xl border border-warm-border bg-warm-muted/20">
-                                {providerOrderRows.map((providerRow, index) => {
-                                    const isCurrent = providerRow.key === selectedRouteKey;
-                                    return (
-                                        <li
-                                            key={providerRow.key}
-                                            className="grid gap-3 border-b border-warm-border px-3 py-2.5 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                                        >
-                                            <div className="flex min-w-0 items-center gap-3">
-                                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-warm-surface text-xs font-semibold text-stone-500 dark:text-stone-300">
-                                                    {index + 1}
-                                                </span>
-                                                {renderProviderIcon(providerRow.provider, providerRow.title)}
-                                                <div className="min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-                                                            {providerRow.title}
-                                                        </span>
-                                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                                            isCurrent
-                                                                ? 'bg-brand-light text-brand-dark'
-                                                                : providerRow.configured
-                                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                                                                    : 'bg-warm-surface text-stone-500 dark:text-stone-300'
-                                                        }`}>
-                                                            {isCurrent ? 'Current' : providerRow.configured ? 'Ready' : 'Needs key'}
-                                                        </span>
-                                                    </div>
-                                                    <p className="mt-0.5 truncate text-xs text-stone-500 dark:text-stone-400">
-                                                        {modelProviderLabel(providerRow.provider)}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="flex justify-end gap-1 pl-9 sm:pl-0">
-                                                <IconButton
-                                                    label={`Move ${providerRow.title} up for ${entry.model.name}`}
-                                                    disabled={saving || index === 0}
-                                                    onClick={() => moveModelProvider(index, index - 1)}
-                                                    size="sm"
-                                                    icon={<ArrowUp className="h-4 w-4" />}
-                                                    className="rounded-lg text-stone-500 hover:bg-warm-surface hover:text-slate-900 disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
-                                                />
-                                                <IconButton
-                                                    label={`Move ${providerRow.title} down for ${entry.model.name}`}
-                                                    disabled={saving || index === providerOrderRows.length - 1}
-                                                    onClick={() => moveModelProvider(index, index + 1)}
-                                                    size="sm"
-                                                    icon={<ArrowDown className="h-4 w-4" />}
-                                                    className="rounded-lg text-stone-500 hover:bg-warm-surface hover:text-slate-900 disabled:opacity-35 dark:text-stone-300 dark:hover:text-slate-50"
-                                                />
-                                            </div>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        </AccordionContent>
-                    </div>
-                )}
-                {localAsr && (
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-warm-border pt-3">
+                </Link>
+                {localSpeechCapabilityValue && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-warm-border px-4 py-3">
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">Local deploy</span>
+                                <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">
+                                    {localSpeechIsAsr ? 'Local deploy' : 'Local download'}
+                                </span>
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                    localAsrBusy
+                                    localSpeechBusyForModel
                                         ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300'
-                                        : localAsrDeployed
+                                        : localSpeechInstalled
                                             ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
                                             : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
                                 }`}>
-                                    {localAsrBusy ? 'Deploying' : localAsrDeployed ? 'Deployed' : 'Not deployed'}
+                                    {localSpeechBusyForModel
+                                        ? localSpeechBusy?.action === 'remove'
+                                            ? 'Removing'
+                                            : localSpeechIsAsr ? 'Deploying' : 'Downloading'
+                                        : localSpeechInstalled
+                                            ? localSpeechIsAsr ? 'Deployed' : 'Downloaded'
+                                            : localSpeechIsAsr ? 'Not deployed' : 'Not downloaded'}
                                 </span>
                             </div>
                             <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">Uses local model cache.</p>
                         </div>
-                        {!localAsrDeployed && (
-                            <Button
-                                aria-label="Deploy local ASR model"
-                                disabled={localAsrBusy}
-                                onClick={() => { void deployLocalAsrModel(entry); }}
-                                className={settingsCompactSecondaryButtonClass}
-                            >
-                                {localAsrBusy ? 'Deploying...' : 'Deploy'}
-                            </Button>
-                        )}
+                        <Button
+                            aria-label={localSpeechInstalled
+                                ? `Remove local ${localSpeechIsAsr ? 'ASR' : 'TTS'} model`
+                                : `${localSpeechIsAsr ? 'Deploy' : 'Download'} local ${localSpeechIsAsr ? 'ASR' : 'TTS'} model`}
+                            disabled={localSpeechBusyForModel}
+                            onClick={() => {
+                                void mutateLocalSpeechModel(
+                                    entry,
+                                    localSpeechInstalled ? 'remove' : 'install',
+                                );
+                            }}
+                            className={settingsCompactSecondaryButtonClass}
+                        >
+                            {localSpeechBusyForModel
+                                ? localSpeechBusy?.action === 'remove'
+                                    ? 'Removing...'
+                                    : localSpeechIsAsr ? 'Deploying...' : 'Downloading...'
+                                : localSpeechInstalled
+                                    ? 'Remove'
+                                    : localSpeechIsAsr ? 'Deploy' : 'Download'}
+                        </Button>
                     </div>
                 )}
-            </AccordionItem>
+            </article>
         );
     };
     const renderProviderIcon = (provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId'>, title: string) => {
@@ -3184,9 +3847,580 @@ function ModelRoutingSection({
         );
     };
 
+    const saveCustomProvider = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const label = customProviderDraft.label.trim();
+        const baseUrl = customProviderDraft.baseUrl.trim();
+        const apiKey = customProviderDraft.apiKey.trim();
+        if (!label || !baseUrl || !apiKey) return;
+        const id = typeof globalThis.crypto?.randomUUID === 'function'
+            ? `custom-${globalThis.crypto.randomUUID()}`
+            : `custom-${Date.now()}`;
+        await onCreateProvider({
+            id,
+            providerId: 'custom',
+            upstreamId: customProviderDraft.apiShape === 'openai-compatible' ? 'openai' : 'anthropic',
+            apiShape: customProviderDraft.apiShape,
+            label,
+            enabled: true,
+            credentials: { apiKey, baseUrl },
+        });
+        setCustomProviderDraft({
+            label: '',
+            apiShape: 'openai-compatible',
+            baseUrl: '',
+            apiKey: '',
+        });
+        setShowCustomProviderForm(false);
+    };
+
+    const renderCustomProviderForm = () => (
+        <form
+            onSubmit={(event) => { void saveCustomProvider(event); }}
+            className="space-y-5 rounded-2xl border border-brand/25 bg-brand-light/20 p-5 shadow-sm"
+        >
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <h3 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">
+                        Custom text provider
+                    </h3>
+                    <p className="mt-1 text-sm text-stone-600 dark:text-stone-300">
+                        Connect one endpoint that follows the OpenAI or Anthropic text protocol.
+                    </p>
+                </div>
+                <IconButton
+                    label="Cancel custom provider"
+                    onClick={() => setShowCustomProviderForm(false)}
+                    size="sm"
+                    icon={<X className="h-4 w-4" />}
+                />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <span>Provider name</span>
+                    <Input
+                        aria-label="Provider name"
+                        value={customProviderDraft.label}
+                        onChange={(event) => setCustomProviderDraft((current) => ({
+                            ...current,
+                            label: event.target.value,
+                        }))}
+                        placeholder="Editorial proxy"
+                        className={settingsFieldClass}
+                    />
+                </label>
+                <label className="space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                    <span>Text protocol</span>
+                    <SelectMenu
+                        ariaLabel="Text protocol"
+                        value={customProviderDraft.apiShape}
+                        options={TEXT_PROTOCOL_OPTIONS}
+                        onValueChange={(value) => setCustomProviderDraft((current) => ({
+                            ...current,
+                            apiShape: value,
+                        }))}
+                        variant="field"
+                        triggerClassName="clash-settings-select-trigger h-10"
+                    />
+                </label>
+            </div>
+            <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                <span>Base URL</span>
+                <Input
+                    aria-label="Base URL"
+                    value={customProviderDraft.baseUrl}
+                    onChange={(event) => setCustomProviderDraft((current) => ({
+                        ...current,
+                        baseUrl: event.target.value,
+                    }))}
+                    placeholder={customProviderDraft.apiShape === 'openai-compatible'
+                        ? 'https://provider.example/v1'
+                        : 'https://provider.example'}
+                    className={settingsMonoFieldClass}
+                />
+            </label>
+            <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                <span>API key</span>
+                <Input
+                    aria-label="API key"
+                    type="password"
+                    autoComplete="new-password"
+                    value={customProviderDraft.apiKey}
+                    onChange={(event) => setCustomProviderDraft((current) => ({
+                        ...current,
+                        apiKey: event.target.value,
+                    }))}
+                    className={settingsMonoFieldClass}
+                />
+            </label>
+            <div className="flex justify-end">
+                <Button
+                    type="submit"
+                    aria-label="Save custom provider"
+                    disabled={
+                        saving ||
+                        !customProviderDraft.label.trim() ||
+                        !customProviderDraft.baseUrl.trim() ||
+                        !customProviderDraft.apiKey.trim()
+                    }
+                    className={settingsPrimaryButtonClass}
+                >
+                    {saving ? 'Saving…' : 'Save provider'}
+                </Button>
+            </div>
+        </form>
+    );
+
+    const focusedModelProviderAccounts = focusedModelEntry
+        ? providerAccounts
+            .filter((account) => !!account.id && account.enabled !== false)
+            .filter((account) => focusedModelEntry.routes.some((route) => (
+                (!route.accountId || route.accountId === account.id) &&
+                route.providerId === account.providerId &&
+                route.upstreamId === account.upstreamId &&
+                (!route.region || !account.region || route.region === account.region)
+            )))
+            .sort((a, b) => {
+                const aPriority = a.modelPriorities?.[focusedModelEntry.model.id] ?? a.priority ?? 1000;
+                const bPriority = b.modelPriorities?.[focusedModelEntry.model.id] ?? b.priority ?? 1000;
+                return aPriority - bPriority;
+            })
+        : [];
+
+    const modelAccountLabel = (account: ModelProviderAccountInfo) => (
+        account.label ?? modelProviderSetup(account)?.title ?? modelProviderLabel(account)
+    );
+
+    const toggleModelBinding = (account: ModelProviderAccountInfo, checked: boolean) => {
+        if (!account.id) return;
+        setModelCardDraft((current) => ({
+            ...current,
+            providerBindings: checked
+                ? [
+                    ...current.providerBindings,
+                    {
+                        providerAccountId: account.id!,
+                        upstreamModel: current.modelId.trim() || '',
+                    },
+                ]
+                : current.providerBindings.filter((binding) => binding.providerAccountId !== account.id),
+        }));
+    };
+
+    const renderModelDetail = () => {
+        const creating = focusedModelId === 'new';
+        const entry = focusedModelEntry;
+        if (!creating && !entry) {
+            return (
+                <div className="rounded-xl border border-dashed border-warm-border p-8 text-center text-sm text-stone-600 dark:text-stone-300">
+                    This model card is no longer available.
+                </div>
+            );
+        }
+        const custom = creating || entry?.model.custom === true;
+        const detailBrand = entry ? modelCardBrand(entry.model) : null;
+        const providerOrderAccounts = custom
+            ? modelCardDraft.providerBindings.flatMap((binding) => {
+                const account = compatibleTextAccounts.find((candidate) => candidate.id === binding.providerAccountId);
+                return account ? [account] : [];
+            })
+            : focusedModelProviderAccounts;
+        const moveFocusedProvider = (fromIndex: number, toIndex: number) => {
+            const ordered = moveItem(providerOrderAccounts, fromIndex, toIndex);
+            if (!ordered) return;
+            if (custom) {
+                const bindings = new Map(modelCardDraft.providerBindings.map((binding) => [binding.providerAccountId, binding]));
+                setModelCardDraft((current) => ({
+                    ...current,
+                    providerBindings: ordered.flatMap((account) => {
+                        const binding = account.id ? bindings.get(account.id) : undefined;
+                        return binding ? [binding] : [];
+                    }),
+                }));
+                return;
+            }
+            void onPatchProviders(ordered.flatMap((account, index) => (
+                account.id
+                    ? [{
+                        key: modelProviderKey(account),
+                        patch: {
+                            id: account.id,
+                            modelPriorities: {
+                                ...(account.modelPriorities ?? {}),
+                                [entry!.model.id]: (index + 1) * 10,
+                            },
+                        },
+                    }]
+                    : []
+            )));
+        };
+        const saveFocusedModel = async (event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const modelId = creating ? modelCardDraft.modelId.trim() : entry!.model.id;
+            if (!modelId) return;
+            await onSaveModelCard(modelId, {
+                custom,
+                ...(custom ? { name: modelCardDraft.name.trim() } : {}),
+                kind: 'text',
+                description: modelCardDraft.description.trim(),
+                promptGuidance: modelCardDraft.promptGuidance.trim(),
+                providerBindings: custom ? modelCardDraft.providerBindings : [],
+            });
+            if (creating) {
+                navigate(`/settings?section=models&model=${encodeURIComponent(modelId)}`, { replace: true });
+            }
+        };
+        const renderSupportedProviderRow = (
+            row: typeof providerViewRows[number],
+            state: 'configured' | 'unconfigured',
+        ) => (
+            <li key={row.key} className="flex items-center gap-3 border-b border-warm-border px-3 py-3 last:border-b-0">
+                {renderProviderIcon(row.provider, row.title)}
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{row.title}</p>
+                    <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                        {state === 'configured' ? 'Ready for this model' : 'Supported · setup required'}
+                    </p>
+                </div>
+                <Link
+                    to={providerSettingsHref(row.key)}
+                    aria-label={`Configure ${row.title}`}
+                    className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-warm-border px-2.5 text-xs font-semibold text-stone-700 transition-colors hover:border-brand/35 hover:text-brand dark:text-stone-200"
+                >
+                    Configure
+                    <CaretRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+            </li>
+        );
+        const renderLocalRuntimeRow = (localEntry: ModelCatalogEntryInfo, ready: boolean) => {
+            const busy = localSpeechBusy?.modelId === localEntry.model.id;
+            return (
+                <li key="local-runtime" className="flex items-center gap-3 border-b border-warm-border px-3 py-3 last:border-b-0">
+                    {renderProviderIcon({ providerId: 'local', upstreamId: 'local' }, 'Local runtime')}
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">Local runtime</p>
+                        <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                            {ready ? 'Downloaded and ready' : 'Download required'}
+                        </p>
+                    </div>
+                    <Button
+                        type="button"
+                        aria-label={`${ready ? 'Remove' : 'Download'} ${localEntry.model.name}`}
+                        disabled={busy}
+                        onClick={() => {
+                            void mutateLocalSpeechModel(localEntry, ready ? 'remove' : 'install');
+                        }}
+                        className={settingsCompactSecondaryButtonClass}
+                    >
+                        {busy
+                            ? localSpeechBusy?.action === 'remove' ? 'Removing…' : 'Downloading…'
+                            : ready ? 'Remove' : 'Download'}
+                    </Button>
+                </li>
+            );
+        };
+        return (
+            <form onSubmit={(event) => { void saveFocusedModel(event); }} className="space-y-7">
+                <div className="flex items-start gap-4 border-b border-warm-border pb-5">
+                    <Link
+                        to="/settings?section=models"
+                        aria-label="Models"
+                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warm-border text-stone-600 transition-colors hover:border-brand/35 hover:text-brand dark:text-stone-300"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                    </Link>
+                    {detailBrand && (
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-black/[0.06] bg-white p-2.5 shadow-[0_4px_14px_rgba(31,26,23,0.08)] dark:border-white/10 dark:bg-white">
+                            {detailBrand.src ? (
+                                <img
+                                    src={detailBrand.src}
+                                    alt=""
+                                    aria-hidden="true"
+                                    data-model-logo={detailBrand.id}
+                                    className="h-full w-full object-contain"
+                                />
+                            ) : (
+                                <span
+                                    aria-hidden="true"
+                                    data-model-logo={detailBrand.id}
+                                    className="text-lg font-black text-slate-900"
+                                >
+                                    {detailBrand.label.slice(0, 2).toUpperCase()}
+                                </span>
+                            )}
+                        </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
+                            {creating ? 'Text model' : `${modelKindLabel(entry!.model.kind)} model`}
+                        </p>
+                        <h2 className="mt-1 font-display text-xl font-bold text-slate-900 dark:text-slate-50">
+                            {creating ? 'New text model' : entry!.model.name}
+                        </h2>
+                        {!creating && (
+                            <p className="mt-1 font-mono text-xs text-stone-500 dark:text-stone-400">{entry!.model.id}</p>
+                        )}
+                    </div>
+                </div>
+
+                {creating && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                            <span>Model ID</span>
+                            <Input
+                                aria-label="Model ID"
+                                value={modelCardDraft.modelId}
+                                onChange={(event) => setModelCardDraft((current) => ({
+                                    ...current,
+                                    modelId: event.target.value.trimStart().toLowerCase().replace(/[^a-z0-9._/-]/g, '-'),
+                                }))}
+                                placeholder="editorial-pro"
+                                className={settingsMonoFieldClass}
+                            />
+                        </label>
+                        <label className="space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                            <span>Model name</span>
+                            <Input
+                                aria-label="Model name"
+                                value={modelCardDraft.name}
+                                onChange={(event) => setModelCardDraft((current) => ({
+                                    ...current,
+                                    name: event.target.value,
+                                }))}
+                                placeholder="Editorial Pro"
+                                className={settingsFieldClass}
+                            />
+                        </label>
+                    </div>
+                )}
+
+                <div className="space-y-5 rounded-2xl border border-warm-border bg-warm-surface p-5 shadow-sm">
+                    <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                        <span>Model description</span>
+                        <Textarea
+                            aria-label="Model description"
+                            value={modelCardDraft.description}
+                            onChange={(event) => setModelCardDraft((current) => ({
+                                ...current,
+                                description: event.target.value,
+                            }))}
+                            rows={3}
+                            placeholder="What this model is best at."
+                            className={settingsProseTextareaFieldClass}
+                        />
+                    </label>
+                    <label className="block space-y-1.5 text-sm font-medium text-slate-900 dark:text-slate-50">
+                        <span>Prompt guidance</span>
+                        <Textarea
+                            aria-label="Prompt guidance"
+                            value={modelCardDraft.promptGuidance}
+                            onChange={(event) => setModelCardDraft((current) => ({
+                                ...current,
+                                promptGuidance: event.target.value,
+                            }))}
+                            rows={4}
+                            placeholder="Explain how collaborators and agents should prompt this model."
+                            className={settingsProseTextareaFieldClass}
+                        />
+                    </label>
+                </div>
+
+                {custom && (
+                    <section className="space-y-3">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Compatible providers</h3>
+                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                                Mount this model to one or more compatible text endpoints.
+                            </p>
+                        </div>
+                        {compatibleTextAccounts.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-warm-border p-5 text-sm text-stone-600 dark:text-stone-300">
+                                Add an OpenAI-compatible or Anthropic-compatible provider first.
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {compatibleTextAccounts.map((account) => {
+                                    const label = modelAccountLabel(account);
+                                    const binding = modelCardDraft.providerBindings.find(
+                                        (candidate) => candidate.providerAccountId === account.id,
+                                    );
+                                    return (
+                                        <div key={account.id} className="rounded-xl border border-warm-border bg-warm-surface p-4">
+                                            <label className="flex items-center gap-3 text-sm font-medium text-slate-900 dark:text-slate-50">
+                                                <input
+                                                    type="checkbox"
+                                                    aria-label={`Use ${label}`}
+                                                    checked={!!binding}
+                                                    onChange={(event) => toggleModelBinding(account, event.target.checked)}
+                                                    className="h-4 w-4 rounded border-warm-border accent-[var(--brand)]"
+                                                />
+                                                <span className="flex-1">{label}</span>
+                                                <span className="text-xs font-normal text-stone-500 dark:text-stone-400">
+                                                    {account.apiShape ?? account.upstreamId}
+                                                </span>
+                                            </label>
+                                            {binding && (
+                                                <Input
+                                                    aria-label={`${label} upstream model`}
+                                                    value={binding.upstreamModel}
+                                                    onChange={(event) => setModelCardDraft((current) => ({
+                                                        ...current,
+                                                        providerBindings: current.providerBindings.map((candidate) => (
+                                                            candidate.providerAccountId === account.id
+                                                                ? { ...candidate, upstreamModel: event.target.value }
+                                                                : candidate
+                                                        )),
+                                                    }))}
+                                                    placeholder="Provider model identifier"
+                                                    className={`${settingsMonoFieldClass} mt-3`}
+                                                />
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {!creating && !custom && (
+                    <section className="space-y-3">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Supported providers</h3>
+                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                                {focusedModelUsesLocalRuntime
+                                    ? 'Download this model into the managed local cache. Readiness is verified from the runtime.'
+                                    : 'Configure any supported provider, then order ready accounts below.'}
+                            </p>
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                            <section aria-labelledby="configured-model-providers-heading" className="space-y-2">
+                                <h4 id="configured-model-providers-heading" className="text-xs font-semibold text-stone-600 dark:text-stone-300">
+                                    Configured for this model
+                                </h4>
+                                <ul className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface">
+                                    {focusedModelConfiguredProviderRows.length > 0 || focusedModelLocalRuntimeReady ? (
+                                        <>
+                                            {focusedModelConfiguredProviderRows.map((row) => renderSupportedProviderRow(row, 'configured'))}
+                                            {focusedModelLocalRuntimeReady && renderLocalRuntimeRow(entry!, true)}
+                                        </>
+                                    ) : (
+                                        <li className="px-3 py-4 text-xs text-stone-500 dark:text-stone-400">None configured yet.</li>
+                                    )}
+                                </ul>
+                            </section>
+                            <section aria-labelledby="unconfigured-model-providers-heading" className="space-y-2">
+                                <h4 id="unconfigured-model-providers-heading" className="text-xs font-semibold text-stone-600 dark:text-stone-300">
+                                    Supported, not configured
+                                </h4>
+                                <ul className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface">
+                                    {focusedModelUnconfiguredProviderRows.length > 0 || (focusedModelUsesLocalRuntime && !focusedModelLocalRuntimeReady) ? (
+                                        <>
+                                            {focusedModelUnconfiguredProviderRows.map((row) => renderSupportedProviderRow(row, 'unconfigured'))}
+                                            {focusedModelUsesLocalRuntime && !focusedModelLocalRuntimeReady && renderLocalRuntimeRow(entry!, false)}
+                                        </>
+                                    ) : (
+                                        <li className="px-3 py-4 text-xs text-stone-500 dark:text-stone-400">All supported providers are configured.</li>
+                                    )}
+                                </ul>
+                            </section>
+                        </div>
+                    </section>
+                )}
+
+                {!creating && !focusedModelUsesLocalRuntime && (
+                    <section className="space-y-3">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Provider order</h3>
+                            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">The first ready provider handles this model.</p>
+                        </div>
+                        <ul
+                            aria-label={`${entry!.model.name} provider order`}
+                            className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface"
+                        >
+                            {providerOrderAccounts.length > 0 ? providerOrderAccounts.map((account, index) => (
+                                <li
+                                    key={account.id ?? modelProviderAccountIdentity(account)}
+                                    className="flex items-center gap-3 border-b border-warm-border px-4 py-3 last:border-b-0"
+                                >
+                                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-warm-muted text-xs font-bold text-stone-600 dark:text-stone-300">
+                                        {index + 1}
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                            {modelAccountLabel(account)}
+                                        </p>
+                                        <p className="truncate text-xs text-stone-500 dark:text-stone-400">
+                                            {account.apiShape ?? modelProviderLabel(account)}
+                                        </p>
+                                    </div>
+                                    <IconButton
+                                        label={`Move ${modelAccountLabel(account)} up`}
+                                        disabled={saving || index === 0}
+                                        onClick={() => moveFocusedProvider(index, index - 1)}
+                                        size="sm"
+                                        icon={<ArrowUp className="h-4 w-4" />}
+                                    />
+                                    <IconButton
+                                        label={`Move ${modelAccountLabel(account)} down`}
+                                        disabled={saving || index === providerOrderAccounts.length - 1}
+                                        onClick={() => moveFocusedProvider(index, index + 1)}
+                                        size="sm"
+                                        icon={<ArrowDown className="h-4 w-4" />}
+                                    />
+                                </li>
+                            )) : (
+                                <li className="px-4 py-5 text-sm text-stone-500 dark:text-stone-400">
+                                    No compatible provider account is configured.
+                                </li>
+                            )}
+                        </ul>
+                    </section>
+                )}
+
+                {error && <div role="alert" className={settingsErrorAlertClass}>{error}</div>}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-warm-border pt-5">
+                    <div>
+                        {custom && !creating && (
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                disabled={saving}
+                                onClick={() => {
+                                    void onDeleteModelCard(entry!.model.id).then(() => {
+                                        navigate('/settings?section=models', { replace: true });
+                                    });
+                                }}
+                                className="h-auto min-h-0 border-transparent bg-transparent px-0 py-2 text-sm shadow-none"
+                            >
+                                Remove custom model
+                            </Button>
+                        )}
+                    </div>
+                    <Button
+                        type="submit"
+                        aria-label={custom ? 'Save text model' : 'Save model card'}
+                        disabled={
+                            saving ||
+                            (custom && (
+                                !modelCardDraft.modelId.trim() ||
+                                !modelCardDraft.name.trim() ||
+                                modelCardDraft.providerBindings.length === 0 ||
+                                modelCardDraft.providerBindings.some((binding) => !binding.upstreamModel.trim())
+                            ))
+                        }
+                        className={settingsPrimaryButtonClass}
+                    >
+                        {saving ? 'Saving…' : custom ? 'Save text model' : 'Save model card'}
+                    </Button>
+                </div>
+            </form>
+        );
+    };
+
     return (
         <section>
-            {showModels && <div className="flex items-center gap-3 mb-5">
+            {showModels && !focusedModelId && <div className="flex items-center gap-3 mb-5">
                 <Plug className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                 <div className="flex-1">
                     <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Models</h2>
@@ -3204,24 +4438,34 @@ function ModelRoutingSection({
                         Show all
                     </Link>
                 )}
+                {!focusedProviderRow && (
+                    <Link
+                        to="/settings?section=models&model=new"
+                        className={`${settingsSmallPrimaryButtonClass} shrink-0`}
+                    >
+                        <Plus className="h-4 w-4" />
+                        Add text model
+                    </Link>
+                )}
             </div>}
 
-            {showModels && <div className="mb-6 grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
-                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Available</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{tierCounts.available}</div>
+            {showModels && !focusedModelId && <div role="group" aria-label="Model availability summary" className="mb-6 grid grid-cols-3 gap-2">
+                <div role="status" aria-label="Enabled models" className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Enabled</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{enabledModelCount}</div>
                 </div>
-                <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
-                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Needs key</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{tierCounts['configured-provider']}</div>
+                <div role="status" aria-label="Unavailable models" className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
+                    <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">Unavailable</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{unavailableModelCount}</div>
                 </div>
-                <div className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
+                <div role="status" aria-label="All models" className="rounded-xl border border-warm-border bg-warm-surface px-3 py-2">
                     <div className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">All</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{tierCounts.all}</div>
+                    <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">{catalog.length}</div>
                 </div>
             </div>}
 
             <div className="space-y-8">
+                {showModels && focusedModelId && renderModelDetail()}
                 {showProviders && (selectedProviderRow ? renderProviderDetail(selectedProviderRow) : <div className="space-y-8">
                     <div className="border-b border-warm-border pb-5">
                         <div className="flex flex-col gap-6">
@@ -3278,10 +4522,21 @@ function ModelRoutingSection({
                         </ul>
                     </section>
 
+                    {showCustomProviderForm ? renderCustomProviderForm() : (
+                        <Button
+                            aria-label="Add custom provider"
+                            onClick={() => setShowCustomProviderForm(true)}
+                            className="flex h-auto min-h-0 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-brand/35 bg-brand-light/15 px-4 py-4 text-sm font-semibold text-brand shadow-none hover:bg-brand-light/35"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Add custom provider
+                        </Button>
+                    )}
+
 	                    {error && <div role="alert" className={`${settingsErrorAlertClass} mt-3`}>{error}</div>}
                 </div>)}
 
-                {showModels && <div className="space-y-6">
+                {showModels && !focusedModelId && <div className="space-y-6">
                     <div className="border-b border-warm-border pb-4">
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
                             <label className="relative block">
@@ -3306,28 +4561,105 @@ function ModelRoutingSection({
                                 triggerClassName={settingsSelectTriggerClass}
                             />
                             <SelectMenu
-                                value={modelProviderFilter}
-                                options={MODEL_PROVIDER_FILTER_OPTIONS}
-                                onValueChange={(next) => setModelProviderFilter(next as typeof modelProviderFilter)}
-                                ariaLabel="Provider status"
+                                value={modelAvailabilityFilter}
+                                options={MODEL_AVAILABILITY_FILTER_OPTIONS}
+                                onValueChange={(next) => setModelAvailabilityFilter(next as typeof modelAvailabilityFilter)}
+                                ariaLabel="Availability"
                                 variant="field"
                                 menuWidth="trigger"
                                 className="w-full"
                                 triggerClassName={settingsSelectTriggerClass}
                             />
                         </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                            <SelectMenu
+                                value={modelServingProviderFilter}
+                                options={modelServingProviderOptions}
+                                onValueChange={(next) => setModelServingProviderFilter(String(next))}
+                                ariaLabel="Supported provider"
+                                variant="field"
+                                menuWidth="trigger"
+                                className="w-full sm:w-[210px]"
+                                triggerClassName={settingsSelectTriggerClass}
+                            />
+                            <SelectMenu
+                                value={modelInputFilter}
+                                options={MODEL_INPUT_FILTER_OPTIONS}
+                                onValueChange={(next) => setModelInputFilter(next as typeof modelInputFilter)}
+                                ariaLabel="Accepted input"
+                                variant="field"
+                                menuWidth="trigger"
+                                className="w-full sm:w-[190px]"
+                                triggerClassName={settingsSelectTriggerClass}
+                            />
+                            <SelectMenu
+                                value={modelOriginFilter}
+                                options={MODEL_ORIGIN_FILTER_OPTIONS}
+                                onValueChange={(next) => setModelOriginFilter(next as typeof modelOriginFilter)}
+                                ariaLabel="Origin"
+                                variant="field"
+                                menuWidth="trigger"
+                                className="w-full sm:w-[170px]"
+                                triggerClassName={settingsSelectTriggerClass}
+                            />
+                            {hasActiveModelFilters && (
+                                <Button
+                                    aria-label="Clear model filters"
+                                    onClick={clearModelFilters}
+                                    className={`${settingsCompactSecondaryButtonClass} gap-1.5`}
+                                >
+                                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                    Clear
+                                </Button>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <h3 className="text-sm font-medium text-stone-500 dark:text-stone-400">Available model cards</h3>
+                    <div className="space-y-8">
                         {filteredModelCatalog.length === 0 ? (
                             <div className="rounded-xl border border-dashed border-warm-border py-8 text-center text-sm text-stone-600 dark:text-stone-300">
                                 No model cards match these filters.
                             </div>
                         ) : (
-                            <Accordion type="single" collapsible className="grid gap-3 lg:grid-cols-2">
-                                {filteredModelCatalog.map((entry) => renderModelCard(entry))}
-                            </Accordion>
+                            <>
+                                <section aria-labelledby="enabled-models-heading" className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 id="enabled-models-heading" className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                                            Enabled
+                                        </h3>
+                                        <span className="text-xs tabular-nums text-stone-400">{enabledModelCatalog.length}</span>
+                                    </div>
+                                    {enabledModelCatalog.length > 0 ? (
+                                        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                                            {enabledModelCatalog.map((entry) => renderModelCard(entry))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-xl border border-dashed border-warm-border px-4 py-6 text-center text-xs text-stone-500 dark:text-stone-400">
+                                            No enabled models match these filters.
+                                        </div>
+                                    )}
+                                </section>
+
+                                <section aria-labelledby="unavailable-models-heading" className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 id="unavailable-models-heading" className="flex items-center gap-2 text-sm font-semibold text-stone-600 dark:text-stone-300">
+                                            <span className="h-2 w-2 rounded-full bg-stone-300 dark:bg-stone-600" aria-hidden="true" />
+                                            Unavailable
+                                        </h3>
+                                        <span className="text-xs tabular-nums text-stone-400">{unavailableModelCatalog.length}</span>
+                                    </div>
+                                    {unavailableModelCatalog.length > 0 ? (
+                                        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                                            {unavailableModelCatalog.map((entry) => renderModelCard(entry))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-xl border border-dashed border-warm-border px-4 py-6 text-center text-xs text-stone-500 dark:text-stone-400">
+                                            No unavailable models match these filters.
+                                        </div>
+                                    )}
+                                </section>
+                            </>
                         )}
                     </div>
                 </div>}
@@ -3708,23 +5040,37 @@ function SyncSection() {
     );
 }
 
+type LocalSpeechCapability = 'speech-to-text' | 'text-to-speech';
+
+interface LocalSpeechSetup {
+    runtime: 'builtin-rpc';
+    status: 'disabled' | 'needs-install' | 'ready';
+    available: boolean;
+    default_base_url: string | null;
+    commands: string[];
+    message?: string;
+}
+
 interface LocalAudioConfig {
     asr: {
+        capability?: 'speech-to-text';
         enabled: boolean;
         provider: 'builtin-funasr';
         base_url: string | null;
         model: string;
         has_api_key: boolean;
         ready: boolean;
-        setup: {
-            provider: 'funasr';
-            runtime: 'builtin-rpc';
-            status: 'disabled' | 'needs-install' | 'ready';
-            available: boolean;
-            default_base_url: string | null;
-            commands: string[];
-            message?: string;
-        };
+        setup: LocalSpeechSetup & { provider: 'funasr' };
+    };
+    tts?: {
+        capability?: 'text-to-speech';
+        enabled: boolean;
+        provider: 'builtin-piper';
+        base_url: null;
+        model: string;
+        has_api_key: false;
+        ready: boolean;
+        setup: LocalSpeechSetup & { provider: 'piper' };
     };
 }
 
@@ -3733,6 +5079,21 @@ function isLocalAsrModelEntry(entry: ModelCatalogEntryInfo): boolean {
         (entry.selectedRoute?.apiShape as string | undefined) === 'local-asr' ||
         entry.candidateProviders.map(String).includes('local')
     );
+}
+
+function isLocalTtsModelEntry(entry: ModelCatalogEntryInfo): boolean {
+    return (entry.selectedRoute?.apiShape as string | undefined) === 'local-tts' ||
+        entry.routes.some((route) => (route.apiShape as string | undefined) === 'local-tts');
+}
+
+function isLocalSpeechModelEntry(entry: ModelCatalogEntryInfo): boolean {
+    return isLocalAsrModelEntry(entry) || isLocalTtsModelEntry(entry);
+}
+
+function localSpeechCapability(entry: ModelCatalogEntryInfo): LocalSpeechCapability | null {
+    if (isLocalAsrModelEntry(entry)) return 'speech-to-text';
+    if (isLocalTtsModelEntry(entry)) return 'text-to-speech';
+    return null;
 }
 
 function asrModelValue(entry: ModelCatalogEntryInfo): string {
@@ -3744,20 +5105,155 @@ function asrModelValue(entry: ModelCatalogEntryInfo): string {
         : entry.model.id;
 }
 
+function ttsModelValue(entry: ModelCatalogEntryInfo): string {
+    if (entry.selectedRoute?.upstreamModel) return entry.selectedRoute.upstreamModel;
+    const defaultParams = entry.model.defaultParams as Record<string, unknown> | undefined;
+    const defaultModel = defaultParams?.tts_model;
+    return typeof defaultModel === 'string' && defaultModel.trim()
+        ? defaultModel.trim()
+        : entry.model.id;
+}
+
+function localSpeechModelValue(entry: ModelCatalogEntryInfo): string {
+    return isLocalTtsModelEntry(entry) ? ttsModelValue(entry) : asrModelValue(entry);
+}
+
 async function fetchLocalAudioConfig(): Promise<LocalAudioConfig> {
     const res = await fetch(runtimeApiUrl('/api/v1/local/audio'), { credentials: 'include' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as LocalAudioConfig;
 }
 
-function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
+async function fetchLocalSpeechModelStatus(
+    capability: LocalSpeechCapability,
+    model: string,
+): Promise<boolean> {
+    const query = new URLSearchParams({ capability, model });
+    const res = await fetch(runtimeApiUrl(`/api/v1/local/audio/models/status?${query.toString()}`), {
+        credentials: 'include',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json() as {
+        available?: boolean;
+        asr?: LocalAudioConfig['asr'];
+        tts?: LocalAudioConfig['tts'];
+    };
+    if (typeof json.available === 'boolean') return json.available;
+    return capability === 'speech-to-text'
+        ? json.asr?.model === model && json.asr.setup.available
+        : json.tts?.model === model && json.tts.setup.available;
+}
+
+interface LocalSpeechSettingsCardProps {
+    title: string;
+    description: string;
+    switchLabel: string;
+    modelLabel: string;
+    enabled: boolean;
+    saving: boolean;
+    blockingReason?: string;
+    modelOptions: SelectOption<string>[];
+    modelValue: string;
+    onEnabledChange: (next: boolean) => void;
+    onModelChange: (next: string) => void;
+    onConfigure: () => void;
+}
+
+function LocalSpeechSettingsCard({
+    title,
+    description,
+    switchLabel,
+    modelLabel,
+    enabled,
+    saving,
+    blockingReason,
+    modelOptions,
+    modelValue,
+    onEnabledChange,
+    onModelChange,
+    onConfigure,
+}: LocalSpeechSettingsCardProps) {
+    const switchDisabledReason = saving ? 'Saving audio settings.' : blockingReason;
+    const switchReasonId = switchDisabledReason
+        ? `audio-${modelLabel.toLowerCase().replaceAll(' ', '-')}-switch-reason`
+        : undefined;
+    const hasModel = modelOptions.length > 0;
+    const selectedModelValue = modelOptions.some((option) => option.value === modelValue)
+        ? modelValue
+        : modelOptions[0]?.value ?? modelValue;
+    const control = (
+        <Switch
+            checked={enabled}
+            onCheckedChange={onEnabledChange}
+            disabled={saving}
+            aria-label={switchLabel}
+            aria-describedby={switchReasonId}
+        />
+    );
+
+    return (
+        <div className="rounded-xl border border-warm-border bg-warm-surface p-4">
+            <div className="flex items-start justify-between gap-4 border-b border-warm-border pb-4">
+                <div>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">{title}</h3>
+                    <p className="mt-1 text-xs text-stone-600 dark:text-stone-300">{description}</p>
+                </div>
+                {switchDisabledReason ? <Tooltip label={switchDisabledReason}>{control}</Tooltip> : control}
+                {switchDisabledReason && (
+                    <span id={switchReasonId} className="sr-only">
+                        {switchDisabledReason}
+                    </span>
+                )}
+            </div>
+            <label className="mt-4 block">
+                <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">
+                    {modelLabel}
+                </span>
+                {hasModel && !blockingReason ? (
+                    <SelectMenu
+                        value={selectedModelValue}
+                        options={modelOptions}
+                        onValueChange={(next) => onModelChange(String(next))}
+                        ariaLabel={modelLabel}
+                        variant="field"
+                        menuWidth="trigger"
+                        className="w-full"
+                        triggerClassName={settingsSelectTriggerClass}
+                    />
+                ) : (
+                    <Button
+                        aria-label={modelLabel}
+                        onClick={onConfigure}
+                        className={`${settingsSelectTriggerClass} clash-settings-select-trigger inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-stone-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-stone-400 dark:hover:bg-warm-muted/35`}
+                    >
+                        <span className="min-w-0 flex-1 truncate text-left">
+                            {hasModel ? selectedModelValue : 'Select'}
+                        </span>
+                        <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
+                    </Button>
+                )}
+            </label>
+            {switchDisabledReason && (
+                <p className="mt-2 text-xs text-stone-600 dark:text-stone-300">
+                    {switchDisabledReason}
+                </p>
+            )}
+        </div>
+    );
+}
+
+function AudioSection({
+    asrModels,
+}: {
+    asrModels: ModelCatalogEntryInfo[];
+}) {
     const feedback = useAppFeedback();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
-    const [enabled, setEnabled] = useState(false);
-    const [model, setModel] = useState('iic/SenseVoiceSmall');
-    const [setupAvailable, setSetupAvailable] = useState(false);
+    const [asrEnabled, setAsrEnabled] = useState(false);
+    const [asrModel, setAsrModel] = useState('iic/SenseVoiceSmall');
+    const [asrSetupAvailable, setAsrSetupAvailable] = useState(false);
     const [setupDialog, setSetupDialog] = useState<{
         title: string;
         message: string;
@@ -3778,9 +5274,9 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
     }, []);
 
     const applyConfig = useCallback((config: LocalAudioConfig) => {
-        setEnabled(config.asr.enabled);
-        setModel(config.asr.model);
-        setSetupAvailable(config.asr.setup.available);
+        setAsrEnabled(config.asr.enabled);
+        setAsrModel(config.asr.model);
+        setAsrSetupAvailable(config.asr.setup.available);
     }, []);
 
     useEffect(() => {
@@ -3809,21 +5305,20 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
 
     useEffect(() => {
         if (loading || !hasSelectedAsrModel) return;
-        if (asrModelOptions.some((option) => option.value === model)) return;
-        setModel(asrModelOptions[0].value);
+        if (asrModelOptions.some((option) => option.value === asrModel)) return;
+        setAsrModel(asrModelOptions[0].value);
         markDirty();
-    }, [asrModelOptions, hasSelectedAsrModel, loading, markDirty, model]);
+    }, [asrModel, asrModelOptions, hasSelectedAsrModel, loading, markDirty]);
 
     useEffect(() => {
-        if (loading || !dirty) return;
-        if (!hasSelectedAsrModel) return;
+        if (loading || !dirty || !hasSelectedAsrModel) return;
         const version = audioVersionRef.current;
         const timer = window.setTimeout(() => {
             setSaving(true);
             const body: Record<string, unknown> = {
-                asr_enabled: enabled,
+                asr_enabled: asrEnabled,
                 asr_provider: 'builtin-funasr',
-                asr_model: model.trim() || 'iic/SenseVoiceSmall',
+                asr_model: asrModel.trim() || 'iic/SenseVoiceSmall',
             };
             void fetch(runtimeApiUrl('/api/v1/local/audio'), {
                 method: 'PATCH',
@@ -3860,20 +5355,22 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                 });
         }, 450);
         return () => window.clearTimeout(timer);
-    }, [applyConfig, dirty, enabled, feedback, hasSelectedAsrModel, loading, model]);
+    }, [
+        applyConfig,
+        asrEnabled,
+        asrModel,
+        dirty,
+        feedback,
+        hasSelectedAsrModel,
+        loading,
+    ]);
 
-    const blockingReason = !hasSelectedAsrModel
+    const asrBlockingReason = !hasSelectedAsrModel
         ? 'Select an ASR model in Models before enabling voice input.'
-        : !enabled && !setupAvailable
+        : !asrEnabled && !asrSetupAvailable
             ? 'Deploy the selected ASR model from Models before enabling voice input.'
             : undefined;
-    const switchDisabled = saving;
-    const switchDisabledReason = switchDisabled ? 'Saving audio settings.' : blockingReason;
-    const switchReasonId = switchDisabledReason ? 'audio-asr-switch-reason' : undefined;
-    const selectedModelValue = asrModelOptions.some((option) => option.value === model)
-        ? model
-        : asrModelOptions[0]?.value ?? model;
-    const openSetupDialog = useCallback(() => {
+    const openAsrSetupDialog = useCallback(() => {
         setSetupDialog(!hasSelectedAsrModel
             ? {
                 title: 'Configure ASR model',
@@ -3884,23 +5381,22 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                 message: 'The selected ASR model must be deployed before voice input can run locally.',
             });
     }, [hasSelectedAsrModel]);
-    const handleVoiceInputChange = useCallback((next: boolean) => {
-        if (next && blockingReason) {
-            openSetupDialog();
+    const handleAsrEnabledChange = useCallback((next: boolean) => {
+        if (next && asrBlockingReason) {
+            openAsrSetupDialog();
             return;
         }
-        setEnabled(next);
+        setAsrEnabled(next);
         markDirty();
-    }, [blockingReason, markDirty, openSetupDialog]);
-
+    }, [asrBlockingReason, markDirty, openAsrSetupDialog]);
     return (
         <section>
-            <div className="flex items-center gap-3 mb-5">
+            <div className="mb-5 flex items-center gap-3">
                 <Microphone className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                 <div className="flex-1">
                     <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Audio</h2>
                     <p className="text-sm text-stone-600 dark:text-stone-300">
-                        Voice input in chat.
+                        Local voice input for chat.
                     </p>
                 </div>
             </div>
@@ -3909,73 +5405,24 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
                 <SettingsFormSkeleton ariaLabel="Loading audio settings" variant="audio" />
             ) : (
                 <SettingsAnimatedBody>
-                    <div className="rounded-xl border border-warm-border bg-warm-surface p-4">
-                        <div className="flex items-start justify-between gap-4 border-b border-warm-border pb-4">
-                            <div>
-                                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Voice input</h3>
-                                <p className="mt-1 text-xs text-stone-600 dark:text-stone-300">
-                                    Transcribe microphone clips before sending.
-                                </p>
-                            </div>
-                            {switchDisabledReason ? (
-                                <Tooltip label={switchDisabledReason}>
-                                    <Switch
-                                        checked={enabled}
-                                        onCheckedChange={handleVoiceInputChange}
-                                        disabled={switchDisabled}
-                                        aria-label="Enable voice input"
-                                        aria-describedby={switchReasonId}
-                                    />
-                                </Tooltip>
-                            ) : (
-                                <Switch
-                                    checked={enabled}
-                                    onCheckedChange={handleVoiceInputChange}
-                                    disabled={switchDisabled}
-                                    aria-label="Enable voice input"
-                                    aria-describedby={switchReasonId}
-                                />
-                            )}
-                            {switchDisabledReason && (
-                                <span id={switchReasonId} className="sr-only">
-                                    {switchDisabledReason}
-                                </span>
-                            )}
-                        </div>
-                        <label className="mt-4 block">
-                            <span className="mb-1.5 block text-xs font-medium text-stone-600 dark:text-stone-300">ASR model</span>
-                            {hasSelectedAsrModel && !blockingReason ? (
-                                <SelectMenu
-                                    value={selectedModelValue}
-                                    options={asrModelOptions}
-                                    onValueChange={(next) => {
-                                        setModel(String(next));
-                                        markDirty();
-                                    }}
-                                    ariaLabel="ASR model"
-                                    variant="field"
-                                    menuWidth="trigger"
-                                    className="w-full"
-                                    triggerClassName={settingsSelectTriggerClass}
-                                />
-                            ) : (
-                                <Button
-                                    aria-label="ASR model"
-                                    onClick={openSetupDialog}
-                                    className={`${settingsSelectTriggerClass} clash-settings-select-trigger inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-warm-border bg-warm-surface px-3 py-2 text-sm font-medium text-stone-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] transition-colors hover:bg-warm-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface dark:text-stone-400 dark:hover:bg-warm-muted/35`}
-                                >
-                                    <span className="min-w-0 flex-1 truncate text-left">
-                                        {hasSelectedAsrModel ? selectedModelValue : 'Select'}
-                                    </span>
-                                    <CaretDown className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-stone-400" aria-hidden="true" />
-                                </Button>
-                            )}
-                        </label>
-                        {switchDisabledReason && (
-                            <p className="mt-2 text-xs text-stone-600 dark:text-stone-300">
-                                {switchDisabledReason}
-                            </p>
-                        )}
+                    <div className="max-w-2xl">
+                        <LocalSpeechSettingsCard
+                            title="Voice input"
+                            description="Transcribe microphone clips before sending."
+                            switchLabel="Enable voice input"
+                            modelLabel="ASR model"
+                            enabled={asrEnabled}
+                            saving={saving}
+                            blockingReason={asrBlockingReason}
+                            modelOptions={asrModelOptions}
+                            modelValue={asrModel}
+                            onEnabledChange={handleAsrEnabledChange}
+                            onModelChange={(next) => {
+                                setAsrModel(next);
+                                markDirty();
+                            }}
+                            onConfigure={openAsrSetupDialog}
+                        />
                     </div>
 
                     {saving && (
@@ -3988,7 +5435,7 @@ function AudioSection({ asrModels }: { asrModels: ModelCatalogEntryInfo[] }) {
             <Dialog
                 open={!!setupDialog}
                 onClose={() => setSetupDialog(null)}
-                title={setupDialog?.title ?? 'Configure ASR model'}
+                title={setupDialog?.title ?? 'Configure local speech model'}
                 description={setupDialog?.message}
                 size="sm"
             >
@@ -4021,7 +5468,7 @@ function AgentsSection() {
     const [harnesses, setHarnesses] = useState<LocalHarnessInfo[]>([]);
     const [harnessLoading, setHarnessLoading] = useState(true);
     const [harnessLoadingMessage, setHarnessLoadingMessage] = useState("Checking installed agents…");
-    const [savingHarness, setSavingHarness] = useState<{ id: string; action: HarnessSavingAction } | null>(null);
+    const savingHarnesses = useHarnessOperations();
     const [authLaunches, setAuthLaunches] = useState<Record<string, AuthLaunchState>>({});
     const authOpeningTimersRef = useRef<Record<string, ReturnType<typeof setTimeout> | undefined>>({});
     const authProbeTimersRef = useRef<Record<string, ReturnType<typeof setTimeout> | undefined>>({});
@@ -4036,6 +5483,14 @@ function AgentsSection() {
     const [customAgentArgsText, setCustomAgentArgsText] = useState(formatArgsText(CUSTOM_AGENT_SERVER_STARTERS[0].args));
     const [customAgentEnvText, setCustomAgentEnvText] = useState(formatEnvText(CUSTOM_AGENT_SERVER_STARTERS[0].env));
     const [customAgentError, setCustomAgentError] = useState<string | null>(null);
+
+    const setHarnessSavingAction = useCallback((harnessId: string, action: HarnessSavingAction) => {
+        setHarnessOperation(harnessId, action);
+    }, []);
+
+    const clearHarnessSavingAction = useCallback((harnessId: string, expectedAction?: HarnessSavingAction) => {
+        clearHarnessOperation(harnessId, expectedAction);
+    }, []);
 
     const clearAuthTimers = useCallback((harnessId: string) => {
         const openingTimer = authOpeningTimersRef.current[harnessId];
@@ -4128,9 +5583,32 @@ function AgentsSection() {
         }
     }, []);
 
+    useEffect(() => {
+        const handleHarnessUpdated = (event: Event) => {
+            const detail = (event as CustomEvent<{
+                id?: unknown;
+                installedVersion?: unknown;
+            }>).detail;
+            if (typeof detail?.id !== "string") return;
+            setHarnesses((current) => current.map((harness) => (
+                harness.id === detail.id
+                    ? {
+                        ...harness,
+                        ...(typeof detail.installedVersion === "string"
+                            ? { installedVersion: detail.installedVersion }
+                            : {}),
+                        updateAvailable: false,
+                    }
+                    : harness
+            )));
+        };
+        window.addEventListener(HARNESS_UPDATED_EVENT, handleHarnessUpdated);
+        return () => window.removeEventListener(HARNESS_UPDATED_EVENT, handleHarnessUpdated);
+    }, []);
+
     const onRecheckHarnesses = useCallback(async (harnessId?: string) => {
         const scopedHarness = harnessId ? harnesses.find((candidate) => candidate.id === harnessId) : null;
-        if (scopedHarness) setSavingHarness({ id: scopedHarness.id, action: "probe" });
+        if (scopedHarness) setHarnessSavingAction(scopedHarness.id, "probe");
         try {
             await Promise.all([
                 loadHarnesses({
@@ -4151,12 +5629,10 @@ function AgentsSection() {
             });
         } finally {
             if (scopedHarness) {
-                setSavingHarness((current) => (
-                    current?.id === scopedHarness.id && current.action === "probe" ? null : current
-                ));
+                clearHarnessSavingAction(scopedHarness.id, "probe");
             }
         }
-    }, [feedback, harnesses, loadHarnesses, rt.refresh]);
+    }, [clearHarnessSavingAction, feedback, harnesses, loadHarnesses, rt.refresh, setHarnessSavingAction]);
 
     const scheduleAuthProbe = useCallback((harnessId: string, label: string, attempt = 0) => {
         const existingTimer = authProbeTimersRef.current[harnessId];
@@ -4234,12 +5710,12 @@ function AgentsSection() {
             harness.id === harnessId ? { ...harness, enabled } : harness
         ));
         setHarnesses(optimisticHarnesses);
-        setSavingHarness({ id: harnessId, action: "toggle" });
+        setHarnessSavingAction(harnessId, "toggle");
         try {
             const savedHarnesses = await saveHarnessEnablement(optimisticHarnesses, harnessId, enabled);
             setHarnesses(savedHarnesses);
             if (enabled && !target?.auth) {
-                setSavingHarness({ id: harnessId, action: "probe" });
+                setHarnessSavingAction(harnessId, "probe");
                 await Promise.all([
                     loadHarnesses({
                         probe: "auth",
@@ -4253,7 +5729,7 @@ function AgentsSection() {
             const harness = harnesses.find((candidate) => candidate.id === harnessId);
             let refreshedAfterFailure = false;
             if (enabled) {
-                setSavingHarness({ id: harnessId, action: "probe" });
+                setHarnessSavingAction(harnessId, "probe");
                 const nextHarnesses = await loadHarnesses({ probe: "auth", refresh: true });
                 refreshedAfterFailure = nextHarnesses.some((candidate) => candidate.id === harnessId);
                 await rt.refresh({ probe: "config", refresh: true });
@@ -4269,7 +5745,7 @@ function AgentsSection() {
                 onAction: () => { void onRecheckHarnesses(); },
             });
         } finally {
-            setSavingHarness(null);
+            clearHarnessSavingAction(harnessId);
         }
     };
 
@@ -4289,13 +5765,13 @@ function AgentsSection() {
     const onInstallHarness = async (harnessId: string) => {
         const harnessLabel = harnesses.find((candidate) => candidate.id === harnessId)?.label ?? "agent";
         let installed = false;
-        setSavingHarness({ id: harnessId, action: "install" });
+        setHarnessSavingAction(harnessId, "install");
         try {
             const nextHarnesses = await installHarnessRequest(harnessId);
-            setHarnesses(nextHarnesses);
+            setHarnesses((current) => mergeHarnessResult(current, nextHarnesses, harnessId));
             installed = true;
 
-            setSavingHarness({ id: harnessId, action: "probe" });
+            setHarnessSavingAction(harnessId, "probe");
             const [probedHarnesses] = await Promise.all([
                 loadHarnesses({
                     probe: "auth",
@@ -4307,9 +5783,9 @@ function AgentsSection() {
             const setupHarnesses = probedHarnesses.length > 0 ? probedHarnesses : nextHarnesses;
             const installedHarness = setupHarnesses.find((candidate) => candidate.id === harnessId);
             if (installedHarness?.available && !harnessAuthBlocksEnable(installedHarness)) {
-                setSavingHarness({ id: harnessId, action: "toggle" });
+                setHarnessSavingAction(harnessId, "toggle");
                 const enabledHarnesses = await saveHarnessEnablement(setupHarnesses, harnessId, true);
-                setHarnesses(enabledHarnesses);
+                setHarnesses((current) => mergeHarnessResult(current, enabledHarnesses, harnessId));
                 await rt.refresh({ probe: "config", refresh: true });
             }
         } catch (e) {
@@ -4322,12 +5798,12 @@ function AgentsSection() {
                 onAction: () => { void onRecheckHarnesses(); },
             });
         } finally {
-            setSavingHarness(null);
+            clearHarnessSavingAction(harnessId);
         }
     };
 
     const onUninstallHarness = async (harnessId: string) => {
-        setSavingHarness({ id: harnessId, action: "uninstall" });
+        setHarnessSavingAction(harnessId, "uninstall");
         try {
             const res = await fetch(runtimeApiUrl(`/api/v1/local/harnesses/${encodeURIComponent(harnessId)}/install`), {
                 method: "DELETE",
@@ -4338,7 +5814,7 @@ function AgentsSection() {
                 throw new Error(body?.error ?? `HTTP ${res.status}`);
             }
             const json = (await res.json()) as { harnesses?: LocalHarnessInfo[] };
-            setHarnesses(json.harnesses ?? []);
+            setHarnesses((current) => mergeHarnessResult(current, json.harnesses ?? [], harnessId));
             setUninstallHarnessTarget(null);
             await rt.refresh({ probe: "config", refresh: true });
         } catch (e) {
@@ -4351,12 +5827,12 @@ function AgentsSection() {
                 onAction: () => { void onRecheckHarnesses(); },
             });
         } finally {
-            setSavingHarness(null);
+            clearHarnessSavingAction(harnessId);
         }
     };
 
     const onUpgradeHarness = async (harnessId: string) => {
-        setSavingHarness({ id: harnessId, action: "upgrade" });
+        setHarnessSavingAction(harnessId, "upgrade");
         try {
             const res = await fetch(runtimeApiUrl(`/api/v1/local/harnesses/${encodeURIComponent(harnessId)}/upgrade`), {
                 method: "POST",
@@ -4367,7 +5843,16 @@ function AgentsSection() {
                 throw new Error(body?.error ?? `HTTP ${res.status}`);
             }
             const json = (await res.json()) as { harnesses?: LocalHarnessInfo[] };
-            setHarnesses(json.harnesses ?? []);
+            const nextHarnesses = json.harnesses ?? [];
+            const updatedHarness = nextHarnesses.find((candidate) => candidate.id === harnessId);
+            setHarnesses((current) => mergeHarnessResult(current, nextHarnesses, harnessId));
+            window.dispatchEvent(new CustomEvent(HARNESS_UPDATED_EVENT, {
+                detail: {
+                    id: harnessId,
+                    label: updatedHarness?.label,
+                    installedVersion: updatedHarness?.installedVersion,
+                },
+            }));
             await rt.refresh({ probe: "config", refresh: true });
         } catch (e) {
             const harness = harnesses.find((candidate) => candidate.id === harnessId);
@@ -4379,7 +5864,7 @@ function AgentsSection() {
                 onAction: () => { void onRecheckHarnesses(); },
             });
         } finally {
-            setSavingHarness(null);
+            clearHarnessSavingAction(harnessId);
         }
     };
 
@@ -4415,13 +5900,11 @@ function AgentsSection() {
                 message: `Opening ${label} ${authNoun}…`,
             },
         }));
-        setSavingHarness({ id: harnessId, action: "auth" });
+        setHarnessSavingAction(harnessId, "auth");
         const authAbortController = new AbortController();
         authOpeningTimersRef.current[harnessId] = setTimeout(() => {
             delete authOpeningTimersRef.current[harnessId];
-            setSavingHarness((current) => (
-                current?.id === harnessId && current.action === "auth" ? null : current
-            ));
+            clearHarnessSavingAction(harnessId, "auth");
             setAuthLaunches((current) => ({
                 ...current,
                 [harnessId]: {
@@ -4453,7 +5936,7 @@ function AgentsSection() {
             }
             const json = (await res.json()) as { harnesses?: LocalHarnessInfo[] };
             const nextHarnesses = json.harnesses ?? [];
-            setHarnesses(nextHarnesses);
+            setHarnesses((current) => mergeHarnessResult(current, nextHarnesses, harnessId));
             const openingTimer = authOpeningTimersRef.current[harnessId];
             if (openingTimer) clearTimeout(openingTimer);
             delete authOpeningTimersRef.current[harnessId];
@@ -4495,9 +5978,7 @@ function AgentsSection() {
                 onAction: () => { void onRecheckHarnesses(); },
             });
         } finally {
-            setSavingHarness((current) => (
-                current?.id === harnessId && current.action === "auth" ? null : current
-            ));
+            clearHarnessSavingAction(harnessId, "auth");
         }
     };
 
@@ -4745,7 +6226,7 @@ function AgentsSection() {
                                             {harnesses.length > 0 && (
                                                 <SettingsAnimatedBody className="divide-y divide-warm-border">
                                                     {harnesses.map((harness) => {
-                                                        const savingAction = savingHarness?.id === harness.id ? savingHarness.action : null;
+                                                        const savingAction = savingHarnesses[harness.id] ?? null;
                                                         const authLaunch = authLaunches[harness.id] ?? null;
                                                         const authOpening = authLaunch?.status === "opening";
                                                         const authWaiting = authLaunch?.status === "waiting";
@@ -4905,7 +6386,7 @@ function AgentsSection() {
                                                                             aria-label={`Uninstall ${harness.label}`}
                                                                             disabled={busy}
                                                                             onClick={() => setUninstallHarnessTarget(harness)}
-                                                                            className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 shadow-sm transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/40 dark:bg-stone-900 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                                                                            className="rounded-lg px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
                                                                         >
                                                                             {savingAction === "uninstall" ? "Uninstalling…" : "Uninstall"}
                                                                         </Button>
@@ -5085,7 +6566,7 @@ function AgentsSection() {
                                         variant="destructive"
                                         onClick={() => { void onRemoveCustomAgentServer(name); }}
                                         disabled={agentServersSaving}
-                                        className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 shadow-sm transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/40 dark:bg-stone-900 dark:text-rose-300"
+                                        className="rounded-lg px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         Remove
                                     </Button>
@@ -5131,9 +6612,9 @@ function AgentsSection() {
             />
             <UninstallHarnessDialog
                 harness={uninstallHarnessTarget}
-                busy={Boolean(uninstallHarnessTarget && savingHarness && savingHarness.id === uninstallHarnessTarget.id && savingHarness.action === "uninstall")}
+                busy={Boolean(uninstallHarnessTarget && savingHarnesses[uninstallHarnessTarget.id] === "uninstall")}
                 onClose={() => {
-                    if (savingHarness?.action === "uninstall") return;
+                    if (uninstallHarnessTarget && savingHarnesses[uninstallHarnessTarget.id] === "uninstall") return;
                     setUninstallHarnessTarget(null);
                 }}
                 onConfirm={(harnessId) => { void onUninstallHarness(harnessId); }}
@@ -5276,8 +6757,8 @@ function CustomAgentServerDialog({
                                         onClick={() => onStarterChange(starter.id)}
                                         className={`h-auto min-h-0 w-full truncate rounded-lg border-0 px-2.5 py-2 text-left text-sm font-medium shadow-none transition-colors ${
                                             selected
-                                                ? "bg-white text-brand shadow-sm ring-1 ring-brand/25 dark:bg-stone-950"
-                                                : "bg-transparent text-slate-700 hover:bg-white/70 dark:bg-transparent dark:text-stone-200 dark:hover:bg-stone-800"
+                                                ? "bg-warm-surface text-brand shadow-sm ring-1 ring-brand/25"
+                                                : "bg-transparent text-content-secondary hover:bg-warm-muted hover:text-content-primary"
                                         }`}
                                     >
                                         {starter.label}

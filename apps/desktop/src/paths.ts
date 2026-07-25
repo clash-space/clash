@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 export interface WebDistPathInput {
   envWebDistDir?: string;
@@ -15,6 +15,13 @@ export interface AcpBinDirsInput {
 }
 
 export interface ClashCliEntryPathInput {
+  isPackaged: boolean;
+  moduleDir: string;
+  resourcesPath: string;
+}
+
+export interface ClashSdkPythonPathInput {
+  envPythonSdkPath?: string;
   isPackaged: boolean;
   moduleDir: string;
   resourcesPath: string;
@@ -44,4 +51,16 @@ export function resolveClashCliEntryPath(input: ClashCliEntryPathInput): string 
 export function resolveClashCliNodePath(input: ClashCliEntryPathInput): string | undefined {
   if (input.isPackaged) return join(input.resourcesPath, "clash-cli", "vendor");
   return undefined;
+}
+
+export function resolveClashSdkPythonPath(input: ClashSdkPythonPathInput): string {
+  if (input.envPythonSdkPath) return input.envPythonSdkPath;
+  if (input.isPackaged) return join(input.resourcesPath, "clash-sdk", "python");
+  return resolve(input.moduleDir, "../../../packages/clash-sdk/python");
+}
+
+export function prependPythonPath(existing: string | undefined, sdkPath: string): string {
+  return [sdkPath, ...(existing?.split(delimiter) ?? [])]
+    .filter((entry, index, entries) => entry && entries.indexOf(entry) === index)
+    .join(delimiter);
 }

@@ -842,16 +842,16 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           <style dangerouslySetInnerHTML={{
             __html: `
             .moveable-control-box {
-              border: 2px solid #0066ff;
+              border: 2px solid var(--clash-accent, #ff6b50);
             }
             .moveable-line {
-              background: #0066ff;
+              background: var(--clash-accent, #ff6b50);
             }
             .moveable-control {
               width: 12px;
               height: 12px;
-              border: 2px solid #0066ff;
-              background: #ffffff;
+              border: 2px solid var(--clash-accent, #ff6b50);
+              background: var(--clash-warm-surface, #fffefd);
             }
           `}} />
         )}

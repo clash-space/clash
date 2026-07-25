@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow } from '@xyflow/react';
 import SourceHandleMenu from './SourceHandleMenu';
 import DraftPlaceholder from './DraftPlaceholder';
-import { Image as ImageIcon, TextT } from '@phosphor-icons/react';
+import { Eye, Image as ImageIcon, TextT } from '@phosphor-icons/react';
 import { useMediaViewer } from '../MediaViewerContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { usePeersSelectingNode } from '../PresenceAwarenessContext';
@@ -27,7 +27,7 @@ const MEDIA_NODE_CONTROL_CLASS = 'nodrag nopan bg-black/50 text-white backdrop-b
 
 const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<string, any>>>) => {
     const [label, setLabel] = useState(data.label || 'Image Node');
-    const { openViewer } = useMediaViewer();
+    const { openAssetPreview, openViewer } = useMediaViewer();
     const { setNodes } = useReactFlow();
     const loroSync = useOptionalLoroSyncContext();
     // Peers (other connected users) who currently have THIS node selected.
@@ -216,6 +216,22 @@ const ImageNode = ({ data, selected, id, width, height }: NodeProps<Node<Record<
                         )}
                         {/* Top Right Controls */}
                         <div className="absolute top-2 right-2 flex gap-1 z-10">
+                            {typeof data.assetId === 'string' && data.assetId && openAssetPreview ? (
+                                <Tooltip label="Preview asset">
+                                    <IconButton
+                                        label="Preview asset"
+                                        icon={<Eye size={14} weight="bold" />}
+                                        size="sm"
+                                        shape="circle"
+                                        className={MEDIA_NODE_CONTROL_CLASS}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            openAssetPreview(data.assetId);
+                                        }}
+                                        onDoubleClick={(event) => event.stopPropagation()}
+                                    />
+                                </Tooltip>
+                            ) : null}
                             <Tooltip label="Toggle description">
                                 <CollapsibleTrigger asChild>
                                     <IconButton

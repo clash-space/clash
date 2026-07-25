@@ -9,4 +9,13 @@ describe("root route primitives", () => {
     expect(source).toContain("<Button");
     expect(source).not.toMatch(/<button[\s\S]*window\.location\.reload/);
   });
+
+  it("shows response data when a route error has no status text", () => {
+    const source = readFileSync(new URL("./root.tsx", import.meta.url), "utf8");
+
+    expect(source).toContain("readRouteErrorDetail(error.data)");
+    expect(source).not.toContain(
+      'detail: error.statusText || "This route returned without a readable status message."',
+    );
+  });
 });

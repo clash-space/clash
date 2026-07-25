@@ -8,6 +8,7 @@ import {
   type LocalHostDiscoveryRecord,
 } from "@clash/shared-runtime";
 import {
+  createHostDiscoveryRecord,
   getDefaultHostDiscoveryRunDir,
   getHostDiscoveryPath,
   readHostDiscovery,
@@ -33,6 +34,20 @@ function activeRecord(overrides: Partial<LocalHostDiscoveryRecord> = {}): LocalH
 }
 
 describe("local host discovery file", () => {
+  it("publishes the host-owned agent CLI path for external clients", () => {
+    const create = createHostDiscoveryRecord as unknown as (
+      input: Record<string, unknown>
+    ) => Record<string, unknown>;
+    const record = create({
+      endpoint: "http://127.0.0.1:49321",
+      launchMode: "desktop",
+      startedBy: "desktop",
+      agentCliPath: "/tmp/clash-host/agent-bin/clash",
+    });
+
+    expect(record.agentCliPath).toBe("/tmp/clash-host/agent-bin/clash");
+  });
+
   it("honors CLASH_HOME for the default run directory", async () => {
     const previous = process.env.CLASH_HOME;
     const clashHome = await mkdtemp(join(tmpdir(), "clash-home-"));

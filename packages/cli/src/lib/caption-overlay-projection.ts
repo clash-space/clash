@@ -49,7 +49,7 @@ export async function projectCaptionOverlayTimeline(
 
   const projection = buildCaptionOnlyTimeline(parsed.dsl);
   if (projection.stats.captionItems === 0) {
-    throw new Error("Caption overlay projection requires structured timeline items with type: caption");
+    throw new Error("Caption overlay projection requires structured type: text items on a subtitle track");
   }
 
   const { casApply } = timelineProjectionCasApply({
@@ -74,7 +74,7 @@ export async function projectCaptionOverlayTimeline(
       burnInRequires: "clash production export-caption-burn",
     },
     validation: {
-      timelineItemType: "caption",
+      timelineItemType: "text",
       captionItems: projection.stats.captionItems,
       cues: projection.stats.cues,
       wordRefs: projection.stats.wordRefs,
@@ -106,11 +106,12 @@ function buildCaptionOnlyTimeline(dsl: ResolvedTimelineDsl): {
   };
   const tracks: ResolvedTimelineDsl["tracks"] = [];
   for (const track of dsl.tracks) {
-    const items = track.items.filter((item): item is ResolvedItem => item.type === "caption");
+    if (track.role !== "subtitle") continue;
+    const items = track.items.filter((item): item is ResolvedItem => item.type === "text");
     const invalidItems = items.filter((item) => !hasStructuredCaptionLineage(item));
     if (invalidItems.length > 0) {
       throw new Error(
-        `Caption overlay projection requires structured caption items with cues, wordRefs, and sourceToOutputMap. Invalid item(s): ${invalidItems
+        `Caption overlay projection requires structured text items on subtitle tracks with cues, wordRefs, and sourceToOutputMap. Invalid item(s): ${invalidItems
           .map((item) => item.id)
           .join(", ")}`,
       );

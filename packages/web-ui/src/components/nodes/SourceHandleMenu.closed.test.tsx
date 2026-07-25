@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 
+import { CanvasTransientUiProvider } from "../CanvasTransientUiContext";
 import SourceHandleMenu from "./SourceHandleMenu";
 
 vi.mock("@xyflow/react", () => ({
@@ -32,7 +33,7 @@ vi.mock("../LoroSyncContext", () => ({
 }));
 
 vi.mock("../ProjectContext", () => ({
-  useProject: () => ({ projectId: "project-1" }),
+  useProject: () => ({ projectId: "project-1", enabledModelCatalog: [], modelCatalogReady: true }),
 }));
 
 vi.mock("@clash/web-ui/lib/layout", () => ({
@@ -48,7 +49,11 @@ vi.mock("./CloneTrajectoryDialog", () => ({
 
 describe("SourceHandleMenu closed state", () => {
   it("renders the source handle without subscribing to all nodes or edges", () => {
-    const { getByTestId } = render(<SourceHandleMenu nodeId="image-1" sourceType="image" />);
+    const { getByTestId } = render(
+      <CanvasTransientUiProvider>
+        <SourceHandleMenu nodeId="image-1" sourceType="image" />
+      </CanvasTransientUiProvider>,
+    );
 
     expect(getByTestId("handle-source-right")).not.toBeNull();
   });

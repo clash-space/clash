@@ -11,6 +11,8 @@ describe("AcpAgentLogo", () => {
     const logo = screen.getByRole("img", { name: "Cursor" });
     expect(logo).toBeInTheDocument();
     expect(logo).toHaveAttribute("viewBox", "0 0 466.73 532.09");
+    expect(logo).toHaveAttribute("shape-rendering", "geometricPrecision");
+    expect(logo).toHaveAttribute("focusable", "false");
   });
 
   it("renders Devin with a brand icon instead of the generic robot", () => {
@@ -19,5 +21,17 @@ describe("AcpAgentLogo", () => {
     const logo = screen.getByRole("img", { name: "Devin" });
     expect(logo).toBeInTheDocument();
     expect(logo).toHaveAttribute("data-acp-agent-logo", "");
+  });
+
+  it("uses the official ACP registry icon for Qwen Code", () => {
+    render(<AcpAgentLogo agentId="qwen-code" />);
+
+    expect(screen.getByRole("img", { name: "Qwen Code" })).toHaveAttribute("viewBox", "0 0 141.38 140");
+  });
+
+  it("uses the OpenClaw brand mark for custom OpenClaw harness ids", () => {
+    render(<AcpAgentLogo agentId="custom-openclaw-acp" />);
+
+    expect(screen.getByRole("img", { name: "OpenClaw" })).toHaveAttribute("viewBox", "0 0 120 120");
   });
 });

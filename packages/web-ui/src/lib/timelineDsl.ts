@@ -10,7 +10,7 @@
  * These helpers handle:
  *  - legacy data migration (items that only have `src`, or whose `assetId`
  *    still points at a canvas source node)
- *  - final enforcement (strip `src` on save)
+ *  - final enforcement (strip external `src` on save)
  *
  * Kept framework-free and side-effect free so both React Flow node
  * components (VideoEditorNode) and the editor provider (VideoEditorContext)
@@ -108,9 +108,12 @@ export function hydrateAssetIdsFromNodes(tracks: Track[], nodes: Node[]): Track[
 }
 
 /**
- * Strip `src` from every item. Used both on save (persist reference-only)
- * and on load after hydration (so stale signed URLs can't leak into the
- * render path even if hydration couldn't fully migrate them).
+ * Strip external `src` values from every item. Used both on save
+ * (persist project media as reference-only) and on load after hydration
+ * (so stale signed URLs can't leak into the render path even if hydration
+ * couldn't fully migrate them). Self-contained data URLs, such as bundled
+ * sticker SVGs, remain part of the item because they have no external asset
+ * reference that could rehydrate them.
  */
 export function stripSrcFromTracks(tracks: Track[]): Track[] {
     return tracks.map((track) => ({
@@ -123,6 +126,7 @@ export function stripSrcFromTracks(tracks: Track[]): Track[] {
             };
             return {
                 ...rest,
+                ...(typeof _src === 'string' && _src.startsWith('data:') ? { src: _src } : {}),
                 ...(sourceNodeId ? { sourceNodeId } : {}),
             } as Item;
         }),

@@ -15,6 +15,8 @@ interface FeedbackInput {
   actionLabel?: string;
   onAction?: () => void;
   actionHref?: string;
+  /** Let an accepted toast visually promote into desktop chrome state. */
+  exitToDesktopChrome?: boolean;
 }
 
 interface FeedbackToast extends Required<FeedbackInput> {
@@ -51,6 +53,7 @@ function normalizedFeedback(input: FeedbackInput): Required<FeedbackInput> {
     actionLabel: input.actionLabel ?? '',
     onAction: input.onAction ?? (() => undefined),
     actionHref: input.actionHref ?? '',
+    exitToDesktopChrome: input.exitToDesktopChrome ?? false,
   };
 }
 
@@ -109,7 +112,9 @@ export function AppFeedbackProvider({ children }: { children: ReactNode }) {
               role={toast.variant === 'error' ? 'alert' : 'status'}
               initial={{ opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 12, scale: 0.98 }}
+              exit={toast.exitToDesktopChrome
+                ? { opacity: 0, y: 'calc(-100vh + 3.25rem)', scale: 0.3 }
+                : { opacity: 0, x: 12, scale: 0.98 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className={`pointer-events-auto flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 shadow-lg ${variantClassName(toast.variant)}`}
             >

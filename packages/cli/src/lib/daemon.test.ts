@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import {
   LoroSyncClient,
+  projectDirectorStageReadToken,
+  projectDirectorStageRevisionId,
   projectCanvasReadToken,
   projectTimelineReadToken,
   projectTimelineRevisionId,
@@ -44,6 +47,14 @@ test("daemon socket paths cannot escape the socket directory through project ids
   assert.ok(first.length < 100, `Unix socket path is too long: ${first.length}`);
 });
 
+test("daemon lifecycle automatically exposes and closes its MCP HTTP endpoint", () => {
+  const source = readFileSync(new URL("./daemon.ts", import.meta.url), "utf8");
+
+  assert.match(source, /startClashMcpHttpServer/);
+  assert.match(source, /mcpHttp\.url/);
+  assert.match(source, /await mcpHttp\.close\(\)/);
+});
+
 test("daemon scopes commands to the requested Canvas in one Project replica", () => {
   const client = new LoroSyncClient({
     serverUrl: "http://localhost:0",
@@ -67,6 +78,31 @@ test("daemon scopes commands to the requested Canvas in one Project replica", ()
     canvasId: "main",
   }) as { nodes: Array<{ id: string }> };
   assert.deepEqual(main.nodes.map((node) => node.id), ["main-node"]);
+});
+
+test("daemon moves a node in the requested Canvas without patching node data", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-move-node",
+    token: "test",
+  });
+  client.createNode("note-1", "text", { label: "Opening beat", content: "Rain" });
+
+  assert.deepEqual(handleCommandForTest(client, {
+    action: "move",
+    canvasId: "main",
+    nodeId: "note-1",
+    position: { x: 420, y: 180 },
+  }), {
+    moved: true,
+    nodeId: "note-1",
+    position: { x: 420, y: 180 },
+  });
+  assert.deepEqual(client.readNode("note-1")?.position, { x: 420, y: 180 });
+  assert.deepEqual(client.readNode("note-1")?.data, {
+    label: "Opening beat",
+    content: "Rain",
+  });
 });
 
 test("daemon reads derived upstream edges for graph CAS and batch-delete guardrails", () => {
@@ -115,7 +151,7 @@ test("daemon executes against the selected Canvas instead of falling back to mai
   client.createNode("shot-action", "image_gen", {
     prompt: "A product shot",
     content: "A product shot",
-    modelId: "gemini-3-pro-image-preview",
+    modelId: "nano-banana-pro",
   });
 
   const result = handleCommandForTest(client, {
@@ -293,6 +329,73 @@ test("daemon manages standalone and Canvas-owned Timelines", () => {
     action: "detach_timeline",
     timelineId: "timeline-1",
   }) as { timeline?: { owner?: { kind?: string } } }).timeline?.owner?.kind, "project");
+});
+
+test("daemon manages independently revisioned Director Stages", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-director-stage-registry",
+    token: "test",
+  });
+  const state = {
+    schemaVersion: 1 as const,
+    scene: {
+      backgroundColor: "#171816",
+      grid: { visible: true, snap: false, size: 1 },
+    },
+    objects: [],
+    cameras: [],
+    shots: [],
+  };
+
+  const created = handleCommandForTest(client, {
+    action: "create_director_stage",
+    stageId: "stage-1",
+    name: "Courtyard blocking",
+    state,
+  }) as { stage?: any; version?: string; readToken?: string; error?: string };
+  assert.equal(created.error, undefined);
+  assert.equal(created.stage?.revisionId, projectDirectorStageRevisionId("stage-1", state));
+  assert.equal(created.version, created.stage && projectDirectorStageReadToken(created.stage));
+  assert.match(created.readToken ?? "", /:receipt:/);
+
+  const attached = handleCommandForTest(client, {
+    action: "attach_director_stage",
+    stageId: "stage-1",
+    canvasId: "main",
+    actionNodeId: "director-stage-action-1",
+    position: { x: 0, y: 0 },
+  }) as { stage?: { owner?: { kind?: string } }; error?: string };
+  assert.equal(attached.error, undefined);
+  assert.equal(attached.stage?.owner?.kind, "canvas-action");
+
+  const nextState = {
+    ...state,
+    scene: {
+      ...state.scene,
+      grid: { ...state.scene.grid, snap: true },
+    },
+  };
+  const updated = handleCommandForTest(client, {
+    action: "update_director_stage_state",
+    stageId: "stage-1",
+    state: nextState,
+  }) as { stage?: any; error?: string };
+  assert.equal(updated.error, undefined);
+  assert.equal(updated.stage?.revisionId, projectDirectorStageRevisionId("stage-1", nextState));
+
+  const listed = handleCommandForTest(client, {
+    action: "list_director_stages",
+  }) as { stages?: Array<{ id: string }>; versions?: Record<string, string> };
+  assert.deepEqual(listed.stages?.map((stage) => stage.id), ["stage-1"]);
+  assert.match(listed.versions?.["stage-1"] ?? "", /:receipt:/);
+
+  const detached = handleCommandForTest(client, {
+    action: "detach_director_stage",
+    stageId: "stage-1",
+  }) as { stage?: { owner?: { kind?: string } }; error?: string };
+  assert.equal(detached.error, undefined);
+  assert.equal(detached.stage?.owner?.kind, "project");
 });
 
 test("daemon Timeline ownership changes verify the implicit host receipt", () => {

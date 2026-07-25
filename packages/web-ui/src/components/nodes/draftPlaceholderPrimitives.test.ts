@@ -17,4 +17,13 @@ describe("DraftPlaceholder action primitives", () => {
         expect(draftPlaceholder).not.toContain("<motion.button");
         expect(draftPlaceholder).not.toContain("framer-motion");
     });
+
+    it("uses the compact draft layout inside the short audio node", () => {
+        const audioNode = readFileSync(
+            join(process.cwd(), "packages/web-ui/src/components/nodes/AudioNode.tsx"),
+            "utf8",
+        );
+
+        expect(audioNode).toMatch(/<DraftPlaceholder[\s\S]*modality="audio"[\s\S]*compact/);
+    });
 });

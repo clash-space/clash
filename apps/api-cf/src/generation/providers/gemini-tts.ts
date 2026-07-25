@@ -3,9 +3,8 @@
  */
 import { log } from "../../logger";
 import { generateGoogleAudio } from "../../services/google-gen";
-import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 export const geminiTtsProvider: GenerationProvider = {
   name: "gemini-tts",
@@ -13,20 +12,20 @@ export const geminiTtsProvider: GenerationProvider = {
   async execute(ctx) {
     const { params } = ctx;
     const modelName = params.modelName ?? "gemini-3.1-flash-tts";
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "google-ai-studio") {
+      throw new Error(`Gemini TTS execution requires a selected Google AI Studio route for ${modelName}`);
+    }
 
     const storageKey = await ctx.step(
       "gemini-tts-generate",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
       async () => {
         log.info("Gemini TTS started", { ...ctx.tag, model: modelName });
-        const credentials = await credentialsForProvider(ctx, "official", ["apiKey"], {
-          upstreamId: "google-ai-studio",
-          region: "global",
-          modelCode: modelName,
-        });
+        const credentials = await credentialsForRoute(ctx, route);
         const result = await generateGoogleAudio(credentials.apiKey, {
           prompt: params.prompt ?? "",
-          modelName,
+          modelName: route.upstreamModel,
           modelParams: params.modelParams,
           baseUrl: credentials.baseUrl,
         });

@@ -224,7 +224,37 @@ describe("appendAcpEvent", () => {
       error: "agent crashed",
     });
 
-    expect(messages[0]?.parts).toEqual([{ type: "text", text: "agent crashed" }]);
+    expect(messages[0]?.parts).toEqual([{
+      type: "event_note",
+      title: "agent crashed",
+      tone: "error",
+    }]);
+  });
+
+  it("extracts the actionable message from noisy JSON prompt errors", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-model-error", undefined, {
+      type: "promptError",
+      error: [
+        "Warning: Model metadata for gpt-5.6-sol not found. Defaulting to fallback metadata; this can degrade performance and cause issues.",
+        JSON.stringify({
+          type: "error",
+          status: 400,
+          error: {
+            type: "invalid_request_error",
+            message: "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
+          },
+        }),
+      ].join("\n"),
+    });
+
+    expect(messages[0]?.parts).toEqual([{
+      type: "event_note",
+      title: "Codex update required",
+      detail: "The 'gpt-5.6-sol' model requires a newer version of Codex. Please upgrade to the latest app or CLI and try again.",
+      tone: "error",
+    }]);
   });
 
   it("parses ACP 0.25 plan update and removal events into visible parts", () => {

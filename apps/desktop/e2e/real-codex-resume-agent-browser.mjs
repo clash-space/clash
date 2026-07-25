@@ -10,12 +10,14 @@ import {
   ensureAgentBrowser,
   evalJson,
   findFreePort,
+  openSessionHistoryMenu,
   repoRoot,
   resetDirs,
   sleep,
   startElectron,
   startVite,
   stopProcess,
+  submitProjectCreateDialog,
   tail,
   typeComposer,
   waitForEval,
@@ -285,6 +287,7 @@ async function main() {
     if (!clickByText(agentBrowser, "Projects")) throw new Error("Could not open Projects");
     await waitForEval(agentBrowser, `location.pathname === "/projects"`, "projects route");
     if (!clickByText(agentBrowser, "New Project")) throw new Error("Could not create project");
+    await submitProjectCreateDialog(agentBrowser, "Real Codex Resume E2E");
     await waitForEval(
       agentBrowser,
       `location.pathname.startsWith("/projects/") && location.pathname !== "/projects"`,
@@ -326,14 +329,13 @@ async function main() {
     );
     await waitForProjectComposer(agentBrowser);
 
-    if (!clickButtonByLabel(agentBrowser, "Session history") && !clickButtonByLabel(agentBrowser, "历史会话")) {
-      throw new Error("Could not open session history after restart");
-    }
+    await openSessionHistoryMenu(agentBrowser);
     await waitForEval(
       agentBrowser,
       `(() => {
         const menu = document.querySelector('[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]');
-        return !!menu &&
+        const rect = menu?.getBoundingClientRect();
+        return !!menu && !!rect && rect.width > 0 && rect.height > 0 &&
           !menu.innerText.toLowerCase().includes("no history yet") &&
           menu.innerText.includes("Run pwd");
       })()`,

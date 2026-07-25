@@ -21,6 +21,8 @@ export {
   type TextProviderKind,
 } from "./text-generation.js";
 
+export { visibleUserPromptText } from "./prompt-content.js";
+
 export {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
@@ -49,9 +51,9 @@ export const LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
 export const LOCAL_HOST_PROTOCOL_VERSION = 1;
 export const LOCAL_HOST_DATA_SCHEMA_VERSION = 1;
 
-export type HostLaunchMode = "desktop" | "cli-once" | "user-service" | "launchd";
+export type HostLaunchMode = "desktop" | "plugin" | "cli-once" | "user-service" | "launchd";
 
-export type HostStartedBy = "desktop" | "cli" | "user-service" | "launchd";
+export type HostStartedBy = "desktop" | "plugin" | "cli" | "user-service" | "launchd";
 
 export interface LocalHostDiscoveryRecord {
   schemaVersion: typeof LOCAL_HOST_RECORD_SCHEMA_VERSION;
@@ -62,13 +64,14 @@ export interface LocalHostDiscoveryRecord {
   pid: number;
   launchMode: HostLaunchMode;
   startedBy: HostStartedBy;
+  agentCliPath?: string;
   ownerClientId?: string;
   startedAt: string;
   updatedAt: string;
 }
 
 export interface LocalHostShutdownClient {
-  clientKind: "desktop" | "cli" | "user-service" | "launchd";
+  clientKind: "desktop" | "plugin" | "cli" | "user-service" | "launchd";
   clientId?: string;
 }
 
@@ -90,6 +93,7 @@ export function isLocalHostDiscoveryRecord(value: unknown): value is LocalHostDi
     && record.pid > 0
     && isHostLaunchMode(record.launchMode)
     && isHostStartedBy(record.startedBy)
+    && (record.agentCliPath === undefined || (typeof record.agentCliPath === "string" && record.agentCliPath.length > 0))
     && (record.ownerClientId === undefined || typeof record.ownerClientId === "string")
     && typeof record.startedAt === "string"
     && typeof record.updatedAt === "string"
@@ -110,15 +114,22 @@ export function shouldClientOwnShutdown(
   record: LocalHostDiscoveryRecord,
   client: LocalHostShutdownClient,
 ): boolean {
-  if (record.launchMode !== "desktop") return false;
-  if (record.startedBy !== "desktop") return false;
-  if (client.clientKind !== "desktop") return false;
-  return Boolean(record.ownerClientId && client.clientId && record.ownerClientId === client.clientId);
+  if (!record.ownerClientId || !client.clientId || record.ownerClientId !== client.clientId) {
+    return false;
+  }
+  if (record.launchMode === "desktop") {
+    return record.startedBy === "desktop" && client.clientKind === "desktop";
+  }
+  if (record.launchMode === "plugin") {
+    return record.startedBy === "plugin" && client.clientKind === "plugin";
+  }
+  return false;
 }
 
 function isHostLaunchMode(value: unknown): value is HostLaunchMode {
   return (
     value === "desktop"
+    || value === "plugin"
     || value === "cli-once"
     || value === "user-service"
     || value === "launchd"
@@ -128,6 +139,7 @@ function isHostLaunchMode(value: unknown): value is HostLaunchMode {
 function isHostStartedBy(value: unknown): value is HostStartedBy {
   return (
     value === "desktop"
+    || value === "plugin"
     || value === "cli"
     || value === "user-service"
     || value === "launchd"

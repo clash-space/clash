@@ -1,25 +1,16 @@
-/**
- * Edit pipeline — client-side execution + server upload for image-editor /
- * video-clipper nodes. Parallel to (and intentionally separate from) the
- * generation pipeline:
- *
- *   GenerationPipeline: prompt → workflow → external model API → R2 → asset
- *   EditPipeline:       source asset → browser canvas → R2 PUT → asset
- *
- * Why split: generation is async (can take minutes, retry on the workflow
- * side), edits are deterministic and finish in a single round-trip. Sharing
- * `pendingTask`/`status:'generating'` lifecycle for these would force every
- * caller to handle async polling for what's effectively a synchronous op.
- *
- * Output is always a NEW asset (CoW). The source row is never mutated.
- */
+/** Asset action client. Specs and invocation semantics live in shared-types;
+ * this module contains browser/server executor adapters only. Outputs are
+ * always new immutable assets (copy-on-write). */
 
 import {
   type ImageEditParams,
   type VideoClipParams,
   type CropRect,
-  EDIT_KIND,
-  type EditKind,
+  ASSET_ACTION_ID,
+  createAssetActionInvocation,
+  legacyEditOriginForSurface,
+  type AssetEditActionInvocation,
+  type ActionSurface,
 } from '@clash/shared-types';
 import { getSignedUrl } from './hooks/useSignedUrl';
 import { runtimeApiUrl } from './runtimeConfig';
@@ -28,6 +19,10 @@ export interface EditApplyResult {
   assetId: string;
   srcR2Key: string;
   coverR2Key: string | null;
+}
+
+function actionSurface(origin?: 'canvas-node' | 'asset-preview'): ActionSurface {
+  return origin === 'asset-preview' ? 'asset-preview' : 'canvas';
 }
 
 /**
@@ -43,15 +38,20 @@ export async function applyImageEdit(input: {
   sourceAssetId: string;
   sourceR2Key: string;
   params: ImageEditParams;
+  origin?: 'canvas-node' | 'asset-preview';
 }): Promise<EditApplyResult> {
   const blob = await renderImageEdit(input.sourceR2Key, input.params);
-  return await postEdit({
+  const invocation = createAssetActionInvocation({
+    actionId: ASSET_ACTION_ID.ImageEditor,
     projectId: input.projectId,
-    sourceAssetId: input.sourceAssetId,
-    editKind: EDIT_KIND.ImageEditor,
+    source: { assetId: input.sourceAssetId, kind: 'image' },
+    params: input.params,
+    surface: actionSurface(input.origin),
+  });
+  return await postEdit({
+    invocation,
     outputKind: 'image',
     blob,
-    params: input.params,
   });
 }
 
@@ -68,16 +68,54 @@ export async function applyVideoScreenshot(input: {
   sourceAssetId: string;
   sourceR2Key: string;
   params: Extract<VideoClipParams, { mode: 'screenshot' }>;
+  origin?: 'canvas-node' | 'asset-preview';
 }): Promise<EditApplyResult> {
   const blob = await renderVideoScreenshot(input.sourceR2Key, input.params.frameTimeSec);
-  return await postEdit({
+  const invocation = createAssetActionInvocation({
+    actionId: ASSET_ACTION_ID.VideoClipper,
     projectId: input.projectId,
-    sourceAssetId: input.sourceAssetId,
-    editKind: EDIT_KIND.VideoClipper,
+    source: { assetId: input.sourceAssetId, kind: 'video' },
+    params: input.params,
+    surface: actionSurface(input.origin),
+  });
+  return await postEdit({
+    invocation,
     outputKind: 'image',
     blob,
-    params: input.params,
   });
+}
+
+export async function applyVideoCrop(input: {
+  projectId: string;
+  sourceAssetId: string;
+  params: Extract<VideoClipParams, { mode: 'crop' }>;
+  origin?: 'canvas-node' | 'asset-preview';
+}): Promise<EditApplyResult> {
+  const surface = actionSurface(input.origin);
+  const invocation = createAssetActionInvocation({
+    actionId: ASSET_ACTION_ID.VideoClipper,
+    projectId: input.projectId,
+    source: { assetId: input.sourceAssetId, kind: 'video' },
+    params: input.params,
+    surface,
+  });
+  const body = {
+    projectId: input.projectId,
+    sourceAssetId: input.sourceAssetId,
+    params: input.params,
+    origin: input.origin ?? 'canvas-node',
+    invocation,
+  };
+  const res = await fetch(runtimeApiUrl('/api/v1/edits/video-crop'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Video crop failed (${res.status}): ${text}`);
+  }
+  return await res.json() as EditApplyResult;
 }
 
 // ─── Internal: client-side renderers ────────────────────────
@@ -192,20 +230,20 @@ function canvasToBlob(canvas: HTMLCanvasElement, mime: string): Promise<Blob> {
 // ─── Internal: server upload ────────────────────────────────
 
 async function postEdit(input: {
-  projectId: string;
-  sourceAssetId: string;
-  editKind: EditKind;
+  invocation: AssetEditActionInvocation;
   outputKind: 'image' | 'video' | 'audio';
   blob: Blob;
-  params: unknown;
 }): Promise<EditApplyResult> {
+  const { invocation } = input;
   const form = new FormData();
   form.append('file', input.blob, `edit.${input.outputKind === 'image' ? 'png' : 'bin'}`);
-  form.append('projectId', input.projectId);
-  form.append('sourceAssetId', input.sourceAssetId);
-  form.append('editKind', input.editKind);
+  form.append('projectId', invocation.projectId);
+  form.append('sourceAssetId', invocation.source.assetId);
+  form.append('editKind', invocation.actionId);
   form.append('outputKind', input.outputKind);
-  form.append('editParams', JSON.stringify(input.params));
+  form.append('editParams', JSON.stringify(invocation.params));
+  form.append('origin', legacyEditOriginForSurface(invocation.surface));
+  form.append('invocation', JSON.stringify(invocation));
 
   const res = await fetch(runtimeApiUrl('/api/v1/edits'), { method: 'POST', body: form });
   if (!res.ok) {

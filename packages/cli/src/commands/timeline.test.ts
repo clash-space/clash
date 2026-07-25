@@ -67,6 +67,9 @@ test("Timeline pull and apply target Timeline entities rather than Canvas nodes"
   assert.equal(pull.options.some((option) => option.long === "--node"), false);
   assert.equal(apply.options.some((option) => option.long === "--node"), false);
   assert.match(source, /action: "update_timeline_state"/);
+  assert.match(source, /writeTimelineTranscriptProjection/);
+  assert.match(source, /transcriptFilePath/);
+  assert.match(source, /transcriptWordCount/);
   assert.doesNotMatch(source, /timeline_cas_update|timeline_cow_replace|timelineRevisionIndex/);
 });
 
@@ -145,6 +148,49 @@ test("normalizes and parses agent-edited Timeline YAML deterministically", () =>
   assert.deepEqual(parsed.sources, ["source-1"]);
   assert.equal(parsed.dsl.tracks[0]?.items[0]?.from, 0);
   assert.equal(timelineHash(parsed.dsl), timelineHash(normalized));
+});
+
+test("Timeline pull/apply projection preserves item-local transform keyframes", () => {
+  const normalized = normalizeTimelineDslForYaml({
+    tracks: [{
+      id: "overlays",
+      category: "visual",
+      items: [{
+        id: "logo",
+        type: "image",
+        from: 30,
+        durationInFrames: 61,
+        properties: { x: 0, y: 0, width: 0.5, height: 0.5, rotation: 0, opacity: 1 },
+        keyframes: {
+          position: [
+            { frame: 0, value: [0, 0], interpolation: "linear" },
+            { frame: 60, value: [300, 120], interpolation: "hold" },
+          ],
+          scale: [
+            { frame: 0, value: [1, 1], interpolation: "linear" },
+            { frame: 60, value: [1.5, 1.5], interpolation: "linear" },
+          ],
+          rotation: [
+            { frame: 0, value: 0, interpolation: "linear" },
+            { frame: 60, value: 15, interpolation: "linear" },
+          ],
+          opacity: [
+            { frame: 0, value: 0, interpolation: "linear" },
+            { frame: 15, value: 1, interpolation: "linear" },
+          ],
+        },
+      }],
+    }],
+    durationInFrames: 120,
+  });
+
+  const yaml = timelineDslToYaml(normalized);
+  const applied = parseTimelineFileForApply(yaml);
+
+  assert.equal(applied.ok, true);
+  if (!applied.ok) return;
+  assert.deepEqual(applied.dsl.tracks[0]?.items[0]?.keyframes, normalized.tracks[0]?.items[0]?.keyframes);
+  assert.equal(timelineHash(applied.dsl), timelineHash(normalized));
 });
 
 test("Timeline hashes treat omitted composition defaults as explicit defaults", () => {

@@ -347,7 +347,7 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-copilot-alert-error/);
   });
 
-  it("keeps the project brand mark as the bottom-right copilot launcher instead of a canvas header logo", () => {
+  it("moves the collapsed project avatar between Canvas and the production header", () => {
     const projectSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ProjectEditor.tsx"), "utf8");
     const copilotSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ChatbotCopilot.tsx"), "utf8");
     const cssSource = readFileSync(join(process.cwd(), "apps/web/app/globals.css"), "utf8");
@@ -358,7 +358,7 @@ describe("visual language surfaces", () => {
     expect(projectSource).toMatch(/clash-project-sidebar-header/);
     expect(projectSource).not.toMatch(/id="editor-header" className="absolute/);
     expect(projectSource).toMatch(/clash-project-return-button/);
-    expect(projectSource).toMatch(/<form className="min-w-0 flex-1"/);
+    expect(projectSource).toMatch(/<form\s+className="min-w-0 flex-1"/);
     expect(projectSource).toMatch(/clash-project-name-input h-8 w-full/);
     expect(projectSource).not.toMatch(/id="project-top-actions"/);
     expect(projectSource).not.toMatch(/topActionsRight/);
@@ -368,10 +368,24 @@ describe("visual language surfaces", () => {
     expect(projectSource).not.toMatch(/MonitorPlay|isPresentationMode|Present canvas|Presenting/);
     expect(copilotSource).toMatch(/clash-copilot-launcher/);
     expect(copilotSource).toMatch(/bottom-\[max\(1rem,env\(safe-area-inset-bottom\)\)\]/);
+    expect(projectSource).not.toMatch(/COPILOT_COLLAPSED_RAIL_WIDTH_PX/);
+    expect(projectSource).toMatch(
+      /isSidebarCollapsed\s*\?\s*0/,
+    );
+    expect(projectSource).toContain('collapsedLauncherPlacement={workspaceSurface.kind === "canvas" ? "canvas" : "header"}');
+    expect(projectSource).toContain("headerEndInset={copilotHeaderInset}");
     expect(copilotSource).toMatch(/AgentMotion/);
+    expect(copilotSource).toContain('data-copilot-launcher-placement={collapsedLauncherPlacement}');
+    expect(copilotSource).toContain('layout="position"');
+    expect(copilotSource).toContain("COPILOT_LAUNCHER_RELOCATION_TRANSITION");
+    expect(copilotSource).toContain("top-[calc(var(--clash-desktop-chrome-height,0px)+0.375rem)]");
+    expect(cssSource).toMatch(/\.dark \.clash-copilot-launcher--header \.clash-agent-motion\s*\{[^}]*color: #d6d3d1;/);
+    expect(cssSource).toMatch(/\.clash-copilot-launcher--header \.clash-agent-motion__svg\s*\{[^}]*opacity: 0\.9;/);
     expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed z-50/);
+    expect(copilotSource).toMatch(/clash-copilot-panel-shell fixed z-50 flex flex-col overflow-hidden bg-warm-page/);
     expect(copilotSource).toMatch(/clash-copilot-panel-shell--docked bottom-0 right-0 rounded-none/);
-    expect(copilotSource).toMatch(/height: isDocked[\s\S]*?'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\)\)'[\s\S]*?'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1\.5rem\)'/);
+    expect(copilotSource).toMatch(/bottom-2 right-2 rounded-matrix/);
+    expect(copilotSource).toMatch(/height: isDocked[\s\S]*?'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\)\)'[\s\S]*?'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1rem\)'/);
     expect(copilotSource).toMatch(/rounded-matrix/);
     expect(copilotSource).toMatch(/const COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX = 44/);
     expect(copilotSource).toMatch(/const COPILOT_PANEL_DESKTOP_TRANSFORM_ORIGIN =[\s\S]*?calc\(100% - \$\{COPILOT_PANEL_LAUNCHER_FOCAL_OFFSET_PX\}px\)/);
@@ -398,7 +412,7 @@ describe("visual language surfaces", () => {
     expect(copilotSource).not.toMatch(/clash-copilot-agent-activity-row[\s\S]*w-5 shrink-0 items-center justify-center/);
     expect(copilotSource).toMatch(/clash-session-config-trigger/);
     expect(copilotSource).toMatch(/clash-runtime-prompt-queue/);
-    expect(copilotSource).toMatch(/AgentMotion[\s\S]*state=\{state\}[\s\S]*className="h-6 w-6"[\s\S]*gazeTarget=\{gazeTarget \?\? null\}/);
+    expect(copilotSource).toMatch(/AgentMotion[\s\S]*state=\{state\}[\s\S]*className="clash-agent-motion--compact h-6 w-6"[\s\S]*gazeTarget=\{gazeTarget \?\? null\}/);
     expect(copilotSource).toMatch(/toolbarAccessory=\{\(/);
     expect(copilotSource).toMatch(/AcpAgentLogo/);
     expect(copilotSource).toMatch(/embedded/);
@@ -409,14 +423,14 @@ describe("visual language surfaces", () => {
     expect(copilotSource).not.toMatch(/border-l border-warm-border shadow-\[0_18px_50px/);
     expect(cssSource).toMatch(/\.clash-copilot-launcher/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-shell/);
-    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?border-radius:\s*28px/);
+    expect(cssSource).toMatch(/\.clash-copilot-panel-shell\s*\{[\s\S]*?border-radius:\s*var\(--clash-workbench-surface-radius\)/);
     const panelShellRule = cssSource.match(/\.clash-copilot-panel-shell\s*\{[\s\S]*?\}/)?.[0] ?? "";
     const toolbarSurfaceRule = cssSource.match(/\.clash-canvas-toolbar-surface,[\s\S]*?\.clash-canvas-menu-surface\s*\{[\s\S]*?\}/)?.[0] ?? "";
     const promptQueueRule = cssSource.match(/\.clash-runtime-prompt-queue\s*\{[\s\S]*?\}/)?.[0] ?? "";
-    expect(panelShellRule).toMatch(/background:\s*rgba\(255, 254, 253, 0\.96\)/);
+    expect(panelShellRule).toMatch(/background:\s*var\(--color-warm-page\)/);
     expect(panelShellRule).not.toMatch(/linear-gradient|radial-gradient|background-size/);
     expect(cssSource).toMatch(/\.clash-copilot-panel-header\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?border-bottom:\s*0;[\s\S]*?box-shadow:\s*none;/);
-    expect(promptQueueRule).toMatch(/linear-gradient\(180deg, rgba\(255, 254, 253, 0\.9\), rgba\(250, 248, 244, 0\.74\)\)/);
+    expect(promptQueueRule).toMatch(/linear-gradient\(\s*180deg,\s*rgba\(255, 254, 253, 0\.9\),\s*rgba\(250, 248, 244, 0\.74\)\s*\)/);
     expect(promptQueueRule).toMatch(/border-bottom:\s*0/);
     expect(promptQueueRule).toMatch(/0 -6px 18px rgba\(35, 31, 25, 0\.034\)/);
     const railSource = readFileSync(
@@ -425,8 +439,9 @@ describe("visual language surfaces", () => {
     );
     expect(railSource).toMatch(/COPILOT_RAIL_SLOT_CLASS/);
     expect(railSource).toMatch(/clash-copilot-rail-slot flex h-8 w-8 shrink-0 -translate-x-1 items-center justify-center/);
-    expect(toolbarSurfaceRule).toMatch(/background:\s*rgba\(255, 254, 252, 0\.97\)/);
+    expect(toolbarSurfaceRule).toMatch(/background:\s*var\(--clash-floating-toolbar-background\)/);
     expect(toolbarSurfaceRule).not.toMatch(/linear-gradient|radial-gradient|background-size/);
+    expect(cssSource).not.toMatch(/\.clash-timeline-toolbar-surface\s*\{/);
     expect(cssSource).toMatch(/\.clash-canvas-toolbar-surface::before,[\s\S]*?\.clash-canvas-menu-surface::before\s*\{[\s\S]*?content:\s*none;/);
     expect(cssSource).toMatch(/\.clash-copilot-resize-handle::before/);
     expect(cssSource).toMatch(/\.clash-project-top-action/);
@@ -436,6 +451,13 @@ describe("visual language surfaces", () => {
     expect(launcherRule).toMatch(/border:\s*0/);
     expect(launcherRule).toMatch(/background:\s*transparent/);
     expect(launcherRule).toMatch(/box-shadow:\s*none/);
+  });
+
+  it("aligns the floating Copilot to the shared 8px workbench grid", () => {
+    const copilotSource = readFileSync(join(process.cwd(), "packages/web-ui/src/components/ChatbotCopilot.tsx"), "utf8");
+
+    expect(copilotSource).toMatch(/bottom-2 right-2 rounded-matrix/);
+    expect(copilotSource).toMatch(/'calc\(100dvh - var\(--clash-desktop-chrome-height, 0px\) - 1rem\)'/);
   });
 
   it("keeps the Clash agent eyes pointer-reactive without rerender-heavy motion", () => {
@@ -452,7 +474,7 @@ describe("visual language surfaces", () => {
     expect(agentSource).toMatch(/prefers-reduced-motion: reduce/);
     expect(agentSource).toMatch(/--clash-agent-eye-x/);
     expect(agentSource).toMatch(/data-agent-motion-tracking/);
-    expect(cssSource).toMatch(/\.clash-agent-motion\[data-agent-motion-tracking="true"\] \.clash-agent-motion__gaze/);
+    expect(cssSource).toMatch(/\.clash-agent-motion\[data-agent-motion-tracking="true"\]\s+\.clash-agent-motion__gaze/);
     expect(cssSource).toMatch(/transform:\s*translate3d\(var\(--clash-agent-eye-x\), var\(--clash-agent-eye-y\), 0\)/);
   });
 
@@ -477,7 +499,7 @@ describe("visual language surfaces", () => {
     expect(backgroundSource).toMatch(/to-warm-page\/\[0\.0008\]/);
     expect(backgroundSource).toMatch(/opacity: 0\.38/);
     expect(cssSource).not.toMatch(/#f7f6f2|#d8d5cf|#f1efea/);
-    expect(cssSource).toMatch(/--color-warm-page: #fbfaf7/);
+    expect(cssSource).toMatch(/--color-warm-page: var\(--clash-warm-page\)/);
   });
 
   it("keeps dashboard entry screens canvas-first without a detached hero preview", () => {
@@ -766,6 +788,33 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-project-card-empty/);
     expect(source).toMatch(/useConfirm/);
     expect(source).toMatch(/clash-project-card-delete/);
+  });
+
+  it("keeps the new-project trigger visually unboxed", () => {
+    const tileSource = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/ProjectCreateTile.tsx"),
+      "utf8",
+    );
+    const cardSource = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/ProjectCard.tsx"),
+      "utf8",
+    );
+    const cssSource = readFileSync(
+      join(process.cwd(), "apps/web/app/globals.css"),
+      "utf8",
+    );
+    const tileRule = cssSource.match(
+      /\.clash-project-create-tile\s*\{([^}]*)\}/,
+    )?.[1];
+
+    expect(tileSource).toContain("./ui/dialog");
+    expect(tileSource).toMatch(/clash-project-create-tile[\s\S]*rounded-none/);
+    expect(tileSource).not.toMatch(/clash-project-create-icon/);
+    expect(cardSource).toMatch(/clash-project-card-frame[\s\S]*rounded-2xl/);
+    expect(tileRule).toMatch(/border:\s*0/);
+    expect(tileRule).toMatch(/background:\s*transparent/);
+    expect(tileRule).toMatch(/box-shadow:\s*none/);
+    expect(cssSource).not.toMatch(/\.clash-project-create-tile::(before|after)/);
   });
 
   it("keeps the login route in Clash auth surfaces instead of generic black auth buttons", () => {

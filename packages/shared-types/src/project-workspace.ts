@@ -75,6 +75,10 @@ export type ProjectTimelineMutationResult =
   | { ok: true; timeline: ProjectTimeline }
   | { ok: false; error: string };
 
+export type ProjectTimelineDeleteResult =
+  | { ok: true; timelineId: string }
+  | { ok: false; error: string };
+
 export type TimelineRenderTarget =
   | { kind: "project-assets" }
   | { kind: "canvas"; canvasId: string; actionNodeId: string };
@@ -329,6 +333,32 @@ export function updateProjectTimelineState(
     revisionId: next.revisionId,
   } satisfies ProjectTimelineRevision);
   return { ok: true, timeline: next };
+}
+
+export function deleteProjectTimeline(
+  doc: LoroDoc,
+  timelineId: string,
+  expectedReadToken?: string,
+): ProjectTimelineDeleteResult {
+  const timeline = readProjectTimeline(doc, timelineId);
+  if (!timeline) return { ok: false, error: `Timeline ${timelineId} not found` };
+  if (
+    expectedReadToken
+    && expectedReadToken !== projectTimelineReadToken(timeline)
+  ) {
+    return {
+      ok: false,
+      error: `STALE_READ: Timeline ${timelineId} changed after it was read`,
+    };
+  }
+
+  const nodes = doc.getMap("nodes");
+  for (const [nodeId, raw] of [...nodes.entries()]) {
+    if (timelineActionTimelineId(raw) !== timelineId) continue;
+    new Canvas(doc, () => {}, nodeCanvasId(raw)).deleteNode(nodeId);
+  }
+  doc.getMap("timelines").delete(timelineId);
+  return { ok: true, timelineId };
 }
 
 export function attachTimelineToCanvas(

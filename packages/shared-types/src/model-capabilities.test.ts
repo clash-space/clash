@@ -5,7 +5,8 @@
  * flavor of `inputMode` the schema permits.
  */
 import { describe, it, expect } from "vitest";
-import { MODEL_CARDS, type ModelCard } from "./models";
+import { MODEL_CARDS, ModelInputModeSchema, type ModelCard } from "./models";
+import * as modelCapabilities from "./model-capabilities";
 import { capability, validateRefs, partitionRefs, pickDefaultModel } from "./model-capabilities";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
@@ -36,12 +37,16 @@ const SORA = card({
   kind: "video",
   input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ["text", "image"] },
 });
-const SEEDANCE_REF = card({
-  id: "seedance-ref",
+const MULTIMODAL_REFERENCE_VIDEO = card({
+  id: "multimodal-reference-video",
   kind: "video",
   input: {
     requiresPrompt: true,
-    inputMode: { images: { max: 9 }, videos: { max: 3 }, audios: { max: 3 } },
+    inputMode: {
+      images: { max: 9 },
+      videos: { max: 3 },
+      audios: { max: 3, requiresAnyOf: ["image", "video"] },
+    },
     promptModalities: ["text", "image", "video", "audio"],
   },
 });
@@ -61,6 +66,12 @@ const STRICT_SINGLE_IMAGE = card({
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("capability", () => {
+  it("preserves cross-modality requirements declared on a reference input", () => {
+    expect(ModelInputModeSchema.parse({
+      audios: { max: 3, requiresAnyOf: ["image", "video"] },
+    }).audios).toMatchObject({ requiresAnyOf: ["image", "video"] });
+  });
+
   it("text-to-image: accepts text refs, media bounds zero", () => {
     const cap = capability(TEXT_TO_IMAGE);
     expect(cap.outputKind).toBe("image");
@@ -84,12 +95,17 @@ describe("capability", () => {
     expect(cap.ref.video.accepts).toBe(false);
   });
 
-  it("multi-modal (Seedance ref): all three modalities accepted independently", () => {
-    const cap = capability(SEEDANCE_REF);
+  it("multi-modal reference model exposes independent bounds plus audio's companion requirement", () => {
+    const cap = capability(MULTIMODAL_REFERENCE_VIDEO);
     expect(cap.ref.image.accepts).toBe(true);
     expect(cap.ref.image.max).toBe(9);
     expect(cap.ref.video).toEqual({ accepts: true, min: 0, max: 3 });
-    expect(cap.ref.audio).toEqual({ accepts: true, min: 0, max: 3 });
+    expect(cap.ref.audio).toEqual({
+      accepts: true,
+      min: 0,
+      max: 3,
+      requiresAnyOf: ["image", "video"],
+    });
   });
 
   it("required min image: bounds expose min faithfully", () => {
@@ -98,9 +114,41 @@ describe("capability", () => {
   });
 
   it("propagates promptModalities and outputKind", () => {
-    expect(capability(SEEDANCE_REF).promptModalities).toEqual(["text", "image", "video", "audio"]);
+    expect(capability(MULTIMODAL_REFERENCE_VIDEO).promptModalities).toEqual(["text", "image", "video", "audio"]);
     expect(capability(NANO_BANANA).outputKind).toBe("image");
     expect(capability(SORA).outputKind).toBe("video");
+  });
+});
+
+describe("Director shot reference selection", () => {
+  it("prefers revision-pinned per-Shot packets over the sequence preview packet", () => {
+    const packet = {
+      schemaVersion: 1,
+      stageId: "stage-a",
+      stageRevisionId: "revision-a",
+      exportedAt: "2026-07-24T00:00:00.000Z",
+      aspectRatio: "16:9",
+      durationSeconds: 2,
+      fps: 30,
+      cameraIds: ["camera-a"],
+      referenceVideo: { assetId: "sequence-video", mimeType: "video/webm" },
+      referenceStills: [],
+      shotSpec: { shots: [] },
+    };
+    const shotPacket = {
+      ...packet,
+      scope: { kind: "shot", selectedShotIds: ["shot-a"] },
+      referenceVideo: { assetId: "shot-video", mimeType: "video/webm" },
+    };
+    const packets = (modelCapabilities as any).directorReferencePackets({
+      type: "director-stage",
+      data: {
+        directorReferencePacket: packet,
+        directorShotReferencePackets: [shotPacket],
+      },
+    });
+
+    expect(packets).toEqual([shotPacket]);
   });
 });
 
@@ -109,9 +157,17 @@ describe("capability", () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("validateRefs", () => {
+  it("rejects constrained reference audio unless a declared companion is attached", () => {
+    expect(validateRefs(MULTIMODAL_REFERENCE_VIDEO, { audio: 1 }, { prompt: "go" })).toMatch(
+      /requires at least one reference image or video/i,
+    );
+    expect(validateRefs(MULTIMODAL_REFERENCE_VIDEO, { audio: 1, image: 1 }, { prompt: "go" })).toBeNull();
+    expect(validateRefs(MULTIMODAL_REFERENCE_VIDEO, { audio: 1, video: 1 }, { prompt: "go" })).toBeNull();
+  });
+
   it("returns null when everything fits", () => {
     expect(validateRefs(NANO_BANANA, { image: 2 }, { prompt: "go" })).toBeNull();
-    expect(validateRefs(SEEDANCE_REF, { image: 1, video: 1, audio: 1 }, { prompt: "go" })).toBeNull();
+    expect(validateRefs(MULTIMODAL_REFERENCE_VIDEO, { image: 1, video: 1, audio: 1 }, { prompt: "go" })).toBeNull();
   });
 
   it("fails empty prompt only when prompt is provided in opts", () => {
@@ -186,7 +242,7 @@ describe("partitionRefs", () => {
   });
 
   it("keeps all accepted modalities", () => {
-    const out = partitionRefs(refs, SEEDANCE_REF);
+    const out = partitionRefs(refs, MULTIMODAL_REFERENCE_VIDEO);
     expect(out.imageAssetIds).toEqual(["i1", "i2"]);
     expect(out.texts).toEqual(["story beat"]);
     expect(out.videoAssetIds).toEqual(["v1"]);
@@ -208,24 +264,27 @@ describe("partitionRefs", () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("pickDefaultModel", () => {
-  const cards = [TEXT_TO_IMAGE, NANO_BANANA, SORA, SEEDANCE_REF];
+  const cards = [TEXT_TO_IMAGE, NANO_BANANA, SORA, MULTIMODAL_REFERENCE_VIDEO];
 
   it("returns first model of outputKind when no sourceKind given", () => {
     expect(pickDefaultModel({ outputKind: "image", cards })?.id).toBe("t2i");
     expect(pickDefaultModel({ outputKind: "video", cards })?.id).toBe("sora");
   });
 
-  it("video output + video source → seedance-ref (only one that accepts video)", () => {
-    expect(pickDefaultModel({ outputKind: "video", sourceKind: "video", cards })?.id).toBe("seedance-ref");
+  it("video output + video source picks the first compatible injected candidate", () => {
+    expect(pickDefaultModel({ outputKind: "video", sourceKind: "video", cards })?.id).toBe("multimodal-reference-video");
   });
 
   it("video output + image source → first that accepts image (sora)", () => {
     expect(pickDefaultModel({ outputKind: "video", sourceKind: "image", cards })?.id).toBe("sora");
   });
 
-  it("falls back to first matching outputKind when nothing accepts the source", () => {
-    // Image output, but no image model in this list accepts video → fall back to t2i
-    expect(pickDefaultModel({ outputKind: "image", sourceKind: "video", cards })?.id).toBe("t2i");
+  it("does not pick a model whose audio input requires another missing modality", () => {
+    expect(pickDefaultModel({ outputKind: "video", sourceKind: "audio", cards })).toBeUndefined();
+  });
+
+  it("returns undefined when no output model accepts the source", () => {
+    expect(pickDefaultModel({ outputKind: "image", sourceKind: "video", cards })).toBeUndefined();
   });
 
   it("text output source is a valid reference source for prompt-capable models", () => {
@@ -240,5 +299,51 @@ describe("pickDefaultModel", () => {
     const model = pickDefaultModel({ outputKind: "audio", cards: MODEL_CARDS });
     expect(model?.id).toBe("gemini-3.1-flash-tts");
     expect(model?.provider).toBe("Google");
+  });
+});
+
+describe("compatible model discovery", () => {
+  it("returns every compatible candidate from an injected future-model catalog", () => {
+    const findCompatibleModels = (modelCapabilities as Record<string, unknown>).findCompatibleModels;
+    expect(findCompatibleModels).toBeTypeOf("function");
+
+    const base = TEXT_TO_IMAGE;
+    const futureAudioVideoA: ModelCard = {
+      ...base,
+      id: "future-audio-video-a",
+      name: "Future Audio Video A",
+      kind: "video",
+      input: {
+        requiresPrompt: true,
+        inputMode: { audios: { max: 1 } },
+        promptModalities: ["text", "audio"],
+      },
+    };
+    const futureAudioVideoB: ModelCard = {
+      ...futureAudioVideoA,
+      id: "future-audio-video-b",
+      name: "Future Audio Video B",
+    };
+    const incompatibleVideo: ModelCard = {
+      ...futureAudioVideoA,
+      id: "future-image-video",
+      name: "Future Image Video",
+      input: {
+        requiresPrompt: true,
+        inputMode: { images: { max: 1 } },
+        promptModalities: ["text", "image"],
+      },
+    };
+
+    const matches = (findCompatibleModels as (opts: unknown) => ModelCard[])({
+      outputKind: "video",
+      sourceKind: "audio",
+      cards: [futureAudioVideoA, incompatibleVideo, futureAudioVideoB, base],
+    });
+
+    expect(matches.map((card) => card.id)).toEqual([
+      "future-audio-video-a",
+      "future-audio-video-b",
+    ]);
   });
 });

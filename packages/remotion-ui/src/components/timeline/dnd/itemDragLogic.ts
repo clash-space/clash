@@ -183,6 +183,7 @@ export function buildPreview(
     currentFrame: number;
     snapEnabled: boolean;
     trackHeight: number;
+    trackHeights?: readonly number[];
     insertThresholdPx: number;
   }
 ): PreviewResult {
@@ -199,7 +200,24 @@ export function buildPreview(
   const itemTop = args.itemTopY;
   const itemBottom = args.itemTopY + args.itemHeightPx;
   const itemCenterY = (itemTop + itemBottom) / 2;
-  const bandIdx = Math.floor(itemCenterY / args.trackHeight);
+  let bandIdx: number;
+  if (args.trackHeights?.length === args.tracks.length) {
+    if (itemCenterY < 0) {
+      bandIdx = -1;
+    } else {
+      let bandBottom = 0;
+      bandIdx = args.tracks.length;
+      for (let index = 0; index < args.trackHeights.length; index += 1) {
+        bandBottom += args.trackHeights[index];
+        if (itemCenterY < bandBottom) {
+          bandIdx = index;
+          break;
+        }
+      }
+    }
+  } else {
+    bandIdx = Math.floor(itemCenterY / args.trackHeight);
+  }
 
   let willCreateNewTrack = false;
   let insertIndex: number | null = null;

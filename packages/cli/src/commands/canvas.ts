@@ -10,7 +10,7 @@ import {
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson } from "../lib/output";
-import { isDaemonRunning, sendCommand, startDaemon, getSocketPath } from "../lib/daemon";
+import { isDaemonRunning, sendCommand, startDaemon, getSocketPath, getDaemonMcpEndpoint } from "../lib/daemon";
 import { apiFetch, apiJson } from "../lib/api";
 import { resolveClashRoot } from "../lib/clash-home";
 import { resolveProjectContext, type ResolvedProjectContext } from "../lib/project-context";
@@ -400,7 +400,11 @@ canvasCommand
   .action(async (options) => {
     const projectId = await resolveCanvasProjectId(options);
     if (isDaemonRunning(projectId)) {
-      console.log(JSON.stringify({ status: "already_running", socket: getSocketPath(projectId) }));
+      console.log(JSON.stringify({
+        status: "already_running",
+        socket: getSocketPath(projectId),
+        mcp: getDaemonMcpEndpoint(projectId),
+      }));
       return;
     }
     const apiKey = requireApiKey();
@@ -1222,6 +1226,45 @@ canvasCommand
         nodeId: options.node,
       });
       else console.log(`Updated node: ${options.node}`);
+    } finally {
+      await client.disconnect();
+    }
+  });
+
+canvasCommand
+  .command("move")
+  .description("Move a node to an absolute Canvas position")
+  .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
+  .requiredOption("--node <id>", "Node ID")
+  .requiredOption("--x <number>", "Absolute Canvas x coordinate", Number)
+  .requiredOption("--y <number>", "Absolute Canvas y coordinate", Number)
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    if (!Number.isFinite(options.x) || !Number.isFinite(options.y)) {
+      console.error("Canvas move requires finite x and y coordinates");
+      process.exit(1);
+    }
+    const projectId = await resolveCanvasProjectId(options);
+    const position = { x: options.x, y: options.y };
+    const daemonResult = await runCommand(projectId, {
+      action: "move",
+      nodeId: options.node,
+      position,
+    });
+    if (daemonResult) {
+      if (daemonResult.error) { console.error(daemonResult.error); process.exit(1); }
+      if (isJsonMode(options)) printJson(daemonResult);
+      else console.log(`Moved node: ${options.node} (${options.x}, ${options.y})`);
+      return;
+    }
+
+    const client = await connectToProject(projectId);
+    try {
+      const moved = client.canvas.moveNode(options.node, position);
+      if (!moved) { console.error(`Node not found: ${options.node}`); process.exit(1); }
+      const result = { moved: true, nodeId: options.node, position };
+      if (isJsonMode(options)) printJson(result);
+      else console.log(`Moved node: ${options.node} (${options.x}, ${options.y})`);
     } finally {
       await client.disconnect();
     }

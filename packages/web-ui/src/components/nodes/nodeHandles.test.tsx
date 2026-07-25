@@ -40,6 +40,13 @@ vi.mock("../LoroSyncContext", () => ({
   useOptionalLoroSyncContext: () => null,
 }));
 
+vi.mock("../MediaViewerContext", () => ({
+  useMediaViewer: () => ({
+    openViewer: vi.fn(),
+    openAssetPreview: vi.fn(),
+  }),
+}));
+
 vi.mock("../MilkdownEditor", () => ({
   default: () => <div data-testid="milkdown-editor" />,
 }));

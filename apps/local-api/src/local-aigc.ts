@@ -1,6 +1,7 @@
 import {
   normalizeModelId,
   resolveModelUpstreamRoute,
+  type ModelCard,
   type ModelKind,
   type ModelUpstreamRoute,
   type ProviderAccountAvailability,
@@ -24,6 +25,7 @@ export interface MockMediaGenerationInput {
   aspectRatio?: string;
   duration?: number;
   modelParams?: Record<string, unknown>;
+  referenceImageUrls?: string[];
 }
 
 export interface MockMediaGenerationResult {
@@ -57,14 +59,17 @@ export interface MockFalExternalAigcServiceOptions {
   fal?: FalMockQueueService;
   origin?: string;
   providerAccounts?: () => Promise<RuntimeProviderAccountAvailability[]>;
+  modelCards?: () => Promise<ModelCard[]>;
   fetch?: typeof fetch;
   openAiBaseUrl?: string;
   anthropicBaseUrl?: string;
   falQueueBaseUrl?: string;
   googleAiStudioBaseUrl?: string;
   kieBaseUrl?: string;
+  sunoBaseUrl?: string;
   replicateBaseUrl?: string;
   dreaminaRun?: DreaminaCliRun;
+  localTts?: (input: MockMediaGenerationInput) => Promise<MockMediaGenerationResult>;
 }
 
 type RuntimeProviderAccountAvailability = ProviderAccountAvailability & {
@@ -85,16 +90,21 @@ function resolveLocalRoute(
   model: string,
   kind: ModelKind,
   providerAccounts?: RuntimeProviderAccountAvailability[],
+  preferredProviderId?: string,
+  models?: ModelCard[],
 ): ModelUpstreamRoute | null {
   if (providerAccounts) {
+    const eligibleProviderAccounts = preferredProviderId
+      ? providerAccounts.filter((account) => account.providerId === preferredProviderId)
+      : providerAccounts;
     return resolveModelUpstreamRoute({
       modelCode: model,
       kind,
-      allowMock: true,
-      configuredProviders: [
-        ...providerAccounts,
-        { providerId: "mock", enabled: true },
-      ],
+      allowMock: eligibleProviderAccounts.some(
+        (account) => account.providerId === "mock" && account.enabled !== false,
+      ),
+      configuredProviders: eligibleProviderAccounts,
+      ...(models ? { models } : {}),
     });
   }
   return resolveModelUpstreamRoute({
@@ -620,9 +630,43 @@ async function generateGoogleAgentPlatformVideo(
   };
 }
 
-function falInput(input: MockMediaGenerationInput, kind: ModelKind): Record<string, unknown> {
+function falInput(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+): Record<string, unknown> {
   if (kind === "image") {
     const params = input.modelParams ?? {};
+    if (route.upstreamModel === "openai/gpt-image-2" || route.upstreamModel === "openai/gpt-image-2/edit") {
+      const width = numberParam(params, "width", 0);
+      const height = numberParam(params, "height", 0);
+      const explicitSize = width > 0 && height > 0
+        ? { width, height }
+        : undefined;
+      if (explicitSize && (width % 16 !== 0 || height % 16 !== 0)) {
+        throw new RangeError("fal GPT Image 2 width and height must be multiples of 16");
+      }
+      return {
+        prompt: input.prompt,
+        image_size: explicitSize
+          ?? stringParam(params, "image_size")
+          ?? aspectRatioToFalImageSize(input.aspectRatio),
+        quality: stringParam(params, "quality") || "high",
+        num_images: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
+        output_format: outputFormat(params),
+        ...(input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}),
+      };
+    }
+    if (route.upstreamModel.startsWith("fal-ai/bytedance/seedream/v4.5/")) {
+      return {
+        prompt: input.prompt,
+        image_size: stringParam(params, "image_size") || "auto_2K",
+        num_images: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
+        max_images: Math.max(1, Math.min(4, numberParam(params, "max_images", 1))),
+        enable_safety_checker: params.enable_safety_checker !== false,
+        ...(input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}),
+      };
+    }
     return {
       prompt: input.prompt,
       aspect_ratio: input.aspectRatio || stringParam(params, "aspect_ratio") || "16:9",
@@ -632,6 +676,7 @@ function falInput(input: MockMediaGenerationInput, kind: ModelKind): Record<stri
       ...(params.resolution ? { resolution: params.resolution } : {}),
       ...(params.num_inference_steps ? { num_inference_steps: params.num_inference_steps } : {}),
       ...(params.guidance_scale ? { guidance_scale: params.guidance_scale } : {}),
+      ...(input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}),
     };
   }
   if (kind === "video") {
@@ -648,6 +693,22 @@ function falInput(input: MockMediaGenerationInput, kind: ModelKind): Record<stri
     prompt: input.prompt,
     duration: input.duration ?? 5,
   };
+}
+
+const FAL_IMAGE_EDIT_ENDPOINTS: Record<string, string> = {
+  "openai/gpt-image-2": "openai/gpt-image-2/edit",
+  "fal-ai/nano-banana-2": "fal-ai/nano-banana-2/edit",
+  "fal-ai/flux-2-pro": "fal-ai/flux-2-pro/edit",
+  "fal-ai/bytedance/seedream/v4.5/text-to-image": "fal-ai/bytedance/seedream/v4.5/edit",
+};
+
+function falEndpoint(input: MockMediaGenerationInput, kind: ModelKind, route: ModelUpstreamRoute): string {
+  if (kind !== "image" || !input.referenceImageUrls?.length) return route.upstreamModel;
+  const editEndpoint = FAL_IMAGE_EDIT_ENDPOINTS[route.upstreamModel];
+  if (!editEndpoint) {
+    throw new Error(`fal image model does not support editing: ${route.upstreamModel}`);
+  }
+  return editEndpoint;
 }
 
 function falMedia(result: any, kind: ModelKind): { url: string; width?: number; height?: number; durationMs?: number; waveform?: number[]; transcript?: string } {
@@ -686,7 +747,10 @@ async function generateFalMedia(
   apiKey: string,
 ): Promise<MockMediaGenerationResult> {
   const queueBaseUrl = normalizeBaseUrl(options.falQueueBaseUrl, "https://queue.fal.run");
-  const endpoint = route.upstreamModel.replace(/^\/+/, "");
+  const endpoint = falEndpoint(input, kind, route).replace(/^\/+/, "");
+  const executionRoute = endpoint === route.upstreamModel
+    ? route
+    : { ...route, upstreamModel: endpoint };
   const headers = {
     authorization: `Key ${apiKey}`,
     "content-type": "application/json",
@@ -694,7 +758,7 @@ async function generateFalMedia(
   const submittedResponse = await options.fetch(`${queueBaseUrl}/${endpoint}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(falInput(input, kind)),
+    body: JSON.stringify(falInput(input, kind, executionRoute)),
   });
   const submitted = await responseJson(submittedResponse);
   if (!submittedResponse.ok) {
@@ -743,7 +807,7 @@ async function generateFalMedia(
     transcript: media.transcript,
     requestId,
     provider: "fal",
-    modelEndpoint: route.upstreamModel,
+    modelEndpoint: endpoint,
     remoteUrl: media.url,
   };
 }
@@ -887,6 +951,88 @@ async function generateKieMedia(
   };
 }
 
+async function generateSunoMedia(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "sunoBaseUrl">,
+  apiKey: string,
+  callbackUrl: string | undefined,
+): Promise<MockMediaGenerationResult> {
+  if (!callbackUrl || !/^https:\/\//.test(callbackUrl)) {
+    throw new Error("Suno provider account requires a public HTTPS callbackUrl.");
+  }
+  const baseUrl = normalizeBaseUrl(options.sunoBaseUrl, "https://api.sunoapi.org");
+  const style = stringParam(input.modelParams, "style");
+  const title = stringParam(input.modelParams, "title");
+  const customMode = !!(style || title);
+  if (customMode && (!style || !title)) {
+    throw new Error("Suno custom mode requires both style and title.");
+  }
+  const headers = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+  };
+  const createResponse = await options.fetch(`${baseUrl}/api/v1/generate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      customMode,
+      instrumental: input.modelParams?.instrumental === true,
+      model: route.upstreamModel,
+      callBackUrl: callbackUrl,
+      prompt: input.prompt,
+      ...(customMode ? { style, title } : {}),
+    }),
+  });
+  const created = await responseJson(createResponse);
+  if (!createResponse.ok || created?.code !== 200) {
+    throw new Error(`Suno API request failed: ${created?.msg ?? createResponse.statusText}`);
+  }
+  const taskId = created?.data?.taskId;
+  if (typeof taskId !== "string" || !taskId) {
+    throw new Error(`Suno API response returned no taskId for ${route.upstreamModel}`);
+  }
+
+  const failures = new Set([
+    "CREATE_TASK_FAILED",
+    "GENERATE_AUDIO_FAILED",
+    "CALLBACK_EXCEPTION",
+    "SENSITIVE_WORD_ERROR",
+  ]);
+  let task: any = null;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const statusResponse = await options.fetch(
+      `${baseUrl}/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`,
+      { method: "GET", headers: { authorization: `Bearer ${apiKey}` } },
+    );
+    task = await responseJson(statusResponse);
+    if (!statusResponse.ok || task?.code !== 200) {
+      throw new Error(`Suno API status failed: ${task?.msg ?? statusResponse.statusText}`);
+    }
+    const status = String(task?.data?.status ?? "PENDING");
+    if (failures.has(status)) {
+      throw new Error(`Suno API generation failed: ${task?.data?.errorMessage ?? status}`);
+    }
+    if (status === "SUCCESS") break;
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  if (task?.data?.status !== "SUCCESS") {
+    throw new Error(`Suno API generation timed out: ${taskId}`);
+  }
+  const song = task?.data?.response?.sunoData?.[0];
+  const mediaUrl = typeof song?.audioUrl === "string" ? song.audioUrl : undefined;
+  if (!mediaUrl) throw new Error(`Suno API response returned no audioUrl for ${taskId}`);
+  const media = await downloadProviderMedia(options.fetch, mediaUrl, "audio");
+  return {
+    ...media,
+    requestId: taskId,
+    provider: "suno",
+    modelEndpoint: route.upstreamModel,
+    ...(typeof song.duration === "number" ? { durationMs: Math.round(song.duration * 1000) } : {}),
+  };
+}
+
 function replicatePredictionUrl(baseUrl: string, upstreamModel: string): string {
   const [owner, model] = upstreamModel.split("/", 2);
   if (!owner || !model) {
@@ -998,6 +1144,7 @@ export function createMockExternalAigcService(
   const fal = options.fal ?? createMockFalQueueService();
   const fetchImpl = options.fetch ?? fetch;
   const loadProviderAccounts = options.providerAccounts;
+  const loadModelCards = options.modelCards;
 
   const providerIdForRoute = (route: ModelUpstreamRoute) => {
     if (route.providerId) return route.providerId;
@@ -1020,6 +1167,7 @@ export function createMockExternalAigcService(
     const candidates = (accounts ?? [])
       .map((account, index) => ({ account, index }))
       .filter(({ account }) =>
+        (!route.accountId || account.id === route.accountId) &&
         account.providerId === providerIdForRoute(route) &&
         (!account.upstreamId || account.upstreamId === route.upstreamId) &&
         (!account.region || !route.region || account.region === route.region) &&
@@ -1065,12 +1213,27 @@ export function createMockExternalAigcService(
     fallback: () => Promise<MockMediaGenerationResult>,
   ): Promise<MockMediaGenerationResult> {
     const providerAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
-    const route = resolveLocalRoute(input.model, kind, providerAccounts);
-    if (!route || route.upstreamId === "mock") return fallback();
+    const modelCards = loadModelCards ? await loadModelCards() : undefined;
+    const preferredProviderId = stringParam(input.modelParams, "provider_id");
+    const requireRealProvider = input.modelParams?.require_real_provider === true;
+    const explicitMockProvider = providerAccounts?.some(
+      (account) => account.providerId === "mock" && account.enabled !== false,
+    ) === true;
+    const fallbackOrThrow = () => {
+      if (requireRealProvider || (providerAccounts !== undefined && !explicitMockProvider)) {
+        throw new Error(
+          `${input.model} requires a configured real provider` +
+          (preferredProviderId ? ` (${preferredProviderId})` : ""),
+        );
+      }
+      return fallback();
+    };
+    const route = resolveLocalRoute(input.model, kind, providerAccounts, preferredProviderId, modelCards);
+    if (!route || route.upstreamId === "mock") return fallbackOrThrow();
 
     if (route.apiShape === "openai-images") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       return generateOpenAiImage(input, route, {
         fetch: fetchImpl,
         openAiBaseUrl: options.openAiBaseUrl,
@@ -1079,7 +1242,7 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "openai-compatible") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       const model = stringParam(input.modelParams, "model_name") || route.upstreamModel;
       const result = await generateTextCompletion({
         provider: "openai-compatible",
@@ -1101,7 +1264,7 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "anthropic-compatible") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       const model = stringParam(input.modelParams, "model_name") || route.upstreamModel;
       const result = await generateTextCompletion({
         provider: "anthropic-compatible",
@@ -1123,7 +1286,7 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "google-ai-studio") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       return generateGoogleAiStudioMedia(input, kind, route, {
         fetch: fetchImpl,
         googleAiStudioBaseUrl: options.googleAiStudioBaseUrl,
@@ -1132,7 +1295,7 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "google-agent-platform") {
       const vertexCredentials = credential(route, providerAccounts, "vertexCredentials");
-      if (!vertexCredentials) return fallback();
+      if (!vertexCredentials) return fallbackOrThrow();
       if (kind === "text") return generateGoogleAgentPlatformText(input, route, fetchImpl, vertexCredentials);
       if (kind === "image") return generateGoogleAgentPlatformImage(input, route, fetchImpl, vertexCredentials);
       if (kind === "video") return generateGoogleAgentPlatformVideo(input, route, fetchImpl, vertexCredentials);
@@ -1141,7 +1304,7 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "fal") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       return generateFalMedia(input, kind, route, {
         fetch: fetchImpl,
         falQueueBaseUrl: options.falQueueBaseUrl,
@@ -1150,20 +1313,37 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "kie") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       return generateKieMedia(input, kind, route, {
         fetch: fetchImpl,
         kieBaseUrl: options.kieBaseUrl,
       }, apiKey);
     }
 
+    if (route.apiShape === "suno" && kind === "audio") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallbackOrThrow();
+      return generateSunoMedia(input, route, {
+        fetch: fetchImpl,
+        sunoBaseUrl: options.sunoBaseUrl,
+      }, apiKey, credential(route, providerAccounts, "callbackUrl"));
+    }
+
     if (route.apiShape === "replicate") {
       const apiKey = credential(route, providerAccounts, "apiKey");
-      if (!apiKey) return fallback();
+      if (!apiKey) return fallbackOrThrow();
       return generateReplicateMedia(input, kind, route, {
         fetch: fetchImpl,
         replicateBaseUrl: options.replicateBaseUrl,
       }, apiKey);
+    }
+
+    if (route.apiShape === "local-tts" && kind === "audio") {
+      if (!options.localTts) throw missingAdapter(route);
+      return options.localTts({
+        ...input,
+        model: route.upstreamModel,
+      });
     }
 
     if (route.apiShape === "dreamina-cli" && kind === "video") {
@@ -1193,6 +1373,7 @@ export function createMockExternalAigcService(
         const modelEndpoint = resolveMockFalModelId(input.model, "image", "fal-ai/nano-banana-2");
         const submitted = await fal.submit(modelEndpoint, {
           prompt: input.prompt || "Mock fal image",
+          aspect_ratio: input.aspectRatio,
           image_size: aspectRatioToFalImageSize(input.aspectRatio),
           output_format: "png",
           output_type: "image",

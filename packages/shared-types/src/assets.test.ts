@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { assetReadToken, assetRefReadToken, AssetMetadataSchema, type Asset } from "./assets";
+import { assetReadToken, assetRefReadToken, AssetKindSchema, AssetMetadataSchema, type Asset } from "./assets";
 
 describe("asset metadata", () => {
+  it("treats uploaded 3D models as durable project-referenced assets", () => {
+    expect(AssetKindSchema.parse("model")).toBe("model");
+  });
+
   it("preserves local content-addressed blob provenance", () => {
     const metadata = AssetMetadataSchema.parse({
       bytes: 11,

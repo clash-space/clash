@@ -17,6 +17,21 @@ export function formatTime(frame: number, fps: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
 }
 
+/** Format a frame position as the editor-standard HH:MM:SS:FF timecode. */
+export function formatTimecode(frame: number, fps: number): string {
+  const safeFps = Math.max(1, Math.round(fps));
+  const safeFrame = Math.max(0, Math.floor(frame));
+  const totalSeconds = Math.floor(safeFrame / safeFps);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const frames = safeFrame % safeFps;
+
+  return [hours, minutes, seconds, frames]
+    .map((part) => String(part).padStart(2, '0'))
+    .join(':');
+}
+
 /**
  * 将帧数转换为秒数
  * @param frame 帧数

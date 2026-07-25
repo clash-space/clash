@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { LoroDoc, UndoManager } from 'loro-crdt';
 import { Node, Edge } from '@xyflow/react';
 import { runtimeSyncWebSocketUrl } from '../lib/runtimeConfig';
@@ -15,16 +15,25 @@ import {
   createProjectCanvas,
   createProjectTimeline,
   deleteProjectCanvas,
+  deleteProjectTimeline,
   detachTimelineFromCanvas,
   ensureProjectCanvas,
   attachTimelineToCanvas,
+  attachDirectorStageToCanvas,
+  createProjectDirectorStage,
   listProjectCanvases,
+  listProjectDirectorStages,
   listProjectTimelines,
+  projectDirectorStageReadToken,
   projectTimelineReadToken,
   reconcileCanvasGraph,
   reconcileProjectTimelineOwnership,
+  reconcileProjectDirectorStageOwnership,
+  requestTimelineRender as createTimelineRenderRequest,
   renameProjectCanvas,
   updateProjectTimelineState,
+  updateProjectDirectorStageState,
+  detachDirectorStageFromCanvas,
   canvasBatchDeleteReadToken,
   canvasEdgeReadToken,
   canvasEdgesReadToken,
@@ -50,17 +59,24 @@ import {
   type ProjectCanvasDeleteResult,
   type ProjectCanvasMutationResult,
   type ProjectTimeline,
+  type ProjectTimelineDeleteResult,
   type ProjectTimelineMutationResult,
+  type TimelineRenderRequestResult,
+  type ProjectDirectorStage,
+  type ProjectDirectorStageMutationResult,
 } from '@clash/shared-types';
 import { sanitizeNodesForReactFlow } from '../lib/canvasNodeOrder';
 
 function reconcileImportedWorkspace(doc: LoroDoc): void {
   const graph = reconcileCanvasGraph(doc);
   const timelines = reconcileProjectTimelineOwnership(doc);
+  const directorStages = reconcileProjectDirectorStageOwnership(doc);
   if (
     canvasGraphReconciliationChanged(graph) ||
     timelines.removedActionNodeIds.length > 0 ||
-    timelines.detachedTimelineIds.length > 0
+    timelines.detachedTimelineIds.length > 0 ||
+    directorStages.removedActionNodeIds.length > 0 ||
+    directorStages.detachedStageIds.length > 0
   ) {
     doc.commit({ origin: 'sys:workspace-reconcile' });
   }
@@ -114,17 +130,43 @@ export interface UseLoroSyncReturn {
     name: string;
     state: unknown;
   }) => ProjectTimelineMutationResult;
+  deleteTimeline: (
+    timelineId: string,
+    expectedReadToken?: string,
+  ) => ProjectTimelineDeleteResult;
   attachTimeline: (input: {
     timelineId: string;
     actionNodeId: string;
     position: { x: number; y: number };
   }) => ProjectTimelineMutationResult;
   detachTimeline: (timelineId: string) => ProjectTimelineMutationResult;
+  directorStages: ProjectDirectorStage[];
+  standaloneDirectorStages: ProjectDirectorStage[];
+  createDirectorStage: (input: {
+    id: string;
+    name: string;
+    state: unknown;
+  }) => ProjectDirectorStageMutationResult;
+  attachDirectorStage: (input: {
+    stageId: string;
+    actionNodeId: string;
+    position: { x: number; y: number };
+  }) => ProjectDirectorStageMutationResult;
+  detachDirectorStage: (stageId: string) => ProjectDirectorStageMutationResult;
+  applyDirectorStageState: (
+    stageId: string,
+    state: unknown,
+    options?: LoroHostWriteOptions,
+  ) => boolean;
   addNodeToCanvas: (canvasId: string, nodeId: string, nodeData: any) => boolean;
   addNode: (nodeId: string, nodeData: any) => boolean;
   updateNode: (nodeId: string, nodeData: any, options?: LoroHostWriteOptions) => boolean;
   applyTimelineState: (timelineId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => boolean;
   applyTimelineDsl: (nodeId: string, timelineDsl: unknown, options?: LoroHostWriteOptions) => boolean;
+  requestTimelineRender: (
+    timelineId: string,
+    options: { actorUserId: string; actorAgentId?: string },
+  ) => TimelineRenderRequestResult;
   removeNode: (nodeId: string, options?: LoroHostWriteOptions) => boolean;
   removeNodes: (nodeIds: string[], options?: LoroHostWriteOptions) => boolean;
   addEdge: (edgeId: string, edgeData: any, options?: LoroHostWriteOptions) => boolean;
@@ -187,16 +229,6 @@ const wipeDB = async (): Promise<void> => {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function readGuardrailEdges(rawEdges: Iterable<unknown>): Array<{ source: string; target: string }> {
-  return [...rawEdges]
-    .filter(isRecord)
-    .map((edge) => ({
-      source: typeof edge.source === 'string' ? edge.source : '',
-      target: typeof edge.target === 'string' ? edge.target : '',
-    }))
-    .filter((edge) => edge.source && edge.target);
 }
 
 function readProofEdges(rawEdges: Iterable<[unknown, unknown]>): Array<Record<string, unknown> & { id: string }> {
@@ -315,22 +347,6 @@ const loadFromDB = async (projectId: string): Promise<Uint8Array | undefined> =>
   }
 };
 
-const deleteFromDB = async (projectId: string): Promise<void> => {
-  try {
-    const db = await initDB();
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.delete(projectId);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
-    });
-  } catch (err) {
-    console.error('[useLoroSync] Failed to delete from IndexedDB:', err);
-    if (isCorruptionError(err)) await wipeDB();
-  }
-};
-
 /**
  * Custom hook for Loro CRDT sync with the sync server
  * Manages WebSocket connection and document synchronization
@@ -386,6 +402,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   // passes inline closures (which get a new reference on every parent render).
   const [canvases, setCanvases] = useState<ProjectCanvas[]>([]);
   const [timelines, setTimelines] = useState<ProjectTimeline[]>([]);
+  const [directorStages, setDirectorStages] = useState<ProjectDirectorStage[]>([]);
 
   useEffect(() => {
     if (doc.getMap("canvases").size === 0) {
@@ -394,6 +411,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
     setCanvases(listProjectCanvases(doc));
     setTimelines(listProjectTimelines(doc));
+    setDirectorStages(listProjectDirectorStages(doc));
   }, [doc]);
 
   // Stash callbacks in a ref so init / subscribe effects don't re-run when the caller
@@ -499,15 +517,14 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   useEffect(() => {
     let mounted = true;
     const initialize = async () => {
-      // Step 0: Migration check - clear old data if schema version changed
-      // This ensures clean transition to reference-only timeline model
+      // Step 0: Record the schema marker without deleting the snapshot.
+      // Imported documents are migrated by reconcileImportedWorkspace below;
+      // deleting first would discard offline changes that the server cannot restore.
       const versionKey = `loro-schema-version-${projectId}`;
       const currentVersion = localStorage.getItem(versionKey);
 
       if (currentVersion !== LORO_SCHEMA_VERSION) {
-        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}, clearing old data`, { currentVersion, expected: LORO_SCHEMA_VERSION });
-
-        await deleteFromDB(projectId);
+        console.log(`[useLoroSync] Schema version mismatch for project ${projectId}, migrating local snapshot`, { currentVersion, expected: LORO_SCHEMA_VERSION });
         localStorage.setItem(versionKey, LORO_SCHEMA_VERSION);
       }
 
@@ -540,6 +557,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       updateUndoRedoState();
       setCanvases(listProjectCanvases(doc));
       setTimelines(listProjectTimelines(doc));
+      setDirectorStages(listProjectDirectorStages(doc));
       setIsInitialized(true);
     };
 
@@ -567,6 +585,7 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
       updateUndoRedoState();
       setCanvases(listProjectCanvases(doc));
       setTimelines(listProjectTimelines(doc));
+      setDirectorStages(listProjectDirectorStages(doc));
 
       // CRITICAL: Only update React state for REMOTE changes
       // Local changes are already in React state - updating would cause loops/overwrites
@@ -604,10 +623,8 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   // Send update to server (used by subscribeLocalUpdate)
   const sendUpdate = useCallback((update: Uint8Array) => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(update);
-    } else {
-    }
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(update);
   }, []);
 
   // Send a JSON sideband message (presence-style) on the same WS. Best-effort:
@@ -846,6 +863,21 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     [doc],
   );
 
+  const deleteTimeline = useCallback(
+    (timelineId: string, expectedReadToken?: string) => {
+      const result = deleteProjectTimeline(doc, timelineId, expectedReadToken);
+      if (result.ok) {
+        doc.commit();
+        setTimelines(listProjectTimelines(doc));
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
+      }
+      return result;
+    },
+    [doc, readStateFromLoro],
+  );
+
   const attachTimeline = useCallback(
     (input: {
       timelineId: string;
@@ -882,6 +914,106 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     },
     [doc, readStateFromLoro],
   );
+
+  const createDirectorStage = useCallback(
+    (input: { id: string; name: string; state: unknown }) => {
+      const result = createProjectDirectorStage(doc, input);
+      if (result.ok) {
+        doc.commit();
+        setDirectorStages(listProjectDirectorStages(doc));
+      }
+      return result;
+    },
+    [doc],
+  );
+
+  const attachDirectorStage = useCallback(
+    (input: {
+      stageId: string;
+      actionNodeId: string;
+      position: { x: number; y: number };
+    }) => {
+      const result = attachDirectorStageToCanvas(doc, {
+        ...input,
+        canvasId: canvasIdRef.current,
+      });
+      if (result.ok) {
+        doc.commit();
+        setDirectorStages(listProjectDirectorStages(doc));
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
+      }
+      return result;
+    },
+    [doc, readStateFromLoro],
+  );
+
+  const detachDirectorStage = useCallback(
+    (stageId: string) => {
+      const result = detachDirectorStageFromCanvas(doc, stageId);
+      if (result.ok) {
+        doc.commit();
+        setDirectorStages(listProjectDirectorStages(doc));
+        const state = readStateFromLoro();
+        callbacksRef.current.onNodesChange?.(state.nodes);
+        callbacksRef.current.onEdgesChange?.(state.edges);
+      }
+      return result;
+    },
+    [doc, readStateFromLoro],
+  );
+
+  const applyDirectorStageState = useCallback((
+    stageId: string,
+    nextState: unknown,
+    options?: LoroHostWriteOptions,
+  ) => {
+    const stage = listProjectDirectorStages(doc).find(
+      (candidate) => candidate.id === stageId,
+    );
+    if (!stage) {
+      callbacksRef.current.onMutation?.(hostMutationRejected({
+        operation: "director_stage_apply",
+        entity: { kind: "director-stage", id: stageId },
+      }, `Director Stage ${stageId} not found`));
+      return false;
+    }
+    const beforeReadToken = projectDirectorStageReadToken(stage);
+    const guard = validateAgentObservation({
+      actorClientType: options?.actorClientType,
+      operation: "applying Director Stage state",
+      observedVersion: options?.ifMatch,
+      currentVersion: beforeReadToken,
+    });
+    const hostMutation = validateHostMutationEnvelope({
+      operation: "director_stage_apply",
+      entity: { kind: "director-stage", id: stageId },
+      expectedReadToken: options?.ifMatch,
+      currentReadToken: beforeReadToken,
+      guard,
+    });
+    if (!guard.ok) {
+      if (!hostMutation.ok) callbacksRef.current.onMutation?.(hostMutation.mutation);
+      return false;
+    }
+    const updated = updateProjectDirectorStageState(doc, stageId, nextState);
+    if (!updated.ok) return false;
+    doc.commit();
+    setDirectorStages(listProjectDirectorStages(doc));
+    updateUndoRedoState();
+    callbacksRef.current.onMutation?.(hostMutationSucceeded(
+      hostMutation.ok ? hostMutation.envelope : {
+        operation: "director_stage_apply",
+        entity: { kind: "director-stage", id: stageId },
+      },
+      {
+        resultEntityId: stageId,
+        afterReadToken: projectDirectorStageReadToken(updated.stage),
+      },
+    ));
+    return true;
+  }, [doc, updateUndoRedoState]);
 
   const updateNode = useCallback((nodeId: string, nodeData: any, options?: LoroHostWriteOptions) => {
     const nodesMap = doc.getMap('nodes');
@@ -984,12 +1116,19 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
 
     const beforeReadToken = projectTimelineReadToken(timeline);
-    const guard = validateAgentObservation({
+    const staleWriteGuard = options?.ifMatch && options.ifMatch !== beforeReadToken
+      ? {
+          ok: false as const,
+          error: "STALE_READ: The target changed after it was read. Read it again before applying Timeline state.",
+        }
+      : { ok: true as const };
+    const agentObservationGuard = validateAgentObservation({
       actorClientType: options?.actorClientType,
       operation: "applying Timeline state",
       observedVersion: options?.ifMatch,
       currentVersion: beforeReadToken,
     });
+    const guard = staleWriteGuard.ok ? agentObservationGuard : staleWriteGuard;
     const hostMutation = validateHostMutationEnvelope({
       operation: 'timeline_apply',
       entity: { kind: 'timeline', id: timelineId },
@@ -1057,6 +1196,25 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
 
     return applyTimelineState(timelineId, timelineDsl, options);
   }, [applyTimelineState, doc]);
+
+  const requestTimelineRender = useCallback((
+    timelineId: string,
+    options: { actorUserId: string; actorAgentId?: string },
+  ): TimelineRenderRequestResult => {
+    const result = createTimelineRenderRequest(doc, {
+      timelineId,
+      actorUserId: options.actorUserId,
+      actorAgentId: options.actorAgentId,
+      generateId: () => `render-${globalThis.crypto.randomUUID()}`,
+    });
+    if (!result.ok) return result;
+    doc.commit();
+    updateUndoRedoState();
+    const state = readStateFromLoro();
+    callbacksRef.current.onNodesChange?.(state.nodes);
+    callbacksRef.current.onEdgesChange?.(state.edges);
+    return result;
+  }, [doc, readStateFromLoro, updateUndoRedoState]);
 
   const removeNode = useCallback((nodeId: string, options?: LoroHostWriteOptions) => {
     const nodesMap = doc.getMap('nodes');
@@ -1189,7 +1347,10 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
   }, [doc, readStateFromLoro, removeNode, updateUndoRedoState]);
 
   const addEdge = useCallback((edgeId: string, edgeData: any, options?: LoroHostWriteOptions) => {
-    const canvas = new Canvas(doc, () => {}, canvasIdRef.current);
+    const targetCanvasId = isRecord(edgeData) && typeof edgeData.canvasId === 'string'
+      ? edgeData.canvasId
+      : canvasIdRef.current;
+    const canvas = new Canvas(doc, () => {}, targetCanvasId);
       const currentEdges = canvas.listEdges();
     const edgeEntries: Array<[string, (typeof currentEdges)[number]]> =
         currentEdges.map((edge) => [edge.id, edge]);
@@ -1430,7 +1591,16 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     }
   }, [doc, undoManager, updateUndoRedoState, pushStateToReact]);
 
-  return {
+  const standaloneTimelines = useMemo(
+    () => timelines.filter((timeline) => timeline.owner.kind === "project"),
+    [timelines],
+  );
+  const standaloneDirectorStages = useMemo(
+    () => directorStages.filter((stage) => stage.owner.kind === "project"),
+    [directorStages],
+  );
+
+  return useMemo(() => ({
     projectId,
     doc,
     connected,
@@ -1440,17 +1610,23 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     renameCanvas,
     deleteCanvas,
     timelines,
-    standaloneTimelines: timelines.filter(
-      (timeline) => timeline.owner.kind === "project",
-    ),
+    standaloneTimelines,
     createTimeline,
+    deleteTimeline,
     attachTimeline,
     detachTimeline,
+    directorStages,
+    standaloneDirectorStages,
+    createDirectorStage,
+    attachDirectorStage,
+    detachDirectorStage,
+    applyDirectorStageState,
     addNodeToCanvas,
     addNode,
     updateNode,
     applyTimelineState,
     applyTimelineDsl,
+    requestTimelineRender,
     removeNode,
     removeNodes,
     addEdge,
@@ -1461,5 +1637,42 @@ export function useLoroSync(options: LoroSyncOptions): UseLoroSyncReturn {
     canUndo,
     canRedo,
     sendSideband,
-  };
+  }), [
+    addEdge,
+    addNode,
+    addNodeToCanvas,
+    applyTimelineDsl,
+    applyTimelineState,
+    requestTimelineRender,
+    applyDirectorStageState,
+    attachTimeline,
+    attachDirectorStage,
+    canRedo,
+    canUndo,
+    canvases,
+    connected,
+    createCanvas,
+    createTimeline,
+    deleteTimeline,
+    createDirectorStage,
+    deleteCanvas,
+    detachTimeline,
+    detachDirectorStage,
+    directorStages,
+    doc,
+    isInitialized,
+    projectId,
+    redo,
+    removeEdge,
+    removeNode,
+    removeNodes,
+    renameCanvas,
+    sendSideband,
+    standaloneTimelines,
+    standaloneDirectorStages,
+    timelines,
+    undo,
+    updateEdge,
+    updateNode,
+  ]);
 }

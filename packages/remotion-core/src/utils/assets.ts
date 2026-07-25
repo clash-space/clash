@@ -16,7 +16,7 @@ export function normalizeEditorAsset(asset: EditorAssetInput): Asset {
 
   return {
     id: asset.id || `asset-${Date.now()}-${Math.random()}`,
-    name: asset.name || 'Imported Asset',
+    name: safeEditorAssetName(asset.name, normalizedType),
     type: normalizedType,
     src: asset.src || asset.url || '',
     width: asset.width,
@@ -31,4 +31,15 @@ export function normalizeEditorAsset(asset: EditorAssetInput): Asset {
     sourceNodeId: asset.sourceNodeId,
     backingAssetId: asset.backingAssetId,
   };
+}
+
+function safeEditorAssetName(name: string | undefined, type: Asset['type']): string {
+  const fallback = type.charAt(0).toUpperCase() + type.slice(1);
+  const value = name?.trim();
+  if (!value) return fallback;
+  const looksInternal =
+    /^(?:https?:|file:|data:)/i.test(value) ||
+    /[\\/]/.test(value) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  return looksInternal ? fallback : value;
 }

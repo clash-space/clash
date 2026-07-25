@@ -33,15 +33,14 @@ export const itemRendererRegistry: Record<string, ItemRenderer> = {
   image: ImageRenderer,
   text: TextRenderer,
   solid: SolidRenderer,
-  // Future: animated stickers (webp, image sequences)
   sticker: StickerRenderer,
   transition: TransitionRenderer,
-  caption: CaptionRenderer,
   composition: CompositionRenderer,
   'derived-overlay': DerivedOverlayRenderer,
 } as const;
 
 export function getRendererForItem(item: Item): ItemRenderer {
+  if (item.type === 'text' && Array.isArray(item.cues)) return CaptionRenderer;
   const Renderer = itemRendererRegistry[item.type] as ItemRenderer | undefined;
   // Default to SolidRenderer if unknown type to avoid runtime crash.
   return Renderer ?? SolidRenderer;

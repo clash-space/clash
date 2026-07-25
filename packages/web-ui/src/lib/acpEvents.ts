@@ -142,6 +142,35 @@ function stringField(raw: Record<string, unknown>, names: string[]): string | un
   return undefined;
 }
 
+function nestedErrorMessage(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.message === 'string' && record.message.trim()) return record.message.trim();
+  return nestedErrorMessage(record.error);
+}
+
+function promptErrorNote(error: string): NonNullable<ParsedEvent['note']> {
+  const trimmed = error.trim();
+  let actionable = trimmed;
+
+  // Some adapters prepend a model-metadata warning before the real JSON API
+  // error. Parse the structured suffix so transport noise never becomes chat.
+  for (let index = trimmed.indexOf('{'); index >= 0; index = trimmed.indexOf('{', index + 1)) {
+    try {
+      const parsed = JSON.parse(trimmed.slice(index));
+      actionable = nestedErrorMessage(parsed) ?? actionable;
+      break;
+    } catch {
+      // The first brace may be ordinary prose; try the next candidate.
+    }
+  }
+
+  if (/requires a newer version of codex/i.test(actionable)) {
+    return { title: 'Codex update required', detail: actionable, tone: 'error' };
+  }
+  return { title: actionable || 'The agent could not complete this request', tone: 'error' };
+}
+
 export function getAcpEventBlockKey(event: unknown): string | null {
   const inner = sessionUpdateInner(event);
   const update = sessionUpdateType(inner, event);
@@ -359,7 +388,7 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
       return { kind: 'tool_call', tool: normalizeToolCall(inner), event };
     }
     if (inner.type === 'promptError' && typeof inner.error === 'string' && inner.error.length > 0) {
-      return { kind: 'text', text: inner.error, event };
+      return { kind: 'note', note: promptErrorNote(inner.error), event };
     }
     if (inner.type === 'promptComplete') {
       return { kind: 'note', note: { title: 'Turn complete', tone: 'neutral' }, event };

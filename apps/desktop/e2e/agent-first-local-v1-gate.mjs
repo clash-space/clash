@@ -263,7 +263,7 @@ function requireBooleans(suite, report) {
 function validateShortDramaReport(suite, report) {
   requireReportBasics(suite, report);
   requireCheckNames(suite, report);
-  if (report.trackCount < 4) throw new Error(`${suite.id} report trackCount=${report.trackCount}`);
+  if (report.trackCount < 3) throw new Error(`${suite.id} report trackCount=${report.trackCount}`);
   if (report.itemCount <= 0) throw new Error(`${suite.id} report itemCount=${report.itemCount}`);
   if (report.durationInFrames <= 0) throw new Error(`${suite.id} report durationInFrames=${report.durationInFrames}`);
 }

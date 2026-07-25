@@ -1,6 +1,13 @@
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveAcpBinDirs, resolveClashCliEntryPath, resolveClashCliNodePath, resolveWebDistDir } from "./paths";
+import {
+  prependPythonPath,
+  resolveAcpBinDirs,
+  resolveClashCliEntryPath,
+  resolveClashCliNodePath,
+  resolveClashSdkPythonPath,
+  resolveWebDistDir,
+} from "./paths";
 
 describe("desktop paths", () => {
   it("lets an explicit web dist directory override packaged and dev defaults", () => {
@@ -93,5 +100,30 @@ describe("desktop paths", () => {
         resourcesPath: "/app/resources",
       }),
     ).toBeUndefined();
+  });
+
+  it("resolves the bundled local-model Python SDK without losing an existing PYTHONPATH", () => {
+    expect(resolveClashSdkPythonPath({
+      isPackaged: true,
+      moduleDir: "/app/Resources/app.asar/dist",
+      resourcesPath: "/app/Resources",
+    })).toBe(join("/app/Resources", "clash-sdk", "python"));
+    expect(resolveClashSdkPythonPath({
+      isPackaged: false,
+      moduleDir: "/repo/apps/desktop/dist",
+      resourcesPath: "/app/Resources",
+    })).toBe(resolve("/repo/apps/desktop/dist", "../../../packages/clash-sdk/python"));
+    expect(resolveClashSdkPythonPath({
+      envPythonSdkPath: "/tmp/custom-clash-sdk-python",
+      isPackaged: true,
+      moduleDir: "/app/Resources/app.asar/dist",
+      resourcesPath: "/app/Resources",
+    })).toBe("/tmp/custom-clash-sdk-python");
+    expect(prependPythonPath("/tmp/user-python", "/app/Resources/clash-sdk/python")).toBe(
+      `/app/Resources/clash-sdk/python${process.platform === "win32" ? ";" : ":"}/tmp/user-python`,
+    );
+    expect(prependPythonPath("/app/Resources/clash-sdk/python", "/app/Resources/clash-sdk/python")).toBe(
+      "/app/Resources/clash-sdk/python",
+    );
   });
 });

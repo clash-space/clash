@@ -304,7 +304,68 @@ class ModeCapableAgent implements Agent {
   }
 }
 
+class NewSessionCapabilityAgent implements Agent {
+  constructor(private readonly connection: AgentConnection) {}
+
+  async initialize(_params: InitializeRequest): Promise<InitializeResponse> {
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      agentCapabilities: { promptCapabilities: {} },
+    };
+  }
+
+  async newSession(_params: NewSessionRequest): Promise<NewSessionResponse> {
+    setTimeout(() => {
+      void this.connection.sessionUpdate({
+        sessionId: "capability-session",
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [{ name: "skills", description: "List available skills." }],
+        },
+      });
+    }, 10);
+    return { sessionId: "capability-session" };
+  }
+
+  async authenticate() {
+    return {};
+  }
+
+  async prompt(_params: PromptRequest): Promise<PromptResponse> {
+    return { stopReason: "end_turn" };
+  }
+
+  async cancel() {
+    return undefined;
+  }
+}
+
 describe("AcpSessionImpl resume", () => {
+  it("surfaces capability updates emitted while creating a new session before the first prompt", async () => {
+    const pair = makeStreamPair();
+    new AgentSideConnection(
+      (connection) => new NewSessionCapabilityAgent(connection),
+      ndJsonStream(pair.agentOutput, pair.agentInput),
+    );
+
+    const session = new AcpSessionImpl({
+      id: "local-session",
+      child: pair.child,
+      options: { agent: { command: "codex-acp", cwd: "/tmp/project" } },
+    });
+
+    await session.init();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(session.drainPendingEvents()).toEqual([
+      {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [{ name: "skills", description: "List available skills." }],
+      },
+    ]);
+    await session.dispose();
+  });
+
   it("authenticates and retries when session creation reports ACP auth required", async () => {
     const pair = makeStreamPair();
     const calls: string[] = [];

@@ -12,6 +12,7 @@ import { runtimeApiUrl } from "./runtimeConfig";
 import type {
   ModelCatalogEntry,
   ProviderAccountAvailability,
+  UserModelCardConfig,
 } from "@clash/shared-types";
 
 // ───────── Types (mirror server-side shapes) ─────────
@@ -76,6 +77,7 @@ export type ModelProviderAccountInfo = ProviderAccountAvailability & {
   updatedAt?: number | string | null;
 };
 export type ModelCatalogEntryInfo = ModelCatalogEntry;
+export type ModelCardConfigInfo = UserModelCardConfig;
 
 export interface ProviderOAuthInfo {
   providerId: string;
@@ -231,6 +233,26 @@ export async function deleteModelProvider(accountId: string): Promise<void> {
 export async function listModelCatalog(): Promise<ModelCatalogEntryInfo[]> {
   const data = await jsonFetch<{ models: ModelCatalogEntryInfo[] }>("/api/v1/models/catalog");
   return data.models;
+}
+
+export async function saveModelCardConfig(
+  modelId: string,
+  config: Omit<UserModelCardConfig, "modelId">,
+): Promise<UserModelCardConfig> {
+  const data = await jsonFetch<{ config: UserModelCardConfig }>(
+    `/api/v1/model-cards/${encodeURIComponent(modelId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(config),
+    },
+  );
+  return data.config;
+}
+
+export async function deleteModelCardConfig(modelId: string): Promise<void> {
+  await jsonFetch(`/api/v1/model-cards/${encodeURIComponent(modelId)}`, {
+    method: "DELETE",
+  });
 }
 
 export interface ModelProviderTestResult {

@@ -10,12 +10,15 @@ import {
   ensureAgentBrowser,
   evalJson,
   findFreePort,
+  openSessionHistoryMenu,
+  recoverAgentBrowserTarget,
   repoRoot,
   resetDirs,
   sleep,
   startElectron,
   startVite,
   stopProcess,
+  submitProjectCreateDialog,
   tail,
   typeComposer,
   waitForEval,
@@ -360,6 +363,7 @@ async function main() {
     if (!clickByText(agentBrowser, "Projects")) throw new Error("Could not open Projects");
     await waitForEval(agentBrowser, `location.pathname === "/projects"`, "projects route");
     if (!clickByText(agentBrowser, "New Project")) throw new Error("Could not create project");
+    await submitProjectCreateDialog(agentBrowser, "Real Codex E2E");
     await waitForEval(
       agentBrowser,
       `location.pathname.startsWith("/projects/") && location.pathname !== "/projects"`,
@@ -442,6 +446,15 @@ async function main() {
     }
     agentBrowser(["screenshot", finalScreenshot]);
 
+    recoverAgentBrowserTarget(agentBrowser, {
+      cdpPort,
+      expectedUrlPrefix: webOrigin,
+    });
+    await waitForEval(
+      agentBrowser,
+      `!!document.querySelector('button[aria-label="New session"], button[aria-label="新建会话"]')`,
+      "new session header action after target recovery",
+    );
     if (!clickButtonByLabel(agentBrowser, "New session") && !clickButtonByLabel(agentBrowser, "新建会话")) {
       throw new Error("Could not create a fresh session from the header");
     }
@@ -451,14 +464,14 @@ async function main() {
       "fresh session cleared visible transcript",
       30000,
     );
-    if (!clickButtonByLabel(agentBrowser, "Session history") && !clickButtonByLabel(agentBrowser, "历史会话")) {
-      throw new Error("Could not open session history");
-    }
+    await openSessionHistoryMenu(agentBrowser);
     await waitForEval(
       agentBrowser,
       `(() => {
         const menu = document.querySelector('[role="menu"][aria-label="Session history"], [role="menu"][aria-label="历史会话"]');
-        return !!menu && !menu.innerText.toLowerCase().includes("no history yet");
+        const rect = menu?.getBoundingClientRect();
+        return !!menu && !!rect && rect.width > 0 && rect.height > 0 &&
+          !menu.innerText.toLowerCase().includes("no history yet");
       })()`,
       "persisted runtime session history",
       30000,

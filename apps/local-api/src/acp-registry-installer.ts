@@ -62,6 +62,8 @@ export interface AcpRegistryCatalogAgent {
   id: string;
   name: string;
   version?: string;
+  /** The underlying npm package when this ACP is installed through npx. */
+  npmPackage?: string;
   description?: string;
   homepage?: string;
   installable: boolean;
@@ -212,6 +214,9 @@ export async function listAcpRegistryCatalog(
         id: agent.id,
         name: agent.name ?? agent.id,
         ...(agent.version ? { version: agent.version } : {}),
+        ...(agent.distribution?.npx?.package
+          ? { npmPackage: packageNameFromSpec(agent.distribution.npx.package) }
+          : {}),
         ...(agent.description ? { description: agent.description } : {}),
         ...(agent.website ?? agent.repository ? { homepage: agent.website ?? agent.repository } : {}),
         installable: distribution.installable,

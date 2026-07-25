@@ -1,0 +1,36 @@
+{
+  "name": "clash",
+  "version": "0.1.0+codex.20260717233630",
+  "description": "Operate the complete local Clash creative workspace through Codex tools and focused GUI Apps.",
+  "author": {
+    "name": "Clash Space"
+  },
+  "license": "MIT",
+  "keywords": [
+    "creative-workspace",
+    "canvas",
+    "timeline",
+    "video-production",
+    "mcp-app"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Clash",
+    "shortDescription": "Run your local Clash workspace from Codex",
+    "longDescription": "Run Clash as a third local client directly inside Codex. The plugin reuses an active Desktop/local-api host when available, or starts its own bundled local-api runtime on first use. Work with projects, Canvas, Timeline, Director, assets, models, tasks, text, and production through focused MCP App interfaces.",
+    "developerName": "Clash Space",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Open Clash Studio and show my local projects.",
+      "Open the current project's Canvas.",
+      "Inspect this project's production state."
+    ],
+    "brandColor": "#E65F48"
+  },
+  "mcpServers": "./.mcp.json"
+}

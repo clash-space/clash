@@ -169,7 +169,12 @@ const TextNode = ({
               </div>
             </div>
           ) : (
-            <div className="flex-1 p-8 flex flex-col relative">
+            <div
+              data-agent-annotation-object-id={id}
+              data-agent-annotation-object-type="canvas-text"
+              data-agent-annotation-object-label={label}
+              className="nodrag nopan nowheel select-text flex-1 p-8 flex flex-col relative"
+            >
               {/* Content Preview with Fade Out */}
               <div className="flex-1 relative overflow-hidden">
                 <div

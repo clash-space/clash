@@ -6,12 +6,14 @@ const readNodeSource = (file: string) =>
     readFileSync(join(process.cwd(), "packages/web-ui/src/components/nodes", file), "utf8");
 
 describe("ActionBadge popover primitives", () => {
-    it("uses shared popover primitives for picker menus instead of hand-rolled document listeners", () => {
+    it("uses ReactFlow positioning for the action panel and shared popovers for nested pickers", () => {
         const source = readNodeSource("ActionBadge.tsx");
 
+        expect(source).toContain("NodeToolbar");
+        expect(source).toContain("isVisible={showPanel}");
+        expect(source).toContain("useCanvasTransientUiOwner('action-panel', id)");
         expect(source).toContain("../ui/popover");
         expect(source).toContain("PopoverContent");
-        expect(source).toContain("open={showPanel}");
         expect(source).toContain("PopoverTrigger asChild");
         expect(source).not.toContain('role="button"');
         expect(source).not.toContain("event.key === 'Enter' || event.key === ' '");

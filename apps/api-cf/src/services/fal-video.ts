@@ -24,6 +24,8 @@ interface FalVideoParams {
   duration?: number | string;
   aspectRatio?: string;
   videoModel?: string;
+  /** Exact endpoint selected by the model-provider route. */
+  modelEndpoint?: string;
   /** Passthrough of ModelCard parameter selections (resolution, generate_audio, ...). */
   modelParams?: Record<string, unknown>;
   onEnqueue?: (requestId: string) => void;
@@ -67,8 +69,11 @@ export async function generateFalVideo(
     return generateSeedance2RefVideo(params);
   }
 
-  // Default: Sora 2 (id 'sora-2'). Provider-internal dispatch by hasImage.
-  return generateSoraVideo(params);
+  if (params.videoModel === 'sora-2') {
+    return generateSoraVideo(params);
+  }
+
+  throw new Error(`Unsupported fal video model: ${params.videoModel ?? params.modelEndpoint ?? "missing model"}`);
 }
 
 async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult> {

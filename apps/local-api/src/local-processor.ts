@@ -22,6 +22,8 @@ export interface LocalWorkflowProcessor {
 export interface LocalWorkflowProcessorOptions {
   dataDir: string;
   userId?: string;
+  mediaBaseUrl?: string;
+  timelineRenderer?: LocalTimelineRenderer;
   aigc?: ExternalAigcService;
   textAgent?: {
     generate(input: {
@@ -32,6 +34,20 @@ export interface LocalWorkflowProcessorOptions {
       actorAgentId?: string;
     }): Promise<{ text: string; provider?: string; modelEndpoint?: string }>;
   };
+}
+
+export interface LocalTimelineRenderer {
+  render(input: {
+    projectId: string;
+    taskId: string;
+    timelineDsl: Record<string, any>;
+  }): Promise<{
+    bytes: Uint8Array;
+    contentType?: string;
+    width?: number;
+    height?: number;
+    durationMs?: number;
+  }>;
 }
 
 type ProcessableKind = Extract<AssetKind, "image" | "video" | "audio">;
@@ -69,6 +85,11 @@ function promptFromData(data: Record<string, unknown>, fallback: string): string
     : typeof data.label === "string" && data.label.trim()
       ? data.label
       : fallback;
+}
+
+function localAssetReferenceUrl(baseUrl: string, storageKey: string): string {
+  const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
+  return `${baseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 
 function modelFromData(data: Record<string, unknown>, fallback: string): string {
@@ -307,6 +328,69 @@ async function saveAsset(
   return asset;
 }
 
+function localAssetHttpUrl(mediaBaseUrl: string, storageKey: string): string {
+  const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
+  return `${mediaBaseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
+}
+
+async function resolveLocalTimelineDslReferences(options: {
+  dataDir: string;
+  doc: LoroDoc;
+  projectId: string;
+  mediaBaseUrl?: string;
+  timelineDsl: Record<string, any>;
+}): Promise<Record<string, any>> {
+  const resolved = structuredClone(options.timelineDsl);
+  const metadata = await createLocalMetadataStore(options.dataDir).load();
+  const projectAssetIds = new Set(
+    metadata.assetRefs
+      .filter((ref) => ref.projectId === options.projectId)
+      .map((ref) => ref.assetId),
+  );
+  const assetById = new Map(
+    metadata.assets
+      .filter((asset) => asset.projectId === options.projectId || projectAssetIds.has(asset.id))
+      .map((asset) => [asset.id, asset]),
+  );
+  const nodes = options.doc.getMap("nodes");
+
+  for (const track of resolved.tracks ?? []) {
+    for (const item of track.items ?? []) {
+      if (item.type !== "video" && item.type !== "image" && item.type !== "audio") continue;
+      const lookupIds = [item.assetId, item.sourceNodeId]
+        .filter((value): value is string => typeof value === "string" && value.length > 0);
+      if (typeof item.sourceNodeId === "string" && item.sourceNodeId.startsWith("timeline-asset:")) {
+        lookupIds.push(item.sourceNodeId.slice("timeline-asset:".length));
+      }
+      let asset = lookupIds.map((id) => assetById.get(id)).find(Boolean);
+      if (!asset) {
+        for (const id of lookupIds) {
+          const node = nodes.get(id) as Record<string, any> | undefined;
+          const backingAssetId = typeof node?.data?.assetId === "string" ? node.data.assetId : undefined;
+          if (backingAssetId && assetById.has(backingAssetId)) {
+            asset = assetById.get(backingAssetId);
+            break;
+          }
+        }
+      }
+      if (!asset) {
+        throw new Error(`Timeline render cannot resolve media item ${String(item.id ?? "unknown")}`);
+      }
+      const signedUrl = typeof asset.signedUrl === "string" ? asset.signedUrl : "";
+      // Local signed URLs are host-instance projections and may contain a
+      // port from an earlier desktop launch. Rebind storage identity to the
+      // currently listening local API whenever its origin is available.
+      item.src = options.mediaBaseUrl
+        ? localAssetHttpUrl(options.mediaBaseUrl, asset.srcR2Key)
+        : signedUrl;
+      if (!item.src) {
+        throw new Error("Timeline rendering requires a local media base URL");
+      }
+    }
+  }
+  return resolved;
+}
+
 export function createLocalWorkflowProcessor(
   options: LocalWorkflowProcessorOptions,
 ): LocalWorkflowProcessor {
@@ -396,6 +480,74 @@ export function createLocalWorkflowProcessor(
           continue;
         }
 
+        const renderData = node.data && typeof node.data === "object"
+          ? node.data as Record<string, any>
+          : {};
+        const isTimelineRender = node.type === "video" &&
+          renderData.status === "pending" &&
+          !renderData.assetId &&
+          !renderData.pendingTask &&
+          renderData.timelineDsl &&
+          typeof renderData.timelineDsl === "object";
+        if (isTimelineRender) {
+          const taskId = `local-render-${sanitizeStorageSegment(nodeId)}`;
+          try {
+            if (!options.timelineRenderer) {
+              throw new Error("Timeline rendering backend is unavailable");
+            }
+            const timelineDsl = await resolveLocalTimelineDslReferences({
+              dataDir: options.dataDir,
+              doc,
+              projectId,
+              mediaBaseUrl: options.mediaBaseUrl,
+              timelineDsl: renderData.timelineDsl,
+            });
+            const rendered = await options.timelineRenderer.render({
+              projectId,
+              taskId,
+              timelineDsl,
+            });
+            const asset = await saveAsset({
+              dataDir: options.dataDir,
+              userId,
+              projectId,
+              taskId,
+              kind: "video",
+              nodeData: {
+                ...renderData,
+                modelId: "remotion-render",
+                prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`,
+              },
+              bytes: rendered.bytes,
+              contentType: rendered.contentType ?? "video/mp4",
+              width: rendered.width,
+              height: rendered.height,
+              durationMs: rendered.durationMs,
+              provider: "local-render",
+            });
+            const nextData: Record<string, any> = {
+              ...renderData,
+              status: "completed",
+              assetId: asset.id,
+            };
+            delete nextData.pendingTask;
+            delete nextData.pendingTaskAt;
+            delete nextData.error;
+            nodes.set(nodeId, { ...node, data: nextData });
+          } catch (error) {
+            const nextData: Record<string, any> = {
+              ...renderData,
+              status: "failed",
+              error: error instanceof Error ? error.message : String(error),
+            };
+            delete nextData.pendingTask;
+            delete nextData.pendingTaskAt;
+            nodes.set(nodeId, { ...node, data: nextData });
+          }
+          changed = true;
+          continue;
+        }
+
         const kind = pendingKindForNode(node);
         if (!kind) continue;
 
@@ -404,7 +556,27 @@ export function createLocalWorkflowProcessor(
         try {
           const prompt = promptFromData(data, `Mock ${kind}`);
           const model = modelFromData(data, `mock-${kind}`);
-          const common = { taskId, prompt, model, modelParams: modelParams(data) };
+          const directReferenceUrls = stringList(data.referenceImageUrls);
+          const referenceImageKeys = kind === "image"
+            ? [
+                ...stringList(data.referenceImageR2Keys),
+                ...await createLocalMetadataStore(options.dataDir)
+                  .resolveStorageKeys(projectId, stringList(data.referenceImageAssetIds)),
+              ]
+            : [];
+          const referenceImageUrls = [
+            ...directReferenceUrls,
+            ...(options.mediaBaseUrl
+              ? referenceImageKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
+              : []),
+          ];
+          const common = {
+            taskId,
+            prompt,
+            model,
+            modelParams: modelParams(data),
+            ...(referenceImageUrls.length ? { referenceImageUrls } : {}),
+          };
           if (kind === "text") {
             let generated;
             try {

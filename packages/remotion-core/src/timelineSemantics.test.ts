@@ -68,6 +68,185 @@ describe('validateTimelineDsl', () => {
     expect(result.ok).toBe(true);
     expect(result.durationInFrames).toBe(50);
   });
+
+  it('enforces the five typed timeline lane categories', () => {
+    const base = clip('visual', 'node-a', 0, 30);
+    const result = validateTimelineDsl(dsl([
+      { id: 'visual', name: 'Visual', category: 'visual', items: [base] } as Track,
+      {
+        id: 'text',
+        name: 'Text',
+        category: 'text',
+        items: [{ ...base, id: 'wrong-video', sourceNodeId: 'node-b' }],
+      } as Track,
+      {
+        id: 'effect',
+        name: 'Effect',
+        category: 'effect',
+        items: [{ ...base, id: 'wrong-video-2', sourceNodeId: 'node-c' }],
+      } as Track,
+      {
+        id: 'audio',
+        name: 'Audio',
+        category: 'audio',
+        items: [{ ...base, id: 'wrong-video-3', sourceNodeId: 'node-d' }],
+      } as Track,
+      { id: 'primary', name: 'Primary', category: 'primary', items: [{ ...base, id: 'primary-video' }] } as Track,
+    ]));
+
+    expect(result.issues.filter((item) => item.code === 'track.category_item_mismatch')).toHaveLength(3);
+  });
+
+  it('rejects typed lanes outside the canonical vertical order', () => {
+    const result = validateTimelineDsl(dsl([
+      { id: 'titles', name: 'Titles', category: 'text', items: [] },
+      { id: 'fx', name: 'FX', category: 'effect', items: [] },
+    ]));
+    expect(result.issues.map((entry) => entry.code)).toContain('track.category_order_mismatch');
+  });
+
+  it('flags an untyped legacy lane that mixes structural item categories', () => {
+    const result = validateTimelineDsl(dsl([
+      {
+        id: 'legacy-mixed',
+        name: 'Legacy mixed',
+        items: [
+          clip('video', 'node-a', 0, 30),
+          {
+            id: 'title',
+            type: 'text',
+            text: 'Title',
+            color: '#fff',
+            from: 0,
+            durationInFrames: 30,
+          },
+        ],
+      },
+    ]));
+    expect(result.issues.map((entry) => entry.code)).toContain('track.mixed_item_categories');
+  });
+
+  it('rejects malformed versioned effect references on clips and transitions', () => {
+    const result = validateTimelineDsl(
+      dsl([
+        {
+          id: 'main',
+          name: 'Main',
+          role: 'mixed',
+          items: [
+            {
+              ...clip('a', 'node-a', 0, 40),
+              effects: [{ effectId: 'missing-namespace', effectVersion: 0, params: { strength: Number.NaN } }],
+            },
+            {
+              id: 'transition-a-b',
+              type: 'transition',
+              transitionType: 'crossfade',
+              fromItemId: 'a',
+              toItemId: 'b',
+              from: 30,
+              durationInFrames: 10,
+              effect: { effectId: 'agent/liquid-wipe', effectVersion: 0, params: {} },
+            },
+          ] as any,
+        },
+      ]),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.filter((issue) => issue.code === 'item.invalid_effect_ref')).toHaveLength(2);
+  });
+
+  it('accepts a transition range centered on an exact continuous clip boundary', () => {
+    const result = validateTimelineDsl(dsl([
+      {
+        id: 'main',
+        name: 'Media',
+        role: 'primary-video',
+        items: [
+          clip('a', 'node-a', 0, 60),
+          clip('b', 'node-b', 60, 60),
+        ],
+      },
+      {
+        id: 'transitions',
+        name: 'Transitions',
+        role: 'transition',
+        items: [{
+          id: 'transition-a-b',
+          type: 'transition',
+          transitionType: 'crossfade',
+          fromItemId: 'a',
+          toItemId: 'b',
+          from: 50,
+          durationInFrames: 20,
+        }],
+      },
+    ]));
+
+    expect(result.issues.filter((issue) => issue.code.startsWith('item.transition_'))).toEqual([]);
+  });
+
+  it('rejects transition refs that do not describe continuous clips on the same track', () => {
+    const result = validateTimelineDsl(dsl([
+      {
+        id: 'main',
+        name: 'Media',
+        role: 'primary-video',
+        items: [
+          clip('a', 'node-a', 0, 60),
+          clip('b', 'node-b', 75, 60),
+        ],
+      },
+      {
+        id: 'transitions',
+        name: 'Transitions',
+        role: 'transition',
+        items: [{
+          id: 'transition-a-b',
+          type: 'transition',
+          transitionType: 'crossfade',
+          fromItemId: 'a',
+          toItemId: 'b',
+          from: 53,
+          durationInFrames: 15,
+        }],
+      },
+    ]));
+
+    expect(result.issues.map((issue) => issue.code)).toContain('item.transition_non_continuous');
+  });
+
+  it('rejects a transition range detached from its boundary or longer than either clip handle', () => {
+    const result = validateTimelineDsl(dsl([
+      {
+        id: 'main',
+        name: 'Media',
+        role: 'primary-video',
+        items: [
+          clip('a', 'node-a', 0, 30),
+          clip('b', 'node-b', 30, 30),
+        ],
+      },
+      {
+        id: 'transitions',
+        name: 'Transitions',
+        role: 'transition',
+        items: [{
+          id: 'transition-a-b',
+          type: 'transition',
+          transitionType: 'crossfade',
+          fromItemId: 'a',
+          toItemId: 'b',
+          from: 5,
+          durationInFrames: 80,
+        }],
+      },
+    ]));
+
+    expect(result.issues.map((issue) => issue.code)).toContain('item.transition_detached_range');
+    expect(result.issues.map((issue) => issue.code)).toContain('item.transition_duration_exceeds_handles');
+  });
 });
 
 describe('applyTimelineCommand', () => {
@@ -95,8 +274,33 @@ describe('applyTimelineCommand', () => {
       assetId: 'asset-a',
       from: 30,
       durationInFrames: 45,
+      audioGainDb: 0,
     });
+    expect(result.dsl.tracks[0].items[0]).not.toHaveProperty('volume');
     expect(result.dsl.durationInFrames).toBe(75);
+  });
+
+  it('writes canonical audio gain when an agent adds an audio clip', () => {
+    const result = applyTimelineCommand(
+      dsl([{ id: 'voice', name: 'Voice', role: 'narration', items: [] }]),
+      {
+        type: 'add_clip',
+        trackId: 'voice',
+        sourceNodeId: 'voice-node',
+        assetId: 'voice-asset',
+        itemType: 'audio',
+        from: 0,
+        durationInFrames: 60,
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.dsl.tracks[0].items[0]).toMatchObject({
+      type: 'audio',
+      audioGainDb: 0,
+    });
+    expect(result.dsl.tracks[0].items[0]).not.toHaveProperty('volume');
   });
 
   it('adds a short-drama text overlay to an overlay track', () => {
@@ -275,7 +479,9 @@ describe('applyTimelineCommand', () => {
           items: [
             {
               id: 'captions-main',
-              type: 'caption',
+              type: 'text',
+              text: '你以为我只是便利店店员？其实这是我的复仇剧本。',
+              color: '#ffffff',
               from: 0,
               durationInFrames: 120,
               language: 'zh-CN',
@@ -328,7 +534,9 @@ describe('applyTimelineCommand', () => {
           items: [
             {
               id: 'captions-main',
-              type: 'caption',
+              type: 'text',
+              text: '大家好',
+              color: '#ffffff',
               from: 0,
               durationInFrames: 60,
               cues: [
@@ -368,7 +576,9 @@ describe('applyTimelineCommand', () => {
           items: [
             {
               id: 'captions-main',
-              type: 'caption',
+              type: 'text',
+              text: '',
+              color: '#ffffff',
               from: 0,
               durationInFrames: 90,
               cues: [

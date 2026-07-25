@@ -4,9 +4,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router';
-import { Trash } from '@phosphor-icons/react';
+import { FilmSlate, ImageSquare, Trash } from '@phosphor-icons/react';
 import { deleteProject } from '@clash/web-ui/lib/clientActions';
-import { runtimeApiUrl, runtimeAssetFallbackUrl } from '@clash/web-ui/lib/runtimeConfig';
+import { firstAssetMediaUrl } from '../features/assets/media-url';
 import { useConfirm } from './ConfirmDialog';
 import { IconButton } from './ui/icon-button';
 
@@ -36,57 +36,31 @@ interface ProjectCardProps {
   project: ProjectWithAssets;
 }
 
-function cleanAssetSource(value?: string | null) {
-  const source = value?.trim();
-  return source ? source : null;
-}
-
-function isAbsoluteAssetSource(source: string) {
-  return (
-    source.startsWith('http://') ||
-    source.startsWith('https://') ||
-    source.startsWith('data:') ||
-    source.startsWith('blob:') ||
-    source.startsWith('file:')
-  );
-}
-
-function assetPreviewSource(value?: string | null) {
-  const source = cleanAssetSource(value);
-  if (!source) return null;
-  if (isAbsoluteAssetSource(source)) return source;
-  if (source.startsWith('/')) return runtimeApiUrl(source);
-  return runtimeAssetFallbackUrl(source);
-}
-
-function firstAssetSource(...values: Array<string | null | undefined>) {
-  for (const value of values) {
-    const source = cleanAssetSource(value);
-    if (source) return source;
-  }
-  return null;
-}
-
 function assetPreviewUrl(asset: Asset) {
   const isVideo = asset.type === 'video' || asset.kind === 'video';
   const keyPreview = isVideo
-    ? assetPreviewSource(asset.coverR2Key) ?? assetPreviewSource(asset.storageKey) ?? assetPreviewSource(asset.srcR2Key)
-    : assetPreviewSource(asset.srcR2Key) ?? assetPreviewSource(asset.storageKey) ?? assetPreviewSource(asset.coverR2Key);
+    ? firstAssetMediaUrl(asset.coverR2Key, asset.storageKey, asset.srcR2Key)
+    : firstAssetMediaUrl(asset.srcR2Key, asset.storageKey, asset.coverR2Key);
 
   return isVideo
-    ? firstAssetSource(
-      assetPreviewSource(asset.signedCoverUrl),
+    ? firstAssetMediaUrl(
+      asset.signedCoverUrl,
       keyPreview,
-      assetPreviewSource(asset.url),
-      assetPreviewSource(asset.signedUrl),
-      assetPreviewSource(asset.src),
+      asset.url,
+      asset.signedUrl,
+      asset.src,
     )
-    : firstAssetSource(
-      assetPreviewSource(asset.url),
-      assetPreviewSource(asset.signedUrl),
-      assetPreviewSource(asset.src),
+    : firstAssetMediaUrl(
+      asset.url,
+      asset.signedUrl,
+      asset.src,
       keyPreview,
     );
+}
+
+function isProjectPreviewAsset(asset: Asset) {
+  return asset.type === 'image' || asset.type === 'video' ||
+    asset.kind === 'image' || asset.kind === 'video';
 }
 
 function ProjectAssetPreview({ asset }: { asset: Asset }) {
@@ -94,7 +68,17 @@ function ProjectAssetPreview({ asset }: { asset: Asset }) {
   const src = assetPreviewUrl(asset);
 
   if (!src || failed) {
-    return <div className="clash-project-card-asset-fallback" aria-hidden="true" />;
+    const PlaceholderIcon = asset.type === 'video' || asset.kind === 'video'
+      ? FilmSlate
+      : ImageSquare;
+    return (
+      <div className="clash-project-card-asset-fallback" aria-hidden="true">
+        <PlaceholderIcon
+          className="clash-project-card-asset-fallback-mark"
+          weight="regular"
+        />
+      </div>
+    );
   }
 
   return (
@@ -129,7 +113,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
       const dateB = new Date(b.createdAt || 0).getTime();
       return dateB - dateA;
     })
-    .filter((asset) => assetPreviewUrl(asset))
+    .filter((asset) => isProjectPreviewAsset(asset) && assetPreviewUrl(asset))
     .slice(0, 4); // Take up to 4 assets
 
   const assetCount = displayAssets.length;
@@ -154,7 +138,12 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           {/* Asset Grid Logic */}
           {assetCount === 0 ? (
             /* No Assets - Empty State */
-            <div className="clash-project-card-empty" aria-hidden="true" />
+            <div className="clash-project-card-empty" aria-hidden="true">
+              <FilmSlate
+                className="clash-project-card-empty-mark"
+                weight="regular"
+              />
+            </div>
           ) : (
             /* Has Assets */
             <div className={`clash-project-card-preview-grid grid h-full w-full ${gridClass} gap-[2px]`}>

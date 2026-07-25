@@ -1,36 +1,33 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePageClient from "./HomePageClient";
+import { createProject } from "@clash/web-ui/lib/clientActions";
 
-const heroFocus = vi.hoisted(() => vi.fn());
+vi.mock("@clash/web-ui/lib/clientActions", () => ({
+  createProject: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("./HeroSection", async () => {
-  const React = await import("react");
   return {
-    default: React.forwardRef((_props, ref) => {
-      React.useImperativeHandle(ref, () => ({
-        focus: heroFocus,
-      }));
-      return <div data-testid="hero-section" />;
-    }),
+    default: () => <div data-testid="hero-section" />,
   };
 });
 
 vi.mock("./RecentProjects", () => ({
-  default: ({ onStartNewProject }: { onStartNewProject?: () => void }) => (
-    <button type="button" onClick={onStartNewProject}>
-      Start tile
+  default: ({ onCreateProject }: { onCreateProject?: (name: string) => void }) => (
+    <button type="button" onClick={() => onCreateProject?.("Homepage project")}>
+      Create project
     </button>
   ),
 }));
 
-describe("HomePageClient new project focus", () => {
+describe("HomePageClient new project creation", () => {
   afterEach(() => {
     cleanup();
-    heroFocus.mockClear();
     vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   beforeEach(() => {
@@ -40,11 +37,15 @@ describe("HomePageClient new project focus", () => {
     });
   });
 
-  it("routes the recent-projects start tile to the hero composer focus handle", () => {
+  it("creates directly from Recent Projects without sending the user to the hero composer", async () => {
     render(<HomePageClient initialProjects={[]} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Start tile" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-    expect(heroFocus).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(createProject).toHaveBeenCalledWith("Homepage project", {
+        startFromPrompt: false,
+      });
+    });
   });
 });

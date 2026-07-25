@@ -166,7 +166,37 @@ function durationForInput(input: Record<string, unknown>, fallback = 5): number 
   return Math.max(1, Math.min(30, parsed ?? fallback));
 }
 
+function dimensionsForAspectRatio(aspectRatio: string | undefined): {
+  width: number;
+  height: number;
+} | null {
+  if (!aspectRatio) return null;
+  if (aspectRatio === "1:1") return { width: 1024, height: 1024 };
+  if (aspectRatio === "9:16") return { width: 720, height: 1280 };
+  if (aspectRatio === "16:9") return { width: 1024, height: 576 };
+  if (aspectRatio === "3:4" || aspectRatio === "2:3" || aspectRatio === "4:5") {
+    return { width: 768, height: 1024 };
+  }
+  if (aspectRatio === "4:3" || aspectRatio === "3:2" || aspectRatio === "5:4") {
+    return { width: 1024, height: 768 };
+  }
+
+  const match = aspectRatio.match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const horizontal = Number(match[1]);
+  const vertical = Number(match[2]);
+  if (!(horizontal > 0) || !(vertical > 0)) return null;
+  const ratio = horizontal / vertical;
+  const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+  return ratio >= 1
+    ? { width: 1024, height: even(1024 / ratio) }
+    : { width: even(1024 * ratio), height: 1024 };
+}
+
 function dimensionsForInput(input: Record<string, unknown>): { width: number; height: number } {
+  const aspectDimensions = dimensionsForAspectRatio(stringValue(input.aspect_ratio));
+  if (aspectDimensions) return aspectDimensions;
+
   const imageSize = stringValue(input.image_size);
   if (imageSize === "square_hd" || imageSize === "square") return { width: 1024, height: 1024 };
   if (imageSize === "portrait_16_9") return { width: 720, height: 1280 };
@@ -174,15 +204,6 @@ function dimensionsForInput(input: Record<string, unknown>): { width: number; he
   if (imageSize === "landscape_4_3") return { width: 1024, height: 768 };
   if (imageSize === "landscape_16_9") return { width: 1024, height: 576 };
 
-  const aspectRatio = stringValue(input.aspect_ratio);
-  if (aspectRatio === "1:1") return { width: 1024, height: 1024 };
-  if (aspectRatio === "9:16") return { width: 720, height: 1280 };
-  if (aspectRatio === "3:4" || aspectRatio === "2:3" || aspectRatio === "4:5") {
-    return { width: 768, height: 1024 };
-  }
-  if (aspectRatio === "4:3" || aspectRatio === "3:2" || aspectRatio === "5:4") {
-    return { width: 1024, height: 768 };
-  }
   return { width: 1024, height: 576 };
 }
 

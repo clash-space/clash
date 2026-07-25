@@ -49,6 +49,7 @@
     "@agentclientprotocol/claude-agent-acp": "^0.47.0",
     "@agentclientprotocol/sdk": "^0.28.1",
     "@clash/shared-runtime": "workspace:*",
+    "@openma/common": "github:openma-ai/openma-common#86bbc8a1ee67d9944b4bc38b25af6f7b6a93e273",
     "ws": "^8.18.0"
   },
   "devDependencies": {

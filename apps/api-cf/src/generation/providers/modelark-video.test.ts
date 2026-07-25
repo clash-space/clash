@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  credentialsForProvider: vi.fn(),
+  credentialsForRoute: vi.fn(),
   generateModelArkVideo: vi.fn(),
   signedMediaUrl: vi.fn(),
   signedMediaUrls: vi.fn(),
 }));
 
 vi.mock("./provider-credentials", () => ({
-  credentialsForProvider: mocks.credentialsForProvider,
+  credentialsForRoute: mocks.credentialsForRoute,
 }));
 
 vi.mock("../../services/modelark-video", () => ({
@@ -42,6 +42,17 @@ function makeCtx() {
       prompt: "make it move",
       modelName: "seedance-2-ref",
       referenceImageR2Keys: ["ref.png"],
+      selectedRoute: {
+        modelCode: "seedance-2-ref",
+        kind: "video",
+        providerId: "volcengine",
+        accountId: "volcengine-primary",
+        upstreamId: "volcengine",
+        upstreamModel: "doubao-seedance-2-0-pro",
+        apiShape: "modelark",
+        priority: 9,
+        requiredCredentials: ["apiKey"],
+      },
     },
     env: {
       DB: {} as D1Database,
@@ -67,7 +78,7 @@ describe("volcengineVideoProvider", () => {
   });
 
   it("loads semantic ModelArk credentials from provider accounts", async () => {
-    mocks.credentialsForProvider.mockResolvedValue({
+    mocks.credentialsForRoute.mockResolvedValue({
       apiKey: "ark-provider-key",
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     });
@@ -83,10 +94,7 @@ describe("volcengineVideoProvider", () => {
 
     await volcengineVideoProvider.execute(ctx as never);
 
-    expect(mocks.credentialsForProvider).toHaveBeenCalledWith(ctx, "volcengine", ["apiKey"], {
-      upstreamId: "volcengine",
-      modelCode: "seedance-2-ref",
-    });
+    expect(mocks.credentialsForRoute).toHaveBeenCalledWith(ctx, ctx.params.selectedRoute);
     expect(mocks.generateModelArkVideo).toHaveBeenCalledWith(
       "ark-provider-key",
       expect.objectContaining({

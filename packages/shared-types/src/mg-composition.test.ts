@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { runInNewContext } from "node:vm";
 import {
   MgCompositionSpecSchema,
   buildMgOverlayManifest,
@@ -57,6 +58,29 @@ const lowerThirdSpec = {
   ],
 };
 
+const delayedEntranceSpec = {
+  id: "delayed-entrance",
+  width: 320,
+  height: 180,
+  fps: 24,
+  durationInFrames: 60,
+  layers: [{
+    id: "title",
+    type: "text",
+    from: 0,
+    durationInFrames: 60,
+    x: 120,
+    y: 48,
+    text: "ENTER",
+    opacity: 1,
+    animations: [
+      { property: "x", from: -240, to: 120, startFrame: 12, durationInFrames: 8, easing: "easeOutCubic" },
+      { property: "opacity", from: 0, to: 1, startFrame: 12, durationInFrames: 8, easing: "linear" },
+      { property: "opacity", from: 1, to: 0, startFrame: 48, durationInFrames: 8, easing: "easeInCubic" },
+    ],
+  }],
+};
+
 describe("MG composition contract", () => {
   it("validates an agent-authored HyperFrames-style MG spec", () => {
     const spec = MgCompositionSpecSchema.parse(lowerThirdSpec);
@@ -76,6 +100,45 @@ describe("MG composition contract", () => {
     expect(evaluateMgLayerAtFrame(spec.layers[0], 18)).toMatchObject({ x: 72, opacity: 0.92 });
     expect(evaluateMgLayerAtFrame(spec.layers[1], 6)).toMatchObject({ y: 1436, opacity: 0 });
     expect(evaluateMgLayerAtFrame(spec.layers[1], 16)).toMatchObject({ y: 1386, opacity: 1 });
+  });
+
+  it("holds the first keyframe pose before a delayed entrance starts", () => {
+    const layer = MgCompositionSpecSchema.parse(delayedEntranceSpec).layers[0];
+
+    expect(evaluateMgLayerAtFrame(layer, 0)).toMatchObject({ x: -240, opacity: 0 });
+    expect(evaluateMgLayerAtFrame(layer, 11)).toMatchObject({ x: -240, opacity: 0 });
+    expect(evaluateMgLayerAtFrame(layer, 12)).toMatchObject({ x: -240, opacity: 0 });
+    expect(evaluateMgLayerAtFrame(layer, 20)).toMatchObject({ x: 120, opacity: 1 });
+    expect(evaluateMgLayerAtFrame(layer, 47)).toMatchObject({ x: 120, opacity: 1 });
+  });
+
+  it("keeps the HTML preview on the same pre-entrance pose as offline rendering", () => {
+    const spec = MgCompositionSpecSchema.parse(delayedEntranceSpec);
+    const html = renderMgCompositionHtml(spec);
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    expect(script).toBeTruthy();
+
+    const stage = { dataset: {} as Record<string, string> };
+    const scrubber = { value: "0", addEventListener: () => undefined };
+    const readout = { textContent: "" };
+    const layerElement = { style: {} as Record<string, string> };
+    const context = {
+      document: {
+        getElementById: (id: string) => id === "stage" ? stage : id === "frame-scrubber" ? scrubber : readout,
+        querySelector: () => layerElement,
+      },
+      CSS: { escape: (value: string) => value },
+      CustomEvent: class CustomEvent { constructor(public type: string, public init: unknown) {} },
+      dispatchEvent: () => undefined,
+      window: {} as Record<string, unknown>,
+    };
+    runInNewContext(script!, context);
+
+    const runtime = context.window.__CLASH_MG__ as {
+      layerStyleAt(layer: unknown, frame: number): { x: number; opacity: number };
+    };
+    expect(runtime.layerStyleAt(spec.layers[0], 0)).toMatchObject({ x: -240, opacity: 0 });
+    expect(runtime.layerStyleAt(spec.layers[0], 11)).toMatchObject({ x: -240, opacity: 0 });
   });
 
   it("renders self-contained seekable HTML without pulling third-party runtime code", () => {

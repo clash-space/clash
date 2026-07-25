@@ -429,7 +429,7 @@ async function spawnAcpProbeAgent(
   dispose: () => Promise<void>;
 }> {
   const env = {
-    ...(options.agent.env ?? {}),
+    ...(publicEnv(options.agent.env) ?? {}),
     ...(publicEnv(options.env) ?? {}),
   };
   const diagnosticLines: string[] = [];
@@ -553,7 +553,7 @@ export async function authenticateAgent(options: AuthenticateAgentOptions): Prom
   await mkdir(cwd, { recursive: true });
 
   const env = {
-    ...(options.agent.env ?? {}),
+    ...(publicEnv(options.agent.env) ?? {}),
     ...(publicEnv(options.env) ?? {}),
   };
   let authTerminalId = 0;

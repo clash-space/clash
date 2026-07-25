@@ -146,7 +146,17 @@ export function evaluateMgLayerAtFrame(layer: MgCompositionLayer, frame: number)
     rotation: layer.rotation,
   };
 
-  for (const animation of layer.animations ?? []) {
+  const animations = (layer.animations ?? [])
+    .map((animation, index) => ({ animation, index }))
+    .sort((a, b) => a.animation.startFrame - b.animation.startFrame || a.index - b.index)
+    .map(({ animation }) => animation);
+  const initializedProperties = new Set<MgAnimation["property"]>();
+
+  for (const animation of animations) {
+    if (!initializedProperties.has(animation.property)) {
+      style[animation.property] = animation.from;
+      initializedProperties.add(animation.property);
+    }
     const progress = (frame - animation.startFrame) / animation.durationInFrames;
     if (progress < 0) {
       continue;
@@ -249,7 +259,16 @@ export function renderMgCompositionHtml(input: MgCompositionSpec): string {
       }
       function layerStyleAt(layer, frame) {
         const out = { x: layer.x ?? 0, y: layer.y ?? 0, opacity: layer.opacity ?? 1, scale: layer.scale ?? 1, rotation: layer.rotation ?? 0 };
-        for (const animation of layer.animations ?? []) {
+        const animations = [...(layer.animations ?? [])]
+          .map((animation, index) => ({ animation, index }))
+          .sort((a, b) => a.animation.startFrame - b.animation.startFrame || a.index - b.index)
+          .map(({ animation }) => animation);
+        const initializedProperties = new Set();
+        for (const animation of animations) {
+          if (!initializedProperties.has(animation.property)) {
+            out[animation.property] = animation.from;
+            initializedProperties.add(animation.property);
+          }
           const progress = (frame - animation.startFrame) / animation.durationInFrames;
           if (progress < 0) {
             continue;

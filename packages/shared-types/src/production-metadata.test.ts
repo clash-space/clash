@@ -5,6 +5,7 @@ import {
   AdDeliveryMetadataSchema,
   AdVisualQaMetadataSchema,
   AnalysisBackendBenchmarkMetadataSchema,
+  AsrTimedTranscriptSchema,
   AudioStemSeparationMetadataSchema,
   AudioBeatMetadataSchema,
   ContentCredentialsMetadataSchema,
@@ -31,7 +32,62 @@ import {
   buildAdDeliveryChecklist,
   buildReferenceRightsLedger,
   assertReferenceCanBeRemixed,
+  projectAsrTimedTranscriptWords,
 } from "./production-metadata";
+
+describe("word-aligned ASR transcript contract", () => {
+  it("keeps millisecond word timing and projects it to non-zero frame ranges", () => {
+    const transcript = AsrTimedTranscriptSchema.parse({
+      schemaVersion: 1,
+      kind: "clash.asr.timed-transcript",
+      timebase: "milliseconds",
+      alignment: "word",
+      text: "你好 Clash",
+      backendId: "funasr",
+      modelId: "iic/SenseVoiceSmall",
+      language: "zh",
+      durationMs: 721,
+      words: [
+        { id: "word-000001", text: "你", startMs: 40, endMs: 180 },
+        { id: "word-000002", text: "好", startMs: 180, endMs: 360 },
+        { id: "word-000003", text: "Clash", startMs: 420, endMs: 721, confidence: 0.96 },
+      ],
+      segments: [
+        {
+          id: "segment-000001",
+          text: "你好 Clash",
+          startMs: 40,
+          endMs: 721,
+          wordIds: ["word-000001", "word-000002", "word-000003"],
+        },
+      ],
+    });
+
+    expect(projectAsrTimedTranscriptWords(transcript, 30)).toEqual([
+      { id: "word-000001", text: "你", startFrame: 1, endFrame: 6 },
+      { id: "word-000002", text: "好", startFrame: 5, endFrame: 11 },
+      { id: "word-000003", text: "Clash", startFrame: 12, endFrame: 22, confidence: 0.96 },
+    ]);
+  });
+
+  it("rejects duplicate word ids and invalid word ranges", () => {
+    expect(() => AsrTimedTranscriptSchema.parse({
+      schemaVersion: 1,
+      kind: "clash.asr.timed-transcript",
+      timebase: "milliseconds",
+      alignment: "word",
+      text: "bad",
+      backendId: "fixture",
+      modelId: "fixture-model",
+      durationMs: 100,
+      words: [
+        { id: "word-1", text: "b", startMs: 0, endMs: 50 },
+        { id: "word-1", text: "a", startMs: 70, endMs: 60 },
+      ],
+      segments: [],
+    })).toThrow();
+  });
+});
 
 describe("production metadata fill contract", () => {
   it("fills MV beat metadata onto an audio asset and derives timeline edit hints", () => {
@@ -570,7 +626,9 @@ describe("production metadata fill contract", () => {
     expect(asset.metadata["audio.lyrics-alignment"]).toMatchObject({ lyricsSource: "lyrics.txt" });
     expect(buildCaptionItemFromLyricsAlignmentMetadata("lyrics-main", metadata, 0)).toEqual({
       id: "lyrics-main",
-      type: "caption",
+      type: "text",
+      text: "tonight we rise\ninto the light",
+      color: "#ffffff",
       from: 0,
       durationInFrames: 75,
       cues: [
@@ -703,7 +761,9 @@ describe("production metadata fill contract", () => {
     });
     expect(buildCaptionItemFromTalkingHeadMetadata("captions-main", metadata, 0)).toEqual({
       id: "captions-main",
-      type: "caption",
+      type: "text",
+      text: "大家好",
+      color: "#ffffff",
       from: 0,
       durationInFrames: 45,
       cues: [{

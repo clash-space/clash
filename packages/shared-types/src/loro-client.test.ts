@@ -100,6 +100,60 @@ describe("LoroSyncClient", () => {
     ]);
   });
 
+  it("exposes Project Director Stage registry operations for agent clients", () => {
+    const client = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-director-stage",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+    client.createNode("bootstrap", "text", { content: "Bootstrap" });
+
+    expect((client as any).createDirectorStage).toBeTypeOf("function");
+    expect((client as any).listDirectorStages).toBeTypeOf("function");
+    expect((client as any).updateDirectorStageState).toBeTypeOf("function");
+    expect((client as any).attachDirectorStage).toBeTypeOf("function");
+    expect((client as any).detachDirectorStage).toBeTypeOf("function");
+
+    const state = {
+      schemaVersion: 1,
+      scene: {
+        backgroundColor: "#171816",
+        grid: { visible: true, snap: false, size: 1 },
+      },
+      objects: [],
+      cameras: [],
+      shots: [],
+    };
+    expect((client as any).createDirectorStage({
+      id: "stage-1",
+      name: "Blocking",
+      state,
+    })).toMatchObject({ ok: true, stage: { id: "stage-1" } });
+    expect((client as any).attachDirectorStage({
+      stageId: "stage-1",
+      canvasId: "main",
+      actionNodeId: "director-stage-action-1",
+      position: { x: 0, y: 0 },
+    })).toMatchObject({
+      ok: true,
+      stage: {
+        owner: {
+          kind: "canvas-action",
+          canvasId: "main",
+          actionNodeId: "director-stage-action-1",
+        },
+      },
+    });
+    expect((client as any).listDirectorStages()).toEqual([
+      expect.objectContaining({ id: "stage-1" }),
+    ]);
+    expect((client as any).detachDirectorStage("stage-1")).toMatchObject({
+      ok: true,
+      stage: { owner: { kind: "project" } },
+    });
+  });
+
   it("sends agent surrogate presence headers when the caller is a spawned agent", async () => {
     CapturingWebSocket.instances = [];
 

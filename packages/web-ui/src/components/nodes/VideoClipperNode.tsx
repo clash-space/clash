@@ -9,7 +9,7 @@
  */
 
 import { memo, useCallback, useMemo } from 'react';
-import { Handle, Position, NodeProps, useReactFlow, useNodes, useEdges, type Node } from '@xyflow/react';
+import { Handle, Position, NodeProps, useNodeConnections, useReactFlow, useStore, type Node } from '@xyflow/react';
 import { Camera, FilmStrip } from '@phosphor-icons/react';
 import { useVideoClipper } from '../VideoClipperContext';
 import { useAsset } from '@clash/web-ui/lib/hooks/useAsset';
@@ -22,22 +22,17 @@ const VideoClipperNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) =>
     const { openEditor } = useVideoClipper();
     const { projectId } = useProject();
     const reactFlow = useReactFlow();
-    const allNodes = useNodes();
-    const allEdges = useEdges();
+    const connections = useNodeConnections({ id });
 
     const upstreamVideoNodeId = useMemo(() => {
-        const incoming = allEdges.filter((e) => e.target === id);
-        for (const e of incoming) {
-            const src = allNodes.find((n) => n.id === e.source);
-            if (src?.type === 'video') return src.id;
-        }
-        return undefined;
-    }, [allEdges, allNodes, id]);
-
-    const upstreamNode = upstreamVideoNodeId
-        ? allNodes.find((n) => n.id === upstreamVideoNodeId)
-        : undefined;
-    const upstreamAssetId = (upstreamNode?.data as Record<string, unknown> | undefined)?.assetId as string | undefined;
+        return connections.find((connection) => connection.target === id)?.source;
+    }, [connections, id]);
+    const upstreamAssetId = useStore(useCallback((state) => {
+        if (!upstreamVideoNodeId) return undefined;
+        const upstreamNode = state.nodeLookup.get(upstreamVideoNodeId);
+        if (upstreamNode?.type !== 'video') return undefined;
+        return (upstreamNode.data as Record<string, unknown> | undefined)?.assetId as string | undefined;
+    }, [upstreamVideoNodeId]));
     const upstreamAsset = useAsset(upstreamAssetId);
     const previewR2Key = upstreamAsset?.coverR2Key ?? undefined;
 

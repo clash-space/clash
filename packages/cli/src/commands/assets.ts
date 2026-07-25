@@ -40,7 +40,7 @@ export interface AssetImportResult {
 
 export interface ImportedAssetRegistrationPayload {
   projectId: string;
-  kind: "image" | "video" | "audio";
+  kind: "image" | "video" | "audio" | "model";
   assetId: string;
   contentHash: string;
   localBlobKey: string;
@@ -245,7 +245,7 @@ export async function importAssetFile(options: {
   if (options.registerImportedAsset) {
     const kind = normalizeAssetKind(options.kind ?? inferAssetKind(blobPath) ?? undefined);
     if (!kind) {
-      throw new Error("asset kind must be image, video, or audio to register local metadata");
+      throw new Error("asset kind must be image, video, audio, or model to register local metadata");
     }
     result.registration = await options.registerImportedAsset({
       projectId: status.projectId,
@@ -552,7 +552,9 @@ function localBlobKeyForBlobPath(clashHome: string, blobPath: string): string {
 
 function normalizeAssetKind(kind: string | undefined): ImportedAssetRegistrationPayload["kind"] | null {
   const normalized = kind?.trim().toLowerCase();
-  return normalized === "image" || normalized === "video" || normalized === "audio" ? normalized : null;
+  return normalized === "image" || normalized === "video" || normalized === "audio" || normalized === "model"
+    ? normalized
+    : null;
 }
 
 function inferAssetKind(path: string): ImportedAssetRegistrationPayload["kind"] | null {
@@ -560,6 +562,7 @@ function inferAssetKind(path: string): ImportedAssetRegistrationPayload["kind"] 
   if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"].includes(extension)) return "image";
   if ([".mp4", ".mov", ".webm", ".m4v"].includes(extension)) return "video";
   if ([".mp3", ".wav", ".m4a", ".aac", ".flac"].includes(extension)) return "audio";
+  if ([".glb", ".gltf"].includes(extension)) return "model";
   return null;
 }
 
@@ -577,6 +580,8 @@ function contentTypeForPath(path: string): string {
   if (extension === ".wav") return "audio/wav";
   if (extension === ".m4a") return "audio/mp4";
   if (extension === ".flac") return "audio/flac";
+  if (extension === ".glb") return "model/gltf-binary";
+  if (extension === ".gltf") return "model/gltf+json";
   return "application/octet-stream";
 }
 
@@ -653,7 +658,7 @@ assetsCommand
   .command("import")
   .description("Import a local file into the immutable content-addressed asset store")
   .requiredOption("--file <path>", "Local file to import")
-  .option("--kind <kind>", "Asset kind, such as image, video, or audio")
+  .option("--kind <kind>", "Asset kind: image, video, audio, or model")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--name <file>", "Link file name under assets/links")
   .option("--no-link", "Do not create a project assets/links entry")

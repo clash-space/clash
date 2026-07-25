@@ -32,7 +32,7 @@ test("registers a top-level text command for agent-editable text files", () => {
   assert.match(daemonSource, /text_cas_update requires string content/);
   assert.match(daemonSource, /case "text_cow_replace"/);
   assert.match(daemonSource, /text_cow_replace requires string content/);
-  assert.match(daemonSource, /assertTextNotReferenced/);
+  assert.match(daemonSource, /isCanvasNodeImmutable/);
   assert.match(textSource, /\.command\("replace"\)/);
   assert.match(textSource, /action: "text_cow_replace"/);
   assert.match(textSource, /import \{[^}]*resolveCanvasPresenceOptions[^}]*\} from "\.\/canvas"/s);

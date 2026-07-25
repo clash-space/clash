@@ -6,6 +6,23 @@ const readComponentSource = (file: string) =>
   readFileSync(join(process.cwd(), "packages/web-ui/src/components", file), "utf8");
 
 describe("ChatbotCopilot primitives", () => {
+  it("renders runtime failures as an error card instead of assistant prose", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("part.type === 'event_note'");
+    expect(source).toContain('role="alert"');
+    expect(source).toContain("part.detail");
+  });
+
+  it("routes local harness recovery to the Agents settings section", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain("actionLabel: 'Open Agents'");
+    expect(source).toContain("actionHref: '/settings?section=agents'");
+    expect(source).not.toContain("actionLabel: 'Open Runtimes'");
+    expect(source).not.toContain("actionHref: '/settings?section=runtimes'");
+  });
+
   it("uses the shared combobox primitive for the slash command palette", () => {
     const source = readComponentSource("ChatbotCopilot.tsx");
     const comboboxPath = join(process.cwd(), "packages/web-ui/src/components/ui/combobox.tsx");

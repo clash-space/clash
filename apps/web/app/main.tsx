@@ -3,6 +3,7 @@ import "./lib/i18n";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
+import { ThemeProvider } from "@clash/web-ui/components/ThemeProvider";
 import { router } from "./router";
 import { installViteRuntimeConfig } from "./runtime-env";
 
@@ -13,6 +14,8 @@ installViteRuntimeConfig(import.meta.env);
 
 createRoot(container).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ThemeProvider>
+      <RouterProvider router={router} />
+    </ThemeProvider>
   </StrictMode>,
 );

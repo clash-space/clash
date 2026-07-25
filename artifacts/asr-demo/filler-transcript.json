@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "clash.asr.timed-transcript",
+  "timebase": "milliseconds",
+  "alignment": "word",
+  "text": "大家好，嗯，我们现在开始测试。",
+  "backendId": "funasr",
+  "modelId": "iic/SenseVoiceSmall",
+  "language": "zh",
+  "durationMs": 3270,
+  "words": [
+    { "id": "word-000001", "text": "大", "startMs": 30, "endMs": 90 },
+    { "id": "word-000002", "text": "家", "startMs": 210, "endMs": 270 },
+    { "id": "word-000003", "text": "好", "startMs": 390, "endMs": 450 },
+    { "id": "word-000004", "text": "，", "startMs": 630, "endMs": 690 },
+    { "id": "word-000005", "text": "嗯", "startMs": 870, "endMs": 930 },
+    { "id": "word-000006", "text": "，", "startMs": 1110, "endMs": 1170 },
+    { "id": "word-000007", "text": "我", "startMs": 1410, "endMs": 1470 },
+    { "id": "word-000008", "text": "们", "startMs": 1590, "endMs": 1650 },
+    { "id": "word-000009", "text": "现", "startMs": 1770, "endMs": 1830 },
+    { "id": "word-000010", "text": "在", "startMs": 2009, "endMs": 2070 },
+    { "id": "word-000011", "text": "开", "startMs": 2310, "endMs": 2370 },
+    { "id": "word-000012", "text": "始", "startMs": 2490, "endMs": 2550 },
+    { "id": "word-000013", "text": "测", "startMs": 2730, "endMs": 2790 },
+    { "id": "word-000014", "text": "试", "startMs": 2910, "endMs": 2970 },
+    { "id": "word-000015", "text": "。", "startMs": 3210, "endMs": 3270 }
+  ],
+  "segments": [
+    {
+      "id": "segment-000001",
+      "text": "大家好，嗯，我们现在开始测试。",
+      "startMs": 30,
+      "endMs": 3270,
+      "wordIds": [
+        "word-000001",
+        "word-000002",
+        "word-000003",
+        "word-000004",
+        "word-000005",
+        "word-000006",
+        "word-000007",
+        "word-000008",
+        "word-000009",
+        "word-000010",
+        "word-000011",
+        "word-000012",
+        "word-000013",
+        "word-000014",
+        "word-000015"
+      ]
+    }
+  ]
+}

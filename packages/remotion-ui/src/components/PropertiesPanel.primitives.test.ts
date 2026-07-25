@@ -29,6 +29,27 @@ describe('PropertiesPanel primitives', () => {
     const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('showHeader?: boolean');
+    expect(source).toContain('headerAction?: React.ReactNode');
     expect(source).toContain('{showHeader && (');
+    expect(source).toContain('{headerAction}');
+  });
+
+  it('uses the Canvas surface tokens instead of a one-off warm white', () => {
+    const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain("bg-warm-surface");
+    expect(source).toContain('border-warm-border');
+    expect(source).not.toContain('bg-[#fffdfb]');
+  });
+
+  it('keeps unselected aspect-ratio controls on semantic dark surfaces', () => {
+    const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
+    const aspectRatioStart = source.indexOf('<label className={labelClassName}>Aspect Ratio</label>');
+    const aspectRatioEnd = source.indexOf('<div className="grid grid-cols-2 gap-2">', aspectRatioStart);
+    const aspectRatioSource = source.slice(aspectRatioStart, aspectRatioEnd);
+
+    expect(aspectRatioSource).toContain('bg-warm-surface');
+    expect(aspectRatioSource).toContain('dark:text-neutral-200');
+    expect(aspectRatioSource).not.toContain('bg-white');
   });
 });

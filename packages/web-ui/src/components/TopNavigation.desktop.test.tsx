@@ -104,6 +104,15 @@ describe("TopNavigation desktop chrome", () => {
     expect(source).not.toContain("aria-selected={active}");
   });
 
+  it("does not expose a standalone Assets destination", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("{ name: 'Assets', href: '/assets'");
+  });
+
   it("uses the shared tooltip primitive for desktop icon controls instead of browser title attributes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/TopNavigation.tsx"),
@@ -151,6 +160,27 @@ describe("TopNavigation desktop chrome", () => {
     expect(productNavigationSource).toMatch(/<Button[\s\S]*aria-label=\{item\.name\}/);
     expect(productNavigationSource).not.toMatch(/<button[\s\S]*aria-label="Clash home"/);
     expect(productNavigationSource).not.toMatch(/<button[\s\S]*aria-label=\{item\.name\}/);
+  });
+
+  it("uses the app badge for the desktop home logo so the full mark stays visible on dark chrome", async () => {
+    globalThis.__CLASH_DESKTOP__ = {
+      isDesktop: true,
+      newWindow: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <TopNavigation />
+      </MemoryRouter>,
+    );
+
+    const home = await screen.findByRole("button", { name: "Clash home" });
+    const logos = Array.from(home.querySelectorAll("img"));
+    expect(logos.map((logo) => logo.getAttribute("src"))).toEqual(
+      expect.arrayContaining(["/icon-192.png", "/brand/logo-mark-dark.svg"]),
+    );
+    expect(logos.some((logo) => logo.className.includes("dark:block"))).toBe(true);
+    expect(logos.every((logo) => !logo.className.includes("dark:grayscale"))).toBe(true);
   });
 
   it("moves app shortcuts and account controls below the desktop tab strip", async () => {
@@ -429,6 +459,7 @@ describe("TopNavigation desktop chrome", () => {
     expect(toolbar?.className).toContain(
       "pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))]",
     );
+    expect(toolbar?.className).toContain("gap-[var(--clash-control-gap)]");
   });
 
   it("adds dividers between adjacent inactive desktop tabs", async () => {

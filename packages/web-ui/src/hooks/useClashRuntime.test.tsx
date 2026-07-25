@@ -39,6 +39,76 @@ describe("useClashRuntime", () => {
     window.localStorage.clear();
   });
 
+  it("surfaces an installed harness update and restarts a busy session after its turn", async () => {
+    const restartModes: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-update" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-update/runtime-status")) {
+        return new Response(JSON.stringify({
+          session_id: "local-session-update",
+          harness_id: "codex-acp",
+          harness_label: "Codex",
+          running_version: "1.0.1",
+          installed_version: "1.0.2",
+          restart_required: true,
+          busy: true,
+          restart_pending: restartModes.includes("after-turn"),
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-update/restart") && init?.method === "POST") {
+        const mode = (JSON.parse(String(init.body)) as { mode: string }).mode;
+        restartModes.push(mode);
+        return new Response(JSON.stringify({
+          session_id: "local-session-update",
+          status: mode === "after-turn" ? "pending" : "restarted",
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+    await waitFor(() => expect(result.current.sessionRuntimeStatus).toMatchObject({
+      installed_version: "1.0.2",
+      restart_required: true,
+      busy: true,
+    }));
+
+    await act(async () => {
+      await result.current.restartSession("after-turn");
+    });
+    expect(result.current.sessionRestartPhase).toBe("pending");
+    expect(restartModes).toEqual(["after-turn"]);
+
+    const firstSocket = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      firstSocket.onmessage?.({ data: JSON.stringify({
+        type: "session.restart_ready",
+        session_id: "local-session-update",
+      }) });
+    });
+
+    await waitFor(() => {
+      expect(restartModes).toEqual(["after-turn", "now"]);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      expect(result.current.sessionRestartPhase).toBe("complete");
+    });
+  });
+
   it("loads runtimes on startup without blocking on agent metadata probes", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ runtimes: [] }), {
       headers: { "content-type": "application/json" },
@@ -1347,7 +1417,10 @@ describe("useClashRuntime", () => {
     const ws = FakeWebSocket.instances.at(-1)!;
     act(() => {
       ws.onmessage?.({ data: JSON.stringify({ type: "session.ready", session_id: "local-session-title" }) });
-      result.current.sendMessage("Run `pwd` with your shell tool, then answer with only the path.");
+      result.current.sendMessage([
+        '<!-- clash-workspace-context {"version":1,"projectId":"project-title"} -->',
+        "Run `pwd` with your shell tool, then answer with only the path.",
+      ].join("\n"));
     });
 
     expect(result.current.currentSession?.title).toBe("Run `pwd` with your shell tool, then answer with onl...");
@@ -1864,5 +1937,100 @@ describe("useClashRuntime", () => {
     expect(result.current.messages.at(0)?.parts).toEqual([
       { type: "text", text: "replayed from local-api backlog" },
     ]);
+  });
+
+  it("ignores late lifecycle events from a detached session socket", async () => {
+    let sessionSeq = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        sessionSeq += 1;
+        return new Response(JSON.stringify({ session_id: `session-${sessionSeq}` }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const { result } = renderHook(() => useClashRuntime());
+
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+    const oldSocket = FakeWebSocket.instances.at(-1)!;
+    const lateHandler = oldSocket.onmessage;
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+    const currentSocket = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      currentSocket.onmessage?.({
+        data: JSON.stringify({ type: "session.ready", session_id: "session-2" }),
+      });
+      lateHandler?.({
+        data: JSON.stringify({ type: "session.disposed", session_id: "session-1" }),
+      });
+    });
+
+    expect(result.current.sessionId).toBe("session-2");
+    expect(result.current.status).toBe("connected");
+  });
+
+  it("lets the newest session selection win an out-of-order create response", async () => {
+    let releaseFirst!: (response: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let postCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        postCount += 1;
+        if (postCount === 1) return firstResponse;
+        return new Response(JSON.stringify({ session_id: "session-newest" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const { result } = renderHook(() => useClashRuntime());
+
+    let first!: Promise<void>;
+    act(() => {
+      first = result.current.select("desktop-local", undefined, {
+        agentId: "codex-acp",
+        projectId: "project-old",
+      });
+    });
+    await waitFor(() => expect(postCount).toBe(1));
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, {
+        agentId: "codex-acp",
+        projectId: "project-new",
+      });
+    });
+    await act(async () => {
+      releaseFirst(new Response(JSON.stringify({ session_id: "session-stale" }), {
+        headers: { "content-type": "application/json" },
+      }));
+      await first;
+    });
+
+    expect(result.current.sessionId).toBe("session-newest");
+    expect(result.current.currentSession?.projectId).toBe("project-new");
+    expect(FakeWebSocket.instances.at(-1)?.url).toContain("session-newest");
   });
 });

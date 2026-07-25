@@ -231,6 +231,7 @@ export async function generateGoogleText(
 ): Promise<GoogleTextResult> {
   const modelId =
     GOOGLE_TEXT_MODEL_MAP[params.modelName ?? "gemini-3-flash"] ??
+    params.modelName ??
     "gemini-3-flash-preview";
   const vertex = makeVertex(creds);
   const result = await generateText({
@@ -349,7 +350,7 @@ export async function generateGoogleImage(
     : "nano-banana-2";
   const modelId =
     GOOGLE_IMAGE_MODEL_MAP[requestedModel] ??
-    "gemini-3.1-flash-image";
+    requestedModel;
   const vertex = makeVertex(creds);
 
   // Force the Gemini `:generateContent` (multimodal) path when references
@@ -625,7 +626,10 @@ export async function submitVeoOperation(
   creds: VertexCredentials,
   input: GoogleVideoParams,
 ): Promise<SubmitVeoOperationResult> {
-  const modelId = GOOGLE_VIDEO_MODEL_MAP[input.modelName ?? "veo-3.1"] ?? "veo-3.1-generate-001";
+  const modelId =
+    GOOGLE_VIDEO_MODEL_MAP[input.modelName ?? "veo-3.1"] ??
+    input.modelName ??
+    "veo-3.1-generate-001";
   const url = vertexModelUrl(creds, modelId, "predictLongRunning");
   const token = await getVertexAccessTokenForCredentials(creds);
 

@@ -1,17 +1,25 @@
 import type {
   AudioItem,
-  CaptionItem,
   CompositionItem,
   DerivedOverlayItem,
+  EffectInstanceRef,
   ImageItem,
   Item,
   TimelineDsl,
   Track,
   TrackRole,
   TransitionItem,
+  SubtitleTextItem,
   TextItem,
   VideoItem,
 } from './types';
+import { isSubtitleTextItem } from './types';
+import {
+  canTrackAcceptItem,
+  inferTrackCategory,
+  itemTrackCategory,
+  TRACK_CATEGORY_ORDER,
+} from './trackCategories';
 
 export type { TimelineDsl, TrackRole } from './types';
 
@@ -25,12 +33,19 @@ export type TimelineIssue = {
     | 'track.duplicate_id'
     | 'track.missing_id'
     | 'track.role_item_mismatch'
+    | 'track.category_item_mismatch'
+    | 'track.category_order_mismatch'
+    | 'track.mixed_item_categories'
     | 'item.duplicate_id'
     | 'item.missing_id'
     | 'item.invalid_from'
     | 'item.invalid_duration'
     | 'item.unresolved_source'
     | 'item.transition_missing_ref'
+    | 'item.transition_non_continuous'
+    | 'item.transition_detached_range'
+    | 'item.transition_duration_exceeds_handles'
+    | 'item.invalid_effect_ref'
     | 'item.invalid_composition'
     | 'item.invalid_caption'
     | 'item.invalid_derived_overlay'
@@ -86,12 +101,13 @@ const ROLE_ALLOWED_TYPES: Record<TrackRole, ReadonlySet<Item['type']>> = {
   'primary-video': new Set(['video', 'image', 'solid']),
   'b-roll': new Set(['video', 'image', 'solid']),
   overlay: new Set(['video', 'image', 'solid', 'text', 'sticker', 'composition', 'derived-overlay']),
-  subtitle: new Set(['caption']),
+  subtitle: new Set(['text']),
   narration: new Set(['audio', 'video']),
+  dialogue: new Set(['audio', 'video']),
   music: new Set(['audio']),
   sfx: new Set(['audio']),
   transition: new Set(['transition']),
-  mixed: new Set(['video', 'audio', 'image', 'solid', 'text', 'sticker', 'composition', 'caption', 'derived-overlay', 'transition']),
+  mixed: new Set(['video', 'audio', 'image', 'solid', 'text', 'sticker', 'composition', 'derived-overlay', 'transition']),
 };
 
 function issue(code: TimelineIssue['code'], message: string, path: string): TimelineIssue {
@@ -140,6 +156,33 @@ function isResolved(item: Item, context: TimelineValidationContext): boolean {
   return false;
 }
 
+function validateEffectRef(ref: EffectInstanceRef): string | null {
+  if (!/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(ref.effectId)) {
+    return 'Effect id must be a namespaced lower-case identifier.';
+  }
+  if (!Number.isInteger(ref.effectVersion) || ref.effectVersion < 1) {
+    return 'Effect version must be a positive integer.';
+  }
+  if (ref.params == null) return null;
+  if (typeof ref.params !== 'object' || Array.isArray(ref.params)) {
+    return 'Effect params must be an object.';
+  }
+  for (const [name, value] of Object.entries(ref.params)) {
+    const validScalar =
+      typeof value === 'string' ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value));
+    const validVector =
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((component) => typeof component === 'number' && Number.isFinite(component));
+    if (!validScalar && !validVector) {
+      return `Effect parameter "${name}" must be a finite JSON scalar or numeric vector.`;
+    }
+  }
+  return null;
+}
+
 function isLocalProjectPath(value: unknown): boolean {
   if (typeof value !== 'string' || !value.trim()) return false;
   return !/^[a-z][a-z0-9+.-]*:\/\//i.test(value);
@@ -166,7 +209,7 @@ function validateCompositionItem(item: CompositionItem, path: string, issues: Ti
   }
 }
 
-function validateCaptionItem(item: CaptionItem, path: string, issues: TimelineIssue[]) {
+function validateCaptionItem(item: SubtitleTextItem, path: string, issues: TimelineIssue[]) {
   const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
   const wordRefById = new Map<string, { sourceStartFrame: number; sourceEndFrame: number }>();
   const sourceToOutputMap = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
@@ -295,6 +338,26 @@ function validateDerivedOverlayItem(item: DerivedOverlayItem, path: string, issu
   }
 }
 
+const TRANSITION_CLIP_TYPES = new Set<Item['type']>(['video', 'image', 'solid']);
+
+function resolveContinuousTransitionBoundary(
+  dsl: TimelineDsl,
+  transition: TransitionItem,
+): { fromItem: Item; toItem: Item; frame: number } | null {
+  if (!transition.fromItemId || !transition.toItemId) return null;
+  for (const track of dsl.tracks) {
+    const fromItem = track.items.find((item) => item.id === transition.fromItemId);
+    const toItem = track.items.find((item) => item.id === transition.toItemId);
+    if (!fromItem || !toItem) continue;
+    if (!TRANSITION_CLIP_TYPES.has(fromItem.type) || !TRANSITION_CLIP_TYPES.has(toItem.type)) {
+      return null;
+    }
+    const frame = fromItem.from + fromItem.durationInFrames;
+    return frame === toItem.from ? { fromItem, toItem, frame } : null;
+  }
+  return null;
+}
+
 export function validateTimelineDsl(
   dsl: TimelineDsl,
   context: TimelineValidationContext = {},
@@ -321,6 +384,18 @@ export function validateTimelineDsl(
     }
 
     const allowedTypes = track.role ? ROLE_ALLOWED_TYPES[track.role] : undefined;
+    const structuralCategories = new Set(track.items.map(itemTrackCategory));
+    if (
+      !track.category &&
+      structuralCategories.size > 1 &&
+      inferTrackCategory(track, dsl.primaryTrackId) === null
+    ) {
+      issues.push(issue(
+        'track.mixed_item_categories',
+        `Track "${track.id}" mixes incompatible structural item categories.`,
+        `${trackPath}.items`,
+      ));
+    }
     track.items.forEach((item, itemIndex) => {
       const itemPath = `${trackPath}.items[${itemIndex}]`;
       if (!item.id) {
@@ -343,22 +418,90 @@ export function validateTimelineDsl(
       if (allowedTypes && !allowedTypes.has(item.type)) {
         issues.push(issue('track.role_item_mismatch', `Track role "${track.role}" cannot contain "${item.type}" items.`, itemPath));
       }
+      if (track.role === 'subtitle' && !isSubtitleTextItem(item)) {
+        issues.push(issue(
+          'track.role_item_mismatch',
+          'Subtitle tracks require structured text items with cues and source lineage.',
+          itemPath,
+        ));
+      }
+      if (track.category && !canTrackAcceptItem(track, item, dsl.primaryTrackId)) {
+        issues.push(issue('track.category_item_mismatch', `Track category "${track.category}" cannot contain "${item.type}" items.`, itemPath));
+      }
+      for (const [effectIndex, effectRef] of (item.effects ?? []).entries()) {
+        const effectError = validateEffectRef(effectRef);
+        if (effectError) {
+          issues.push(issue('item.invalid_effect_ref', effectError, `${itemPath}.effects.${effectIndex}`));
+        }
+      }
       if (item.type === 'transition') {
         const transition = item as TransitionItem;
         if (!transition.fromItemId || !transition.toItemId) {
           issues.push(issue('item.transition_missing_ref', 'Transition item must reference both source clips.', itemPath));
+        } else {
+          const boundary = resolveContinuousTransitionBoundary(dsl, transition);
+          if (!boundary) {
+            issues.push(issue(
+              'item.transition_non_continuous',
+              'Transition source clips must be visual clips that touch exactly on the same track.',
+              itemPath,
+            ));
+          } else {
+            const expectedFrom = boundary.frame - Math.floor(transition.durationInFrames / 2);
+            if (transition.from !== expectedFrom) {
+              issues.push(issue(
+                'item.transition_detached_range',
+                `Transition range must stay centered on frame ${boundary.frame}.`,
+                `${itemPath}.from`,
+              ));
+            }
+            const maxDurationInFrames = Math.max(
+              1,
+              Math.min(
+                boundary.fromItem.durationInFrames,
+                boundary.toItem.durationInFrames,
+              ) * 2,
+            );
+            if (transition.durationInFrames > maxDurationInFrames) {
+              issues.push(issue(
+                'item.transition_duration_exceeds_handles',
+                `Transition duration cannot exceed ${maxDurationInFrames} frames for these clips.`,
+                `${itemPath}.durationInFrames`,
+              ));
+            }
+          }
+        }
+        if (transition.effect) {
+          const effectError = validateEffectRef(transition.effect);
+          if (effectError) {
+            issues.push(issue('item.invalid_effect_ref', effectError, `${itemPath}.effect`));
+          }
         }
       }
       if (item.type === 'composition') {
         validateCompositionItem(item as CompositionItem, itemPath, issues);
       }
-      if (item.type === 'caption') {
-        validateCaptionItem(item as CaptionItem, itemPath, issues);
+      if (isSubtitleTextItem(item)) {
+        validateCaptionItem(item, itemPath, issues);
       }
       if (item.type === 'derived-overlay') {
         validateDerivedOverlayItem(item as DerivedOverlayItem, itemPath, issues);
       }
     });
+  });
+
+  let previousCategoryRank = -1;
+  dsl.tracks.forEach((track, trackIndex) => {
+    if (!track.category) return;
+    const rank = TRACK_CATEGORY_ORDER.indexOf(track.category);
+    if (rank < previousCategoryRank) {
+      issues.push(issue(
+        'track.category_order_mismatch',
+        `Track category "${track.category}" is outside the canonical effect, text, visual, primary, audio order.`,
+        `tracks[${trackIndex}].category`,
+      ));
+    }
+    previousCategoryRank = Math.max(previousCategoryRank, rank);
   });
 
   return {
@@ -393,7 +536,7 @@ function makeClip(command: Extract<TimelineCommand, { type: 'add_clip' }>): Item
     src: '',
   };
   if (command.itemType === 'image') return base as ImageItem;
-  if (command.itemType === 'audio') return { ...base, volume: 1 } as AudioItem;
+  if (command.itemType === 'audio') return { ...base, audioGainDb: 0 } as AudioItem;
   if (command.itemType === 'text') {
     return {
       id: base.id,
@@ -408,7 +551,7 @@ function makeClip(command: Extract<TimelineCommand, { type: 'add_clip' }>): Item
       fontWeight: 'bold',
     } as TextItem;
   }
-  return { ...base, volume: 1 } as VideoItem;
+  return { ...base, audioGainDb: 0 } as VideoItem;
 }
 
 export function applyTimelineCommand(dsl: TimelineDsl, command: TimelineCommand): TimelineCommandResult {

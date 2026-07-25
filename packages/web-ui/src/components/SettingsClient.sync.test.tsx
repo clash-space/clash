@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import SettingsClient from "./SettingsClient";
 import { AppFeedbackProvider } from "./AppFeedback";
+import { HarnessUpdateNotifier } from "./HarnessUpdateNotifier";
 import {
   listApiTokens,
   listInstalledActions,
@@ -51,6 +52,8 @@ vi.mock("@clash/web-ui/lib/clientActions", () => ({
   listModelProviders: vi.fn(async () => []),
   updateModelProviders: vi.fn(),
   deleteModelProvider: vi.fn(),
+  saveModelCardConfig: vi.fn(),
+  deleteModelCardConfig: vi.fn(),
   testModelProvider: vi.fn(),
   listProviderOAuth: vi.fn(async () => []),
   startProviderOAuth: vi.fn(),
@@ -136,6 +139,115 @@ const LOCAL_ASR_MODEL_CATALOG = [
     missingOAuth: [],
   },
 ] as any;
+
+const LOCAL_SPEECH_MODEL_CATALOG = [
+  ...LOCAL_ASR_MODEL_CATALOG,
+  {
+    model: {
+      id: "piper-huayan-tts",
+      name: "Piper Huayan",
+      provider: "Local",
+      kind: "audio",
+      defaultAspectRatio: "1:1",
+      description: "Downloadable Mandarin voice running fully on-device.",
+      parameters: [],
+      defaultParams: {
+        tts_model: "zh_CN-huayan-medium",
+        voice_name: "huayan",
+        speed: 1,
+      },
+      input: {
+        requiresPrompt: true,
+        inputMode: {},
+        promptModalities: ["text"],
+      },
+      maxRuntimeMs: 120_000,
+    },
+    tier: "available",
+    routes: [{
+      modelCode: "piper-huayan-tts",
+      kind: "audio",
+      providerId: "local",
+      upstreamId: "local",
+      upstreamModel: "zh_CN-huayan-medium",
+      apiShape: "local-tts",
+      priority: 1,
+    }],
+    selectedRoute: {
+      modelCode: "piper-huayan-tts",
+      kind: "audio",
+      providerId: "local",
+      upstreamId: "local",
+      upstreamModel: "zh_CN-huayan-medium",
+      apiShape: "local-tts",
+      priority: 1,
+    },
+    candidateProviders: ["local"],
+    missingCredentials: [],
+    missingOAuth: [],
+  },
+] as any;
+
+const VIBEVOICE_MODEL_CATALOG = [{
+  model: {
+    id: "vibevoice-asr",
+    name: "VibeVoice ASR",
+    provider: "Local",
+    kind: "asr",
+    defaultAspectRatio: "1:1",
+    description: "Long-form transcription with speaker diarization.",
+    parameters: [],
+    defaultParams: { asr_model: "mlx-community/VibeVoice-ASR-4bit" },
+    input: {
+      requiresPrompt: false,
+      inputMode: { audios: { min: 1, max: 1 } },
+      promptModalities: ["audio"],
+    },
+  },
+  tier: "available",
+  routes: [{
+    modelCode: "vibevoice-asr",
+    kind: "asr",
+    providerId: "local",
+    upstreamId: "local",
+    upstreamModel: "mlx-community/VibeVoice-ASR-4bit",
+    apiShape: "local-asr",
+    priority: 1,
+  }],
+  selectedRoute: {
+    modelCode: "vibevoice-asr",
+    kind: "asr",
+    providerId: "local",
+    upstreamId: "local",
+    upstreamModel: "mlx-community/VibeVoice-ASR-4bit",
+    apiShape: "local-asr",
+    priority: 1,
+  },
+  candidateProviders: ["local"],
+  missingCredentials: [],
+  missingOAuth: [],
+}] as any;
+
+const PARAKEET_MODEL_CATALOG = VIBEVOICE_MODEL_CATALOG.map((entry: any) => ({
+  ...entry,
+  model: {
+    ...entry.model,
+    id: "parakeet-tdt-0.6b-v3-asr",
+    name: "Parakeet TDT 0.6B v3",
+    description: "Fast multilingual transcription on Apple Silicon.",
+    defaultParams: { asr_model: "mlx-community/parakeet-tdt-0.6b-v3" },
+  },
+  routes: entry.routes.map((route: any) => ({
+    ...route,
+    modelCode: "parakeet-tdt-0.6b-v3-asr",
+    upstreamModel: "mlx-community/parakeet-tdt-0.6b-v3",
+  })),
+  selectedRoute: {
+    ...entry.selectedRoute,
+    modelCode: "parakeet-tdt-0.6b-v3-asr",
+    upstreamModel: "mlx-community/parakeet-tdt-0.6b-v3",
+  },
+}));
 
 describe("SettingsSurface tab state", () => {
   afterEach(() => {
@@ -422,7 +534,7 @@ describe("SettingsSurface tab state", () => {
       resolve(process.cwd(), "packages/web-ui/src/components/ui/tooltip.tsx"),
       "utf8",
     );
-    const audioSectionStart = source.indexOf("function AudioSection(");
+    const audioSectionStart = source.indexOf("function LocalSpeechSettingsCard(");
     const nextSectionStart = source.indexOf("function AgentsSection()", audioSectionStart);
     const audioSectionSource = source.slice(audioSectionStart, nextSectionStart);
 
@@ -723,10 +835,15 @@ describe("SettingsClient audio section", () => {
   });
 
   it("deploys local ASR from the model card without fake model selection", async () => {
+    let asrAvailable = false;
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/v1/local/audio/install") && init?.method === "POST") {
-        expect(JSON.parse(String(init.body))).toEqual({ asr_model: "iic/SenseVoiceSmall" });
+        expect(JSON.parse(String(init.body))).toEqual({
+          capability: "speech-to-text",
+          model: "iic/SenseVoiceSmall",
+        });
+        asrAvailable = true;
         return new Response(JSON.stringify({
           asr: {
             enabled: false,
@@ -739,12 +856,17 @@ describe("SettingsClient audio section", () => {
               provider: "funasr",
               runtime: "builtin-rpc",
               status: "disabled",
-              available: true,
+              available: asrAvailable,
               default_base_url: null,
               commands: [],
             },
           },
         }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/local/audio/models/status")) {
+        return new Response(JSON.stringify({ available: asrAvailable }), {
+          headers: { "content-type": "application/json" },
+        });
       }
       if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
         return new Response(JSON.stringify({
@@ -759,7 +881,7 @@ describe("SettingsClient audio section", () => {
               provider: "funasr",
               runtime: "builtin-rpc",
               status: "needs-install",
-              available: false,
+              available: asrAvailable,
               default_base_url: null,
               commands: [],
             },
@@ -788,18 +910,316 @@ describe("SettingsClient audio section", () => {
 
     expect(screen.getByText("SenseVoice Small")).toBeTruthy();
     expect(screen.getByText("asr")).toBeTruthy();
-    const modelCard = screen.getByText("sensevoice-small-asr").closest(".rounded-xl") as HTMLElement;
+    const getModelCard = () => screen.getByText("sensevoice-small-asr").closest(".rounded-xl") as HTMLElement;
+    const modelCard = getModelCard();
     expect(modelCard).toBeTruthy();
     expect(within(modelCard).getByText("Uses local model cache.")).toBeTruthy();
     expect(within(modelCard).getByText("Not deployed")).toBeTruthy();
+    expect(modelCard.dataset.modelState).toBe("unavailable");
+    expect(within(screen.getByRole("region", { name: "Unavailable" })).getByText("SenseVoice Small")).toBeTruthy();
 
     fireEvent.click(within(modelCard).getByRole("button", { name: "Deploy local ASR model" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => (
       String(input).includes("/api/v1/local/audio/install") && init?.method === "POST"
     ))).toBe(true));
     await screen.findByText("Deployed");
-    expect(within(modelCard).queryByRole("button", { name: "Add" })).toBeNull();
+    const deployedModelCard = getModelCard();
+    expect(deployedModelCard.dataset.modelState).toBe("enabled");
+    expect(within(screen.getByRole("region", { name: "Enabled" })).getByText("SenseVoice Small")).toBeTruthy();
+    expect(within(deployedModelCard).queryByRole("button", { name: "Add" })).toBeNull();
     expect(window.localStorage.getItem("clash.settings.selectedModelIds")).toBeNull();
+  });
+
+  it("downloads and removes local TTS from the same model lifecycle", async () => {
+    let ttsAvailable = false;
+    const config = () => ({
+      asr: {
+        capability: "speech-to-text",
+        enabled: false,
+        provider: "builtin-funasr",
+        base_url: null,
+        model: "iic/SenseVoiceSmall",
+        has_api_key: false,
+        ready: false,
+        setup: {
+          provider: "funasr",
+          runtime: "builtin-rpc",
+          status: "disabled",
+          available: true,
+          default_base_url: null,
+          commands: [],
+        },
+      },
+      tts: {
+        capability: "text-to-speech",
+        enabled: false,
+        provider: "builtin-piper",
+        base_url: null,
+        model: "zh_CN-huayan-medium",
+        has_api_key: false,
+        ready: false,
+        setup: {
+          provider: "piper",
+          runtime: "builtin-rpc",
+          status: "disabled",
+          available: ttsAvailable,
+          default_base_url: null,
+          commands: [],
+        },
+      },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/install") && init?.method === "POST") {
+        expect(JSON.parse(String(init.body))).toEqual({
+          capability: "text-to-speech",
+          model: "zh_CN-huayan-medium",
+        });
+        ttsAvailable = true;
+        return new Response(JSON.stringify(config()), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/audio/remove") && init?.method === "POST") {
+        expect(JSON.parse(String(init.body))).toEqual({
+          capability: "text-to-speech",
+          model: "zh_CN-huayan-medium",
+        });
+        ttsAvailable = false;
+        return new Response(JSON.stringify(config()), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify(config()), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={LOCAL_SPEECH_MODEL_CATALOG}
+            activeSection={"models" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    const getModelCard = () => screen.getByText("piper-huayan-tts").closest(".rounded-xl") as HTMLElement;
+    const modelCard = getModelCard();
+    expect(within(modelCard).getByText("Not downloaded")).toBeTruthy();
+    expect(modelCard.dataset.modelState).toBe("unavailable");
+    expect(within(screen.getByRole("region", { name: "Unavailable" })).getByText("Piper Huayan")).toBeTruthy();
+    fireEvent.click(within(modelCard).getByRole("button", { name: "Download local TTS model" }));
+    await screen.findByText("Downloaded");
+    const downloadedModelCard = getModelCard();
+    expect(downloadedModelCard.dataset.modelState).toBe("enabled");
+    expect(within(screen.getByRole("region", { name: "Enabled" })).getByText("Piper Huayan")).toBeTruthy();
+
+    fireEvent.click(within(downloadedModelCard).getByRole("button", { name: "Remove local TTS model" }));
+    await screen.findByText("Not downloaded");
+    const removedModelCard = getModelCard();
+    expect(removedModelCard.dataset.modelState).toBe("unavailable");
+    expect(within(screen.getByRole("region", { name: "Unavailable" })).getByText("Piper Huayan")).toBeTruthy();
+  });
+
+  it("uses the VibeVoice brand mark while keeping Local as its runtime provider", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          initialModelCatalog={VIBEVOICE_MODEL_CATALOG}
+          activeSection={"models" as any}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    const modelCard = document.getElementById("model-card-vibevoice-asr");
+    expect(modelCard?.querySelector('[data-model-logo="vibevoice"]')).toBeTruthy();
+    expect(modelCard?.querySelector('[data-model-provider-logo="local"]')).toBeTruthy();
+  });
+
+  it("uses NVIDIA branding for Parakeet while keeping Local as its runtime provider", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          initialModelCatalog={PARAKEET_MODEL_CATALOG}
+          activeSection={"models" as any}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    const modelCard = document.getElementById("model-card-parakeet-tdt-0.6b-v3-asr");
+    expect(modelCard?.querySelector('[data-model-logo="nvidia"]')).toBeTruthy();
+    expect(modelCard?.querySelector('[data-model-provider-logo="local"]')).toBeTruthy();
+  });
+
+  it("summarizes models with the same enabled truth used by the catalog sections", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/v1/local/audio/models/status")) {
+        return new Response(JSON.stringify({ available: false }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }));
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          initialModelCatalog={LOCAL_ASR_MODEL_CATALOG}
+          activeSection={"models" as any}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    const summary = screen.getByRole("group", { name: "Model availability summary" });
+    expect(within(summary).getByRole("status", { name: "Enabled models" }).textContent).toContain("0");
+    expect(within(summary).getByRole("status", { name: "Unavailable models" }).textContent).toContain("1");
+    expect(within(summary).getByRole("status", { name: "All models" }).textContent).toContain("1");
+    expect(within(summary).queryByText("Needs key")).toBeNull();
+  });
+
+  it("classifies a local model provider by the real download state on its detail page", async () => {
+    let available = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/install") && init?.method === "POST") {
+        available = true;
+        return new Response(JSON.stringify({ available }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/audio/models/status")) {
+        return new Response(JSON.stringify({ available }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/settings?section=models&model=vibevoice-asr"]}>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={VIBEVOICE_MODEL_CATALOG}
+            activeSection={"models" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    expect(document.querySelector('[data-model-logo="vibevoice"]')).toBeTruthy();
+    const unconfigured = screen.getByRole("region", { name: "Supported, not configured" });
+    expect(await within(unconfigured).findByText("Local runtime")).toBeTruthy();
+    expect(within(unconfigured).getByText("Download required")).toBeTruthy();
+    fireEvent.click(within(unconfigured).getByRole("button", { name: "Download VibeVoice ASR" }));
+
+    const configured = screen.getByRole("region", { name: "Configured for this model" });
+    expect(await within(configured).findByText("Local runtime")).toBeTruthy();
+    expect(within(configured).getByText("Downloaded and ready")).toBeTruthy();
+    expect(screen.queryByText("No compatible provider account is configured.")).toBeNull();
+  });
+
+  it("keeps TTS generation controls in audio nodes instead of global Audio settings", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const responseConfig = {
+        asr: {
+          capability: "speech-to-text",
+          enabled: false,
+          provider: "builtin-funasr",
+          base_url: null,
+          model: "iic/SenseVoiceSmall",
+          has_api_key: false,
+          ready: false,
+          setup: {
+            provider: "funasr",
+            runtime: "builtin-rpc",
+            status: "disabled",
+            available: true,
+            default_base_url: null,
+            commands: [],
+          },
+        },
+        tts: {
+          capability: "text-to-speech",
+          enabled: false,
+          provider: "builtin-piper",
+          base_url: null,
+          model: "zh_CN-huayan-medium",
+          has_api_key: false,
+          ready: false,
+          setup: {
+            provider: "piper",
+            runtime: "builtin-rpc",
+            status: "disabled",
+            available: true,
+            default_base_url: null,
+            commands: [],
+          },
+        },
+      };
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify(responseConfig), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={LOCAL_SPEECH_MODEL_CATALOG}
+            activeSection={"audio" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "Audio" });
+    expect(screen.getByRole("combobox", { name: "ASR model" }).textContent).toContain("SenseVoice Small");
+    expect(screen.queryByRole("combobox", { name: "TTS model" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Enable local voice generation" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Voice generation" })).toBeNull();
   });
 
   it("loads and saves local ASR using catalog model cards", async () => {
@@ -1533,6 +1953,212 @@ describe("SettingsClient runtime harnesses", () => {
       expect.objectContaining({ method: "DELETE" }),
     ));
     expect(screen.getByRole("button", { name: "Install Cursor" })).toBeTruthy();
+  });
+
+  it("tracks concurrent agent upgrades independently and ignores stale sibling results", async () => {
+    runtimeMock.runtimes = [
+      {
+        id: "desktop-local",
+        machine_id: "desktop-local",
+        hostname: "This Mac",
+        os: "darwin/arm64",
+        agents: [],
+        version: "desktop",
+        status: "online",
+        last_heartbeat: 1_700_000_000,
+        created_at: 1_700_000_000,
+      },
+    ];
+    const initialHarnesses = [
+      {
+        id: "codex-acp",
+        label: "Codex",
+        binary: "/tmp/clash-acp-codex",
+        enabled: true,
+        available: true,
+        installed: true,
+        installable: true,
+        installedVersion: "0.50.0",
+        latestVersion: "0.60.0",
+        updateAvailable: true,
+      },
+      {
+        id: "claude-acp",
+        label: "Claude",
+        binary: "/tmp/clash-acp-claude",
+        enabled: true,
+        available: true,
+        installed: true,
+        installable: true,
+        installedVersion: "0.52.0",
+        latestVersion: "0.61.0",
+        updateAvailable: true,
+      },
+    ];
+    let resolveCodex!: (response: Response) => void;
+    let resolveClaude!: (response: Response) => void;
+    const codexResponse = new Promise<Response>((resolve) => {
+      resolveCodex = resolve;
+    });
+    const claudeResponse = new Promise<Response>((resolve) => {
+      resolveClaude = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/agent-servers")) {
+        return new Response(JSON.stringify({ agent_servers: {} }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/harnesses/codex-acp/upgrade") && init?.method === "POST") {
+        return codexResponse;
+      }
+      if (url.includes("/api/v1/local/harnesses/claude-acp/upgrade") && init?.method === "POST") {
+        return claudeResponse;
+      }
+      if (url.includes("/api/v1/local/harnesses") && (!init || init.method === "GET")) {
+        return new Response(JSON.stringify({ harnesses: initialHarnesses }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection={"agents" as any}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Upgrade Codex" }));
+    await screen.findByText("Upgrading Codex from the ACP registry…");
+    const claudeButton = screen.getByRole("button", { name: "Upgrade Claude" });
+    expect((claudeButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(claudeButton);
+
+    expect(await screen.findByText("Upgrading Codex from the ACP registry…")).toBeTruthy();
+    expect(await screen.findByText("Upgrading Claude from the ACP registry…")).toBeTruthy();
+
+    await act(async () => {
+      resolveClaude(new Response(JSON.stringify({
+        harnesses: initialHarnesses.map((harness) => (
+          harness.id === "claude-acp"
+            ? { ...harness, installedVersion: harness.latestVersion, updateAvailable: false }
+            : harness
+        )),
+      }), { headers: { "content-type": "application/json" } }));
+      await claudeResponse;
+    });
+
+    await act(async () => {
+      resolveCodex(new Response(JSON.stringify({
+        harnesses: initialHarnesses.map((harness) => (
+          harness.id === "codex-acp"
+            ? { ...harness, installedVersion: harness.latestVersion, updateAvailable: false }
+            : harness
+        )),
+      }), { headers: { "content-type": "application/json" } }));
+      await codexResponse;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Upgrade Codex" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Upgrade Claude" })).toBeNull();
+    });
+  });
+
+  it("shares agent upgrade progress and completion with the desktop update control", async () => {
+    runtimeMock.runtimes = [
+      {
+        id: "desktop-local",
+        machine_id: "desktop-local",
+        hostname: "This Mac",
+        os: "darwin/arm64",
+        agents: [],
+        version: "desktop",
+        status: "online",
+        last_heartbeat: 1_700_000_000,
+        created_at: 1_700_000_000,
+      },
+    ];
+    const codexHarness = {
+      id: "codex-acp",
+      label: "Codex",
+      binary: "/tmp/clash-acp-codex",
+      enabled: true,
+      available: true,
+      installed: true,
+      installable: true,
+      installedVersion: "0.50.0",
+      latestVersion: "0.60.0",
+      updateAvailable: true,
+    };
+    let resolveUpgrade!: (response: Response) => void;
+    const upgradeResponse = new Promise<Response>((resolve) => {
+      resolveUpgrade = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/agent-servers")) {
+        return new Response(JSON.stringify({ agent_servers: {} }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/harnesses/codex-acp/upgrade") && init?.method === "POST") {
+        return upgradeResponse;
+      }
+      if (url.includes("/api/v1/local/harnesses") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({ harnesses: [codexHarness] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <HarnessUpdateNotifier />
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection={"agents" as any}
+          embedded
+        />
+      </MemoryRouter>,
+    );
+
+    const updateTrigger = await screen.findByRole("button", { name: "1 ACP update available" });
+    fireEvent.click(await screen.findByRole("button", { name: "Upgrade Codex" }));
+    fireEvent.click(updateTrigger);
+    expect(await screen.findByRole("button", { name: "Updating Codex" })).toBeTruthy();
+
+    await act(async () => {
+      resolveUpgrade(new Response(JSON.stringify({
+        harnesses: [{
+          ...codexHarness,
+          installedVersion: codexHarness.latestVersion,
+          updateAvailable: false,
+        }],
+      }), { headers: { "content-type": "application/json" } }));
+      await upgradeResponse;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Upgrade Codex" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Updating Codex" })).toBeNull();
+      expect(screen.getByText("Codex updated to 0.60.0")).toBeTruthy();
+    });
   });
 
   it("does not offer install for available unmanaged agents", async () => {
@@ -2733,7 +3359,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.queryByRole("tab", { name: "Providers" })).toBeNull();
     expect(screen.queryByRole("tab", { name: "Web Search" })).toBeNull();
     expect(screen.getByLabelText("Search providers")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Add custom provider/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add custom provider" })).toBeTruthy();
   });
 
   it("renders Google AI Studio and Google Cloud Agent Platform as separate BYOK providers", () => {
@@ -4275,6 +4901,7 @@ describe("SettingsClient model routing", () => {
           embedded
           initialModelProviders={[
             {
+              id: "openai-primary",
               providerId: "official",
               upstreamId: "google-agent-platform",
               region: "global",
@@ -4346,7 +4973,34 @@ describe("SettingsClient model routing", () => {
               tier: "available",
               selectedRoute: null,
               routes: [],
-              candidateProviders: ["fal"],
+              candidateProviders: ["official", "fal", "replicate"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+            {
+              model: {
+                id: "gpt-5.4",
+                aliases: [],
+                name: "GPT-5.4",
+                provider: "OpenAI",
+                kind: "text",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "1:1",
+                input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+              },
+              tier: "available",
+              selectedRoute: {
+                modelCode: "gpt-5.4",
+                kind: "text",
+                providerId: "official",
+                upstreamId: "openai",
+                upstreamModel: "gpt-5.4",
+                apiShape: "openai-compatible",
+                priority: 10,
+              },
+              routes: [],
+              candidateProviders: ["official"],
               missingCredentials: [],
               missingOAuth: [],
             },
@@ -4357,13 +5011,300 @@ describe("SettingsClient model routing", () => {
 
     expect(screen.getByRole("heading", { name: "Models" })).toBeTruthy();
     expect(screen.getByText("Nano Banana 2")).toBeTruthy();
-    expect(screen.getByText("Available model cards")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Enabled" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Unavailable" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Modality" })).toBeTruthy();
     expect(screen.queryByLabelText("OpenAI API key")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(screen.queryByText("Selected models")).toBeNull();
-    expect(screen.getByText("Provider not configured: fal")).toBeTruthy();
+    expect(screen.queryByText(/Provider (?:not configured|ready):/)).toBeNull();
+    expect(screen.queryByText("Provider order")).toBeNull();
+    expect(document.querySelector('[data-model-logo="openai"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-logo="google"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-provider-logo="fal"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-provider-logo="google"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-provider-logo="replicate"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-provider-logo="openai"]')).toBeTruthy();
+  });
+
+  it("opens a model card second-level page for description, prompt guidance, and provider order", () => {
+    render(
+      <MemoryRouter initialEntries={["/settings?section=models&model=gpt-5.4"]}>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[
+            {
+              id: "openai-primary",
+              label: "OpenAI primary",
+              providerId: "official",
+              upstreamId: "openai",
+              region: "global",
+              enabled: true,
+              configuredCredentials: ["apiKey"],
+            },
+            {
+              id: "openai-secondary",
+              label: "OpenAI fallback",
+              providerId: "official",
+              upstreamId: "openai",
+              region: "global",
+              enabled: true,
+              priority: 20,
+              configuredCredentials: ["apiKey"],
+            },
+          ]}
+          initialModelCatalog={[
+            {
+              model: {
+                id: "gpt-5.4",
+                aliases: [],
+                name: "GPT-5.4 Text",
+                provider: "OpenAI",
+                kind: "text",
+                description: "General-purpose text generation.",
+                promptGuidance: "Put the desired deliverable first.",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "1:1",
+                input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+              },
+              tier: "available",
+              selectedRoute: {
+                modelCode: "gpt-5.4",
+                kind: "text",
+                providerId: "official",
+                upstreamId: "openai",
+                region: "global",
+                upstreamModel: "gpt-5.4",
+                apiShape: "openai-compatible",
+                priority: 10,
+              },
+              routes: [
+                {
+                  modelCode: "gpt-5.4",
+                  kind: "text",
+                  providerId: "official",
+                  upstreamId: "openai",
+                  region: "global",
+                  upstreamModel: "gpt-5.4",
+                  apiShape: "openai-compatible",
+                  priority: 10,
+                },
+              ],
+              candidateProviders: ["official"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("heading", { name: "GPT-5.4 Text" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Models" }).getAttribute("href")).toBe("/settings?section=models");
+    expect((screen.getByLabelText("Model description") as HTMLTextAreaElement).value).toBe("General-purpose text generation.");
+    expect((screen.getByLabelText("Prompt guidance") as HTMLTextAreaElement).value).toBe("Put the desired deliverable first.");
+    expect(screen.getByRole("list", { name: "GPT-5.4 Text provider order" })).toBeTruthy();
+  });
+
+  it("labels an audio model correctly and separates configured from unconfigured supported providers", () => {
+    render(
+      <MemoryRouter initialEntries={["/settings?section=models&model=minimax-tts"]}>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[{
+            id: "minimax-primary",
+            providerId: "minimax",
+            upstreamId: "minimax",
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+          }]}
+          initialModelCatalog={[{
+            model: {
+              id: "minimax-tts",
+              aliases: [],
+              name: "MiniMax TTS",
+              provider: "MiniMax",
+              kind: "audio",
+              description: "High-quality Chinese and English text-to-speech.",
+              parameters: [],
+              defaultParams: {},
+              defaultAspectRatio: "1:1",
+              input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+            },
+            tier: "available",
+            selectedRoute: {
+              modelCode: "minimax-tts",
+              kind: "audio",
+              providerId: "minimax",
+              upstreamId: "minimax",
+              upstreamModel: "speech-02-hd",
+              apiShape: "minimax",
+              priority: 10,
+            },
+            routes: [
+              {
+                modelCode: "minimax-tts",
+                kind: "audio",
+                providerId: "minimax",
+                upstreamId: "minimax",
+                upstreamModel: "speech-02-hd",
+                apiShape: "minimax",
+                priority: 10,
+              },
+              {
+                modelCode: "minimax-tts",
+                kind: "audio",
+                providerId: "fal",
+                upstreamId: "fal",
+                upstreamModel: "fal-ai/minimax/speech-02-hd",
+                apiShape: "fal",
+                priority: 20,
+              },
+            ],
+            candidateProviders: ["minimax", "fal"],
+            missingCredentials: [],
+            missingOAuth: [],
+          }]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Audio model")).toBeTruthy();
+    const configured = screen.getByRole("region", { name: "Configured for this model" });
+    const unconfigured = screen.getByRole("region", { name: "Supported, not configured" });
+    expect(within(configured).getByRole("link", { name: "Configure MiniMax" }).getAttribute("href")).toContain("section=providers");
+    expect(within(unconfigured).getByRole("link", { name: "Configure fal.ai" }).getAttribute("href")).toContain("section=providers");
+  });
+
+  it("offers real custom provider and custom model entry points", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "Add custom provider" })).toBeTruthy();
+  });
+
+  it("creates an OpenAI-compatible custom provider with a real endpoint and key", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add custom provider" }));
+    fireEvent.change(screen.getByLabelText("Provider name"), { target: { value: "Editorial proxy" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://proxy.example/v1" } });
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "sk-custom" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save custom provider" }));
+
+    await waitFor(() => expect(actions.updateModelProviders).toHaveBeenCalled());
+    expect(vi.mocked(actions.updateModelProviders).mock.calls.at(-1)?.[0]).toEqual([
+      expect.objectContaining({
+        providerId: "custom",
+        upstreamId: "openai",
+        apiShape: "openai-compatible",
+        label: "Editorial proxy",
+        credentials: {
+          apiKey: "sk-custom",
+          baseUrl: "https://proxy.example/v1",
+        },
+      }),
+    ]);
+  });
+
+  it("creates a custom text model and mounts it to compatible provider accounts", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.saveModelCardConfig).mockResolvedValue({
+      modelId: "editorial-pro",
+      custom: true,
+      name: "Editorial Pro",
+      kind: "text",
+      providerBindings: [{
+        providerAccountId: "custom-openai-account",
+        upstreamModel: "editorial/pro-v2",
+      }],
+    });
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter initialEntries={["/settings?section=models&model=new"]}>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelProviders={[{
+            id: "custom-openai-account",
+            providerId: "custom",
+            upstreamId: "openai",
+            apiShape: "openai-compatible",
+            label: "Editorial proxy",
+            enabled: true,
+            configuredCredentials: ["apiKey", "baseUrl"],
+          }]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "editorial-pro" } });
+    fireEvent.change(screen.getByLabelText("Model name"), { target: { value: "Editorial Pro" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Use Editorial proxy" }));
+    fireEvent.change(screen.getByLabelText("Editorial proxy upstream model"), {
+      target: { value: "editorial/pro-v2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save text model" }));
+
+    await waitFor(() => expect(actions.saveModelCardConfig).toHaveBeenCalledWith(
+      "editorial-pro",
+      expect.objectContaining({
+        custom: true,
+        name: "Editorial Pro",
+        kind: "text",
+        providerBindings: [{
+          providerAccountId: "custom-openai-account",
+          upstreamModel: "editorial/pro-v2",
+        }],
+      }),
+    ));
   });
 
   it("filters the Models page to one provider from the supported-models link", () => {
@@ -4477,17 +5418,13 @@ describe("SettingsClient model routing", () => {
     );
 
     const modality = screen.getByRole("combobox", { name: "Modality" });
-    const providerStatus = screen.getByRole("combobox", { name: "Provider status" });
+    const availability = screen.getByRole("combobox", { name: "Availability" });
 
     expect(modality.className).toContain("clash-select-trigger");
-    expect(providerStatus.className).toContain("clash-select-trigger");
+    expect(availability.className).toContain("clash-select-trigger");
   });
 
-  it("lets a model reorder its supported provider priority", async () => {
-    const actions = await import("@clash/web-ui/lib/clientActions");
-    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
-    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
-
+  it("filters model cards by availability, supported provider, accepted input, and origin", () => {
     render(
       <MemoryRouter>
         <SettingsClient
@@ -4497,8 +5434,131 @@ describe("SettingsClient model routing", () => {
           initialSkills={[]}
           activeSection="models"
           embedded
+          initialModelCatalog={[
+            {
+              model: {
+                id: "nano-banana-2",
+                aliases: [],
+                name: "Nano Banana 2",
+                provider: "Google",
+                kind: "image",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "1:1",
+                input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+              },
+              tier: "all",
+              selectedRoute: null,
+              routes: [],
+              candidateProviders: ["official"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+            {
+              model: {
+                id: "claude-sonnet-4",
+                aliases: [],
+                name: "Claude Sonnet 4",
+                provider: "Anthropic",
+                kind: "text",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "1:1",
+                input: { requiresPrompt: true, inputMode: { images: { max: 20 } }, promptModalities: ["text", "image"] },
+              },
+              tier: "available",
+              selectedRoute: {
+                modelCode: "claude-sonnet-4",
+                kind: "text",
+                providerId: "official",
+                upstreamId: "anthropic",
+                upstreamModel: "claude-sonnet-4",
+                apiShape: "anthropic-compatible",
+                priority: 10,
+              },
+              routes: [],
+              candidateProviders: ["official"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+            {
+              model: {
+                id: "custom-audio-reader",
+                aliases: [],
+                name: "Custom Audio Reader",
+                provider: "Custom",
+                custom: true,
+                kind: "text",
+                parameters: [],
+                defaultParams: {},
+                defaultAspectRatio: "1:1",
+                input: { requiresPrompt: true, inputMode: { audios: { max: 1 } }, promptModalities: ["text", "audio"] },
+              },
+              tier: "available",
+              selectedRoute: {
+                modelCode: "custom-audio-reader",
+                kind: "text",
+                providerId: "custom",
+                upstreamId: "reader-api",
+                upstreamModel: "reader-v1",
+                apiShape: "openai-compatible",
+                priority: 10,
+              },
+              routes: [],
+              candidateProviders: ["custom"],
+              missingCredentials: [],
+              missingOAuth: [],
+            },
+          ] as any}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Supported provider" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Accepted input" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Origin" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Supported provider" }));
+    fireEvent.click(screen.getByRole("option", { name: "fal.ai" }));
+    expect(screen.getByText("Nano Banana 2")).toBeTruthy();
+    expect(screen.queryByText("Claude Sonnet 4")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear model filters" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Accepted input" }));
+    fireEvent.click(screen.getByRole("option", { name: "Can use audio" }));
+    expect(screen.getByText("Custom Audio Reader")).toBeTruthy();
+    expect(screen.queryByText("Nano Banana 2")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear model filters" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Origin" }));
+    fireEvent.click(screen.getByRole("option", { name: "Custom cards" }));
+    expect(screen.getByText("Custom Audio Reader")).toBeTruthy();
+    expect(screen.queryByText("Claude Sonnet 4")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear model filters" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Availability" }));
+    fireEvent.click(screen.getByRole("option", { name: "Unavailable" }));
+    expect(screen.getByText("Nano Banana 2")).toBeTruthy();
+    expect(screen.queryByText("Custom Audio Reader")).toBeNull();
+  });
+
+  it("lets a model reorder its supported provider priority", async () => {
+    const actions = await import("@clash/web-ui/lib/clientActions");
+    vi.mocked(actions.updateModelProviders).mockImplementation(async (providers) => providers);
+    vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
+
+    render(
+      <MemoryRouter initialEntries={["/settings?section=models&model=gpt-image-2"]}>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
           initialModelProviders={[
             {
+              id: "openai-primary",
               providerId: "official",
               upstreamId: "openai",
               region: "global",
@@ -4508,6 +5568,7 @@ describe("SettingsClient model routing", () => {
               configuredCredentials: ["apiKey"],
             },
             {
+              id: "replicate-primary",
               providerId: "replicate",
               upstreamId: "replicate",
               enabled: true,
@@ -4570,13 +5631,12 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit provider order for GPT Image 2" }));
     const providerOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
     const rows = within(providerOrder).getAllByRole("listitem");
     expect(within(rows[0]).getByText("OpenAI")).toBeTruthy();
     expect(within(rows[1]).getByText("Replicate")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Move Replicate up for GPT Image 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Replicate up" }));
 
     await waitFor(() => {
       expect(actions.updateModelProviders).toHaveBeenCalledWith(
@@ -4606,7 +5666,7 @@ describe("SettingsClient model routing", () => {
     vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
 
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/settings?section=models&model=gpt-image-2"]}>
         <SettingsClient
           initialTokens={[]}
           initialVariables={[]}
@@ -4616,6 +5676,7 @@ describe("SettingsClient model routing", () => {
           embedded
           initialModelProviders={[
             {
+              id: "openai-primary",
               providerId: "official",
               upstreamId: "openai",
               region: "global",
@@ -4623,6 +5684,7 @@ describe("SettingsClient model routing", () => {
               configuredCredentials: ["apiKey"],
             },
             {
+              id: "replicate-primary",
               providerId: "replicate",
               upstreamId: "replicate",
               enabled: true,
@@ -4633,8 +5695,6 @@ describe("SettingsClient model routing", () => {
         />
       </MemoryRouter>,
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit provider order for GPT Image 2" }));
 
     const providerOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
     expect(within(providerOrder).getByText("OpenAI")).toBeTruthy();
@@ -4681,7 +5741,14 @@ describe("SettingsClient model routing", () => {
 
     const gptImageCard = document.getElementById("model-card-gpt-image-2");
     expect(gptImageCard).toBeTruthy();
-    expect(within(gptImageCard as HTMLElement).getByText("Provider ready: replicate/replicate")).toBeTruthy();
+    expect(gptImageCard?.getAttribute("data-model-state")).toBe("enabled");
+    expect(gptImageCard?.querySelector('[data-model-provider-logo="replicate"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-logo="flux"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-logo="bytedance"]')).toBeTruthy();
+    expect(document.querySelector('[data-model-logo="recraft"]')).toBeTruthy();
+    for (const modelCard of document.querySelectorAll('[id^="model-card-"]')) {
+      expect(modelCard.querySelector("[data-model-logo]")).toBeTruthy();
+    }
   });
 
   it("disables model provider ordering while provider settings are saving", async () => {
@@ -4696,7 +5763,7 @@ describe("SettingsClient model routing", () => {
     vi.mocked(actions.listModelCatalog).mockResolvedValue([]);
 
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/settings?section=models&model=gpt-image-2"]}>
         <SettingsClient
           initialTokens={[]}
           initialVariables={[]}
@@ -4706,6 +5773,7 @@ describe("SettingsClient model routing", () => {
           embedded
           initialModelProviders={[
             {
+              id: "openai-primary",
               providerId: "official",
               upstreamId: "openai",
               region: "global",
@@ -4715,6 +5783,7 @@ describe("SettingsClient model routing", () => {
               configuredCredentials: ["apiKey"],
             },
             {
+              id: "replicate-primary",
               providerId: "replicate",
               upstreamId: "replicate",
               enabled: true,
@@ -4777,20 +5846,20 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit provider order for GPT Image 2" }));
-    fireEvent.click(screen.getByRole("button", { name: "Move Replicate up for GPT Image 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move Replicate up" }));
 
     await waitFor(() => {
       expect(actions.updateModelProviders).toHaveBeenCalled();
     });
 
     const pendingProviderOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
-    expect(within(pendingProviderOrder).getByRole("button", { name: "Move Replicate down for GPT Image 2" }).hasAttribute("disabled")).toBe(true);
-    expect(within(pendingProviderOrder).getByRole("button", { name: "Move OpenAI up for GPT Image 2" }).hasAttribute("disabled")).toBe(true);
+    expect(within(pendingProviderOrder).getByRole("button", { name: "Move Replicate down" }).hasAttribute("disabled")).toBe(true);
+    expect(within(pendingProviderOrder).getByRole("button", { name: "Move OpenAI up" }).hasAttribute("disabled")).toBe(true);
 
     await act(async () => {
       resolveSave([
         {
+          id: "replicate-primary",
           providerId: "replicate",
           upstreamId: "replicate",
           enabled: true,
@@ -4800,6 +5869,7 @@ describe("SettingsClient model routing", () => {
           modelPriorities: { "gpt-image-2": 10 },
         },
         {
+          id: "openai-primary",
           providerId: "official",
           upstreamId: "openai",
           region: "global",
@@ -4814,8 +5884,8 @@ describe("SettingsClient model routing", () => {
 
     await waitFor(() => {
       const savedProviderOrder = screen.getByRole("list", { name: "GPT Image 2 provider order" });
-      expect(within(savedProviderOrder).getByRole("button", { name: "Move Replicate down for GPT Image 2" }).hasAttribute("disabled")).toBe(false);
-      expect(within(savedProviderOrder).getByRole("button", { name: "Move OpenAI up for GPT Image 2" }).hasAttribute("disabled")).toBe(false);
+      expect(within(savedProviderOrder).getByRole("button", { name: "Move Replicate down" }).hasAttribute("disabled")).toBe(false);
+      expect(within(savedProviderOrder).getByRole("button", { name: "Move OpenAI up" }).hasAttribute("disabled")).toBe(false);
     });
   });
 });

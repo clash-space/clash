@@ -1,0 +1,42 @@
+{
+  "name": "@clash-space/mcp-server",
+  "version": "0.1.0",
+  "description": "Clash Canvas MCP server and MCP App",
+  "type": "module",
+  "bin": {
+    "clash-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && esbuild src/canvas-app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=dist/canvas-app-client.js && esbuild src/studio-app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=dist/studio-app-client.js",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/*.test.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.7.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0"
+  }
+}

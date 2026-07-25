@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 
 import DraftPlaceholder from "./DraftPlaceholder";
 
@@ -93,5 +93,18 @@ describe("DraftPlaceholder canvas subscriptions", () => {
     const { getByRole } = render(<DraftPlaceholder nodeId="draft-1" modality="image" />);
 
     expect(getByRole("button", { name: "Build this draft" })).not.toBeNull();
+  });
+
+  it("renders audio drafts as a compact row without a nested dashed card", () => {
+    const { getByRole } = render(
+      <DraftPlaceholder nodeId="draft-1" modality="audio" compact />,
+    );
+
+    const placeholder = getByRole("group", {
+      name: "Draft audio placeholder",
+    });
+    expect(placeholder.className).toContain("flex-row");
+    expect(placeholder.className).not.toContain("border-dashed");
+    expect(within(placeholder).getByRole("button", { name: "Build this draft" })).not.toBeNull();
   });
 });

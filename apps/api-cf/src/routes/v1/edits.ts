@@ -19,10 +19,17 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Env } from "../../config";
 import {
+  actionSourceModel,
+  AssetEditActionInvocationSchema,
   AssetKindSchema,
+  ASSET_ACTION_ID,
   ImageEditParamsSchema,
+  invocationModeForSurface,
+  legacyEditOriginForSurface,
+  resolveAssetActionOutputKind,
   VideoClipParamsSchema,
   EDIT_KIND,
+  type AssetEditActionInvocation,
   type AssetKind,
   type EditKind,
 } from "@clash/shared-types";
@@ -64,6 +71,36 @@ const EditParamsByKind: Record<EditKind, Parser> = {
 /** Output kind we expect the client-rendered blob to be. */
 const OutputKindSchema: Parser<AssetKind> = AssetKindSchema; // 'image' | 'video' | 'audio'
 
+function parseAssetEditInvocation(input: {
+  raw?: unknown;
+  projectId: string;
+  sourceAssetId: string;
+  editKind: string;
+  editParams: unknown;
+  origin: "canvas-node" | "asset-preview";
+}): AssetEditActionInvocation {
+  let candidate: unknown;
+  if (typeof input.raw === "string" && input.raw.trim()) {
+    candidate = JSON.parse(input.raw);
+  } else if (input.raw !== undefined && input.raw !== null) {
+    candidate = input.raw;
+  } else {
+    const surface = input.origin === "asset-preview" ? "asset-preview" : "canvas";
+    candidate = {
+      actionId: input.editKind,
+      projectId: input.projectId,
+      source: {
+        assetId: input.sourceAssetId,
+        kind: input.editKind === ASSET_ACTION_ID.ImageEditor ? "image" : "video",
+      },
+      params: input.editParams,
+      surface,
+      mode: invocationModeForSurface(surface),
+    };
+  }
+  return AssetEditActionInvocationSchema.parse(candidate);
+}
+
 // ─── Routes ─────────────────────────────────────────────────
 
 /**
@@ -92,6 +129,9 @@ editsRoutes.post("/", async (c) => {
     const editKindRaw = String(formData.get("editKind") ?? "");
     const outputKindRaw = String(formData.get("outputKind") ?? "");
     const editParamsRaw = String(formData.get("editParams") ?? "{}");
+    const originRaw = String(formData.get("origin") ?? "canvas-node");
+    const origin: "canvas-node" | "asset-preview" =
+      originRaw === "asset-preview" ? "asset-preview" : "canvas-node";
 
     if (!projectId) return c.json({ error: "Missing projectId" }, 400);
     if (!sourceAssetId) return c.json({ error: "Missing sourceAssetId" }, 400);
@@ -112,6 +152,24 @@ editsRoutes.post("/", async (c) => {
       return c.json({ error: "editParams is not valid JSON" }, 400);
     }
     EditParamsByKind[editKind].parse(editParams);
+    const invocation = parseAssetEditInvocation({
+      raw: formData.get("invocation"),
+      projectId,
+      sourceAssetId,
+      editKind,
+      editParams,
+      origin,
+    });
+    if (
+      invocation.projectId !== projectId ||
+      invocation.source.assetId !== sourceAssetId ||
+      invocation.actionId !== editKind
+    ) {
+      return c.json({ error: "Action invocation does not match legacy edit fields" }, 400);
+    }
+    if (resolveAssetActionOutputKind(invocation.actionId, invocation.params) !== outputKind) {
+      return c.json({ error: "outputKind does not match the action operation" }, 400);
+    }
 
     // Auth gates: project ownership + source asset belongs to same user.
     // Cross-user derivation is explicitly disallowed.
@@ -119,6 +177,9 @@ editsRoutes.post("/", async (c) => {
     const source = await getAssetById(c.env.DB, sourceAssetId);
     if (!source) return c.json({ error: "Source asset not found" }, 404);
     if (source.userId !== userId) return c.json({ error: "Source asset not owned by user" }, 403);
+    if (source.kind !== invocation.source.kind) {
+      return c.json({ error: "Action invocation source kind does not match the asset" }, 400);
+    }
 
     // R2 PUT — predictable key prefix lets GC distinguish edit outputs from
     // raw uploads / generation results.
@@ -151,9 +212,15 @@ editsRoutes.post("/", async (c) => {
       kind: outputKind,
       srcR2Key,
       projectId,
-      metadata,
+      metadata: {
+        ...metadata,
+        editParams: invocation.params,
+        editOrigin: legacyEditOriginForSurface(invocation.surface),
+        actionInvocation: invocation,
+      },
       coverR2Key,
-      sources: [{ assetId: sourceAssetId, role: "edit-source" }],
+      sourceModel: actionSourceModel(invocation),
+      sources: [{ assetId: invocation.source.assetId, role: "edit-source" }],
     });
 
     log.info("POST /edits created", {
@@ -187,6 +254,8 @@ const VideoCropRequestSchema = z.object({
     startSec: z.number().nonnegative(),
     endSec: z.number().positive(),
   }),
+  origin: z.enum(["canvas-node", "asset-preview"]).default("canvas-node"),
+  invocation: z.unknown().optional(),
 });
 
 editsRoutes.post("/video-crop", async (c) => {
@@ -196,6 +265,22 @@ editsRoutes.post("/video-crop", async (c) => {
 
     if (body.params.endSec <= body.params.startSec) {
       return c.json({ error: "endSec must be > startSec" }, 400);
+    }
+    const invocation = parseAssetEditInvocation({
+      raw: body.invocation,
+      projectId: body.projectId,
+      sourceAssetId: body.sourceAssetId,
+      editKind: ASSET_ACTION_ID.VideoClipper,
+      editParams: body.params,
+      origin: body.origin,
+    });
+    if (
+      invocation.actionId !== ASSET_ACTION_ID.VideoClipper ||
+      invocation.projectId !== body.projectId ||
+      invocation.source.assetId !== body.sourceAssetId ||
+      invocation.params.mode !== "crop"
+    ) {
+      return c.json({ error: "Action invocation does not match video crop fields" }, 400);
     }
 
     await assertProjectOwner(c.env, body.projectId, userId);
@@ -229,9 +314,15 @@ editsRoutes.post("/video-crop", async (c) => {
       kind: "video",
       srcR2Key,
       projectId: body.projectId,
-      metadata,
+      metadata: {
+        ...metadata,
+        editParams: invocation.params,
+        editOrigin: legacyEditOriginForSurface(invocation.surface),
+        actionInvocation: invocation,
+      },
       coverR2Key,
-      sources: [{ assetId: body.sourceAssetId, role: "edit-source" }],
+      sourceModel: actionSourceModel(invocation),
+      sources: [{ assetId: invocation.source.assetId, role: "edit-source" }],
     });
 
     log.info("POST /edits/video-crop created", {

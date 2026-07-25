@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 
 interface VideoEditorContextType {
     openTimeline: (timelineId: string) => void;
@@ -17,9 +17,10 @@ export function VideoEditorProvider({
         if (!timelineId) return;
         onOpenTimeline(timelineId);
     }, [onOpenTimeline]);
+    const value = useMemo(() => ({ openTimeline }), [openTimeline]);
 
     return (
-        <VideoEditorContext.Provider value={{ openTimeline }}>
+        <VideoEditorContext.Provider value={value}>
             {children}
         </VideoEditorContext.Provider>
     );

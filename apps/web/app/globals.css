@@ -8,13 +8,168 @@
 @source "../../../packages/remotion-core/src";
 
 :root {
+  color-scheme: light;
   --background: #fbfaf7;
   --foreground: #171717;
+  --clash-warm-page: #fbfaf7;
+  --clash-warm-surface: #fffefd;
+  --clash-warm-muted: #f4f1eb;
+  --clash-warm-hover: #e9e6df;
+  --clash-warm-border: #e1ddd5;
+  /* Core semantic hierarchy shared by editor chrome and transient UI. */
+  --clash-content-primary: var(--foreground);
+  --clash-content-secondary: #57534e;
+  --clash-content-muted: #78716c;
+  --clash-content-disabled: #a8a29e;
+  --clash-overlay-surface: rgba(255, 254, 253, 0.98);
+  --clash-overlay-border: rgba(225, 221, 213, 0.9);
+  --clash-overlay-shadow:
+    0 18px 48px rgba(35, 31, 25, 0.1),
+    0 6px 18px rgba(35, 31, 25, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  --clash-accent: #ff6b50;
+  --clash-accent-foreground: #181713;
+  --clash-brand-light: color-mix(
+    in oklch,
+    var(--clash-accent) 12%,
+    var(--clash-warm-surface)
+  );
+  --clash-image-light: #fff0ed;
+  --clash-video-light: #eff6ff;
+  --clash-audio-light: #fffbeb;
+  --clash-custom-light: #eef2ff;
+  --clash-timeline-text-secondary: var(--clash-content-secondary);
+  --clash-timeline-text-tertiary: var(--clash-content-muted);
+  --clash-timeline-text-disabled: var(--clash-content-disabled);
+  --clash-timeline-border-subtle: #f0ede7;
+  /* Timeline materials are chrome, not rendered media. Keep their type cues
+     restrained and let the accent own selection/playhead emphasis. */
+  --clash-timeline-item-video: #cfd9dc;
+  --clash-timeline-item-video-foreground: #293c42;
+  --clash-timeline-item-audio: #294454;
+  --clash-timeline-item-audio-foreground: #f1f4f5;
+  --clash-timeline-item-image: #dec5bd;
+  --clash-timeline-item-image-foreground: #493530;
+  --clash-timeline-item-text: #e4e2de;
+  --clash-timeline-item-text-foreground: #343434;
+  --clash-timeline-item-effect: #d8d2dc;
+  --clash-timeline-item-effect-foreground: #403b44;
+  --clash-timeline-item-overlay: #dccdd2;
+  --clash-timeline-item-overlay-foreground: #493b40;
+  --clash-timeline-item-solid: #d2d6d9;
+  --clash-timeline-item-solid-foreground: #30363a;
+  --clash-timeline-audio-waveform: #68858d;
+  --clash-timeline-audio-fade-edge: #9bb0b5;
+  --clash-timeline-track-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 3px 9px -6px rgba(74, 60, 47, 0.2);
+  --clash-timeline-item-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 2px 5px rgba(74, 60, 47, 0.12);
+  --clash-timeline-item-hover-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    0 4px 9px rgba(74, 60, 47, 0.16);
+  --clash-control-gap: 0.25rem;
+  --clash-floating-panel-border: var(--clash-overlay-border);
+  --clash-floating-panel-background: var(--clash-overlay-surface);
+  --clash-floating-panel-shadow: var(--clash-overlay-shadow);
+  --clash-timeline-panel-shadow:
+    0 0 12px rgba(35, 31, 25, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  --clash-workbench-control-radius: 6px;
+  --clash-floating-toolbar-border: rgba(218, 213, 204, 0.82);
+  --clash-floating-toolbar-background: rgba(255, 254, 252, 0.97);
+  --clash-floating-toolbar-shadow:
+    0 4px 12px rgba(35, 31, 25, 0.055),
+    0 1px 3px rgba(35, 31, 25, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
   --canvas-bg: #fbfaf7;
   --canvas-dot: #d6d1c8;
+  --canvas-minimap-bg: #fffefd;
+  --canvas-minimap-mask: rgba(255, 254, 253, 0.2);
+  --canvas-minimap-node: #5f574f;
+  --canvas-minimap-node-stroke: #fffefd;
+  --canvas-minimap-group: #eee9e1;
+  --canvas-minimap-group-stroke: #b8afa4;
+  --canvas-minimap-viewport: var(--clash-accent);
 
-  --font-inter: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, sans-serif;
+  /* Director Stage chrome follows the app theme; only the 3D viewport stays dark. */
+  --clash-director-viewport: #08090c;
+  --clash-director-panel: var(--clash-floating-panel-background);
+  --clash-director-panel-text: var(--foreground);
+  --clash-director-panel-secondary: color-mix(
+    in srgb,
+    var(--foreground) 68%,
+    transparent
+  );
+  --clash-director-panel-muted: color-mix(
+    in srgb,
+    var(--foreground) 46%,
+    transparent
+  );
+  --clash-director-panel-divider: var(--clash-floating-panel-border);
+  --clash-director-panel-hover: color-mix(
+    in srgb,
+    var(--foreground) 4%,
+    transparent
+  );
+  --clash-director-panel-active: color-mix(
+    in srgb,
+    var(--color-brand, #ff6b50) 10%,
+    transparent
+  );
+  --clash-director-field: var(--canvas-bg);
+  --clash-director-field-border: var(--clash-floating-toolbar-border);
+  --clash-director-control: var(--clash-floating-toolbar-background);
+  --clash-director-control-hover: color-mix(
+    in srgb,
+    var(--foreground) 5%,
+    transparent
+  );
+  --clash-director-control-active: color-mix(
+    in srgb,
+    var(--color-brand, #ff6b50) 12%,
+    transparent
+  );
+  --clash-director-control-border: var(--clash-floating-toolbar-border);
+  --clash-director-selection: var(--color-brand, #ff6b50);
+  --clash-director-selection-foreground: var(
+    --color-brand-foreground,
+    #ffffff
+  );
+  --clash-director-mannequin: #e8ebef;
+  --clash-director-mannequin-neutral: #e8ebef;
+  --clash-director-mannequin-masculine: #7fa8d8;
+  --clash-director-mannequin-feminine: #e4a7b0;
+  --clash-director-mannequin-broad: #d98a6d;
+  --clash-director-mannequin-athletic: #70b89a;
+  --clash-director-mannequin-slender: #b4a7d6;
+  --clash-director-mannequin-youth: #e2b85e;
+  --clash-director-mannequin-child: #84bdd0;
+  --clash-director-mannequin-chibi: #d99bc0;
+  --clash-director-skeleton: #54d7ea;
+  --clash-director-grid-major: #3d7697;
+  --clash-director-grid-minor: #254c67;
+  --clash-director-camera: #f5a623;
+  --clash-director-axis-x: #ef4444;
+  --clash-director-axis-y: #22c55e;
+  --clash-director-axis-z: #3b82f6;
+  --clash-director-axis-label: #ffffff;
+  --clash-director-danger: var(--color-red-500, #ef4444);
+  --clash-director-danger-soft: color-mix(
+    in srgb,
+    var(--clash-director-danger) 10%,
+    transparent
+  );
+  --clash-director-timeline-surface: var(--clash-floating-panel-background);
+  --clash-director-timeline-divider: var(--clash-floating-panel-border);
+  --clash-director-timeline-muted: var(--clash-director-panel-muted);
+  --clash-director-timeline-label: var(--clash-director-panel-secondary);
+  --clash-director-timeline-keyframe: var(--clash-director-selection);
+
+  --font-inter:
+    "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   --font-space-grotesk: "Space Grotesk Variable", var(--font-inter);
   --font-jetbrains-mono: "JetBrains Mono Variable", "Courier New", monospace;
 }
@@ -25,39 +180,160 @@
   --color-canvas-bg: var(--canvas-bg);
   --color-canvas-dot: var(--canvas-dot);
 
-  --color-warm-page: #fbfaf7;
-  --color-warm-surface: #fffefd;
-  --color-warm-muted: #f4f1eb;
-  --color-warm-hover: #e9e6df;
-  --color-warm-border: #e1ddd5;
+  --color-warm-page: var(--clash-warm-page);
+  --color-warm-surface: var(--clash-warm-surface);
+  --color-warm-muted: var(--clash-warm-muted);
+  --color-warm-hover: var(--clash-warm-hover);
+  --color-warm-border: var(--clash-warm-border);
 
-  --color-brand: #ff6b50;
-  --color-brand-light: #fff0ed;
-  --color-brand-foreground: #ffffff;
+  --color-content-primary: var(--clash-content-primary);
+  --color-content-secondary: var(--clash-content-secondary);
+  --color-content-muted: var(--clash-content-muted);
+  --color-content-disabled: var(--clash-content-disabled);
+  --color-overlay-surface: var(--clash-overlay-surface);
+  --color-overlay-border: var(--clash-overlay-border);
+  --shadow-overlay: var(--clash-overlay-shadow);
+
+  --color-brand: var(--clash-accent);
+  --color-brand-light: var(--clash-brand-light);
+  --color-brand-foreground: var(--clash-accent-foreground);
 
   --color-image: #ff6b50;
-  --color-image-light: #fff0ed;
+  --color-image-light: var(--clash-image-light);
 
   --color-video: #3b82f6;
-  --color-video-light: #eff6ff;
+  --color-video-light: var(--clash-video-light);
 
   --color-audio: #f5a623;
-  --color-audio-light: #fffbeb;
+  --color-audio-light: var(--clash-audio-light);
 
   --color-custom: #6366f1;
-  --color-custom-light: #eef2ff;
+  --color-custom-light: var(--clash-custom-light);
 
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);
   --font-mono: var(--font-jetbrains-mono);
   --radius-matrix: 12px;
+  --clash-workbench-surface-radius: 10px;
 }
 
 .dark {
-  --background: #0a0a0a;
+  color-scheme: dark;
+  --background: #151515;
   --foreground: #ededed;
-  --canvas-bg: #0f172a;
-  --canvas-dot: #334155;
+  --clash-warm-page: #151515;
+  --clash-warm-surface: #1c1c1c;
+  --clash-warm-muted: #262626;
+  --clash-warm-hover: #303030;
+  --clash-warm-border: #3a3a3a;
+  --clash-content-primary: var(--foreground);
+  --clash-content-secondary: #c8c8c8;
+  --clash-content-muted: #929292;
+  --clash-content-disabled: #707070;
+  --clash-overlay-surface: rgba(28, 28, 28, 0.98);
+  --clash-overlay-border: rgba(255, 255, 255, 0.14);
+  --clash-overlay-shadow:
+    0 20px 52px rgba(0, 0, 0, 0.34),
+    0 6px 20px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --clash-brand-light: color-mix(
+    in oklch,
+    var(--clash-accent) 18%,
+    var(--clash-warm-surface)
+  );
+  --clash-image-light: #35211d;
+  --clash-video-light: #17283d;
+  --clash-audio-light: #352b17;
+  --clash-custom-light: #24243d;
+  --clash-timeline-text-secondary: var(--clash-content-secondary);
+  --clash-timeline-text-tertiary: var(--clash-content-muted);
+  --clash-timeline-text-disabled: var(--clash-content-disabled);
+  --clash-timeline-border-subtle: #303030;
+  --clash-timeline-item-video: #2b3032;
+  --clash-timeline-item-video-foreground: #d7dcde;
+  --clash-timeline-item-audio: #263238;
+  --clash-timeline-item-audio-foreground: #e3e8ea;
+  --clash-timeline-item-image: #302b29;
+  --clash-timeline-item-image-foreground: #ded9d6;
+  --clash-timeline-item-text: #2d2d2d;
+  --clash-timeline-item-text-foreground: #dedede;
+  --clash-timeline-item-effect: #302e32;
+  --clash-timeline-item-effect-foreground: #dedbe0;
+  --clash-timeline-item-overlay: #312e30;
+  --clash-timeline-item-overlay-foreground: #dfdadd;
+  --clash-timeline-item-solid: #2b2e30;
+  --clash-timeline-item-solid-foreground: #d8dcde;
+  --clash-timeline-audio-waveform: #9aa3a6;
+  --clash-timeline-audio-fade-edge: #bbc1c3;
+  --clash-timeline-track-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 3px 10px -6px rgba(0, 0, 0, 0.72);
+  --clash-timeline-item-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 2px 6px rgba(0, 0, 0, 0.26);
+  --clash-timeline-item-hover-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.075),
+    0 4px 10px rgba(0, 0, 0, 0.34);
+  --clash-floating-panel-border: var(--clash-overlay-border);
+  --clash-floating-panel-background: var(--clash-overlay-surface);
+  --clash-floating-panel-shadow: var(--clash-overlay-shadow);
+  --clash-timeline-panel-shadow:
+    0 0 14px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  --clash-floating-toolbar-border: rgba(255, 255, 255, 0.13);
+  --clash-floating-toolbar-background: rgba(31, 31, 31, 0.97);
+  --clash-floating-toolbar-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.28),
+    0 2px 6px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --canvas-bg: #171717;
+  --canvas-dot: #353535;
+  --canvas-minimap-bg: #1f1f1f;
+  --canvas-minimap-mask: rgba(23, 23, 23, 0.24);
+  --canvas-minimap-node: #737373;
+  --canvas-minimap-node-stroke: #1f1f1f;
+  --canvas-minimap-group: #292929;
+  --canvas-minimap-group-stroke: #707070;
+  --canvas-minimap-viewport: var(--clash-accent);
+  --clash-director-viewport: #050609;
+  --clash-director-panel: rgba(24, 24, 24, 0.96);
+  --clash-director-panel-text: #fafaf9;
+  --clash-director-panel-secondary: #c7c7c7;
+  --clash-director-panel-muted: #888888;
+  --clash-director-panel-divider: rgba(255, 255, 255, 0.09);
+  --clash-director-panel-hover: rgba(255, 255, 255, 0.06);
+  --clash-director-panel-active: color-mix(
+    in srgb,
+    var(--clash-accent) 14%,
+    transparent
+  );
+  --clash-director-field: #272727;
+  --clash-director-field-border: rgba(255, 255, 255, 0.1);
+  --clash-director-control: rgba(32, 32, 32, 0.94);
+  --clash-director-control-hover: rgba(255, 255, 255, 0.08);
+  --clash-director-control-active: color-mix(
+    in srgb,
+    var(--clash-accent) 16%,
+    transparent
+  );
+  --clash-director-control-border: rgba(255, 255, 255, 0.1);
+  --clash-director-mannequin: #edf0f3;
+  --clash-director-mannequin-neutral: #edf0f3;
+  --clash-director-mannequin-masculine: #8cb2e0;
+  --clash-director-mannequin-feminine: #e8b0b8;
+  --clash-director-mannequin-broad: #df967b;
+  --clash-director-mannequin-athletic: #7cc2a5;
+  --clash-director-mannequin-slender: #beb1df;
+  --clash-director-mannequin-youth: #e8c169;
+  --clash-director-mannequin-child: #91c6d8;
+  --clash-director-mannequin-chibi: #dfa6c7;
+  --clash-director-skeleton: #65deed;
+  --clash-director-grid-major: #3d7697;
+  --clash-director-grid-minor: #254c67;
+  --clash-director-timeline-surface: rgba(24, 24, 24, 0.96);
+  --clash-director-timeline-divider: rgba(255, 255, 255, 0.08);
+  --clash-director-timeline-muted: #888888;
+  --clash-director-timeline-label: #c7c7c7;
 }
 
 body {
@@ -81,17 +357,26 @@ body {
   user-select: none;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-code, kbd, pre {
+code,
+kbd,
+pre {
   font-family: var(--font-jetbrains-mono), "Courier New", monospace;
 }
 
-html { overflow-y: scroll; }
+html {
+  overflow-y: scroll;
+}
 
 html.clash-desktop-route,
 html.clash-desktop-route body {
@@ -106,34 +391,39 @@ html.clash-desktop-route body {
 
 html.clash-is-scrolling,
 html.clash-is-scrolling * {
-  scrollbar-color: rgba(0,0,0,0.2) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 4px;
 }
 html.clash-is-scrolling::-webkit-scrollbar-thumb,
 html.clash-is-scrolling ::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.2);
+  background: rgba(0, 0, 0, 0.2);
 }
 html.clash-is-scrolling::-webkit-scrollbar-thumb:hover,
 html.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.3);
+  background: rgba(0, 0, 0, 0.3);
 }
 html.dark.clash-is-scrolling,
 html.dark.clash-is-scrolling * {
-  scrollbar-color: rgba(255,255,255,0.2) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 html.dark.clash-is-scrolling::-webkit-scrollbar-thumb,
 html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
 }
 html.dark.clash-is-scrolling::-webkit-scrollbar-thumb:hover,
 html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.3);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 ::selection {
@@ -152,7 +442,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   padding: 0 !important;
 }
 
-.group-node, .group-node.selected, .group-node:focus, .group-node:focus-visible {
+.group-node,
+.group-node.selected,
+.group-node:focus,
+.group-node:focus-visible {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
@@ -202,29 +495,57 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-chat-input-editor .ProseMirror {
   min-height: inherit;
 }
-.milkdown-chat-input .ProseMirror p { margin: 0; }
+.milkdown-chat-input .ProseMirror p {
+  margin: 0;
+}
 .milkdown-chat-input .ProseMirror img {
-  height: 1.2em; width: auto; border-radius: 3px;
-  object-fit: cover; display: inline; vertical-align: text-bottom; margin: 0 2px;
+  height: 1.2em;
+  width: auto;
+  border-radius: 3px;
+  object-fit: cover;
+  display: inline;
+  vertical-align: text-bottom;
+  margin: 0 2px;
 }
 .ProseMirror img[alt^="mention:"] {
-  height: 20px; width: 20px; border-radius: 4px;
-  object-fit: cover; display: inline-block; vertical-align: middle; margin: 0 2px;
+  height: 20px;
+  width: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 2px;
 }
-.milkdown-chat-input .ProseMirror:focus { outline: none; }
+.milkdown-chat-input .ProseMirror:focus {
+  outline: none;
+}
 
-.react-flow__edge { pointer-events: visibleStroke; cursor: pointer; }
-.react-flow__edge-interaction { pointer-events: stroke; stroke-opacity: 0; }
-.react-flow__edge.selected .react-flow__edge-path { stroke: #ff6b50; stroke-width: 2.5; }
-.react-flow__edge:hover .react-flow__edge-path { stroke: #8a7a6d; }
+.react-flow__edge {
+  pointer-events: visibleStroke;
+  cursor: pointer;
+}
+.react-flow__edge-interaction {
+  pointer-events: stroke;
+  stroke-opacity: 0;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--clash-accent);
+  stroke-width: 2.5;
+}
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #8a7a6d;
+}
 
 .clash-control-surface,
 .clash-input-surface {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(225, 221, 213, 0.86);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(247, 246, 242, 0.82) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(247, 246, 242, 0.82) 100%
+  );
   box-shadow:
     0 12px 28px rgba(35, 31, 25, 0.052),
     0 2px 8px rgba(35, 31, 25, 0.034),
@@ -247,7 +568,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.28), transparent 30%, transparent 76%, rgba(168, 156, 141, 0.08)),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.28),
+      transparent 30%,
+      transparent 76%,
+      rgba(168, 156, 141, 0.08)
+    ),
     linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 46%);
 }
 
@@ -255,20 +582,60 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   backdrop-filter: blur(14px);
 }
 
+.clash-workbench-control-button {
+  border-radius: var(--clash-workbench-control-radius);
+}
+
+.clash-project-chrome-header-content {
+  transform: translateY(
+    var(
+      --clash-project-header-content-offset-y,
+      var(--clash-control-gap, 0.25rem)
+    )
+  );
+}
+
 .clash-canvas-toolbar-surface {
   position: relative;
+}
+
+.clash-canvas-overlay-panel,
+.clash-timeline-panel-surface {
+  isolation: isolate;
+  border: 1px solid var(--clash-floating-panel-border);
+  border-radius: var(--clash-workbench-surface-radius);
+  background: var(--clash-floating-panel-background);
+}
+
+.clash-timeline-preview-surface {
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: var(--clash-workbench-surface-radius);
+  box-shadow:
+    0 0 12px rgba(35, 31, 25, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.clash-canvas-overlay-panel {
+  box-shadow: var(--clash-floating-panel-shadow);
+}
+
+.clash-timeline-panel-surface {
+  box-shadow: var(--clash-timeline-panel-shadow);
+}
+
+.clash-canvas-overlay-panel {
+  contain: layout paint;
+  will-change: transform, opacity;
 }
 
 .clash-canvas-toolbar-surface,
 .clash-canvas-menu-surface {
   isolation: isolate;
   overflow: visible;
-  border: 1px solid rgba(218, 213, 204, 0.82);
-  background: rgba(255, 254, 252, 0.97);
-  box-shadow:
-    0 4px 12px rgba(35, 31, 25, 0.055),
-    0 1px 3px rgba(35, 31, 25, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--clash-floating-toolbar-border);
+  background: var(--clash-floating-toolbar-background);
+  box-shadow: var(--clash-floating-toolbar-shadow);
 }
 
 .clash-canvas-toolbar-surface {
@@ -293,9 +660,85 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   min-width: 140px;
 }
 
+.clash-canvas-minimap {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: hidden;
+  border: 1px solid rgba(218, 213, 204, 0.82);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 14px rgba(35, 31, 25, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.clash-canvas-minimap-control,
+.clash-canvas-minimap-overlay-control {
+  border: 1px solid rgba(218, 213, 204, 0.86);
+  background: color-mix(in srgb, var(--canvas-minimap-bg) 94%, transparent);
+  color: rgb(87 83 78);
+  box-shadow: 0 3px 12px rgba(35, 31, 25, 0.08);
+}
+
+.clash-canvas-minimap-control:hover,
+.clash-canvas-minimap-overlay-control:hover {
+  background: var(--color-warm-muted);
+  color: rgb(15 23 42);
+}
+
+.clash-canvas-minimap-resize-handle {
+  color: rgba(87, 83, 78, 0.62);
+  transition: color 160ms ease;
+}
+
+.clash-canvas-minimap-resize-handle:hover {
+  color: rgb(68 64 60);
+}
+
+.clash-canvas-minimap-resize-grip {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  border-top-right-radius: 7px;
+  background: transparent;
+  opacity: 0.58;
+  transition: opacity 160ms ease;
+}
+
+.clash-canvas-minimap-resize-handle:hover .clash-canvas-minimap-resize-grip {
+  opacity: 1;
+}
+
+.dark .clash-canvas-minimap {
+  border-color: var(--clash-warm-border);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark .clash-canvas-minimap-control,
+.dark .clash-canvas-minimap-overlay-control {
+  border-color: var(--clash-warm-border);
+  color: rgb(203 203 203);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.28);
+}
+
+.dark .clash-canvas-minimap-resize-handle {
+  color: rgba(203, 203, 203, 0.72);
+}
+
 .clash-editor-modal-backdrop {
   background:
-    radial-gradient(circle at 50% 20%, rgba(255, 107, 80, 0.07), transparent 34%),
+    radial-gradient(
+      circle at 50% 20%,
+      rgba(255, 107, 80, 0.07),
+      transparent 34%
+    ),
     rgba(35, 31, 25, 0.22);
   backdrop-filter: blur(10px);
 }
@@ -304,8 +747,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(247, 246, 242, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    rgba(247, 246, 242, 0.94)
+  );
   box-shadow:
     0 24px 72px rgba(35, 31, 25, 0.16),
     0 8px 24px rgba(35, 31, 25, 0.075),
@@ -325,21 +771,33 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 36%, rgba(168, 156, 141, 0.08)),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.22),
+      transparent 36%,
+      rgba(168, 156, 141, 0.08)
+    ),
     linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 48%);
 }
 
 .clash-media-viewer-backdrop {
   background:
-    radial-gradient(circle at 50% 18%, rgba(255, 107, 80, 0.12), transparent 38%),
+    radial-gradient(
+      circle at 50% 18%,
+      rgba(255, 107, 80, 0.12),
+      transparent 38%
+    ),
     linear-gradient(180deg, rgba(55, 48, 39, 0.72), rgba(35, 31, 25, 0.76));
   backdrop-filter: blur(12px);
 }
 
 .clash-media-viewer-frame {
   border: 1px solid rgba(255, 255, 255, 0.36);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.2), rgba(247, 246, 242, 0.12));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.2),
+    rgba(247, 246, 242, 0.12)
+  );
   box-shadow:
     0 24px 70px rgba(35, 31, 25, 0.34),
     0 8px 22px rgba(35, 31, 25, 0.18),
@@ -348,8 +806,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-media-viewer-chrome {
   border: 1px solid rgba(255, 255, 255, 0.58);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.88));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.96),
+    rgba(247, 246, 242, 0.88)
+  );
   box-shadow:
     0 10px 26px rgba(35, 31, 25, 0.16),
     0 2px 8px rgba(35, 31, 25, 0.08),
@@ -359,7 +820,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-confirm-dialog-backdrop {
   background:
-    radial-gradient(circle at 50% 32%, rgba(255, 107, 80, 0.08), transparent 36%),
+    radial-gradient(
+      circle at 50% 32%,
+      rgba(255, 107, 80, 0.08),
+      transparent 36%
+    ),
     rgba(35, 31, 25, 0.26);
   backdrop-filter: blur(10px);
 }
@@ -368,8 +833,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(255, 255, 255, 0.7);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(247, 246, 242, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    rgba(247, 246, 242, 0.94)
+  );
   box-shadow:
     0 20px 56px rgba(35, 31, 25, 0.16),
     0 6px 18px rgba(35, 31, 25, 0.07),
@@ -377,15 +845,21 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-confirm-dialog-footer {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(241, 239, 234, 0.72));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.24),
+    rgba(241, 239, 234, 0.72)
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
 }
 
 .clash-confirm-secondary {
   border: 1px solid rgba(225, 221, 213, 0.76);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.72), rgba(247, 246, 242, 0.56));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.72),
+    rgba(247, 246, 242, 0.56)
+  );
   color: #574f45;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
   transition:
@@ -396,14 +870,20 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-confirm-secondary:hover {
   border-color: rgba(255, 107, 80, 0.22);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.86), rgba(255, 240, 237, 0.5));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.86),
+    rgba(255, 240, 237, 0.5)
+  );
   color: #202839;
 }
 
 .clash-confirm-danger {
-  background:
-    linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(214, 73, 54, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 118, 91, 0.98),
+    rgba(214, 73, 54, 0.96)
+  );
   color: #fffefd;
   box-shadow:
     0 10px 20px rgba(255, 107, 80, 0.18),
@@ -427,8 +907,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(247, 246, 242, 0.93));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    rgba(247, 246, 242, 0.93)
+  );
   box-shadow:
     0 24px 72px rgba(35, 31, 25, 0.15),
     0 8px 24px rgba(35, 31, 25, 0.07),
@@ -443,7 +926,12 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
   z-index: 0;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 34%, rgba(168, 156, 141, 0.08)),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.22),
+      transparent 34%,
+      rgba(168, 156, 141, 0.08)
+    ),
     linear-gradient(180deg, rgba(255, 255, 255, 0.36), transparent 46%);
 }
 
@@ -453,16 +941,22 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-dialog-sidebar {
-  background:
-    linear-gradient(180deg, rgba(241, 239, 234, 0.62), rgba(247, 246, 242, 0.78));
+  background: linear-gradient(
+    180deg,
+    rgba(241, 239, 234, 0.62),
+    rgba(247, 246, 242, 0.78)
+  );
   box-shadow:
     inset -1px 0 0 rgba(255, 255, 255, 0.48),
     inset 1px 0 0 rgba(255, 255, 255, 0.42);
 }
 
 .clash-settings-dialog-content {
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(255, 254, 253, 0.78));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.9),
+    rgba(255, 254, 253, 0.78)
+  );
   overflow-x: clip;
   scrollbar-gutter: stable;
 }
@@ -474,13 +968,19 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-page-sidebar {
-  background:
-    linear-gradient(180deg, rgba(241, 239, 234, 0.76), rgba(247, 246, 242, 0.9));
+  background: linear-gradient(
+    180deg,
+    rgba(241, 239, 234, 0.76),
+    rgba(247, 246, 242, 0.9)
+  );
 }
 
 .clash-settings-page-content {
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.86), rgba(255, 254, 253, 0.72));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.86),
+    rgba(255, 254, 253, 0.72)
+  );
   overflow-x: clip;
   scrollbar-gutter: stable;
 }
@@ -493,12 +993,19 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-marketplace-primary,
 .clash-node-primary,
 .clash-user-primary {
-  background:
-    linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
-  color: #fffefd;
+  background: linear-gradient(
+    180deg,
+    color-mix(
+      in oklch,
+      var(--clash-accent) 86%,
+      var(--clash-warm-surface)
+    ),
+    var(--clash-accent)
+  );
+  color: var(--clash-accent-foreground);
   box-shadow:
-    0 10px 20px rgba(255, 107, 80, 0.15),
-    0 2px 8px rgba(108, 53, 42, 0.08),
+    0 10px 20px color-mix(in srgb, var(--clash-accent) 15%, transparent),
+    0 2px 8px color-mix(in srgb, var(--clash-accent) 9%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.34);
   transition:
     filter 180ms ease,
@@ -516,8 +1023,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-user-primary:hover {
   filter: saturate(1.04) brightness(1.01);
   box-shadow:
-    0 12px 24px rgba(255, 107, 80, 0.19),
-    0 3px 10px rgba(108, 53, 42, 0.11),
+    0 12px 24px color-mix(in srgb, var(--clash-accent) 19%, transparent),
+    0 3px 10px color-mix(in srgb, var(--clash-accent) 12%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
@@ -539,8 +1046,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   min-height: 40px;
   border: 1px solid rgba(225, 221, 213, 0.88);
   border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(247, 246, 242, 0.78));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.94),
+    rgba(247, 246, 242, 0.78)
+  );
   color: #202839;
   box-shadow:
     0 4px 12px rgba(35, 31, 25, 0.026),
@@ -565,17 +1075,23 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-settings-field:hover,
 .clash-select-trigger.clash-settings-select-trigger:hover {
   border-color: rgba(188, 177, 165, 0.95);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(244, 241, 235, 0.88));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    rgba(244, 241, 235, 0.88)
+  );
 }
 
 .clash-settings-field:focus,
 .clash-select-trigger.clash-settings-select-trigger:focus-visible {
-  border-color: rgba(255, 107, 80, 0.46);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.99), rgba(247, 246, 242, 0.86));
+  border-color: color-mix(in srgb, var(--clash-accent) 46%, transparent);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.99),
+    rgba(247, 246, 242, 0.86)
+  );
   box-shadow:
-    0 0 0 3px rgba(255, 107, 80, 0.09),
+    0 0 0 3px color-mix(in srgb, var(--clash-accent) 9%, transparent),
     0 8px 18px rgba(35, 31, 25, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
@@ -589,8 +1105,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-settings-secondary {
   border: 1px solid rgba(225, 221, 213, 0.86);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.92), rgba(247, 246, 242, 0.78));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.92),
+    rgba(247, 246, 242, 0.78)
+  );
   color: #202839;
   box-shadow:
     0 6px 14px rgba(35, 31, 25, 0.035),
@@ -603,13 +1122,16 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-settings-secondary:hover {
-  border-color: rgba(255, 107, 80, 0.28);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(255, 240, 237, 0.58));
+  border-color: color-mix(in srgb, var(--clash-accent) 28%, transparent);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    color-mix(in srgb, var(--clash-brand-light) 58%, transparent)
+  );
   color: #202839;
   box-shadow:
     0 8px 18px rgba(35, 31, 25, 0.045),
-    0 2px 8px rgba(255, 107, 80, 0.06),
+    0 2px 8px color-mix(in srgb, var(--clash-accent) 6%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
@@ -621,56 +1143,71 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .dark .clash-settings-field,
 .dark .clash-select-trigger.clash-settings-select-trigger {
-  border-color: rgba(71, 85, 105, 0.9);
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.88));
-  color: #f8fafc;
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(
+    180deg,
+    rgba(38, 38, 38, 0.96),
+    rgba(28, 28, 28, 0.94)
+  );
+  color: var(--foreground);
   box-shadow:
     0 5px 16px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .dark .clash-settings-field::placeholder {
-  color: #94a3b8;
+  color: var(--clash-timeline-text-tertiary);
 }
 
 .dark .clash-settings-field:hover,
 .dark .clash-select-trigger.clash-settings-select-trigger:hover {
-  border-color: rgba(100, 116, 139, 0.95);
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.94));
+  border-color: color-mix(in srgb, var(--clash-warm-border) 78%, var(--foreground));
+  background: linear-gradient(
+    180deg,
+    rgba(44, 44, 44, 0.98),
+    rgba(30, 30, 30, 0.96)
+  );
 }
 
 .dark .clash-settings-field:focus,
 .dark .clash-select-trigger.clash-settings-select-trigger:focus-visible {
-  border-color: rgba(255, 107, 80, 0.54);
+  border-color: color-mix(in srgb, var(--clash-accent) 54%, transparent);
   box-shadow:
-    0 0 0 3px rgba(255, 107, 80, 0.16),
+    0 0 0 3px color-mix(in srgb, var(--clash-accent) 16%, transparent),
     0 8px 18px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
 .dark .clash-settings-secondary {
-  border-color: rgba(71, 85, 105, 0.9);
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.88));
-  color: #f8fafc;
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(
+    180deg,
+    rgba(38, 38, 38, 0.96),
+    rgba(28, 28, 28, 0.94)
+  );
+  color: var(--foreground);
   box-shadow:
     0 6px 16px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .dark .clash-settings-secondary:hover {
-  border-color: rgba(255, 107, 80, 0.4);
-  background:
-    linear-gradient(180deg, rgba(51, 65, 85, 0.96), rgba(30, 41, 59, 0.92));
-  color: #fffefd;
+  border-color: color-mix(in srgb, var(--clash-accent) 40%, transparent);
+  background: linear-gradient(
+    180deg,
+    rgba(48, 48, 48, 0.98),
+    rgba(36, 36, 36, 0.96)
+  );
+  color: var(--foreground);
 }
 
 .clash-chat-input-stop {
   border: 1px solid rgba(214, 209, 200, 0.9);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(243, 240, 235, 0.9));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.96),
+    rgba(243, 240, 235, 0.9)
+  );
   color: #6d6258;
   box-shadow:
     0 1px 2px rgba(35, 31, 25, 0.06),
@@ -684,8 +1221,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-chat-input-stop:hover {
   border-color: rgba(188, 177, 165, 0.95);
-  background:
-    linear-gradient(180deg, rgba(249, 247, 243, 0.98), rgba(236, 232, 225, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(249, 247, 243, 0.98),
+    rgba(236, 232, 225, 0.94)
+  );
   color: #29231f;
 }
 
@@ -697,8 +1237,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-settings-code,
 .clash-copilot-code {
   border: 1px solid rgba(225, 221, 213, 0.84);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(241, 239, 234, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.88),
+    rgba(241, 239, 234, 0.74)
+  );
   color: #202839;
   box-shadow:
     0 5px 14px rgba(35, 31, 25, 0.032),
@@ -731,6 +1274,30 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   display: block;
 }
 
+.clash-copilot-launcher--header .clash-agent-motion__svg {
+  opacity: 0.9;
+}
+
+.clash-agent-motion--compact .clash-agent-motion__svg {
+  shape-rendering: geometricPrecision;
+}
+
+.clash-agent-motion--compact.clash-agent-motion--idle
+  .clash-agent-motion__avatar,
+.clash-agent-motion--compact.clash-agent-motion--idle
+  .clash-agent-motion__gaze,
+.clash-agent-motion--compact.clash-agent-motion--idle
+  .clash-agent-motion__eye {
+  animation: none;
+  transform: none;
+}
+
+.clash-agent-motion--compact.clash-agent-motion--idle
+  .clash-agent-motion__pen {
+  animation: none;
+  transform: rotate(26deg);
+}
+
 .clash-agent-motion__avatar {
   transform-box: fill-box;
   transform-origin: center;
@@ -748,7 +1315,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   animation: clash-agent-idle-gaze 4.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
-.clash-agent-motion[data-agent-motion-tracking="true"] .clash-agent-motion__gaze {
+.clash-agent-motion[data-agent-motion-tracking="true"]
+  .clash-agent-motion__gaze {
   animation: none;
   transform: translate3d(var(--clash-agent-eye-x), var(--clash-agent-eye-y), 0);
   transition: transform 80ms linear;
@@ -781,7 +1349,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-agent-motion--connecting .clash-agent-motion__frame {
   stroke-dasharray: 1000;
   stroke-dashoffset: 1000;
-  animation: clash-agent-draw-frame 1.55s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-draw-frame 1.55s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--connecting .clash-agent-motion__gaze {
@@ -789,11 +1358,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion--connecting .clash-agent-motion__pen {
-  animation: clash-agent-connecting-pen 1.65s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-connecting-pen 1.65s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--working .clash-agent-motion__avatar {
-  animation: clash-agent-working-body 900ms cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  animation: clash-agent-working-body 900ms cubic-bezier(0.25, 1, 0.5, 1)
+    infinite;
 }
 
 .clash-agent-motion--working .clash-agent-motion__gaze {
@@ -801,25 +1372,30 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion--working .clash-agent-motion__pen {
-  animation: clash-agent-working-pen 700ms cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  animation: clash-agent-working-pen 700ms cubic-bezier(0.25, 1, 0.5, 1)
+    infinite;
 }
 
 .clash-agent-motion--working .clash-agent-motion__attached-mark,
 .clash-agent-motion--review .clash-agent-motion__attached-mark {
   opacity: 0.9;
-  animation: clash-agent-attached-mark 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-attached-mark 1.45s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--waiting .clash-agent-motion__avatar {
-  animation: clash-agent-waiting-body 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-waiting-body 2.2s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--waiting .clash-agent-motion__gaze {
-  animation: clash-agent-waiting-gaze 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-waiting-gaze 2.2s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--waiting .clash-agent-motion__pen {
-  animation: clash-agent-waiting-pen 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-waiting-pen 2.2s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--failed {
@@ -842,11 +1418,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-agent-motion--review .clash-agent-motion__avatar {
-  animation: clash-agent-review-body 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-review-body 2.8s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--review .clash-agent-motion__gaze {
-  animation: clash-agent-review-gaze 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: clash-agent-review-gaze 2.8s cubic-bezier(0.22, 1, 0.36, 1)
+    infinite;
 }
 
 .clash-agent-motion--review .clash-agent-motion__pen {
@@ -854,44 +1432,86 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-copilot-launcher .clash-agent-motion {
-  filter:
-    drop-shadow(0 10px 18px rgba(35, 31, 25, 0.12))
+  filter: drop-shadow(0 10px 18px rgba(35, 31, 25, 0.12))
     drop-shadow(0 2px 6px rgba(255, 107, 80, 0.08));
   transition: filter 180ms ease;
 }
 
 .clash-copilot-launcher:hover .clash-agent-motion {
-  filter:
-    drop-shadow(0 12px 22px rgba(35, 31, 25, 0.15))
+  filter: drop-shadow(0 12px 22px rgba(35, 31, 25, 0.15))
     drop-shadow(0 3px 9px rgba(255, 107, 80, 0.12));
 }
 
 @keyframes clash-agent-idle-body {
-  0%, 100% { transform: translateY(0); }
-  42% { transform: translateY(-2px); }
-  68% { transform: translateY(1px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  42% {
+    transform: translateY(-2px);
+  }
+  68% {
+    transform: translateY(1px);
+  }
 }
 
 @keyframes clash-agent-idle-gaze {
-  0%, 15% { transform: translateX(0); }
-  27%, 42% { transform: translateX(-3px); }
-  54%, 66% { transform: translateX(2px); }
-  78%, 100% { transform: translateX(0); }
+  0%,
+  15% {
+    transform: translateX(0);
+  }
+  27%,
+  42% {
+    transform: translateX(-3px);
+  }
+  54%,
+  66% {
+    transform: translateX(2px);
+  }
+  78%,
+  100% {
+    transform: translateX(0);
+  }
 }
 
 @keyframes clash-agent-blink {
-  0%, 31%, 35%, 69%, 73%, 100% { transform: scaleY(1); }
-  33%, 71% { transform: scaleY(0.55); }
+  0%,
+  31%,
+  35%,
+  69%,
+  73%,
+  100% {
+    transform: scaleY(1);
+  }
+  33%,
+  71% {
+    transform: scaleY(0.55);
+  }
 }
 
 @keyframes clash-agent-idle-pen {
-  0%, 100% { transform: translate(0, 0) rotate(26deg); }
-  18% { transform: translate(-1px, -3px) rotate(24deg); }
-  34% { transform: translate(3px, -6px) rotate(31deg); }
-  47% { transform: translate(1px, -3px) rotate(27deg); }
-  56% { transform: translate(-2px, 3px) rotate(22deg); }
-  64% { transform: translate(0, 0) rotate(26deg); }
-  80% { transform: translate(2px, -4px) rotate(29deg); }
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(26deg);
+  }
+  18% {
+    transform: translate(-1px, -3px) rotate(24deg);
+  }
+  34% {
+    transform: translate(3px, -6px) rotate(31deg);
+  }
+  47% {
+    transform: translate(1px, -3px) rotate(27deg);
+  }
+  56% {
+    transform: translate(-2px, 3px) rotate(22deg);
+  }
+  64% {
+    transform: translate(0, 0) rotate(26deg);
+  }
+  80% {
+    transform: translate(2px, -4px) rotate(29deg);
+  }
 }
 
 @keyframes clash-agent-draw-frame {
@@ -903,86 +1523,172 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     stroke-dashoffset: 1000;
     opacity: 1;
   }
-  78%, 100% {
+  78%,
+  100% {
     stroke-dashoffset: 0;
     opacity: 1;
   }
 }
 
 @keyframes clash-agent-scan-gaze {
-  0%, 100% { transform: translateX(-4px); }
-  50% { transform: translateX(4px); }
+  0%,
+  100% {
+    transform: translateX(-4px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
 }
 
 @keyframes clash-agent-connecting-pen {
-  0%, 100% { transform: translate(0, -3px) rotate(28deg); }
-  50% { transform: translate(0, 3px) rotate(23deg); }
+  0%,
+  100% {
+    transform: translate(0, -3px) rotate(28deg);
+  }
+  50% {
+    transform: translate(0, 3px) rotate(23deg);
+  }
 }
 
 @keyframes clash-agent-working-body {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  45% { transform: translate(1px, -2px) rotate(0.8deg); }
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  45% {
+    transform: translate(1px, -2px) rotate(0.8deg);
+  }
 }
 
 @keyframes clash-agent-working-gaze {
-  0%, 100% { transform: translateX(-3px); }
-  50% { transform: translateX(3px); }
+  0%,
+  100% {
+    transform: translateX(-3px);
+  }
+  50% {
+    transform: translateX(3px);
+  }
 }
 
 @keyframes clash-agent-working-pen {
-  0%, 100% { transform: translate(-1px, 3px) rotate(18deg); }
-  35% { transform: translate(3px, -6px) rotate(35deg); }
-  70% { transform: translate(-3px, -1px) rotate(24deg); }
+  0%,
+  100% {
+    transform: translate(-1px, 3px) rotate(18deg);
+  }
+  35% {
+    transform: translate(3px, -6px) rotate(35deg);
+  }
+  70% {
+    transform: translate(-3px, -1px) rotate(24deg);
+  }
 }
 
 @keyframes clash-agent-attached-mark {
-  0% { stroke-dashoffset: 0; opacity: 0; }
-  16% { opacity: 0.85; }
-  70% { opacity: 0.2; }
-  100% { stroke-dashoffset: -120; opacity: 0; }
+  0% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  16% {
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.2;
+  }
+  100% {
+    stroke-dashoffset: -120;
+    opacity: 0;
+  }
 }
 
 @keyframes clash-agent-waiting-body {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  44% { transform: translateY(-2px) rotate(-1deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  44% {
+    transform: translateY(-2px) rotate(-1deg);
+  }
 }
 
 @keyframes clash-agent-waiting-gaze {
-  0%, 100% { transform: translate(-2px, -3px); }
-  48% { transform: translate(2px, -4px); }
+  0%,
+  100% {
+    transform: translate(-2px, -3px);
+  }
+  48% {
+    transform: translate(2px, -4px);
+  }
 }
 
 @keyframes clash-agent-waiting-pen {
-  0%, 100% { transform: translate(-2px, 2px) rotate(19deg); }
-  50% { transform: translate(-1px, -2px) rotate(24deg); }
+  0%,
+  100% {
+    transform: translate(-2px, 2px) rotate(19deg);
+  }
+  50% {
+    transform: translate(-1px, -2px) rotate(24deg);
+  }
 }
 
 @keyframes clash-agent-failed-shake {
-  0%, 100% { transform: translateX(0); }
-  18% { transform: translateX(-2px) rotate(-1deg); }
-  36% { transform: translateX(2px) rotate(1deg); }
-  54% { transform: translateX(-1px) rotate(-0.6deg); }
-  72% { transform: translateX(1px) rotate(0.4deg); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-2px) rotate(-1deg);
+  }
+  36% {
+    transform: translateX(2px) rotate(1deg);
+  }
+  54% {
+    transform: translateX(-1px) rotate(-0.6deg);
+  }
+  72% {
+    transform: translateX(1px) rotate(0.4deg);
+  }
 }
 
 @keyframes clash-agent-failed-pen {
-  0%, 100% { transform: translate(2px, 5px) rotate(39deg); }
-  50% { transform: translate(1px, 3px) rotate(35deg); }
+  0%,
+  100% {
+    transform: translate(2px, 5px) rotate(39deg);
+  }
+  50% {
+    transform: translate(1px, 3px) rotate(35deg);
+  }
 }
 
 @keyframes clash-agent-review-body {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  45% { transform: translateY(-2px) rotate(0.7deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  45% {
+    transform: translateY(-2px) rotate(0.7deg);
+  }
 }
 
 @keyframes clash-agent-review-gaze {
-  0%, 24%, 100% { transform: translateX(0); }
-  44%, 70% { transform: translateX(3px); }
+  0%,
+  24%,
+  100% {
+    transform: translateX(0);
+  }
+  44%,
+  70% {
+    transform: translateX(3px);
+  }
 }
 
 @keyframes clash-agent-review-pen {
-  0%, 100% { transform: translate(1px, -2px) rotate(29deg); }
-  52% { transform: translate(3px, -5px) rotate(34deg); }
+  0%,
+  100% {
+    transform: translate(1px, -2px) rotate(29deg);
+  }
+  52% {
+    transform: translate(3px, -5px) rotate(34deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -998,9 +1704,9 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-copilot-panel-shell {
   isolation: isolate;
-  border-radius: 28px;
+  border-radius: var(--clash-workbench-surface-radius);
   border: 1px solid rgba(225, 221, 213, 0.82);
-  background: rgba(255, 254, 253, 0.96);
+  background: var(--color-warm-page);
   box-shadow:
     0 24px 64px rgba(35, 31, 25, 0.14),
     0 8px 24px rgba(35, 31, 25, 0.075),
@@ -1012,7 +1718,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-copilot-panel-shell--docked {
   border-width: 0 0 0 1px;
   border-radius: 0;
-  background: #fffefd;
+  background: var(--color-warm-page);
   box-shadow: none;
 }
 
@@ -1029,13 +1735,12 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   bottom: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 254, 253, 0) 0%,
-      rgba(255, 254, 253, 0.72) 42%,
-      rgba(255, 254, 253, 0.98) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0) 0%,
+    rgba(255, 254, 253, 0.72) 42%,
+    rgba(255, 254, 253, 0.98) 100%
+  );
 }
 
 .clash-session-config-trigger {
@@ -1100,8 +1805,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-project-top-action,
 .clash-project-top-balance {
   border: 1px solid rgba(225, 221, 213, 0.78);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(251, 250, 247, 0.72));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.88),
+    rgba(251, 250, 247, 0.72)
+  );
   box-shadow:
     0 10px 24px rgba(35, 31, 25, 0.045),
     0 2px 8px rgba(35, 31, 25, 0.028),
@@ -1112,8 +1820,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-project-top-action:hover,
 .clash-project-top-balance:hover {
   border-color: rgba(255, 107, 80, 0.32);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(255, 240, 237, 0.58));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.94),
+    rgba(255, 240, 237, 0.58)
+  );
   box-shadow:
     0 12px 28px rgba(35, 31, 25, 0.06),
     0 3px 10px rgba(255, 107, 80, 0.08),
@@ -1178,8 +1889,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-node-danger-ghost {
   border: 1px solid rgba(225, 221, 213, 0.82);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.78));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.9),
+    rgba(247, 246, 242, 0.78)
+  );
   color: #202839;
   box-shadow:
     0 6px 14px rgba(35, 31, 25, 0.035),
@@ -1193,8 +1907,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-node-danger-ghost:hover {
   border-color: rgba(255, 107, 80, 0.34);
-  background:
-    linear-gradient(180deg, rgba(255, 240, 237, 0.84), rgba(255, 254, 253, 0.72));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 240, 237, 0.84),
+    rgba(255, 254, 253, 0.72)
+  );
   color: #8e2f20;
 }
 
@@ -1206,8 +1923,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-node-choice-active {
-  background:
-    linear-gradient(180deg, rgba(255, 240, 237, 0.9), rgba(255, 254, 253, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 240, 237, 0.9),
+    rgba(255, 254, 253, 0.74)
+  );
   color: #8e2f20;
   box-shadow:
     inset 0 0 0 1px rgba(255, 107, 80, 0.2),
@@ -1244,8 +1964,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-marketplace-filter-active {
   border: 1px solid rgba(255, 107, 80, 0.24);
-  background:
-    linear-gradient(180deg, rgba(255, 240, 237, 0.8), rgba(255, 254, 253, 0.7));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 240, 237, 0.8),
+    rgba(255, 254, 253, 0.7)
+  );
   color: #202839;
   box-shadow:
     0 8px 18px rgba(35, 31, 25, 0.035),
@@ -1254,8 +1977,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-marketplace-installed {
   border: 1px solid rgba(255, 107, 80, 0.24);
-  background:
-    linear-gradient(180deg, rgba(255, 240, 237, 0.72), rgba(255, 254, 253, 0.62));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 240, 237, 0.72),
+    rgba(255, 254, 253, 0.62)
+  );
   color: #8e2f20;
   box-shadow:
     0 6px 16px rgba(35, 31, 25, 0.03),
@@ -1269,8 +1995,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-marketplace-installed:hover {
   border-color: rgba(255, 107, 80, 0.36);
-  background:
-    linear-gradient(180deg, rgba(255, 240, 237, 0.86), rgba(255, 254, 253, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 240, 237, 0.86),
+    rgba(255, 254, 253, 0.74)
+  );
   color: #702417;
 }
 
@@ -1288,13 +2017,9 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-projects-empty-canvas {
-  border: 1px solid rgba(225, 221, 213, 0.82);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.86), rgba(247, 246, 242, 0.68));
-  box-shadow:
-    0 16px 38px rgba(35, 31, 25, 0.07),
-    0 4px 14px rgba(35, 31, 25, 0.038),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--clash-overlay-border);
+  background: var(--clash-overlay-surface);
+  box-shadow: var(--clash-overlay-shadow);
   backdrop-filter: blur(14px) saturate(1.03);
 }
 
@@ -1309,7 +2034,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(circle at 78% 18%, rgba(255, 107, 80, 0.055), transparent 28%),
+    radial-gradient(
+      circle at 78% 18%,
+      rgba(255, 107, 80, 0.055),
+      transparent 28%
+    ),
     radial-gradient(circle at 14% 74%, rgba(35, 31, 25, 0.035), transparent 24%);
 }
 
@@ -1356,12 +2085,21 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 72% 22%, rgba(255, 107, 80, 0.12), transparent 24%),
-    linear-gradient(90deg, rgba(255, 254, 253, 0.58), rgba(255, 254, 253, 0.1) 58%, rgba(255, 254, 253, 0.48));
+    radial-gradient(
+      circle at 72% 22%,
+      color-mix(in srgb, var(--clash-accent) 12%, transparent),
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--clash-warm-surface) 58%, transparent),
+      color-mix(in srgb, var(--clash-warm-surface) 10%, transparent) 58%,
+      color-mix(in srgb, var(--clash-warm-surface) 48%, transparent)
+    );
 }
 
 .clash-projects-empty-edge {
-  stroke: #ff6b50;
+  stroke: var(--clash-accent);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-dasharray: 7 11;
@@ -1377,24 +2115,20 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-projects-empty-node {
   position: absolute;
   z-index: 1;
-  border: 1px solid rgba(225, 221, 213, 0.82);
+  border: 1px solid var(--clash-warm-border);
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.84), rgba(247, 246, 242, 0.7));
-  box-shadow:
-    0 16px 34px rgba(35, 31, 25, 0.06),
-    0 4px 14px rgba(255, 107, 80, 0.045),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  background: var(--clash-warm-surface);
+  box-shadow: var(--clash-overlay-shadow);
 }
 
 .clash-projects-empty-node span {
   display: inline-flex;
   width: fit-content;
-  border: 1px solid rgba(225, 221, 213, 0.72);
+  border: 1px solid var(--clash-warm-border);
   border-radius: 999px;
-  background: rgba(255, 254, 253, 0.72);
+  background: var(--clash-warm-muted);
   padding: 2px 8px;
-  color: #7b6f64;
+  color: var(--clash-content-muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;
@@ -1402,8 +2136,9 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-projects-empty-node strong {
   display: block;
-  color: #12192b;
-  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  color: var(--clash-content-primary);
+  font-family:
+    var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.18;
@@ -1431,9 +2166,12 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   align-items: flex-start;
   justify-content: space-between;
   padding: 18px;
-  border-color: rgba(255, 107, 80, 0.28);
-  background:
-    linear-gradient(180deg, rgba(255, 240, 237, 0.82), rgba(255, 254, 253, 0.7));
+  border-color: color-mix(in srgb, var(--clash-accent) 28%, transparent);
+  background: linear-gradient(
+    180deg,
+    var(--clash-brand-light),
+    var(--clash-warm-surface)
+  );
 }
 
 .clash-projects-empty-node--agent img {
@@ -1452,13 +2190,25 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-projects-empty-node--shot div {
   height: 112px;
-  border: 1px solid rgba(225, 221, 213, 0.72);
+  border: 1px solid var(--clash-warm-border);
   border-radius: 14px;
   background:
-    linear-gradient(135deg, rgba(255, 107, 80, 0.2), transparent 36%),
-    radial-gradient(circle at 68% 42%, rgba(18, 25, 43, 0.18), transparent 18%),
-    radial-gradient(circle at 35% 58%, rgba(255, 107, 80, 0.25), transparent 17%),
-    rgba(247, 246, 242, 0.72);
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--clash-accent) 20%, transparent),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 68% 42%,
+      color-mix(in srgb, var(--clash-content-primary) 18%, transparent),
+      transparent 18%
+    ),
+    radial-gradient(
+      circle at 35% 58%,
+      color-mix(in srgb, var(--clash-accent) 25%, transparent),
+      transparent 17%
+    ),
+    var(--clash-warm-muted);
 }
 
 .clash-projects-empty-node--shot strong {
@@ -1517,13 +2267,15 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   }
 }
 
-.clash-project-create-tile,
 .clash-project-card-frame {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(225, 221, 213, 0.78);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.66), rgba(247, 246, 242, 0.54));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.66),
+    rgba(247, 246, 242, 0.54)
+  );
   box-shadow:
     0 10px 24px rgba(35, 31, 25, 0.038),
     0 2px 8px rgba(35, 31, 25, 0.024),
@@ -1536,10 +2288,14 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-project-create-tile {
-  overflow: hidden;
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: color 180ms ease;
 }
 
-.clash-project-create-tile::before,
 .clash-project-card-empty::before {
   content: "";
   position: absolute;
@@ -1551,50 +2307,40 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   opacity: 0.34;
 }
 
-.clash-project-create-tile::after {
-  content: "";
-  position: absolute;
-  inset: 14px;
-  z-index: 0;
-  pointer-events: none;
-  border: 1px solid rgba(225, 221, 213, 0.46);
-  border-radius: 18px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
-}
-
-.clash-project-create-tile > *,
 .clash-project-card-frame > *,
 .clash-project-card-empty > * {
   position: relative;
   z-index: 1;
 }
 
-.clash-project-create-tile:hover,
 .clash-project-card-frame:hover {
   border-color: rgba(255, 107, 80, 0.36);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.78), rgba(247, 246, 242, 0.62));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.78),
+    rgba(247, 246, 242, 0.62)
+  );
   box-shadow:
     0 14px 32px rgba(35, 31, 25, 0.052),
     0 4px 12px rgba(35, 31, 25, 0.032),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
-.clash-project-create-icon {
-  border: 1px solid rgba(225, 221, 213, 0.82);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.92), rgba(241, 239, 234, 0.86));
-  box-shadow:
-    0 8px 18px rgba(35, 31, 25, 0.05),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+.clash-project-create-tile:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .clash-project-card-empty {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.36), rgba(241, 239, 234, 0.48));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.36),
+    rgba(241, 239, 234, 0.48)
+  );
 }
 
 .clash-project-card-preview-grid {
@@ -1605,8 +2351,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-project-card-preview-cell {
   position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.7), rgba(241, 239, 234, 0.58));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.7),
+    rgba(241, 239, 234, 0.58)
+  );
 }
 
 .clash-project-card-preview-img {
@@ -1617,45 +2366,42 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.68), rgba(241, 239, 234, 0.58)),
+    linear-gradient(
+      180deg,
+      rgba(255, 254, 253, 0.68),
+      rgba(241, 239, 234, 0.58)
+    ),
     radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size: auto, 18px 18px;
+  background-size:
+    auto,
+    18px 18px;
 }
 
-.clash-project-card-asset-fallback::after {
-  content: "";
+.clash-project-card-empty-mark,
+.clash-project-card-asset-fallback-mark {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 42px;
-  height: 42px;
   transform: translate(-50%, -50%);
-  border-radius: 14px;
-  border: 1px solid rgba(210, 204, 194, 0.6);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.72), rgba(247, 246, 242, 0.62));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  width: 28px;
+  height: 28px;
+  color: var(--clash-content-muted);
+  opacity: 0.52;
 }
 
-.clash-project-card-empty::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 42px;
-  height: 42px;
-  transform: translate(-50%, -50%);
-  border-radius: 14px;
-  border: 1px solid rgba(210, 204, 194, 0.64);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.7), rgba(247, 246, 242, 0.58));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+.clash-project-card-asset-fallback-mark {
+  width: 22px;
+  height: 22px;
+  opacity: 0.46;
 }
 
 .clash-project-card-delete {
   border: 1px solid rgba(225, 221, 213, 0.72);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.9),
+    rgba(247, 246, 242, 0.74)
+  );
   color: #6a6258;
   box-shadow:
     0 8px 18px rgba(35, 31, 25, 0.052),
@@ -1669,8 +2415,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-project-card-delete:hover {
   border-color: rgba(255, 107, 80, 0.32);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(255, 240, 237, 0.62));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.94),
+    rgba(255, 240, 237, 0.62)
+  );
   color: #d64936;
   box-shadow:
     0 10px 22px rgba(35, 31, 25, 0.064),
@@ -1678,12 +2427,75 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
+.dark .clash-project-card-frame {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(31, 31, 31, 0.96), rgba(24, 24, 24, 0.98));
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.dark .clash-project-card-frame:hover {
+  border-color: color-mix(in srgb, var(--clash-accent) 44%, var(--clash-warm-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--clash-accent) 5%, #232323),
+    #1a1a1a
+  );
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--clash-accent) 10%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.dark .clash-project-card-empty {
+  background: linear-gradient(180deg, rgba(31, 31, 31, 0.9), rgba(22, 22, 22, 0.96));
+}
+
+.dark .clash-project-card-preview-grid {
+  background: var(--clash-warm-border);
+}
+
+.dark .clash-project-card-preview-cell {
+  background: linear-gradient(180deg, #202020, #181818);
+}
+
+.dark .clash-project-card-asset-fallback {
+  background:
+    linear-gradient(180deg, rgba(31, 31, 31, 0.94), rgba(22, 22, 22, 0.98)),
+    radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+}
+
+.dark .clash-project-card-empty-mark,
+.dark .clash-project-card-asset-fallback-mark {
+  color: #8a8a8a;
+  opacity: 0.68;
+}
+
+.dark .clash-project-card-delete {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(42, 42, 42, 0.96), rgba(29, 29, 29, 0.94));
+  color: #b5b5b5;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .clash-project-card-delete:hover {
+  border-color: color-mix(in srgb, var(--clash-accent) 38%, var(--clash-warm-border));
+  background: color-mix(in srgb, var(--clash-accent) 10%, var(--clash-warm-muted));
+  color: var(--clash-accent);
+}
+
 .clash-auth-panel {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(225, 221, 213, 0.74);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.72), rgba(247, 246, 242, 0.52));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.72),
+    rgba(247, 246, 242, 0.52)
+  );
   box-shadow:
     0 18px 46px rgba(35, 31, 25, 0.07),
     0 5px 18px rgba(35, 31, 25, 0.04),
@@ -1699,8 +2511,17 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   border-radius: inherit;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 0%, rgba(255, 107, 80, 0.055), transparent 34%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 34%, rgba(168, 156, 141, 0.06));
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(255, 107, 80, 0.055),
+      transparent 34%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.18),
+      transparent 34%,
+      rgba(168, 156, 141, 0.06)
+    );
 }
 
 .clash-auth-panel > * {
@@ -1710,8 +2531,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-auth-input {
   border: 1px solid rgba(225, 221, 213, 0.88);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(247, 246, 242, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.94),
+    rgba(247, 246, 242, 0.74)
+  );
   box-shadow:
     0 4px 12px rgba(35, 31, 25, 0.026),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -1723,8 +2547,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-auth-input:focus {
   border-color: rgba(255, 107, 80, 0.46);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(247, 246, 242, 0.82));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    rgba(247, 246, 242, 0.82)
+  );
   box-shadow:
     0 0 0 3px rgba(255, 107, 80, 0.09),
     0 8px 18px rgba(35, 31, 25, 0.04),
@@ -1732,8 +2559,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-auth-primary {
-  background:
-    linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 118, 91, 0.98),
+    rgba(255, 107, 80, 0.96)
+  );
   color: #fffefd;
   box-shadow:
     0 12px 24px rgba(255, 107, 80, 0.18),
@@ -1761,8 +2591,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-auth-secondary {
   border: 1px solid rgba(225, 221, 213, 0.88);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.76));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.9),
+    rgba(247, 246, 242, 0.76)
+  );
   color: #12192b;
   box-shadow:
     0 6px 16px rgba(35, 31, 25, 0.035),
@@ -1775,14 +2608,20 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-auth-secondary:hover {
   border-color: rgba(255, 107, 80, 0.32);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.84));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.96),
+    rgba(247, 246, 242, 0.84)
+  );
 }
 
 .clash-auth-code {
   border: 1px solid rgba(225, 221, 213, 0.84);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.88), rgba(241, 239, 234, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.88),
+    rgba(241, 239, 234, 0.74)
+  );
   color: #202839;
   box-shadow:
     0 5px 14px rgba(35, 31, 25, 0.035),
@@ -1824,8 +2663,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: relative;
   isolation: isolate;
   border: 1px solid rgba(225, 221, 213, 0.78);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.82), rgba(247, 246, 242, 0.58));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.82),
+    rgba(247, 246, 242, 0.58)
+  );
   box-shadow:
     0 20px 54px rgba(35, 31, 25, 0.085),
     0 6px 18px rgba(35, 31, 25, 0.04),
@@ -1840,8 +2682,17 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   border-radius: inherit;
   pointer-events: none;
   background:
-    radial-gradient(circle at 12% 0%, rgba(255, 107, 80, 0.065), transparent 32%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22), transparent 36%, rgba(168, 156, 141, 0.07));
+    radial-gradient(
+      circle at 12% 0%,
+      rgba(255, 107, 80, 0.065),
+      transparent 32%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.22),
+      transparent 36%,
+      rgba(168, 156, 141, 0.07)
+    );
 }
 
 .clash-route-error-surface > * {
@@ -1851,16 +2702,22 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-route-error-detail {
   border: 1px solid rgba(225, 221, 213, 0.72);
-  background:
-    linear-gradient(180deg, rgba(241, 239, 234, 0.62), rgba(255, 254, 253, 0.46));
+  background: linear-gradient(
+    180deg,
+    rgba(241, 239, 234, 0.62),
+    rgba(255, 254, 253, 0.46)
+  );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.58),
     0 5px 14px rgba(35, 31, 25, 0.026);
 }
 
 .clash-route-error-primary {
-  background:
-    linear-gradient(180deg, rgba(255, 118, 91, 0.98), rgba(255, 107, 80, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 118, 91, 0.98),
+    rgba(255, 107, 80, 0.96)
+  );
   color: #fffefd;
   box-shadow:
     0 12px 24px rgba(255, 107, 80, 0.18),
@@ -1882,8 +2739,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-route-error-secondary {
   border: 1px solid rgba(225, 221, 213, 0.88);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(247, 246, 242, 0.76));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.9),
+    rgba(247, 246, 242, 0.76)
+  );
   color: #12192b;
   box-shadow:
     0 6px 16px rgba(35, 31, 25, 0.035),
@@ -1896,8 +2756,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-route-error-secondary:hover {
   border-color: rgba(255, 107, 80, 0.32);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.84));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.96),
+    rgba(247, 246, 242, 0.84)
+  );
 }
 
 .clash-input-surface {
@@ -1935,8 +2798,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-toolbar-button:hover,
 .clash-input-icon-button:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(241, 239, 234, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88),
+    rgba(241, 239, 234, 0.96)
+  );
   box-shadow:
     0 2px 6px rgba(35, 31, 25, 0.044),
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
@@ -1966,13 +2832,21 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-control-divider {
-  background: linear-gradient(90deg, transparent, rgba(210, 204, 194, 0.84), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(210, 204, 194, 0.84),
+    transparent
+  );
 }
 
 .clash-input-toolbar {
   border-top: 1px solid rgba(225, 221, 213, 0.7);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(247, 246, 242, 0.58));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.38),
+    rgba(247, 246, 242, 0.58)
+  );
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54);
 }
 
@@ -1984,7 +2858,10 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-home-hero {
-  min-height: min(43rem, calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 13.5rem));
+  min-height: min(
+    43rem,
+    calc(100dvh - var(--clash-desktop-chrome-height, 0px) - 13.5rem)
+  );
   padding-top: clamp(2rem, 5vh, 4rem);
   padding-bottom: clamp(2rem, 5vh, 3.5rem);
 }
@@ -2006,11 +2883,24 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   background:
     linear-gradient(rgba(225, 221, 213, 0.26) 1px, transparent 1px),
     linear-gradient(90deg, rgba(225, 221, 213, 0.22) 1px, transparent 1px),
-    radial-gradient(circle at 50% 38%, rgba(255, 107, 80, 0.08), transparent 32%),
+    radial-gradient(
+      circle at 50% 38%,
+      rgba(255, 107, 80, 0.08),
+      transparent 32%
+    ),
     radial-gradient(circle at 50% 38%, rgba(35, 31, 25, 0.075), transparent 68%);
-  background-size: 72px 72px, 72px 72px, auto, auto;
+  background-size:
+    72px 72px,
+    72px 72px,
+    auto,
+    auto;
   opacity: 0.48;
-  mask-image: radial-gradient(ellipse at 50% 36%, #000 0%, rgba(0, 0, 0, 0.74) 42%, transparent 75%);
+  mask-image: radial-gradient(
+    ellipse at 50% 36%,
+    #000 0%,
+    rgba(0, 0, 0, 0.74) 42%,
+    transparent 75%
+  );
 }
 
 .clash-hero-heading {
@@ -2186,7 +3076,9 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   background:
     radial-gradient(rgba(214, 209, 200, 0.5) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255, 254, 253, 0.94), rgba(247, 246, 242, 0.9));
-  background-size: 18px 18px, auto;
+  background-size:
+    18px 18px,
+    auto;
 }
 
 .clash-hero-canvas-preview::before,
@@ -2236,7 +3128,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   display: block;
   margin-top: 0.55rem;
   color: #111827;
-  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  font-family:
+    var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
   font-size: 19px;
   line-height: 1.15;
 }
@@ -2534,7 +3427,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   display: block;
   margin-top: 0.75rem;
   color: #12192b;
-  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  font-family:
+    var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
   font-size: clamp(1.7rem, 3vw, 2.45rem);
   line-height: 1;
   letter-spacing: -0.02em;
@@ -2756,7 +3650,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-landing-note-meta span:first-child {
   color: #ff6b50;
-  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  font-family:
+    var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
   font-size: 13px;
   letter-spacing: 0;
 }
@@ -2769,7 +3664,8 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-landing-note-copy h3 {
   color: #12192b;
-  font-family: var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
+  font-family:
+    var(--font-space-grotesk), var(--font-inter), system-ui, sans-serif;
   font-size: clamp(1.18rem, 2.1vw, 1.55rem);
   font-weight: 700;
   line-height: 1.12;
@@ -2844,7 +3740,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   width: 1.25rem;
   height: 1px;
   margin-left: 0.55rem;
-  background: linear-gradient(90deg, rgba(255, 107, 80, 0.42), rgba(210, 204, 194, 0.82));
+  background: linear-gradient(
+    90deg,
+    rgba(255, 107, 80, 0.42),
+    rgba(210, 204, 194, 0.82)
+  );
 }
 
 .clash-landing-note-all {
@@ -2931,9 +3831,13 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  border-radius: var(--clash-workbench-surface-radius);
   border: 1px solid rgba(225, 221, 213, 0.88);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.92), rgba(247, 246, 242, 0.8));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.92),
+    rgba(247, 246, 242, 0.8)
+  );
   box-shadow:
     0 12px 28px rgba(35, 31, 25, 0.052),
     0 2px 8px rgba(35, 31, 25, 0.032),
@@ -2946,8 +3850,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-chat-input-surface:hover {
   border-color: rgba(210, 204, 194, 0.94);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.96), rgba(247, 246, 242, 0.86));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.96),
+    rgba(247, 246, 242, 0.86)
+  );
   box-shadow:
     0 14px 32px rgba(35, 31, 25, 0.062),
     0 3px 10px rgba(35, 31, 25, 0.038),
@@ -2956,8 +3863,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 
 .clash-chat-input-surface:focus-within {
   border-color: rgba(255, 107, 80, 0.38);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.98), rgba(247, 246, 242, 0.88));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.98),
+    rgba(247, 246, 242, 0.88)
+  );
   box-shadow:
     0 16px 34px rgba(35, 31, 25, 0.07),
     0 0 0 3px rgba(255, 107, 80, 0.08),
@@ -2971,8 +3881,11 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 .clash-runtime-prompt-queue {
   border: 1px solid rgba(225, 221, 213, 0.82);
   border-bottom: 0;
-  background:
-    linear-gradient(180deg, rgba(255, 254, 253, 0.9), rgba(250, 248, 244, 0.74));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 253, 0.9),
+    rgba(250, 248, 244, 0.74)
+  );
   box-shadow:
     0 -6px 18px rgba(35, 31, 25, 0.034),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
@@ -2988,6 +3901,328 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
 }
 
 .clash-chat-input-icon-button:focus-visible {
-  outline: 2px solid rgba(255, 107, 80, 0.28);
+  outline: 2px solid color-mix(in srgb, var(--clash-accent) 28%, transparent);
   outline-offset: 2px;
+}
+
+/* Theme-aware overrides for bespoke desktop surfaces. These remain explicit
+   because several of them use glass and elevation effects beyond utility tokens. */
+.clash-auth-primary,
+.clash-route-error-primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--clash-accent) 86%, var(--clash-warm-surface)),
+    var(--clash-accent)
+  );
+  color: var(--clash-accent-foreground);
+  box-shadow:
+    0 12px 24px color-mix(in srgb, var(--clash-accent) 18%, transparent),
+    0 3px 10px color-mix(in srgb, var(--clash-accent) 10%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.clash-auth-input:focus,
+.clash-input-surface:focus-within,
+.clash-chat-input-surface:focus-within {
+  border-color: color-mix(in srgb, var(--clash-accent) 46%, transparent);
+}
+
+.dark .asset-mention {
+  border-color: var(--clash-warm-border);
+  background: var(--clash-warm-muted);
+  color: var(--foreground);
+}
+
+.dark .clash-control-surface,
+.dark .clash-input-surface,
+.dark .clash-chat-input-surface {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(
+    180deg,
+    rgba(39, 39, 39, 0.94),
+    rgba(28, 28, 28, 0.92)
+  );
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.24),
+    0 3px 10px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+
+.dark .clash-control-surface::before,
+.dark .clash-input-surface::before {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.035),
+      transparent 30%,
+      transparent 76%,
+      rgba(0, 0, 0, 0.1)
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 46%);
+}
+
+.dark .clash-input-surface:hover,
+.dark .clash-chat-input-surface:hover {
+  border-color: color-mix(in srgb, var(--clash-warm-border) 72%, var(--foreground));
+  background: linear-gradient(
+    180deg,
+    rgba(44, 44, 44, 0.96),
+    rgba(30, 30, 30, 0.94)
+  );
+}
+
+.dark .clash-input-surface:focus-within,
+.dark .clash-chat-input-surface:focus-within {
+  border-color: color-mix(in srgb, var(--clash-accent) 54%, transparent);
+  background: linear-gradient(
+    180deg,
+    rgba(44, 44, 44, 0.98),
+    rgba(30, 30, 30, 0.96)
+  );
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.3),
+    0 0 0 3px color-mix(in srgb, var(--clash-accent) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.dark .clash-editor-modal-surface,
+.dark .clash-confirm-dialog-surface,
+.dark .clash-settings-dialog-shell {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: linear-gradient(
+    180deg,
+    rgba(32, 32, 32, 0.985),
+    rgba(23, 23, 23, 0.97)
+  );
+  color: var(--foreground);
+  box-shadow:
+    0 26px 76px rgba(0, 0, 0, 0.48),
+    0 8px 26px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.dark .clash-editor-modal-surface::before,
+.dark .clash-settings-dialog-shell::before {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025),
+      transparent 36%,
+      rgba(0, 0, 0, 0.1)
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 48%);
+}
+
+.dark .clash-media-viewer-chrome {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: linear-gradient(
+    180deg,
+    rgba(39, 39, 39, 0.96),
+    rgba(28, 28, 28, 0.92)
+  );
+  color: var(--foreground);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.dark .clash-confirm-dialog-footer {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(37, 37, 37, 0.48), rgba(20, 20, 20, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.dark .clash-confirm-secondary,
+.dark .clash-auth-secondary,
+.dark .clash-route-error-secondary,
+.dark .clash-chat-input-stop {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(
+    180deg,
+    rgba(41, 41, 41, 0.96),
+    rgba(28, 28, 28, 0.94)
+  );
+  color: var(--foreground);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.dark .clash-confirm-secondary:hover,
+.dark .clash-auth-secondary:hover,
+.dark .clash-route-error-secondary:hover,
+.dark .clash-chat-input-stop:hover {
+  border-color: color-mix(in srgb, var(--clash-accent) 34%, var(--clash-warm-border));
+  background: var(--clash-warm-hover);
+  color: var(--foreground);
+}
+
+.dark .clash-settings-dialog-sidebar,
+.dark .clash-settings-page-sidebar {
+  background: linear-gradient(180deg, rgba(32, 32, 32, 0.9), rgba(25, 25, 25, 0.94));
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.035);
+}
+
+.dark .clash-settings-dialog-content,
+.dark .clash-settings-page-content,
+.dark .clash-settings-page-shell {
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.96), rgba(21, 21, 21, 0.94));
+}
+
+.dark .clash-copilot-panel-shell {
+  border-color: var(--clash-warm-border);
+  box-shadow:
+    0 24px 68px rgba(0, 0, 0, 0.38),
+    0 8px 24px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark .clash-copilot-panel-shell--docked {
+  box-shadow: none;
+}
+
+.dark .clash-copilot-composer-bottom-fade {
+  background: linear-gradient(
+    180deg,
+    rgba(21, 21, 21, 0) 0%,
+    rgba(21, 21, 21, 0.72) 42%,
+    rgba(21, 21, 21, 0.98) 100%
+  );
+}
+
+.dark .clash-copilot-agent-perch,
+.dark .clash-agent-motion,
+.dark .clash-project-return-button {
+  color: var(--foreground);
+}
+
+.dark .clash-copilot-launcher .clash-agent-motion {
+  color: #a3a3a3;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28));
+}
+
+.dark .clash-copilot-launcher--header .clash-agent-motion {
+  color: #d6d3d1;
+}
+
+.dark .clash-copilot-launcher:hover .clash-agent-motion {
+  filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.34));
+}
+
+.dark .clash-copilot-launcher .clash-agent-motion__pen {
+  fill: #ff6b50;
+}
+
+.dark .clash-copilot-launcher .clash-agent-motion__attached-mark {
+  color: #8b8b8b;
+}
+
+.dark .clash-copilot-launcher--header .clash-agent-motion__attached-mark {
+  color: #b8b8b8;
+}
+
+.dark .clash-project-return-button:hover {
+  background: rgba(255, 255, 255, 0.055);
+  color: #fff;
+}
+
+.dark .clash-project-name-input {
+  color: var(--foreground);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.54);
+}
+
+.dark .clash-project-name-input:focus {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--clash-accent) 44%, transparent);
+}
+
+.dark .clash-project-top-action,
+.dark .clash-project-top-balance {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(39, 39, 39, 0.9), rgba(28, 28, 28, 0.84));
+  color: var(--foreground);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .clash-project-top-action:hover,
+.dark .clash-project-top-balance:hover {
+  border-color: color-mix(in srgb, var(--clash-accent) 36%, var(--clash-warm-border));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--clash-accent) 10%, #2a2a2a),
+    rgba(30, 30, 30, 0.94)
+  );
+}
+
+.dark .clash-auth-panel,
+.dark .clash-route-error-surface {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(32, 32, 32, 0.9), rgba(23, 23, 23, 0.82));
+  color: var(--foreground);
+  box-shadow:
+    0 20px 56px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark .clash-auth-panel::before,
+.dark .clash-route-error-surface::before {
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      color-mix(in srgb, var(--clash-accent) 10%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025), transparent 40%);
+}
+
+.dark .clash-auth-input,
+.dark .clash-auth-code,
+.dark .clash-auth-code-inline,
+.dark .clash-route-error-detail {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(39, 39, 39, 0.96), rgba(28, 28, 28, 0.92));
+  color: var(--foreground);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .clash-auth-input:focus {
+  background: linear-gradient(180deg, rgba(44, 44, 44, 0.98), rgba(30, 30, 30, 0.96));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--clash-accent) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.dark .clash-toolbar-button,
+.dark .clash-input-icon-button {
+  color: var(--foreground);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+
+.dark .clash-toolbar-button:hover,
+.dark .clash-input-icon-button:hover,
+.dark .clash-chat-input-icon-button:hover {
+  background: var(--clash-warm-hover);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.dark .clash-toolbar-button-active,
+.dark .clash-toolbar-button-active:hover {
+  background: var(--clash-accent);
+  color: var(--clash-accent-foreground);
+  box-shadow:
+    0 6px 14px color-mix(in srgb, var(--clash-accent) 20%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.dark .clash-control-divider {
+  background: linear-gradient(90deg, transparent, var(--clash-warm-border), transparent);
+}
+
+.dark .clash-input-toolbar,
+.dark .clash-runtime-prompt-queue {
+  border-color: var(--clash-warm-border);
+  background: linear-gradient(180deg, rgba(39, 39, 39, 0.52), rgba(25, 25, 25, 0.86));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }

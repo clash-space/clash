@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { sanitizeNodesForReactFlow } from "./canvasNodeOrder";
+import {
+  nodeChangesRequireZIndexNormalization,
+  nodeChangesRequireStructuralSanitize,
+  normalizeCanvasNodeZIndex,
+  sanitizeNodesForReactFlow,
+} from "./canvasNodeOrder";
 
 describe("sanitizeNodesForReactFlow", () => {
   it("keeps an already valid parent-first node array by reference", () => {
@@ -42,5 +47,63 @@ describe("sanitizeNodesForReactFlow", () => {
       extent: undefined,
     });
     expect(onInvalidParent).toHaveBeenCalledWith(child, "missing");
+  });
+});
+
+describe("nodeChangesRequireStructuralSanitize", () => {
+  it("skips the structural scan for drag and selection-only frames", () => {
+    expect(
+      nodeChangesRequireStructuralSanitize([
+        { type: "position" },
+        { type: "select" },
+      ]),
+    ).toBe(false);
+  });
+
+  it.each(["dimensions", "add", "remove", "replace"] as const)(
+    "keeps the structural scan for %s changes",
+    (type) => {
+      expect(nodeChangesRequireStructuralSanitize([{ type }])).toBe(true);
+    },
+  );
+});
+
+describe("nodeChangesRequireZIndexNormalization", () => {
+  it("keeps drag and selection frames off the full-graph z-index path", () => {
+    expect(
+      nodeChangesRequireZIndexNormalization([
+        { type: "position" },
+        { type: "select" },
+      ]),
+    ).toBe(false);
+  });
+
+  it.each(["dimensions", "add", "remove", "replace"] as const)(
+    "normalizes z-index after %s changes",
+    (type) => {
+      expect(nodeChangesRequireZIndexNormalization([{ type }])).toBe(true);
+    },
+  );
+});
+
+describe("normalizeCanvasNodeZIndex", () => {
+  it("keeps an already-normalized graph by reference", () => {
+    const nodes = [
+      { id: "group", type: "group", style: { zIndex: 0 } },
+      { id: "child", parentId: "group", style: { zIndex: 1001 } },
+    ];
+
+    expect(normalizeCanvasNodeZIndex(nodes)).toBe(nodes);
+  });
+
+  it("updates only nodes whose derived depth changed", () => {
+    const group = { id: "group", type: "group", style: { zIndex: 0 } };
+    const child = { id: "child", parentId: "group", style: { zIndex: 1000 } };
+
+    const result = normalizeCanvasNodeZIndex([group, child]);
+
+    expect(result[0]).toBe(group);
+    expect(result[1]).not.toBe(child);
+    expect(result[1].style?.zIndex).toBe(1001);
   });
 });

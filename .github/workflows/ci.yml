@@ -22,11 +22,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.22.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run lint
+      - run: pnpm turbo run lint --concurrency=1
 
   type-check:
     name: Type Check
@@ -38,11 +38,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.22.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run type-check
+      - run: pnpm turbo run type-check --concurrency=1
 
   test:
     name: Test
@@ -54,11 +54,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.22.0
           cache: pnpm
 
+      - run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run test
+      - run: pnpm turbo run test --concurrency=1
 
   agent-first-local-v1:
     name: Agent-First Local V1 Gate
@@ -71,10 +72,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.0
           cache: pnpm
 
+      - run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --concurrency=1
       - run: pnpm test:e2e:agent-first-local-v1
 
   build:
@@ -88,8 +91,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.22.0
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build
+      - run: pnpm turbo run build --concurrency=1

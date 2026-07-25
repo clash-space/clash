@@ -128,7 +128,7 @@ function itemSource(item: ResolvedItem): string {
 }
 
 function itemNotes(item: ResolvedItem): string {
-  if (item.type === "caption" && Array.isArray(item.cues)) {
+  if (item.type === "text" && Array.isArray(item.cues)) {
     return item.cues
       .map((cue) => cue && typeof cue === "object" && "text" in cue ? readString((cue as Record<string, unknown>).text) : "")
       .filter(Boolean)

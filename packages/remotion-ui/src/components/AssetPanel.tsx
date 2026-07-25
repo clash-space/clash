@@ -3,10 +3,9 @@ import {
   getEditorAssetKey,
   normalizeEditorAsset,
   useEditorDispatch,
-  useEditorPlaybackRefs,
   useEditorStaticState,
 } from '@master-clash/remotion-core';
-import type { Asset, EditorAssetInput, TextItem } from '@master-clash/remotion-core';
+import type { Asset, EditorAssetInput } from '@master-clash/remotion-core';
 import { RemotionButton, RemotionFileInput } from './ui/controls';
 
 // Export for TimelineTracksContainer to use
@@ -19,19 +18,28 @@ type AssetPanelProps = {
   onAssetUpload?: (file: File, type: 'video' | 'image' | 'audio') => void;
   availableAssets?: EditorAssetInput[];
   onAssetPicked?: (asset: EditorAssetInput) => void;
+  onRequestAsset?: () => void;
   onExport?: () => Promise<void>;
+  headerTrailingAction?: React.ReactNode;
   showHeader?: boolean;
   compact?: boolean;
 };
 
+const editorTypeClassName = {
+  caption: 'text-[length:var(--clash-editor-text-caption)] leading-[var(--clash-editor-leading-caption)]',
+  control: 'text-[length:var(--clash-editor-text-control)] leading-[var(--clash-editor-leading-control)]',
+  item: 'text-[length:var(--clash-editor-text-item)] leading-[var(--clash-editor-leading-item)]',
+  heading: 'text-[length:var(--clash-editor-text-heading)] leading-[var(--clash-editor-leading-heading)]',
+} as const;
+
 function AssetThumbnail({ asset, compact }: { asset: Asset; compact: boolean }) {
   const [failed, setFailed] = useState(false);
   const sizeClass = compact ? 'h-10 w-10' : 'h-12 w-12';
-  const mediaClassName = `${sizeClass} shrink-0 rounded border border-slate-100 bg-slate-100 object-cover object-left-top`;
+  const mediaClassName = `${sizeClass} shrink-0 rounded border border-warm-border bg-warm-muted object-cover object-left-top`;
 
   if (failed || !asset.src) {
     return (
-      <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[9px] font-bold uppercase text-slate-400`}>
+      <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-warm-border bg-warm-muted text-[9px] font-bold uppercase text-stone-400`}>
         {asset.type}
       </div>
     );
@@ -40,21 +48,22 @@ function AssetThumbnail({ asset, compact }: { asset: Asset; compact: boolean }) 
     return asset.thumbnail ? (
       <img src={asset.thumbnail} alt="" className={mediaClassName} onError={() => setFailed(true)} />
     ) : (
-      <video
-        src={asset.src}
-        muted
-        playsInline
-        preload="metadata"
-        className={mediaClassName}
-        onError={() => setFailed(true)}
-      />
+      <div
+        data-video-thumbnail-placeholder=""
+        className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-warm-border bg-slate-950 text-white/70`}
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+          <path d="m7.25 5.5 7 4.5-7 4.5v-9Z" />
+        </svg>
+      </div>
     );
   }
   if (asset.type === 'image') {
     return <img src={asset.src} alt="" className={mediaClassName} onError={() => setFailed(true)} />;
   }
   return (
-    <div className={`${sizeClass} flex shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-xs font-bold text-slate-500`}>
+    <div className={`${sizeClass} ${editorTypeClassName.control} flex shrink-0 items-center justify-center rounded border border-warm-border bg-warm-muted font-bold text-stone-500 dark:text-stone-400`}>
       A
     </div>
   );
@@ -66,16 +75,17 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
   onAssetUpload,
   availableAssets = [],
   onAssetPicked,
+  onRequestAsset,
   onExport,
+  headerTrailingAction,
   showHeader = true,
   compact = false,
 }) => {
   const dispatch = useEditorDispatch();
-  const { tracks, assets } = useEditorStaticState();
-  const { currentFrameRef } = useEditorPlaybackRefs();
+  const { assets } = useEditorStaticState();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const showUploadControls = Boolean(onAssetUpload || availableAssets.length > 0);
+  const showUploadControls = Boolean(onRequestAsset || onAssetUpload || availableAssets.length > 0);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -118,107 +128,6 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
     e.dataTransfer.setData('asset', JSON.stringify(asset));
   };
 
-  const handleAddTextToTrack = () => {
-    const newItemDuration = 90; // 3 seconds at 30fps
-    const newItemFrom = currentFrameRef.current;
-    const newItemTo = newItemFrom + newItemDuration;
-
-    // 检测第一轨道是否有重叠
-    let trackId: string;
-    let needsNewTrack = false;
-
-    if (tracks.length === 0) {
-      // 没有轨道，创建新轨道
-      trackId = `track-${Date.now()}`;
-      needsNewTrack = true;
-    } else {
-      const firstTrack = tracks[0];
-      // 检查第一轨道上是否有元素与新元素时间范围重叠
-      const hasOverlap = firstTrack.items.some(item => {
-        const itemFrom = item.from;
-        const itemTo = item.from + item.durationInFrames;
-        // 两个时间范围重叠的条件：newItemFrom < itemTo && newItemTo > itemFrom
-        return newItemFrom < itemTo && newItemTo > itemFrom;
-      });
-
-      if (hasOverlap) {
-        // 有重叠，创建新轨道并插入到第一位置
-        trackId = `track-${Date.now()}`;
-        needsNewTrack = true;
-      } else {
-        // 无重叠，使用第一轨道
-        trackId = firstTrack.id;
-      }
-    }
-
-    // 如果需要新轨道，先创建
-    if (needsNewTrack) {
-      dispatch({
-        type: 'INSERT_TRACK',
-        payload: {
-          track: {
-            id: trackId,
-            name: 'Text',
-            items: [],
-          },
-          index: 0, // 插入到第一位置
-        }
-      });
-    }
-
-    // 创建 text item
-    const textItem: TextItem = {
-      id: `text-${Date.now()}`,
-      type: 'text',
-      text: 'Double click to edit',
-      color: '#ffffff',
-      from: newItemFrom,
-      durationInFrames: newItemDuration,
-      fontSize: 60,
-      properties: {
-        x: 0,
-        y: 0,
-        width: 1,
-        height: 1,
-        rotation: 0,
-        opacity: 1,
-      },
-    };
-
-    // 使用 setTimeout 确保轨道先创建
-    setTimeout(() => {
-      dispatch({
-        type: 'ADD_ITEM',
-        payload: { trackId, item: textItem },
-      });
-    }, 0);
-  };
-
-  // Handle dragging Quick Add items
-  const handleQuickAddDragStart = (e: React.DragEvent, type: 'text' | 'solid') => {
-    // Create a pseudo-asset for quick add items
-    const pseudoAsset = {
-      id: `quick-${type}-${Date.now()}`,
-      name: type === 'text' ? 'Text' : 'Color',
-      type: type as 'text' | 'solid',
-      src: '',
-      createdAt: Date.now(),
-    };
-
-    currentDraggedAsset = { ...pseudoAsset, quickAdd: true, quickAddType: type }; // Store globally
-
-    // 计算鼠标相对于按钮左边缘的偏移量
-    const target = e.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    currentAssetDragOffset = e.clientX - rect.left;
-
-    e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('text/plain', pseudoAsset.id); // Use text/plain for compatibility
-    e.dataTransfer.setData('assetId', pseudoAsset.id);
-    e.dataTransfer.setData('quickAdd', 'true');
-    e.dataTransfer.setData('quickAddType', type);
-  };
-
   const handlePickAsset = (asset: EditorAssetInput) => {
     const assetKey = getEditorAssetKey(asset);
     const exists = assets.some((a) =>
@@ -242,15 +151,15 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
 
   return (
 
-    <div className="relative flex h-full flex-col bg-[#fffdfb]">
+    <div className="relative flex h-full min-w-0 flex-col overflow-hidden bg-warm-page">
       {showHeader && (
-      <div className="border-b border-slate-200/80 bg-white/95 px-4 py-3">
-        <div className="flex items-center justify-between">
+      <div className="flex h-10 shrink-0 items-center bg-warm-surface px-2">
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
           {onBack ? (
             <RemotionButton
               type="button"
               onClick={onBack}
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-transparent text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 dark:text-stone-400 dark:hover:text-stone-100"
               aria-label={backLabel}
             >
               <svg
@@ -270,126 +179,46 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
               </svg>
             </RemotionButton>
           ) : (
-            <h2 className="m-0 text-sm font-bold text-slate-900">Assets</h2>
+            <h2 className={`m-0 min-w-0 flex-1 truncate px-1 font-display font-semibold text-slate-950 dark:text-stone-100 ${editorTypeClassName.heading}`}>Assets</h2>
           )}
           {onExport && (
             <RemotionButton
               type="button"
               onClick={() => onExport()}
-              className="flex h-9 items-center justify-center rounded-md border border-[#ff6b50] bg-[#ff6b50] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:border-[#e85f47] hover:bg-[#e85f47]"
+              className={`flex h-8 items-center justify-center rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${editorTypeClassName.control}`}
             >
               Export
             </RemotionButton>
           )}
+          {headerTrailingAction}
         </div>
       </div>
       )}
 
-      <div className={`flex-1 overflow-auto ${compact ? 'p-3' : 'p-4'}`}>
-        {/* Quick Add Section */}
-        <div className={compact ? 'mb-4' : 'mb-6'}>
-          <h3 className={`m-0 text-xs font-bold uppercase tracking-wide text-slate-500 ${compact ? 'mb-2' : 'mb-3'}`}>Quick Add</h3>
-          <div className="flex gap-2">
-            <RemotionButton
-              onClick={handleAddTextToTrack}
-              className="flex-1 cursor-grab rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-[#ffb6a8] hover:bg-[#fff3f0] hover:text-[#d94f38] active:cursor-grabbing"
-              draggable
-              onDragStart={(e) => handleQuickAddDragStart(e, 'text')}
-              title="Click to add or drag to timeline"
-            >
-              + Text
-            </RemotionButton>
-            <RemotionButton
-              onClick={() => {
-                const newItemDuration = 30; // 1 second at 30fps (smaller initial size)
-                const newItemFrom = currentFrameRef.current;
-                const newItemTo = newItemFrom + newItemDuration;
-
-                // 检测第一轨道是否有重叠
-                let trackId: string;
-                let needsNewTrack = false;
-
-                if (tracks.length === 0) {
-                  // 没有轨道，创建新轨道
-                  trackId = `track-${Date.now()}`;
-                  needsNewTrack = true;
-                } else {
-                  const firstTrack = tracks[0];
-                  // 检查第一轨道上是否有元素与新元素时间范围重叠
-                  const hasOverlap = firstTrack.items.some(item => {
-                    const itemFrom = item.from;
-                    const itemTo = item.from + item.durationInFrames;
-                    // 两个时间范围重叠的条件：newItemFrom < itemTo && newItemTo > itemFrom
-                    return newItemFrom < itemTo && newItemTo > itemFrom;
-                  });
-
-                  if (hasOverlap) {
-                    // 有重叠，创建新轨道并插入到第一位置
-                    trackId = `track-${Date.now()}`;
-                    needsNewTrack = true;
-                  } else {
-                    // 无重叠，使用第一轨道
-                    trackId = firstTrack.id;
-                  }
-                }
-
-                // 如果需要新轨道，先创建
-                if (needsNewTrack) {
-                  dispatch({
-                    type: 'INSERT_TRACK',
-                    payload: {
-                      track: {
-                        id: trackId,
-                        name: 'Solid',
-                        items: [],
-                      },
-                      index: 0, // 插入到第一位置
-                    }
-                  });
-                }
-
-                // 创建 solid item
-                const solidItem = {
-                  id: `solid-${Date.now()}`,
-                  type: 'solid' as const,
-                  color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-                  from: newItemFrom,
-                  durationInFrames: newItemDuration,
-                  properties: {
-                    x: 0,
-                    y: 0,
-                    width: 1,
-                    height: 1,
-                    rotation: 0,
-                    opacity: 1,
-                  },
-                };
-
-                // 使用 setTimeout 确保轨道先创建
-                setTimeout(() => {
-                  dispatch({
-                    type: 'ADD_ITEM',
-                    payload: {
-                      trackId,
-                      item: solidItem,
-                    },
-                  });
-                }, 0);
-              }}
-              className="flex-1 cursor-grab rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-all hover:border-[#ffb6a8] hover:bg-[#fff3f0] hover:text-[#d94f38] active:cursor-grabbing"
-              draggable
-              onDragStart={(e) => handleQuickAddDragStart(e, 'solid')}
-              title="Click to add or drag to timeline"
-            >
-              + Color
-            </RemotionButton>
-          </div>
-        </div>
-
+      <div
+        data-asset-panel-body=""
+        className={compact
+          ? 'clash-timeline-panel-surface rounded-matrix bg-warm-surface p-2 min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto'
+          : 'min-h-0 min-w-0 flex-1 overflow-auto p-4'}
+      >
         {/* Upload Section */}
         {showUploadControls && (
         <div className={compact ? 'mb-4' : 'mb-6'}>
-          <h3 className="m-0 mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Media Files</h3>
+          <div className={`flex items-center justify-between ${compact ? 'mb-1.5 min-h-7 px-1' : 'mb-3'}`}>
+            <h3 className={`m-0 font-display font-semibold text-stone-500 ${editorTypeClassName.control}`}>
+              Media files
+            </h3>
+            {compact ? headerTrailingAction : null}
+          </div>
+          {onRequestAsset ? (
+            <RemotionButton
+              onClick={onRequestAsset}
+              className={`h-8 w-full rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${editorTypeClassName.control}`}
+            >
+              Add media
+            </RemotionButton>
+          ) : (
+          <>
           <RemotionFileInput
             ref={fileInputRef}
             accept="image/*,video/*,audio/*"
@@ -399,26 +228,45 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
           />
           <RemotionButton
             onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded-md bg-[#ff6b50] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#e85f47] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`h-8 w-full rounded-md bg-brand px-3 font-semibold text-brand-foreground shadow-sm transition-colors hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-50 ${editorTypeClassName.control}`}
             disabled={!onAssetUpload}
           >
             Upload Files
           </RemotionButton>
           <RemotionButton
             onClick={() => setIsPickerOpen(true)}
-            className="mt-2 w-full rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`mt-2 h-8 w-full rounded-md border border-warm-border bg-warm-surface/55 px-3 font-semibold text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-stone-300 dark:hover:text-stone-100 ${editorTypeClassName.control}`}
             disabled={availableAssets.length === 0}
           >
             Add From Canvas
           </RemotionButton>
+          </>
+          )}
         </div>
         )}
 
         {/* Assets List */}
-        <div className="flex flex-col gap-2">
+        {compact ? (
+          <div className="flex h-8 items-center justify-between px-1">
+            <h3 className={`m-0 font-display font-semibold text-stone-500 ${editorTypeClassName.control}`}>
+              Timeline media
+            </h3>
+            <span className={`font-medium tabular-nums text-stone-400 ${editorTypeClassName.caption}`}>
+              {assets.length}
+            </span>
+          </div>
+        ) : null}
+        <div data-asset-list="" className={`flex min-w-0 flex-col ${compact ? 'gap-0' : 'gap-2'}`}>
           {assets.length === 0 ? (
-            <div className="rounded-md border border-dashed border-slate-200 bg-white/60 py-8 text-center text-sm text-slate-400">
-              No assets uploaded yet
+            <div className={compact ? 'px-1 py-7 text-left' : 'rounded-md border border-dashed border-warm-border bg-warm-surface/60 py-8 text-center'}>
+              <p className={`${editorTypeClassName.item} ${compact ? 'font-semibold text-slate-700 dark:text-stone-300' : 'text-slate-400 dark:text-stone-500'}`}>
+                No media in this edit
+              </p>
+              {compact ? (
+                <p className={`mt-1 max-w-[220px] text-stone-400 ${editorTypeClassName.caption}`}>
+                  Add media above, then drag it onto a compatible Timeline lane.
+                </p>
+              ) : null}
             </div>
           ) : (
             assets.map((asset) => (
@@ -426,19 +274,19 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 key={asset.id}
                 draggable
                 onDragStart={(e) => handleAssetDragStart(e, asset)}
-                className={`group flex cursor-move items-center overflow-hidden rounded-md border border-slate-200 bg-white transition-all hover:border-[#ffb6a8] hover:shadow-sm ${compact ? 'gap-2 p-1.5' : 'gap-3 p-2'}`}
+                className={`group flex w-full min-w-0 cursor-move items-center overflow-hidden transition-colors ${compact ? 'gap-2 rounded-lg px-1 py-2 hover:bg-warm-muted/70' : 'gap-3 rounded-md border border-warm-border bg-warm-surface p-2 hover:border-brand/40 hover:bg-brand-light/35 hover:shadow-sm'}`}
               >
                 <AssetThumbnail asset={asset} compact={compact} />
                 <div className="flex-1 min-w-0 overflow-hidden">
-                  <div className="text-sm font-medium text-slate-900 truncate" title={asset.name}>
+                  <div className={`truncate font-medium text-slate-900 dark:text-stone-100 ${editorTypeClassName.item}`} title={asset.name}>
                     {asset.name}
                   </div>
-                  <div className="text-xs text-slate-500 capitalize mt-0.5">{asset.type}</div>
+                  <div className={`mt-0.5 capitalize text-slate-500 dark:text-stone-400 ${editorTypeClassName.caption}`}>{asset.type}</div>
                 </div>
                 {!asset.readOnly && (
                   <RemotionButton
                     onClick={() => dispatch({ type: 'REMOVE_ASSET', payload: asset.id })}
-                    className="flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition-colors hover:bg-[#fff3f0] hover:text-[#d94f38] group-hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition-colors hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:text-stone-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                   >
                     ×
                   </RemotionButton>
@@ -450,19 +298,19 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
       </div>
 
       {isPickerOpen && (
-        <div className="absolute inset-0 z-20 bg-white/95">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-            <div className="text-sm font-bold text-slate-900">Add From Canvas</div>
+        <div className="absolute inset-0 z-20 bg-warm-surface/95">
+          <div className="flex items-center justify-between border-b border-warm-border bg-warm-surface px-4 py-3">
+            <div className={`font-bold text-slate-900 dark:text-stone-100 ${editorTypeClassName.heading}`}>Add From Canvas</div>
             <RemotionButton
               onClick={() => setIsPickerOpen(false)}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+              className={`font-semibold text-slate-500 hover:text-slate-700 dark:text-stone-400 dark:hover:text-stone-100 ${editorTypeClassName.control}`}
             >
               Close
             </RemotionButton>
           </div>
           <div className="p-4 space-y-2 overflow-auto h-[calc(100%-52px)]">
             {availableAssets.length === 0 ? (
-              <div className="text-center py-8 text-slate-400 text-sm">
+              <div className={`py-8 text-center text-slate-400 ${editorTypeClassName.item}`}>
                 No available assets
               </div>
             ) : (
@@ -470,40 +318,42 @@ export const AssetPanel: React.FC<AssetPanelProps> = ({
                 <RemotionButton
                   key={asset.id}
                   onClick={() => handlePickAsset(asset)}
-                  className="flex w-full items-center gap-3 rounded-md border border-slate-200 bg-white p-2 text-left transition-colors hover:border-[#ffb6a8] hover:bg-[#fff3f0]"
+                  className="flex w-full items-center gap-3 rounded-md border border-warm-border bg-warm-surface p-2 text-left transition-colors hover:border-brand/40 hover:bg-brand-light/40"
                 >
                   {asset.type === 'image' ? (
                     <img
                       src={asset.src}
                       alt={asset.name || 'Image'}
-                      className="w-12 h-12 object-cover rounded-md bg-slate-100 border border-slate-100"
+                      className="h-12 w-12 rounded-md border border-warm-border bg-warm-muted object-cover"
                     />
                   ) : asset.type === 'video' ? (
                     asset.thumbnail ? (
                       <img
                         src={asset.thumbnail}
                         alt={asset.name || 'Video'}
-                        className="w-12 h-12 object-cover rounded-md bg-slate-100 border border-slate-100"
+                        className="h-12 w-12 rounded-md border border-warm-border bg-warm-muted object-cover"
                       />
                     ) : (
-                      <video
-                        src={asset.src}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        className="w-12 h-12 object-cover rounded-md bg-slate-100 border border-slate-100"
-                      />
+                      <div
+                        data-video-thumbnail-placeholder=""
+                        className="flex h-12 w-12 items-center justify-center rounded-md border border-slate-800 bg-slate-900 text-white/70"
+                        aria-hidden="true"
+                      >
+                        <svg viewBox="0 0 20 20" className="h-5 w-5" fill="currentColor">
+                          <path d="m7.25 5.5 7 4.5-7 4.5v-9Z" />
+                        </svg>
+                      </div>
                     )
                   ) : (
-                    <div className="w-12 h-12 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-md border border-warm-border bg-warm-muted font-bold text-slate-500 dark:text-stone-400 ${editorTypeClassName.caption}`}>
                       {asset.type.toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 truncate">
+                    <div className={`truncate font-semibold text-slate-900 dark:text-stone-100 ${editorTypeClassName.item}`}>
                       {asset.name || 'Untitled'}
                     </div>
-                    <div className="text-xs text-slate-500 capitalize">{asset.type}</div>
+                    <div className={`capitalize text-slate-500 dark:text-stone-400 ${editorTypeClassName.caption}`}>{asset.type}</div>
                   </div>
                 </RemotionButton>
               ))

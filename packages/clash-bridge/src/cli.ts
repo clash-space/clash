@@ -250,7 +250,11 @@ async function runAdHocPair(): Promise<void> {
       // Browser passed CLASH_API_KEY (issued by /pair); inject so the
       // spawned ACP agent's `clash` CLI / plugin hooks authenticate
       // without prompting.
-      const spawnEnv: Record<string, string> = { ...(pickedAgent.spec.env ?? {}) };
+      const spawnEnv: Record<string, string> = Object.fromEntries(
+        Object.entries(pickedAgent.spec.env ?? {}).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      );
       if (startMsg.api_key) spawnEnv.CLASH_API_KEY = startMsg.api_key;
       if (startMsg.api_url) spawnEnv.CLASH_API_URL = startMsg.api_url;
       try {

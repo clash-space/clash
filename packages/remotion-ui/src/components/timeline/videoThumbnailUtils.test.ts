@@ -4,11 +4,36 @@ import {
   createFilmstripCacheEntry,
   createSerializedTaskQueue,
   drawFilmstripColumnsForSample,
+  getAdaptiveFilmstripSampleCount,
+  getBoundedFilmstripCanvasWidth,
   getOrCreatePendingTask,
   getPersistentVideoCacheId,
   renderFilmstripToCanvas,
   type FilmstripCacheEntry,
 } from './videoThumbnailUtils';
+
+describe('getBoundedFilmstripCanvasWidth', () => {
+  it('caps an oversized Timeline filmstrip backing store', () => {
+    expect(getBoundedFilmstripCanvasWidth(86_400)).toBe(8_192);
+  });
+});
+
+describe('getAdaptiveFilmstripSampleCount', () => {
+  it('raises temporal detail in stable buckets without creating unbounded strips', () => {
+    expect(getAdaptiveFilmstripSampleCount({
+      fullVideoPixelWidth: 600,
+      thumbnailHeight: 40,
+    })).toBe(40);
+    expect(getAdaptiveFilmstripSampleCount({
+      fullVideoPixelWidth: 4_000,
+      thumbnailHeight: 40,
+    })).toBe(72);
+    expect(getAdaptiveFilmstripSampleCount({
+      fullVideoPixelWidth: 86_400,
+      thumbnailHeight: 40,
+    })).toBe(96);
+  });
+});
 
 function createEntry(overrides: Partial<FilmstripCacheEntry> = {}): FilmstripCacheEntry {
   return {

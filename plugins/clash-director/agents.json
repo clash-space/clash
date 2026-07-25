@@ -1,0 +1,14 @@
+{
+  "summary": "Installable Codex plugin for Clash Director Stage entities, typed tools, and a focused MCP App GUI.",
+  "context_hints": [
+    "Keep plugin contracts, CLI adapter, MCP server, and GUI inside this package",
+    "Use the public clash director CLI boundary and its implicit read-proof behavior",
+    "Never encode full Stage state inside a Canvas node"
+  ],
+  "key_files": {
+    "src/contract.ts": "Typed tool and CLI argument contract.",
+    "src/adapter.ts": "Shell-free execFile adapter to the public CLI.",
+    "src/server.ts": "Director MCP tools and App resource.",
+    "src/app-client.ts": "Interactive Stage entity editor."
+  }
+}

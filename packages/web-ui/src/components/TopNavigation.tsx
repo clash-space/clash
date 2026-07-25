@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { desktopChromeMetrics } from '@clash/shared-runtime';
+import type { NleAvailability } from '@master-clash/remotion-core';
 import {
   ArrowLeft,
   ArrowRight,
@@ -17,6 +18,7 @@ import { Button } from './ui/button';
 import { IconButton } from './ui/icon-button';
 import { Tab, TabList, TabProvider } from './ui/tabs';
 import { Tooltip } from './ui/tooltip';
+import { HarnessUpdateNotifier } from './HarnessUpdateNotifier';
 import {
   activateOrAppendDesktopTab,
   closeDesktopTab,
@@ -36,6 +38,9 @@ declare global {
     | {
         isDesktop: true;
         newWindow: () => Promise<{ windowId: number; windowCount: number }>;
+        getNleAvailability?: () => Promise<NleAvailability[]>;
+        exportDirectorVideo?: (request: unknown) => Promise<{ canceled: boolean; outputPath?: string }>;
+        openInNle?: (request: unknown) => Promise<{ documentPath: string }>;
       }
     | undefined;
 }
@@ -203,11 +208,11 @@ export default function TopNavigation() {
         <header
           data-desktop-chrome="true"
           style={desktopChromeStyle}
-          className="desktop-drag-region fixed left-0 right-0 top-0 z-50 h-[var(--clash-desktop-chrome-height)] border-b border-[#e1ddd5] bg-[#f0eee9]/95 text-slate-900 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_28px_rgba(35,31,25,0.065)] backdrop-blur-xl"
+          className="desktop-drag-region fixed left-0 right-0 top-0 z-50 h-[var(--clash-desktop-chrome-height)] border-b border-warm-border bg-warm-muted/95 text-slate-900 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_28px_rgba(35,31,25,0.065)] backdrop-blur-xl dark:text-slate-100 dark:shadow-[0_1px_0_rgba(255,255,255,0.04)_inset,0_10px_28px_rgba(0,0,0,0.28)]"
         >
           <div
             data-desktop-toolbar="true"
-            className="flex h-full items-center gap-1 pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
+            className="flex h-full items-center gap-[var(--clash-control-gap)] pl-[max(var(--clash-desktop-toolbar-left-inset),env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]"
           >
             {isProjectDetailPage ? (
               <Tooltip
@@ -227,7 +232,7 @@ export default function TopNavigation() {
                   icon={<SidebarSimple className="h-4 w-4" weight="regular" />}
                   size="sm"
                   onClick={toggleProjectNavigator}
-                  className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] hover:text-stone-950"
+                  className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] hover:text-stone-950 dark:text-stone-300 dark:hover:bg-white/[0.07] dark:hover:text-stone-50"
                 />
               </Tooltip>
             ) : null}
@@ -238,7 +243,7 @@ export default function TopNavigation() {
                 size="sm"
                 onClick={() => navigateDesktopHistory(-1)}
                 disabled={!canGoBack}
-                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent dark:text-stone-300 dark:hover:bg-white/[0.07] dark:hover:text-stone-50 dark:disabled:text-stone-600"
               />
             </Tooltip>
             <Tooltip label="Forward">
@@ -248,7 +253,7 @@ export default function TopNavigation() {
                 size="sm"
                 onClick={() => navigateDesktopHistory(1)}
                 disabled={!canGoForward}
-                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent"
+                className="desktop-no-drag flex-none text-stone-700 hover:bg-black/[0.055] disabled:cursor-default disabled:text-stone-300 disabled:hover:bg-transparent dark:text-stone-300 dark:hover:bg-white/[0.07] dark:hover:text-stone-50 dark:disabled:text-stone-600"
               />
             </Tooltip>
             <TabProvider
@@ -274,8 +279,8 @@ export default function TopNavigation() {
                         isHomeTab ? 'w-10 flex-none justify-center px-0' : 'min-w-36 max-w-60 px-2.5'
                       } ${
                         active
-                          ? 'border-[#e1ddd5] bg-[#fffefd] text-slate-950 shadow-sm'
-                          : 'border-transparent bg-transparent text-stone-600 hover:bg-white/55 hover:text-stone-950'
+                          ? 'border-warm-border bg-warm-surface text-slate-950 shadow-sm dark:text-slate-50'
+                          : 'border-transparent bg-transparent text-stone-600 hover:bg-warm-surface/65 hover:text-stone-950 dark:text-stone-400 dark:hover:text-stone-100'
                       }`}
                     >
                       <Tab
@@ -305,8 +310,8 @@ export default function TopNavigation() {
                             onClick={() => closeTab(tab.id)}
                             className={`flex-none ${
                               active
-                                ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950'
-                                : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100'
+                                ? 'text-stone-500 hover:bg-black/10 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-stone-50'
+                                : 'text-stone-400 opacity-0 hover:bg-black/10 hover:text-stone-800 group-hover:opacity-100 dark:text-stone-500 dark:hover:bg-white/10 dark:hover:text-stone-100'
                             }`}
                           />
                         </Tooltip>
@@ -315,7 +320,7 @@ export default function TopNavigation() {
                         <span
                           aria-hidden="true"
                           data-desktop-tab-separator="true"
-                          className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-[#d8d1c7]/90"
+                          className="pointer-events-none absolute right-0 top-1/2 h-5 w-px -translate-y-1/2 bg-warm-border/90"
                         />
                       )}
                     </div>
@@ -323,6 +328,7 @@ export default function TopNavigation() {
                 })}
               </TabList>
             </TabProvider>
+            <HarnessUpdateNotifier />
           </div>
         </header>
 
@@ -339,12 +345,20 @@ export default function TopNavigation() {
                   size="lg"
                   className="group h-12 min-h-12 w-12 min-w-12 bg-transparent p-0 text-current shadow-none hover:bg-transparent"
                   icon={
-                    <img
-                      src="/brand/logo-mark.svg"
-                      alt=""
-                      className="h-11 w-11 object-contain transition-transform duration-150 group-hover:scale-105"
-                      draggable={false}
-                    />
+                    <span className="relative block h-11 w-11 transition-transform duration-150 group-hover:scale-105">
+                      <img
+                        src="/icon-192.png"
+                        alt=""
+                        className="h-11 w-11 object-contain dark:hidden"
+                        draggable={false}
+                      />
+                      <img
+                        src="/brand/logo-mark-dark.svg"
+                        alt=""
+                        className="hidden h-11 w-11 object-contain dark:block"
+                        draggable={false}
+                      />
+                    </span>
                   }
                 />
               </div>
@@ -402,12 +416,20 @@ export default function TopNavigation() {
         {/* Logo Area */}
         <div className="desktop-no-drag pointer-events-auto z-10">
           <Link to="/" className="group flex h-12 w-12 items-center justify-center" aria-label="Clash home">
-            <img
-              src="/brand/logo-mark.svg"
-              alt=""
-              className="h-11 w-11 object-contain transition-transform duration-150 group-hover:scale-105"
-              draggable={false}
-            />
+            <span className="relative block h-11 w-11 transition-transform duration-150 group-hover:scale-105">
+              <img
+                src="/icon-192.png"
+                alt=""
+                className="h-11 w-11 object-contain dark:hidden"
+                draggable={false}
+              />
+              <img
+                src="/brand/logo-mark-dark.svg"
+                alt=""
+                className="hidden h-11 w-11 object-contain dark:block"
+                draggable={false}
+              />
+            </span>
           </Link>
         </div>
 

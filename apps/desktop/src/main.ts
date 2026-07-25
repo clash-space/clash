@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { delimiter, dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain, Menu, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
 import { startLocalApiServer } from "@master-clash/local-api";
 import {
@@ -9,7 +9,14 @@ import {
   isAddressInUse,
   resolveAvailableDesktopApiPort,
 } from "./api-port";
-import { resolveAcpBinDirs, resolveClashCliEntryPath, resolveClashCliNodePath, resolveWebDistDir } from "./paths";
+import {
+  prependPythonPath,
+  resolveAcpBinDirs,
+  resolveClashCliEntryPath,
+  resolveClashCliNodePath,
+  resolveClashSdkPythonPath,
+  resolveWebDistDir,
+} from "./paths";
 import { resolveDesktopRuntime, type DesktopRuntime } from "./runtime";
 import { hydrateMacGuiPath } from "./shell-path";
 import {
@@ -19,6 +26,20 @@ import {
   shouldCreateWindowOnActivate,
 } from "./windowing";
 import { createDesktopLogger } from "./stdio-logger";
+import {
+  detectNleAvailability,
+  materializeNleHandoff,
+  openNleDocument,
+  type DesktopNleHandoffRequest,
+} from "./nle-handoff";
+import {
+  createDesktopTimelineRenderer,
+} from "./timeline-export";
+import {
+  directorVideoBytes,
+  safeDirectorVideoExportName,
+  type DesktopDirectorVideoExportRequest,
+} from "./director-video-export";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const remoteDebuggingPort = process.env.CLASH_DESKTOP_REMOTE_DEBUGGING_PORT;
@@ -42,6 +63,8 @@ protocol.registerSchemesAsPrivileged([
 const windowRegistry = createWindowRegistry<BrowserWindow>();
 let captureCount = 0;
 let runtime: DesktopRuntime | null = null;
+let localApiServer: Awaited<ReturnType<typeof startLocalApiServer>> | null = null;
+let shutdownBarrierStarted = false;
 const desktopLog = createDesktopLogger();
 
 function currentRuntime(): DesktopRuntime {
@@ -110,6 +133,13 @@ async function configureAcpHarnessEnvironment(dataDir: string): Promise<void> {
   });
   if (clashCliNodePath) process.env.CLASH_CLI_NODE_PATH = clashCliNodePath;
   process.env.CLASH_NODE_EXEC_PATH ??= process.execPath;
+  const clashSdkPythonPath = resolveClashSdkPythonPath({
+    envPythonSdkPath: process.env.CLASH_PYTHON_SDK_PATH,
+    isPackaged: app.isPackaged,
+    moduleDir: __dirname,
+    resourcesPath: process.resourcesPath,
+  });
+  process.env.PYTHONPATH = prependPythonPath(process.env.PYTHONPATH, clashSdkPythonPath);
 
   const hotDownloadBinDir = acpBinDirs[0];
   if (hotDownloadBinDir) await mkdir(hotDownloadBinDir, { recursive: true });
@@ -156,7 +186,15 @@ function registerWebProtocol(): void {
 }
 
 async function startLocalApiOnPort(port: number, dataDir: string): Promise<void> {
-  await startLocalApiServer({ dataDir, port });
+  localApiServer = await startLocalApiServer({
+    dataDir,
+    port,
+    timelineRenderer: createDesktopTimelineRenderer({
+      moduleDir: __dirname,
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
+  });
 }
 
 async function initializeRuntime(): Promise<void> {
@@ -257,11 +295,12 @@ function bindWindowEvents(window: BrowserWindow): void {
 
 async function createWindow(): Promise<BrowserWindow> {
   const window = new BrowserWindow({
-    ...resolveDesktopWindowOptions(windowRegistry.count()),
+    ...resolveDesktopWindowOptions(windowRegistry.count(), nativeTheme.shouldUseDarkColors),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
       sandbox: false,
       additionalArguments: [],
     },
@@ -285,6 +324,33 @@ function registerWindowIpc(): void {
     const window = await createWindow();
     return { windowId: window.id, windowCount: windowRegistry.count() };
   });
+  ipcMain.handle("clash:get-nle-availability", async () => detectNleAvailability());
+  ipcMain.handle("clash:export-director-video", async (_event, request: DesktopDirectorVideoExportRequest) => {
+    const forcedPath = process.env.CLASH_DIRECTOR_E2E_VIDEO_EXPORT_PATH;
+    const save = forcedPath
+      ? { canceled: false, filePath: forcedPath }
+      : await dialog.showSaveDialog({
+          title: "Export Director camera video",
+          defaultPath: join(
+            app.getPath("videos"),
+            safeDirectorVideoExportName(request.stageName, request.cameraName),
+          ),
+          filters: [{ name: "WebM video", extensions: ["webm"] }],
+          properties: ["createDirectory", "showOverwriteConfirmation"],
+        });
+    if (save.canceled || !save.filePath) return { canceled: true };
+    await mkdir(dirname(save.filePath), { recursive: true });
+    await writeFile(save.filePath, directorVideoBytes(request.bytes));
+    return { canceled: false, outputPath: save.filePath };
+  });
+  ipcMain.handle("clash:open-in-nle", async (_event, request: DesktopNleHandoffRequest) => {
+    const documentPath = await materializeNleHandoff(
+      join(app.getPath("userData"), "nle-handoffs"),
+      request,
+    );
+    await openNleDocument(request.target, documentPath);
+    return { documentPath };
+  });
 }
 
 app.whenReady().then(async () => {
@@ -303,4 +369,14 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", (event) => {
+  if (!localApiServer || shutdownBarrierStarted) return;
+  event.preventDefault();
+  shutdownBarrierStarted = true;
+  localApiServer.close(() => {
+    localApiServer = null;
+    app.quit();
+  });
 });

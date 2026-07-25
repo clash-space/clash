@@ -94,6 +94,35 @@ setInterval(() => {}, 1000);
     await waitForGone(grandchildPid);
   });
 
+  posixIt("escalates to SIGKILL when a child process group ignores SIGTERM", async () => {
+    const spawner = new NodeSpawner();
+    const handle = await spawner.spawn({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.on('SIGTERM', () => {}); console.log(process.pid); setInterval(() => {}, 1000)",
+      ],
+    });
+    const childPid = Number(await readFirstStdoutLine(handle.stdout));
+    expect(Number.isInteger(childPid)).toBe(true);
+
+    try {
+      const stopped = await Promise.race([
+        handle.kill("SIGTERM").then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_500)),
+      ]);
+      expect(stopped).toBe(true);
+      await waitForGone(childPid);
+    } finally {
+      try {
+        process.kill(-childPid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+      await handle.exited;
+    }
+  }, 5_000);
+
   posixIt("cleans up the child process group when the host process exits", async () => {
     const pidFile = join(tmpdir(), `clash-node-spawner-grandchild-${process.pid}-${Date.now()}.txt`);
     const spawnerUrl = new URL("./node.ts", import.meta.url).href;

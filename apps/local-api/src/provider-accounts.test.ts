@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -60,6 +60,20 @@ function createPartialProviderSqlite(dataDir: string): void {
 }
 
 describe("provider accounts", () => {
+  it("does not initialize secret storage when provider tables are empty", async () => {
+    const dataDir = await tempProviderDir();
+    createPartialProviderSqlite(dataDir);
+    const store = createLocalProviderStore(dataDir);
+
+    await expect(store.loadProviderAccounts()).resolves.toEqual([]);
+    await expect(store.loadProviderOAuth()).resolves.toEqual([]);
+    await expect(store.saveProviderAccounts([])).resolves.toBeUndefined();
+    await expect(store.saveProviderOAuth([])).resolves.toBeUndefined();
+    await expect(stat(join(dataDir, "provider-secret.key"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("initializes sqlite provider storage with WAL journal mode for local multi-client safety", async () => {
     const dataDir = await tempProviderDir();
     const store = createLocalProviderStore(dataDir);

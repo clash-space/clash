@@ -9,7 +9,7 @@ import {
   type VertexInlineImage,
 } from "../../services/google-gen";
 import type { GenerationProvider } from "../provider";
-import { credentialsForProvider, vertexCredentialsFromProvider } from "./provider-credentials";
+import { credentialsForRoute, vertexCredentialsFromProvider } from "./provider-credentials";
 
 async function loadInlineFromR2(
   bucket: R2Bucket,
@@ -32,6 +32,10 @@ export const googleImageProvider: GenerationProvider = {
 
   async execute(ctx) {
     const { params, env } = ctx;
+    const route = params.selectedRoute;
+    if (!route || route.apiShape !== "google-agent-platform") {
+      throw new Error(`Google image execution requires a selected Agent Platform route for ${params.modelName ?? "unknown model"}`);
+    }
 
     const storageKey = await ctx.step(
       "google-image-generate",
@@ -51,11 +55,7 @@ export const googleImageProvider: GenerationProvider = {
         }
 
         const creds = vertexCredentialsFromProvider(
-          await credentialsForProvider(ctx, "official", ["vertexCredentials"], {
-            upstreamId: "google-agent-platform",
-            region: "global",
-            modelCode: params.modelName,
-          }),
+          await credentialsForRoute(ctx, route),
         );
         log.info("Google image generate started", {
           ...ctx.tag,
@@ -65,7 +65,7 @@ export const googleImageProvider: GenerationProvider = {
         const result = await generateGoogleImage(creds, {
           prompt: params.prompt ?? "",
           aspectRatio: params.aspectRatio,
-          modelName: params.modelName,
+          modelName: route.upstreamModel,
           modelParams: params.modelParams,
           referenceImages: referenceImages.length ? referenceImages : undefined,
         });

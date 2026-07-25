@@ -45,6 +45,8 @@ export interface KnownAgentEntry {
   registryId?: string;
   /** Latest version observed from the public ACP registry. */
   registryVersion?: string;
+  /** Underlying npm package for an npx-distributed ACP runtime. */
+  registryNpmPackage?: string;
   /** Install source for entries Clash can install into its managed bin dir. */
   installSource?: "registry" | "adapter";
   /** Clash-hosted executable URL for app-managed adapter installs. */

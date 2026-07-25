@@ -5,9 +5,10 @@ import type { GenerationContext } from "../context";
 
 export async function credentialsForRoute(
   ctx: GenerationContext,
-  route: Pick<ModelUpstreamRoute, "modelCode" | "providerId" | "upstreamId" | "region" | "requiredCredentials">,
+  route: Pick<ModelUpstreamRoute, "accountId" | "modelCode" | "providerId" | "upstreamId" | "region" | "requiredCredentials">,
 ): Promise<Record<string, string>> {
   return getProviderCredentials(ctx.env, ctx.params.actorUserId, {
+    accountId: route.accountId,
     providerId: route.providerId ?? (route.upstreamId as ProviderAccountId),
     upstreamId: route.upstreamId,
     region: route.region,

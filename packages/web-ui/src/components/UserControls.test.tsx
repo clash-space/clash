@@ -79,6 +79,21 @@ describe("UserControls", () => {
     expect(authClientMock.useSession).not.toHaveBeenCalled();
   });
 
+  it("keeps the compact desktop Settings entry visible on dark project chrome", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+
+    render(
+      <MemoryRouter>
+        <UserControls compact />
+      </MemoryRouter>,
+    );
+
+    const settings = screen.getByRole("link", { name: "Settings" });
+    expect(settings.className).toContain("text-content-muted");
+    expect(settings.className).toContain("hover:bg-warm-hover");
+    expect(settings.className).toContain("hover:text-content-primary");
+  });
+
   it("uses the shared tooltip primitive for icon controls instead of browser title attributes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/UserControls.tsx"),

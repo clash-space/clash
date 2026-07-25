@@ -129,6 +129,29 @@ describe("ProjectCard", () => {
     expect(image?.getAttribute("src")).toBe("http://127.0.0.1:49321/assets/generated/local-gen-cqj1uit7.svg");
   });
 
+  it("does not try to render audio assets as project-cover images", () => {
+    const { container } = renderCard({
+      assets: [
+        {
+          id: "voice",
+          type: "audio",
+          signedUrl: "https://cdn.clash.test/assets/voice.mp3",
+          createdAt: "2026-06-03T00:02:00.000Z",
+        },
+        {
+          id: "music",
+          kind: "audio",
+          storageKey: "projects/project-1/assets/music.mp3",
+          createdAt: "2026-06-03T00:01:00.000Z",
+        },
+      ],
+    });
+
+    expect(container.querySelectorAll(".clash-project-card-preview-img")).toHaveLength(0);
+    expect(container.querySelector(".clash-project-card-preview-grid")).toBeNull();
+    expect(container.querySelector(".clash-project-card-empty-mark")).not.toBeNull();
+  });
+
   it("uses the app confirm dialog for destructive deletion", async () => {
     renderCard();
 

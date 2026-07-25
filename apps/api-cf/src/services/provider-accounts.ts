@@ -1,9 +1,11 @@
 import type {
+  ModelUpstreamApiShape,
   ModelUpstreamId,
   ProviderAccountAvailability,
   ProviderAccountId,
 } from "@clash/shared-types";
 import {
+  ModelUpstreamApiShapeSchema,
   ModelUpstreamIdSchema,
   normalizeModelId,
   ProviderAccountIdSchema,
@@ -13,6 +15,7 @@ export interface ProviderAccountInput {
   id?: string;
   providerId: ProviderAccountId;
   upstreamId?: ModelUpstreamId;
+  apiShape?: ModelUpstreamApiShape;
   region?: string;
   label?: string;
   enabled?: boolean;
@@ -31,6 +34,7 @@ export interface PublicProviderAccount extends Omit<ProviderAccountAvailability,
 }
 
 export interface ProviderCredentialQuery {
+  accountId?: string;
   providerId: ProviderAccountId;
   upstreamId?: ModelUpstreamId;
   region?: string;
@@ -43,6 +47,7 @@ type ProviderAccountRow = {
   user_id: string;
   provider_id: string;
   upstream_id: string | null;
+  api_shape: string | null;
   region: string | null;
   label: string | null;
   enabled: number | null;
@@ -122,6 +127,7 @@ function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undef
     providerId === "jimeng" ||
     providerId === "volcengine" ||
     providerId === "elevenlabs" ||
+    providerId === "suno" ||
     providerId === "mock"
   ) {
     return providerId;
@@ -217,6 +223,15 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
   const upstreamId = parsedUpstreamId?.success
     ? parsedUpstreamId.data
     : defaultUpstream(providerId.data);
+  const parsedApiShape = ModelUpstreamApiShapeSchema.safeParse(trimString(raw.apiShape));
+  const apiShape = parsedApiShape.success ? parsedApiShape.data : undefined;
+  if (
+    providerId.data === "custom" &&
+    (!upstreamId ||
+      (apiShape !== "openai-compatible" && apiShape !== "anthropic-compatible"))
+  ) {
+    return null;
+  }
   const region = trimString(raw.region);
   const id = trimString(raw.id);
   const label = trimString(raw.label);
@@ -229,6 +244,7 @@ export function normalizeProviderAccountInput(value: unknown): ProviderAccountIn
     providerId: providerId.data,
     ...(id ? { id } : {}),
     ...(upstreamId ? { upstreamId } : {}),
+    ...(apiShape ? { apiShape } : {}),
     ...(region ? { region } : {}),
     ...(label ? { label } : {}),
     enabled: raw.enabled === undefined ? true : raw.enabled !== false,
@@ -247,6 +263,7 @@ function publicRow(row: ProviderAccountRow): PublicProviderAccount {
     id: row.id,
     providerId: row.provider_id as ProviderAccountId,
     ...(row.upstream_id ? { upstreamId: row.upstream_id as ModelUpstreamId } : {}),
+    ...(row.api_shape ? { apiShape: row.api_shape as ModelUpstreamApiShape } : {}),
     ...(row.region ? { region: row.region } : {}),
     ...(row.label ? { label: row.label } : {}),
     enabled: row.enabled !== 0,
@@ -277,7 +294,7 @@ async function findExistingAccountId(db: D1Database, userId: string, input: Prov
 async function getAccountRow(db: D1Database, userId: string, id: string): Promise<ProviderAccountRow | null> {
   const row = await db
     .prepare(
-      `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
+      `SELECT id, user_id, provider_id, upstream_id, api_shape, region, label, enabled, priority, weight,
               encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at
        FROM provider_account
        WHERE user_id = ? AND id = ?`,
@@ -290,7 +307,7 @@ async function getAccountRow(db: D1Database, userId: string, id: string): Promis
 export async function listProviderAccounts(db: D1Database, userId: string): Promise<PublicProviderAccount[]> {
   const result = await db
     .prepare(
-      `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
+      `SELECT id, user_id, provider_id, upstream_id, api_shape, region, label, enabled, priority, weight,
               encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at
        FROM provider_account
        WHERE user_id = ?
@@ -304,6 +321,13 @@ export async function listProviderAccounts(db: D1Database, userId: string): Prom
 export async function deleteProviderAccount(db: D1Database, userId: string, accountId: string): Promise<boolean> {
   const existing = await getAccountRow(db, userId, accountId);
   if (!existing) return false;
+  await db
+    .prepare(
+      `DELETE FROM model_card_provider_binding
+       WHERE user_id = ? AND provider_account_id = ?`,
+    )
+    .bind(userId, accountId)
+    .run();
   await db
     .prepare(
       `DELETE FROM provider_account
@@ -342,13 +366,14 @@ export async function upsertProviderAccount(
     await env.DB
       .prepare(
         `UPDATE provider_account
-         SET provider_id = ?, upstream_id = ?, region = ?, label = ?, enabled = ?, priority = ?, weight = ?,
+         SET provider_id = ?, upstream_id = ?, api_shape = ?, region = ?, label = ?, enabled = ?, priority = ?, weight = ?,
              encrypted_credentials = ?, configured_credentials = ?, supported_model_ids = ?, model_priorities = ?, updated_at = ?
          WHERE user_id = ? AND id = ?`,
       )
       .bind(
         input.providerId,
         input.upstreamId ?? null,
+        input.apiShape ?? null,
         input.region ?? null,
         input.label ?? null,
         input.enabled === false ? 0 : 1,
@@ -372,15 +397,16 @@ export async function upsertProviderAccount(
   await env.DB
     .prepare(
       `INSERT INTO provider_account
-       (id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
+       (id, user_id, provider_id, upstream_id, api_shape, region, label, enabled, priority, weight,
         encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
       userId,
       input.providerId,
       input.upstreamId ?? null,
+      input.apiShape ?? null,
       input.region ?? null,
       input.label ?? null,
       input.enabled === false ? 0 : 1,
@@ -419,14 +445,22 @@ export async function getProviderCredentials(
   const secret = requireCredentialSecret(env.ACTION_SECRET_KEY);
   const result = await env.DB
     .prepare(
-      `SELECT id, user_id, provider_id, upstream_id, region, label, enabled, priority, weight,
+      `SELECT id, user_id, provider_id, upstream_id, api_shape, region, label, enabled, priority, weight,
               encrypted_credentials, configured_credentials, supported_model_ids, model_priorities, created_at, updated_at
        FROM provider_account
        WHERE user_id = ? AND provider_id = ? AND enabled = 1
+         AND (? IS NULL OR id = ?)
          AND (? IS NULL OR upstream_id = ?)
        ORDER BY COALESCE(priority, 1000), updated_at DESC`,
     )
-    .bind(userId, query.providerId, query.upstreamId ?? null, query.upstreamId ?? null)
+    .bind(
+      userId,
+      query.providerId,
+      query.accountId ?? null,
+      query.accountId ?? null,
+      query.upstreamId ?? null,
+      query.upstreamId ?? null,
+    )
     .all<ProviderAccountRow>();
 
   const required = query.requiredCredentials ?? [];

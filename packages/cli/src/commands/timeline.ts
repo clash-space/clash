@@ -28,6 +28,7 @@ import {
   resolveTimelineFilePath,
   timelineHash,
 } from "../lib/timeline-projection";
+import { writeTimelineTranscriptProjection } from "../lib/timeline-transcript-projection";
 
 function isAgentTimelineClient(): boolean {
   return resolveCanvasPresenceOptions().clientType === "agent";
@@ -421,6 +422,13 @@ timelineCommand
     const version = listed.versions[timeline.id] ?? projectTimelineReadToken(timeline);
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, yaml, "utf8");
+    const transcriptProjection = writeTimelineTranscriptProjection({
+      cwd: process.cwd(),
+      timelineFilePath: filePath,
+      timelineId: timeline.id,
+      timelineRevision: timeline.revisionId,
+      state: timeline.state,
+    });
     await recordTimelineObservation(context, timeline.id, version);
 
     const payload = {
@@ -431,9 +439,19 @@ timelineCommand
       owner: timeline.owner,
       filePath,
       timelineHash: timelineHash(currentDsl),
+      ...(transcriptProjection ? {
+        transcriptFilePath: transcriptProjection.filePath,
+        transcriptWordCount: transcriptProjection.wordCount,
+        transcriptSourceCount: transcriptProjection.sourceCount,
+      } : {}),
     };
     if (isJsonMode(options)) printJson(payload);
-    else process.stderr.write(`wrote ${filePath}\n`);
+    else {
+      process.stderr.write(`wrote ${filePath}\n`);
+      if (transcriptProjection) {
+        process.stderr.write(`wrote ${transcriptProjection.filePath}\n`);
+      }
+    }
   });
 
 timelineCommand

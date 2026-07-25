@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "clash-timeline": {
+      "command": "node",
+      "args": [
+        "./runtime/index.js"
+      ],
+      "cwd": "."
+    }
+  }
+}

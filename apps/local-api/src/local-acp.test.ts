@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  createLocalAcpAdapter,
+  createLocalAcpAdapter as createLocalAcpAdapterImpl,
   createLocalHarnessConfigStore,
   type SessionManagerLike,
   type SessionPromptParamsLike,
@@ -40,6 +40,25 @@ function deferred<T = void>() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function createLocalAcpAdapter(
+  options: NonNullable<Parameters<typeof createLocalAcpAdapterImpl>[0]> = {},
+) {
+  const defaults = {
+    probeAgentAuth: async () => ({
+      status: "configured" as const,
+      message: "Test auth configured.",
+    }),
+  };
+  if (options.probeAgentConfigOptions || options.probeAgentSessionConfig) {
+    return createLocalAcpAdapterImpl({ ...defaults, ...options });
+  }
+  return createLocalAcpAdapterImpl({
+    ...defaults,
+    probeAgentSessionConfig: async () => ({ configOptions: [], modes: undefined }),
+    ...options,
+  });
 }
 
 describe("local ACP adapter", () => {
@@ -1056,6 +1075,7 @@ describe("local ACP adapter", () => {
       let registryVersion = "1.0.0";
       let archiveUrl = "https://example.com/test-agent-bin";
       const probeAgentConfigOptions = vi.fn(async () => []);
+      const probeAgentAuth = vi.fn(async () => undefined);
       const adapter = createLocalAcpAdapter({
         detectAgents: async () => {
           try {
@@ -1081,6 +1101,7 @@ describe("local ACP adapter", () => {
           },
         ],
         harnessDownloadDir: harnessDir,
+        probeAgentAuth,
         probeAgentConfigOptions,
         fetch: async (url) => {
           if (String(url).includes("registry.json")) {
@@ -1165,7 +1186,7 @@ describe("local ACP adapter", () => {
 
       registryVersion = "1.1.0";
       archiveUrl = "https://example.com/test-agent-bin?version=1.1.0";
-      const outdated = await adapter.listHarnesses({ refresh: true });
+      const outdated = await adapter.listHarnesses({ probe: "auth" });
       expect(outdated.harnesses).toEqual([
         expect.objectContaining({
           id: "test-agent",
@@ -1175,6 +1196,7 @@ describe("local ACP adapter", () => {
           updateAvailable: true,
         }),
       ]);
+      expect(probeAgentAuth).toHaveBeenCalled();
 
       const upgraded = await adapter.upgradeHarness("test-agent");
       expect(upgraded.harnesses).toEqual([
@@ -1199,6 +1221,77 @@ describe("local ACP adapter", () => {
         }),
       ]);
       expect(uninstalled.harnesses[0]).not.toHaveProperty("installed");
+    } finally {
+      await rm(harnessDir, { recursive: true, force: true });
+    }
+  });
+
+  it("checks an npx-backed ACP package independently from an unchanged registry agent version", async () => {
+    const harnessDir = await mkdtemp(join(tmpdir(), "clash-harness-npx-update-"));
+    const shimPath = join(harnessDir, "clash-acp-codex-acp");
+    try {
+      await writeFile(shimPath, "#!/bin/sh\nexit 0\n", "utf8");
+      await mkdir(join(harnessDir, "registry", "codex-acp", "npx", "node_modules", "@test", "codex-acp"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(harnessDir, "registry", "codex-acp", "npx", "node_modules", "@test", "codex-acp", "package.json"),
+        JSON.stringify({ name: "@test/codex-acp", version: "1.0.1" }),
+        "utf8",
+      );
+      await mkdir(join(harnessDir, "registry", "codex-acp"), { recursive: true });
+      await writeFile(
+        join(harnessDir, "registry", "codex-acp", "install.json"),
+        JSON.stringify({
+          source: "registry",
+          registryId: "codex-acp",
+          shimName: "clash-acp-codex-acp",
+          version: "registry-static",
+          installedAt: new Date().toISOString(),
+        }),
+        "utf8",
+      );
+
+      const adapter = createLocalAcpAdapter({
+        detectAgents: async () => [{
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: shimPath },
+        }],
+        agentCatalog: [{
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "clash-acp-codex-acp" },
+          registryId: "codex-acp",
+          installSource: "registry",
+        }],
+        harnessDownloadDir: harnessDir,
+        probeAgentAuth: async () => undefined,
+        fetch: async (url) => {
+          if (String(url).includes("registry.json")) {
+            return new Response(JSON.stringify({
+              agents: [{
+                id: "codex-acp",
+                name: "Codex",
+                version: "registry-static",
+                distribution: { npx: { package: "@test/codex-acp" } },
+              }],
+            }), { status: 200 });
+          }
+          expect(String(url)).toBe("https://registry.npmjs.org/%40test%2Fcodex-acp/latest");
+          return new Response(JSON.stringify({ version: "1.0.2" }), { status: 200 });
+        },
+      });
+
+      await expect(adapter.listHarnesses({ probe: "auth", refresh: true })).resolves.toEqual({
+        harnesses: [expect.objectContaining({
+          id: "codex-acp",
+          installed: true,
+          installedVersion: "1.0.1",
+          latestVersion: "1.0.2",
+          updateAvailable: true,
+        })],
+      });
     } finally {
       await rm(harnessDir, { recursive: true, force: true });
     }
@@ -1675,6 +1768,50 @@ describe("local ACP adapter", () => {
     });
   });
 
+  it("disposes every background ACP session as one shutdown barrier", async () => {
+    const sessionIds = ["local-acp-shutdown-1", "local-acp-shutdown-2"];
+    const releases = [deferred(), deferred()];
+    const disposers = releases.map((release) => vi.fn(async () => release.promise));
+    let managerIndex = 0;
+    let sessionIndex = 0;
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      createSessionId: () => sessionIds[sessionIndex++]!,
+      createSessionManager: () => {
+        const dispose = disposers[managerIndex++]!;
+        return {
+          start: vi.fn(),
+          prompt: vi.fn(),
+          cancel: vi.fn(),
+          dispose,
+        };
+      },
+    });
+    await adapter.createSession({ runtimeId: "desktop-local" });
+    await adapter.createSession({ runtimeId: "desktop-local" });
+
+    let shutdownSettled = false;
+    const shutdown = adapter.disposeAll().then(() => {
+      shutdownSettled = true;
+    });
+    await vi.waitFor(() => {
+      expect(disposers[0]).toHaveBeenCalledWith(sessionIds[0]);
+      expect(disposers[1]).toHaveBeenCalledWith(sessionIds[1]);
+    });
+    expect(shutdownSettled).toBe(false);
+    releases[0]!.resolve();
+    releases[1]!.resolve();
+    await shutdown;
+
+    expect(shutdownSettled).toBe(true);
+  });
+
   it("mirrors prompts and ACP events into the injected transcript store", async () => {
     let sendFromManager!: SessionSender;
     const prompt = vi.fn<SessionManagerLike["prompt"]>(async () => undefined);
@@ -1943,7 +2080,7 @@ describe("local ACP adapter", () => {
       });
     });
     await vi.waitFor(() => {
-      expect(socket.sent).toHaveLength(before + 1);
+      expect(socket.sent).toHaveLength(before + 2);
     });
     const ready = JSON.parse(socket.sent[before] ?? "{}");
     expect(ready).toEqual({
@@ -1952,6 +2089,14 @@ describe("local ACP adapter", () => {
       acp_session_id: "acp-loaded",
     });
     expect(ready).not.toHaveProperty("replay_events");
+    expect(JSON.parse(socket.sent[before + 1] ?? "{}")).toEqual({
+      type: "session.event",
+      session_id: "local-acp-load-replay",
+      event: {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [{ name: "review", description: "Review current project" }],
+      },
+    });
   });
 
   it("does not import ACP load replay over an existing local transcript", async () => {
@@ -3799,5 +3944,154 @@ describe("local ACP adapter", () => {
     expect(setConfigOption).toHaveBeenCalledWith("local-acp-session-text-model", "model", "gpt-5.4");
     expect(prompt).toHaveBeenCalled();
     expect(setConfigOption.mock.invocationCallOrder[0]).toBeLessThan(prompt.mock.invocationCallOrder[0]);
+  });
+
+  it("restarts an idle ACP child with the latest shim and resumes the existing ACP session", async () => {
+    const starts: Array<ReturnType<typeof vi.fn<SessionManagerLike["start"]>>> = [];
+    const disposes: Array<ReturnType<typeof vi.fn<SessionManagerLike["dispose"]>>> = [];
+    let managerIndex = 0;
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [{
+        id: "codex-acp",
+        label: "Codex",
+        spec: { command: "/managed/bin/clash-acp-codex-acp" },
+      }],
+      createSessionManager: (send) => {
+        const index = managerIndex++;
+        const start = vi.fn<SessionManagerLike["start"]>(async (params) => {
+          send({
+            type: "session.ready",
+            session_id: params.session_id,
+            acp_session_id: index === 0 ? "codex-thread-existing" : "codex-thread-resumed",
+          });
+        });
+        const dispose = vi.fn<SessionManagerLike["dispose"]>(async () => undefined);
+        starts.push(start);
+        disposes.push(dispose);
+        return { start, prompt: vi.fn(), cancel: vi.fn(), dispose };
+      },
+      createSessionId: () => "local-acp-session-restart",
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "master-clash",
+      agentMemberId: "local-master-clash",
+      agentId: "codex-acp",
+      projectId: "project-restart",
+    });
+
+    await expect(adapter.restartSession("local-acp-session-restart", { mode: "now" })).resolves.toEqual({
+      session_id: "local-acp-session-restart",
+      status: "restarted",
+    });
+
+    expect(disposes[0]).toHaveBeenCalledWith("local-acp-session-restart");
+    expect(starts).toHaveLength(2);
+    expect(starts[1]).toHaveBeenCalledWith(expect.objectContaining({
+      session_id: "local-acp-session-restart",
+      agent_id: "codex-acp",
+      resume: { acp_session_id: "codex-thread-existing" },
+    }));
+  });
+
+  it("reports when a held session is still running an older installed harness package", async () => {
+    const harnessDir = await mkdtemp(join(tmpdir(), "clash-held-harness-version-"));
+    const shimPath = join(harnessDir, "clash-acp-codex-acp");
+    const packageDir = join(harnessDir, "registry", "codex-acp", "npx", "node_modules", "@test", "codex-acp");
+    const packagePath = join(packageDir, "package.json");
+    try {
+      await writeFile(shimPath, "#!/bin/sh\nexit 0\n", "utf8");
+      await mkdir(packageDir, { recursive: true });
+      await writeFile(packagePath, JSON.stringify({ name: "@test/codex-acp", version: "1.0.1" }), "utf8");
+      const adapter = createLocalAcpAdapter({
+        detectAgents: async () => [{ id: "codex-acp", label: "Codex", spec: { command: shimPath } }],
+        agentCatalog: [{
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "clash-acp-codex-acp" },
+          registryId: "codex-acp",
+          registryNpmPackage: "@test/codex-acp",
+          installSource: "registry",
+        }],
+        harnessDownloadDir: harnessDir,
+        fetch: async (url) => {
+          if (String(url).includes("registry.json")) {
+            return new Response(JSON.stringify({ agents: [] }), { status: 200 });
+          }
+          return new Response(JSON.stringify({ version: "1.0.2" }), { status: 200 });
+        },
+        probeAgentAuth: async () => undefined,
+        createSessionManager: () => ({ start: vi.fn(), prompt: vi.fn(), cancel: vi.fn(), dispose: vi.fn() }),
+        createSessionId: () => "local-acp-session-old-package",
+      });
+
+      await adapter.createSession({ runtimeId: "desktop-local", agentId: "codex-acp" });
+      await writeFile(packagePath, JSON.stringify({ name: "@test/codex-acp", version: "1.0.2" }), "utf8");
+
+      await expect(adapter.getSessionRuntimeStatus("local-acp-session-old-package")).resolves.toEqual({
+        session_id: "local-acp-session-old-package",
+        harness_id: "codex-acp",
+        harness_label: "Codex",
+        running_version: "1.0.1",
+        installed_version: "1.0.2",
+        restart_required: true,
+        busy: false,
+        restart_pending: false,
+      });
+    } finally {
+      await rm(harnessDir, { recursive: true, force: true });
+    }
+  });
+
+  it("defers an ACP restart until the active turn completes", async () => {
+    const promptStarted = deferred();
+    const releasePrompt = deferred();
+    const firstSocket = new FakeSocket();
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [{
+        id: "codex-acp",
+        label: "Codex",
+        spec: { command: "codex-acp" },
+      }],
+      probeAgentAuth: async () => undefined,
+      createSessionManager: (send) => ({
+        start: vi.fn(async ({ session_id }) => {
+          send({ type: "session.ready", session_id, acp_session_id: "codex-thread-busy" });
+        }),
+        prompt: vi.fn(async () => {
+          promptStarted.resolve();
+          await releasePrompt.promise;
+        }),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }),
+      createSessionId: () => "local-acp-session-busy-restart",
+    });
+
+    await adapter.createSession({ runtimeId: "desktop-local", agentId: "codex-acp" });
+    adapter.bindSessionSocket("local-acp-session-busy-restart", firstSocket as any);
+    firstSocket.emit("message", Buffer.from(JSON.stringify({
+      type: "prompt",
+      turn_id: "turn-busy",
+      text: "finish this first",
+    })));
+    await promptStarted.promise;
+
+    await expect(adapter.restartSession("local-acp-session-busy-restart", { mode: "after-turn" })).resolves.toEqual({
+      session_id: "local-acp-session-busy-restart",
+      status: "pending",
+    });
+    expect(firstSocket.sent.map((message) => JSON.parse(message))).not.toContainEqual(expect.objectContaining({
+      type: "session.restart_ready",
+    }));
+
+    releasePrompt.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(firstSocket.sent.map((message) => JSON.parse(message))).toContainEqual({
+      type: "session.restart_ready",
+      session_id: "local-acp-session-busy-restart",
+    });
   });
 });

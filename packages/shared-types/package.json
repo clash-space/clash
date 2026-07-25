@@ -16,10 +16,15 @@
       "types": "./dist/assets.d.ts",
       "import": "./dist/assets.js",
       "default": "./dist/assets.js"
+    },
+    "./timeline-library": {
+      "types": "./dist/timeline-library.d.ts",
+      "import": "./dist/timeline-library.js",
+      "default": "./dist/timeline-library.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/assets.ts --format esm --dts --clean --target es2020",
+    "build": "tsup src/index.ts src/assets.ts src/timeline-library.ts --format esm --dts --clean --target es2020",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -41,6 +46,7 @@
   },
   "files": [
     "dist",
+    "src/mg-composition.ts",
     "python",
     "agents.json"
   ],

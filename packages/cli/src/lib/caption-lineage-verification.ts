@@ -117,30 +117,30 @@ function buildChecks(
   return [
     check({
       id: "timeline.valid-structured-caption",
-      label: "Timeline validates structured caption items",
+      label: "Timeline validates structured subtitle text",
       pass: validStructuredCaption,
-      expected: "timeline YAML parses and subtitle tracks contain only structured caption items",
+      expected: "timeline YAML parses and subtitle tracks contain only structured text items",
       actual: parsed.ok ? "timeline parser accepted structured caption lineage" : parsed.error,
     }),
     check({
       id: "caption.items-present",
-      label: "Caption items are present",
+      label: "Subtitle text items are present",
       pass: validStructuredCaption && stats.captionItems > 0,
-      expected: "at least one type: caption timeline item",
-      actual: `${stats.captionItems} caption item(s)`,
+      expected: "at least one type: text item on a subtitle track",
+      actual: `${stats.captionItems} subtitle text item(s)`,
     }),
     check({
       id: "caption.wordrefs-present",
       label: "Caption word references are present",
       pass: validStructuredCaption && stats.wordRefs > 0,
-      expected: "caption items include source word references",
+      expected: "subtitle text items include source word references",
       actual: `${stats.wordRefs} word reference(s)`,
     }),
     check({
       id: "caption.source-map-present",
       label: "Caption source-to-output maps are present",
       pass: validStructuredCaption && stats.sourceToOutputMaps > 0,
-      expected: "caption items include source-to-output frame maps",
+      expected: "subtitle text items include source-to-output frame maps",
       actual: `${stats.sourceToOutputMaps} source-to-output map(s)`,
     }),
     check({
@@ -156,7 +156,8 @@ function buildChecks(
 function collectCaptionStats(dsl: ResolvedTimelineDsl): CaptionStats {
   const stats = emptyStats();
   for (const track of dsl.tracks) {
-    const captionItems = track.items.filter((item): item is ResolvedItem => item.type === "caption");
+    if (track.role !== "subtitle") continue;
+    const captionItems = track.items.filter((item): item is ResolvedItem => item.type === "text");
     if (captionItems.length === 0) continue;
     const trackStats = { trackId: track.id, itemIds: [] as string[], cueIds: [] as string[] };
     for (const item of captionItems) {

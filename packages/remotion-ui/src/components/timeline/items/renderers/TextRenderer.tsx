@@ -11,8 +11,8 @@ export const TextRenderer: React.FC<ItemRenderProps> = ({ item, width, height })
         position: 'relative',
         width,
         height,
-        background: colors.bg.primary,
-        color: text.color || '#fff',
+        background: 'transparent',
+        color: colors.itemText.text,
         display: 'flex',
         alignItems: 'center',
         padding: '4px 8px',
@@ -27,4 +27,3 @@ export const TextRenderer: React.FC<ItemRenderProps> = ({ item, width, height })
     </div>
   );
 };
-

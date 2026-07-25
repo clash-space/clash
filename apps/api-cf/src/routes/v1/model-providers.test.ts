@@ -8,6 +8,8 @@ type Row = Record<string, any>;
 class MemoryD1 {
   rows: Row[] = [];
   oauthRows: Row[] = [];
+  modelRows: Row[] = [];
+  bindingRows: Row[] = [];
 
   prepare(sql: string) {
     const db = this;
@@ -40,6 +42,20 @@ class MemoryD1 {
                   .sort((a, b) => `${a.provider_id}:${a.account_id ?? ""}`.localeCompare(`${b.provider_id}:${b.account_id ?? ""}`)),
               } as T;
             }
+            if (sql.includes("FROM model_card_provider_binding")) {
+              return {
+                results: db.bindingRows
+                  .filter((row) => row.user_id === userId)
+                  .sort((a, b) => `${a.model_id}:${a.position}`.localeCompare(`${b.model_id}:${b.position}`)),
+              } as T;
+            }
+            if (sql.includes("FROM model_card_config")) {
+              return {
+                results: db.modelRows
+                  .filter((row) => row.user_id === userId)
+                  .sort((a, b) => a.model_id.localeCompare(b.model_id)),
+              } as T;
+            }
             return {
               results: db.rows
                 .filter((row) => row.user_id === userId)
@@ -47,6 +63,66 @@ class MemoryD1 {
             } as T;
           },
           async run() {
+            if (sql.includes("DELETE FROM model_card_provider_binding")) {
+              const [userId, second] = args;
+              db.bindingRows = db.bindingRows.filter((row) => !(
+                row.user_id === userId &&
+                (
+                  sql.includes("provider_account_id = ?")
+                    ? row.provider_account_id === second
+                    : row.model_id === second
+                )
+              ));
+              return {};
+            }
+            if (sql.includes("DELETE FROM model_card_config")) {
+              const [userId, modelId] = args;
+              db.modelRows = db.modelRows.filter(
+                (row) => !(row.user_id === userId && row.model_id === modelId),
+              );
+              return {};
+            }
+            if (sql.includes("INSERT INTO model_card_config")) {
+              const [
+                userId,
+                modelId,
+                custom,
+                kind,
+                name,
+                description,
+                promptGuidance,
+                createdAt,
+                updatedAt,
+              ] = args;
+              const previous = db.modelRows.find(
+                (row) => row.user_id === userId && row.model_id === modelId,
+              );
+              const values = {
+                user_id: userId,
+                model_id: modelId,
+                custom,
+                kind,
+                name,
+                description,
+                prompt_guidance: promptGuidance,
+                created_at: previous?.created_at ?? createdAt,
+                updated_at: updatedAt,
+              };
+              if (previous) Object.assign(previous, values);
+              else db.modelRows.push(values);
+              return {};
+            }
+            if (sql.includes("INSERT INTO model_card_provider_binding")) {
+              const [userId, modelId, providerAccountId, upstreamModel, position] = args;
+              db.bindingRows.push({
+                user_id: userId,
+                model_id: modelId,
+                provider_account_id: providerAccountId,
+                upstream_model: upstreamModel,
+                position,
+              });
+              return {};
+            }
             if (sql.includes("DELETE FROM provider_account")) {
               const [userId, id] = args;
               db.rows = db.rows.filter((row) => !(row.user_id === userId && row.id === id));
@@ -67,6 +143,7 @@ class MemoryD1 {
               const [
                 providerId,
                 upstreamId,
+                apiShape,
                 region,
                 label,
                 enabled,
@@ -85,6 +162,7 @@ class MemoryD1 {
                 Object.assign(row, {
                   provider_id: providerId,
                   upstream_id: upstreamId,
+                  api_shape: apiShape,
                   region,
                   label,
                   enabled,
@@ -104,6 +182,7 @@ class MemoryD1 {
               userId,
               providerId,
               upstreamId,
+              apiShape,
               region,
               label,
               enabled,
@@ -121,6 +200,7 @@ class MemoryD1 {
               user_id: userId,
               provider_id: providerId,
               upstream_id: upstreamId,
+              api_shape: apiShape,
               region,
               label,
               enabled,
@@ -148,6 +228,107 @@ function makeApp() {
 }
 
 describe("modelProviderRoutes", () => {
+  it("persists a hosted custom text model card mounted to a compatible provider account", async () => {
+    const app = makeApp();
+    const db = new MemoryD1();
+    const env = {
+      DB: db as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    const provider = await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        providers: [
+          {
+            id: "hosted-custom-openai",
+            providerId: "custom",
+            upstreamId: "openai",
+            apiShape: "openai-compatible",
+            label: "Hosted proxy",
+            enabled: true,
+            credentials: {
+              apiKey: "sk-hosted",
+              baseUrl: "https://hosted-proxy.example/v1",
+            },
+          },
+        ],
+      }),
+    }, env);
+    expect(provider.status).toBe(200);
+    expect(await provider.json()).toMatchObject({
+      providers: [
+        {
+          id: "hosted-custom-openai",
+          apiShape: "openai-compatible",
+        },
+      ],
+    });
+
+    const saved = await app.request("/api/v1/model-cards/hosted-editorial", {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        custom: true,
+        name: "Hosted Editorial",
+        kind: "text",
+        description: "A hosted custom model.",
+        promptGuidance: "Describe the audience before the deliverable.",
+        providerBindings: [
+          {
+            providerAccountId: "hosted-custom-openai",
+            upstreamModel: "hosted/editorial-v1",
+          },
+        ],
+      }),
+    }, env);
+    expect(saved.status).toBe(200);
+
+    const catalog = await app.request("/api/v1/models/catalog", {
+      headers: { "x-user-id": "user-1" },
+    }, env);
+    expect(catalog.status).toBe(200);
+    const json = await catalog.json() as {
+      models: Array<{
+        model: { id: string; promptGuidance?: string; custom?: boolean };
+        selectedRoute?: { accountId?: string; upstreamModel?: string } | null;
+      }>;
+    };
+    expect(json.models.find((entry) => entry.model.id === "hosted-editorial")).toMatchObject({
+      model: {
+        id: "hosted-editorial",
+        custom: true,
+        promptGuidance: "Describe the audience before the deliverable.",
+      },
+      selectedRoute: {
+        accountId: "hosted-custom-openai",
+        upstreamModel: "hosted/editorial-v1",
+      },
+    });
+
+    const tested = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: {
+          id: "hosted-custom-openai",
+          providerId: "custom",
+          upstreamId: "openai",
+          apiShape: "openai-compatible",
+          enabled: true,
+        },
+        modelId: "hosted-editorial",
+      }),
+    }, env);
+    expect(tested.status).toBe(200);
+    expect(await tested.json()).toMatchObject({
+      ok: true,
+      providerId: "custom",
+      modelId: "hosted-editorial",
+    });
+  });
+
   it("rejects provider account rows with unsupported provider ids", async () => {
     const app = makeApp();
     const db = new MemoryD1();

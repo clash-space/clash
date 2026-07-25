@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "clash.asr.timed-transcript",
+  "timebase": "milliseconds",
+  "alignment": "word",
+  "text": "你好，clash测试时间对集。",
+  "backendId": "funasr",
+  "modelId": "iic/SenseVoiceSmall",
+  "language": "zh",
+  "durationMs": 2610,
+  "words": [
+    { "id": "word-000001", "text": "你", "startMs": 30, "endMs": 90 },
+    { "id": "word-000002", "text": "好", "startMs": 150, "endMs": 210 },
+    { "id": "word-000003", "text": "，", "startMs": 270, "endMs": 390 },
+    { "id": "word-000004", "text": "clash", "startMs": 510, "endMs": 750 },
+    { "id": "word-000005", "text": "测", "startMs": 1230, "endMs": 1290 },
+    { "id": "word-000006", "text": "试", "startMs": 1410, "endMs": 1470 },
+    { "id": "word-000007", "text": "时", "startMs": 1650, "endMs": 1710 },
+    { "id": "word-000008", "text": "间", "startMs": 1830, "endMs": 1890 },
+    { "id": "word-000009", "text": "对", "startMs": 2070, "endMs": 2130 },
+    { "id": "word-000010", "text": "集", "startMs": 2250, "endMs": 2310 },
+    { "id": "word-000011", "text": "。", "startMs": 2550, "endMs": 2610 }
+  ],
+  "segments": [
+    {
+      "id": "segment-000001",
+      "text": "你好，clash测试时间对集。",
+      "startMs": 30,
+      "endMs": 2610,
+      "wordIds": [
+        "word-000001",
+        "word-000002",
+        "word-000003",
+        "word-000004",
+        "word-000005",
+        "word-000006",
+        "word-000007",
+        "word-000008",
+        "word-000009",
+        "word-000010",
+        "word-000011"
+      ]
+    }
+  ]
+}

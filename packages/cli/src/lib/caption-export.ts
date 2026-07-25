@@ -82,7 +82,7 @@ export async function exportCaptionFile(options: ExportCaptionFileOptions): Prom
   });
   const captions = collectCaptionEntries(parsed.dsl);
   if (captions.entries.length === 0) {
-    throw new Error("No structured caption items found. Caption export requires timeline items with type: caption.");
+    throw new Error("No structured subtitle text found. Caption export requires type: text items on a subtitle track.");
   }
 
   const content = format === "srt"
@@ -134,8 +134,9 @@ function collectCaptionEntries(dsl: ResolvedTimelineDsl): {
   let wordRefs = 0;
   let sourceToOutputMaps = 0;
   for (const track of dsl.tracks) {
+    if (track.role !== "subtitle") continue;
     for (const item of track.items) {
-      if (item.type !== "caption") continue;
+      if (item.type !== "text") continue;
       captionItems += 1;
       const cues = readCaptionCues(track, item);
       entries.push(...cues.map((cue) => ({
@@ -160,11 +161,11 @@ function collectCaptionEntries(dsl: ResolvedTimelineDsl): {
 
 function readCaptionCues(track: ResolvedTrack, item: ResolvedItem): CaptionCue[] {
   if (!Array.isArray(item.cues)) {
-    throw new Error(`Caption item ${track.id}/${item.id} must include cues`);
+    throw new Error(`Subtitle text item ${track.id}/${item.id} must include cues`);
   }
   return item.cues.map((rawCue, index) => {
     if (!rawCue || typeof rawCue !== "object") {
-      throw new Error(`Caption item ${track.id}/${item.id} cue ${index} must be an object`);
+      throw new Error(`Subtitle text item ${track.id}/${item.id} cue ${index} must be an object`);
     }
     const cue = rawCue as Record<string, unknown>;
     const id = typeof cue.id === "string" && cue.id.length > 0 ? cue.id : `cue-${index + 1}`;

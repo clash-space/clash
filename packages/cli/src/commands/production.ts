@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Command } from "commander";
-import { AssetMetadataFillActionSchema } from "@clash/shared-types";
+import {
+  AsrTimedTranscriptSchema,
+  AssetMetadataFillActionSchema,
+  projectAsrTimedTranscriptWords,
+  type AsrTimedTranscript,
+} from "@clash/shared-types";
 import { applyProductionMetadataAction, applyProductionMetadataProjection, productionMetadataObservationId } from "../lib/production-actions";
 import { validatePipelineManifest } from "../lib/pipeline-manifest-validation";
 import { renderMgProductionProjection } from "../lib/mg-production";
@@ -877,7 +882,10 @@ productionCommand
   .description(
     "Plan filler, tone-particle, and silence removals from ASR words into a talking-head metadata-fill action."
   )
-  .requiredOption("--transcript <path>", "ASR transcript JSON with { fps?, words: [{ id, text, startFrame, endFrame }] }")
+  .requiredOption(
+    "--transcript <path>",
+    "ASR transcript JSON using millisecond timed words or frame-projected words",
+  )
   .requiredOption("--target-asset <id>", "Target video asset id")
   .option("--out <path>", "Output AssetMetadataFillAction JSON path")
   .option("--fps <number>", "Override transcript fps", parsePositiveNumber)
@@ -890,11 +898,18 @@ productionCommand
       const transcriptRaw = await readFile(transcriptPath, "utf8");
       const transcript = parseTranscriptJson(JSON.parse(transcriptRaw));
       const fps = options.fps ?? transcript.fps ?? 30;
+      const words = transcript.timedTranscript
+        ? projectAsrTimedTranscriptWords(transcript.timedTranscript, fps)
+        : transcript.words;
+      const durationFrames = transcript.durationFrames
+        ?? (transcript.timedTranscript
+          ? Math.ceil((transcript.timedTranscript.durationMs / 1000) * fps)
+          : undefined);
       const action = planTalkingHeadTextCutAction({
         targetAssetId: options.targetAsset,
         fps,
         minSilenceFrames: options.minSilenceFrames,
-        words: transcript.words,
+        words,
         asr: {
           kind: "asr-transcript",
           sourcePath: toProjectPath(cwd, transcriptPath),
@@ -902,8 +917,8 @@ productionCommand
           backendId: transcript.backendId ?? "unknown-asr-backend",
           modelId: transcript.modelId ?? "unknown-asr-model",
           ...(transcript.language ? { language: transcript.language } : {}),
-          ...(transcript.durationFrames === undefined ? {} : { durationFrames: transcript.durationFrames }),
-          wordCount: transcript.words.length,
+          ...(durationFrames === undefined ? {} : { durationFrames }),
+          wordCount: words.length,
           ...(transcript.averageConfidence === undefined ? {} : { averageConfidence: transcript.averageConfidence }),
         },
       });
@@ -1005,7 +1020,7 @@ productionCommand
       }
       console.log(`verified caption lineage: ${result.status}`);
       console.log(`report: ${result.reportPath}`);
-      console.log(`caption items: ${result.captionItems}`);
+      console.log(`subtitle text items: ${result.captionItems}`);
       console.log(`cues: ${result.cues}`);
       if (result.blockedReasons.length > 0) console.log(`blocked: ${result.blockedReasons.join("; ")}`);
     } catch (error) {
@@ -1019,7 +1034,7 @@ productionCommand
   .description(
     "Export structured caption timeline items to SRT, VTT, or ASS sidecar files."
   )
-  .requiredOption("--timeline <path>", "Timeline YAML file containing type: caption items")
+  .requiredOption("--timeline <path>", "Timeline YAML with type: text items on a subtitle track")
   .option("--timeline-id <id>", "Project Timeline ID for applied revision provenance")
   .option("--project <id>", "Project ID (defaults to cwd marker)")
   .requiredOption("--out <path>", "Caption output path, usually .srt, .vtt, or .ass")
@@ -1057,7 +1072,7 @@ productionCommand
   .description(
     "Project structured caption timeline items into a CAS-required subtitle timeline view and overlay manifest."
   )
-  .requiredOption("--timeline <path>", "Timeline YAML file containing type: caption items")
+  .requiredOption("--timeline <path>", "Timeline YAML with type: text items on a subtitle track")
   .requiredOption("--out <path>", "Caption overlay timeline YAML projection path")
   .option("--manifest <path>", "Caption overlay manifest path")
   .option("--json", "Output result as JSON")
@@ -1087,7 +1102,7 @@ productionCommand
   .description(
     "Export structured caption timeline items as a non-destructive caption-burn derived asset plan or rendered video."
   )
-  .requiredOption("--timeline <path>", "Timeline YAML file containing type: caption items")
+  .requiredOption("--timeline <path>", "Timeline YAML with type: text items on a subtitle track")
   .option("--timeline-id <id>", "Project Timeline ID for applied revision provenance")
   .option("--project <id>", "Project ID (defaults to cwd marker)")
   .requiredOption("--source-asset <id>", "Source video asset id in assets/manifest.json")
@@ -2329,6 +2344,7 @@ function parseSafeZones(value: string): { top: number; right: number; bottom: nu
 function parseTranscriptJson(input: unknown): {
   fps?: number;
   words: any[];
+  timedTranscript?: AsrTimedTranscript;
   backendId?: string;
   modelId?: string;
   language?: string;
@@ -2337,6 +2353,17 @@ function parseTranscriptJson(input: unknown): {
 } {
   if (Array.isArray(input)) return { words: input };
   if (input && typeof input === "object") {
+    const timedTranscript = AsrTimedTranscriptSchema.safeParse(input);
+    if (timedTranscript.success) {
+      return {
+        words: [],
+        timedTranscript: timedTranscript.data,
+        backendId: timedTranscript.data.backendId,
+        modelId: timedTranscript.data.modelId,
+        language: timedTranscript.data.language,
+        averageConfidence: averageWordConfidence(timedTranscript.data.words),
+      };
+    }
     const record = input as Record<string, unknown>;
     if (Array.isArray(record.words)) {
       const asr = record.asr && typeof record.asr === "object" && !Array.isArray(record.asr)
@@ -2354,6 +2381,14 @@ function parseTranscriptJson(input: unknown): {
     }
   }
   throw new Error("Transcript JSON must be an array of words or an object with a words array");
+}
+
+function averageWordConfidence(words: Array<{ confidence?: number }>): number | undefined {
+  const values = words
+    .map((word) => word.confidence)
+    .filter((value): value is number => value !== undefined);
+  if (values.length === 0) return undefined;
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 1_000_000) / 1_000_000;
 }
 
 function readString(value: unknown): string | undefined {

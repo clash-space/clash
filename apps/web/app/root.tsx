@@ -11,11 +11,24 @@ function hasRouteErrorCode(error: unknown): error is { code?: unknown; detail?: 
   return Boolean(error && typeof error === "object" && "code" in error);
 }
 
+function readRouteErrorDetail(data: unknown): string | null {
+  if (typeof data === "string") return data.trim() || null;
+  if (!data || typeof data !== "object") return null;
+  for (const key of ["detail", "message", "error"] as const) {
+    const value = (data as Record<string, unknown>)[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
 function describeRouteError(error: unknown): RouteErrorDetails {
   if (isRouteErrorResponse(error)) {
     return {
       code: String(error.status),
-      detail: error.statusText || "This route returned without a readable status message.",
+      detail:
+        readRouteErrorDetail(error.data) ||
+        error.statusText ||
+        "This route returned without a readable status message.",
     };
   }
 
@@ -56,7 +69,7 @@ export function ErrorBoundary() {
   const { code, detail } = describeRouteError(error);
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-warm-page px-6 py-16 text-slate-950">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-warm-page px-6 py-16 text-slate-950 dark:text-stone-100">
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.32]"
         style={{
@@ -94,8 +107,8 @@ export function ErrorBoundary() {
               <Warning className="h-5 w-5" weight="fill" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-950">The canvas is still here.</p>
-              <p className="mt-1 text-sm leading-6 text-stone-600">
+              <p className="text-sm font-semibold text-slate-950 dark:text-stone-100">The canvas is still here.</p>
+              <p className="mt-1 text-sm leading-6 text-stone-600 dark:text-stone-400">
                 Reload this route to try again, or go home and reopen the project from a fresh surface.
               </p>
             </div>
@@ -103,12 +116,12 @@ export function ErrorBoundary() {
 
           <dl className="clash-route-error-detail grid gap-3 rounded-2xl p-4 text-left">
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Code</dt>
-              <dd className="mt-1 font-mono text-sm text-slate-950">{code}</dd>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500 dark:text-stone-500">Code</dt>
+              <dd className="mt-1 font-mono text-sm text-slate-950 dark:text-stone-100">{code}</dd>
             </div>
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">Detail</dt>
-              <dd className="mt-1 break-words text-sm leading-6 text-stone-700">{detail}</dd>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500 dark:text-stone-500">Detail</dt>
+              <dd className="mt-1 break-words text-sm leading-6 text-stone-700 dark:text-stone-300">{detail}</dd>
             </div>
           </dl>
 

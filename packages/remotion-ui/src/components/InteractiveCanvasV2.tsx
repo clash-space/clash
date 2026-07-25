@@ -1,10 +1,27 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
 import { VideoComposition } from '@master-clash/remotion-components';
-import { getItemLookupIds, type Track, type Item, type ItemProperties } from '@master-clash/remotion-core';
-import { getPlaybackStartFrame, getTimelineEndDisplayFrame } from './playbackSync';
-import { RemotionIconButton } from './ui/controls';
+import {
+  applyCanvasTransformEdit,
+  getItemLookupIds,
+  resolveCanvasTransformProperties,
+  type Track,
+  type Item,
+  type ItemProperties,
+} from '@master-clash/remotion-core';
+import { getPlaybackSyncAction, getTimelineEndDisplayFrame } from './playbackSync';
 import { useDragGesture } from './ui/gesture';
+import { colors, shadows } from './timeline/styles';
+import {
+  calculateMinimapViewport,
+  panFromMinimapPoint,
+  shouldShowCanvasMinimap,
+} from './canvas/minimap';
+import { calculateRms, type StereoAudioLevels } from './previewAudioMeter';
+
+export type CanvasViewportCommand =
+  | { id: number; type: 'reset' }
+  | { id: number; type: 'set-zoom'; zoom: number };
 
 interface InteractiveCanvasProps {
   tracks: Track[];
@@ -21,7 +38,27 @@ interface InteractiveCanvasProps {
   onSeek?: (frame: number) => void;
   onFrameUpdate?: (frame: number) => void;
   onPlayingChange?: (playing: boolean) => void;
+  viewportCommand?: CanvasViewportCommand;
+  onViewportZoomChange?: (zoom: number) => void;
+  audioMeterEnabled?: boolean;
+  onAudioLevelsChange?: (levels: StereoAudioLevels) => void;
+  onTransformStart?: () => void;
+  onTransformEnd?: () => void;
 }
+
+type CapturableMediaElement = HTMLMediaElement & {
+  captureStream?: () => MediaStream;
+};
+
+type MediaAnalysisGraph = {
+  source: MediaStreamAudioSourceNode;
+  stream: MediaStream;
+  splitter: ChannelSplitterNode;
+  leftAnalyser: AnalyserNode;
+  rightAnalyser: AnalyserNode;
+  leftSamples: Float32Array<ArrayBuffer>;
+  rightSamples: Float32Array<ArrayBuffer>;
+};
 
 type DragMode = 'move' | 'rotate' | 'scale-tl' | 'scale-tr' | 'scale-bl' | 'scale-br' | null;
 
@@ -35,6 +72,20 @@ interface DragState {
 }
 
 type CanvasTransformMode = Exclude<DragMode, null>;
+
+const CANVAS_TRANSFORMABLE_ITEM_TYPES: ReadonlySet<Item['type']> = new Set([
+  'solid',
+  'text',
+  'video',
+  'image',
+  'sticker',
+  'composition',
+  'derived-overlay',
+]);
+
+export const isCanvasTransformableItem = (item: { type: Item['type'] }): boolean => (
+  CANVAS_TRANSFORMABLE_ITEM_TYPES.has(item.type)
+);
 
 export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   tracks,
@@ -51,17 +102,41 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   onSeek: _onSeek,
   onFrameUpdate,
   onPlayingChange,
+  viewportCommand,
+  onViewportZoomChange,
+  audioMeterEnabled = false,
+  onAudioLevelsChange,
+  onTransformStart,
+  onTransformEnd,
 }) => {
   const playerRef = useRef<PlayerRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const minimapRef = useRef<HTMLDivElement>(null);
   const selectionBoxRef = useRef<HTMLDivElement>(null);
   const itemsDomMapRef = useRef<Map<string, HTMLElement>>(new Map());
   const [zoom, setZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [snapLines, setSnapLines] = useState<{ centerX?: boolean; centerY?: boolean; left?: boolean; right?: boolean; top?: boolean; bottom?: boolean } | null>(null);
   const [, forceUpdate] = useState({});
   const mediaAspectRatioRef = useRef<Map<string, number>>(new Map());
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSilentOutputRef = useRef<GainNode | null>(null);
+  const audioAnalysisGraphsRef = useRef<Map<HTMLMediaElement, MediaAnalysisGraph>>(new Map());
+  const audioMeterAnimationFrameRef = useRef<number | null>(null);
+  const previousAudioLevelsRef = useRef<StereoAudioLevels>({ left: 0, right: 0 });
+
+  const disconnectAudioAnalysisGraphs = useCallback(() => {
+    for (const graph of audioAnalysisGraphsRef.current.values()) {
+      graph.source.disconnect();
+      graph.splitter.disconnect();
+      graph.leftAnalyser.disconnect();
+      graph.rightAnalyser.disconnect();
+      graph.stream.getTracks().forEach((track) => track.stop());
+    }
+    audioAnalysisGraphsRef.current.clear();
+  }, []);
 
   // --- Helper: Convert R2 key to viewable URL ---
   const resolveAssetUrl = useCallback((src: string): string => {
@@ -216,20 +291,22 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   const getBaseMetrics = useCallback(() => {
     if (!containerRef.current) return null;
     const containerRect = containerRef.current.getBoundingClientRect();
-    const containerAspect = containerRect.width / containerRect.height;
+    const containerWidth = viewportSize.width || containerRect.width;
+    const containerHeight = viewportSize.height || containerRect.height;
+    const containerAspect = containerWidth / containerHeight;
     const compositionAspect = compositionWidth / compositionHeight;
 
     let width, height;
     if (compositionAspect > containerAspect) {
-      width = containerRect.width;
-      height = containerRect.width / compositionAspect;
+      width = containerWidth;
+      height = containerWidth / compositionAspect;
     } else {
-      height = containerRect.height;
-      width = containerRect.height * compositionAspect;
+      height = containerHeight;
+      width = containerHeight * compositionAspect;
     }
 
-    const left = (containerRect.width - width) / 2;
-    const top = (containerRect.height - height) / 2;
+    const left = (containerWidth - width) / 2;
+    const top = (containerHeight - height) / 2;
 
     return {
       width,
@@ -239,7 +316,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       scaleX: width / compositionWidth, // 1单位 composition 对应多少屏幕像素
       scaleY: height / compositionHeight
     };
-  }, [compositionWidth, compositionHeight]);
+  }, [compositionWidth, compositionHeight, viewportSize.height, viewportSize.width]);
 
   // 2. 数据坐标 (0-1) -> 屏幕像素坐标 (相对于 Container)
   const normalizedToScreen = useCallback((x: number, y: number) => {
@@ -319,7 +396,11 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     // 筛选出没有 properties 的 item，且未被初始化过
     const uninitializedItems = tracks
       .flatMap((t) => t.items.map((i) => ({ trackId: t.id, item: i })))
-      .filter((x) => !x.item.properties && !initializedItemsRef.current.has(x.item.id));
+      .filter((x) => (
+        isCanvasTransformableItem(x.item)
+        && !x.item.properties
+        && !initializedItemsRef.current.has(x.item.id)
+      ));
 
     if (uninitializedItems.length === 0) return;
 
@@ -366,32 +447,35 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   useEffect(() => {
     if (!playerRef.current) return;
 
-    // 检测播放状态的切换
-    const isPlayingToPaused = lastPlayingStateRef.current && !playing;
-    const isPausedToPlaying = !lastPlayingStateRef.current && playing;
+    const playerFrame = playerRef.current.getCurrentFrame();
+    const action = getPlaybackSyncAction({
+      wasPlaying: lastPlayingStateRef.current,
+      playing,
+      currentFrame,
+      playerFrame,
+      durationInFrames,
+    });
 
-    if (isPlayingToPaused) {
-      // 从播放切换到暂停：暂停 Player，但不 seek（让 Player 停在当前帧）
+    if (action.kind === 'pause') {
       playerRef.current.pause();
-      lastSyncedFrameRef.current = playerRef.current.getCurrentFrame();
-    } else if (isPausedToPlaying) {
-      // 从暂停切换到播放：到尾帧时回到起点，否则从当前帧继续
-      const startFrame = getPlaybackStartFrame(currentFrame, durationInFrames);
-      playerRef.current.seekTo(startFrame);
+      if (action.seekTo !== null) {
+        playerRef.current.seekTo(action.seekTo);
+      }
+      lastSyncedFrameRef.current = action.seekTo ?? playerFrame;
+    } else if (action.kind === 'play') {
+      if (action.seekTo !== null) {
+        playerRef.current.seekTo(action.seekTo);
+      }
       playerRef.current.play();
+      const startFrame = action.seekTo ?? playerFrame;
       lastSyncedFrameRef.current = startFrame;
       lastEmittedFrameRef.current = startFrame;
-      if (startFrame !== currentFrame) {
-        onFrameUpdate?.(startFrame);
+      if (action.notifyFrame !== null) {
+        onFrameUpdate?.(action.notifyFrame);
       }
-    } else if (!playing) {
-      // 保持暂停状态：只在帧数确实变化且用户主动改变时才 seek
-      // 这里通过比较 currentFrame 和 Player 内部的实际帧来判断
-      const playerFrame = playerRef.current.getCurrentFrame();
-      if (Math.abs(playerFrame - currentFrame) > 1) {
-        playerRef.current.seekTo(currentFrame);
-        lastSyncedFrameRef.current = currentFrame;
-      }
+    } else if (action.kind === 'seek' && action.seekTo !== null) {
+      playerRef.current.seekTo(action.seekTo);
+      lastSyncedFrameRef.current = action.seekTo;
     }
 
     lastPlayingStateRef.current = playing;
@@ -449,29 +533,169 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     };
   }, [durationInFrames, onFrameUpdate, onPlayingChange]);
 
-  // 处理缩放
-  const handleZoomIn = useCallback(() => {
-    setZoom((prev) => Math.min(prev * 1.2, 5));
-  }, []);
+  const lastViewportCommandIdRef = useRef(0);
+  useEffect(() => {
+    if (!viewportCommand || viewportCommand.id === lastViewportCommandIdRef.current) {
+      return;
+    }
+    lastViewportCommandIdRef.current = viewportCommand.id;
+    if (viewportCommand.type === 'reset') {
+      setZoom(1);
+      setPanOffset({ x: 0, y: 0 });
+    } else {
+      setZoom(Math.max(0.1, Math.min(5, viewportCommand.zoom)));
+    }
+  }, [viewportCommand]);
 
-  const handleZoomOut = useCallback(() => {
-    setZoom((prev) => Math.max(prev / 1.2, 0.1));
-  }, []);
+  useEffect(() => {
+    onViewportZoomChange?.(zoom);
+  }, [onViewportZoomChange, zoom]);
 
-  const handleResetZoom = useCallback(() => {
-    setZoom(1);
-    setPanOffset({ x: 0, y: 0 });
-  }, []);
+  useEffect(() => {
+    if (!audioMeterEnabled) {
+      disconnectAudioAnalysisGraphs();
+      previousAudioLevelsRef.current = { left: 0, right: 0 };
+      onAudioLevelsChange?.({ left: 0, right: 0 });
+      return;
+    }
+
+    const AudioContextConstructor = window.AudioContext;
+    if (!AudioContextConstructor || typeof window.requestAnimationFrame !== 'function') {
+      onAudioLevelsChange?.({ left: 0, right: 0 });
+      return;
+    }
+
+    if (!audioContextRef.current) {
+      const context = new AudioContextConstructor();
+      const silentOutput = context.createGain();
+      silentOutput.gain.value = 0;
+      silentOutput.connect(context.destination);
+      audioContextRef.current = context;
+      audioSilentOutputRef.current = silentOutput;
+    }
+
+    const context = audioContextRef.current;
+    const silentOutput = audioSilentOutputRef.current;
+    if (!context || !silentOutput) return;
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => undefined);
+    }
+
+    const connectVisibleMedia = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const visibleMedia = new Set(
+        [
+          ...Array.from(container.querySelectorAll<HTMLMediaElement>('audio, video')),
+          ...Array.from(document.querySelectorAll<HTMLAudioElement>('audio[data-timeline-audio]')),
+        ],
+      );
+
+      for (const [element, graph] of audioAnalysisGraphsRef.current) {
+        if (visibleMedia.has(element)) continue;
+        graph.source.disconnect();
+        graph.splitter.disconnect();
+        graph.leftAnalyser.disconnect();
+        graph.rightAnalyser.disconnect();
+        graph.stream.getTracks().forEach((track) => track.stop());
+        audioAnalysisGraphsRef.current.delete(element);
+      }
+
+      for (const element of visibleMedia) {
+        if (audioAnalysisGraphsRef.current.has(element)) continue;
+        const captureStream = (element as CapturableMediaElement).captureStream;
+        if (typeof captureStream !== 'function') continue;
+
+        try {
+          const stream = captureStream.call(element);
+          if (stream.getAudioTracks().length === 0) {
+            stream.getTracks().forEach((track) => track.stop());
+            continue;
+          }
+          const source = context.createMediaStreamSource(stream);
+          const splitter = context.createChannelSplitter(2);
+          const leftAnalyser = context.createAnalyser();
+          const rightAnalyser = context.createAnalyser();
+          leftAnalyser.fftSize = 256;
+          rightAnalyser.fftSize = 256;
+          source.connect(splitter);
+          splitter.connect(leftAnalyser, 0);
+          splitter.connect(rightAnalyser, 1);
+          leftAnalyser.connect(silentOutput);
+          rightAnalyser.connect(silentOutput);
+          audioAnalysisGraphsRef.current.set(element, {
+            source,
+            stream,
+            splitter,
+            leftAnalyser,
+            rightAnalyser,
+            leftSamples: new Float32Array(leftAnalyser.fftSize),
+            rightSamples: new Float32Array(rightAnalyser.fftSize),
+          });
+        } catch {
+          // Media may exist before its audio track is ready. Retry next frame.
+        }
+      }
+    };
+
+    const sampleAudioLevels = () => {
+      connectVisibleMedia();
+      let leftSquared = 0;
+      let rightSquared = 0;
+      for (const [element, graph] of audioAnalysisGraphsRef.current) {
+        graph.leftAnalyser.getFloatTimeDomainData(graph.leftSamples);
+        graph.rightAnalyser.getFloatTimeDomainData(graph.rightSamples);
+        const outputGain = element.muted ? 0 : element.volume;
+        const left = calculateRms(graph.leftSamples) * outputGain;
+        let right = calculateRms(graph.rightSamples) * outputGain;
+        if (right < 0.0001 && left >= 0.0001) right = left;
+        leftSquared += left * left;
+        rightSquared += right * right;
+      }
+
+      const raw = {
+        left: Math.min(1, Math.sqrt(leftSquared)),
+        right: Math.min(1, Math.sqrt(rightSquared)),
+      };
+      const previous = previousAudioLevelsRef.current;
+      const next = {
+        left: raw.left >= previous.left ? raw.left : previous.left * 0.82 + raw.left * 0.18,
+        right: raw.right >= previous.right ? raw.right : previous.right * 0.82 + raw.right * 0.18,
+      };
+      previousAudioLevelsRef.current = next;
+      onAudioLevelsChange?.(next);
+      audioMeterAnimationFrameRef.current = window.requestAnimationFrame(sampleAudioLevels);
+    };
+
+    audioMeterAnimationFrameRef.current = window.requestAnimationFrame(sampleAudioLevels);
+    return () => {
+      if (audioMeterAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(audioMeterAnimationFrameRef.current);
+        audioMeterAnimationFrameRef.current = null;
+      }
+      disconnectAudioAnalysisGraphs();
+      previousAudioLevelsRef.current = { left: 0, right: 0 };
+      onAudioLevelsChange?.({ left: 0, right: 0 });
+    };
+  }, [audioMeterEnabled, disconnectAudioAnalysisGraphs, onAudioLevelsChange]);
+
+  useEffect(() => () => {
+    disconnectAudioAnalysisGraphs();
+    audioSilentOutputRef.current?.disconnect();
+    audioSilentOutputRef.current = null;
+    const context = audioContextRef.current;
+    audioContextRef.current = null;
+    if (context && context.state !== 'closed') {
+      void context.close().catch(() => undefined);
+    }
+  }, [disconnectAudioAnalysisGraphs]);
 
   // 处理滚轮缩放
   const handleWheel = useCallback(
     (e: WheelEvent) => {
-      // Cmd/Ctrl + 滚轮：缩放
-      if (e.metaKey || e.ctrlKey) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.95 : 1.05;
-        setZoom((prev) => Math.max(0.1, Math.min(5, prev * delta)));
-      }
+      e.preventDefault();
+      const delta = Math.exp(-e.deltaY * 0.0015);
+      setZoom((previous) => Math.max(0.1, Math.min(5, previous * delta)));
     },
     []
   );
@@ -487,6 +711,27 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
     };
   }, [handleWheel]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const syncViewportSize = () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      setViewportSize((previous) => (
+        previous.width === width && previous.height === height
+          ? previous
+          : { width, height }
+      ));
+    };
+    syncViewportSize();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(syncViewportSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
   // 监听窗口 resize，强制更新 bounds
   useEffect(() => {
     const handleResize = () => {
@@ -501,6 +746,86 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
   // 获取当前 metrics 用于 CSS
   const currentMetrics = getBaseMetrics();
+
+  const canvasViewportWidth = currentMetrics
+    ? Math.min(currentMetrics.width * zoom, viewportSize.width || currentMetrics.width)
+    : compositionWidth;
+  const canvasViewportHeight = currentMetrics
+    ? Math.min(currentMetrics.height * zoom, viewportSize.height || currentMetrics.height)
+    : compositionHeight;
+  const minimapViewport = calculateMinimapViewport({
+    canvasWidth: currentMetrics?.width ?? compositionWidth,
+    canvasHeight: currentMetrics?.height ?? compositionHeight,
+    viewportWidth: canvasViewportWidth,
+    viewportHeight: canvasViewportHeight,
+    zoom,
+    panX: panOffset.x,
+    panY: panOffset.y,
+  });
+  const minimapAspectRatio = compositionWidth / compositionHeight;
+  const minimapSize = minimapAspectRatio >= 132 / 84
+    ? { width: 132, height: 132 / minimapAspectRatio }
+    : { width: 84 * minimapAspectRatio, height: 84 };
+
+  const panToMinimapPoint = useCallback((clientX: number, clientY: number) => {
+    const map = minimapRef.current;
+    const metrics = getBaseMetrics();
+    if (!map || !metrics) return;
+    const rect = map.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    setPanOffset(panFromMinimapPoint({
+      canvasWidth: metrics.width,
+      canvasHeight: metrics.height,
+      viewportWidth: Math.min(metrics.width * zoom, viewportSize.width || metrics.width),
+      viewportHeight: Math.min(metrics.height * zoom, viewportSize.height || metrics.height),
+      zoom,
+      pointX: (clientX - rect.left) / rect.width,
+      pointY: (clientY - rect.top) / rect.height,
+    }));
+  }, [getBaseMetrics, viewportSize.height, viewportSize.width, zoom]);
+
+  const minimapGestureBind = useDragGesture<PointerEvent>(
+    ({ event }) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panToMinimapPoint(event.clientX, event.clientY);
+    },
+    {
+      preventDefault: true,
+      pointer: { capture: true },
+      eventOptions: { passive: false },
+    },
+  );
+
+  const handleMinimapKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 0.15 : 0.05;
+    let centerX = minimapViewport.left + minimapViewport.width / 2;
+    let centerY = minimapViewport.top + minimapViewport.height / 2;
+    if (event.key === 'Home') {
+      event.preventDefault();
+      setZoom(1);
+      setPanOffset({ x: 0, y: 0 });
+      return;
+    }
+    if (event.key === 'ArrowLeft') centerX -= step;
+    else if (event.key === 'ArrowRight') centerX += step;
+    else if (event.key === 'ArrowUp') centerY -= step;
+    else if (event.key === 'ArrowDown') centerY += step;
+    else return;
+
+    event.preventDefault();
+    const metrics = getBaseMetrics();
+    if (!metrics) return;
+    setPanOffset(panFromMinimapPoint({
+      canvasWidth: metrics.width,
+      canvasHeight: metrics.height,
+      viewportWidth: Math.min(metrics.width * zoom, viewportSize.width || metrics.width),
+      viewportHeight: Math.min(metrics.height * zoom, viewportSize.height || metrics.height),
+      zoom,
+      pointX: centerX,
+      pointY: centerY,
+    }));
+  }, [getBaseMetrics, minimapViewport, viewportSize.height, viewportSize.width, zoom]);
 
   // 屏幕坐标转属性空间 (Composition Pixels, Center Relative)
   const screenToPropertySpace = useCallback((screenX: number, screenY: number) => {
@@ -548,9 +873,10 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   const createTransformDragSession = useCallback(
     (item: Item, trackId: string, mode: CanvasTransformMode, clientX: number, clientY: number): DragState => {
       const startPoint = screenToPropertySpace(clientX, clientY);
+      const visibleProperties = resolveCanvasTransformProperties(item, currentFrame);
 
-      let startWidth = item.properties?.width ?? 1;
-      let startHeight = item.properties?.height ?? 1;
+      let startWidth = visibleProperties.width;
+      let startHeight = visibleProperties.height;
 
       // Handle Contain Fit special case for scaling. If we are about to scale
       // from the default fitted state (1, 1), calculate the effective scale so
@@ -570,18 +896,18 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
         startX: startPoint.x, // Composition Pixels (Center Relative)
         startY: startPoint.y,
         startProperties: {
-          x: item.properties?.x ?? 0,
-          y: item.properties?.y ?? 0,
+          x: visibleProperties.x,
+          y: visibleProperties.y,
           width: startWidth,
           height: startHeight,
-          rotation: item.properties?.rotation ?? 0,
-          opacity: item.properties?.opacity ?? 1,
+          rotation: visibleProperties.rotation ?? 0,
+          opacity: visibleProperties.opacity ?? 1,
         },
         item,
         trackId,
       };
     },
-    [compositionWidth, compositionHeight, getNaturalDimensions, screenToPropertySpace],
+    [compositionWidth, compositionHeight, currentFrame, getNaturalDimensions, screenToPropertySpace],
   );
 
   const applyTransformDrag = useCallback(
@@ -732,12 +1058,23 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
         }
       }
 
-      // 更新 item properties
-      onUpdateItem(session.trackId, session.item.id, {
-        properties: newProperties as ItemProperties,
-      });
+      const editMode = session.mode === 'move'
+        ? 'move'
+        : session.mode === 'rotate'
+          ? 'rotate'
+          : 'scale';
+      onUpdateItem(
+        session.trackId,
+        session.item.id,
+        applyCanvasTransformEdit(
+          session.item,
+          currentFrame,
+          editMode,
+          newProperties as ItemProperties,
+        ),
+      );
     },
-    [screenToPropertySpace, onUpdateItem, getBaseMetrics, zoom, getNaturalDimensions, compositionWidth, compositionHeight]
+    [screenToPropertySpace, onUpdateItem, getBaseMetrics, zoom, getNaturalDimensions, compositionWidth, compositionHeight, currentFrame]
   );
 
   const canvasTransformGestureBind = useDragGesture<PointerEvent>(
@@ -751,6 +1088,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           onSelectItem(item.id);
         }
         session = createTransformDragSession(item, trackId, mode, event.clientX, event.clientY);
+        onTransformStart?.();
       }
 
       if (session && !first) {
@@ -759,6 +1097,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
       if (last) {
         setSnapLines(null);
+        if (session) onTransformEnd?.();
       }
 
       return session;
@@ -778,16 +1117,17 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
   // width=1, height=1 means 100% of media's natural size (not composition size)
   const getItemRenderInfo = useCallback((item: Item) => {
     if (!item.properties) return null;
+    const visibleProperties = resolveCanvasTransformProperties(item, currentFrame);
 
     // Properties:
     // x, y: Center relative composition pixels
     // width, height: Scale factor relative to media's natural size (1 = 100% natural size)
 
-    const propX = item.properties.x ?? 0;
-    const propY = item.properties.y ?? 0;
-    const propW = item.properties.width ?? 1;
-    const propH = item.properties.height ?? 1;
-    const rotation = item.properties.rotation ?? 0;
+    const propX = visibleProperties.x;
+    const propY = visibleProperties.y;
+    const propW = visibleProperties.width;
+    const propH = visibleProperties.height;
+    const rotation = visibleProperties.rotation ?? 0;
 
     // Get natural dimensions from asset node
     const { naturalWidth, naturalHeight } = getNaturalDimensions(item);
@@ -831,11 +1171,15 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
       left: centerScreen.x - wPx / 2,
       top: centerScreen.y - hPx / 2
     };
-  }, [normalizedToScreen, getBaseMetrics, compositionWidth, compositionHeight, zoom, allNodesMap]);
+  }, [normalizedToScreen, getBaseMetrics, compositionWidth, compositionHeight, zoom, allNodesMap, currentFrame]);
 
   // 当前选中项的屏幕信息
   const bounds = React.useMemo(
-    () => (selectedItemData ? getItemRenderInfo(selectedItemData.item) : null),
+    () => (
+      selectedItemData && isCanvasTransformableItem(selectedItemData.item)
+        ? getItemRenderInfo(selectedItemData.item)
+        : null
+    ),
     [selectedItemData, getItemRenderInfo],
   );
 
@@ -844,6 +1188,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
     for (const track of tracks) {
       for (const item of track.items) {
+        if (!isCanvasTransformableItem(item)) continue;
         if (!item.properties) continue;
         if (currentFrame < item.from || currentFrame >= item.from + item.durationInFrames) continue;
 
@@ -936,20 +1281,6 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
 
   return (
     <div style={styles.container}>
-      {/* 缩放控制按钮 */}
-      <div className="zoom-controls" style={styles.zoomControls}>
-        <RemotionIconButton onClick={handleZoomOut} style={styles.zoomButton} title="缩小 (Cmd/Ctrl + 滚轮)">
-          −
-        </RemotionIconButton>
-        <span style={styles.zoomLabel}>{Math.round(zoom * 100)}%</span>
-        <RemotionIconButton onClick={handleZoomIn} style={styles.zoomButton} title="放大 (Cmd/Ctrl + 滚轮)">
-          +
-        </RemotionIconButton>
-        <RemotionIconButton onClick={handleResetZoom} style={styles.resetButton} title="重置">
-          ⟲
-        </RemotionIconButton>
-      </div>
-
       {/* Remotion Player - 底层渲染 */}
       <div 
         ref={containerRef} 
@@ -996,6 +1327,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
               style={styles.player}
               controls={false}
               loop={false}
+              numberOfSharedAudioTags={0}
             />
             
           </div>
@@ -1193,7 +1525,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
             width={bounds.width}
             height={bounds.height}
             fill="none"
-            stroke="#FF6B50"
+            stroke="var(--clash-accent, #ff6b50)"
             strokeWidth="2"
             style={{
               pointerEvents: 'none',
@@ -1233,8 +1565,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
                 cx={x}
                 cy={y}
                 r="6"
-                fill="#ffffff"
-                stroke="#FF6B50"
+                fill="var(--clash-warm-surface, #fffefd)"
+                stroke="var(--clash-accent, #ff6b50)"
                 strokeWidth="2"
                 style={{
                   pointerEvents: 'all',
@@ -1253,8 +1585,8 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
               cx={bounds.centerX}
               cy={bounds.top - 30}
               r="6"
-              fill="#ffffff"
-              stroke="#FF6B50"
+              fill="var(--clash-warm-surface, #fffefd)"
+              stroke="var(--clash-accent, #ff6b50)"
               strokeWidth="2"
               style={{
                 pointerEvents: 'all',
@@ -1271,7 +1603,7 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
               y1={bounds.top}
               x2={bounds.centerX}
               y2={bounds.top - 30}
-              stroke="#FF6B50"
+              stroke="var(--clash-accent, #ff6b50)"
               strokeWidth="2"
               style={{
                 transform: `rotate(${bounds.rotation}deg)`,
@@ -1282,6 +1614,36 @@ export const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({
           </svg>
         )}
       </div>
+
+      {shouldShowCanvasMinimap(zoom) && (
+        <div
+          ref={minimapRef}
+          role="application"
+          tabIndex={0}
+          aria-label="Canvas minimap"
+          aria-description="Drag to pan the canvas. Use the mouse wheel to zoom."
+          title="Drag to pan · Wheel to zoom · Home to fit"
+          style={{
+            ...styles.minimap,
+            width: minimapSize.width,
+            height: minimapSize.height,
+          }}
+          {...minimapGestureBind()}
+          onKeyDown={handleMinimapKeyDown}
+        >
+          <div aria-hidden="true" style={styles.minimapGrid} />
+          <div
+            aria-hidden="true"
+            style={{
+              ...styles.minimapViewport,
+              left: `${minimapViewport.left * 100}%`,
+              top: `${minimapViewport.top * 100}%`,
+              width: `${minimapViewport.width * 100}%`,
+              height: `${minimapViewport.height * 100}%`,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -1311,52 +1673,34 @@ const styles: Record<string, React.CSSProperties> = {
     pointerEvents: 'all',
     userSelect: 'none',
   },
-  zoomControls: {
+  minimap: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: '8px 12px',
-    borderRadius: 8,
-    zIndex: 1000,
+    right: 12,
+    bottom: 12,
+    zIndex: 1100,
+    overflow: 'hidden',
+    border: `1px solid ${colors.border.default}`,
+    borderRadius: 6,
+    backgroundColor: colors.bg.hover,
+    boxShadow: shadows.md,
+    cursor: 'crosshair',
+    touchAction: 'none',
   },
-  zoomButton: {
-    width: 28,
-    height: 28,
-    border: 'none',
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'background-color 0.2s',
+  minimapGrid: {
+    position: 'absolute',
+    inset: 0,
+    opacity: 0.48,
+    backgroundImage: `linear-gradient(${colors.border.subtle} 1px, transparent 1px), linear-gradient(90deg, ${colors.border.subtle} 1px, transparent 1px)`,
+    backgroundSize: '25% 25%',
   },
-  resetButton: {
-    width: 28,
-    height: 28,
-    border: 'none',
-    borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    color: 'white',
-    fontSize: 16,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'background-color 0.2s',
-  },
-  zoomLabel: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 500,
-    minWidth: 45,
-    textAlign: 'center',
+  minimapViewport: {
+    position: 'absolute',
+    minWidth: 3,
+    minHeight: 3,
+    border: `1px solid ${colors.accent.primary}`,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 107, 80, 0.22)',
+    boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.6) inset',
+    pointerEvents: 'none',
   },
 };

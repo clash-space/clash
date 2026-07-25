@@ -5,12 +5,10 @@
  * No asset output — result lands on node.data.content.
  */
 import { generateTextCompletion, type TextContentPart } from "@clash/shared-runtime";
-import { resolveModelUpstreamRoute } from "@clash/shared-types";
 import { log } from "../../logger";
-import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
 import { buildMultimodalUserMessage } from "../multimodal";
-import { credentialsForProvider, credentialsForRoute } from "./provider-credentials";
+import { credentialsForRoute } from "./provider-credentials";
 
 function sharedContentParts(content: Awaited<ReturnType<typeof buildMultimodalUserMessage>>["content"]): TextContentPart[] {
   return content.flatMap((part): TextContentPart[] => {
@@ -24,27 +22,20 @@ export const textGenProvider: GenerationProvider = {
   name: "text-gen",
 
   async execute(ctx) {
-    const { params, env } = ctx;
+    const { params } = ctx;
+    const route = params.selectedRoute;
+    if (!route || (route.apiShape !== "openai-compatible" && route.apiShape !== "anthropic-compatible")) {
+      throw new Error(`Text execution requires a selected compatible route for ${params.modelName ?? "unknown model"}`);
+    }
 
     const content = await ctx.step(
       "generate-text",
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "3 minutes" },
       async () => {
-        const modelName = params.modelName || env.AI_MODEL || "gpt-5.4";
-        const route = resolveModelUpstreamRoute({
-          modelCode: modelName,
-          kind: "text",
-          configuredUpstreams: [
-            { upstreamId: "openai", enabled: true },
-            { upstreamId: "anthropic", enabled: true },
-          ],
-        });
-        const provider = route?.apiShape === "anthropic-compatible"
+        const provider = route.apiShape === "anthropic-compatible"
           ? "anthropic-compatible"
           : "openai-compatible";
-        const credentials = route
-          ? await credentialsForRoute(ctx, route)
-          : await credentialsForProvider(ctx, "official", ["apiKey"], { upstreamId: "openai", region: "global", modelCode: modelName });
+        const credentials = await credentialsForRoute(ctx, route);
         const systemPrompt =
           typeof params.modelParams?.system_prompt === "string"
             ? params.modelParams.system_prompt.trim()
@@ -56,7 +47,7 @@ export const textGenProvider: GenerationProvider = {
         const userMessage = await buildMultimodalUserMessage(ctx, params);
         log.info("Text generate started", {
           ...ctx.tag,
-          model: configuredModelName || route?.upstreamModel || modelName,
+          model: configuredModelName || route.upstreamModel,
           provider,
           parts: userMessage.content.length,
         });
@@ -64,7 +55,7 @@ export const textGenProvider: GenerationProvider = {
           provider,
           apiKey: credentials.apiKey,
           baseUrl: credentials.baseUrl,
-          model: configuredModelName || route?.upstreamModel || modelName,
+          model: configuredModelName || route.upstreamModel,
           systemPrompt: systemPrompt || undefined,
           messages: [{ role: "user", content: sharedContentParts(userMessage.content) }],
         });

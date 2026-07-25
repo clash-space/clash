@@ -1,15 +1,22 @@
 import type {
+  ModelUpstreamApiShape,
   ModelUpstreamId,
   ProviderOAuthId,
   ProviderAccountAvailability,
   ProviderAccountId,
+  UserModelCardConfig,
 } from "@clash/shared-types";
+
+export type LocalUserModelCardConfig = UserModelCardConfig & {
+  userId?: string;
+};
 
 export interface LocalProviderAccountConfig {
   id?: string;
   userId?: string;
   providerId: ProviderAccountId;
   upstreamId?: ModelUpstreamId;
+  apiShape?: ModelUpstreamApiShape;
   region?: string;
   label?: string;
   enabled: boolean;
@@ -66,6 +73,7 @@ const PROVIDER_IDS = new Set<ProviderAccountId>([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom",
 ]);
@@ -85,6 +93,25 @@ const UPSTREAM_IDS = new Set<ModelUpstreamId>([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
+]);
+const API_SHAPES = new Set<ModelUpstreamApiShape>([
+  "local-asr",
+  "local-tts",
+  "fal",
+  "google-agent-platform",
+  "google-ai-studio",
+  "openai-images",
+  "openai-compatible",
+  "anthropic-compatible",
+  "replicate",
+  "kie",
+  "kling",
+  "minimax",
+  "modelark",
+  "dreamina-cli",
+  "elevenlabs",
+  "suno",
 ]);
 
 function stringField(value: unknown): string | undefined {
@@ -152,6 +179,7 @@ function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undef
     providerId === "jimeng" ||
     providerId === "volcengine" ||
     providerId === "elevenlabs" ||
+    providerId === "suno" ||
     providerId === "mock"
   ) {
     return providerId;
@@ -170,6 +198,12 @@ export function normalizeProviderAccountInput(value: unknown): Omit<LocalProvide
   const upstreamId = rawUpstreamId && UPSTREAM_IDS.has(rawUpstreamId)
     ? rawUpstreamId
     : defaultUpstream(providerId);
+  const rawApiShape = stringField(raw.apiShape) as ModelUpstreamApiShape | undefined;
+  const apiShape = rawApiShape && API_SHAPES.has(rawApiShape) ? rawApiShape : undefined;
+  if (providerId === "custom" && (
+    !upstreamId ||
+    (apiShape !== "openai-compatible" && apiShape !== "anthropic-compatible")
+  )) return null;
   const region = stringField(raw.region);
   const priority = numberField(raw.priority);
   const weight = numberField(raw.weight);
@@ -180,6 +214,7 @@ export function normalizeProviderAccountInput(value: unknown): Omit<LocalProvide
     ...(id ? { id } : {}),
     providerId,
     ...(upstreamId ? { upstreamId } : {}),
+    ...(apiShape ? { apiShape } : {}),
     ...(region ? { region } : {}),
     ...(label ? { label } : {}),
     enabled: raw.enabled === undefined ? true : raw.enabled !== false,
@@ -275,6 +310,7 @@ export function providerAccountsForRuntime(
       ...(account.id ? { id: account.id } : {}),
       providerId: account.providerId,
       ...(account.upstreamId ? { upstreamId: account.upstreamId } : {}),
+      ...(account.apiShape ? { apiShape: account.apiShape } : {}),
       ...(account.region ? { region: account.region } : {}),
       ...(account.label ? { label: account.label } : {}),
       enabled: account.enabled,
