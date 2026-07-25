@@ -2,7 +2,7 @@
   "name": "master-clash",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-powered video production platform",
+  "description": "Agent-native AI video editor for Canvas, Timeline, captions, 3D direction, and multi-agent production",
   "scripts": {
     "dev": "turbo run dev",
     "dev:log": "./scripts/dev-log.sh",
@@ -26,14 +26,24 @@
     "clean": "turbo run clean && rm -rf node_modules .turbo"
   },
   "keywords": [
-    "ai",
+    "ai-video-editor",
+    "agent-native",
+    "ai-agents",
+    "generative-ai",
     "video-production",
+    "video-editor",
+    "timeline",
+    "mcp",
+    "codex",
+    "electron",
+    "remotion",
+    "self-hosted",
+    "crdt",
     "cloudflare",
-    "react-router",
-    "langgraph"
+    "react"
   ],
   "author": "hrhrng <hrhrng@foxmail.com>",
-  "license": "MIT",
+  "license": "PolyForm-Shield-1.0.0",
   "engines": {
     "node": ">=22.22.0"
   },

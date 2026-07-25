@@ -1,19 +1,87 @@
-# Clash
+# Clash — Agent-Native AI Video Editor
 
 [English](./README.md) · [简体中文](./README.zh-CN.md)
 
-Multi-agent canvas for creative video work — humans and AI editing the
-same Loro CRDT graph in real time. Backend on Cloudflare Workers + D1 +
-R2; frontend is a Vite SPA. Self-hostable end-to-end.
+Clash is a source-available, self-hostable **AI video editor** where humans
+and coding agents create in the same project. Plan on a visual Canvas, edit on
+a multi-track Timeline, block scenes in a 3D Director Stage, and let Codex,
+ACP, or MCP agents work through the same real project state.
+
+**[Website](https://clash.video)** ·
+**[Quick start](#quick-start)** ·
+**[Self-hosting](#self-hosting)** ·
+**[Architecture](#architecture)**
+
+![Clash agent-native AI video editor with Canvas, Timeline, Director, and Codex](./.github/social-preview.png)
+
+## Why Clash
+
+| Surface               | What it gives you                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **Canvas**            | A collaborative node graph for ideas, references, assets, generation pipelines, and agent annotations.                       |
+| **Timeline**          | Multi-track video editing with transcripts, captions, keyframes, transitions, effects, audio ducking, and production export. |
+| **Director Stage**    | 3D characters, props, cameras, action clips, panoramic environments, shot blocking, and preview generation.                  |
+| **Agent runtime**     | Real Codex/ACP sessions, typed MCP tools, installable Codex plugins, CLI projections, and revision-aware apply paths.        |
+| **Models and assets** | Local ASR/TTS plus routed image, video, audio, and text providers in a project-scoped asset workspace.                       |
+| **Deploy anywhere**   | Electron desktop and local-first workflows, or a Cloudflare stack using Workers, Durable Objects, D1, R2, and Workflows.     |
+
+Clash is designed for agent-native video production rather than a chat panel
+bolted onto a traditional editor. Direct GUI edits stay interactive and
+undoable; agent changes travel through explicit project contracts that can be
+validated before they are applied.
+
+## Work with Clash
+
+- **Desktop and web:** edit projects visually with Canvas, Timeline, Director,
+  Assets, and Copilot surfaces.
+- **CLI:** inspect and operate projects, assets, Canvas, Timeline, Director,
+  models, tasks, text, and production workflows from the terminal.
+- **MCP and Codex plugins:** open focused Studio, Canvas, Timeline, and Director
+  apps backed by typed tools instead of a hidden browser automation layer.
+- **JavaScript and Python SDKs:** integrate project operations and local model
+  runtimes into custom agents and pipelines.
+
+## Quick start
+
+Clash uses Node.js 22.22+ and pnpm 10+.
+
+```bash
+git clone https://github.com/clash-space/clash.git
+cd clash
+corepack enable
+pnpm install
+pnpm dev
+```
+
+Run the Electron app during local development:
+
+```bash
+pnpm --filter @master-clash/desktop dev
+```
 
 `clash.video` runs from a private overlay
 ([`clash-space/clash-hosted`](https://github.com/clash-space/clash-hosted))
-that vendors this repo as a submodule and adds billing. Everything in
-this repo runs without it.
+that vendors this repository as a submodule and adds billing. Everything in
+this repository runs without that overlay.
 
 ---
 
 ## Architecture
+
+### Local-first agent path
+
+```
+Human editor ──▶ Electron / Web ───────────────┐
+                                               ▼
+Codex / ACP / MCP / CLI ─────────────▶ local-api + project workspace
+                                               │
+                    ┌──────────┬───────────┬────┴─────┬──────────┐
+                    ▼          ▼           ▼          ▼          ▼
+                  Canvas    Timeline    Director    Assets    Models
+                 (Loro)   (projection)   (3D)      (media)  (local/cloud)
+```
+
+### Cloud collaboration path
 
 ```
                         ┌──────────────────────────────┐
@@ -39,7 +107,9 @@ this repo runs without it.
 
 **Key invariants**
 
-- **Loro is canvas truth.** Edges, nodes, statuses live in Loro; D1 holds
+- **Project contracts are the agent boundary.** CLI and MCP mutations use typed,
+  revision-aware projections rather than directly reaching into GUI state.
+- **Loro is Canvas truth.** Edges, nodes, statuses live in Loro; D1 holds
   asset rows + auth + project metadata. The two never duplicate the same
   field.
 - **`assetId` resolves to R2 server-side.** Pending nodes carry `assetId`
@@ -64,33 +134,44 @@ canvas Run
 
 ### Tech
 
-| Layer       | Tech                                                            |
-| ----------- | --------------------------------------------------------------- |
-| Frontend    | Vite, React 19, Tailwind v4, @xyflow/react, Framer Motion       |
-| Worker      | Cloudflare Workers (Hono), Durable Objects, Workflows, Container|
-| Real-time   | Loro CRDT (binary WebSocket)                                    |
-| DB          | D1 + Drizzle                                                    |
-| Object store| R2                                                              |
-| Auth        | Better Auth (cookie session + opaque API tokens)                |
-| AI          | Google Vertex (Gemini, Veo), fal.ai, OpenAI                     |
-| Video       | Remotion 4 in a Cloudflare Container                            |
-| Build       | pnpm workspaces, Turborepo, Vite                                |
+| Layer           | Tech                                                                          |
+| --------------- | ----------------------------------------------------------------------------- |
+| Desktop and web | Electron, Vite, React 19, Tailwind v4, @xyflow/react, Framer Motion           |
+| Agent runtime   | ACP, Model Context Protocol (MCP), Codex plugins, CLI, JavaScript/Python SDKs |
+| Video           | Remotion 4, FFmpeg, transcript/caption tooling, effects and export pipelines  |
+| 3D direction    | Three.js, React Three Fiber, Drei                                             |
+| Cloud           | Cloudflare Workers (Hono), Durable Objects, Workflows, Containers             |
+| Real-time       | Loro CRDT over binary WebSocket                                               |
+| Data            | Local project storage, D1 + Drizzle, R2                                       |
+| Auth            | Better Auth (cookie session + opaque API tokens)                              |
+| AI providers    | Local models, Google Gemini/Veo, fal.ai, OpenAI, Kling, ModelArk, and more    |
+| Build           | pnpm workspaces, Turborepo, Vite, tsup                                        |
 
 ### Layout
 
 ```
 apps/
-  web/                  Vite SPA + Worker entry
+  desktop/              Electron shell, local export, NLE handoff, ACP harnesses
+  local-api/            local-first project, model, asset, and agent runtime
+  web/                  Vite SPA + Cloudflare Worker entry
   api-cf/               Hono + DOs + Workflow + container DO
   render-server/        Remotion image (built once → GHCR, pulled by Container DO)
   loro-sync-server/     legacy shell, sync moved into api-cf
 packages/
+  director-{core,ui}/   3D Director Stage state and interface
+  mcp-server/           typed MCP tools and focused Clash Apps
+  clash-sdk/            JavaScript and Python agent/model SDKs
   shared-types/         Zod schemas, model cards, ref/capability helpers
   shared-layout/        canvas auto-layout
   web-ui/               shared React components (ProjectEditor, ChatbotCopilot, …)
   cli/                  terminal CLI
   claude-code-plugin/   Claude Code integration
+  remotion-effects/     reusable video effects
   remotion-{core,components,ui}/  video editor
+plugins/
+  clash/                complete installable Clash Codex plugin
+  clash-timeline/       focused Timeline Codex plugin
+  clash-director/       focused Director Stage Codex plugin
 ```
 
 ---
@@ -103,7 +184,7 @@ own Cloudflare resources and paste the IDs back in.
 
 ### Prerequisites
 
-- Node 20+, pnpm 10+, wrangler 4+
+- Node 22.22+, pnpm 10+, wrangler 4+
 - Cloudflare Workers Paid plan (DO + Workflows + Containers all need it)
 
 ### One-time setup
@@ -131,17 +212,17 @@ cd apps/api-cf
 wrangler secret bulk .dev.vars
 ```
 
-| Secret                                  | Notes                                  |
-| --------------------------------------- | -------------------------------------- |
-| `BETTER_AUTH_SECRET`                    | `openssl rand -base64 32`              |
-| `BETTER_AUTH_URL`                       | Public origin, e.g. `https://your.app` |
-| `GOOGLE_API_KEY`                        | Google AI Studio                       |
-| `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI service account |
-| `FAL_API_KEY`                           | fal.ai dashboard                       |
-| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY` | Kuaishou Kling                         |
-| `R2_PUBLIC_URL`                         | Public bucket URL or signed-URL host   |
-| `CF_AIG_TOKEN` / `CF_AIG_OPENAI_URL` / `GOOGLE_AI_STUDIO_BASE_URL` / `FAL_GATEWAY_URL` | CF AI Gateway (optional but recommended) |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth (optional)                |
+| Secret                                                                                          | Notes                                    |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `BETTER_AUTH_SECRET`                                                                            | `openssl rand -base64 32`                |
+| `BETTER_AUTH_URL`                                                                               | Public origin, e.g. `https://your.app`   |
+| `GOOGLE_API_KEY`                                                                                | Google AI Studio                         |
+| `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI service account                |
+| `FAL_API_KEY`                                                                                   | fal.ai dashboard                         |
+| `KLING_ACCESS_KEY` / `KLING_SECRET_KEY`                                                         | Kuaishou Kling                           |
+| `R2_PUBLIC_URL`                                                                                 | Public bucket URL or signed-URL host     |
+| `CF_AIG_TOKEN` / `CF_AIG_OPENAI_URL` / `GOOGLE_AI_STUDIO_BASE_URL` / `FAL_GATEWAY_URL`          | CF AI Gateway (optional but recommended) |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`                                                         | Google OAuth (optional)                  |
 
 ### Deploy
 
