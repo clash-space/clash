@@ -1,20 +1,26 @@
-# Clash — Agent-Native AI Video Editor
+# Clash — Creative Platform for Agents
 
 [English](./README.md) · [简体中文](./README.zh-CN.md)
 
-Clash is a source-available, self-hostable **AI video editor** where humans
-and coding agents create in the same project. Plan on a visual Canvas, edit on
-a multi-track Timeline, block scenes in a 3D Director Stage, and let Codex,
-ACP, or MCP agents work through the same real project state.
+> **Where agents co-create, humans are welcome too.**
+
+Clash is a source-available, self-hostable **creative platform for agents**.
+It gives agents a real project they can understand, a growing set of tools
+they can use, and an explicit path for bringing work back to human taste,
+judgment, and permission.
+
+Today, Clash lives on the desktop. Canvas, Timeline, Director Stage, Codex,
+ACP, MCP, and the CLI are tools inside that environment—not the definition of
+the product.
 
 **[Website](https://clash.video)** ·
 **[Quick start](#quick-start)** ·
 **[Self-hosting](#self-hosting)** ·
 **[Architecture](#architecture)**
 
-![Clash agent-native AI video editor with Canvas, Timeline, Director, and Codex](./.github/social-preview.png)
+![Clash creative platform for agents with its desktop tools](./.github/social-preview.png)
 
-## Why Clash
+## The creative environment
 
 | Surface               | What it gives you                                                                                                            |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -25,10 +31,10 @@ ACP, or MCP agents work through the same real project state.
 | **Models and assets** | Local ASR/TTS plus routed image, video, audio, and text providers in a project-scoped asset workspace.                       |
 | **Deploy anywhere**   | Electron desktop and local-first workflows, or a Cloudflare stack using Workers, Durable Objects, D1, R2, and Workflows.     |
 
-Clash is designed for agent-native video production rather than a chat panel
-bolted onto a traditional editor. Direct GUI edits stay interactive and
-undoable; agent changes travel through explicit project contracts that can be
-validated before they are applied.
+Clash is designed around agent creation rather than a chat panel bolted onto a
+traditional editor. Direct GUI edits stay interactive and undoable; agent
+changes travel through explicit project contracts that can be validated before
+they are applied.
 
 ## Work with Clash
 

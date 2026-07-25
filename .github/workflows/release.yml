@@ -89,3 +89,89 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  package-desktop:
+    name: Package Desktop (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    needs: [agent-first-local-v1]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macOS
+            script: pack:mac
+            asset: apps/desktop/release/Clash-Desktop-macOS-universal.dmg
+          - os: windows-latest
+            platform: Windows
+            script: pack:win
+            asset: apps/desktop/release/Clash-Desktop-Windows-x64.exe
+          - os: ubuntu-latest
+            platform: Linux
+            script: pack:linux
+            asset: apps/desktop/release/Clash-Desktop-Linux-x64.AppImage
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: pnpm
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg libfuse2
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @master-clash/desktop run ${{ matrix.script }}
+
+      - name: Upload desktop installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clash-Desktop-${{ matrix.platform }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish-desktop-preview:
+    name: Publish Desktop Preview
+    runs-on: ubuntu-latest
+    needs: [package-desktop]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download desktop installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Clash-Desktop-*
+          path: desktop-artifacts
+          merge-multiple: true
+
+      - name: Point the rolling preview tag at this build
+        run: |
+          git tag --force desktop-preview "$GITHUB_SHA"
+          git push origin refs/tags/desktop-preview --force
+
+      - name: Create or update the rolling desktop preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view desktop-preview >/dev/null 2>&1; then
+            gh release edit desktop-preview \
+              --title "Clash Desktop Preview" \
+              --notes "Unsigned preview installers built from ${GITHUB_SHA}. Where agents co-create, humans are welcome too." \
+              --prerelease
+          else
+            gh release create desktop-preview \
+              --title "Clash Desktop Preview" \
+              --notes "Unsigned preview installers built from ${GITHUB_SHA}. Where agents co-create, humans are welcome too." \
+              --prerelease
+          fi
+          gh release upload desktop-preview desktop-artifacts/Clash-Desktop-* --clobber

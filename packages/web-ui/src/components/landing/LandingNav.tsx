@@ -1,11 +1,8 @@
+import { motion } from "framer-motion";
+import { Link } from "react-router";
+import ClashWordmark from "./ClashWordmark";
 
-import { motion } from 'framer-motion';
-import { Link } from 'react-router';
-
-const navLinks = [
-  { name: 'Docs', href: '/docs' },
-  { name: 'Marketplace', href: '/marketplace' },
-];
+const navLinks = [{ name: "Docs", href: "/docs" }];
 
 export default function LandingNav() {
   return (
@@ -14,19 +11,11 @@ export default function LandingNav() {
         {/* Logo */}
         <Link to="/" className="group">
           <motion.div
-            className="flex items-center gap-1.5"
+            className="flex items-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <img
-              src="/brand/logo-mark.svg"
-              alt=""
-              className="h-10 w-10 object-contain"
-              draggable={false}
-            />
-            <span className="font-display text-xl font-semibold leading-none text-slate-950 dark:text-slate-50">
-              Clash
-            </span>
+            <ClashWordmark className="text-3xl" />
           </motion.div>
         </Link>
 
@@ -41,6 +30,14 @@ export default function LandingNav() {
               {link.name}
             </Link>
           ))}
+          <a
+            href="https://github.com/clash-space/clash"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-warm-muted/70 hover:text-slate-950 dark:text-stone-300"
+          >
+            GitHub
+          </a>
         </nav>
 
         <div className="flex items-center gap-2">

@@ -1,20 +1,24 @@
-# Clash — Agent-Native AI 视频编辑器
+# Clash — 面向 Agent 的创作平台
 
 [English](./README.md) · [简体中文](./README.zh-CN.md)
 
-Clash 是一款 source-available、可完整自托管的 **AI 视频编辑器**。人和编程
-Agent 在同一个真实项目里协作：用 Canvas 策划与生成素材，在多轨 Timeline
-剪辑视频，在 3D Director Stage 完成角色、动作、机位和镜头调度，并让 Codex、
-ACP 或 MCP Agent 直接操作同一份项目状态。
+> **Where agents co-create, humans are welcome too.**
+
+Clash 是一款 source-available、可完整自托管的 **面向 Agent 的创作平台**。
+它给 Agent 一份可以理解的真实项目、一组可以直接使用的创作工具，以及把工作
+带回给人类品味、判断与许可的明确路径。
+
+今天 Clash 以桌面端为主要载体。Canvas、Timeline、Director Stage、Codex、
+ACP、MCP 与 CLI 都是这个环境里的工具，而不是产品本身的定义。
 
 **[官网](https://clash.video)** ·
 **[快速开始](#快速开始)** ·
 **[自托管](#自托管)** ·
 **[架构](#架构)**
 
-![Clash Agent-Native AI 视频编辑器的 Canvas、Timeline、Director 与 Codex](./.github/social-preview.png)
+![Clash 面向 Agent 的创作平台及其桌面创作工具](./.github/social-preview.png)
 
-## 为什么用 Clash
+## 创作环境
 
 | 工作区             | 能力                                                                                                            |
 | ------------------ | --------------------------------------------------------------------------------------------------------------- |
@@ -25,9 +29,8 @@ ACP 或 MCP Agent 直接操作同一份项目状态。
 | **模型与素材**     | 本地 ASR/TTS，以及可路由的图像、视频、音频、文本模型和项目级素材库。                                            |
 | **部署方式**       | Electron 桌面端与 local-first 工作流，或 Workers、Durable Objects、D1、R2、Workflows 组成的 Cloudflare 云端栈。 |
 
-Clash 不是给传统编辑器外挂一个聊天框，而是从项目数据契约开始设计的
-Agent-Native 视频生产系统。GUI 直接编辑保持交互与 Undo/Redo；Agent 改动通过
-可验证的项目投影与显式应用路径进入项目。
+Clash 围绕 Agent 创作来设计，不是给传统编辑器外挂一个聊天框。GUI 直接编辑
+保持交互与 Undo/Redo；Agent 改动通过可验证的项目投影与显式应用路径进入项目。
 
 ## 使用方式
 

@@ -1,45 +1,59 @@
-
-import { motion } from 'framer-motion';
-import { CloudCheck, CursorClick, GitBranch, TerminalWindow } from '@phosphor-icons/react';
+import { motion } from "framer-motion";
+import {
+  CheckCircle,
+  CursorClick,
+  GitBranch,
+  TerminalWindow,
+} from "@phosphor-icons/react";
 
 const steps = [
   {
-    number: '01',
-    title: 'Start on the local canvas',
-    description: 'Type a brief, drop references, or open an existing project. Clash turns intent into editable structure before generation starts.',
+    number: "01",
+    title: "Give the agent a real project",
+    description:
+      "Start from a brief, references, existing media, or unfinished work. The agent sees context, not an empty prompt box.",
     icon: CursorClick,
   },
   {
-    number: '02',
-    title: 'Attach the right runtime',
-    description: 'Use the desktop daemon, local ACP agents, BYOK providers, or managed cloud routes. The interface keeps the runtime visible.',
+    number: "02",
+    title: "Let it choose the right tools",
+    description:
+      "The agent can plan, edit, direct, generate, inspect, and revise through explicit capabilities in the same project.",
     icon: TerminalWindow,
   },
   {
-    number: '03',
-    title: 'Commit work back to the graph',
-    description: 'Agent output lands as nodes, assets, notes, and lineage. You can inspect it, revise it, or hand it to another helper.',
+    number: "03",
+    title: "Keep every result editable",
+    description:
+      "Work lands as project state, assets, decisions, and lineage you can inspect or hand to another agent.",
     icon: GitBranch,
   },
   {
-    number: '04',
-    title: 'Invite cloud deliberately',
-    description: 'Enable sync or multiplayer only when the project needs web access, backup, or collaborators in the same room.',
-    icon: CloudCheck,
+    number: "04",
+    title: "Invite human judgment",
+    description:
+      "Review the work, redirect the agent, take over a detail, or approve the next move. You remain welcome at every step.",
+    icon: CheckCircle,
   },
 ];
 
 export default function HowItWorks() {
   return (
-    <section id="how-it-works" className="relative z-10 scroll-mt-20 py-20 sm:py-28">
+    <section
+      id="how-it-works"
+      className="relative z-10 scroll-mt-20 py-20 sm:py-28"
+    >
       <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-10">
         <div className="max-w-2xl">
-          <h2 className="font-display text-sm font-semibold leading-7 text-brand">How it works</h2>
-          <p className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
-            From idea to canvas to runtime
+          <p className="font-display text-sm font-semibold leading-7 text-brand">
+            How it works
           </p>
+          <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">
+            Agents do the work. Humans keep agency.
+          </h2>
           <p className="mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300">
-            Agents do better work when the canvas is the source of truth: the brief is visible, the task is inspectable, and the result lands back where direction happens.
+            Creation becomes a legible loop: understand, act, inspect, revise.
+            The project—not the conversation—is the durable source of truth.
           </p>
         </div>
 
@@ -51,7 +65,11 @@ export default function HowItWorks() {
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1], delay: index * 0.06 }}
+                transition={{
+                  duration: 0.42,
+                  ease: [0.16, 1, 0.3, 1],
+                  delay: index * 0.06,
+                }}
               >
                 <div className="clash-landing-process-index">
                   <span>{step.number}</span>
@@ -64,16 +82,24 @@ export default function HowItWorks() {
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-700 dark:text-stone-300">
                     {step.description}
                   </p>
-                  <div className="clash-landing-process-rule" aria-hidden="true" />
+                  <div
+                    className="clash-landing-process-rule"
+                    aria-hidden="true"
+                  />
                 </div>
               </motion.li>
             ))}
           </ol>
-          <aside className="clash-landing-runtime-panel" aria-label="Runtime boundary">
-            <span>desktop runtime</span>
-            <strong>Agents run where your files are</strong>
+          <aside
+            className="clash-landing-runtime-panel"
+            aria-label="Runtime boundary"
+          >
+            <span>Clash Desktop</span>
+            <strong>The creative environment travels with the project</strong>
             <p>
-              The desktop app is the bridge between the web canvas, local project files, and agent processes. Work leaves the canvas as a task and comes back as editable project material.
+              Files, agent processes, tools, and project state meet on your
+              machine. The agent gets a place to work; you get work you can
+              actually open and change.
             </p>
           </aside>
         </div>

@@ -1,7 +1,7 @@
 {
   "name": "Clash",
   "short_name": "Clash",
-  "description": "Multi-agent canvas for creative video work",
+  "description": "Where agents co-create, humans are welcome too.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F7F6F2",

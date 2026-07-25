@@ -96,3 +96,49 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --concurrency=1
+
+  package-desktop:
+    name: Package Desktop (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    needs: [build, agent-first-local-v1]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macOS
+            script: pack:mac
+            asset: apps/desktop/release/Clash-Desktop-macOS-universal.dmg
+          - os: windows-latest
+            platform: Windows
+            script: pack:win
+            asset: apps/desktop/release/Clash-Desktop-Windows-x64.exe
+          - os: ubuntu-latest
+            platform: Linux
+            script: pack:linux
+            asset: apps/desktop/release/Clash-Desktop-Linux-x64.AppImage
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: pnpm
+
+      - name: Install Linux packaging dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes ffmpeg libfuse2
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @master-clash/desktop run ${{ matrix.script }}
+
+      - name: Upload desktop installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clash-Desktop-${{ matrix.platform }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error

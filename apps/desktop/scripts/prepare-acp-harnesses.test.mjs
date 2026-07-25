@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   BUILTIN_ACP_WRAPPERS,
+  renderNodeAcpWindowsWrapper,
   renderNodeAcpWrapper,
 } from "./prepare-acp-harnesses.mjs";
 
@@ -52,5 +53,18 @@ describe("prepare ACP harness wrappers", () => {
     expect(script).toContain("if [ -f \"$PACKAGED_SCRIPT\" ]; then");
     expect(script).toContain("export ELECTRON_RUN_AS_NODE=1");
     expect(script).toContain("exec \"$CLASH_NODE_EXEC_PATH\" \"$SCRIPT\" \"$@\"");
+  });
+
+  it("renders Windows command wrappers for packaged ACP agents", () => {
+    const script = renderNodeAcpWindowsWrapper({
+      packagedScriptPath: String.raw`%RESOURCES_DIR%\acp-node\codex-acp\node_modules\@agentclientprotocol\codex-acp\dist\index.js`,
+      devScriptPath: String.raw`D:\repo\node_modules\@agentclientprotocol\codex-acp\dist\index.js`,
+    });
+
+    expect(script).toContain("set \"RESOURCES_DIR=%~dp0..\"");
+    expect(script).toContain("set \"ELECTRON_RUN_AS_NODE=1\"");
+    expect(script).toContain("\"%CLASH_NODE_EXEC_PATH%\" \"%SCRIPT%\" %*");
+    expect(script).toContain("node \"%SCRIPT%\" %*");
+    expect(script).toContain("acp-node\\codex-acp\\node_modules");
   });
 });

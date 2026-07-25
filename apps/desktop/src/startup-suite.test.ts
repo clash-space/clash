@@ -94,6 +94,14 @@ describe("desktop startup test suite", () => {
     );
   });
 
+  it("prepares the packaged CLI through the active pnpm runtime on Windows", () => {
+    const source = readText("scripts/prepare-clash-cli.mjs");
+
+    expect(source).toContain("npm_execpath");
+    expect(source).toContain('platform !== "win32"');
+    expect(source).toContain("[prepare-clash-cli] failed");
+  });
+
   it("owns one strict-port renderer for the Desktop dev lifecycle", () => {
     const pkg = JSON.parse(readText("package.json")) as {
       scripts: Record<string, string>;

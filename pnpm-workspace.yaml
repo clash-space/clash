@@ -15,6 +15,8 @@ packages:
   - 'packages/clash-bridge'
   - 'packages/claude-code-plugin'
   - 'plugins/*'
+supportedArchitectures:
+  cpu: [arm64, x64]
 allowBuilds:
   '@swc/core': set this to true or false
   core-js-pure: set this to true or false

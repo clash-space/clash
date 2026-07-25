@@ -23,6 +23,7 @@ type WorktreeObservationWrite = WorktreeObservationIdentity & {
 const WRITE_LOCK_RETRY_MS = 10;
 const WRITE_LOCK_TIMEOUT_MS = 10_000;
 const OWNERLESS_LOCK_GRACE_MS = WRITE_LOCK_TIMEOUT_MS;
+const localWriteQueues = new Map<string, Promise<void>>();
 
 export type RequiredWorktreeObservation =
   | { ok: true; revision: string }
@@ -117,6 +118,26 @@ async function writeState(workspaceRoot: string, state: WorktreeObservationState
 
 async function withWriteLock<T>(workspaceRoot: string, operation: () => Promise<T>): Promise<T> {
   const filePath = resolveWorktreeObservationPath(workspaceRoot);
+  const previousTurn = localWriteQueues.get(filePath) ?? Promise.resolve();
+  let releaseTurn!: () => void;
+  const currentTurn = new Promise<void>((resolve) => {
+    releaseTurn = resolve;
+  });
+  const queueTail = previousTurn.then(() => currentTurn);
+  localWriteQueues.set(filePath, queueTail);
+
+  await previousTurn;
+  try {
+    return await withFilesystemWriteLock(filePath, operation);
+  } finally {
+    releaseTurn();
+    if (localWriteQueues.get(filePath) === queueTail) {
+      localWriteQueues.delete(filePath);
+    }
+  }
+}
+
+async function withFilesystemWriteLock<T>(filePath: string, operation: () => Promise<T>): Promise<T> {
   const lockPath = `${filePath}.lock`;
   const ownerPath = join(lockPath, "owner.json");
   const startedAt = Date.now();
@@ -130,14 +151,14 @@ async function withWriteLock<T>(workspaceRoot: string, operation: () => Promise<
         await writeFile(ownerTempPath, `${JSON.stringify({ pid: process.pid })}\n`, "utf8");
         await rename(ownerTempPath, ownerPath);
       } catch (error) {
-        await rm(lockPath, { recursive: true, force: true });
+        await retireWriteLock(lockPath);
         throw error;
       }
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       if (await canReclaimWriteLock(lockPath, ownerPath)) {
-        await rm(lockPath, { recursive: true, force: true });
+        await retireWriteLock(lockPath);
         continue;
       }
       if (Date.now() - startedAt >= WRITE_LOCK_TIMEOUT_MS) {
@@ -150,8 +171,19 @@ async function withWriteLock<T>(workspaceRoot: string, operation: () => Promise<
   try {
     return await operation();
   } finally {
-    await rm(lockPath, { recursive: true, force: true });
+    await retireWriteLock(lockPath);
   }
+}
+
+async function retireWriteLock(lockPath: string): Promise<void> {
+  const retiredPath = `${lockPath}.retired.${process.pid}.${randomUUID()}`;
+  try {
+    await rename(lockPath, retiredPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  await rm(retiredPath, { recursive: true, force: true });
 }
 
 function resolveWorktreeObservationPath(workspaceRoot: string): string {
@@ -184,7 +216,7 @@ async function isOwnerlessLockStale(lockPath: string): Promise<boolean> {
     const lockStat = await stat(lockPath);
     return Date.now() - lockStat.mtimeMs >= OWNERLESS_LOCK_GRACE_MS;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
 }

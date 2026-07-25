@@ -1,7 +1,9 @@
+import { motion } from "framer-motion";
+import { ArrowUpRight, DownloadSimple } from "@phosphor-icons/react";
+import { Link } from "react-router";
 
-import { motion } from 'framer-motion';
-import { DownloadSimple } from '@phosphor-icons/react';
-import { Link } from 'react-router';
+const productPreview =
+  "https://raw.githubusercontent.com/clash-space/clash/master/.github/social-preview.png";
 
 export default function LandingHero() {
   return (
@@ -13,21 +15,50 @@ export default function LandingHero() {
           transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
           className="clash-hero-copy-column mx-auto flex w-full flex-col items-start text-left"
         >
-          <h1 className="clash-hero-heading font-display font-bold tracking-tighter text-slate-950 dark:text-slate-50">
-            <span>Workspace where</span>
-            <span><strong>Agents</strong> and Creators</span>
-            <span>Co-create.</span>
+          <p className="clash-hero-eyebrow">
+            A creative platform for agents, on your desktop.
+          </p>
+          <h1
+            aria-label="Where agents co-create, humans are welcome too."
+            className="clash-hero-heading font-display font-bold tracking-tighter text-slate-950 dark:text-slate-50"
+          >
+            <span>Where agents</span>
+            <span>
+              <strong>co-create,</strong>
+            </span>
+            <span>humans are welcome too.</span>
           </h1>
-          <p className="clash-hero-subtitle mt-5 text-lg font-semibold leading-8 text-stone-700 dark:text-stone-300 sm:text-xl">
-            Open-source workbench for agent-assisted creation.
+          <p className="clash-hero-subtitle mt-6 text-lg leading-8 text-stone-700 dark:text-stone-300 sm:text-xl">
+            Give agents a real place to see the project, choose their tools,
+            make work, and bring it back for human taste and judgment.
           </p>
 
-          <div className="clash-hero-actions mt-10 flex flex-wrap items-center justify-center gap-3">
+          <div className="clash-hero-actions mt-9 flex flex-wrap items-center gap-3">
             <Link to="/download" className="clash-hero-download">
-              <DownloadSimple className="h-5 w-5" weight="bold" aria-hidden="true" />
-              <span>Download</span>
+              <DownloadSimple
+                className="h-5 w-5"
+                weight="bold"
+                aria-hidden="true"
+              />
+              <span>Download Clash Desktop</span>
             </Link>
+            <a
+              href="https://github.com/clash-space/clash"
+              className="clash-hero-source"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span>View source</span>
+              <ArrowUpRight
+                className="h-4 w-4"
+                weight="bold"
+                aria-hidden="true"
+              />
+            </a>
           </div>
+          <p className="clash-hero-platforms">
+            macOS · Windows · Linux · Source available
+          </p>
         </motion.div>
 
         <motion.div
@@ -35,42 +66,18 @@ export default function LandingHero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
           className="clash-hero-product-shell"
-          aria-label="Clash desktop production workspace preview"
         >
-          <div className="clash-hero-window">
-            <div className="clash-hero-window-chrome">
-              <div className="clash-hero-traffic" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="clash-hero-window-title">clash project - desktop workspace</div>
-              <div className="clash-hero-window-status">agent connected</div>
-            </div>
-            <div className="clash-hero-window-body">
-              <aside className="clash-hero-window-sidebar">
-                <img src="/brand/logo-mark.svg" alt="" draggable={false} />
-                <strong>Launch film</strong>
-                <span>local files</span>
-                <span>shot board</span>
-                <span>agent tasks</span>
-              </aside>
-              <div className="clash-hero-canvas-preview">
-                <div className="clash-hero-node clash-hero-node--brief">
-                  <span>script</span>
-                  <strong>opening sequence</strong>
-                </div>
-                <div className="clash-hero-node clash-hero-node--agent">
-                  <span>agent</span>
-                  <strong>storyboard pass</strong>
-                </div>
-                <div className="clash-hero-node clash-hero-node--asset">
-                  <span>asset</span>
-                  <strong>generated shots</strong>
-                </div>
-              </div>
-            </div>
-          </div>
+          <figure className="clash-hero-preview">
+            <img
+              src={productPreview}
+              alt="Clash Desktop with creative tools agents can use"
+              draggable={false}
+            />
+            <figcaption>
+              <span>Clash Desktop</span>
+              <span>One project. Many agent-accessible tools.</span>
+            </figcaption>
+          </figure>
         </motion.div>
       </div>
     </section>
