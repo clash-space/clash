@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@master-clash/remotion-components": "workspace:*",
-    "@master-clash/remotion-core": "workspace:*",
     "@remotion/bundler": "4.0.370",
     "@remotion/renderer": "4.0.370",
     "ffmpeg-static": "^5.3.0",
@@ -21,6 +19,8 @@
     "remotion": "4.0.370"
   },
   "devDependencies": {
+    "@master-clash/remotion-components": "workspace:*",
+    "@master-clash/remotion-core": "workspace:*",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.3"

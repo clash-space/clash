@@ -10,14 +10,17 @@
 
 # ── Stage 1: build ──────────────────────────────────────────────────────
 
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 
 WORKDIR /app
 
 # Workspace topology so pnpm can resolve the deps graph.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/shared-layout/package.json packages/shared-layout/
+COPY packages/shared-types/package.json packages/shared-types/
 COPY packages/remotion-core/package.json packages/remotion-core/
+COPY packages/remotion-effects/package.json packages/remotion-effects/
 COPY packages/remotion-components/package.json packages/remotion-components/
 COPY apps/render-server/package.json apps/render-server/
 
@@ -27,7 +30,10 @@ RUN COREPACK_NPM_REGISTRY="$NPM_REGISTRY" corepack enable && \
     pnpm install --frozen-lockfile --filter @master-clash/render-server...
 
 # Source.
+COPY packages/shared-layout/ packages/shared-layout/
+COPY packages/shared-types/ packages/shared-types/
 COPY packages/remotion-core/ packages/remotion-core/
+COPY packages/remotion-effects/ packages/remotion-effects/
 COPY packages/remotion-components/ packages/remotion-components/
 COPY apps/render-server/ apps/render-server/
 
@@ -42,11 +48,11 @@ RUN node apps/render-server/dist/prebundle.js
 
 # pnpm deploy: copies only prod deps + the workspace deps the target needs,
 # inlined into a self-contained tree at /tmp/deploy that we can copy as-is.
-RUN pnpm deploy --filter @master-clash/render-server --prod /tmp/deploy
+RUN pnpm deploy --filter @master-clash/render-server --prod --legacy /tmp/deploy
 
 # ── Stage 2: runtime ────────────────────────────────────────────────────
 
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 ARG DEBIAN_MIRROR=
 
 # Optional Debian mirror for slow networks.

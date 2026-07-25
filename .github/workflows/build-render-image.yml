@@ -15,7 +15,10 @@ on:
     branches: [master]
     paths:
       - 'apps/render-server/**'
+      - 'packages/shared-layout/**'
+      - 'packages/shared-types/**'
       - 'packages/remotion-core/**'
+      - 'packages/remotion-effects/**'
       - 'packages/remotion-components/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
