@@ -77,6 +77,7 @@ jobs:
 
       - run: sudo apt-get update && sudo apt-get install --yes ffmpeg
       - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --concurrency=1
       - run: pnpm test:e2e:agent-first-local-v1
 
   build:

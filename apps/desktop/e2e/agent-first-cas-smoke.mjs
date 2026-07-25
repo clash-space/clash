@@ -2208,7 +2208,10 @@ async function main() {
     workspace,
     checks: checks.length,
   }));
-  if (status !== "pass") process.exit(1);
+  if (status !== "pass") {
+    console.error(`[agent-first-cas] ${summary}`);
+    process.exit(1);
+  }
 }
 
 main().catch(async (error) => {
