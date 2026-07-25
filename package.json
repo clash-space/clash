@@ -2,7 +2,7 @@
   "name": "master-clash",
   "version": "0.1.0",
   "private": true,
-  "description": "Agent-native AI video editor for Canvas, Timeline, captions, 3D direction, and multi-agent production",
+  "description": "Where agents co-create, humans are welcome too.",
   "scripts": {
     "dev": "turbo run dev",
     "dev:log": "./scripts/dev-log.sh",
@@ -26,6 +26,8 @@
     "clean": "turbo run clean && rm -rf node_modules .turbo"
   },
   "keywords": [
+    "creative-platform",
+    "agent-platform",
     "ai-video-editor",
     "agent-native",
     "ai-agents",
@@ -67,7 +69,8 @@
       "@vitest/spy": "4.1.0",
       "@vitest/pretty-format": "4.1.0",
       "@vitest/mocker": "4.1.0",
-      "vitest": "4.1.0"
+      "vitest": "4.1.0",
+      "@electron/get": "5.0.0"
     }
   },
   "dependencies": {

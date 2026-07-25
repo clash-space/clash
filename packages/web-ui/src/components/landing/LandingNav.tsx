@@ -1,11 +1,7 @@
+import { motion } from "framer-motion";
+import { Link } from "react-router";
 
-import { motion } from 'framer-motion';
-import { Link } from 'react-router';
-
-const navLinks = [
-  { name: 'Docs', href: '/docs' },
-  { name: 'Marketplace', href: '/marketplace' },
-];
+const navLinks = [{ name: "Docs", href: "/docs" }];
 
 export default function LandingNav() {
   return (
@@ -41,6 +37,14 @@ export default function LandingNav() {
               {link.name}
             </Link>
           ))}
+          <a
+            href="https://github.com/clash-space/clash"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-warm-muted/70 hover:text-slate-950 dark:text-stone-300"
+          >
+            GitHub
+          </a>
         </nav>
 
         <div className="flex items-center gap-2">

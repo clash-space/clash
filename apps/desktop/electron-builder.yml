@@ -10,9 +10,9 @@ directories:
 files:
   - dist/**/*
   - package.json
-  - '!src/**/*'
-  - '!e2e/**/*'
-  - '!*.test.*'
+  - "!src/**/*"
+  - "!e2e/**/*"
+  - "!*.test.*"
 
 extraResources:
   - from: ../web/dist/client
@@ -42,6 +42,33 @@ mac:
   category: public.app-category.video
   icon: build/icon.icns
   identity: null
+  artifactName: Clash-Desktop-macOS-${arch}.${ext}
+  x64ArchFiles: "**/node_modules/{@anthropic-ai/claude-agent-sdk-*,@esbuild/*,@remotion/compositor-*}/**"
+  files:
+    - "!node_modules/@anthropic-ai/claude-agent-sdk-{linux,win32}-*/**"
+    - "!node_modules/@esbuild/{aix-*,android-*,freebsd-*,linux-*,netbsd-*,openbsd-*,sunos-*,win32-*}/**"
+    - "!node_modules/@remotion/compositor-{linux,win32}-*/**"
   target:
     - dir
     - dmg
+
+win:
+  icon: build/icon-1024.png
+  artifactName: Clash-Desktop-Windows-${arch}.${ext}
+  files:
+    - "!node_modules/@anthropic-ai/claude-agent-sdk-{darwin,linux}-*/**"
+    - "!node_modules/@esbuild/{aix-*,android-*,darwin-*,freebsd-*,linux-*,netbsd-*,openbsd-*,sunos-*}/**"
+    - "!node_modules/@remotion/compositor-{darwin,linux}-*/**"
+  target:
+    - nsis
+
+linux:
+  category: AudioVideo
+  icon: build/icon-1024.png
+  artifactName: Clash-Desktop-Linux-${arch}.${ext}
+  files:
+    - "!node_modules/@anthropic-ai/claude-agent-sdk-{darwin-*,win32-*,linux-arm64,linux-arm64-musl}/**"
+    - "!node_modules/@esbuild/{aix-*,android-*,darwin-*,freebsd-*,linux-arm*,linux-ia32,linux-loong64,linux-mips64el,linux-ppc64,linux-riscv64,linux-s390x,netbsd-*,openbsd-*,sunos-*,win32-*}/**"
+    - "!node_modules/@remotion/compositor-{darwin-*,win32-*,linux-arm64-*}/**"
+  target:
+    - AppImage

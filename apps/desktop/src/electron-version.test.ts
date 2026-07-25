@@ -6,6 +6,12 @@ interface DesktopPackage {
   devDependencies?: Record<string, string>;
 }
 
+interface RootPackage {
+  pnpm?: {
+    overrides?: Record<string, string>;
+  };
+}
+
 function dependencyMajor(versionRange: string): number {
   const match = versionRange.match(/\d+/);
   return match ? Number(match[0]) : Number.NaN;
@@ -16,8 +22,9 @@ describe("desktop Electron runtime", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     ) as DesktopPackage;
-
-    expect(dependencyMajor(manifest.devDependencies?.electron ?? "")).toBeGreaterThanOrEqual(42);
+    expect(
+      dependencyMajor(manifest.devDependencies?.electron ?? ""),
+    ).toBeGreaterThanOrEqual(42);
   });
 
   it("has a macOS DMG packaging target for first desktop ship", () => {
@@ -28,7 +35,6 @@ describe("desktop Electron runtime", () => {
       new URL("../electron-builder.yml", import.meta.url),
       "utf8",
     );
-
     const dmgScript = manifest.scripts?.["pack:dmg"] ?? "";
     expect(dmgScript).toContain("electron-builder");
     expect(dmgScript).toContain("--publish never");
@@ -37,13 +43,104 @@ describe("desktop Electron runtime", () => {
     expect(builderConfig).toMatch(/target:\n(?:\s+-\s+\w+\n)*\s+-\s+dmg/m);
   });
 
+  it("defines deterministic installers for macOS, Windows, and Linux", () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as DesktopPackage;
+    const rootManifest = JSON.parse(
+      readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+    ) as RootPackage;
+    const builderConfig = readFileSync(
+      new URL("../electron-builder.yml", import.meta.url),
+      "utf8",
+    );
+    const workspaceConfig = readFileSync(
+      new URL("../../../pnpm-workspace.yaml", import.meta.url),
+      "utf8",
+    );
+
+    expect(manifest.scripts ?? {}).toHaveProperty("pack:mac");
+    expect(manifest.scripts ?? {}).toHaveProperty("pack:win");
+    expect(manifest.scripts ?? {}).toHaveProperty("pack:linux");
+    expect(manifest.scripts?.["pack:mac"] ?? "").toContain(
+      "--mac dmg --universal",
+    );
+    expect(manifest.scripts?.["pack:win"] ?? "").toContain("--win nsis --x64");
+    expect(manifest.scripts?.["pack:linux"] ?? "").toContain(
+      "--linux AppImage --x64",
+    );
+    expect(manifest.devDependencies?.["electron-builder"]).toBe("26.15.3");
+    expect(rootManifest.pnpm?.overrides?.["@electron/get"]).toBe("5.0.0");
+    expect(builderConfig).toContain(
+      "artifactName: Clash-Desktop-macOS-${arch}.${ext}",
+    );
+    expect(builderConfig).toContain(
+      "artifactName: Clash-Desktop-Windows-${arch}.${ext}",
+    );
+    expect(builderConfig).toContain(
+      "artifactName: Clash-Desktop-Linux-${arch}.${ext}",
+    );
+    expect(builderConfig).toContain(
+      'x64ArchFiles: "**/node_modules/{@anthropic-ai/claude-agent-sdk-*,@esbuild/*,@remotion/compositor-*}/**"',
+    );
+    expect(workspaceConfig).toMatch(
+      /supportedArchitectures:\n\s+cpu:\s+\[arm64, x64\]/,
+    );
+    expect(builderConfig).toContain(
+      '"!node_modules/@anthropic-ai/claude-agent-sdk-{linux,win32}-*/**"',
+    );
+    expect(builderConfig).toContain(
+      '"!node_modules/@remotion/compositor-{linux,win32}-*/**"',
+    );
+    expect(builderConfig).toContain(
+      '"!node_modules/@anthropic-ai/claude-agent-sdk-{darwin,linux}-*/**"',
+    );
+    expect(builderConfig).toContain(
+      '"!node_modules/@remotion/compositor-{darwin,linux}-*/**"',
+    );
+    expect(builderConfig).toContain(
+      '"!node_modules/@anthropic-ai/claude-agent-sdk-{darwin-*,win32-*,linux-arm64,linux-arm64-musl}/**"',
+    );
+    expect(builderConfig).toContain(
+      '"!node_modules/@remotion/compositor-{darwin-*,win32-*,linux-arm64-*}/**"',
+    );
+  });
+
+  it("packages all desktop targets in CI and promotes the same assets to a rolling release", () => {
+    const ci = readFileSync(
+      new URL("../../../.github/workflows/ci.yml", import.meta.url),
+      "utf8",
+    );
+    const release = readFileSync(
+      new URL("../../../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    );
+
+    for (const workflow of [ci, release]) {
+      expect(workflow).toContain("package-desktop:");
+      expect(workflow).toContain("macos-latest");
+      expect(workflow).toContain("windows-latest");
+      expect(workflow).toContain("ubuntu-latest");
+      expect(workflow).toContain("actions/upload-artifact@v4");
+      expect(workflow).toContain("Clash-Desktop-${{ matrix.platform }}");
+    }
+    expect(ci).toContain(
+      "pnpm --filter @master-clash/desktop run ${{ matrix.script }}",
+    );
+    expect(release).toContain("publish-desktop-preview:");
+    expect(release).toContain("actions/download-artifact@v4");
+    expect(release).toContain("gh release upload desktop-preview");
+  });
+
   it("packages built-in ACP harness wrappers as desktop resources", () => {
     const builderConfig = readFileSync(
       new URL("../electron-builder.yml", import.meta.url),
       "utf8",
     );
 
-    expect(builderConfig).toMatch(/-\s+from:\s+build\/acp-bin\n\s+to:\s+acp-bin/m);
+    expect(builderConfig).toMatch(
+      /-\s+from:\s+build\/acp-bin\n\s+to:\s+acp-bin/m,
+    );
   });
 
   it("packages the local-model Python SDK as an unpacked desktop resource", () => {
@@ -75,11 +172,16 @@ describe("desktop Electron runtime", () => {
 
     expect(iconSvg).toContain('viewBox="0 0 1024 1024"');
     expect(iconSvg).toContain('rx="216"');
-    expect(iconSvg).toContain('translate(512 512) scale(0.86) translate(-636 -601)');
+    expect(iconSvg).toContain(
+      "translate(512 512) scale(0.86) translate(-636 -601)",
+    );
   });
 
   it("injects the desktop runtime mode into the renderer", () => {
-    const preload = readFileSync(new URL("./preload.ts", import.meta.url), "utf8");
+    const preload = readFileSync(
+      new URL("./preload.ts", import.meta.url),
+      "utf8",
+    );
 
     expect(preload).toMatch(/mode:\s*runtimeConfig\.mode/);
     expect(preload).toMatch(/capabilities:\s*runtimeConfig\.capabilities/);

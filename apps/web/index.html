@@ -5,7 +5,11 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="canonical" href="https://clash.video/" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#FF6B50" />
     <script>
@@ -18,24 +22,38 @@
           }
         } catch {}
         const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
-        const theme = preference === "system" ? (systemDark ? "dark" : "light") : preference;
+        const theme =
+          preference === "system"
+            ? systemDark
+              ? "dark"
+              : "light"
+            : preference;
         document.documentElement.classList.toggle("dark", theme === "dark");
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
 
         let accent = "#FF6B50";
         try {
-          const storedAccent = localStorage.getItem("clash.accent")?.trim().replace(/^#/, "") ?? "";
+          const storedAccent =
+            localStorage.getItem("clash.accent")?.trim().replace(/^#/, "") ??
+            "";
           if (/^[0-9a-f]{3}$/i.test(storedAccent)) {
-            accent = `#${storedAccent.split("").map((digit) => `${digit}${digit}`).join("")}`.toUpperCase();
+            accent = `#${storedAccent
+              .split("")
+              .map((digit) => `${digit}${digit}`)
+              .join("")}`.toUpperCase();
           } else if (/^[0-9a-f]{6}$/i.test(storedAccent)) {
             accent = `#${storedAccent.toUpperCase()}`;
           }
         } catch {}
         const luminance = (color) => {
-          const channels = [1, 3, 5].map((offset) => parseInt(color.slice(offset, offset + 2), 16) / 255);
+          const channels = [1, 3, 5].map(
+            (offset) => parseInt(color.slice(offset, offset + 2), 16) / 255,
+          );
           const [red, green, blue] = channels.map((channel) =>
-            channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+            channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4,
           );
           return red * 0.2126 + green * 0.7152 + blue * 0.0722;
         };
@@ -45,20 +63,43 @@
         };
         const darkInk = "#181713";
         const lightInk = "#FFFAF8";
-        const accentForeground = contrast(accent, darkInk) >= contrast(accent, lightInk) ? darkInk : lightInk;
+        const accentForeground =
+          contrast(accent, darkInk) >= contrast(accent, lightInk)
+            ? darkInk
+            : lightInk;
         document.documentElement.style.setProperty("--clash-accent", accent);
-        document.documentElement.style.setProperty("--clash-accent-foreground", accentForeground);
+        document.documentElement.style.setProperty(
+          "--clash-accent-foreground",
+          accentForeground,
+        );
       })();
     </script>
-    <title>Clash - Video Agent</title>
-    <meta name="description" content="AI-powered video creation and editing platform" />
-    <meta property="og:title" content="Clash" />
-    <meta property="og:description" content="Multi-agent canvas for creative video work" />
-    <meta property="og:image" content="/og-image.png" />
+    <title>Clash — Creative Platform for Agents</title>
+    <meta
+      name="description"
+      content="Where agents co-create, humans are welcome too. A desktop creative platform that gives agents real tools for planning, editing, directing, and producing."
+    />
+    <meta property="og:title" content="Clash — Creative Platform for Agents" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://clash.video/" />
+    <meta
+      property="og:description"
+      content="Where agents co-create, humans are welcome too."
+    />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/clash-space/clash/master/.github/social-preview.png"
+    />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Clash" />
-    <meta name="twitter:description" content="Multi-agent canvas for creative video work" />
-    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="twitter:title" content="Clash — Creative Platform for Agents" />
+    <meta
+      name="twitter:description"
+      content="Where agents co-create, humans are welcome too."
+    />
+    <meta
+      name="twitter:image"
+      content="https://raw.githubusercontent.com/clash-space/clash/master/.github/social-preview.png"
+    />
   </head>
   <body class="font-sans antialiased">
     <div id="root"></div>
