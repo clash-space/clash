@@ -86,6 +86,12 @@ describe("desktop Electron runtime", () => {
     expect(builderConfig).toContain(
       "artifactName: Clash-Desktop-Linux-${arch}.${ext}",
     );
+    expect(builderConfig).toMatch(
+      /^win:\n(?:(?!^[A-Za-z]).*\n)*? {2}executableName: clash$/m,
+    );
+    expect(builderConfig).toMatch(
+      /^linux:\n(?:(?!^[A-Za-z]).*\n)*? {2}executableName: clash$/m,
+    );
     expect(builderConfig).toContain(
       'x64ArchFiles: "**/node_modules/{@anthropic-ai/claude-agent-sdk-*,@esbuild/*,@remotion/compositor-*}/**"',
     );

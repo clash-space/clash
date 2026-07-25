@@ -56,7 +56,39 @@ export function renderNodeAcpWrapper({ packagedScriptPath, devScriptPath }) {
   ].join("\n");
 }
 
-export async function prepareAcpHarnesses({ outputDir = join(desktopRoot, "build", "acp-bin") } = {}) {
+export function renderNodeAcpWindowsWrapper({ packagedScriptPath, devScriptPath }) {
+  return [
+    "@echo off",
+    "setlocal",
+    "set \"RESOURCES_DIR=%~dp0..\"",
+    `set "PACKAGED_SCRIPT=${packagedScriptPath}"`,
+    "if exist \"%PACKAGED_SCRIPT%\" (",
+    "  set \"SCRIPT=%PACKAGED_SCRIPT%\"",
+    ") else (",
+    `  set "SCRIPT=${devScriptPath}"`,
+    ")",
+    "if defined CLASH_NODE_EXEC_PATH (",
+    "  set \"ELECTRON_RUN_AS_NODE=1\"",
+    "  \"%CLASH_NODE_EXEC_PATH%\" \"%SCRIPT%\" %*",
+    "  exit /b %errorlevel%",
+    ")",
+    "where node >nul 2>nul",
+    "if not errorlevel 1 (",
+    "  node \"%SCRIPT%\" %*",
+    "  exit /b %errorlevel%",
+    ")",
+    "echo Unable to run agent harness: CLASH_NODE_EXEC_PATH is not set and node is not on PATH 1>&2",
+    "exit /b 127",
+    "",
+  ].join("\r\n");
+}
+
+export async function prepareAcpHarnesses({
+  outputDir = join(desktopRoot, "build", "acp-bin"),
+  platform = process.platform,
+  logger = console.log,
+} = {}) {
+  const log = (message) => logger(`[prepare-acp-harnesses] ${message}`);
   const codexAgentScript = packageBinPath("@agentclientprotocol/codex-acp", "codex-acp");
   const codexAgentNodeModules = packageNodeModulesDir("@agentclientprotocol/codex-acp");
   const claudeAgentScript = packageBinPath("@agentclientprotocol/claude-agent-acp", "claude-agent-acp");
@@ -65,29 +97,36 @@ export async function prepareAcpHarnesses({ outputDir = join(desktopRoot, "build
   const codexAgentBundleDir = join(resourceBuildDir, "acp-node", "codex-acp");
   const claudeAgentBundleDir = join(resourceBuildDir, "acp-node", "claude-agent-acp");
 
+  log("resetting output directories");
   await rm(outputDir, { recursive: true, force: true });
   await rm(codexAgentBundleDir, { recursive: true, force: true });
   await rm(claudeAgentBundleDir, { recursive: true, force: true });
   await mkdir(outputDir, { recursive: true });
   await mkdir(codexAgentBundleDir, { recursive: true });
   await mkdir(claudeAgentBundleDir, { recursive: true });
+  log("copying codex-acp runtime");
   await cp(codexAgentNodeModules, join(codexAgentBundleDir, "node_modules"), {
     recursive: true,
     dereference: true,
     force: true,
   });
+  log("copying claude-agent-acp runtime");
   await cp(claudeAgentNodeModules, join(claudeAgentBundleDir, "node_modules"), {
     recursive: true,
     dereference: true,
     force: true,
   });
 
-  const codexWrapper = renderNodeAcpWrapper({
-    packagedScriptPath: "$RESOURCES_DIR/acp-node/codex-acp/node_modules/@agentclientprotocol/codex-acp/dist/index.js",
+  const isWindows = platform === "win32";
+  const renderWrapper = isWindows ? renderNodeAcpWindowsWrapper : renderNodeAcpWrapper;
+  const resourcesPrefix = isWindows ? "%RESOURCES_DIR%\\" : "$RESOURCES_DIR/";
+  const separator = isWindows ? "\\" : "/";
+  const codexWrapper = renderWrapper({
+    packagedScriptPath: `${resourcesPrefix}acp-node${separator}codex-acp${separator}node_modules${separator}@agentclientprotocol${separator}codex-acp${separator}dist${separator}index.js`,
     devScriptPath: codexAgentScript,
   });
-  const claudeAgentWrapper = renderNodeAcpWrapper({
-    packagedScriptPath: "$RESOURCES_DIR/acp-node/claude-agent-acp/node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js",
+  const claudeAgentWrapper = renderWrapper({
+    packagedScriptPath: `${resourcesPrefix}acp-node${separator}claude-agent-acp${separator}node_modules${separator}@agentclientprotocol${separator}claude-agent-acp${separator}dist${separator}index.js`,
     devScriptPath: claudeAgentScript,
   });
 
@@ -95,13 +134,23 @@ export async function prepareAcpHarnesses({ outputDir = join(desktopRoot, "build
     ["codex-acp", codexWrapper],
     ["claude-agent-acp", claudeAgentWrapper],
   ];
+  log(`writing ${isWindows ? "Windows" : "POSIX"} launchers`);
   for (const [name, contents] of wrappers) {
-    const file = join(outputDir, name);
+    const file = join(outputDir, isWindows ? `${name}.cmd` : name);
     await writeFile(file, contents, "utf8");
-    await chmod(file, 0o755);
+    if (!isWindows) await chmod(file, 0o755);
   }
+  log("done");
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  await prepareAcpHarnesses();
+  try {
+    await prepareAcpHarnesses();
+  } catch (error) {
+    console.error(
+      "[prepare-acp-harnesses] failed",
+      error instanceof Error ? (error.stack ?? error.message) : error,
+    );
+    process.exitCode = 1;
+  }
 }

@@ -7,7 +7,7 @@
 
 import { constants } from "node:fs";
 import { access, readdir } from "node:fs/promises";
-import { delimiter, isAbsolute, join } from "node:path";
+import { delimiter, extname, isAbsolute, join } from "node:path";
 import type { AgentSpec } from "./types.js";
 
 export interface KnownAgentConfigSelectValue {
@@ -221,13 +221,14 @@ export interface ResolveAgentCommandOptions {
   env?: NodeJS.ProcessEnv;
   cwd?: string;
   fromUrl?: string;
+  platform?: NodeJS.Platform;
   systemPathFallbackDirs?: string[];
   applicationDirs?: string[];
 }
 
-async function isExecutable(path: string): Promise<boolean> {
+async function isExecutable(path: string, platform = process.platform): Promise<boolean> {
   try {
-    await access(path, constants.X_OK);
+    await access(path, platform === "win32" ? constants.F_OK : constants.X_OK);
     return true;
   } catch {
     return false;
@@ -336,11 +337,29 @@ function candidateMacAppExecutables(entry: KnownAgentEntry, options: ResolveAgen
   return [...new Set(candidates)];
 }
 
-async function resolveCommandInDirs(command: string, dirs: string[]): Promise<string | null> {
-  if (isAbsolute(command)) return await isExecutable(command) ? command : null;
+function candidateCommandNames(command: string, options: ResolveAgentCommandOptions): string[] {
+  const platform = options.platform ?? process.platform;
+  if (platform !== "win32" || extname(command)) return [command];
+  const env = options.env ?? process.env;
+  const extensions = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((extension) => extension.trim().toLowerCase())
+    .filter(Boolean);
+  return [command, ...extensions.map((extension) => `${command}${extension}`)];
+}
+
+async function resolveCommandInDirs(
+  command: string,
+  dirs: string[],
+  options: ResolveAgentCommandOptions,
+): Promise<string | null> {
+  const platform = options.platform ?? process.platform;
+  if (isAbsolute(command)) return await isExecutable(command, platform) ? command : null;
   for (const dir of dirs) {
-    const candidate = join(dir, command);
-    if (await isExecutable(candidate)) return candidate;
+    for (const name of candidateCommandNames(command, options)) {
+      const candidate = join(dir, name);
+      if (await isExecutable(candidate, platform)) return candidate;
+    }
   }
   return null;
 }
@@ -349,14 +368,18 @@ export async function resolveAgentCommand(
   command: string,
   options: ResolveAgentCommandOptions = {},
 ): Promise<string | null> {
-  return resolveCommandInDirs(command, candidateBinDirs(options));
+  return resolveCommandInDirs(command, candidateBinDirs(options), options);
 }
 
 async function resolveSystemCommand(
   entry: KnownAgentEntry,
   options: ResolveAgentCommandOptions = {},
 ): Promise<string | null> {
-  const fromBins = await resolveCommandInDirs(entry.spec.command, await candidateSystemBinDirs(options));
+  const fromBins = await resolveCommandInDirs(
+    entry.spec.command,
+    await candidateSystemBinDirs(options),
+    options,
+  );
   if (fromBins) return fromBins;
   for (const candidate of candidateMacAppExecutables(entry, options)) {
     if (await isExecutable(candidate)) return candidate;
@@ -372,12 +395,22 @@ export async function detectEntry(
   const command = managedCommand ?? (entry.systemPath ? await resolveSystemCommand(entry, options) : null);
   if (!command) return null;
   if (entry.probe && !(await entry.probe(command, options))) return null;
-  const spec = entry.resolveSpec
-    ? await entry.resolveSpec(command, options)
-    : {
-        ...entry.spec,
-        command,
-      };
+  let spec: AgentSpec;
+  if (entry.resolveSpec) {
+    spec = await entry.resolveSpec(command, options);
+  } else if ((options.platform ?? process.platform) === "win32" && /\.(?:bat|cmd)$/i.test(command)) {
+    const env = options.env ?? process.env;
+    spec = {
+      ...entry.spec,
+      command: env.ComSpec ?? env.COMSPEC ?? "cmd.exe",
+      args: ["/d", "/s", "/c", command, ...(entry.spec.args ?? [])],
+    };
+  } else {
+    spec = {
+      ...entry.spec,
+      command,
+    };
+  }
   return {
     ...entry,
     spec,

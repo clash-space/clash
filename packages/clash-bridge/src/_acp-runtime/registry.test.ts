@@ -132,6 +132,36 @@ describe("ACP runtime registry", () => {
     });
   });
 
+  it("resolves and launches managed Windows command wrappers through cmd.exe", async () => {
+    const root = join(tmpdir(), `clash-acp-windows-${process.pid}-${Date.now()}`);
+    const managedBinDir = join(root, "managed");
+    await mkdir(managedBinDir, { recursive: true });
+    const managedCodex = join(managedBinDir, "codex-acp.cmd");
+    await writeFile(managedCodex, "@echo off\r\n");
+    const commandInterpreter = String.raw`C:\Windows\System32\cmd.exe`;
+    const env = {
+      PATH: "",
+      CLASH_ACP_BIN_DIR: managedBinDir,
+      PATHEXT: ".COM;.EXE;.BAT;.CMD",
+      ComSpec: commandInterpreter,
+    };
+    const options = {
+      env,
+      cwd: root,
+      fromUrl: import.meta.url,
+      platform: "win32" as const,
+    };
+
+    await expect(resolveAgentCommand("codex-acp", options)).resolves.toBe(managedCodex);
+    await expect(detect("codex-acp", options)).resolves.toMatchObject({
+      id: "codex-acp",
+      spec: {
+        command: commandInterpreter,
+        args: ["/d", "/s", "/c", managedCodex],
+      },
+    });
+  });
+
   it("does not detect Gemini from the system PATH", async () => {
     const binDir = join(tmpdir(), `clash-acp-gemini-system-${process.pid}-${Date.now()}`);
     await mkdir(binDir, { recursive: true });
