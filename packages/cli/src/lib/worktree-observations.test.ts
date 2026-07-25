@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, stat, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,28 +50,57 @@ test("worktree observations persist only project-scoped entity versions", async 
 });
 
 test("parallel reads in one cwd preserve every observed entity version", async () => {
-  const workspaceRoot = await tempWorkspace();
+  for (let batch = 0; batch < 8; batch += 1) {
+    const workspaceRoot = await tempWorkspace();
 
-  await Promise.all(Array.from({ length: 16 }, (_, index) => recordWorktreeObservation({
+    await Promise.all(Array.from({ length: 32 }, (_, index) => recordWorktreeObservation({
+      workspaceRoot,
+      projectId: "project-1",
+      entityKind: "canvas-node",
+      entityId: `node-${index}`,
+      revision: `node-v1:${index}`,
+    })));
+
+    assert.deepEqual(
+      JSON.parse(await readFile(worktreeObservationPath(workspaceRoot), "utf8")),
+      {
+        schemaVersion: 1,
+        projectId: "project-1",
+        versions: Object.fromEntries(Array.from(
+          { length: 32 },
+          (_, index) => [`canvas-node:node-${index}`, `node-v1:${index}`],
+        )),
+      },
+    );
+    assert.deepEqual(await readdir(join(workspaceRoot, ".clash")), ["observed.json"]);
+  }
+});
+
+test("an incomplete lock owner is not reclaimed while its metadata is being published", async () => {
+  const workspaceRoot = await tempWorkspace();
+  const lockPath = `${worktreeObservationPath(workspaceRoot)}.lock`;
+  const ownerPath = join(lockPath, "owner.json");
+  await mkdir(lockPath, { recursive: true });
+  await writeFile(ownerPath, "{", "utf8");
+
+  const write = recordWorktreeObservation({
     workspaceRoot,
     projectId: "project-1",
     entityKind: "canvas-node",
-    entityId: `node-${index}`,
-    revision: `node-v1:${index}`,
-  })));
+    entityId: "node-1",
+    revision: "node-v1:1",
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
 
-  assert.deepEqual(
-    JSON.parse(await readFile(worktreeObservationPath(workspaceRoot), "utf8")),
-    {
-      schemaVersion: 1,
-      projectId: "project-1",
-      versions: Object.fromEntries(Array.from(
-        { length: 16 },
-        (_, index) => [`canvas-node:node-${index}`, `node-v1:${index}`],
-      )),
-    },
-  );
-  assert.deepEqual(await readdir(join(workspaceRoot, ".clash")), ["observed.json"]);
+  assert.equal(await readFile(ownerPath, "utf8"), "{");
+  await writeFile(ownerPath, `${JSON.stringify({ pid: 2_147_483_647 })}\n`, "utf8");
+  await write;
+  assert.equal(await readWorktreeObservation({
+    workspaceRoot,
+    projectId: "project-1",
+    entityKind: "canvas-node",
+    entityId: "node-1",
+  }), "node-v1:1");
 });
 
 test("worktree observations do not reuse versions after the cwd is linked to another project", async () => {
