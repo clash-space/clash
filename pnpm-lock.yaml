@@ -236,12 +236,6 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.27)
-      '@master-clash/remotion-components':
-        specifier: workspace:*
-        version: link:../../packages/remotion-components
-      '@master-clash/remotion-core':
-        specifier: workspace:*
-        version: link:../../packages/remotion-core
       '@remotion/bundler':
         specifier: 4.0.370
         version: 4.0.370(@swc/core@1.15.43)(lightningcss@1.32.0)(postcss@8.5.16)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -261,6 +255,12 @@ importers:
         specifier: 4.0.370
         version: 4.0.370(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
     devDependencies:
+      '@master-clash/remotion-components':
+        specifier: workspace:*
+        version: link:../../packages/remotion-components
+      '@master-clash/remotion-core':
+        specifier: workspace:*
+        version: link:../../packages/remotion-core
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
