@@ -22,7 +22,7 @@ type WorktreeObservationWrite = WorktreeObservationIdentity & {
 
 const WRITE_LOCK_RETRY_MS = 10;
 const WRITE_LOCK_TIMEOUT_MS = 10_000;
-const OWNERLESS_LOCK_GRACE_MS = 1_000;
+const OWNERLESS_LOCK_GRACE_MS = WRITE_LOCK_TIMEOUT_MS;
 
 export type RequiredWorktreeObservation =
   | { ok: true; revision: string }
@@ -125,8 +125,10 @@ async function withWriteLock<T>(workspaceRoot: string, operation: () => Promise<
   while (true) {
     try {
       await mkdir(lockPath);
+      const ownerTempPath = join(lockPath, `.owner.${process.pid}.${randomUUID()}.tmp`);
       try {
-        await writeFile(ownerPath, `${JSON.stringify({ pid: process.pid })}\n`, "utf8");
+        await writeFile(ownerTempPath, `${JSON.stringify({ pid: process.pid })}\n`, "utf8");
+        await rename(ownerTempPath, ownerPath);
       } catch (error) {
         await rm(lockPath, { recursive: true, force: true });
         throw error;
@@ -163,21 +165,27 @@ function resolveWorktreeObservationPath(workspaceRoot: string): string {
 async function canReclaimWriteLock(lockPath: string, ownerPath: string): Promise<boolean> {
   try {
     const parsed = JSON.parse(await readFile(ownerPath, "utf8")) as { pid?: unknown };
-    if (!Number.isInteger(parsed.pid) || (parsed.pid as number) <= 0) return true;
+    if (!Number.isInteger(parsed.pid) || (parsed.pid as number) <= 0) {
+      return isOwnerlessLockStale(lockPath);
+    }
     try {
       process.kill(parsed.pid as number, 0);
       return false;
     } catch (error) {
       return (error as NodeJS.ErrnoException).code === "ESRCH";
     }
+  } catch {
+    return isOwnerlessLockStale(lockPath);
+  }
+}
+
+async function isOwnerlessLockStale(lockPath: string): Promise<boolean> {
+  try {
+    const lockStat = await stat(lockPath);
+    return Date.now() - lockStat.mtimeMs >= OWNERLESS_LOCK_GRACE_MS;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
-    try {
-      const lockStat = await stat(lockPath);
-      return Date.now() - lockStat.mtimeMs >= OWNERLESS_LOCK_GRACE_MS;
-    } catch (statError) {
-      return (statError as NodeJS.ErrnoException).code === "ENOENT";
-    }
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
   }
 }
 
