@@ -72,6 +72,9 @@ describe("desktop Electron runtime", () => {
     expect(manifest.scripts?.["prepare:pack"] ?? "").toContain(
       "pnpm --filter @master-clash/web... build",
     );
+    expect(manifest.scripts?.["prepare:pack"] ?? "").toContain(
+      "pnpm --filter @master-clash/local-api... build",
+    );
     expect(manifest.devDependencies?.["electron-builder"]).toBe("26.15.3");
     expect(rootManifest.pnpm?.overrides?.["@electron/get"]).toBe("5.0.0");
     expect(builderConfig).toContain(
