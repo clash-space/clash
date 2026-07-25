@@ -25214,6 +25214,7 @@ var ProviderSchema = z.enum([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom"
 ]);
@@ -25420,49 +25421,6 @@ var MODEL_CARD_DEFINITIONS = [
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ["text", "image"] }
   },
-  // ─── Image: Nano Banana 2 Edit (fal.ai) ─────────────────────
-  {
-    id: "nano-banana-2-edit",
-    name: "Nano Banana 2 Edit",
-    provider: "fal.ai",
-    availableProviders: ["fal"],
-    defaultProvider: "fal",
-    kind: "image",
-    defaultAspectRatio: "16:9",
-    description: "Nano Banana 2 image editing with one or more reference images.",
-    parameters: [
-      {
-        id: "aspect_ratio",
-        label: "Aspect Ratio",
-        type: "select",
-        options: NANO_BANANA_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-        defaultValue: "16:9"
-      },
-      {
-        id: "resolution",
-        label: "Resolution",
-        type: "select",
-        options: NANO_BANANA_RESOLUTIONS.map((s) => ({ label: s.label, value: s.value })),
-        defaultValue: "1K"
-      },
-      {
-        id: "count",
-        label: "Count",
-        type: "number",
-        min: 1,
-        max: 4,
-        step: 1,
-        defaultValue: 1,
-        description: "How many edited images to generate."
-      }
-    ],
-    defaultParams: {
-      aspect_ratio: "16:9",
-      resolution: "1K",
-      count: 1
-    },
-    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ["text", "image"] }
-  },
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
   {
     id: "gpt-image-2",
@@ -25546,6 +25504,60 @@ var MODEL_CARD_DEFINITIONS = [
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ["text", "image"] },
     maxRuntimeMs: 3 * 60 * 1e3
+  },
+  // ─── Image: Seedream 4.5 (fal.ai) ───────────────────────────
+  {
+    id: "seedream-4.5",
+    name: "Seedream 4.5",
+    provider: "ByteDance",
+    availableProviders: ["fal"],
+    defaultProvider: "fal",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    aspectRatioParam: "image_size",
+    description: "ByteDance Seedream 4.5 image generation and editing through fal.ai.",
+    parameters: [
+      {
+        id: "image_size",
+        label: "Size",
+        type: "select",
+        options: [
+          { label: "Auto 2K", value: "auto_2K" },
+          { label: "Auto 4K", value: "auto_4K" },
+          { label: "1:1", value: "square_hd" },
+          { label: "4:3", value: "landscape_4_3" },
+          { label: "16:9", value: "landscape_16_9" },
+          { label: "3:4", value: "portrait_4_3" },
+          { label: "9:16", value: "portrait_16_9" }
+        ],
+        defaultValue: "auto_2K"
+      },
+      {
+        id: "count",
+        label: "Count",
+        type: "number",
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1
+      },
+      {
+        id: "max_images",
+        label: "Images per generation",
+        type: "number",
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1
+      }
+    ],
+    defaultParams: {
+      image_size: "auto_2K",
+      count: 1,
+      max_images: 1
+    },
+    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ["text", "image"] },
+    maxRuntimeMs: 4 * 60 * 1e3
   },
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
   {
@@ -25976,45 +25988,6 @@ var MODEL_CARD_DEFINITIONS = [
       safety_tolerance: "2"
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"] }
-  },
-  // ─── Image: FLUX 2 Pro Edit (fal.ai) ─────────────────────────
-  {
-    id: "flux-2-pro-edit",
-    name: "FLUX 2 Pro Edit",
-    provider: "fal.ai",
-    availableProviders: ["fal"],
-    defaultProvider: "fal",
-    kind: "image",
-    defaultAspectRatio: "4:3",
-    aspectRatioParam: "image_size",
-    description: "FLUX 2 Pro image editing with reference images.",
-    parameters: [
-      {
-        id: "image_size",
-        label: "Aspect Ratio",
-        type: "select",
-        options: FLUX2_ASPECT_RATIOS.map((r) => ({ label: r.label, value: r.value })),
-        defaultValue: "landscape_4_3"
-      },
-      {
-        id: "safety_tolerance",
-        label: "Safety Tolerance",
-        type: "select",
-        options: [
-          { label: "Strict (1)", value: "1" },
-          { label: "Moderate (2)", value: "2" },
-          { label: "Balanced (3)", value: "3" },
-          { label: "Relaxed (4)", value: "4" },
-          { label: "Permissive (5)", value: "5" }
-        ],
-        defaultValue: "2"
-      }
-    ],
-    defaultParams: {
-      image_size: "landscape_4_3",
-      safety_tolerance: "2"
-    },
-    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ["text", "image"] }
   },
   // ─── Image: Nano Banana Pro (Google) ────────────────────────
   {
@@ -26550,6 +26523,22 @@ var MODEL_CARD_DEFINITIONS = [
   },
   // ─── Audio ───────────────────────────────────────────────────
   {
+    id: "gemini-3.1-flash-tts",
+    name: "Gemini 3.1 Flash TTS",
+    provider: "Google",
+    availableProviders: ["official"],
+    defaultProvider: "official",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Google Gemini TTS preview for low-latency controllable single-speaker audio.",
+    parameters: GEMINI_TTS_PARAMETERS,
+    defaultParams: {
+      voice_name: "Kore"
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+    maxRuntimeMs: 5 * 60 * 1e3
+  },
+  {
     id: "kokoro-82m-tts",
     name: "Kokoro 82M",
     provider: "Hexgrad",
@@ -26644,26 +26633,10 @@ var MODEL_CARD_DEFINITIONS = [
     maxRuntimeMs: 2 * 60 * 1e3
   },
   {
-    id: "gemini-3.1-flash-tts",
-    name: "Gemini 3.1 Flash TTS",
-    provider: "Google",
-    availableProviders: ["official", "fal"],
-    defaultProvider: "official",
-    kind: "audio",
-    defaultAspectRatio: "1:1",
-    description: "Google Gemini TTS preview for low-latency controllable single-speaker audio.",
-    parameters: GEMINI_TTS_PARAMETERS,
-    defaultParams: {
-      voice_name: "Kore"
-    },
-    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
-    maxRuntimeMs: 5 * 60 * 1e3
-  },
-  {
     id: "gemini-2.5-pro-tts",
     name: "Gemini 2.5 Pro TTS",
     provider: "Google",
-    availableProviders: ["official", "fal"],
+    availableProviders: ["official"],
     defaultProvider: "official",
     kind: "audio",
     defaultAspectRatio: "1:1",
@@ -26726,6 +26699,45 @@ var MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: {} }
   },
   {
+    id: "suno-v5.5",
+    name: "Suno V5.5",
+    provider: "Suno API",
+    availableProviders: ["suno"],
+    defaultProvider: "suno",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Generate complete songs with Suno V5.5 through SunoAPI.org.",
+    parameters: [
+      {
+        id: "instrumental",
+        label: "Instrumental",
+        type: "boolean",
+        defaultValue: false
+      },
+      {
+        id: "style",
+        label: "Style",
+        type: "text",
+        placeholder: "Optional genre, mood, instrumentation, or vocal style",
+        defaultValue: ""
+      },
+      {
+        id: "title",
+        label: "Title",
+        type: "text",
+        placeholder: "Optional song title",
+        defaultValue: ""
+      }
+    ],
+    defaultParams: {
+      instrumental: false,
+      style: "",
+      title: ""
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+    maxRuntimeMs: 10 * 60 * 1e3
+  },
+  {
     id: "elevenlabs-tts",
     name: "ElevenLabs TTS",
     provider: "ElevenLabs",
@@ -26752,11 +26764,11 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Model",
         type: "select",
         options: [
+          { label: "Eleven v3", value: "eleven_v3" },
           { label: "Multilingual v2", value: "eleven_multilingual_v2" },
-          { label: "English v2", value: "eleven_monolingual_v1" },
-          { label: "Turbo v2", value: "eleven_turbo_v2" }
+          { label: "Flash v2.5", value: "eleven_flash_v2_5" }
         ],
-        defaultValue: "eleven_multilingual_v2"
+        defaultValue: "eleven_v3"
       },
       {
         id: "stability",
@@ -26781,7 +26793,7 @@ var MODEL_CARD_DEFINITIONS = [
     ],
     defaultParams: {
       voice_id: "rachel",
-      model_id: "eleven_multilingual_v2",
+      model_id: "eleven_v3",
       stability: 0.5,
       similarity_boost: 0.75
     },
@@ -26801,17 +26813,14 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["flux-dev", "fal", "fal", "fal", "fal-ai/flux/dev", 20, { credentials: ["apiKey"] }],
   ["gpt-image-2", "fal", "fal", "fal", "openai/gpt-image-2", 20, { credentials: ["apiKey"] }],
   ["nano-banana-2", "fal", "fal", "fal", "fal-ai/nano-banana-2", 20, { credentials: ["apiKey"] }],
-  ["nano-banana-2-edit", "fal", "fal", "fal", "fal-ai/nano-banana-2/edit", 20, { credentials: ["apiKey"] }],
+  ["seedream-4.5", "fal", "fal", "fal", "fal-ai/bytedance/seedream/v4.5/text-to-image", 20, { credentials: ["apiKey"] }],
   ["recraft-v4", "fal", "fal", "fal", "fal-ai/recraft/v4/pro/text-to-image", 20, { credentials: ["apiKey"] }],
   ["flux-2-pro", "fal", "fal", "fal", "fal-ai/flux-2-pro", 20, { credentials: ["apiKey"] }],
-  ["flux-2-pro-edit", "fal", "fal", "fal", "fal-ai/flux-2-pro/edit", 20, { credentials: ["apiKey"] }],
   ["sora-2", "fal", "fal", "fal", "fal-ai/sora-2/text-to-video", 20, { credentials: ["apiKey"] }],
   ["kling-3", "fal", "fal", "fal", "fal-ai/kling-video/v3/pro/image-to-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-text", "fal", "fal", "fal", "bytedance/seedance-2.0/text-to-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-startend", "fal", "fal", "fal", "bytedance/seedance-2.0/image-to-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-ref", "fal", "fal", "fal", "bytedance/seedance-2.0/reference-to-video", 20, { credentials: ["apiKey"] }],
-  ["gemini-3.1-flash-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 30, { credentials: ["apiKey"] }],
-  ["gemini-2.5-pro-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 30, { credentials: ["apiKey"] }],
   ["minimax-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 20, { credentials: ["apiKey"] }],
   ["nano-banana-2", "kie", "kie", "kie", "nano-banana-2", 25, { credentials: ["apiKey"] }],
   ["gpt-image-2", "kie", "kie", "kie", "gpt-image-2-text-to-image", 25, { credentials: ["apiKey"] }],
@@ -26857,7 +26866,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["seedance-2-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-pro", 9, { credentials: ["apiKey"] }],
   ["seedance-2-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-pro", 9, { credentials: ["apiKey"] }],
   ["minimax-tts", "minimax", "minimax", "minimax", "speech-02-hd", 8, { credentials: ["apiKey"] }],
-  ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_multilingual_v2", 8, { credentials: ["apiKey"] }]
+  ["suno-v5.5", "suno", "suno", "suno", "V5_5", 8, { credentials: ["apiKey", "callbackUrl"] }],
+  ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_v3", 8, { credentials: ["apiKey"] }]
 ];
 function implementationFromRow(row) {
   const [, providerId, upstreamId, apiShape, upstreamModel, priority, options] = row;
@@ -26994,6 +27004,116 @@ function composePromptWithTextRefs(prompt, textRefs) {
   const refs = textRefs.map((ref) => normalizePromptInput(ref).trim()).filter(Boolean);
   return [cleanPrompt, ...refs].filter(Boolean).join("\n\n");
 }
+var DirectorReferenceAspectRatioSchema = z.enum([
+  "16:9",
+  "9:16",
+  "4:3",
+  "3:4",
+  "1:1"
+]);
+var DirectorReferenceVector3Schema = z.tuple([
+  z.number(),
+  z.number(),
+  z.number()
+]);
+var DirectorReferenceCameraOpticsSchema = z.object({
+  projection: z.enum(["perspective", "orthographic"]),
+  focalLengthMm: z.number().positive(),
+  sensorWidthMm: z.number().positive(),
+  sensorHeightMm: z.number().positive(),
+  focusDistanceM: z.number().positive(),
+  fStop: z.number().positive(),
+  shutterAngleDegrees: z.number().positive(),
+  iso: z.number().positive(),
+  nearClipM: z.number().positive(),
+  farClipM: z.number().positive()
+});
+var DirectorReferenceCameraSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  position: DirectorReferenceVector3Schema,
+  rotation: DirectorReferenceVector3Schema,
+  fov: z.number().positive(),
+  targetObjectId: z.string().min(1).optional(),
+  targetObjectIds: z.array(z.string().min(1)).optional(),
+  targetOffset: DirectorReferenceVector3Schema.optional(),
+  optics: DirectorReferenceCameraOpticsSchema.optional()
+});
+var DirectorReferenceShotSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cameraId: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  sequenceStartTime: z.number().nonnegative().optional(),
+  durationSeconds: z.number().positive(),
+  aspectRatio: DirectorReferenceAspectRatioSchema,
+  transition: z.enum(["cut", "dissolve"]).default("cut"),
+  storyBeatIds: z.array(z.string().min(1)).optional(),
+  actionClipIds: z.array(z.string().min(1)).optional(),
+  cameraMove: z.object({
+    preset: z.string().min(1),
+    easing: z.enum(["linear", "ease-in", "ease-out", "ease-in-out"])
+  }).optional()
+});
+var DirectorReferenceStillSchema = z.object({
+  assetId: z.string().min(1),
+  cameraId: z.string().min(1),
+  shotId: z.string().min(1),
+  aspectRatio: DirectorReferenceAspectRatioSchema,
+  stageRevisionId: z.string().min(1),
+  timeSeconds: z.number().nonnegative().optional(),
+  sequenceTimeSeconds: z.number().nonnegative().optional(),
+  src: z.string().url().optional(),
+  previewUrl: z.string().url().optional()
+});
+var DirectorReferenceVideoSchema = z.object({
+  assetId: z.string().min(1),
+  src: z.string().url().optional(),
+  previewUrl: z.string().url().optional(),
+  mimeType: z.string().min(1)
+});
+var DirectorReferencePacketSchema = z.object({
+  schemaVersion: z.literal(1),
+  stageId: z.string().min(1),
+  stageRevisionId: z.string().min(1),
+  exportedAt: z.string().datetime(),
+  aspectRatio: DirectorReferenceAspectRatioSchema,
+  durationSeconds: z.number().positive(),
+  fps: z.number().int().positive(),
+  scope: z.object({
+    kind: z.enum(["sequence", "shot", "shot-selection"]),
+    selectedShotIds: z.array(z.string().min(1)).min(1)
+  }).optional(),
+  cameraIds: z.array(z.string().min(1)).min(1),
+  cameraSpec: z.object({
+    cameras: z.array(DirectorReferenceCameraSchema)
+  }).optional(),
+  referenceVideo: DirectorReferenceVideoSchema,
+  referenceStills: z.array(DirectorReferenceStillSchema),
+  shotSpec: z.object({
+    shots: z.array(DirectorReferenceShotSchema)
+  })
+});
+function directorReferencePromptContext(packet) {
+  if (packet.shotSpec.shots.length === 0) return "";
+  const shotLines = [...packet.shotSpec.shots].sort((left, right) => left.startTime - right.startTime || left.id.localeCompare(right.id)).map((shot, index) => {
+    const endTime = shot.startTime + shot.durationSeconds;
+    const transition = shot.transition === "dissolve" ? "Dissolve" : "Cut";
+    const move = shot.cameraMove ? ` \xB7 ${shot.cameraMove.preset} / ${shot.cameraMove.easing}` : "";
+    const camera = packet.cameraSpec?.cameras.find(
+      (candidate) => candidate.id === shot.cameraId
+    );
+    const cameraSummary = camera ? ` \xB7 ${camera.name}${camera.optics ? ` ${camera.optics.focalLengthMm.toFixed(0)}mm` : ""}` : "";
+    return `${index + 1}. ${shot.name} \xB7 ${shot.startTime.toFixed(2)}\u2013${endTime.toFixed(2)}s \xB7 ${transition}${move}${cameraSummary}`;
+  });
+  return [
+    "Director shot plan",
+    `Format: ${packet.aspectRatio} \xB7 ${packet.durationSeconds.toFixed(2)}s \xB7 ${packet.fps}fps`,
+    `Stage revision: ${packet.stageRevisionId}`,
+    ...shotLines,
+    "Preserve this shot order, timing, transitions, blocking, and camera motion while following the reference media."
+  ].join("\n");
+}
 var NO_BOUND = { accepts: false, min: 0, max: 0 };
 function capability(card) {
   const im = card.input.inputMode;
@@ -27122,6 +27242,54 @@ function validateRefs(cardOrCap, counts, opts = {}) {
   }
   return null;
 }
+function referenceModality(node) {
+  if (node.type === "text" || node.type === "image" || node.type === "video" || node.type === "audio") {
+    return node.type;
+  }
+  if (node.type === "director-stage") return "video";
+  return void 0;
+}
+function referenceAssetId(node) {
+  const packet = node.type === "director-stage" ? directorReferencePackets(node)[0] : void 0;
+  const value = node.type === "director-stage" ? packet?.referenceVideo.assetId ?? node.data?.outputVideoAssetId : node.data?.assetId;
+  return typeof value === "string" && value.trim() ? value : void 0;
+}
+function directorReferencePacket(node) {
+  return directorReferencePackets(node)[0];
+}
+function directorReferencePackets(node) {
+  if (node.type !== "director-stage") return [];
+  const shotPackets = Array.isArray(node.data?.directorShotReferencePackets) ? node.data.directorShotReferencePackets.flatMap((packet) => {
+    const parsed2 = DirectorReferencePacketSchema.safeParse(packet);
+    return parsed2.success ? [parsed2.data] : [];
+  }) : [];
+  if (shotPackets.length > 0) return shotPackets;
+  const parsed = DirectorReferencePacketSchema.safeParse(
+    node.data?.directorReferencePacket
+  );
+  return parsed.success ? [parsed.data] : [];
+}
+function hasDirectorReferenceOutput(node) {
+  if (node.type !== "director-stage") return false;
+  const packet = directorReferencePacket(node);
+  if (packet?.referenceVideo.assetId) return true;
+  return Boolean(
+    typeof node.data?.outputVideoAssetId === "string" && node.data.outputVideoAssetId.trim()
+  );
+}
+function selectDirectorReferenceStillAssetIds(packet, maximum) {
+  const stills = [...packet.referenceStills].sort(
+    (left, right) => (left.timeSeconds ?? 0) - (right.timeSeconds ?? 0) || left.assetId.localeCompare(right.assetId)
+  );
+  if (stills.length <= maximum) return stills.map((still) => still.assetId);
+  if (maximum <= 0) return [];
+  if (maximum === 1) return [stills[0].assetId];
+  const indexes = Array.from(
+    { length: maximum },
+    (_, index) => Math.round(index * (stills.length - 1) / (maximum - 1))
+  );
+  return [...new Set(indexes.map((index) => stills[index].assetId))];
+}
 function partitionRefs(refs, cardOrCap) {
   const cap = typeof cardOrCap.requiresPrompt === "boolean" ? cardOrCap : capability(cardOrCap);
   const out = {
@@ -27131,18 +27299,32 @@ function partitionRefs(refs, cardOrCap) {
     audioAssetIds: []
   };
   for (const n of refs) {
-    if (n.type === "text" && cap.ref.text.accepts) {
+    if (n.type === "director-stage") {
+      const packet = directorReferencePacket(n);
+      if (packet) {
+        if (cap.ref.video.accepts) {
+          out.videoAssetIds.push(packet.referenceVideo.assetId);
+        } else if (cap.ref.image.accepts) {
+          out.imageAssetIds.push(
+            ...selectDirectorReferenceStillAssetIds(packet, cap.ref.image.max)
+          );
+        }
+        continue;
+      }
+    }
+    const modality = referenceModality(n);
+    if (modality === "text" && cap.ref.text.accepts) {
       const text = normalizePromptInput(n.data?.content ?? n.data?.prompt ?? n.data?.label).trim();
       if (text) out.texts.push(text);
       continue;
     }
-    const aid = typeof n.data?.assetId === "string" ? n.data.assetId : void 0;
+    const aid = referenceAssetId(n);
     if (!aid) continue;
-    if (n.type === "image" && cap.ref.image.accepts) {
+    if (modality === "image" && cap.ref.image.accepts) {
       out.imageAssetIds.push(aid);
-    } else if (n.type === "video" && cap.ref.video.accepts) {
+    } else if (modality === "video" && cap.ref.video.accepts) {
       out.videoAssetIds.push(aid);
-    } else if (n.type === "audio" && cap.ref.audio.accepts) {
+    } else if (modality === "audio" && cap.ref.audio.accepts) {
       out.audioAssetIds.push(aid);
     }
   }
@@ -27322,6 +27504,27 @@ var NodeDataSchema = z.object({
   poster: z.string().optional(),
   status: NodeStatusSchema.optional(),
   assetId: z.string().optional(),
+  stageId: z.string().optional(),
+  /** Latest registered reference-video output from a Director Stage node. */
+  outputVideoAssetId: z.string().optional(),
+  outputVideoSrc: z.string().optional(),
+  outputVideoPreviewUrl: z.string().optional(),
+  outputVideoDurationSeconds: z.number().optional(),
+  outputVideoFps: z.number().optional(),
+  outputVideoStageRevisionId: z.string().optional(),
+  /** Canonical, revision-pinned Director output for downstream generation. */
+  directorReferencePacket: DirectorReferencePacketSchema.optional(),
+  /** Ordered, individually rendered Shot packets selected for batch generation. */
+  directorShotReferencePackets: z.array(DirectorReferencePacketSchema).optional(),
+  selectedDirectorShotIds: z.array(z.string().min(1)).optional(),
+  /** Per-output lineage back to the exact Stage revision and Shot. */
+  sourceDirectorStageId: z.string().min(1).optional(),
+  sourceDirectorStageRevisionId: z.string().min(1).optional(),
+  sourceDirectorStageShotId: z.string().min(1).optional(),
+  sourceDirectorStageShotIds: z.array(z.string().min(1)).optional(),
+  sourceDirectorStageCameraId: z.string().min(1).optional(),
+  /** Shared Canvas group identity for independently regeneratable Shot outputs. */
+  directorShotGroupId: z.string().min(1).optional(),
   taskId: z.string().optional(),
   actionType: z.string().optional(),
   upstreamNodeIds: z.array(z.string()).optional(),
@@ -27498,18 +27701,44 @@ function buildGenerationPayload(input) {
   const cap = input.config.kind === "model" ? input.config.modelCard ? capability(input.config.modelCard) : void 0 : capabilityFromCustom(input.config.customDef);
   const attachedRefCounts = input.refNodes.reduce(
     (counts, node) => {
-      if (node.type === "text" || node.type === "image" || node.type === "video" || node.type === "audio") {
-        counts[node.type] += 1;
+      if (node.type === "director-stage" && cap) {
+        const adapted = partitionRefs([node], cap);
+        const adaptedCount = adapted.imageAssetIds.length + adapted.videoAssetIds.length + adapted.audioAssetIds.length;
+        if (adaptedCount > 0) {
+          counts.image += adapted.imageAssetIds.length;
+          counts.video += adapted.videoAssetIds.length;
+          counts.audio += adapted.audioAssetIds.length;
+          return counts;
+        }
+      }
+      const modality = referenceModality(node);
+      if (modality) {
+        counts[modality] += 1;
       }
       return counts;
     },
     { text: 0, image: 0, video: 0, audio: 0 }
   );
   const attachedRefValidationError = cap ? validateRefs(cap, attachedRefCounts) : null;
+  const unexportedDirectorStageError = input.refNodes.some(
+    (node) => node.type === "director-stage" && !hasDirectorReferenceOutput(node)
+  ) ? "Director Stage has no reference video yet. Export the shot before running generation." : null;
   const partition = cap ? partitionRefs(input.refNodes, cap) : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
   const composedPrompt = composePromptWithTextRefs(input.prompt, partition.texts);
-  const cleanedPrompt = extractPromptText(parsePromptParts(composedPrompt));
-  const validationError = attachedRefValidationError ?? (cap ? validateGenerationInput({
+  const directorPromptContexts = cap?.promptModalities.includes("text") ? [...new Map(
+    input.refNodes.map((node) => directorReferencePacket(node)).filter(
+      (packet) => Boolean(packet && packet.shotSpec.shots.length > 0)
+    ).map((packet) => [
+      `${packet.stageId}:${packet.stageRevisionId}`,
+      directorReferencePromptContext(packet)
+    ])
+  ).values()] : [];
+  const promptWithDirectorPlan = [
+    composedPrompt,
+    ...directorPromptContexts
+  ].filter((part) => part.trim()).join("\n\n");
+  const cleanedPrompt = extractPromptText(parsePromptParts(promptWithDirectorPlan));
+  const validationError = unexportedDirectorStageError ?? attachedRefValidationError ?? (cap ? validateGenerationInput({
     prompt: cleanedPrompt,
     referenceTextSnippets: partition.texts,
     referenceImageAssetIds: partition.imageAssetIds,
@@ -28650,8 +28879,17 @@ var Canvas = class {
       const customActionParams = nodeData.customActionParams || {};
       config2 = { kind: "custom", customDef, customActionParams };
     } else {
-      const modelId = nodeData.modelId || nodeData.model || "";
+      const requestedModelId = nodeData.modelId || nodeData.model || "";
+      const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
       const modelCard = MODEL_CARDS.find((c) => c.id === modelId);
+      if (!modelCard) {
+        return {
+          assetNodeId: "",
+          assetNodeType: "",
+          position: { x: 0, y: 0 },
+          error: `Unknown model: ${requestedModelId || "(missing)"}`
+        };
+      }
       const modelParams2 = nodeData.modelParams || {};
       config2 = { kind: "model", modelCard, modelParams: modelParams2 };
     }
@@ -28674,7 +28912,7 @@ var Canvas = class {
         });
       }
     }
-    const configId = config2.kind === "model" ? nodeData.modelId || nodeData.model || "" : config2.customDef.id;
+    const configId = config2.kind === "model" ? config2.modelCard?.id ?? (nodeData.modelId || nodeData.model || "") : config2.customDef.id;
     const { pendingInput, validationError } = buildGenerationPayload({
       prompt,
       refNodes,
@@ -28953,7 +29191,12 @@ var DirectorStageObjectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("model"),
     model: z.object({
       assetId: z.string().min(1),
-      sourceUrl: z.string().url().optional()
+      sourceUrl: z.string().url().optional(),
+      animation: z.object({
+        jointCount: z.number().int().positive(),
+        clipNames: z.array(z.string().min(1)).min(1),
+        actionMap: z.record(z.string().min(1), z.string().min(1))
+      }).optional()
     })
   })
 ]);
@@ -28964,7 +29207,23 @@ var DirectorStageCameraSchema = z.object({
   rotation: DirectorStageVector3Schema,
   fov: z.number().min(1).max(179),
   targetObjectId: z.string().min(1).optional(),
-  targetOffset: DirectorStageVector3Schema.optional()
+  targetObjectIds: z.array(z.string().min(1)).min(1).optional(),
+  targetOffset: DirectorStageVector3Schema.optional(),
+  optics: z.object({
+    projection: z.enum(["perspective", "orthographic"]),
+    focalLengthMm: z.number().positive().max(1e3),
+    sensorWidthMm: z.number().positive().max(1e3),
+    sensorHeightMm: z.number().positive().max(1e3),
+    focusDistanceM: z.number().nonnegative(),
+    fStop: z.number().positive().max(128),
+    shutterAngleDegrees: z.number().positive().max(360),
+    iso: z.number().positive().max(1e6),
+    nearClipM: z.number().positive(),
+    farClipM: z.number().positive()
+  }).refine(
+    (optics) => optics.farClipM > optics.nearClipM,
+    { message: "Camera far clip must be greater than near clip" }
+  ).optional()
 });
 var DirectorStageAspectRatioSchema = z.enum([
   "16:9",
@@ -28977,10 +29236,133 @@ var DirectorStageShotSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   cameraId: z.string().min(1),
+  sequenceShotId: z.string().min(1).optional(),
   assetId: z.string().min(1),
   aspectRatio: DirectorStageAspectRatioSchema,
   stageRevisionId: z.string().min(1),
-  createdAt: z.string().datetime()
+  createdAt: z.string().datetime(),
+  timeSeconds: z.number().nonnegative().optional()
+});
+var DirectorStageCameraRigPathSchema = z.object({
+  interpolation: z.enum(["linear", "catmull-rom"]),
+  points: z.array(DirectorStageVector3Schema).min(2)
+});
+var DirectorStageCameraRigOrientationSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("fixed-target"),
+    target: DirectorStageVector3Schema
+  }),
+  z.object({
+    mode: z.literal("target-object"),
+    objectId: z.string().min(1),
+    offset: DirectorStageVector3Schema.optional(),
+    sampling: z.enum(["shot-start", "live"]).default("shot-start")
+  }),
+  z.object({
+    mode: z.literal("keyed"),
+    startRotation: DirectorStageVector3Schema,
+    endRotation: DirectorStageVector3Schema
+  })
+]);
+var DirectorStageCameraRigLensSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("locked"),
+    focalLengthMm: z.number().positive().max(1e3)
+  }),
+  z.object({
+    mode: z.literal("animated"),
+    startFocalLengthMm: z.number().positive().max(1e3),
+    endFocalLengthMm: z.number().positive().max(1e3)
+  })
+]);
+var DirectorStageCameraRigSchema = z.object({
+  kind: z.enum(["dolly", "truck", "pedestal", "pan", "tilt", "orbit", "crane"]),
+  settleInSeconds: z.number().nonnegative(),
+  settleOutSeconds: z.number().nonnegative(),
+  path: DirectorStageCameraRigPathSchema.optional(),
+  orbit: z.object({
+    pivot: DirectorStageVector3Schema,
+    radius: z.number().positive(),
+    height: z.number().finite(),
+    startAngleDegrees: z.number().finite(),
+    endAngleDegrees: z.number().finite()
+  }).optional(),
+  orientation: DirectorStageCameraRigOrientationSchema,
+  lens: DirectorStageCameraRigLensSchema,
+  maxAngularVelocityDegPerSecond: z.number().positive().optional(),
+  maxAngularAccelerationDegPerSecondSquared: z.number().positive().optional()
+}).superRefine((rig, context) => {
+  if (rig.kind === "orbit" && !rig.orbit) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["orbit"],
+      message: "Orbit camera rigs require physical orbit parameters"
+    });
+  } else if (rig.kind !== "orbit" && !rig.path) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["path"],
+      message: "Non-orbit camera rigs require a camera path"
+    });
+  }
+});
+var DirectorStageShotCompositionSchema = z.object({
+  primarySubjectId: z.string().min(1),
+  secondarySubjectIds: z.array(z.string().min(1)).optional(),
+  headroomRatio: z.number().min(0).max(0.5),
+  leadRoomRatio: z.number().min(0).max(0.5),
+  minimumCameraDistanceM: z.number().positive(),
+  minimumSubjectSeparationM: z.number().nonnegative(),
+  axis: z.object({
+    fromObjectId: z.string().min(1),
+    toObjectId: z.string().min(1),
+    cameraSide: z.enum(["left", "right"])
+  }).optional()
+});
+var DirectorStageSequenceShotSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cameraId: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  durationSeconds: z.number().positive(),
+  aspectRatio: DirectorStageAspectRatioSchema,
+  transition: z.enum(["cut", "dissolve"]).default("cut"),
+  storyBeatIds: z.array(z.string().min(1)).optional(),
+  actionClipIds: z.array(z.string().min(1)).optional(),
+  cameraMove: z.object({
+    preset: z.string().min(1),
+    easing: z.enum(["linear", "ease-in", "ease-out", "ease-in-out"]),
+    rig: DirectorStageCameraRigSchema.optional()
+  }).optional(),
+  composition: DirectorStageShotCompositionSchema.optional()
+});
+var DirectorStageSignedAxisSchema = z.enum([
+  "+X",
+  "-X",
+  "+Y",
+  "-Y",
+  "+Z",
+  "-Z"
+]);
+var DirectorStageMotionAssetSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  assetId: z.string().min(1),
+  sourceFormat: z.enum(["gltf", "glb", "fbx", "bvh"]),
+  clipName: z.string().min(1),
+  durationSeconds: z.number().positive().optional(),
+  sourceRig: z.object({
+    profileId: z.string().min(1),
+    skeletonType: z.enum(["biped", "quadruped", "other"]),
+    restPose: z.enum(["t-pose", "a-pose", "unknown"]),
+    upAxis: DirectorStageSignedAxisSchema,
+    forwardAxis: DirectorStageSignedAxisSchema,
+    metersPerUnit: z.number().positive(),
+    rootBone: z.string().min(1),
+    hipsBone: z.string().min(1).optional(),
+    boneMap: z.record(z.string().min(1), z.string().min(1)).optional()
+  }),
+  tags: z.array(z.string().min(1)).optional()
 });
 var DirectorStageAnimationKeyframeSchema = z.object({
   id: z.string().min(1),
@@ -28995,7 +29377,10 @@ var DirectorStageAnimationTrackSchema = z.object({
     "position",
     "rotation",
     "scale",
-    "fov"
+    "fov",
+    "focalLengthMm",
+    "focusDistanceM",
+    "fStop"
   ]),
   keyframes: z.array(DirectorStageAnimationKeyframeSchema)
 });
@@ -29010,7 +29395,18 @@ var DirectorStageActionNameSchema = z.enum([
   "point",
   "think",
   "hands-up",
-  "ride"
+  "interact",
+  "ride",
+  "talk",
+  "dance",
+  "jump",
+  "roll",
+  "pickup",
+  "push",
+  "punch",
+  "swim",
+  "drive",
+  "death"
 ]);
 var DirectorStageActionLayerSchema = z.enum([
   "full-body",
@@ -29025,7 +29421,34 @@ var DirectorStageActionClipSchema = z.object({
   durationSeconds: z.number().positive(),
   blendInSeconds: z.number().nonnegative().default(0.2),
   blendOutSeconds: z.number().nonnegative().default(0.2),
-  playbackRate: z.number().positive().default(1)
+  playbackRate: z.number().positive().default(1),
+  motionAssetId: z.string().min(1).optional(),
+  sourceStartSeconds: z.number().nonnegative().optional(),
+  sourceDurationSeconds: z.number().positive().optional(),
+  loopMode: z.enum(["once", "repeat", "hold"]).optional(),
+  rootMotionMode: z.enum(["apply", "in-place", "extract"]).optional(),
+  retargeting: z.object({
+    mode: z.enum(["direct", "humanoid"]),
+    targetRigProfileId: z.string().min(1)
+  }).optional()
+});
+var DirectorStageStoryBeatSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  durationSeconds: z.number().positive(),
+  participantIds: z.array(z.string().min(1)).min(1),
+  dialogue: z.object({
+    speakerId: z.string().min(1),
+    text: z.string().min(1)
+  }).optional()
+});
+var DirectorStageCameraCueSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cameraId: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  durationSeconds: z.number().positive()
 });
 var DirectorStageWorkingVolumePresetSchema = z.enum([
   "compact",
@@ -29070,12 +29493,16 @@ var DirectorStageStateSchema = z.object({
   objects: z.array(DirectorStageObjectSchema),
   cameras: z.array(DirectorStageCameraSchema),
   shots: z.array(DirectorStageShotSchema),
+  shotSequence: z.array(DirectorStageSequenceShotSchema).optional(),
+  motionAssets: z.array(DirectorStageMotionAssetSchema).optional(),
   activeCameraId: z.string().min(1).optional(),
   animation: z.object({
     durationSeconds: z.number().positive(),
     fps: z.number().int().positive(),
     tracks: z.array(DirectorStageAnimationTrackSchema),
-    actionClips: z.array(DirectorStageActionClipSchema).optional()
+    actionClips: z.array(DirectorStageActionClipSchema).optional(),
+    storyBeats: z.array(DirectorStageStoryBeatSchema).optional(),
+    cameraCues: z.array(DirectorStageCameraCueSchema).optional()
   }).optional()
 });
 function isRecord3(value) {
@@ -29723,7 +30150,8 @@ var ModelUpstreamIdSchema = z.enum([
   "minimax",
   "jimeng",
   "volcengine",
-  "elevenlabs"
+  "elevenlabs",
+  "suno"
 ]);
 var ModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
@@ -29740,7 +30168,8 @@ var ModelUpstreamApiShapeSchema = z.enum([
   "minimax",
   "modelark",
   "dreamina-cli",
-  "elevenlabs"
+  "elevenlabs",
+  "suno"
 ]);
 var ProviderOAuthIdSchema = z.enum([
   "dreamina"
@@ -29756,6 +30185,7 @@ var ProviderAccountIdSchema = z.enum([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom"
 ]);
@@ -29871,10 +30301,9 @@ var FAL_IMAGE_ROUTES = [
   ["flux-dev", "fal-ai/flux/dev"],
   ["gpt-image-2", "openai/gpt-image-2"],
   ["nano-banana-2", "fal-ai/nano-banana-2"],
-  ["nano-banana-2-edit", "fal-ai/nano-banana-2/edit"],
+  ["seedream-4.5", "fal-ai/bytedance/seedream/v4.5/text-to-image"],
   ["recraft-v4", "fal-ai/recraft/v4/pro/text-to-image"],
-  ["flux-2-pro", "fal-ai/flux-2-pro"],
-  ["flux-2-pro-edit", "fal-ai/flux-2-pro/edit"]
+  ["flux-2-pro", "fal-ai/flux-2-pro"]
 ];
 var FAL_VIDEO_ROUTES = [
   ["sora-2", "fal-ai/sora-2/text-to-video"],
@@ -29893,10 +30322,6 @@ var GOOGLE_VIDEO_ROUTES = [
   ["veo-3.1-lite", "veo-3.1-lite-generate-001"],
   ["veo-3.1-fast", "veo-3.1-fast-generate-001"],
   ["veo-3.1-fast-startend", "veo-3.1-fast-generate-001"]
-];
-var GOOGLE_AUDIO_ROUTES = [
-  ["gemini-3.1-flash-tts", "gemini-3.1-flash-tts-preview"],
-  ["gemini-2.5-pro-tts", "gemini-2.5-pro-tts"]
 ];
 function routesFromModelCard(model) {
   return (model.providerImplementations ?? []).map((implementation) => ({
@@ -29927,7 +30352,6 @@ var MOCK_ROUTES = [
   ...FAL_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "video", upstreamModel)),
   ...GOOGLE_IMAGE_ROUTES.map(([modelCode]) => falMock(modelCode, "image", "fal-ai/nano-banana-2")),
   ...GOOGLE_VIDEO_ROUTES.map(([modelCode]) => falMock(modelCode, "video", modelCode.includes("fast") ? "fal-ai/veo3/fast" : "fal-ai/veo3")),
-  ...GOOGLE_AUDIO_ROUTES.map(([modelCode]) => falMock(modelCode, "audio", "fal-ai/minimax/speech-02-hd")),
   falMock("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("elevenlabs-tts", "audio", "fal-ai/minimax/speech-02-hd")
 ];
@@ -30049,17 +30473,27 @@ function compareProviderCandidates(a, b) {
   if (weight !== 0) return weight;
   return a.index - b.index;
 }
+function compareProviderCandidatesForModel(a, b, modelCode) {
+  const aModelPriority = modelPriority(a.provider, modelCode);
+  const bModelPriority = modelPriority(b.provider, modelCode);
+  if (aModelPriority !== void 0 || bModelPriority !== void 0) {
+    const priority = (aModelPriority ?? Number.POSITIVE_INFINITY) - (bModelPriority ?? Number.POSITIVE_INFINITY);
+    if (priority !== 0) return priority;
+  }
+  return compareProviderCandidates(a, b);
+}
 function canServeRoute(route, provider) {
   return provider.enabled !== false && hasRequiredCredentials(route, provider) && hasRequiredOAuth(route, provider);
 }
 function providerCandidate(configuredProviders, route) {
   const candidates = providerCandidates(configuredProviders, route);
   if (!candidates.length) return void 0;
-  const runnable = candidates.filter((candidate) => canServeRoute(route, candidate.provider)).sort(compareProviderCandidates);
+  const compare = (a, b) => compareProviderCandidatesForModel(a, b, route.modelCode);
+  const runnable = candidates.filter((candidate) => canServeRoute(route, candidate.provider)).sort(compare);
   if (runnable[0]) return runnable[0];
-  const enabled = candidates.filter((candidate) => candidate.provider.enabled !== false).sort(compareProviderCandidates);
+  const enabled = candidates.filter((candidate) => candidate.provider.enabled !== false).sort(compare);
   if (enabled[0]) return enabled[0];
-  return candidates.sort(compareProviderCandidates)[0];
+  return candidates.sort(compare)[0];
 }
 function providerIndex(configuredProviders, route) {
   return providerCandidate(configuredProviders, route)?.index ?? Number.POSITIVE_INFINITY;
@@ -30128,7 +30562,7 @@ function candidateRoutes(query) {
 function listModelUpstreamRoutes(query) {
   const candidates = candidateRoutes(query);
   const modelCode = normalizeModelId(query.modelCode) ?? query.modelCode.trim();
-  return candidates.filter((route) => isEnabled(route, query)).sort((a, b) => {
+  const sorted = candidates.filter((route) => isEnabled(route, query)).sort((a, b) => {
     const aConfig = configForRoute(query, a);
     const bConfig = configForRoute(query, b);
     const aModelPriority = modelPriorityForRoute(query, a, modelCode);
@@ -30140,13 +30574,19 @@ function listModelUpstreamRoutes(query) {
     const aWeight = (aConfig?.weight ?? 0) + (a.weight ?? 0);
     const bWeight = (bConfig?.weight ?? 0) + (b.weight ?? 0);
     if (aWeight !== bWeight) return bWeight - aWeight;
+    if (aConfig?.priority !== void 0 || bConfig?.priority !== void 0) {
+      const priority = (aConfig?.priority ?? Number.POSITIVE_INFINITY) - (bConfig?.priority ?? Number.POSITIVE_INFINITY);
+      if (priority !== 0) return priority;
+    }
     const aIndex = query.configuredProviders ? providerIndex(query.configuredProviders, a) : upstreamIndex(query.configuredUpstreams, a.upstreamId);
     const bIndex = query.configuredProviders ? providerIndex(query.configuredProviders, b) : upstreamIndex(query.configuredUpstreams, b.upstreamId);
     if (aIndex !== bIndex) return aIndex - bIndex;
-    const aUpstreamPriority = aConfig?.priority ?? 0;
-    const bUpstreamPriority = bConfig?.priority ?? 0;
-    if (aUpstreamPriority !== bUpstreamPriority) return aUpstreamPriority - bUpstreamPriority;
     return a.priority - b.priority;
+  });
+  if (!query.configuredProviders) return sorted;
+  return sorted.map((route) => {
+    const account = providerConfig(query.configuredProviders, route);
+    return account?.id && !route.accountId ? { ...route, accountId: account.id } : route;
   });
 }
 function resolveModelUpstreamRoute(query) {
@@ -34175,11 +34615,8 @@ function resolveLocalRoute(model, kind, providerAccounts, preferredProviderId, m
     return resolveModelUpstreamRoute({
       modelCode: model,
       kind,
-      allowMock: true,
-      configuredProviders: [
-        ...eligibleProviderAccounts,
-        { providerId: "mock", enabled: true }
-      ],
+      allowMock: eligibleProviderAccounts.some((account) => account.providerId === "mock" && account.enabled !== false),
+      configuredProviders: eligibleProviderAccounts,
       ...models ? { models } : {}
     });
   }
@@ -34630,7 +35067,7 @@ async function generateGoogleAgentPlatformVideo(input, route, fetchImpl, rawCred
 function falInput(input, kind, route) {
   if (kind === "image") {
     const params = input.modelParams ?? {};
-    if (route.upstreamModel === "openai/gpt-image-2") {
+    if (route.upstreamModel === "openai/gpt-image-2" || route.upstreamModel === "openai/gpt-image-2/edit") {
       const width = numberParam(params, "width", 0);
       const height = numberParam(params, "height", 0);
       const explicitSize = width > 0 && height > 0 ? { width, height } : void 0;
@@ -34642,7 +35079,18 @@ function falInput(input, kind, route) {
         image_size: explicitSize ?? stringParam(params, "image_size") ?? aspectRatioToFalImageSize(input.aspectRatio),
         quality: stringParam(params, "quality") || "high",
         num_images: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
-        output_format: outputFormat(params)
+        output_format: outputFormat(params),
+        ...input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}
+      };
+    }
+    if (route.upstreamModel.startsWith("fal-ai/bytedance/seedream/v4.5/")) {
+      return {
+        prompt: input.prompt,
+        image_size: stringParam(params, "image_size") || "auto_2K",
+        num_images: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
+        max_images: Math.max(1, Math.min(4, numberParam(params, "max_images", 1))),
+        enable_safety_checker: params.enable_safety_checker !== false,
+        ...input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}
       };
     }
     return {
@@ -34653,7 +35101,8 @@ function falInput(input, kind, route) {
       num_images: Math.max(1, Math.min(4, numberParam(params, "count", 1))),
       ...params.resolution ? { resolution: params.resolution } : {},
       ...params.num_inference_steps ? { num_inference_steps: params.num_inference_steps } : {},
-      ...params.guidance_scale ? { guidance_scale: params.guidance_scale } : {}
+      ...params.guidance_scale ? { guidance_scale: params.guidance_scale } : {},
+      ...input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}
     };
   }
   if (kind === "video") {
@@ -34670,6 +35119,21 @@ function falInput(input, kind, route) {
     prompt: input.prompt,
     duration: input.duration ?? 5
   };
+}
+var FAL_IMAGE_EDIT_ENDPOINTS = {
+  "openai/gpt-image-2": "openai/gpt-image-2/edit",
+  "fal-ai/nano-banana-2": "fal-ai/nano-banana-2/edit",
+  "fal-ai/flux-2-pro": "fal-ai/flux-2-pro/edit",
+  "fal-ai/bytedance/seedream/v4.5/text-to-image": "fal-ai/bytedance/seedream/v4.5/edit"
+};
+function falEndpoint(input, kind, route) {
+  if (kind !== "image" || !input.referenceImageUrls?.length)
+    return route.upstreamModel;
+  const editEndpoint = FAL_IMAGE_EDIT_ENDPOINTS[route.upstreamModel];
+  if (!editEndpoint) {
+    throw new Error(`fal image model does not support editing: ${route.upstreamModel}`);
+  }
+  return editEndpoint;
 }
 function falMedia(result, kind) {
   if (kind === "image") {
@@ -34702,7 +35166,8 @@ function falMedia(result, kind) {
 }
 async function generateFalMedia(input, kind, route, options, apiKey) {
   const queueBaseUrl = normalizeBaseUrl(options.falQueueBaseUrl, "https://queue.fal.run");
-  const endpoint = route.upstreamModel.replace(/^\/+/, "");
+  const endpoint = falEndpoint(input, kind, route).replace(/^\/+/, "");
+  const executionRoute = endpoint === route.upstreamModel ? route : { ...route, upstreamModel: endpoint };
   const headers = {
     authorization: `Key ${apiKey}`,
     "content-type": "application/json"
@@ -34710,7 +35175,7 @@ async function generateFalMedia(input, kind, route, options, apiKey) {
   const submittedResponse = await options.fetch(`${queueBaseUrl}/${endpoint}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(falInput(input, kind, route))
+    body: JSON.stringify(falInput(input, kind, executionRoute))
   });
   const submitted = await responseJson(submittedResponse);
   if (!submittedResponse.ok) {
@@ -34759,7 +35224,7 @@ async function generateFalMedia(input, kind, route, options, apiKey) {
     transcript: media.transcript,
     requestId,
     provider: "fal",
-    modelEndpoint: route.upstreamModel,
+    modelEndpoint: endpoint,
     remoteUrl: media.url
   };
 }
@@ -34897,6 +35362,78 @@ async function generateKieMedia(input, kind, route, options, apiKey) {
     modelEndpoint: route.upstreamModel
   };
 }
+async function generateSunoMedia(input, route, options, apiKey, callbackUrl) {
+  if (!callbackUrl || !/^https:\/\//.test(callbackUrl)) {
+    throw new Error("Suno provider account requires a public HTTPS callbackUrl.");
+  }
+  const baseUrl = normalizeBaseUrl(options.sunoBaseUrl, "https://api.sunoapi.org");
+  const style = stringParam(input.modelParams, "style");
+  const title = stringParam(input.modelParams, "title");
+  const customMode = !!(style || title);
+  if (customMode && (!style || !title)) {
+    throw new Error("Suno custom mode requires both style and title.");
+  }
+  const headers = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json"
+  };
+  const createResponse = await options.fetch(`${baseUrl}/api/v1/generate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      customMode,
+      instrumental: input.modelParams?.instrumental === true,
+      model: route.upstreamModel,
+      callBackUrl: callbackUrl,
+      prompt: input.prompt,
+      ...customMode ? { style, title } : {}
+    })
+  });
+  const created = await responseJson(createResponse);
+  if (!createResponse.ok || created?.code !== 200) {
+    throw new Error(`Suno API request failed: ${created?.msg ?? createResponse.statusText}`);
+  }
+  const taskId = created?.data?.taskId;
+  if (typeof taskId !== "string" || !taskId) {
+    throw new Error(`Suno API response returned no taskId for ${route.upstreamModel}`);
+  }
+  const failures = /* @__PURE__ */ new Set([
+    "CREATE_TASK_FAILED",
+    "GENERATE_AUDIO_FAILED",
+    "CALLBACK_EXCEPTION",
+    "SENSITIVE_WORD_ERROR"
+  ]);
+  let task = null;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const statusResponse = await options.fetch(`${baseUrl}/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`, { method: "GET", headers: { authorization: `Bearer ${apiKey}` } });
+    task = await responseJson(statusResponse);
+    if (!statusResponse.ok || task?.code !== 200) {
+      throw new Error(`Suno API status failed: ${task?.msg ?? statusResponse.statusText}`);
+    }
+    const status = String(task?.data?.status ?? "PENDING");
+    if (failures.has(status)) {
+      throw new Error(`Suno API generation failed: ${task?.data?.errorMessage ?? status}`);
+    }
+    if (status === "SUCCESS")
+      break;
+    await new Promise((resolve8) => setTimeout(resolve8, 5e3));
+  }
+  if (task?.data?.status !== "SUCCESS") {
+    throw new Error(`Suno API generation timed out: ${taskId}`);
+  }
+  const song = task?.data?.response?.sunoData?.[0];
+  const mediaUrl2 = typeof song?.audioUrl === "string" ? song.audioUrl : void 0;
+  if (!mediaUrl2)
+    throw new Error(`Suno API response returned no audioUrl for ${taskId}`);
+  const media = await downloadProviderMedia(options.fetch, mediaUrl2, "audio");
+  return {
+    ...media,
+    requestId: taskId,
+    provider: "suno",
+    modelEndpoint: route.upstreamModel,
+    ...typeof song.duration === "number" ? { durationMs: Math.round(song.duration * 1e3) } : {}
+  };
+}
 function replicatePredictionUrl(baseUrl, upstreamModel) {
   const [owner, model] = upstreamModel.split("/", 2);
   if (!owner || !model) {
@@ -35024,8 +35561,9 @@ function createMockExternalAigcService(options = {}) {
     const modelCards = loadModelCards ? await loadModelCards() : void 0;
     const preferredProviderId = stringParam(input.modelParams, "provider_id");
     const requireRealProvider = input.modelParams?.require_real_provider === true;
+    const explicitMockProvider = providerAccounts?.some((account) => account.providerId === "mock" && account.enabled !== false) === true;
     const fallbackOrThrow = () => {
-      if (requireRealProvider) {
+      if (requireRealProvider || providerAccounts !== void 0 && !explicitMockProvider) {
         throw new Error(`${input.model} requires a configured real provider` + (preferredProviderId ? ` (${preferredProviderId})` : ""));
       }
       return fallback();
@@ -35124,6 +35662,15 @@ function createMockExternalAigcService(options = {}) {
         fetch: fetchImpl,
         kieBaseUrl: options.kieBaseUrl
       }, apiKey);
+    }
+    if (route.apiShape === "suno" && kind === "audio") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey)
+        return fallbackOrThrow();
+      return generateSunoMedia(input, route, {
+        fetch: fetchImpl,
+        sunoBaseUrl: options.sunoBaseUrl
+      }, apiKey, credential(route, providerAccounts, "callbackUrl"));
     }
     if (route.apiShape === "replicate") {
       const apiKey = credential(route, providerAccounts, "apiKey");
@@ -37519,6 +38066,10 @@ function numberParam2(data, key) {
 function promptFromData(data, fallback) {
   return typeof data.prompt === "string" && data.prompt.trim() ? data.prompt : typeof data.label === "string" && data.label.trim() ? data.label : fallback;
 }
+function localAssetReferenceUrl(baseUrl, storageKey) {
+  const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
+  return `${baseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
+}
 function modelFromData(data, fallback) {
   return typeof data.modelId === "string" && data.modelId.trim() ? data.modelId : typeof data.model === "string" && data.model.trim() ? data.model : fallback;
 }
@@ -37702,6 +38253,47 @@ async function saveAsset(options) {
   });
   return asset;
 }
+function localAssetHttpUrl(mediaBaseUrl, storageKey) {
+  const encodedKey = storageKey.split("/").map(encodeURIComponent).join("/");
+  return `${mediaBaseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
+}
+async function resolveLocalTimelineDslReferences(options) {
+  const resolved = structuredClone(options.timelineDsl);
+  const metadata = await createLocalMetadataStore(options.dataDir).load();
+  const projectAssetIds = new Set(metadata.assetRefs.filter((ref) => ref.projectId === options.projectId).map((ref) => ref.assetId));
+  const assetById = new Map(metadata.assets.filter((asset) => asset.projectId === options.projectId || projectAssetIds.has(asset.id)).map((asset) => [asset.id, asset]));
+  const nodes = options.doc.getMap("nodes");
+  for (const track of resolved.tracks ?? []) {
+    for (const item of track.items ?? []) {
+      if (item.type !== "video" && item.type !== "image" && item.type !== "audio")
+        continue;
+      const lookupIds = [item.assetId, item.sourceNodeId].filter((value) => typeof value === "string" && value.length > 0);
+      if (typeof item.sourceNodeId === "string" && item.sourceNodeId.startsWith("timeline-asset:")) {
+        lookupIds.push(item.sourceNodeId.slice("timeline-asset:".length));
+      }
+      let asset = lookupIds.map((id) => assetById.get(id)).find(Boolean);
+      if (!asset) {
+        for (const id of lookupIds) {
+          const node = nodes.get(id);
+          const backingAssetId = typeof node?.data?.assetId === "string" ? node.data.assetId : void 0;
+          if (backingAssetId && assetById.has(backingAssetId)) {
+            asset = assetById.get(backingAssetId);
+            break;
+          }
+        }
+      }
+      if (!asset) {
+        throw new Error(`Timeline render cannot resolve media item ${String(item.id ?? "unknown")}`);
+      }
+      const signedUrl = typeof asset.signedUrl === "string" ? asset.signedUrl : "";
+      item.src = options.mediaBaseUrl ? localAssetHttpUrl(options.mediaBaseUrl, asset.srcR2Key) : signedUrl;
+      if (!item.src) {
+        throw new Error("Timeline rendering requires a local media base URL");
+      }
+    }
+  }
+  return resolved;
+}
 function createLocalWorkflowProcessor(options) {
   const aigc = options.aigc ?? createMockExternalAigcService();
   const userId = options.userId ?? "local-user";
@@ -37782,6 +38374,66 @@ function createLocalWorkflowProcessor(options) {
           input.broadcastJson?.({ type: "custom_task_assigned", task: taskRecord });
           continue;
         }
+        const renderData = node.data && typeof node.data === "object" ? node.data : {};
+        const isTimelineRender = node.type === "video" && renderData.status === "pending" && !renderData.assetId && !renderData.pendingTask && renderData.timelineDsl && typeof renderData.timelineDsl === "object";
+        if (isTimelineRender) {
+          const taskId2 = `local-render-${sanitizeStorageSegment(nodeId)}`;
+          try {
+            if (!options.timelineRenderer) {
+              throw new Error("Timeline rendering backend is unavailable");
+            }
+            const timelineDsl = await resolveLocalTimelineDslReferences({
+              dataDir: options.dataDir,
+              doc,
+              projectId,
+              mediaBaseUrl: options.mediaBaseUrl,
+              timelineDsl: renderData.timelineDsl
+            });
+            const rendered = await options.timelineRenderer.render({
+              projectId,
+              taskId: taskId2,
+              timelineDsl
+            });
+            const asset = await saveAsset({
+              dataDir: options.dataDir,
+              userId,
+              projectId,
+              taskId: taskId2,
+              kind: "video",
+              nodeData: {
+                ...renderData,
+                modelId: "remotion-render",
+                prompt: `Render Timeline ${String(renderData.sourceTimelineId ?? nodeId)}`
+              },
+              bytes: rendered.bytes,
+              contentType: rendered.contentType ?? "video/mp4",
+              width: rendered.width,
+              height: rendered.height,
+              durationMs: rendered.durationMs,
+              provider: "local-render"
+            });
+            const nextData = {
+              ...renderData,
+              status: "completed",
+              assetId: asset.id
+            };
+            delete nextData.pendingTask;
+            delete nextData.pendingTaskAt;
+            delete nextData.error;
+            nodes.set(nodeId, { ...node, data: nextData });
+          } catch (error51) {
+            const nextData = {
+              ...renderData,
+              status: "failed",
+              error: error51 instanceof Error ? error51.message : String(error51)
+            };
+            delete nextData.pendingTask;
+            delete nextData.pendingTaskAt;
+            nodes.set(nodeId, { ...node, data: nextData });
+          }
+          changed = true;
+          continue;
+        }
         const kind = pendingKindForNode(node);
         if (!kind)
           continue;
@@ -37790,7 +38442,22 @@ function createLocalWorkflowProcessor(options) {
         try {
           const prompt = promptFromData(data, `Mock ${kind}`);
           const model = modelFromData(data, `mock-${kind}`);
-          const common = { taskId, prompt, model, modelParams: modelParams(data) };
+          const directReferenceUrls = stringList(data.referenceImageUrls);
+          const referenceImageKeys = kind === "image" ? [
+            ...stringList(data.referenceImageR2Keys),
+            ...await createLocalMetadataStore(options.dataDir).resolveStorageKeys(projectId, stringList(data.referenceImageAssetIds))
+          ] : [];
+          const referenceImageUrls = [
+            ...directReferenceUrls,
+            ...options.mediaBaseUrl ? referenceImageKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl, key)) : []
+          ];
+          const common = {
+            taskId,
+            prompt,
+            model,
+            modelParams: modelParams(data),
+            ...referenceImageUrls.length ? { referenceImageUrls } : {}
+          };
           if (kind === "text") {
             let generated2;
             try {
@@ -38580,6 +39247,7 @@ var PROVIDER_IDS = /* @__PURE__ */ new Set([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom"
 ]);
@@ -38598,7 +39266,8 @@ var UPSTREAM_IDS = /* @__PURE__ */ new Set([
   "minimax",
   "jimeng",
   "volcengine",
-  "elevenlabs"
+  "elevenlabs",
+  "suno"
 ]);
 var API_SHAPES = /* @__PURE__ */ new Set([
   "local-asr",
@@ -38615,7 +39284,8 @@ var API_SHAPES = /* @__PURE__ */ new Set([
   "minimax",
   "modelark",
   "dreamina-cli",
-  "elevenlabs"
+  "elevenlabs",
+  "suno"
 ]);
 function stringField(value) {
   return typeof value === "string" && value.trim() ? value.trim() : void 0;
@@ -38670,7 +39340,7 @@ function providerAccountKey(account) {
   return account.id ? `id:${account.id}` : providerAccountBaseKey(account);
 }
 function defaultUpstream(providerId) {
-  if (providerId === "fal" || providerId === "local" || providerId === "kie" || providerId === "replicate" || providerId === "kling" || providerId === "minimax" || providerId === "jimeng" || providerId === "volcengine" || providerId === "elevenlabs" || providerId === "mock") {
+  if (providerId === "fal" || providerId === "local" || providerId === "kie" || providerId === "replicate" || providerId === "kling" || providerId === "minimax" || providerId === "jimeng" || providerId === "volcengine" || providerId === "elevenlabs" || providerId === "suno" || providerId === "mock") {
     return providerId;
   }
   return void 0;
@@ -40732,6 +41402,7 @@ function purgeProjectFromState(state, projectId) {
 function toV1Project(project, state, assetMode = "preview") {
   return {
     id: project.id,
+    ownerId: project.ownerId,
     name: project.name,
     description: project.description,
     assets: state ? assetMode === "all" ? projectAssets(project, state) : projectPreviewAssets(project, state) : project.assets,
@@ -41648,7 +42319,8 @@ function displayProviderName(account) {
     minimax: "MiniMax",
     jimeng: "Dreamina",
     volcengine: "Volcengine",
-    elevenlabs: "ElevenLabs"
+    elevenlabs: "ElevenLabs",
+    suno: "Suno API"
   };
   if (names[account.providerId])
     return names[account.providerId];
@@ -71950,6 +72622,8 @@ function startLocalApiServer(options) {
   });
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
+    mediaBaseUrl: `http://127.0.0.1:${options.port}`,
+    timelineRenderer: options.timelineRenderer,
     textAgent: localAcp.runTextTask ? {
       generate: async (input) => {
         const result = await localAcp.runTextTask({

@@ -72,9 +72,11 @@ describe('Timeline zoom', () => {
     const labelColumn = container.querySelector('.timeline-workspace > div:first-child') as HTMLElement;
     const header = container.querySelector('[data-timeline-header]') as HTMLElement;
 
-    expect(labelColumn.style.borderRight).toBe('1px solid rgb(240, 237, 231)');
+    expect(labelColumn.style.borderRight).toBe(
+      '1px solid var(--clash-timeline-border-subtle, #f0ede7)',
+    );
     expect(labelColumn.style.background).toBe(header.style.backgroundColor);
-    expect(labelColumn.style.background).toBe('rgb(255, 254, 253)');
+    expect(labelColumn.style.background).toBe('var(--clash-warm-surface, #fffefd)');
     expect(container.querySelectorAll('[data-track-bubble-edge="label"]')).toHaveLength(0);
     expect(container.querySelectorAll('[data-track-bubble-edge="lane"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-track-label-divider]')).toHaveLength(2);
@@ -86,10 +88,10 @@ describe('Timeline zoom', () => {
     const editingCanvas = container.querySelector('[data-timeline-editing-canvas]') as HTMLElement;
 
     expect(ruler).not.toBeNull();
-    expect(ruler.style.background).toBe('rgb(255, 254, 253)');
-    expect(editingCanvas.style.background).toBe('rgb(255, 254, 253)');
+    expect(ruler.style.background).toBe('var(--clash-warm-surface, #fffefd)');
+    expect(editingCanvas.style.background).toBe('var(--clash-warm-surface, #fffefd)');
     expect((container.querySelector('[data-track-bubble-surface]') as HTMLElement).style.backgroundColor)
-      .toBe('rgb(251, 250, 247)');
+      .toBe('var(--clash-warm-page, #fbfaf7)');
   });
 
   it('keeps an empty primary lane mounted on a new Timeline', () => {

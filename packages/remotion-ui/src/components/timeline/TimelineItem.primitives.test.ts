@@ -2,13 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('TimelineItem primitives', () => {
-  it('routes item edit/delete controls through remotion-ui primitives', () => {
+  it('routes inline text editing through the remotion-ui input primitive', () => {
     const source = readFileSync(new URL('./TimelineItem.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain('../ui/controls');
     expect(source).toContain('<TimelineTextInput');
-    expect(source).toContain('<TimelineColorInput');
-    expect(source).toContain('<TimelineIconButton');
     expect(source).not.toContain('<input');
     expect(source).not.toContain('<motion.button');
   });

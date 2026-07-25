@@ -88733,6 +88733,7 @@ var ProviderSchema = z.enum([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom"
 ]);
@@ -88939,49 +88940,6 @@ var MODEL_CARD_DEFINITIONS = [
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ["text", "image"] }
   },
-  // ─── Image: Nano Banana 2 Edit (fal.ai) ─────────────────────
-  {
-    id: "nano-banana-2-edit",
-    name: "Nano Banana 2 Edit",
-    provider: "fal.ai",
-    availableProviders: ["fal"],
-    defaultProvider: "fal",
-    kind: "image",
-    defaultAspectRatio: "16:9",
-    description: "Nano Banana 2 image editing with one or more reference images.",
-    parameters: [
-      {
-        id: "aspect_ratio",
-        label: "Aspect Ratio",
-        type: "select",
-        options: NANO_BANANA_ASPECT_RATIOS.map((r2) => ({ label: r2.label, value: r2.value })),
-        defaultValue: "16:9"
-      },
-      {
-        id: "resolution",
-        label: "Resolution",
-        type: "select",
-        options: NANO_BANANA_RESOLUTIONS.map((s) => ({ label: s.label, value: s.value })),
-        defaultValue: "1K"
-      },
-      {
-        id: "count",
-        label: "Count",
-        type: "number",
-        min: 1,
-        max: 4,
-        step: 1,
-        defaultValue: 1,
-        description: "How many edited images to generate."
-      }
-    ],
-    defaultParams: {
-      aspect_ratio: "16:9",
-      resolution: "1K",
-      count: 1
-    },
-    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ["text", "image"] }
-  },
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
   {
     id: "gpt-image-2",
@@ -89065,6 +89023,60 @@ var MODEL_CARD_DEFINITIONS = [
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ["text", "image"] },
     maxRuntimeMs: 3 * 60 * 1e3
+  },
+  // ─── Image: Seedream 4.5 (fal.ai) ───────────────────────────
+  {
+    id: "seedream-4.5",
+    name: "Seedream 4.5",
+    provider: "ByteDance",
+    availableProviders: ["fal"],
+    defaultProvider: "fal",
+    kind: "image",
+    defaultAspectRatio: "1:1",
+    aspectRatioParam: "image_size",
+    description: "ByteDance Seedream 4.5 image generation and editing through fal.ai.",
+    parameters: [
+      {
+        id: "image_size",
+        label: "Size",
+        type: "select",
+        options: [
+          { label: "Auto 2K", value: "auto_2K" },
+          { label: "Auto 4K", value: "auto_4K" },
+          { label: "1:1", value: "square_hd" },
+          { label: "4:3", value: "landscape_4_3" },
+          { label: "16:9", value: "landscape_16_9" },
+          { label: "3:4", value: "portrait_4_3" },
+          { label: "9:16", value: "portrait_16_9" }
+        ],
+        defaultValue: "auto_2K"
+      },
+      {
+        id: "count",
+        label: "Count",
+        type: "number",
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1
+      },
+      {
+        id: "max_images",
+        label: "Images per generation",
+        type: "number",
+        min: 1,
+        max: 4,
+        step: 1,
+        defaultValue: 1
+      }
+    ],
+    defaultParams: {
+      image_size: "auto_2K",
+      count: 1,
+      max_images: 1
+    },
+    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ["text", "image"] },
+    maxRuntimeMs: 4 * 60 * 1e3
   },
   // ─── Image: FLUX Schnell (fal.ai) ────────────────────────────
   {
@@ -89495,45 +89507,6 @@ var MODEL_CARD_DEFINITIONS = [
       safety_tolerance: "2"
     },
     input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ["text", "image"] }
-  },
-  // ─── Image: FLUX 2 Pro Edit (fal.ai) ─────────────────────────
-  {
-    id: "flux-2-pro-edit",
-    name: "FLUX 2 Pro Edit",
-    provider: "fal.ai",
-    availableProviders: ["fal"],
-    defaultProvider: "fal",
-    kind: "image",
-    defaultAspectRatio: "4:3",
-    aspectRatioParam: "image_size",
-    description: "FLUX 2 Pro image editing with reference images.",
-    parameters: [
-      {
-        id: "image_size",
-        label: "Aspect Ratio",
-        type: "select",
-        options: FLUX2_ASPECT_RATIOS.map((r2) => ({ label: r2.label, value: r2.value })),
-        defaultValue: "landscape_4_3"
-      },
-      {
-        id: "safety_tolerance",
-        label: "Safety Tolerance",
-        type: "select",
-        options: [
-          { label: "Strict (1)", value: "1" },
-          { label: "Moderate (2)", value: "2" },
-          { label: "Balanced (3)", value: "3" },
-          { label: "Relaxed (4)", value: "4" },
-          { label: "Permissive (5)", value: "5" }
-        ],
-        defaultValue: "2"
-      }
-    ],
-    defaultParams: {
-      image_size: "landscape_4_3",
-      safety_tolerance: "2"
-    },
-    input: { requiresPrompt: true, inputMode: { images: { min: 1, max: 8 } }, promptModalities: ["text", "image"] }
   },
   // ─── Image: Nano Banana Pro (Google) ────────────────────────
   {
@@ -90069,6 +90042,22 @@ var MODEL_CARD_DEFINITIONS = [
   },
   // ─── Audio ───────────────────────────────────────────────────
   {
+    id: "gemini-3.1-flash-tts",
+    name: "Gemini 3.1 Flash TTS",
+    provider: "Google",
+    availableProviders: ["official"],
+    defaultProvider: "official",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Google Gemini TTS preview for low-latency controllable single-speaker audio.",
+    parameters: GEMINI_TTS_PARAMETERS,
+    defaultParams: {
+      voice_name: "Kore"
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+    maxRuntimeMs: 5 * 60 * 1e3
+  },
+  {
     id: "kokoro-82m-tts",
     name: "Kokoro 82M",
     provider: "Hexgrad",
@@ -90163,26 +90152,10 @@ var MODEL_CARD_DEFINITIONS = [
     maxRuntimeMs: 2 * 60 * 1e3
   },
   {
-    id: "gemini-3.1-flash-tts",
-    name: "Gemini 3.1 Flash TTS",
-    provider: "Google",
-    availableProviders: ["official", "fal"],
-    defaultProvider: "official",
-    kind: "audio",
-    defaultAspectRatio: "1:1",
-    description: "Google Gemini TTS preview for low-latency controllable single-speaker audio.",
-    parameters: GEMINI_TTS_PARAMETERS,
-    defaultParams: {
-      voice_name: "Kore"
-    },
-    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
-    maxRuntimeMs: 5 * 60 * 1e3
-  },
-  {
     id: "gemini-2.5-pro-tts",
     name: "Gemini 2.5 Pro TTS",
     provider: "Google",
-    availableProviders: ["official", "fal"],
+    availableProviders: ["official"],
     defaultProvider: "official",
     kind: "audio",
     defaultAspectRatio: "1:1",
@@ -90245,6 +90218,45 @@ var MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: {} }
   },
   {
+    id: "suno-v5.5",
+    name: "Suno V5.5",
+    provider: "Suno API",
+    availableProviders: ["suno"],
+    defaultProvider: "suno",
+    kind: "audio",
+    defaultAspectRatio: "1:1",
+    description: "Generate complete songs with Suno V5.5 through SunoAPI.org.",
+    parameters: [
+      {
+        id: "instrumental",
+        label: "Instrumental",
+        type: "boolean",
+        defaultValue: false
+      },
+      {
+        id: "style",
+        label: "Style",
+        type: "text",
+        placeholder: "Optional genre, mood, instrumentation, or vocal style",
+        defaultValue: ""
+      },
+      {
+        id: "title",
+        label: "Title",
+        type: "text",
+        placeholder: "Optional song title",
+        defaultValue: ""
+      }
+    ],
+    defaultParams: {
+      instrumental: false,
+      style: "",
+      title: ""
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+    maxRuntimeMs: 10 * 60 * 1e3
+  },
+  {
     id: "elevenlabs-tts",
     name: "ElevenLabs TTS",
     provider: "ElevenLabs",
@@ -90271,11 +90283,11 @@ var MODEL_CARD_DEFINITIONS = [
         label: "Model",
         type: "select",
         options: [
+          { label: "Eleven v3", value: "eleven_v3" },
           { label: "Multilingual v2", value: "eleven_multilingual_v2" },
-          { label: "English v2", value: "eleven_monolingual_v1" },
-          { label: "Turbo v2", value: "eleven_turbo_v2" }
+          { label: "Flash v2.5", value: "eleven_flash_v2_5" }
         ],
-        defaultValue: "eleven_multilingual_v2"
+        defaultValue: "eleven_v3"
       },
       {
         id: "stability",
@@ -90300,7 +90312,7 @@ var MODEL_CARD_DEFINITIONS = [
     ],
     defaultParams: {
       voice_id: "rachel",
-      model_id: "eleven_multilingual_v2",
+      model_id: "eleven_v3",
       stability: 0.5,
       similarity_boost: 0.75
     },
@@ -90320,17 +90332,14 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["flux-dev", "fal", "fal", "fal", "fal-ai/flux/dev", 20, { credentials: ["apiKey"] }],
   ["gpt-image-2", "fal", "fal", "fal", "openai/gpt-image-2", 20, { credentials: ["apiKey"] }],
   ["nano-banana-2", "fal", "fal", "fal", "fal-ai/nano-banana-2", 20, { credentials: ["apiKey"] }],
-  ["nano-banana-2-edit", "fal", "fal", "fal", "fal-ai/nano-banana-2/edit", 20, { credentials: ["apiKey"] }],
+  ["seedream-4.5", "fal", "fal", "fal", "fal-ai/bytedance/seedream/v4.5/text-to-image", 20, { credentials: ["apiKey"] }],
   ["recraft-v4", "fal", "fal", "fal", "fal-ai/recraft/v4/pro/text-to-image", 20, { credentials: ["apiKey"] }],
   ["flux-2-pro", "fal", "fal", "fal", "fal-ai/flux-2-pro", 20, { credentials: ["apiKey"] }],
-  ["flux-2-pro-edit", "fal", "fal", "fal", "fal-ai/flux-2-pro/edit", 20, { credentials: ["apiKey"] }],
   ["sora-2", "fal", "fal", "fal", "fal-ai/sora-2/text-to-video", 20, { credentials: ["apiKey"] }],
   ["kling-3", "fal", "fal", "fal", "fal-ai/kling-video/v3/pro/image-to-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-text", "fal", "fal", "fal", "bytedance/seedance-2.0/text-to-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-startend", "fal", "fal", "fal", "bytedance/seedance-2.0/image-to-video", 20, { credentials: ["apiKey"] }],
   ["seedance-2-ref", "fal", "fal", "fal", "bytedance/seedance-2.0/reference-to-video", 20, { credentials: ["apiKey"] }],
-  ["gemini-3.1-flash-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 30, { credentials: ["apiKey"] }],
-  ["gemini-2.5-pro-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 30, { credentials: ["apiKey"] }],
   ["minimax-tts", "fal", "fal", "fal", "fal-ai/minimax/speech-02-hd", 20, { credentials: ["apiKey"] }],
   ["nano-banana-2", "kie", "kie", "kie", "nano-banana-2", 25, { credentials: ["apiKey"] }],
   ["gpt-image-2", "kie", "kie", "kie", "gpt-image-2-text-to-image", 25, { credentials: ["apiKey"] }],
@@ -90376,7 +90385,8 @@ var MODEL_PROVIDER_IMPLEMENTATION_ROWS = [
   ["seedance-2-startend", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-pro", 9, { credentials: ["apiKey"] }],
   ["seedance-2-ref", "volcengine", "volcengine", "modelark", "doubao-seedance-2-0-pro", 9, { credentials: ["apiKey"] }],
   ["minimax-tts", "minimax", "minimax", "minimax", "speech-02-hd", 8, { credentials: ["apiKey"] }],
-  ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_multilingual_v2", 8, { credentials: ["apiKey"] }]
+  ["suno-v5.5", "suno", "suno", "suno", "V5_5", 8, { credentials: ["apiKey", "callbackUrl"] }],
+  ["elevenlabs-tts", "elevenlabs", "elevenlabs", "elevenlabs", "eleven_v3", 8, { credentials: ["apiKey"] }]
 ];
 function implementationFromRow(row) {
   const [, providerId, upstreamId, apiShape, upstreamModel, priority, options] = row;
@@ -90411,6 +90421,12 @@ for (const model of MODEL_CARDS) {
   for (const alias of model.aliases) {
     MODEL_ALIAS_TO_ID.set(alias, model.id);
   }
+}
+function normalizeModelId(modelId) {
+  const trimmed = typeof modelId === "string" ? modelId.trim() : "";
+  if (!trimmed) return null;
+  if (MODEL_IDS.has(trimmed)) return trimmed;
+  return MODEL_ALIAS_TO_ID.get(trimmed) ?? null;
 }
 var MOCK_MODEL_CARDS = z.array(ModelCardSchema).parse([
   {
@@ -90511,6 +90527,116 @@ function extractAssetRefs(parts) {
   return parts.filter(
     (p2) => p2.type === "asset_ref" && !!p2.nodeId
   ).map((p2) => ({ nodeId: p2.nodeId, label: p2.label }));
+}
+var DirectorReferenceAspectRatioSchema = z.enum([
+  "16:9",
+  "9:16",
+  "4:3",
+  "3:4",
+  "1:1"
+]);
+var DirectorReferenceVector3Schema = z.tuple([
+  z.number(),
+  z.number(),
+  z.number()
+]);
+var DirectorReferenceCameraOpticsSchema = z.object({
+  projection: z.enum(["perspective", "orthographic"]),
+  focalLengthMm: z.number().positive(),
+  sensorWidthMm: z.number().positive(),
+  sensorHeightMm: z.number().positive(),
+  focusDistanceM: z.number().positive(),
+  fStop: z.number().positive(),
+  shutterAngleDegrees: z.number().positive(),
+  iso: z.number().positive(),
+  nearClipM: z.number().positive(),
+  farClipM: z.number().positive()
+});
+var DirectorReferenceCameraSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  position: DirectorReferenceVector3Schema,
+  rotation: DirectorReferenceVector3Schema,
+  fov: z.number().positive(),
+  targetObjectId: z.string().min(1).optional(),
+  targetObjectIds: z.array(z.string().min(1)).optional(),
+  targetOffset: DirectorReferenceVector3Schema.optional(),
+  optics: DirectorReferenceCameraOpticsSchema.optional()
+});
+var DirectorReferenceShotSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cameraId: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  sequenceStartTime: z.number().nonnegative().optional(),
+  durationSeconds: z.number().positive(),
+  aspectRatio: DirectorReferenceAspectRatioSchema,
+  transition: z.enum(["cut", "dissolve"]).default("cut"),
+  storyBeatIds: z.array(z.string().min(1)).optional(),
+  actionClipIds: z.array(z.string().min(1)).optional(),
+  cameraMove: z.object({
+    preset: z.string().min(1),
+    easing: z.enum(["linear", "ease-in", "ease-out", "ease-in-out"])
+  }).optional()
+});
+var DirectorReferenceStillSchema = z.object({
+  assetId: z.string().min(1),
+  cameraId: z.string().min(1),
+  shotId: z.string().min(1),
+  aspectRatio: DirectorReferenceAspectRatioSchema,
+  stageRevisionId: z.string().min(1),
+  timeSeconds: z.number().nonnegative().optional(),
+  sequenceTimeSeconds: z.number().nonnegative().optional(),
+  src: z.string().url().optional(),
+  previewUrl: z.string().url().optional()
+});
+var DirectorReferenceVideoSchema = z.object({
+  assetId: z.string().min(1),
+  src: z.string().url().optional(),
+  previewUrl: z.string().url().optional(),
+  mimeType: z.string().min(1)
+});
+var DirectorReferencePacketSchema = z.object({
+  schemaVersion: z.literal(1),
+  stageId: z.string().min(1),
+  stageRevisionId: z.string().min(1),
+  exportedAt: z.string().datetime(),
+  aspectRatio: DirectorReferenceAspectRatioSchema,
+  durationSeconds: z.number().positive(),
+  fps: z.number().int().positive(),
+  scope: z.object({
+    kind: z.enum(["sequence", "shot", "shot-selection"]),
+    selectedShotIds: z.array(z.string().min(1)).min(1)
+  }).optional(),
+  cameraIds: z.array(z.string().min(1)).min(1),
+  cameraSpec: z.object({
+    cameras: z.array(DirectorReferenceCameraSchema)
+  }).optional(),
+  referenceVideo: DirectorReferenceVideoSchema,
+  referenceStills: z.array(DirectorReferenceStillSchema),
+  shotSpec: z.object({
+    shots: z.array(DirectorReferenceShotSchema)
+  })
+});
+function directorReferencePromptContext(packet) {
+  if (packet.shotSpec.shots.length === 0) return "";
+  const shotLines = [...packet.shotSpec.shots].sort((left, right) => left.startTime - right.startTime || left.id.localeCompare(right.id)).map((shot, index) => {
+    const endTime = shot.startTime + shot.durationSeconds;
+    const transition = shot.transition === "dissolve" ? "Dissolve" : "Cut";
+    const move = shot.cameraMove ? ` \xB7 ${shot.cameraMove.preset} / ${shot.cameraMove.easing}` : "";
+    const camera = packet.cameraSpec?.cameras.find(
+      (candidate) => candidate.id === shot.cameraId
+    );
+    const cameraSummary = camera ? ` \xB7 ${camera.name}${camera.optics ? ` ${camera.optics.focalLengthMm.toFixed(0)}mm` : ""}` : "";
+    return `${index + 1}. ${shot.name} \xB7 ${shot.startTime.toFixed(2)}\u2013${endTime.toFixed(2)}s \xB7 ${transition}${move}${cameraSummary}`;
+  });
+  return [
+    "Director shot plan",
+    `Format: ${packet.aspectRatio} \xB7 ${packet.durationSeconds.toFixed(2)}s \xB7 ${packet.fps}fps`,
+    `Stage revision: ${packet.stageRevisionId}`,
+    ...shotLines,
+    "Preserve this shot order, timing, transitions, blocking, and camera motion while following the reference media."
+  ].join("\n");
 }
 var NO_BOUND = { accepts: false, min: 0, max: 0 };
 function capability(card) {
@@ -90640,6 +90766,54 @@ function validateRefs(cardOrCap, counts, opts = {}) {
   }
   return null;
 }
+function referenceModality(node) {
+  if (node.type === "text" || node.type === "image" || node.type === "video" || node.type === "audio") {
+    return node.type;
+  }
+  if (node.type === "director-stage") return "video";
+  return void 0;
+}
+function referenceAssetId(node) {
+  const packet = node.type === "director-stage" ? directorReferencePackets(node)[0] : void 0;
+  const value = node.type === "director-stage" ? packet?.referenceVideo.assetId ?? node.data?.outputVideoAssetId : node.data?.assetId;
+  return typeof value === "string" && value.trim() ? value : void 0;
+}
+function directorReferencePacket(node) {
+  return directorReferencePackets(node)[0];
+}
+function directorReferencePackets(node) {
+  if (node.type !== "director-stage") return [];
+  const shotPackets = Array.isArray(node.data?.directorShotReferencePackets) ? node.data.directorShotReferencePackets.flatMap((packet) => {
+    const parsed2 = DirectorReferencePacketSchema.safeParse(packet);
+    return parsed2.success ? [parsed2.data] : [];
+  }) : [];
+  if (shotPackets.length > 0) return shotPackets;
+  const parsed = DirectorReferencePacketSchema.safeParse(
+    node.data?.directorReferencePacket
+  );
+  return parsed.success ? [parsed.data] : [];
+}
+function hasDirectorReferenceOutput(node) {
+  if (node.type !== "director-stage") return false;
+  const packet = directorReferencePacket(node);
+  if (packet?.referenceVideo.assetId) return true;
+  return Boolean(
+    typeof node.data?.outputVideoAssetId === "string" && node.data.outputVideoAssetId.trim()
+  );
+}
+function selectDirectorReferenceStillAssetIds(packet, maximum) {
+  const stills = [...packet.referenceStills].sort(
+    (left, right) => (left.timeSeconds ?? 0) - (right.timeSeconds ?? 0) || left.assetId.localeCompare(right.assetId)
+  );
+  if (stills.length <= maximum) return stills.map((still) => still.assetId);
+  if (maximum <= 0) return [];
+  if (maximum === 1) return [stills[0].assetId];
+  const indexes = Array.from(
+    { length: maximum },
+    (_2, index) => Math.round(index * (stills.length - 1) / (maximum - 1))
+  );
+  return [...new Set(indexes.map((index) => stills[index].assetId))];
+}
 function partitionRefs(refs, cardOrCap) {
   const cap = typeof cardOrCap.requiresPrompt === "boolean" ? cardOrCap : capability(cardOrCap);
   const out = {
@@ -90649,18 +90823,32 @@ function partitionRefs(refs, cardOrCap) {
     audioAssetIds: []
   };
   for (const n of refs) {
-    if (n.type === "text" && cap.ref.text.accepts) {
+    if (n.type === "director-stage") {
+      const packet = directorReferencePacket(n);
+      if (packet) {
+        if (cap.ref.video.accepts) {
+          out.videoAssetIds.push(packet.referenceVideo.assetId);
+        } else if (cap.ref.image.accepts) {
+          out.imageAssetIds.push(
+            ...selectDirectorReferenceStillAssetIds(packet, cap.ref.image.max)
+          );
+        }
+        continue;
+      }
+    }
+    const modality = referenceModality(n);
+    if (modality === "text" && cap.ref.text.accepts) {
       const text = normalizePromptInput(n.data?.content ?? n.data?.prompt ?? n.data?.label).trim();
       if (text) out.texts.push(text);
       continue;
     }
-    const aid = typeof n.data?.assetId === "string" ? n.data.assetId : void 0;
+    const aid = referenceAssetId(n);
     if (!aid) continue;
-    if (n.type === "image" && cap.ref.image.accepts) {
+    if (modality === "image" && cap.ref.image.accepts) {
       out.imageAssetIds.push(aid);
-    } else if (n.type === "video" && cap.ref.video.accepts) {
+    } else if (modality === "video" && cap.ref.video.accepts) {
       out.videoAssetIds.push(aid);
-    } else if (n.type === "audio" && cap.ref.audio.accepts) {
+    } else if (modality === "audio" && cap.ref.audio.accepts) {
       out.audioAssetIds.push(aid);
     }
   }
@@ -90825,6 +91013,27 @@ var NodeDataSchema = z.object({
   poster: z.string().optional(),
   status: NodeStatusSchema.optional(),
   assetId: z.string().optional(),
+  stageId: z.string().optional(),
+  /** Latest registered reference-video output from a Director Stage node. */
+  outputVideoAssetId: z.string().optional(),
+  outputVideoSrc: z.string().optional(),
+  outputVideoPreviewUrl: z.string().optional(),
+  outputVideoDurationSeconds: z.number().optional(),
+  outputVideoFps: z.number().optional(),
+  outputVideoStageRevisionId: z.string().optional(),
+  /** Canonical, revision-pinned Director output for downstream generation. */
+  directorReferencePacket: DirectorReferencePacketSchema.optional(),
+  /** Ordered, individually rendered Shot packets selected for batch generation. */
+  directorShotReferencePackets: z.array(DirectorReferencePacketSchema).optional(),
+  selectedDirectorShotIds: z.array(z.string().min(1)).optional(),
+  /** Per-output lineage back to the exact Stage revision and Shot. */
+  sourceDirectorStageId: z.string().min(1).optional(),
+  sourceDirectorStageRevisionId: z.string().min(1).optional(),
+  sourceDirectorStageShotId: z.string().min(1).optional(),
+  sourceDirectorStageShotIds: z.array(z.string().min(1)).optional(),
+  sourceDirectorStageCameraId: z.string().min(1).optional(),
+  /** Shared Canvas group identity for independently regeneratable Shot outputs. */
+  directorShotGroupId: z.string().min(1).optional(),
   taskId: z.string().optional(),
   actionType: z.string().optional(),
   upstreamNodeIds: z.array(z.string()).optional(),
@@ -91001,18 +91210,44 @@ function buildGenerationPayload(input) {
   const cap = input.config.kind === "model" ? input.config.modelCard ? capability(input.config.modelCard) : void 0 : capabilityFromCustom(input.config.customDef);
   const attachedRefCounts = input.refNodes.reduce(
     (counts, node) => {
-      if (node.type === "text" || node.type === "image" || node.type === "video" || node.type === "audio") {
-        counts[node.type] += 1;
+      if (node.type === "director-stage" && cap) {
+        const adapted = partitionRefs([node], cap);
+        const adaptedCount = adapted.imageAssetIds.length + adapted.videoAssetIds.length + adapted.audioAssetIds.length;
+        if (adaptedCount > 0) {
+          counts.image += adapted.imageAssetIds.length;
+          counts.video += adapted.videoAssetIds.length;
+          counts.audio += adapted.audioAssetIds.length;
+          return counts;
+        }
+      }
+      const modality = referenceModality(node);
+      if (modality) {
+        counts[modality] += 1;
       }
       return counts;
     },
     { text: 0, image: 0, video: 0, audio: 0 }
   );
   const attachedRefValidationError = cap ? validateRefs(cap, attachedRefCounts) : null;
+  const unexportedDirectorStageError = input.refNodes.some(
+    (node) => node.type === "director-stage" && !hasDirectorReferenceOutput(node)
+  ) ? "Director Stage has no reference video yet. Export the shot before running generation." : null;
   const partition = cap ? partitionRefs(input.refNodes, cap) : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
   const composedPrompt = composePromptWithTextRefs(input.prompt, partition.texts);
-  const cleanedPrompt = extractPromptText(parsePromptParts(composedPrompt));
-  const validationError = attachedRefValidationError ?? (cap ? validateGenerationInput({
+  const directorPromptContexts = cap?.promptModalities.includes("text") ? [...new Map(
+    input.refNodes.map((node) => directorReferencePacket(node)).filter(
+      (packet) => Boolean(packet && packet.shotSpec.shots.length > 0)
+    ).map((packet) => [
+      `${packet.stageId}:${packet.stageRevisionId}`,
+      directorReferencePromptContext(packet)
+    ])
+  ).values()] : [];
+  const promptWithDirectorPlan = [
+    composedPrompt,
+    ...directorPromptContexts
+  ].filter((part) => part.trim()).join("\n\n");
+  const cleanedPrompt = extractPromptText(parsePromptParts(promptWithDirectorPlan));
+  const validationError = unexportedDirectorStageError ?? attachedRefValidationError ?? (cap ? validateGenerationInput({
     prompt: cleanedPrompt,
     referenceTextSnippets: partition.texts,
     referenceImageAssetIds: partition.imageAssetIds,
@@ -92384,8 +92619,17 @@ var Canvas = class {
       const customActionParams = nodeData.customActionParams || {};
       config2 = { kind: "custom", customDef, customActionParams };
     } else {
-      const modelId = nodeData.modelId || nodeData.model || "";
+      const requestedModelId = nodeData.modelId || nodeData.model || "";
+      const modelId = normalizeModelId(requestedModelId) ?? requestedModelId;
       const modelCard = MODEL_CARDS.find((c) => c.id === modelId);
+      if (!modelCard) {
+        return {
+          assetNodeId: "",
+          assetNodeType: "",
+          position: { x: 0, y: 0 },
+          error: `Unknown model: ${requestedModelId || "(missing)"}`
+        };
+      }
       const modelParams = nodeData.modelParams || {};
       config2 = { kind: "model", modelCard, modelParams };
     }
@@ -92408,7 +92652,7 @@ var Canvas = class {
         });
       }
     }
-    const configId = config2.kind === "model" ? nodeData.modelId || nodeData.model || "" : config2.customDef.id;
+    const configId = config2.kind === "model" ? config2.modelCard?.id ?? (nodeData.modelId || nodeData.model || "") : config2.customDef.id;
     const { pendingInput, validationError } = buildGenerationPayload({
       prompt,
       refNodes,
@@ -92687,7 +92931,12 @@ var DirectorStageObjectSchema = z.discriminatedUnion("kind", [
     kind: z.literal("model"),
     model: z.object({
       assetId: z.string().min(1),
-      sourceUrl: z.string().url().optional()
+      sourceUrl: z.string().url().optional(),
+      animation: z.object({
+        jointCount: z.number().int().positive(),
+        clipNames: z.array(z.string().min(1)).min(1),
+        actionMap: z.record(z.string().min(1), z.string().min(1))
+      }).optional()
     })
   })
 ]);
@@ -92698,7 +92947,23 @@ var DirectorStageCameraSchema = z.object({
   rotation: DirectorStageVector3Schema,
   fov: z.number().min(1).max(179),
   targetObjectId: z.string().min(1).optional(),
-  targetOffset: DirectorStageVector3Schema.optional()
+  targetObjectIds: z.array(z.string().min(1)).min(1).optional(),
+  targetOffset: DirectorStageVector3Schema.optional(),
+  optics: z.object({
+    projection: z.enum(["perspective", "orthographic"]),
+    focalLengthMm: z.number().positive().max(1e3),
+    sensorWidthMm: z.number().positive().max(1e3),
+    sensorHeightMm: z.number().positive().max(1e3),
+    focusDistanceM: z.number().nonnegative(),
+    fStop: z.number().positive().max(128),
+    shutterAngleDegrees: z.number().positive().max(360),
+    iso: z.number().positive().max(1e6),
+    nearClipM: z.number().positive(),
+    farClipM: z.number().positive()
+  }).refine(
+    (optics) => optics.farClipM > optics.nearClipM,
+    { message: "Camera far clip must be greater than near clip" }
+  ).optional()
 });
 var DirectorStageAspectRatioSchema = z.enum([
   "16:9",
@@ -92711,10 +92976,133 @@ var DirectorStageShotSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   cameraId: z.string().min(1),
+  sequenceShotId: z.string().min(1).optional(),
   assetId: z.string().min(1),
   aspectRatio: DirectorStageAspectRatioSchema,
   stageRevisionId: z.string().min(1),
-  createdAt: z.string().datetime()
+  createdAt: z.string().datetime(),
+  timeSeconds: z.number().nonnegative().optional()
+});
+var DirectorStageCameraRigPathSchema = z.object({
+  interpolation: z.enum(["linear", "catmull-rom"]),
+  points: z.array(DirectorStageVector3Schema).min(2)
+});
+var DirectorStageCameraRigOrientationSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("fixed-target"),
+    target: DirectorStageVector3Schema
+  }),
+  z.object({
+    mode: z.literal("target-object"),
+    objectId: z.string().min(1),
+    offset: DirectorStageVector3Schema.optional(),
+    sampling: z.enum(["shot-start", "live"]).default("shot-start")
+  }),
+  z.object({
+    mode: z.literal("keyed"),
+    startRotation: DirectorStageVector3Schema,
+    endRotation: DirectorStageVector3Schema
+  })
+]);
+var DirectorStageCameraRigLensSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("locked"),
+    focalLengthMm: z.number().positive().max(1e3)
+  }),
+  z.object({
+    mode: z.literal("animated"),
+    startFocalLengthMm: z.number().positive().max(1e3),
+    endFocalLengthMm: z.number().positive().max(1e3)
+  })
+]);
+var DirectorStageCameraRigSchema = z.object({
+  kind: z.enum(["dolly", "truck", "pedestal", "pan", "tilt", "orbit", "crane"]),
+  settleInSeconds: z.number().nonnegative(),
+  settleOutSeconds: z.number().nonnegative(),
+  path: DirectorStageCameraRigPathSchema.optional(),
+  orbit: z.object({
+    pivot: DirectorStageVector3Schema,
+    radius: z.number().positive(),
+    height: z.number().finite(),
+    startAngleDegrees: z.number().finite(),
+    endAngleDegrees: z.number().finite()
+  }).optional(),
+  orientation: DirectorStageCameraRigOrientationSchema,
+  lens: DirectorStageCameraRigLensSchema,
+  maxAngularVelocityDegPerSecond: z.number().positive().optional(),
+  maxAngularAccelerationDegPerSecondSquared: z.number().positive().optional()
+}).superRefine((rig, context) => {
+  if (rig.kind === "orbit" && !rig.orbit) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["orbit"],
+      message: "Orbit camera rigs require physical orbit parameters"
+    });
+  } else if (rig.kind !== "orbit" && !rig.path) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["path"],
+      message: "Non-orbit camera rigs require a camera path"
+    });
+  }
+});
+var DirectorStageShotCompositionSchema = z.object({
+  primarySubjectId: z.string().min(1),
+  secondarySubjectIds: z.array(z.string().min(1)).optional(),
+  headroomRatio: z.number().min(0).max(0.5),
+  leadRoomRatio: z.number().min(0).max(0.5),
+  minimumCameraDistanceM: z.number().positive(),
+  minimumSubjectSeparationM: z.number().nonnegative(),
+  axis: z.object({
+    fromObjectId: z.string().min(1),
+    toObjectId: z.string().min(1),
+    cameraSide: z.enum(["left", "right"])
+  }).optional()
+});
+var DirectorStageSequenceShotSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cameraId: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  durationSeconds: z.number().positive(),
+  aspectRatio: DirectorStageAspectRatioSchema,
+  transition: z.enum(["cut", "dissolve"]).default("cut"),
+  storyBeatIds: z.array(z.string().min(1)).optional(),
+  actionClipIds: z.array(z.string().min(1)).optional(),
+  cameraMove: z.object({
+    preset: z.string().min(1),
+    easing: z.enum(["linear", "ease-in", "ease-out", "ease-in-out"]),
+    rig: DirectorStageCameraRigSchema.optional()
+  }).optional(),
+  composition: DirectorStageShotCompositionSchema.optional()
+});
+var DirectorStageSignedAxisSchema = z.enum([
+  "+X",
+  "-X",
+  "+Y",
+  "-Y",
+  "+Z",
+  "-Z"
+]);
+var DirectorStageMotionAssetSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  assetId: z.string().min(1),
+  sourceFormat: z.enum(["gltf", "glb", "fbx", "bvh"]),
+  clipName: z.string().min(1),
+  durationSeconds: z.number().positive().optional(),
+  sourceRig: z.object({
+    profileId: z.string().min(1),
+    skeletonType: z.enum(["biped", "quadruped", "other"]),
+    restPose: z.enum(["t-pose", "a-pose", "unknown"]),
+    upAxis: DirectorStageSignedAxisSchema,
+    forwardAxis: DirectorStageSignedAxisSchema,
+    metersPerUnit: z.number().positive(),
+    rootBone: z.string().min(1),
+    hipsBone: z.string().min(1).optional(),
+    boneMap: z.record(z.string().min(1), z.string().min(1)).optional()
+  }),
+  tags: z.array(z.string().min(1)).optional()
 });
 var DirectorStageAnimationKeyframeSchema = z.object({
   id: z.string().min(1),
@@ -92729,7 +93117,10 @@ var DirectorStageAnimationTrackSchema = z.object({
     "position",
     "rotation",
     "scale",
-    "fov"
+    "fov",
+    "focalLengthMm",
+    "focusDistanceM",
+    "fStop"
   ]),
   keyframes: z.array(DirectorStageAnimationKeyframeSchema)
 });
@@ -92744,7 +93135,18 @@ var DirectorStageActionNameSchema = z.enum([
   "point",
   "think",
   "hands-up",
-  "ride"
+  "interact",
+  "ride",
+  "talk",
+  "dance",
+  "jump",
+  "roll",
+  "pickup",
+  "push",
+  "punch",
+  "swim",
+  "drive",
+  "death"
 ]);
 var DirectorStageActionLayerSchema = z.enum([
   "full-body",
@@ -92759,7 +93161,34 @@ var DirectorStageActionClipSchema = z.object({
   durationSeconds: z.number().positive(),
   blendInSeconds: z.number().nonnegative().default(0.2),
   blendOutSeconds: z.number().nonnegative().default(0.2),
-  playbackRate: z.number().positive().default(1)
+  playbackRate: z.number().positive().default(1),
+  motionAssetId: z.string().min(1).optional(),
+  sourceStartSeconds: z.number().nonnegative().optional(),
+  sourceDurationSeconds: z.number().positive().optional(),
+  loopMode: z.enum(["once", "repeat", "hold"]).optional(),
+  rootMotionMode: z.enum(["apply", "in-place", "extract"]).optional(),
+  retargeting: z.object({
+    mode: z.enum(["direct", "humanoid"]),
+    targetRigProfileId: z.string().min(1)
+  }).optional()
+});
+var DirectorStageStoryBeatSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  durationSeconds: z.number().positive(),
+  participantIds: z.array(z.string().min(1)).min(1),
+  dialogue: z.object({
+    speakerId: z.string().min(1),
+    text: z.string().min(1)
+  }).optional()
+});
+var DirectorStageCameraCueSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  cameraId: z.string().min(1),
+  startTime: z.number().nonnegative(),
+  durationSeconds: z.number().positive()
 });
 var DirectorStageWorkingVolumePresetSchema = z.enum([
   "compact",
@@ -92804,12 +93233,16 @@ var DirectorStageStateSchema = z.object({
   objects: z.array(DirectorStageObjectSchema),
   cameras: z.array(DirectorStageCameraSchema),
   shots: z.array(DirectorStageShotSchema),
+  shotSequence: z.array(DirectorStageSequenceShotSchema).optional(),
+  motionAssets: z.array(DirectorStageMotionAssetSchema).optional(),
   activeCameraId: z.string().min(1).optional(),
   animation: z.object({
     durationSeconds: z.number().positive(),
     fps: z.number().int().positive(),
     tracks: z.array(DirectorStageAnimationTrackSchema),
-    actionClips: z.array(DirectorStageActionClipSchema).optional()
+    actionClips: z.array(DirectorStageActionClipSchema).optional(),
+    storyBeats: z.array(DirectorStageStoryBeatSchema).optional(),
+    cameraCues: z.array(DirectorStageCameraCueSchema).optional()
   }).optional()
 });
 function createDefaultDirectorStageState() {
@@ -93232,13 +93665,24 @@ function applyDirectorStageCommand(state, command) {
       return detached;
     });
     next.cameras = next.cameras.map((camera) => {
-      if (camera.targetObjectId !== command.objectId) return camera;
+      const remainingTargetObjectIds = camera.targetObjectIds?.filter(
+        (targetId) => targetId !== command.objectId
+      );
+      if (camera.targetObjectId !== command.objectId && remainingTargetObjectIds?.length === camera.targetObjectIds?.length) {
+        return camera;
+      }
       const {
         targetObjectId: _targetObjectId,
+        targetObjectIds: _targetObjectIds,
         targetOffset: _targetOffset,
         ...unbound
       } = camera;
-      return unbound;
+      return {
+        ...unbound,
+        ...camera.targetObjectId !== command.objectId ? { targetObjectId: camera.targetObjectId } : {},
+        ...remainingTargetObjectIds?.length ? { targetObjectIds: remainingTargetObjectIds } : {},
+        ...camera.targetObjectId !== command.objectId || remainingTargetObjectIds?.length ? { targetOffset: camera.targetOffset } : {}
+      };
     });
     if (next.animation) {
       next.animation.tracks = next.animation.tracks.filter(
@@ -93247,6 +93691,12 @@ function applyDirectorStageCommand(state, command) {
       next.animation.actionClips = next.animation.actionClips?.filter(
         (clip) => clip.targetId !== command.objectId
       );
+      next.animation.storyBeats = next.animation.storyBeats?.filter((beat) => beat.dialogue?.speakerId !== command.objectId).map((beat) => ({
+        ...beat,
+        participantIds: beat.participantIds.filter(
+          (participantId) => participantId !== command.objectId
+        )
+      })).filter((beat) => beat.participantIds.length > 0);
     }
   }
   if (command.op === "camera.add") {
@@ -93261,6 +93711,15 @@ function applyDirectorStageCommand(state, command) {
       return {
         ok: false,
         error: `Camera ${camera.data.id} targets missing object ${camera.data.targetObjectId}`
+      };
+    }
+    const missingGroupTarget = camera.data.targetObjectIds?.find(
+      (targetId) => !next.objects.some((object3) => object3.id === targetId)
+    );
+    if (missingGroupTarget) {
+      return {
+        ok: false,
+        error: `Camera ${camera.data.id} targets missing object ${missingGroupTarget}`
       };
     }
     next.cameras.push(camera.data);
@@ -93282,6 +93741,15 @@ function applyDirectorStageCommand(state, command) {
         error: `Camera ${command.cameraId} targets missing object ${updated.data.targetObjectId}`
       };
     }
+    const missingGroupTarget = updated.data.targetObjectIds?.find(
+      (targetId) => !next.objects.some((object3) => object3.id === targetId)
+    );
+    if (missingGroupTarget) {
+      return {
+        ok: false,
+        error: `Camera ${command.cameraId} targets missing object ${missingGroupTarget}`
+      };
+    }
     next.cameras[cameraIndex] = updated.data;
   }
   if (command.op === "camera.remove") {
@@ -93291,11 +93759,17 @@ function applyDirectorStageCommand(state, command) {
     if (next.shots.some((shot) => shot.cameraId === command.cameraId)) {
       return { ok: false, error: `Camera ${command.cameraId} has captured shots` };
     }
+    if (next.shotSequence?.some((shot) => shot.cameraId === command.cameraId)) {
+      return { ok: false, error: `Camera ${command.cameraId} is used by the shot sequence` };
+    }
     next.cameras = next.cameras.filter((camera) => camera.id !== command.cameraId);
     if (next.activeCameraId === command.cameraId) delete next.activeCameraId;
     if (next.animation) {
       next.animation.tracks = next.animation.tracks.filter(
         (track) => track.targetId !== command.cameraId
+      );
+      next.animation.cameraCues = next.animation.cameraCues?.filter(
+        (cue) => cue.cameraId !== command.cameraId
       );
     }
   }
@@ -93311,6 +93785,62 @@ function applyDirectorStageCommand(state, command) {
       return { ok: false, error: `Shot ${shot.data.id} uses missing camera ${shot.data.cameraId}` };
     }
     next.shots.push(shot.data);
+  }
+  if (command.op === "sequence-shot.upsert") {
+    const shot = DirectorStageSequenceShotSchema.safeParse(command.shot);
+    if (!shot.success) {
+      return { ok: false, error: shot.error.issues[0]?.message ?? "Invalid sequence shot" };
+    }
+    if (!next.cameras.some((camera) => camera.id === shot.data.cameraId)) {
+      return { ok: false, error: `Shot ${shot.data.id} uses missing camera ${shot.data.cameraId}` };
+    }
+    if (shot.data.startTime + shot.data.durationSeconds > command.durationSeconds + Number.EPSILON) {
+      return {
+        ok: false,
+        error: `Shot ${shot.data.id} ends after the ${command.durationSeconds}s sequence`
+      };
+    }
+    const shots = [...next.shotSequence ?? []];
+    const existingIndex = shots.findIndex((candidate) => candidate.id === shot.data.id);
+    if (existingIndex >= 0) shots[existingIndex] = shot.data;
+    else shots.push(shot.data);
+    shots.sort((left, right) => left.startTime - right.startTime || left.id.localeCompare(right.id));
+    next.shotSequence = shots;
+    const animation = next.animation ?? {
+      durationSeconds: command.durationSeconds,
+      fps: command.fps,
+      tracks: []
+    };
+    animation.durationSeconds = command.durationSeconds;
+    animation.fps = command.fps;
+    next.animation = animation;
+  }
+  if (command.op === "sequence-shot.remove") {
+    if (!next.shotSequence?.some((shot) => shot.id === command.shotId)) {
+      return { ok: false, error: `Sequence shot ${command.shotId} not found` };
+    }
+    next.shotSequence = next.shotSequence.filter((shot) => shot.id !== command.shotId);
+  }
+  if (command.op === "motion.upsert") {
+    const motion = DirectorStageMotionAssetSchema.safeParse(command.motion);
+    if (!motion.success) {
+      return { ok: false, error: motion.error.issues[0]?.message ?? "Invalid motion asset" };
+    }
+    const motions = [...next.motionAssets ?? []];
+    const existingIndex = motions.findIndex((candidate) => candidate.id === motion.data.id);
+    if (existingIndex >= 0) motions[existingIndex] = motion.data;
+    else motions.push(motion.data);
+    motions.sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+    next.motionAssets = motions;
+  }
+  if (command.op === "motion.remove") {
+    if (!next.motionAssets?.some((motion) => motion.id === command.motionId)) {
+      return { ok: false, error: `Motion asset ${command.motionId} not found` };
+    }
+    if (next.animation?.actionClips?.some((clip) => clip.motionAssetId === command.motionId)) {
+      return { ok: false, error: `Motion asset ${command.motionId} is used by an action clip` };
+    }
+    next.motionAssets = next.motionAssets.filter((motion) => motion.id !== command.motionId);
   }
   if (command.op === "scene.update") {
     next.scene = {
@@ -93357,14 +93887,39 @@ function applyDirectorStageCommand(state, command) {
     animation.tracks.sort((left, right) => left.id.localeCompare(right.id));
     next.animation = animation;
   }
+  if (command.op === "keyframe.remove") {
+    const animation = next.animation;
+    const track = animation?.tracks.find((candidate) => candidate.id === command.trackId);
+    if (!animation || !track) {
+      return { ok: false, error: `Animation track ${command.trackId} not found` };
+    }
+    if (!track.keyframes.some((keyframe) => keyframe.id === command.keyframeId)) {
+      return { ok: false, error: `Keyframe ${command.keyframeId} not found` };
+    }
+    track.keyframes = track.keyframes.filter(
+      (keyframe) => keyframe.id !== command.keyframeId
+    );
+    if (track.keyframes.length === 0) {
+      animation.tracks = animation.tracks.filter(
+        (candidate) => candidate.id !== command.trackId
+      );
+    }
+  }
   if (command.op === "action.upsert") {
     const target = next.objects.find((object3) => object3.id === command.clip.targetId);
-    if (!target || target.kind !== "mannequin") {
-      return { ok: false, error: `Action target ${command.clip.targetId} must be a mannequin` };
+    const actionCapable = target?.kind === "mannequin" || target?.kind === "model" && Boolean(target.model.animation);
+    if (!actionCapable) {
+      return { ok: false, error: `Action target ${command.clip.targetId} must be an action-capable object` };
     }
     const parsedClip = DirectorStageActionClipSchema.safeParse(command.clip);
     if (!parsedClip.success) {
       return { ok: false, error: parsedClip.error.issues[0]?.message ?? "Invalid action clip" };
+    }
+    if (parsedClip.data.motionAssetId && !next.motionAssets?.some((motion) => motion.id === parsedClip.data.motionAssetId)) {
+      return {
+        ok: false,
+        error: `Motion asset ${parsedClip.data.motionAssetId} not found`
+      };
     }
     if (parsedClip.data.startTime + parsedClip.data.durationSeconds > command.durationSeconds + Number.EPSILON) {
       return {
@@ -93846,7 +94401,8 @@ var ModelUpstreamIdSchema = z.enum([
   "minimax",
   "jimeng",
   "volcengine",
-  "elevenlabs"
+  "elevenlabs",
+  "suno"
 ]);
 var ModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
@@ -93863,7 +94419,8 @@ var ModelUpstreamApiShapeSchema = z.enum([
   "minimax",
   "modelark",
   "dreamina-cli",
-  "elevenlabs"
+  "elevenlabs",
+  "suno"
 ]);
 var ProviderOAuthIdSchema = z.enum([
   "dreamina"
@@ -93879,6 +94436,7 @@ var ProviderAccountIdSchema = z.enum([
   "jimeng",
   "volcengine",
   "elevenlabs",
+  "suno",
   "mock",
   "custom"
 ]);
@@ -93913,10 +94471,9 @@ var FAL_IMAGE_ROUTES = [
   ["flux-dev", "fal-ai/flux/dev"],
   ["gpt-image-2", "openai/gpt-image-2"],
   ["nano-banana-2", "fal-ai/nano-banana-2"],
-  ["nano-banana-2-edit", "fal-ai/nano-banana-2/edit"],
+  ["seedream-4.5", "fal-ai/bytedance/seedream/v4.5/text-to-image"],
   ["recraft-v4", "fal-ai/recraft/v4/pro/text-to-image"],
-  ["flux-2-pro", "fal-ai/flux-2-pro"],
-  ["flux-2-pro-edit", "fal-ai/flux-2-pro/edit"]
+  ["flux-2-pro", "fal-ai/flux-2-pro"]
 ];
 var FAL_VIDEO_ROUTES = [
   ["sora-2", "fal-ai/sora-2/text-to-video"],
@@ -93935,10 +94492,6 @@ var GOOGLE_VIDEO_ROUTES = [
   ["veo-3.1-lite", "veo-3.1-lite-generate-001"],
   ["veo-3.1-fast", "veo-3.1-fast-generate-001"],
   ["veo-3.1-fast-startend", "veo-3.1-fast-generate-001"]
-];
-var GOOGLE_AUDIO_ROUTES = [
-  ["gemini-3.1-flash-tts", "gemini-3.1-flash-tts-preview"],
-  ["gemini-2.5-pro-tts", "gemini-2.5-pro-tts"]
 ];
 function routesFromModelCard(model) {
   return (model.providerImplementations ?? []).map((implementation) => ({
@@ -93966,7 +94519,6 @@ var MOCK_ROUTES = [
   ...FAL_VIDEO_ROUTES.map(([modelCode, upstreamModel]) => falMock(modelCode, "video", upstreamModel)),
   ...GOOGLE_IMAGE_ROUTES.map(([modelCode]) => falMock(modelCode, "image", "fal-ai/nano-banana-2")),
   ...GOOGLE_VIDEO_ROUTES.map(([modelCode]) => falMock(modelCode, "video", modelCode.includes("fast") ? "fal-ai/veo3/fast" : "fal-ai/veo3")),
-  ...GOOGLE_AUDIO_ROUTES.map(([modelCode]) => falMock(modelCode, "audio", "fal-ai/minimax/speech-02-hd")),
   falMock("minimax-tts", "audio", "fal-ai/minimax/speech-02-hd"),
   falMock("elevenlabs-tts", "audio", "fal-ai/minimax/speech-02-hd")
 ];
@@ -94231,6 +94783,61 @@ var LoroSyncClient = class {
     return this.canvas.findNode(idOrAssetId);
   }
 };
+var TIMELINE_KEYFRAME_CHANNELS = [
+  "position",
+  "scale",
+  "rotation",
+  "opacity"
+];
+function isRecord5(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function validateTimelineItemKeyframes(value, durationInFrames = 0) {
+  if (value === void 0) return null;
+  if (!isRecord5(value)) return "keyframes must be an object";
+  const supportedChannels = new Set(TIMELINE_KEYFRAME_CHANNELS);
+  for (const channel of Object.keys(value)) {
+    if (!supportedChannels.has(channel)) {
+      return `keyframes.${channel} is unsupported`;
+    }
+  }
+  for (const channel of TIMELINE_KEYFRAME_CHANNELS) {
+    const keyframes = value[channel];
+    if (keyframes === void 0) continue;
+    if (!Array.isArray(keyframes)) return `keyframes.${channel} must be an array`;
+    const seenFrames = /* @__PURE__ */ new Set();
+    for (const keyframe of keyframes) {
+      if (!isRecord5(keyframe)) return `keyframes.${channel} entries must be objects`;
+      if (typeof keyframe.frame !== "number" || !Number.isInteger(keyframe.frame) || keyframe.frame < 0 || keyframe.frame >= durationInFrames) {
+        return `keyframes.${channel} frame must be an integer between 0 and ${durationInFrames - 1}`;
+      }
+      if (seenFrames.has(keyframe.frame)) {
+        return `keyframes.${channel} contains duplicate frame ${keyframe.frame}`;
+      }
+      seenFrames.add(keyframe.frame);
+      if (keyframe.interpolation !== "hold" && keyframe.interpolation !== "linear") {
+        return `keyframes.${channel} interpolation must be hold or linear`;
+      }
+      if (channel === "position" || channel === "scale") {
+        const vector = keyframe.value;
+        const isFiniteVector = Array.isArray(vector) && vector.length === 2 && vector.every((component) => typeof component === "number" && Number.isFinite(component));
+        if (!isFiniteVector) {
+          return channel === "position" ? "keyframes.position value must be a finite [x, y] tuple" : "keyframes.scale value must be a non-negative finite [x, y] tuple";
+        }
+        if (channel === "scale" && vector.some((component) => component < 0)) {
+          return "keyframes.scale value must be a non-negative finite [x, y] tuple";
+        }
+      } else if (channel === "rotation") {
+        if (typeof keyframe.value !== "number" || !Number.isFinite(keyframe.value)) {
+          return "keyframes.rotation value must be finite";
+        }
+      } else if (typeof keyframe.value !== "number" || !Number.isFinite(keyframe.value) || keyframe.value < 0 || keyframe.value > 1) {
+        return "keyframes.opacity value must be between 0 and 1";
+      }
+    }
+  }
+  return null;
+}
 var TRACK_CATEGORIES = ["effect", "text", "visual", "primary", "audio"];
 var CATEGORY_ALLOWED_ITEM_TYPES = {
   effect: /* @__PURE__ */ new Set(["composition", "transition"]),
@@ -94455,10 +95062,10 @@ function timelineDslFromYaml(yamlText) {
       };
       if (track.role === "subtitle" && out2.type === "text" && Array.isArray(out2.cues)) {
         if (typeof out2.text !== "string") {
-          out2.text = out2.cues.map((cue) => isRecord5(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
+          out2.text = out2.cues.map((cue) => isRecord6(cue) && typeof cue.text === "string" ? cue.text : "").filter(Boolean).join("\n");
         }
         if (typeof out2.color !== "string") {
-          const style = isRecord5(out2.style) ? out2.style : null;
+          const style = isRecord6(out2.style) ? out2.style : null;
           out2.color = style && typeof style.color === "string" ? style.color : "#ffffff";
         }
       }
@@ -94509,10 +95116,18 @@ function validateSemanticTimelineItem(item, track) {
   if (track.role === "subtitle" && !SUBTITLE_ALLOWED_ITEM_TYPES.has(item.type)) {
     return `Track ${track.id ?? "subtitle"} has role subtitle and must contain structured text items, not ${item.type}`;
   }
-  if (track.role === "subtitle" && item.type === "text") return validateSubtitleTextTimelineItem(item);
+  if (track.role === "subtitle" && item.type === "text") {
+    const subtitleError = validateSubtitleTextTimelineItem(item);
+    if (subtitleError) return subtitleError;
+  }
+  if (item.keyframes !== void 0 && (item.type === "audio" || item.type === "transition")) {
+    return `Timeline item ${item.id} keyframes are only valid on visual transform items`;
+  }
+  const keyframeError = validateTimelineItemKeyframes(item.keyframes, item.durationInFrames);
+  if (keyframeError) return `Timeline item ${item.id} ${keyframeError}`;
   const clipAnimationError = validateClipAnimationFields(item);
   if (clipAnimationError) return clipAnimationError;
-  const audioFieldError = validateAudioTimelineFields(item);
+  const audioFieldError = validateAudioTimelineFields(item, track);
   if (audioFieldError) return audioFieldError;
   if (item.type === "derived-overlay") return validateDerivedOverlayTimelineItem(item);
   if (item.type === "composition") return validateCompositionTimelineItem(item);
@@ -94525,7 +95140,7 @@ function validateClipAnimationFields(item) {
     if (item.type !== "video") {
       return `Timeline item ${item.id} ${field} is only valid on video items`;
     }
-    if (!isRecord5(animation)) {
+    if (!isRecord6(animation)) {
       return `Timeline item ${item.id} ${field} must be an object`;
     }
     if (typeof animation.type !== "string" || !CLIP_ANIMATION_TYPES.has(animation.type)) {
@@ -94537,7 +95152,7 @@ function validateClipAnimationFields(item) {
   }
   return null;
 }
-function validateAudioTimelineFields(item) {
+function validateAudioTimelineFields(item, track) {
   const supportsAudio = item.type === "audio" || item.type === "video";
   if (item.audioGainDb !== void 0) {
     if (!supportsAudio) {
@@ -94557,6 +95172,27 @@ function validateAudioTimelineFields(item) {
       return `Timeline item ${item.id} ${field} must be a non-negative integer`;
     }
   }
+  if (item.audioDucking !== void 0) {
+    if (item.type !== "audio") {
+      return `Timeline item ${item.id} audioDucking is only valid on audio items`;
+    }
+    if (track.role !== "music") {
+      return `Timeline item ${item.id} audioDucking requires a music track`;
+    }
+    if (!isRecord6(item.audioDucking)) {
+      return `Timeline item ${item.id} audioDucking must be an object`;
+    }
+    const amountDb = item.audioDucking.amountDb;
+    if (typeof amountDb !== "number" || !Number.isFinite(amountDb) || amountDb < -60 || amountDb > 0) {
+      return `Timeline item ${item.id} audioDucking.amountDb must be between -60 and 0`;
+    }
+    for (const field of ["attackFrames", "releaseFrames"]) {
+      const value = item.audioDucking[field];
+      if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        return `Timeline item ${item.id} audioDucking.${field} must be a non-negative integer`;
+      }
+    }
+  }
   return null;
 }
 function validateSubtitleTextTimelineItem(item) {
@@ -94568,7 +95204,7 @@ function validateSubtitleTextTimelineItem(item) {
   }
   const wordIds = /* @__PURE__ */ new Set();
   for (const wordRef of wordRefs) {
-    if (!isRecord5(wordRef)) return `Subtitle text item ${item.id} has invalid wordRefs`;
+    if (!isRecord6(wordRef)) return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (typeof wordRef.id !== "string" || wordRef.id.length === 0) return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (typeof wordRef.text !== "string") return `Subtitle text item ${item.id} has invalid wordRefs`;
     if (!isValidFrameRange(wordRef.sourceStartFrame, wordRef.sourceEndFrame)) {
@@ -94577,13 +95213,13 @@ function validateSubtitleTextTimelineItem(item) {
     wordIds.add(wordRef.id);
   }
   for (const map2 of sourceToOutputMap) {
-    if (!isRecord5(map2)) return `Subtitle text item ${item.id} has invalid sourceToOutputMap`;
+    if (!isRecord6(map2)) return `Subtitle text item ${item.id} has invalid sourceToOutputMap`;
     if (!isValidFrameRange(map2.sourceStartFrame, map2.sourceEndFrame) || !isValidFrameRange(map2.outputStartFrame, map2.outputEndFrame)) {
       return `Subtitle text item ${item.id} has invalid sourceToOutputMap frame range`;
     }
   }
   for (const cue of cues) {
-    if (!isRecord5(cue)) return `Subtitle text item ${item.id} has invalid cues`;
+    if (!isRecord6(cue)) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.id !== "string" || cue.id.length === 0) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.text !== "string" || cue.text.trim().length === 0) return `Subtitle text item ${item.id} has invalid cues`;
     if (typeof cue.startFrame !== "number" || !Number.isInteger(cue.startFrame) || cue.startFrame < 0) {
@@ -94614,7 +95250,7 @@ function validateSubtitleTextTimelineItem(item) {
     }
     const cueEndFrame = cueStartFrame + cueDurationInFrames;
     const coveredByMap = sourceToOutputMap.some((map2) => {
-      if (!isRecord5(map2)) return false;
+      if (!isRecord6(map2)) return false;
       if (!isValidFrameRange(map2.sourceStartFrame, map2.sourceEndFrame)) return false;
       if (!isValidFrameRange(map2.outputStartFrame, map2.outputEndFrame)) return false;
       const frameMap = map2;
@@ -94640,7 +95276,7 @@ function validateDerivedOverlayTimelineItem(item) {
   if (item.sourceAssetId === item.derivedAssetId) {
     return `Derived overlay item ${item.id} must be copy-on-write`;
   }
-  if (!isRecord5(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
+  if (!isRecord6(item.derivation) || typeof item.derivation.kind !== "string" || item.derivation.kind.length === 0) {
     return `Derived overlay item ${item.id} must include sourceAssetId, derivedAssetId, and derivation.kind`;
   }
   return null;
@@ -94655,7 +95291,7 @@ function validateCompositionTimelineItem(item) {
   if (!isLocalProjectPath(item.sourcePath)) {
     return `Composition item ${item.id} sourcePath must be a local project path`;
   }
-  if (item.runtime === "html" && item.compositionKind === "motion-graphics" && !isRecord5(item.spec)) {
+  if (item.runtime === "html" && item.compositionKind === "motion-graphics" && !isRecord6(item.spec)) {
     return `Composition item ${item.id} HTML motion-graphics items must include a first-party spec`;
   }
   if (item.renderedAssetPath !== void 0 && !isLocalProjectPath(item.renderedAssetPath)) {
@@ -94666,7 +95302,7 @@ function validateCompositionTimelineItem(item) {
   }
   return null;
 }
-function isRecord5(value) {
+function isRecord6(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function isValidFrameRange(startFrame, endFrame) {
@@ -114323,7 +114959,7 @@ function isSafeRelativePath(path) {
   return normalized !== ".." && !normalized.startsWith(`..${import_node_path57.sep}`);
 }
 function validateManifest(value, issues) {
-  if (!isRecord6(value)) {
+  if (!isRecord7(value)) {
     issues.push({ code: "manifest.type", message: "Effect manifest must be an object.", path: "effect.json" });
     return void 0;
   }
@@ -114340,11 +114976,11 @@ function validateManifest(value, issues) {
   if (typeof value.kind !== "string" || !kinds.includes(value.kind)) {
     issues.push({ code: "manifest.kind", message: "kind is not supported.", path: "kind" });
   }
-  if (!isRecord6(value.inputs)) {
+  if (!isRecord7(value.inputs)) {
     issues.push({ code: "manifest.inputs", message: "inputs must be an object.", path: "inputs" });
   } else {
     for (const [name, input] of Object.entries(value.inputs)) {
-      if (!isRecord6(input) || !["texture", "video", "image", "mask"].includes(String(input.type)) || typeof input.required !== "boolean") {
+      if (!isRecord7(input) || !["texture", "video", "image", "mask"].includes(String(input.type)) || typeof input.required !== "boolean") {
         issues.push({
           code: "manifest.input",
           message: "Each input must declare a supported type and boolean required flag.",
@@ -114353,7 +114989,7 @@ function validateManifest(value, issues) {
       }
     }
   }
-  if (!isRecord6(value.params)) {
+  if (!isRecord7(value.params)) {
     issues.push({ code: "manifest.params", message: "params must be an object.", path: "params" });
   } else {
     for (const [name, param] of Object.entries(value.params)) {
@@ -114366,7 +115002,7 @@ function validateManifest(value, issues) {
       }
     }
   }
-  if (!isRecord6(value.capabilities)) {
+  if (!isRecord7(value.capabilities)) {
     issues.push({ code: "manifest.capabilities", message: "capabilities must be an object.", path: "capabilities" });
   } else {
     const renderers = ["css", "webgl2", "webgpu", "remotion", "ffmpeg"];
@@ -114382,7 +115018,7 @@ function validateManifest(value, issues) {
   }
   if (value.fallback != null) {
     const fallback = value.fallback;
-    if (!isRecord6(fallback) || typeof fallback.effectId !== "string" || !/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(fallback.effectId) || !Number.isInteger(fallback.version) || fallback.version < 1) {
+    if (!isRecord7(fallback) || typeof fallback.effectId !== "string" || !/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(fallback.effectId) || !Number.isInteger(fallback.version) || fallback.version < 1) {
       issues.push({
         code: "manifest.fallback",
         message: "fallback must contain a namespaced effectId and positive integer version.",
@@ -114394,7 +115030,7 @@ function validateManifest(value, issues) {
     issues.push({ code: "manifest.passes", message: "passes must be an array.", path: "passes" });
   } else {
     value.passes.forEach((pass, index) => {
-      if (!isRecord6(pass) || pass.kind !== "shader" || typeof pass.shader !== "string" || typeof pass.fragment !== "string") {
+      if (!isRecord7(pass) || pass.kind !== "shader" || typeof pass.shader !== "string" || typeof pass.fragment !== "string") {
         issues.push({
           code: "manifest.pass",
           message: "Each pass must declare kind, shader, and fragment.",
@@ -114407,7 +115043,7 @@ function validateManifest(value, issues) {
   return value;
 }
 function isValidManifestParam(value) {
-  if (!isRecord6(value) || typeof value.type !== "string") return false;
+  if (!isRecord7(value) || typeof value.type !== "string") return false;
   if (value.keyframable != null && typeof value.keyframable !== "boolean") return false;
   if (value.type === "number") {
     if (typeof value.default !== "number" || !Number.isFinite(value.default)) return false;
@@ -114428,7 +115064,7 @@ function isValidManifestParam(value) {
   }
   return false;
 }
-function isRecord6(value) {
+function isRecord7(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function scaffoldEffectPackage(options) {
@@ -114572,7 +115208,7 @@ async function installEffectPackage(options) {
   try {
     await (0, import_promises44.mkdir)(installPath, { recursive: false });
   } catch (error51) {
-    if (isRecord6(error51) && error51.code === "EEXIST") {
+    if (isRecord7(error51) && error51.code === "EEXIST") {
       throw new Error(`Effect "${parsed.effect.id}@${parsed.effect.version}" is already installed.`);
     }
     throw error51;
@@ -114585,7 +115221,7 @@ async function installEffectPackage(options) {
   return { installPath, effect: parsed.effect };
 }
 function parseBundle(value) {
-  if (!isRecord6(value) || value.schemaVersion !== 1 || !Array.isArray(value.files)) {
+  if (!isRecord7(value) || value.schemaVersion !== 1 || !Array.isArray(value.files)) {
     throw new Error("Effect bundle is invalid or uses an unsupported schema version.");
   }
   const issues = [];
@@ -114594,7 +115230,7 @@ function parseBundle(value) {
     throw new Error(`Effect bundle manifest is invalid: ${issues.map((issue2) => issue2.message).join(" ")}`);
   }
   const files = value.files.map((file2, index) => {
-    if (!isRecord6(file2) || typeof file2.path !== "string" || typeof file2.sha256 !== "string" || typeof file2.contentBase64 !== "string") {
+    if (!isRecord7(file2) || typeof file2.path !== "string" || typeof file2.sha256 !== "string" || typeof file2.contentBase64 !== "string") {
       throw new Error(`Effect bundle file at index ${index} is invalid.`);
     }
     if (!isSafeRelativePath(file2.path)) {
@@ -115480,6 +116116,14 @@ addSharedOptions(keyframeCommand.command("upsert").description("Insert or replac
     }
   }), options);
 });
+addSharedOptions(keyframeCommand.command("remove").description("Remove a property keyframe and prune an empty track").requiredOption("--track <id>", "Track ID").requiredOption("--id <id>", "Keyframe ID")).action(async (options) => {
+  const context = await resolveCanvasProjectContext(options);
+  printStageResult(await updateStageWithCommand(context, options.stage, {
+    op: "keyframe.remove",
+    trackId: options.track,
+    keyframeId: options.id
+  }), options);
+});
 var actionCommand = directorCommand.command("action").description("Manage timed mannequin action clips");
 addSharedOptions(actionCommand.command("upsert").description("Insert or replace a mannequin action clip").requiredOption("--id <id>", "Action clip ID").requiredOption("--target <id>", "Mannequin object ID").addOption(new Option("--action <name>", "Action name").choices([
   "idle",
@@ -115491,7 +116135,9 @@ addSharedOptions(actionCommand.command("upsert").description("Insert or replace 
   "wave",
   "point",
   "think",
-  "hands-up"
+  "hands-up",
+  "interact",
+  "ride"
 ]).makeOptionMandatory()).addOption(new Option("--layer <name>", "full-body or upper-body").choices([
   "full-body",
   "upper-body"

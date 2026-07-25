@@ -60579,6 +60579,11 @@ function flag(args, name, value) {
   if (value === void 0 || value === null || value === "") return;
   args.push(name, String(value));
 }
+function requiredRecordString(value, key, label) {
+  const field = value[key];
+  if (typeof field !== "string" || !field.trim()) throw new Error(`${label} is required`);
+  return field.trim();
+}
 function vectorFlags(args, value, flags) {
   if (!Array.isArray(value)) return;
   for (let index = 0; index < 3; index += 1) flag(args, flags[index], value[index]);
@@ -60711,6 +60716,43 @@ function buildDirectorCliArgs(name, input) {
       appendScope2(args, input, true);
       return args;
     }
+    case "clash_director_keyframe_remove": {
+      const value = input.keyframe ?? {};
+      args = [
+        "director",
+        "keyframe",
+        "remove",
+        "--track",
+        requiredRecordString(value, "trackId", "keyframe.trackId"),
+        "--id",
+        requiredRecordString(value, "id", "keyframe.id")
+      ];
+      appendScope2(args, input, true);
+      return args;
+    }
+    case "clash_director_action_upsert": {
+      const value = input.action ?? {};
+      args = ["director", "action", "upsert"];
+      for (const [flagName, field] of [
+        ["--id", "id"],
+        ["--target", "targetId"],
+        ["--action", "action"],
+        ["--layer", "layer"],
+        ["--start", "startTime"],
+        ["--clip-duration", "durationSeconds"],
+        ["--blend-in", "blendInSeconds"],
+        ["--blend-out", "blendOutSeconds"],
+        ["--playback-rate", "playbackRate"],
+        ["--timeline-duration", "timelineDurationSeconds"],
+        ["--fps", "fps"]
+      ]) flag(args, flagName, value[field]);
+      appendScope2(args, input, true);
+      return args;
+    }
+    case "clash_director_action_remove":
+      args = ["director", "action", "remove", "--id", required4(input, "actionId")];
+      appendScope2(args, input, true);
+      return args;
     default:
       throw new Error(`Director operation ${name} is not exposed`);
   }
@@ -88352,7 +88394,10 @@ var DIRECTOR_PLUGIN_TOOL_NAMES = [
   "clash_director_camera_update",
   "clash_director_camera_remove",
   "clash_director_scene_update",
-  "clash_director_keyframe_upsert"
+  "clash_director_keyframe_upsert",
+  "clash_director_keyframe_remove",
+  "clash_director_action_upsert",
+  "clash_director_action_remove"
 ];
 var execFileAsync5 = promisify5(execFile5);
 var DIRECTOR_APP_RESOURCE_URI = "ui://clash/director";
@@ -88566,6 +88611,21 @@ var definitions2 = {
     title: "Upsert keyframe",
     description: "Insert or replace an object/camera property keyframe.",
     inputSchema: { ...stageScope, keyframe: record22 }
+  },
+  clash_director_keyframe_remove: {
+    title: "Remove keyframe",
+    description: "Remove an object/camera property keyframe and prune an empty track.",
+    inputSchema: { ...stageScope, keyframe: record22 }
+  },
+  clash_director_action_upsert: {
+    title: "Upsert action clip",
+    description: "Insert or replace a timed mannequin or rigged-model action clip.",
+    inputSchema: { ...stageScope, action: record22 }
+  },
+  clash_director_action_remove: {
+    title: "Remove action clip",
+    description: "Remove a timed action clip from the Director Stage.",
+    inputSchema: { ...stageScope, actionId: external_exports3.string().min(1) }
   }
 };
 function structured2(value) {

@@ -81,9 +81,9 @@ describe('semantic timeline item renderers', () => {
     expect((container.firstElementChild as HTMLElement).dataset.textKind).toBe('subtitle');
     expect((container.firstElementChild as HTMLElement).title).toContain('1 word ref');
     expect((container.firstElementChild as HTMLElement).style.backgroundColor)
-      .toBe('rgb(228, 232, 226)');
+      .toBe('var(--clash-timeline-item-text, #e4e2de)');
     expect((container.firstElementChild as HTMLElement).style.color)
-      .toBe('rgb(51, 70, 58)');
+      .toBe('var(--clash-timeline-item-text-foreground, #343434)');
   });
 
   it('renders composition items with runtime, composition id, and first-party layer count', () => {

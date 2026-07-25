@@ -457,12 +457,13 @@ describe("desktop startup test suite", () => {
     const source = readText("e2e/harness-update-agent-browser.mjs");
 
     expect(source).toContain('CLASH_E2E_STUB_HARNESS_UPDATE: "1"');
-    expect(source).toContain('CLASH_E2E_STUB_ACP_DELAY_MS: "15000"');
+    expect(source).toContain('CLASH_E2E_STUB_ACP_DELAY_MS: "20000"');
     expect(source).toContain('"01-active-turn-update-control.png"');
     expect(source).toContain('"02-expanded-updates.png"');
     expect(source).toContain('"03-restart-after-turn.png"');
     expect(source).toContain('"04-restart-queued.png"');
-    expect(source).toContain('"05-session-restarted.png"');
+    expect(source).toContain('"05-session-restarted-fading.png"');
+    expect(source).toContain('"06-update-notice-self-destructed.png"');
     expect(source).toContain('clickButtonByLabel(agentBrowser, "1 ACP update available")');
     expect(source).toContain('clickButtonByLabel(agentBrowser, "Update Mock ACP")');
     expect(source).toContain('clickButtonByLabel(agentBrowser, "Restart after this turn")');

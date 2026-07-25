@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  createLocalAcpAdapter,
+  createLocalAcpAdapter as createLocalAcpAdapterImpl,
   createLocalHarnessConfigStore,
   type SessionManagerLike,
   type SessionPromptParamsLike,
@@ -40,6 +40,25 @@ function deferred<T = void>() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function createLocalAcpAdapter(
+  options: NonNullable<Parameters<typeof createLocalAcpAdapterImpl>[0]> = {},
+) {
+  const defaults = {
+    probeAgentAuth: async () => ({
+      status: "configured" as const,
+      message: "Test auth configured.",
+    }),
+  };
+  if (options.probeAgentConfigOptions || options.probeAgentSessionConfig) {
+    return createLocalAcpAdapterImpl({ ...defaults, ...options });
+  }
+  return createLocalAcpAdapterImpl({
+    ...defaults,
+    probeAgentSessionConfig: async () => ({ configOptions: [], modes: undefined }),
+    ...options,
+  });
 }
 
 describe("local ACP adapter", () => {

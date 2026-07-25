@@ -151,7 +151,7 @@ test("daemon executes against the selected Canvas instead of falling back to mai
   client.createNode("shot-action", "image_gen", {
     prompt: "A product shot",
     content: "A product shot",
-    modelId: "gemini-3-pro-image-preview",
+    modelId: "nano-banana-pro",
   });
 
   const result = handleCommandForTest(client, {

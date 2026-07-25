@@ -54,8 +54,10 @@ describe("TimelineTracksContainer typed lanes", () => {
 
     const labelRows = container.querySelectorAll(".track-labels-panel > div");
     const labelPanel = container.querySelector('.track-labels-panel') as HTMLElement;
-    expect(labelPanel.style.borderRight).toBe('1px solid rgb(240, 237, 231)');
-    expect(labelPanel.style.background).toBe('rgb(255, 254, 253)');
+    expect(labelPanel.style.borderRight).toBe(
+      '1px solid var(--clash-timeline-border-subtle, #f0ede7)',
+    );
+    expect(labelPanel.style.background).toBe('var(--clash-warm-surface, #fffefd)');
     expect(Array.from(labelRows).map((row) => row.textContent)).toEqual([
       "Effects",
       "Text",
@@ -85,7 +87,8 @@ describe("TimelineTracksContainer typed lanes", () => {
     expect((labelDividers[1] as HTMLElement).dataset.trackLabelDivider).toBe('bottom');
     expect((labelDividers[0] as HTMLElement).style.left).toBe('12px');
     expect((labelDividers[0] as HTMLElement).style.right).toBe('12px');
-    expect((labelDividers[0] as HTMLElement).style.backgroundColor).toBe('rgb(225, 221, 213)');
+    expect((labelDividers[0] as HTMLElement).style.backgroundColor)
+      .toBe('var(--clash-warm-border, #e1ddd5)');
     expect(Array.from(labelRows).every((row) => (row as HTMLElement).style.backgroundColor === 'transparent')).toBe(true);
     expect(Array.from(trackLanes).map((lane) => (lane as HTMLElement).style.height)).toEqual([
       '36px',
@@ -97,7 +100,8 @@ describe("TimelineTracksContainer typed lanes", () => {
     expect(Array.from(trackLanes).every((lane) => (lane as HTMLElement).style.borderBottom === '')).toBe(true);
     const trackSurfaces = container.querySelectorAll('[data-track-bubble-surface]');
     expect(trackSurfaces).toHaveLength(5);
-    expect((trackSurfaces[0] as HTMLElement).style.backgroundColor).toBe('rgb(251, 250, 247)');
+    expect((trackSurfaces[0] as HTMLElement).style.backgroundColor)
+      .toBe('var(--clash-warm-page, #fbfaf7)');
     expect(container.querySelectorAll('[data-track-bubble-edge="label"]')).toHaveLength(0);
     expect(container.querySelectorAll('[data-track-bubble-edge="lane"]')).toHaveLength(5);
     expect((container.querySelector('[data-track-bubble-edge="lane"]') as HTMLElement).style.borderRadius)
@@ -427,17 +431,23 @@ describe("TimelineTracksContainer typed lanes", () => {
     expect(primaryVisual.style.transform).toBe("translateY(-50%)");
     const musicItem = container.querySelector('[data-dnd-id="item-music-clip"]') as HTMLElement;
     const sfxItem = container.querySelector('[data-dnd-id="item-sfx-clip"]') as HTMLElement;
-    expect(voiceItem.style.backgroundColor).toBe("rgb(23, 61, 95)");
-    expect(musicItem.style.backgroundColor).toBe("rgb(23, 61, 95)");
-    expect(sfxItem.style.backgroundColor).toBe("rgb(23, 61, 95)");
+    expect(voiceItem.style.backgroundColor).toBe(
+      "var(--clash-timeline-item-audio, #294454)",
+    );
+    expect(musicItem.style.backgroundColor).toBe(
+      "var(--clash-timeline-item-audio, #294454)",
+    );
+    expect(sfxItem.style.backgroundColor).toBe(
+      "var(--clash-timeline-item-audio, #294454)",
+    );
     expect(waveform?.querySelector("svg")?.getAttribute("data-waveform-renderer"))
       .toBe("one-sided-area");
     expect(waveform?.querySelector("[data-waveform-envelope]")?.getAttribute("fill"))
-      .toBe("#2aa4c2");
+      .toBe("var(--clash-timeline-audio-waveform, #68858d)");
     expect(musicItem.querySelector("[data-waveform-envelope]")?.getAttribute("fill"))
-      .toBe("#2aa4c2");
+      .toBe("var(--clash-timeline-audio-waveform, #68858d)");
     expect(sfxItem.querySelector("[data-waveform-envelope]")?.getAttribute("fill"))
-      .toBe("#2aa4c2");
+      .toBe("var(--clash-timeline-audio-waveform, #68858d)");
     expect(waveform?.querySelectorAll("rect")).toHaveLength(0);
     const transcriptLane = wordbar.closest("[data-global-transcript-lane]");
     expect(transcriptLane).toBeTruthy();
@@ -654,7 +664,7 @@ describe("TimelineTracksContainer typed lanes", () => {
     expect(mediaItem?.contains(waveform ?? null)).toBe(true);
     expect(mediaItem?.contains(thumbnail ?? null)).toBe(true);
     expect(waveform?.querySelector("[data-waveform-envelope]")?.getAttribute("fill"))
-      .toBe("#2aa4c2");
+      .toBe("var(--clash-timeline-audio-waveform, #68858d)");
     expect(mediaItem?.querySelector("[data-filmstrip-renderer]")?.getAttribute("data-filmstrip-sample-count"))
       .toBe("40");
     expect(mediaItem?.querySelector("[data-audio-volume-control]")).toBeTruthy();

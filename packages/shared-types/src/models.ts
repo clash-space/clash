@@ -1614,6 +1614,22 @@ const MODEL_CARD_DEFINITIONS = [
 
   // ─── Audio ───────────────────────────────────────────────────
   {
+    id: 'gemini-3.1-flash-tts',
+    name: 'Gemini 3.1 Flash TTS',
+    provider: 'Google',
+    availableProviders: ['official'],
+    defaultProvider: 'official',
+    kind: 'audio',
+    defaultAspectRatio: '1:1',
+    description: 'Google Gemini TTS preview for low-latency controllable single-speaker audio.',
+    parameters: GEMINI_TTS_PARAMETERS,
+    defaultParams: {
+      voice_name: 'Kore',
+    },
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 5 * 60 * 1000,
+  },
+  {
     id: 'kokoro-82m-tts',
     name: 'Kokoro 82M',
     provider: 'Hexgrad',
@@ -1706,22 +1722,6 @@ const MODEL_CARD_DEFINITIONS = [
     },
     input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
     maxRuntimeMs: 2 * 60 * 1000,
-  },
-  {
-    id: 'gemini-3.1-flash-tts',
-    name: 'Gemini 3.1 Flash TTS',
-    provider: 'Google',
-    availableProviders: ['official'],
-    defaultProvider: 'official',
-    kind: 'audio',
-    defaultAspectRatio: '1:1',
-    description: 'Google Gemini TTS preview for low-latency controllable single-speaker audio.',
-    parameters: GEMINI_TTS_PARAMETERS,
-    defaultParams: {
-      voice_name: 'Kore',
-    },
-    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
-    maxRuntimeMs: 5 * 60 * 1000,
   },
   {
     id: 'gemini-2.5-pro-tts',
