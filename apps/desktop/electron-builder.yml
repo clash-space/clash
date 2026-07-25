@@ -67,7 +67,7 @@ linux:
   category: AudioVideo
   icon: build/icon-1024.png
   executableName: clash
-  artifactName: Clash-Desktop-Linux-${arch}.${ext}
+  artifactName: Clash-Desktop-Linux-x64.${ext}
   files:
     - "!node_modules/@anthropic-ai/claude-agent-sdk-{darwin-*,win32-*,linux-arm64,linux-arm64-musl}/**"
     - "!node_modules/@esbuild/{aix-*,android-*,darwin-*,freebsd-*,linux-arm*,linux-ia32,linux-loong64,linux-mips64el,linux-ppc64,linux-riscv64,linux-s390x,netbsd-*,openbsd-*,sunos-*,win32-*}/**"

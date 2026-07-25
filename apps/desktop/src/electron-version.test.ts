@@ -84,7 +84,7 @@ describe("desktop Electron runtime", () => {
       "artifactName: Clash-Desktop-Windows-${arch}.${ext}",
     );
     expect(builderConfig).toContain(
-      "artifactName: Clash-Desktop-Linux-${arch}.${ext}",
+      "artifactName: Clash-Desktop-Linux-x64.${ext}",
     );
     expect(builderConfig).toMatch(
       /^win:\n(?:(?!^[A-Za-z]).*\n)*? {2}executableName: clash$/m,
