@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 interface DesktopPackage {
   scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
 
@@ -60,15 +61,23 @@ describe("desktop Electron runtime", () => {
     );
 
     expect(manifest.scripts ?? {}).toHaveProperty("pack:mac");
+    expect(manifest.scripts ?? {}).toHaveProperty("pack:mac:arm64");
+    expect(manifest.scripts ?? {}).toHaveProperty("pack:mac:x64");
     expect(manifest.scripts ?? {}).toHaveProperty("pack:win");
     expect(manifest.scripts ?? {}).toHaveProperty("pack:linux");
-    expect(manifest.scripts?.["pack:mac"] ?? "").toContain(
-      "--mac dmg --universal",
+    expect(manifest.scripts?.["pack:mac:arm64"] ?? "").toContain(
+      "--mac dmg --arm64",
     );
+    expect(manifest.scripts?.["pack:mac:x64"] ?? "").toContain(
+      "--mac dmg --x64",
+    );
+    expect(manifest.scripts?.["pack:mac"] ?? "").toContain("pack:mac:arm64");
     expect(manifest.scripts?.["pack:win"] ?? "").toContain("--win nsis --x64");
     expect(manifest.scripts?.["pack:linux"] ?? "").toContain(
       "--linux AppImage --x64",
     );
+    expect(manifest.dependencies ?? {}).not.toHaveProperty("@remotion/bundler");
+    expect(manifest.devDependencies?.["@remotion/bundler"]).toBe("4.0.370");
     expect(manifest.scripts?.["prepare:pack"] ?? "").toContain(
       "pnpm --filter @master-clash/web... build",
     );
@@ -94,6 +103,9 @@ describe("desktop Electron runtime", () => {
     );
     expect(builderConfig).toContain(
       'x64ArchFiles: "**/node_modules/{@anthropic-ai/claude-agent-sdk-*,@esbuild/*,@remotion/compositor-*}/**"',
+    );
+    expect(builderConfig).toContain(
+      "afterPack: scripts/prune-packaged-architectures.mjs",
     );
     expect(workspaceConfig).toMatch(
       /supportedArchitectures:\n\s+cpu:\s+\[arm64, x64\]/,
@@ -131,6 +143,14 @@ describe("desktop Electron runtime", () => {
     for (const workflow of [ci, release]) {
       expect(workflow).toContain("package-desktop:");
       expect(workflow).toContain("macos-latest");
+      expect(workflow).toContain("platform: macOS-arm64");
+      expect(workflow).toContain("platform: macOS-x64");
+      expect(workflow).toContain(
+        "apps/desktop/release/Clash-Desktop-macOS-arm64.dmg",
+      );
+      expect(workflow).toContain(
+        "apps/desktop/release/Clash-Desktop-macOS-x64.dmg",
+      );
       expect(workflow).toContain("windows-latest");
       expect(workflow).toContain("ubuntu-latest");
       expect(workflow).toContain("actions/upload-artifact@v4");

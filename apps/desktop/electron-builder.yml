@@ -3,6 +3,7 @@ productName: Clash
 asar: true
 npmRebuild: false
 publish: null
+afterPack: scripts/prune-packaged-architectures.mjs
 
 directories:
   output: release

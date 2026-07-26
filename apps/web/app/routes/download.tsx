@@ -11,19 +11,29 @@ import {
 const downloads = [
   {
     platform: "macOS",
-    detail: "Universal · Apple silicon and Intel",
-    href: "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-macOS-universal.dmg",
+    detail: "Apple silicon · M1 and newer",
+    ariaLabel: "Download for macOS Apple silicon",
+    href: "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-macOS-arm64.dmg",
+    icon: AppleLogo,
+  },
+  {
+    platform: "macOS",
+    detail: "Intel · x64",
+    ariaLabel: "Download for macOS Intel",
+    href: "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-macOS-x64.dmg",
     icon: AppleLogo,
   },
   {
     platform: "Windows",
     detail: "64-bit · NSIS installer",
+    ariaLabel: "Download for Windows",
     href: "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-Windows-x64.exe",
     icon: WindowsLogo,
   },
   {
     platform: "Linux",
     detail: "64-bit · AppImage",
+    ariaLabel: "Download for Linux",
     href: "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-Linux-x64.AppImage",
     icon: LinuxLogo,
   },
@@ -51,11 +61,11 @@ export default function DownloadRoute() {
           aria-label="Desktop installers"
         >
           {downloads.map((download) => (
-            <li key={download.platform}>
+            <li key={download.ariaLabel}>
               <a
                 href={download.href}
                 className="clash-download-card"
-                aria-label={`Download for ${download.platform}`}
+                aria-label={download.ariaLabel}
               >
                 <download.icon
                   className="h-8 w-8"
