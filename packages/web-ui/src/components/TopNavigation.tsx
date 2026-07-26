@@ -347,13 +347,13 @@ export default function TopNavigation() {
                   icon={
                     <span className="relative block h-11 w-11 transition-transform duration-150 group-hover:scale-105">
                       <img
-                        src="/icon-192.png"
+                        src="/brand/logo-c.svg"
                         alt=""
                         className="h-11 w-11 object-contain dark:hidden"
                         draggable={false}
                       />
                       <img
-                        src="/brand/logo-mark-dark.svg"
+                        src="/brand/logo-c.svg"
                         alt=""
                         className="hidden h-11 w-11 object-contain dark:block"
                         draggable={false}
@@ -418,13 +418,13 @@ export default function TopNavigation() {
           <Link to="/" className="group flex h-12 w-12 items-center justify-center" aria-label="Clash home">
             <span className="relative block h-11 w-11 transition-transform duration-150 group-hover:scale-105">
               <img
-                src="/icon-192.png"
+                src="/brand/logo-c.svg"
                 alt=""
                 className="h-11 w-11 object-contain dark:hidden"
                 draggable={false}
               />
               <img
-                src="/brand/logo-mark-dark.svg"
+                src="/brand/logo-c.svg"
                 alt=""
                 className="hidden h-11 w-11 object-contain dark:block"
                 draggable={false}

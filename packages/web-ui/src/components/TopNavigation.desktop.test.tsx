@@ -177,7 +177,7 @@ describe("TopNavigation desktop chrome", () => {
     const home = await screen.findByRole("button", { name: "Clash home" });
     const logos = Array.from(home.querySelectorAll("img"));
     expect(logos.map((logo) => logo.getAttribute("src"))).toEqual(
-      expect.arrayContaining(["/icon-192.png", "/brand/logo-mark-dark.svg"]),
+      expect.arrayContaining(["/brand/logo-c.svg"]),
     );
     expect(logos.some((logo) => logo.className.includes("dark:block"))).toBe(true);
     expect(logos.every((logo) => !logo.className.includes("dark:grayscale"))).toBe(true);

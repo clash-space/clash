@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="88" viewBox="0 0 300 88" role="img" aria-label="Clash">
+  <rect width="300" height="88" fill="#08090C"/>
+  <text
+    class="clash-c"
+    x="30"
+    y="69"
+    font-family="Inter, Helvetica Neue, Helvetica, Arial, sans-serif"
+    font-size="56"
+    font-weight="700"
+    letter-spacing="-2"
+    fill="#FF6B50"
+  >C</text>
+  <text
+    x="68"
+    y="69"
+    font-family="Inter, Helvetica Neue, Helvetica, Arial, sans-serif"
+    font-size="56"
+    font-weight="700"
+    letter-spacing="-2"
+    fill="#F5F5F4"
+  >lash</text>
+</svg>

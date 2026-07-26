@@ -304,7 +304,7 @@ describe("application theme contract", () => {
     expect(css).toMatch(
       /\.dark \.clash-copilot-launcher \.clash-agent-motion__pen\s*\{[\s\S]*?fill: #ff6b50/,
     );
-    expect(topNavigation).toContain('/brand/logo-mark-dark.svg');
+    expect(topNavigation).toContain('/brand/logo-c.svg');
     expect(topNavigation).not.toContain("dark:grayscale");
   });
 
@@ -333,7 +333,7 @@ describe("application theme contract", () => {
     expect(login).toContain("dark:text-neutral-50");
     expect(login).toContain("dark:text-neutral-100");
     expect(login).toContain("dark:placeholder:text-neutral-500");
-    expect(login).toContain('/brand/logo-mark-dark.svg');
+    expect(login).toContain('/brand/logo-c.svg');
   });
 
   it("exposes Appearance as a real persisted settings section", () => {
