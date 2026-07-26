@@ -17,16 +17,31 @@
 /favicon.svg
   Cache-Control: public, max-age=86400
 
+/favicon-c.svg
+  Cache-Control: public, max-age=86400
+
 /apple-touch-icon.png
+  Cache-Control: public, max-age=86400
+
+/apple-touch-icon-c.png
   Cache-Control: public, max-age=86400
 
 /icon-192.png
   Cache-Control: public, max-age=86400
 
+/icon-c-192.png
+  Cache-Control: public, max-age=86400
+
 /icon-512.png
   Cache-Control: public, max-age=86400
 
+/icon-c-512.png
+  Cache-Control: public, max-age=86400
+
 /maskable-icon-512.png
+  Cache-Control: public, max-age=86400
+
+/maskable-icon-c-512.png
   Cache-Control: public, max-age=86400
 
 /og-image.png

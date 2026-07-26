@@ -1,31 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="Clash logo">
-  <g transform="scale(0.1875)">
-    <g transform="translate(256 256) scale(0.58) translate(-627 -627)">
-      <path
-        d="M 966 590
-           L 966 350
-           A 98 101 0 0 0 868 249
-           L 388 249
-           A 101 101 0 0 0 287 350
-           L 287 848
-           A 100 99 0 0 0 388 947
-           L 760 947"
-        fill="none"
-        stroke="#171412"
-        stroke-width="52"
-        stroke-linecap="round"
-        stroke-linejoin="round"/>
-      <ellipse cx="532" cy="577" rx="47" ry="82" fill="#171412"/>
-      <ellipse cx="717" cy="577" rx="47" ry="82" fill="#171412"/>
-      <rect x="862" y="622" width="88" height="372" rx="44" ry="44" fill="#FF6B50" transform="rotate(26.06 906 808)"/>
-    </g>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-label="Clash">
   <text
-    x="104"
-    y="62"
-    fill="#070B1F"
+    x="12"
+    y="68"
     font-family="Space Grotesk, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-    font-size="42"
-    font-weight="650"
-  >Clash</text>
+    font-size="64"
+    font-weight="700"
+    letter-spacing="-2"
+  ><tspan fill="#FF6B50">C</tspan><tspan fill="#070B1F">lash</tspan></text>
 </svg>

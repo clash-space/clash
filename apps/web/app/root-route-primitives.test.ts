@@ -60,6 +60,24 @@ describe("root route primitives", () => {
     expect(sitemap).not.toContain("/login");
   });
 
+  it("publishes cache-busted Clash C install icons", () => {
+    const html = readFileSync(
+      new URL("../index.html", import.meta.url),
+      "utf8",
+    );
+    const webManifest = JSON.parse(
+      readFileSync(new URL("../public/site.webmanifest", import.meta.url), "utf8"),
+    ) as { icons?: Array<{ src?: string }> };
+
+    expect(html).toContain('href="/favicon-c.svg"');
+    expect(html).toContain('href="/apple-touch-icon-c.png"');
+    expect(webManifest.icons?.map((icon) => icon.src)).toEqual([
+      "/icon-c-192.png",
+      "/icon-c-512.png",
+      "/maskable-icon-c-512.png",
+    ]);
+  });
+
   it("keeps the desktop runtime callout legible in dark mode", () => {
     const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
 

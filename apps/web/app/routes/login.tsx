@@ -178,13 +178,13 @@ export default function LoginRoute() {
             >
               <span className="relative block h-10 w-10">
                 <img
-                  src="/brand/logo-mark.svg"
+                  src="/brand/logo-c.svg"
                   alt=""
                   className="h-10 w-10 object-contain dark:hidden"
                   draggable={false}
                 />
                 <img
-                  src="/brand/logo-mark-dark.svg"
+                  src="/brand/logo-c.svg"
                   alt=""
                   className="hidden h-10 w-10 object-contain dark:block"
                   draggable={false}

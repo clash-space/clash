@@ -1,23 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Clash error logo">
-  <g transform="translate(256 256) scale(0.58) translate(-627 -627)">
-    <path
-      d="M 966 590
-         L 966 350
-         A 98 101 0 0 0 868 249
-         L 388 249
-         A 101 101 0 0 0 287 350
-         L 287 848
-         A 100 99 0 0 0 388 947
-         L 760 947"
-      fill="none"
-      stroke="#171412"
-      stroke-width="52"
-      stroke-linecap="round"
-      stroke-linejoin="round"/>
-    <path d="M 492 537 L 572 617" fill="none" stroke="#171412" stroke-width="42" stroke-linecap="round"/>
-    <path d="M 572 537 L 492 617" fill="none" stroke="#171412" stroke-width="42" stroke-linecap="round"/>
-    <path d="M 677 537 L 757 617" fill="none" stroke="#171412" stroke-width="42" stroke-linecap="round"/>
-    <path d="M 757 537 L 677 617" fill="none" stroke="#171412" stroke-width="42" stroke-linecap="round"/>
-    <rect x="862" y="622" width="88" height="372" rx="44" ry="44" fill="#FF6B50" transform="rotate(26.06 906 808)"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Clash C">
+  <path
+    d="M 382 151 C 346 111 298 88 244 88 C 151 88 76 163 76 256 C 76 349 151 424 244 424 C 298 424 346 401 382 361"
+    fill="none"
+    stroke="#FF6B50"
+    stroke-width="72"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
 </svg>
