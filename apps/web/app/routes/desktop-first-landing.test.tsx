@@ -105,7 +105,7 @@ describe("desktop-first public landing", () => {
     ).toBe(false);
   });
 
-  it("provides direct installer assets for macOS, Windows, and Linux", () => {
+  it("provides architecture-specific macOS installers plus Windows and Linux", () => {
     render(<DownloadRoute />);
 
     expect(
@@ -113,10 +113,17 @@ describe("desktop-first public landing", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("link", { name: /download for macos/i })
+        .getByRole("link", { name: /download for macos apple silicon/i })
         .getAttribute("href"),
     ).toBe(
-      "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-macOS-universal.dmg",
+      "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-macOS-arm64.dmg",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: /download for macos intel/i })
+        .getAttribute("href"),
+    ).toBe(
+      "https://github.com/clash-space/clash/releases/download/desktop-preview/Clash-Desktop-macOS-x64.dmg",
     );
     expect(
       screen

@@ -151,9 +151,6 @@ importers:
       '@master-clash/local-api':
         specifier: workspace:*
         version: link:../local-api
-      '@remotion/bundler':
-        specifier: 4.0.370
-        version: 4.0.370(@swc/core@1.15.43)(lightningcss@1.32.0)(postcss@8.5.16)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@remotion/renderer':
         specifier: 4.0.370
         version: 4.0.370(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -164,6 +161,9 @@ importers:
       '@agentclientprotocol/codex-acp':
         specifier: ^1.1.2
         version: 1.1.2
+      '@remotion/bundler':
+        specifier: 4.0.370
+        version: 4.0.370(@swc/core@1.15.43)(lightningcss@1.32.0)(postcss@8.5.16)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@types/node':
         specifier: ^22.13.0
         version: 22.20.0

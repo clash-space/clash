@@ -106,9 +106,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            platform: macOS
-            script: pack:mac
-            asset: apps/desktop/release/Clash-Desktop-macOS-universal.dmg
+            platform: macOS-arm64
+            script: pack:mac:arm64
+            asset: apps/desktop/release/Clash-Desktop-macOS-arm64.dmg
+          - os: macos-latest
+            platform: macOS-x64
+            script: pack:mac:x64
+            asset: apps/desktop/release/Clash-Desktop-macOS-x64.dmg
           - os: windows-latest
             platform: Windows
             script: pack:win
