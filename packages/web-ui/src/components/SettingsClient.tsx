@@ -2355,7 +2355,7 @@ function modelCardBrand(model: ModelCatalogEntryInfo['model']): ModelBrand {
         return { id: 'recraft', label: 'Recraft', src: '/brand/models/recraft.svg' };
     }
     if (/(clash mock|mock image|mock text)/.test(identity)) {
-        return { id: 'clash', label: 'Clash', src: '/brand/logo-c.svg' };
+        return { id: 'clash', label: 'Clash', src: '/brand/logo-mark.svg' };
     }
     if (/(nano-banana|gemini|veo|google)/.test(identity)) {
         return { id: 'google', label: 'Google', src: '/brand/providers/google.svg' };
@@ -2392,7 +2392,7 @@ function modelCardBrand(model: ModelCatalogEntryInfo['model']): ModelBrand {
     }
     if (/(local|mlx|whisper|kokoro|piper)/.test(identity)) {
         if (/(local agent)/.test(identity)) {
-            return { id: 'clash', label: 'Clash', src: '/brand/logo-c.svg' };
+            return { id: 'clash', label: 'Clash', src: '/brand/logo-mark.svg' };
         }
         return { id: 'local', label: 'Local' };
     }

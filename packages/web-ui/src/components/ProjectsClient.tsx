@@ -47,7 +47,7 @@ export default function ProjectsClient({ projects }: ProjectsClientProps) {
                                 <strong>First cut, open frame</strong>
                             </div>
                             <div className="clash-projects-empty-node clash-projects-empty-node--agent">
-                                <img src="/brand/logo-c-animated.svg" alt="" draggable={false} />
+                                <img src="/brand/logo-mark-animated.svg" alt="" draggable={false} />
                                 <strong>Agent pass</strong>
                             </div>
                             <div className="clash-projects-empty-node clash-projects-empty-node--shot">

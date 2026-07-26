@@ -284,6 +284,14 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-node-badge-draft/);
   });
 
+  it("uses the transparent Clash mark for the browser tab favicon", () => {
+    const favicon = readFileSync(join(process.cwd(), "apps/web/public/favicon.svg"), "utf8");
+    const mark = readFileSync(join(process.cwd(), "apps/web/public/brand/logo-mark.svg"), "utf8");
+
+    expect(favicon).toBe(mark);
+    expect(favicon).not.toMatch(/<rect\s+width="512"\s+height="512"|fill="#F7F6F2"|fill="#FBFAF7"/);
+  });
+
   it("keeps inline canvas node primary actions on Clash node surfaces instead of generic black buttons", () => {
     const source = [
       "packages/web-ui/src/components/nodes/TextNode.tsx",
@@ -509,7 +517,7 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/clash-hero-stage/);
     expect(source).toMatch(/clash-hero-prompt/);
     expect(source).not.toMatch(/lg:pl-(12|16)|xl:pl-(12|16)/);
-    expect(source).toMatch(/\/brand\/logo-c-animated\.svg/);
+    expect(source).toMatch(/\/brand\/logo-mark-animated\.svg/);
     expect(source).toMatch(/clash-dashboard-shell/);
     expect(source).toMatch(/clash-projects-empty-workbench/);
     expect(source).toMatch(/clash-projects-empty-canvas/);
@@ -715,7 +723,7 @@ describe("visual language surfaces", () => {
     expect(source).toMatch(/error\.code/);
     expect(source).toMatch(/Reload/);
     expect(source).toMatch(/Go home/);
-    expect(source).toMatch(/\/brand\/logo-c-error\.svg/);
+    expect(source).toMatch(/\/brand\/logo-mark-error\.svg/);
     expect(errorMark).toMatch(/aria-label="Clash error logo"/);
     expect(errorMark.match(/stroke-linecap="round"/g)?.length).toBeGreaterThanOrEqual(5);
   });

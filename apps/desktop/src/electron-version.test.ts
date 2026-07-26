@@ -176,7 +176,7 @@ describe("desktop Electron runtime", () => {
     expect(readFileSync(iconUrl).subarray(0, 4).toString("ascii")).toBe("icns");
   });
 
-  it("uses a full-size centered Clash C desktop icon source", () => {
+  it("uses a full-size centered desktop icon source", () => {
     const iconSvg = readFileSync(
       new URL("../build/icon.svg", import.meta.url),
       "utf8",
@@ -184,9 +184,9 @@ describe("desktop Electron runtime", () => {
 
     expect(iconSvg).toContain('viewBox="0 0 1024 1024"');
     expect(iconSvg).toContain('rx="216"');
-    expect(iconSvg).toContain('aria-label="Clash C app icon"');
-    expect(iconSvg).toContain('stroke="#FF6B50"');
-    expect(iconSvg).not.toMatch(/<ellipse|agent|face/i);
+    expect(iconSvg).toContain(
+      "translate(512 512) scale(0.86) translate(-636 -601)",
+    );
   });
 
   it("injects the desktop runtime mode into the renderer", () => {
