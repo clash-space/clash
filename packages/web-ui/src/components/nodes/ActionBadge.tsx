@@ -1857,7 +1857,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         } h-auto min-h-0 border-0 shadow-none`}
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        <span className="font-medium text-stone-800">
+                                        <span className="font-medium text-current">
                                             {paramChips.map((c) => c.value).join(' · ')}
                                         </span>
                                         <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />

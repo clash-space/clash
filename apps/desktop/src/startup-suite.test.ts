@@ -33,6 +33,9 @@ describe("desktop startup test suite", () => {
     expect(rootPkg.scripts["test:startup:real-codex-resume"]).toBe(
       "pnpm --filter @master-clash/desktop test:startup:real-codex-resume",
     );
+    expect(rootPkg.scripts["test:startup:real-codex-cold"]).toBe(
+      "pnpm --filter @master-clash/desktop test:startup:real-codex-cold",
+    );
     expect(rootPkg.scripts["test:e2e:qa-agent"]).toBe(
       "pnpm --filter @master-clash/desktop test:e2e:qa-agent",
     );
@@ -79,6 +82,9 @@ describe("desktop startup test suite", () => {
     );
     expect(pkg.scripts["test:startup:real-codex-resume"]).toContain(
       "real-codex-resume-agent-browser.mjs",
+    );
+    expect(pkg.scripts["test:startup:real-codex-cold"]).toContain(
+      "real-codex-cold-start-agent-browser.mjs",
     );
     expect(pkg.scripts["test:e2e:short-drama-timeline"]).toContain(
       "short-drama-timeline-smoke.mjs",
@@ -417,6 +423,178 @@ describe("desktop startup test suite", () => {
     expect(source).not.toContain("OPENAI_BASE_URL");
   });
 
+  it("checks the real cold-start product contract before the first Codex turn", () => {
+    const source = readText("e2e/real-codex-agent-browser.mjs");
+    const helperSource = readText("e2e/product-cold-start-contract.mjs");
+    const contractCall = source.indexOf("assertColdStartProductContract");
+    const prompt = source.indexOf('const prompt = "Run pwd');
+
+    expect(helperSource).toContain("session-harness-config-trigger");
+    expect(helperSource).toContain("session-permission-mode-trigger");
+    expect(helperSource).toContain('command.name === "plan"');
+    expect(helperSource).toContain("session-plan-tag");
+    expect(helperSource).toContain("Exit Plan mode");
+    expect(helperSource).not.toContain("session-collaboration-mode-trigger");
+    expect(helperSource).not.toContain("codex-acp");
+    expect(helperSource).not.toMatch(/GPT-\d/);
+    expect(helperSource).toContain("currentValue");
+    expect(helperSource).toContain("resolveHarnessProductProfile");
+    expect(source).toContain('harnessId: "codex-acp"');
+    expect(source).not.toMatch(/GPT-\d/);
+    expect(helperSource).toContain("/api/v1/sessions?projectId=");
+    expect(contractCall).toBeGreaterThanOrEqual(0);
+    expect(prompt).toBeGreaterThan(contractCall);
+  });
+
+  it("requires a trusted bundled Clash MCP turn and rejects global skill or shell CLI fallback", () => {
+    const source = readText("e2e/real-codex-agent-browser.mjs");
+
+    expect(source).toContain("clash_canvas_list");
+    expect(source).toContain('"clash.host_trusted_mcp"');
+    expect(source).toContain('"clash.renderer"');
+    expect(source).toContain("waitForPersistedClashMcpOutput");
+    expect(source).toContain("Do not use a shell or the Clash CLI");
+    expect(source).toContain("fell back to a global skill or shell CLI");
+    expect(source).toContain("Cannot connect to Clash server");
+    expect(source).toContain("const calls = new Map()");
+    expect(source).toContain("calls.get(toolCallId)");
+  });
+
+  it("derives selections from live harness values and ignores removed cached choices", async () => {
+    const {
+      chooseAlternateRunPreferences,
+      resolveHarnessProductProfile,
+    } = (await import(
+      new URL("../e2e/product-cold-start-contract.mjs", import.meta.url).href
+    )) as {
+      chooseAlternateRunPreferences: (
+        profile: unknown,
+      ) => {
+        configValues: Record<string, string | boolean>;
+        selections: { model: { name: string; value: string } };
+      };
+      resolveHarnessProductProfile: (
+        snapshot: unknown,
+        options: { runtimeId: string; harnessId: string },
+      ) => {
+        selections: { model: { name: string; value: string } };
+        configOptions: unknown[];
+      };
+    };
+
+    const profile = resolveHarnessProductProfile({
+      runtimes: [{
+        id: "desktop-local",
+        preferences: {
+          config_by_agent: {
+            "future-harness": {
+              model: "removed-model",
+            },
+          },
+          mode_by_agent: {},
+        },
+        agents: [{
+          id: "future-harness",
+          config_options: [{
+            id: "model",
+            type: "select",
+            category: "model",
+            currentValue: "future-model",
+            options: [
+              { value: "previous-model", name: "Previous Model" },
+              { value: "future-model", name: "Future Model" },
+            ],
+          }],
+        }],
+      }],
+    }, {
+      runtimeId: "desktop-local",
+      harnessId: "future-harness",
+    });
+
+    expect(profile.selections.model).toEqual({
+      value: "future-model",
+      name: "Future Model",
+    });
+    expect(chooseAlternateRunPreferences(profile)).toMatchObject({
+      configValues: { model: "previous-model" },
+      selections: {
+        model: {
+          value: "previous-model",
+          name: "Previous Model",
+        },
+      },
+    });
+
+    const restoredProfile = resolveHarnessProductProfile({
+      runtimes: [{
+        id: "desktop-local",
+        preferences: {
+          config_by_agent: {
+            "future-harness": {
+              model: "previous-model",
+            },
+          },
+          mode_by_agent: {},
+        },
+        agents: [{
+          id: "future-harness",
+          config_options: [{
+            id: "model",
+            type: "select",
+            category: "model",
+            currentValue: "future-model",
+            options: [
+              { value: "previous-model", name: "Previous Model" },
+              { value: "future-model", name: "Future Model" },
+            ],
+          }],
+        }],
+      }],
+    }, {
+      runtimeId: "desktop-local",
+      harnessId: "future-harness",
+    });
+    expect(restoredProfile.selections.model).toEqual({
+      value: "previous-model",
+      name: "Previous Model",
+    });
+  });
+
+  it("does not hide a Codex-first provider priority in the generic selectors or CLI", () => {
+    const pickerSource = readRootText(
+      "packages/web-ui/src/components/copilot/SessionStartPicker.tsx",
+    );
+    const cliSource = readRootText("packages/clash-bridge/src/cli.ts");
+
+    expect(pickerSource).toContain("preferredAgentId");
+    expect(pickerSource).not.toContain('["codex-acp"');
+    expect(cliSource).toContain(
+      "candidates.find((a) => a.id === startMsg.agent_id)",
+    );
+    expect(cliSource).toContain(
+      "candidates.find((a) => a.id === agentRuntime?.agent_id)",
+    );
+    expect(cliSource).not.toContain(
+      'candidates.find((a) => a.id === "codex-acp")',
+    );
+  });
+
+  it("cold-restarts the product and restores only the latest recorded run choices", () => {
+    const source = readText("e2e/real-codex-cold-start-agent-browser.mjs");
+    const helperSource = readText("e2e/product-cold-start-contract.mjs");
+
+    expect(source).toContain("assertRecentRunPreferencesProductContract");
+    expect(source).toContain("chooseAlternateRunPreferences");
+    expect(source).toContain('harnessId: "codex-acp"');
+    expect(source).not.toMatch(/GPT-\d/);
+    expect(source.match(/startElectron\(\{/g)).toHaveLength(2);
+    expect(helperSource).not.toMatch(/GPT-\d/);
+    expect(helperSource).toContain("expectedPreferences");
+    expect(helperSource).toContain("sessionsBeforeRestart");
+    expect(helperSource).toContain("sessionsAfterRestart");
+  });
+
   it("keeps the real Codex backend ACP smoke out of stub mode", () => {
     const source = readText("e2e/real-codex-acp-backend.mjs");
 
@@ -479,6 +657,7 @@ describe("desktop startup test suite", () => {
 
   it("keeps a permanent narrow-window project chrome check", () => {
     const source = readText("e2e/agent-browser-smoke.mjs");
+    const helperSource = readText("e2e/startup-shared.mjs");
 
     expect(source).toContain('agentBrowser(["set", "viewport", "720", "900"])');
     expect(source).toContain("narrowLayoutScreenshot");
@@ -489,6 +668,29 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("toolbarRailWidth < 46");
     expect(source).toContain("toolbarRailWidth > 50");
     expect(source).toContain("horizontalOverflow");
+    expect(source).toContain("narrowComposerScreenshot");
+    expect(source).toContain("assertComposerToolbarLayout");
+    expect(source).toContain("observeComposerToolbarLayout");
+    expect(helperSource).toContain("controls overlap or escape the input surface");
+    expect(helperSource).toContain("toolbarOverflow");
+    expect(helperSource).toContain("laneOverlap");
+  });
+
+  it("accepts any configured Codex auth method declared by the runtime", () => {
+    const source = readText("e2e/real-codex-agent-browser.mjs");
+
+    expect(source).toContain("supportedAuthMethods.includes(configuredAuthMethod)");
+    expect(source).not.toContain("must use the configured ChatGPT subscription");
+  });
+
+  it("exercises /plan as a closable tag in the real narrow composer", () => {
+    const source = readText("e2e/real-codex-agent-browser.mjs");
+
+    expect(source).toContain('const command = "/plan"');
+    expect(source).toContain("active Plan tag after /plan");
+    expect(source).toContain("narrow-plan-composer.png");
+    expect(source).toContain("assertComposerToolbarLayout");
+    expect(source).toContain('clickButtonByLabel(agentBrowser, "Exit Plan mode")');
   });
 
   it("submits the real Codex prompt with a scoped composer submit helper", () => {

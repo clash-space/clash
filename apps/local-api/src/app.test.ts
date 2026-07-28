@@ -6905,8 +6905,145 @@ describe("local API app", () => {
     }
   });
 
+  it("waits for the server-owned ACP startup barrier before publishing runtime capabilities", async () => {
+    let releaseReady!: () => void;
+    const localAcpReady = new Promise<void>((resolve) => {
+      releaseReady = resolve;
+    });
+    const listRuntimes = vi.fn(async () => ({ runtimes: [] }));
+    const listHarnesses = vi.fn(async () => ({ harnesses: [] }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcpReady,
+      localAcp: {
+        listRuntimes,
+        async createSession() {
+          return { session_id: "unused" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        listHarnesses,
+      },
+    });
+
+    let readySettled = false;
+    const readyRequest = Promise.resolve(app.request("/api/v1/runtimes")).then((response) => {
+      readySettled = true;
+      return response;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(readySettled).toBe(false);
+    expect(listRuntimes).not.toHaveBeenCalled();
+
+    let harnessesSettled = false;
+    const harnessesRequest = Promise.resolve(app.request("/api/v1/local/harnesses")).then((response) => {
+      harnessesSettled = true;
+      return response;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(harnessesSettled).toBe(false);
+    expect(listHarnesses).not.toHaveBeenCalled();
+
+    const snapshot = await app.request("/api/v1/runtimes?readiness=snapshot");
+    expect(snapshot.status).toBe(200);
+    expect(listRuntimes).toHaveBeenCalledOnce();
+
+    releaseReady();
+    expect((await readyRequest).status).toBe(200);
+    expect((await harnessesRequest).status).toBe(200);
+    expect(listRuntimes).toHaveBeenCalledTimes(2);
+    expect(listHarnesses).toHaveBeenCalledOnce();
+  });
+
+  it("persists homepage composer run choices without creating an ACP session", async () => {
+    const updateRunPreferences = vi.fn(async () => ({
+      preferences: {
+        agent_id: "codex-acp",
+        config_by_agent: {
+          "codex-acp": {
+            model: "gpt-5.6-sol",
+            effort: "high",
+          },
+        },
+        mode_by_agent: {
+          "codex-acp": "agent",
+        },
+      },
+    }));
+    const createSession = vi.fn(async () => ({ session_id: "unused" }));
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        createSession,
+        updateRunPreferences,
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+      },
+    });
+
+    const response = await app.request("/api/v1/runtimes/desktop-local/preferences", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_id: "codex-acp",
+        config_values: {
+          model: "gpt-5.6-sol",
+          effort: "high",
+        },
+        mode_id: "agent",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      preferences: {
+        agent_id: "codex-acp",
+        config_by_agent: {
+          "codex-acp": {
+            model: "gpt-5.6-sol",
+            effort: "high",
+          },
+        },
+        mode_by_agent: {
+          "codex-acp": "agent",
+        },
+      },
+    });
+    expect(updateRunPreferences).toHaveBeenCalledWith({
+      agent_id: "codex-acp",
+      config_values: {
+        model: "gpt-5.6-sol",
+        effort: "high",
+      },
+      mode_id: "agent",
+    });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
   it("surfaces and starts the desktop local ACP runtime from an agent without exposing agent roles", async () => {
     const starts: unknown[] = [];
+    const updateRunPreferences = vi.fn(async () => ({
+      preferences: {
+        agent_id: "codex-acp",
+        config_by_agent: {
+          "codex-acp": {
+            model: "gpt-5.6-sol",
+            effort: "high",
+          },
+        },
+        mode_by_agent: {
+          "codex-acp": "agent",
+        },
+      },
+    }));
     const app = createLocalApiApp({
       dataDir,
       userId: "local-user",
@@ -6932,6 +7069,7 @@ describe("local API app", () => {
           starts.push(params);
           return { session_id: "local-session-1" };
         },
+        updateRunPreferences,
         async listResumeSessions() {
           return { sessions: [] };
         },
@@ -6997,6 +7135,11 @@ describe("local API app", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         agent_id: "codex-acp",
+        config_values: {
+          model: "gpt-5.6-sol",
+          effort: "high",
+        },
+        permission_mode: "agent",
         project_id: "project-1",
         resume_session_id: "acp-existing",
       }),
@@ -7030,6 +7173,14 @@ describe("local API app", () => {
       onReady: expect.any(Function),
       onError: expect.any(Function),
     }));
+    expect(updateRunPreferences).toHaveBeenCalledWith({
+      agent_id: "codex-acp",
+      config_values: {
+        model: "gpt-5.6-sol",
+        effort: "high",
+      },
+      mode_id: "agent",
+    });
 
     const listedProjectSessions = await app.request("/api/v1/sessions?projectId=project-1");
     expect(await listedProjectSessions.json()).toMatchObject({
@@ -9196,6 +9347,79 @@ describe("local API app", () => {
         },
       ],
     });
+  });
+
+  it("preserves repeated ACP text chunks when a cumulative transcript snapshot is persisted", async () => {
+    let messageStore: any = null;
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      localAcp: {
+        async listRuntimes() {
+          return { runtimes: [] };
+        },
+        async createSession() {
+          return { session_id: "local-session-repeated-chunks" };
+        },
+        async listResumeSessions() {
+          return { sessions: [] };
+        },
+        setSessionMessageStore(store: any) {
+          messageStore = store;
+        },
+      } as any,
+    });
+
+    const created = await app.request("/api/v1/runtimes/desktop-local/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agent_id: "codex-acp",
+        project_id: "project-repeated-chunks",
+      }),
+    });
+    expect(created.status).toBe(200);
+
+    const chunk = (text: string) => ({
+      sessionUpdate: "agent_message_chunk",
+      messageId: "final-answer",
+      content: { type: "text", text },
+    });
+    const message = {
+      id: "turn-1-agent",
+      sender_kind: "agent" as const,
+      sender_id: "local-agent",
+      turn_id: "turn-1",
+      created_at: 1_700_000_001,
+    };
+
+    await messageStore.appendAgentEvent("local-session-repeated-chunks", {
+      ...message,
+      events: [chunk("/")],
+    });
+    await messageStore.appendAgentEvent("local-session-repeated-chunks", {
+      ...message,
+      events: [
+        chunk("/"),
+        chunk("Users"),
+        chunk("/"),
+        chunk("project"),
+        chunk("-"),
+        chunk("-"),
+      ],
+    });
+
+    const restored = await app.request(
+      "/api/v1/local-sessions/local-session-repeated-chunks/messages",
+    );
+
+    expect(restored.status).toBe(200);
+    const restoredJson = await restored.json() as {
+      messages: Array<{ events: Array<{ content?: { text?: string } }> }>;
+    };
+    expect(
+      restoredJson.messages[0]?.events.map((event) => event.content?.text).join(""),
+    ).toBe("/Users/project--");
   });
 
   it("keeps runtime session history when transcript events write concurrently", async () => {

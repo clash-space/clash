@@ -68,11 +68,11 @@ const VideoClipperNode = ({ id, data }: NodeProps<Node<Record<string, any>>>) =>
                 <div className="absolute top-3 left-3 z-10">
                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-warm-surface/95 rounded-lg shadow-sm border border-warm-border">
                         <FilmStrip className="w-3.5 h-3.5 text-video" weight="fill" />
-                        <span className="text-[10px] font-bold font-display text-slate-800 dark:text-slate-200 uppercase tracking-wide">Video Clipper</span>
+                        <span className="font-display text-[10px] font-bold uppercase tracking-wide text-content-primary">Video Clipper</span>
                     </div>
                 </div>
 
-                <div className="relative w-full aspect-video bg-stone-100 flex items-center justify-center overflow-hidden border-b border-warm-border">
+                <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden border-b border-warm-border bg-warm-muted">
                     {previewR2Key ? (
                         <SignedImg src={previewR2Key} alt="Source poster" className="w-full h-full object-cover pointer-events-none" />
                     ) : (

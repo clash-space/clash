@@ -8,11 +8,11 @@ describe("Editor embedded layout", () => {
       "utf8",
     );
 
-    expect(source).toContain("'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : '12rem'");
+    expect(source).toContain("'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)'");
     expect(source).toContain("'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`");
-    expect(source).toContain("'--clash-timeline-preview-min-width': '21rem'");
+    expect(source).toContain("'--clash-timeline-preview-min-width': 'min(21rem,42%)'");
     expect(source).toContain(
-      "'--clash-timeline-inspector-min-width': inspectorCollapsed ? '0px' : '13rem'",
+      "'--clash-timeline-inspector-min-width': inspectorCollapsed ? '0px' : 'min(13rem,28%)'",
     );
     expect(source).toContain(
       '[grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))]',
@@ -76,6 +76,20 @@ describe("Editor embedded layout", () => {
     expect(source).toContain(
       'className="flex h-[var(--clash-project-sidebar-header-height,2.5rem)] min-h-0 min-w-0 items-center gap-1 overflow-hidden bg-warm-page [grid-column:1/4] [grid-row:1]"',
     );
+  });
+
+  it("keeps inactive Timeline and caption tools readable on dark hover", () => {
+    const sources = [
+      new URL("./Editor.tsx", import.meta.url),
+      new URL("./CaptionWorkspace.tsx", import.meta.url),
+    ].map((url) => readFileSync(url, "utf8"));
+
+    for (const source of sources) {
+      expect(source).not.toContain("hover:bg-black/[0.035]");
+      expect(source).toContain("text-content-muted");
+      expect(source).toContain("hover:bg-warm-hover");
+      expect(source).toContain("hover:text-content-primary");
+    }
   });
 
   it("lets the upper workspace and Timeline resize vertically while Timeline spans full width", () => {

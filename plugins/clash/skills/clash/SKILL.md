@@ -10,6 +10,10 @@ project. The plugin is a client of an already running Clash host; it does not ow
 project state. It may own the lifecycle of the bundled local-api process it
 starts, but never owns a separate project store.
 
+In a built-in self-host ACP session, all Clash product operations MUST go
+through these MCP tools. Never run a shell `clash` command and never fall back
+to a globally installed Clash skill or binary.
+
 ## Runtime boundary
 
 - The plugin automatically reuses an active Desktop/standalone local-api host.
@@ -24,6 +28,9 @@ starts, but never owns a separate project store.
   directory so that only one local host is created.
 - Pass the absolute current workspace `cwd` whenever the task is scoped by a
   `.clash/project.toml` marker.
+- In a built-in ACP session, `CLASH_WORKSPACE_ROOT` pins omitted `cwd` values to
+  that session's working tree. The marker remains authoritative; the environment
+  is only a transport binding and never creates a second project store.
 
 ## Tools and Apps
 
@@ -43,6 +50,26 @@ starts, but never owns a separate project store.
 The Studio, Canvas, Timeline, and Director interfaces are separate focused MCP
 Apps inside one plugin. Do not iframe the Desktop application or add GUI controls
 that are not backed by a real tool call.
+
+## Working-tree projections
+
+- Discover Project Timelines with `clash_cli_timeline` and
+  `args: ["list", "--json"]`. The owning Canvas node exposes the stable id as
+  `data.timelineId`.
+- Round-trip a Timeline through the working tree:
+
+  1. Call `clash_cli_timeline` with
+     `args: ["pull", "--timeline", "<id>", "--file",
+     "timelines/<id>.timeline.yaml", "--json"]`.
+  2. Edit `timelines/<id>.timeline.yaml`.
+  3. Call `clash_cli_timeline` with
+     `args: ["apply", "--timeline", "<id>", "--file",
+     "timelines/<id>.timeline.yaml", "--json"]`.
+
+- Round-trip mutable text through `clash_cli_text` with `pull` and `apply`
+  argument arrays.
+- Preserve the read-proof sidecars created by pull commands. Apply uses them
+  for CAS conflict detection.
 
 ## Mutation rules
 

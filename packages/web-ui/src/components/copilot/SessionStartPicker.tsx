@@ -24,9 +24,12 @@ export interface RuntimeAgentOption {
   };
 }
 
-function preferredAgentId(agents: RuntimeAgentOption[]): string | null {
-  for (const id of ['codex-acp', 'claude-acp', 'gemini']) {
-    if (agents.some((agent) => agent.id === id)) return id;
+function availablePreferredAgentId(
+  agents: RuntimeAgentOption[],
+  recentAgentId?: string,
+): string | null {
+  if (recentAgentId && agents.some((agent) => agent.id === recentAgentId)) {
+    return recentAgentId;
   }
   return agents[0]?.id ?? null;
 }
@@ -42,6 +45,7 @@ export function SessionStartPicker({
   agentTemplates,
   sessions,
   agents = [],
+  preferredAgentId,
   onStart,
   onRecheckAuth,
   busy = false,
@@ -50,13 +54,16 @@ export function SessionStartPicker({
   agentTemplates: AgentTemplate[];
   sessions: BridgeSession[];
   agents?: RuntimeAgentOption[];
+  preferredAgentId?: string;
   onStart: (agentTemplateId: string | null, resumeSessionId?: string, agentId?: string) => void;
   onRecheckAuth?: () => void;
   busy?: boolean;
   startLabel?: string;
 }) {
   const [resumeId, setResumeId] = useState<string | null>(null);
-  const [agentId, setAgentId] = useState<string | null>(() => preferredAgentId(agents));
+  const [agentId, setAgentId] = useState<string | null>(
+    () => availablePreferredAgentId(agents, preferredAgentId),
+  );
   void agentTemplates;
   const selectedAgent = agents.find((agent) => agent.id === agentId) ?? null;
   const selectedAgentNeedsAuth = selectedAgent?.auth?.status === 'needs-auth';
@@ -68,9 +75,9 @@ export function SessionStartPicker({
       return;
     }
     if (!agentId || !agents.some((agent) => agent.id === agentId)) {
-      setAgentId(preferredAgentId(agents));
+      setAgentId(availablePreferredAgentId(agents, preferredAgentId));
     }
-  }, [agents, agentId]);
+  }, [agents, agentId, preferredAgentId]);
 
   return (
     <div className="space-y-4">

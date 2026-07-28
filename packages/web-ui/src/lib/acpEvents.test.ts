@@ -1,5 +1,180 @@
 import { describe, expect, it } from "vitest";
-import { appendAcpEvent, type ByoMessage } from "./acpEvents";
+import {
+  appendAcpEvent,
+  commandActionFromAvailableCommand,
+  goalStateFromAcpEvent,
+  mergeSessionInfoMetadata,
+  sessionInfoStateFromAcpEvent,
+  usageStateFromAcpEvent,
+  type ByoMessage,
+} from "./acpEvents";
+
+describe("commandActionFromAvailableCommand", () => {
+  it("reads an advertised config action without coupling it to an agent id", () => {
+    expect(commandActionFromAvailableCommand({
+      name: "plan",
+      description: "Turn plan mode on.",
+      _meta: {
+        commandAction: {
+          kind: "setConfigOption",
+          configId: "collaboration_mode",
+          value: "plan",
+          resetValue: "default",
+          presentation: "state",
+        },
+      },
+    })).toEqual({
+      kind: "setConfigOption",
+      configId: "collaboration_mode",
+      value: "plan",
+      resetValue: "default",
+      presentation: "state",
+    });
+  });
+
+  it("keeps prompt-backed and unknown command actions on the generic prompt path", () => {
+    expect(commandActionFromAvailableCommand({
+      name: "goal",
+      _meta: {
+        commandAction: {
+          kind: "prefixPrompt",
+          presentation: "state",
+        },
+      },
+    })).toEqual({
+      kind: "prefixPrompt",
+      presentation: "state",
+    });
+    expect(commandActionFromAvailableCommand({
+      name: "future",
+      _meta: {
+        commandAction: {
+          kind: "openPortal",
+          portal: "future",
+        },
+      },
+    })).toBeNull();
+  });
+});
+
+describe("goalStateFromAcpEvent", () => {
+  it("extracts the Codex goal snapshot from ACP session info updates", () => {
+    expect(goalStateFromAcpEvent({
+      sessionId: "acp-session",
+      update: {
+        sessionUpdate: "session_info_update",
+        _meta: {
+          codex: {
+            goal: {
+              objective: "Ship the Plan and Goal composer UX",
+              status: "blocked",
+              tokenBudget: 48_000,
+              timeUsedSeconds: 361,
+              createdAt: 1_785_201_976,
+              controlMethod: "_codex/session/goal_control",
+            },
+          },
+        },
+      },
+    })).toEqual({
+      objective: "Ship the Plan and Goal composer UX",
+      status: "blocked",
+      tokenBudget: 48_000,
+      timeUsedSeconds: 361,
+      createdAt: 1_785_201_976,
+      controlMethod: "_codex/session/goal_control",
+    });
+  });
+
+  it("distinguishes an explicit goal clear from unrelated session info", () => {
+    expect(goalStateFromAcpEvent({
+      sessionUpdate: "session_info_update",
+      _meta: { codex: { goal: null } },
+    })).toBeNull();
+    expect(goalStateFromAcpEvent({
+      sessionUpdate: "session_info_update",
+      title: "A generated title",
+    })).toBeUndefined();
+    expect(goalStateFromAcpEvent({
+      sessionUpdate: "usage_update",
+      _meta: { codex: { goal: null } },
+    })).toBeUndefined();
+  });
+
+  it("keeps ACP session metadata generic while Goal remains a namespaced adapter", () => {
+    expect(sessionInfoStateFromAcpEvent({
+      sessionUpdate: "session_info_update",
+      title: "Claude supplied title",
+      updatedAt: "2026-07-28T02:00:00.000Z",
+      _meta: {
+        claude: {
+          branch: "feature/session-state",
+        },
+      },
+    })).toEqual({
+      title: "Claude supplied title",
+      updatedAt: "2026-07-28T02:00:00.000Z",
+      metadata: {
+        claude: {
+          branch: "feature/session-state",
+        },
+      },
+    });
+    expect(goalStateFromAcpEvent({
+      sessionUpdate: "session_info_update",
+      _meta: { claude: { branch: "feature/session-state" } },
+    })).toBeUndefined();
+  });
+
+  it("deep-merges partial namespaced metadata without dropping an active feature", () => {
+    expect(mergeSessionInfoMetadata({
+      codex: {
+        goal: {
+          objective: "Keep Goal alive",
+          status: "active",
+        },
+      },
+    }, {
+      codex: {
+        threadStatus: { type: "idle" },
+      },
+      cursor: {
+        planId: "plan-1",
+      },
+    })).toEqual({
+      codex: {
+        goal: {
+          objective: "Keep Goal alive",
+          status: "active",
+        },
+        threadStatus: { type: "idle" },
+      },
+      cursor: {
+        planId: "plan-1",
+      },
+    });
+  });
+});
+
+describe("usageStateFromAcpEvent", () => {
+  it("normalizes standard ACP usage without adding transcript content", () => {
+    expect(usageStateFromAcpEvent({
+      sessionId: "claude-session",
+      update: {
+        sessionUpdate: "usage_update",
+        used: 12_500,
+        size: 200_000,
+        cost: { amount: 0.42, currency: "USD" },
+        _meta: { "_claude/origin": "first_party" },
+      },
+    })).toEqual({
+      used: 12_500,
+      size: 200_000,
+      cost: { amount: 0.42, currency: "USD" },
+      metadata: { "_claude/origin": "first_party" },
+    });
+  });
+});
 
 describe("appendAcpEvent", () => {
   it("renders simplified local runtime text events", () => {
@@ -115,6 +290,89 @@ describe("appendAcpEvent", () => {
     ]);
   });
 
+  it("deep-merges namespaced tool metadata across partial ACP updates", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-tool-meta", undefined, {
+      sessionUpdate: "tool_call",
+      toolCallId: "tool-meta-1",
+      title: "Edit",
+      status: "in_progress",
+      _meta: {
+        claudeCode: {
+          toolName: "Edit",
+          parentToolUseId: "parent-1",
+          subagent: true,
+        },
+      },
+    });
+    appendAcpEvent(messages, "turn-tool-meta", 0, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-meta-1",
+      status: "failed",
+      _meta: {
+        claudeCode: {
+          nonExecutionKind: "user-rejected",
+          userFeedback: "Use a different file.",
+        },
+      },
+    });
+
+    expect(messages[0]?.parts[0]).toMatchObject({
+      type: "tool_call",
+      toolCallId: "tool-meta-1",
+      toolName: "Edit",
+      meta: {
+        claudeCode: {
+          toolName: "Edit",
+          parentToolUseId: "parent-1",
+          subagent: true,
+          nonExecutionKind: "user-rejected",
+          userFeedback: "Use a different file.",
+        },
+      },
+    });
+  });
+
+  it("preserves ACP MCP identity for Clash-specific rendering", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-clash-mcp", undefined, {
+      sessionUpdate: "tool_call",
+      toolCallId: "mcp-call-1",
+      title: "mcp.clash.clash_canvas_open",
+      kind: "execute",
+      status: "in_progress",
+      rawInput: {
+        server: "clash",
+        tool: "clash_canvas_open",
+        arguments: { cwd: "/Users/me/.clash/projects/demo" },
+      },
+      _meta: {
+        is_mcp_tool_call: true,
+        "clash.host_trusted_mcp": true,
+        "clash.renderer": "product",
+      },
+    });
+
+    expect(messages[0]?.parts).toEqual([
+      expect.objectContaining({
+        type: "tool_call",
+        toolCallId: "mcp-call-1",
+        mcp: {
+          serverName: "clash",
+          toolName: "clash_canvas_open",
+          renderer: "product",
+        },
+        meta: {
+          is_mcp_tool_call: true,
+          "clash.host_trusted_mcp": true,
+          "clash.renderer": "product",
+        },
+      }),
+    ]);
+  });
+
   it("parses bare ACP message and thought update types", () => {
     const messages: ByoMessage[] = [];
 
@@ -157,6 +415,95 @@ describe("appendAcpEvent", () => {
     ]);
   });
 
+  it("preserves Codex commentary and final-answer phases as separate timeline parts", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-codex-phase", undefined, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "commentary-1",
+      _meta: { codex: { phase: "commentary" } },
+      content: { type: "text", text: "Checking " },
+    });
+    appendAcpEvent(messages, "turn-codex-phase", 0, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "commentary-1",
+      _meta: { codex: { phase: "commentary" } },
+      content: { type: "text", text: "the files." },
+    });
+    appendAcpEvent(messages, "turn-codex-phase", 0, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "final-1",
+      _meta: { codex: { phase: "final_answer" } },
+      content: { type: "text", text: "Done." },
+    });
+
+    expect(messages[0]?.parts).toEqual([
+      {
+        type: "text",
+        text: "Checking the files.",
+        messageId: "commentary-1",
+        phase: "commentary",
+      },
+      {
+        type: "text",
+        text: "Done.",
+        messageId: "final-1",
+        phase: "final_answer",
+      },
+    ]);
+  });
+
+  it("keeps distinct ACP text message ids in separate timeline parts", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-message-ids", undefined, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "message-1",
+      content: { type: "text", text: "First message." },
+    });
+    appendAcpEvent(messages, "turn-message-ids", 0, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "message-2",
+      content: { type: "text", text: "Second message." },
+    });
+
+    expect(messages[0]?.parts).toEqual([
+      {
+        type: "text",
+        text: "First message.",
+        messageId: "message-1",
+      },
+      {
+        type: "text",
+        text: "Second message.",
+        messageId: "message-2",
+      },
+    ]);
+  });
+
+  it("preserves repeated single-character ACP delta chunks", () => {
+    const messages: ByoMessage[] = [];
+
+    appendAcpEvent(messages, "turn-repeated-delta", undefined, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "message-1",
+      content: { type: "text", text: "/project-423" },
+    });
+    appendAcpEvent(messages, "turn-repeated-delta", 0, {
+      sessionUpdate: "agent_message_chunk",
+      messageId: "message-1",
+      content: { type: "text", text: "3" },
+    });
+
+    expect(messages[0]?.parts).toEqual([
+      {
+        type: "text",
+        text: "/project-4233",
+        messageId: "message-1",
+      },
+    ]);
+  });
+
   it("drops Codex transport diagnostics instead of rendering them as assistant prose", () => {
     const messages: ByoMessage[] = [];
 
@@ -167,6 +514,27 @@ describe("appendAcpEvent", () => {
 
     expect(result.idx).toBe(-1);
     expect(messages).toEqual([]);
+  });
+
+  it("routes Codex skill-budget diagnostics into a warning event instead of assistant prose", () => {
+    const messages: ByoMessage[] = [];
+
+    const result = appendAcpEvent(messages, "turn-skill-budget", undefined, {
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "text",
+        text: "Warning: Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill.",
+      },
+    });
+
+    expect(result.idx).toBe(0);
+    expect(messages[0]?.parts).toEqual([{
+      type: "event_note",
+      title: "Skill context limited",
+      detail: "Warning: Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill.",
+      tone: "warning",
+    }]);
+    expect(messages[0]?.parts.some((part) => part.type === "text")).toBe(false);
   });
 
   it("parses snake_case available command updates from ACP implementations", () => {
@@ -188,10 +556,10 @@ describe("appendAcpEvent", () => {
     expect(messages).toEqual([]);
   });
 
-  it("surfaces permission requests as pending tool calls", () => {
+  it("keeps broker permission requests out of transcript activity", () => {
     const messages: ByoMessage[] = [];
 
-    appendAcpEvent(messages, "turn-permission", undefined, {
+    const result = appendAcpEvent(messages, "turn-permission", undefined, {
       type: "requestPermission",
       params: {
         id: "perm-1",
@@ -200,20 +568,8 @@ describe("appendAcpEvent", () => {
       },
     });
 
-    expect(messages[0]?.parts).toEqual([
-      {
-        type: "tool_call",
-        toolCallId: "permission-perm-1",
-        title: "Run shell command",
-        kind: "permission",
-        status: "pending",
-        rawInput: {
-          id: "perm-1",
-          title: "Run shell command",
-          options: [{ optionId: "allow", kind: "allow_once" }],
-        },
-      },
-    ]);
+    expect(result.idx).toBe(-1);
+    expect(messages).toEqual([]);
   });
 
   it("surfaces prompt errors instead of spinning forever", () => {
@@ -294,10 +650,10 @@ describe("appendAcpEvent", () => {
     ]);
   });
 
-  it("uses the ACP permission toolCall payload when present", () => {
+  it("keeps permission toolCall payloads out of transcript activity", () => {
     const messages: ByoMessage[] = [];
 
-    appendAcpEvent(messages, "turn-permission-tool", undefined, {
+    const result = appendAcpEvent(messages, "turn-permission-tool", undefined, {
       type: "requestPermission",
       params: {
         sessionId: "s1",
@@ -311,16 +667,8 @@ describe("appendAcpEvent", () => {
       },
     });
 
-    expect(messages[0]?.parts).toEqual([
-      {
-        type: "tool_call",
-        toolCallId: "permission-tc-list",
-        title: "List canvas nodes",
-        kind: "list",
-        status: "pending",
-        rawInput: { query: "canvas.nodes" },
-      },
-    ]);
+    expect(result.idx).toBe(-1);
+    expect(messages).toEqual([]);
   });
 
   it("renders OpenMA live message chunks and canonical messages without duplicate text", () => {
@@ -355,7 +703,7 @@ describe("appendAcpEvent", () => {
       {
         id: "asst-turn-openma",
         role: "assistant",
-        parts: [{ type: "text", text: "Hello" }],
+        parts: [{ type: "text", text: "Hello", messageId: "msg-1" }],
       },
     ]);
   });

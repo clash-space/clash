@@ -95,13 +95,14 @@ export interface ProjectStatusStorage {
       path: string;
       agentWritable: false;
       localConfig: {
-        role: "machine-local-config";
-        table: "local_config";
-        keys: ["local-sync-config", "local-audio-config", "local-harness-config"];
+        role: "user-editable-machine-config";
+        format: "yaml";
+        path: string;
+        sections: ["server", "harnesses", "audio", "sync"];
         syncDefault: "local-only";
         agentWritable: false;
-        mutationSurface: "host-api-or-cli";
-        jsonSidecars: "removed";
+        mutationSurface: "host-api-cli-or-editor";
+        sqliteConfigRows: "migration-only";
       };
     };
     projectState: {
@@ -176,13 +177,8 @@ export interface ProjectStatusStorage {
     syncDefault: "local-only";
     agentWritable: false;
     files: {
-      cliConfig: {
-        kind: "cli-api-key-config";
-        path: string;
-        agentWritable: false;
-      };
       bridgeCredentials: {
-        kind: "local-runtime-credentials";
+        kind: "machine-credential-store";
         path: string;
         agentWritable: false;
       };
@@ -456,7 +452,7 @@ export function buildProjectStatus(
       : "unknown";
   const collaboration = projectCollaborationStatus(mode, options.replicationState ?? undefined);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
-  const cliConfigPath = joinPath(clashRoot, "config.json");
+  const userConfigPath = joinPath(clashRoot, "config.yaml");
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
@@ -473,7 +469,7 @@ export function buildProjectStatus(
   const protectedPaths = [
     localApiDataDir,
     localSqlitePath,
-    cliConfigPath,
+    userConfigPath,
     bridgeCredentialsPath,
     loroReplicaRoot,
     loroSnapshotPath,
@@ -587,13 +583,14 @@ export function buildProjectStatus(
           path: localSqlitePath,
           agentWritable: false,
           localConfig: {
-            role: "machine-local-config",
-            table: "local_config",
-            keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+            role: "user-editable-machine-config",
+            format: "yaml",
+            path: userConfigPath,
+            sections: ["server", "harnesses", "audio", "sync"],
             syncDefault: "local-only",
             agentWritable: false,
-            mutationSurface: "host-api-or-cli",
-            jsonSidecars: "removed",
+            mutationSurface: "host-api-cli-or-editor",
+            sqliteConfigRows: "migration-only",
           },
         },
         projectState: {
@@ -627,13 +624,8 @@ export function buildProjectStatus(
         syncDefault: "local-only",
         agentWritable: false,
         files: {
-          cliConfig: {
-            kind: "cli-api-key-config",
-            path: cliConfigPath,
-            agentWritable: false,
-          },
           bridgeCredentials: {
-            kind: "local-runtime-credentials",
+            kind: "machine-credential-store",
             path: bridgeCredentialsPath,
             agentWritable: false,
           },

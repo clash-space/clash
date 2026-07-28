@@ -206,31 +206,30 @@ function rewriteProviderAuthTablesWithLegacyPrimaryKeys(sqlitePath) {
   }
 }
 
-function writeProductReplicationConfig(sqlitePath, config) {
-  const { DatabaseSync } = require("node:sqlite");
-  const db = new DatabaseSync(sqlitePath);
-  try {
-    db.prepare(
-      "INSERT OR REPLACE INTO local_config (key, value_json, updated_at) VALUES (?, ?, ?)",
-    ).run(
-      "local-sync-config",
-      JSON.stringify({
-        version: 1,
-        mode: config.mode,
-        remoteLoroUrl: config.remoteLoroUrl ?? null,
-        remoteLoroToken: null,
-        capabilities: config.capabilities ?? {
-          canvas: false,
-          asset_metadata: false,
-          revision_content: false,
-        },
-        updatedAt: now(),
-      }),
-      now(),
-    );
-  } finally {
-    db.close();
-  }
+async function writeProductReplicationConfig(sqlitePath, config) {
+  const clashRoot = path.dirname(path.dirname(sqlitePath));
+  const capabilities = config.capabilities ?? {
+    canvas: false,
+    asset_metadata: false,
+    revision_content: false,
+  };
+  await mkdir(clashRoot, { recursive: true });
+  await writeFile(
+    path.join(clashRoot, "config.yaml"),
+    [
+      "version: 1",
+      "sync:",
+      `  mode: ${config.mode}`,
+      "  remote_loro:",
+      `    url: ${JSON.stringify(config.remoteLoroUrl ?? null)}`,
+      "  capabilities:",
+      `    canvas: ${capabilities.canvas === true}`,
+      `    asset_metadata: ${capabilities.asset_metadata === true}`,
+      `    revision_content: ${capabilities.revision_content === true}`,
+      "",
+    ].join("\n"),
+    { encoding: "utf8", mode: 0o600 },
+  );
 }
 
 async function main() {
@@ -687,18 +686,20 @@ async function main() {
   const agentWorkspaceRoot = status?.storage?.workspace?.root;
   const localSecrets = status?.storage?.localSecrets;
   recordCheck(
-    "machine-local config is a SQLite table, not agent-editable JSON sidecars",
-    localConfig?.role === "machine-local-config" &&
-      localConfig?.table === "local_config" &&
-      localConfig?.keys?.includes("local-sync-config") === true &&
-      localConfig?.keys?.includes("local-audio-config") === true &&
-      localConfig?.keys?.includes("local-harness-config") === true &&
+    "machine-local config is owner-only config.yaml, not SQLite preferences",
+    localConfig?.role === "user-editable-machine-config" &&
+      localConfig?.format === "yaml" &&
+      localConfig?.path === path.join(clashHome, "config.yaml") &&
+      localConfig?.sections?.includes("server") === true &&
+      localConfig?.sections?.includes("harnesses") === true &&
+      localConfig?.sections?.includes("audio") === true &&
+      localConfig?.sections?.includes("sync") === true &&
       localConfig?.syncDefault === "local-only" &&
       localConfig?.agentWritable === false &&
-      localConfig?.mutationSurface === "host-api-or-cli" &&
-      localConfig?.jsonSidecars === "removed" &&
-      repairReport.status.protectedPaths.includes(status.localSqlitePath) &&
-      !isInside(status.localSqlitePath, status.projectWorkspaceRoot),
+      localConfig?.mutationSurface === "host-api-cli-or-editor" &&
+      localConfig?.sqliteConfigRows === "migration-only" &&
+      repairReport.status.protectedPaths.includes(localConfig.path) &&
+      !isInside(localConfig.path, status.projectWorkspaceRoot),
     JSON.stringify({
       localConfig,
       localSqlitePath: status?.localSqlitePath,
@@ -723,18 +724,13 @@ async function main() {
   );
   recordCheck(
     "local secret files are protected local-only storage, not agent-editable projections",
-    localSecrets?.role === "machine-local-secret-files" &&
+      localSecrets?.role === "machine-local-secret-files" &&
       localSecrets?.syncDefault === "local-only" &&
       localSecrets?.agentWritable === false &&
-      localSecrets?.files?.cliConfig?.kind === "cli-api-key-config" &&
-      localSecrets.files.cliConfig.path === path.join(clashHome, "config.json") &&
-      localSecrets.files.cliConfig.agentWritable === false &&
-      localSecrets?.files?.bridgeCredentials?.kind === "local-runtime-credentials" &&
+      localSecrets?.files?.bridgeCredentials?.kind === "machine-credential-store" &&
       localSecrets.files.bridgeCredentials.path === path.join(clashHome, "credentials.json") &&
       localSecrets.files.bridgeCredentials.agentWritable === false &&
-      repairReport.status.protectedPaths.includes(localSecrets.files.cliConfig.path) &&
       repairReport.status.protectedPaths.includes(localSecrets.files.bridgeCredentials.path) &&
-      !isInside(localSecrets.files.cliConfig.path, status.projectWorkspaceRoot) &&
       !isInside(localSecrets.files.bridgeCredentials.path, status.projectWorkspaceRoot),
     JSON.stringify({
       localSecrets,
@@ -1107,7 +1103,7 @@ async function main() {
     "utf8",
   );
 
-  writeProductReplicationConfig(status.localSqlitePath, {
+  await writeProductReplicationConfig(status.localSqlitePath, {
     mode: "cloud-sync",
     remoteLoroUrl: "https://sync.example",
   });
@@ -1158,7 +1154,7 @@ async function main() {
       cloudSyncStatus?.collaboration?.actions?.shareProject?.reason === "cloud-sync-not-ready",
     JSON.stringify(cloudSyncStatus?.collaboration?.actions),
   );
-  writeProductReplicationConfig(status.localSqlitePath, {
+  await writeProductReplicationConfig(status.localSqlitePath, {
     mode: "cloud-sync",
     remoteLoroUrl: "https://sync.example",
     capabilities: {

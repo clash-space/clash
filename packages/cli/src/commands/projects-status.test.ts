@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,8 +9,6 @@ import {
   resolveProjectStatus,
 } from "./projects";
 import type { ResolvedProjectContext } from "../lib/project-context";
-
-const require = createRequire(import.meta.url);
 
 const expectedTracePolicy = {
   schemaVersion: 1,
@@ -110,30 +107,21 @@ async function writeProductReplicationConfig(
   homeDir: string,
   config: Record<string, unknown>,
 ): Promise<void> {
-  const dataDir = join(homeDir, ".clash", "local-api");
-  await mkdir(dataDir, { recursive: true });
-  const { DatabaseSync } = require("node:sqlite") as {
-    DatabaseSync: new (path: string) => {
-      exec(sql: string): void;
-      prepare(sql: string): { run(...values: unknown[]): void };
-      close(): void;
-    };
-  };
-  const db = new DatabaseSync(join(dataDir, "local.sqlite"));
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS local_config (
-        key TEXT PRIMARY KEY NOT NULL,
-        value_json TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `);
-    db.prepare(
-      "INSERT OR REPLACE INTO local_config (key, value_json, updated_at) VALUES (?, ?, ?)",
-    ).run("local-sync-config", JSON.stringify(config), new Date(0).toISOString());
-  } finally {
-    db.close();
-  }
+  const clashHome = join(homeDir, ".clash");
+  await mkdir(clashHome, { recursive: true });
+  const capabilities = config.capabilities as Record<string, unknown> | undefined;
+  await writeFile(join(clashHome, "config.yaml"), [
+    "version: 1",
+    "sync:",
+    `  mode: ${String(config.mode ?? "local-only")}`,
+    "  remote_loro:",
+    `    url: ${JSON.stringify(config.remoteLoroUrl ?? null)}`,
+    "  capabilities:",
+    `    canvas: ${capabilities?.canvas === true}`,
+    `    asset_metadata: ${capabilities?.asset_metadata === true}`,
+    `    revision_content: ${capabilities?.revision_content === true}`,
+    "",
+  ].join("\n"));
 }
 
 test("project status exposes agent-readable project roots and protected local files", () => {
@@ -244,7 +232,7 @@ test("project status exposes agent-readable project roots and protected local fi
   assert.deepEqual(status.protectedPaths, [
     localApiDataDir,
     join(localApiDataDir, "local.sqlite"),
-    join(homeDir, ".clash", "config.json"),
+    join(homeDir, ".clash", "config.yaml"),
     join(homeDir, ".clash", "credentials.json"),
     loroRoot,
     join(loroRoot, "snapshot.bin"),
@@ -305,13 +293,14 @@ test("project status exposes agent-readable project roots and protected local fi
         path: join(localApiDataDir, "local.sqlite"),
         agentWritable: false,
         localConfig: {
-          role: "machine-local-config",
-          table: "local_config",
-          keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+          role: "user-editable-machine-config",
+          format: "yaml",
+          path: join(homeDir, ".clash", "config.yaml"),
+          sections: ["server", "harnesses", "audio", "sync"],
           syncDefault: "local-only",
           agentWritable: false,
-          mutationSurface: "host-api-or-cli",
-          jsonSidecars: "removed",
+          mutationSurface: "host-api-cli-or-editor",
+          sqliteConfigRows: "migration-only",
         },
       },
       projectState: {
@@ -345,13 +334,8 @@ test("project status exposes agent-readable project roots and protected local fi
       syncDefault: "local-only",
       agentWritable: false,
       files: {
-        cliConfig: {
-          kind: "cli-api-key-config",
-          path: join(homeDir, ".clash", "config.json"),
-          agentWritable: false,
-        },
         bridgeCredentials: {
-          kind: "local-runtime-credentials",
+          kind: "machine-credential-store",
           path: join(homeDir, ".clash", "credentials.json"),
           agentWritable: false,
         },

@@ -16,6 +16,12 @@ files:
   - "!*.test.*"
 
 extraResources:
+  - from: ../../packages/clash-bridge/dist/agents
+    to: agents
+    filter:
+      - "**/*"
+      - "**/.*"
+      - "**/.*/**/*"
   - from: ../web/dist/client
     to: web-dist
   - from: ../../.remotion-bundle
@@ -26,14 +32,6 @@ extraResources:
       - "clash_sdk/**/*"
       - "!**/__pycache__/**"
       - "!**/*.py[cod]"
-  - from: build/acp-bin
-    to: acp-bin
-    filter:
-      - "**/*"
-  - from: build/acp-node
-    to: acp-node
-    filter:
-      - "**/*"
   - from: build/clash-cli
     to: clash-cli
     filter:

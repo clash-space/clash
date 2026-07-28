@@ -80,10 +80,29 @@ describe("ChatbotCopilot primitives", () => {
     expect(source).toContain("./ui/gesture");
     expect(source).toContain("useDragGesture");
     expect(source).toContain("resizeGestureBind()");
+    expect(source).toContain("onResizeStateChange?.(true)");
+    expect(source).toContain("onResizeStateChange?.(false)");
     expect(source).not.toContain("@use-gesture/react");
     expect(source).not.toMatch(/\buseDrag\b/);
     expect(source).not.toContain("document.addEventListener('mousemove'");
     expect(source).not.toContain("document.addEventListener('mouseup'");
+  });
+
+  it("coalesces desktop resize previews and only commits the width when the gesture ends", () => {
+    const source = readComponentSource("ChatbotCopilot.tsx");
+
+    expect(source).toContain(
+      "clampCopilotPanelWidthForViewport",
+    );
+    expect(source).toContain("requestAnimationFrame");
+    expect(source).toContain("cancelAnimationFrame");
+    expect(source).toContain("onWidthPreview?.(nextWidth)");
+    expect(source).toContain("panelRef.current.style.width");
+    expect(source).toMatch(/if \(last\)[\s\S]*?onWidthChange\(nextWidth\)/);
+    expect(source).not.toContain(
+      "const COPILOT_PANEL_MAX_WIDTH_FRACTION",
+    );
+    expect(source).not.toContain("const COPILOT_PANEL_MIN_WIDTH");
   });
 
   it("uses the shared dropdown primitive for queued prompt row actions", () => {

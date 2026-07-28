@@ -14,11 +14,8 @@ import type {
 } from "@clash/shared-types";
 
 import { IconButton } from "../ui/icon-button";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-} from "../ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
+import { AgentAnnotationActionsContextMenu } from "./AgentAnnotationBlock";
 
 const TEXT_CONTEXT_LENGTH = 160;
 
@@ -52,12 +49,16 @@ function normalizeRects(
       const x = clamp((rect.left - rootRect.left) / rootRect.width, 0, 1);
       const y = clamp((rect.top - rootRect.top) / rootRect.height, 0, 1);
       const right = clamp((rect.right - rootRect.left) / rootRect.width, x, 1);
-      const bottom = clamp((rect.bottom - rootRect.top) / rootRect.height, y, 1);
+      const bottom = clamp(
+        (rect.bottom - rootRect.top) / rootRect.height,
+        y,
+        1,
+      );
       return {
         x,
         y,
-        width: Math.max((right - x), 0.001),
-        height: Math.max((bottom - y), 0.001),
+        width: Math.max(right - x, 0.001),
+        height: Math.max(bottom - y, 0.001),
       };
     });
 }
@@ -77,9 +78,10 @@ function textAfterRange(root: HTMLElement, range: Range): string {
 }
 
 function selectionRects(range: Range): DOMRect[] {
-  const rects = typeof range.getClientRects === "function"
-    ? Array.from(range.getClientRects())
-    : [];
+  const rects =
+    typeof range.getClientRects === "function"
+      ? Array.from(range.getClientRects())
+      : [];
   if (rects.length > 0) return rects;
   const fallback = range.getBoundingClientRect?.();
   return fallback ? [fallback] : [];
@@ -90,46 +92,47 @@ function selectionObjectTarget(
   range: Range,
 ): AgentAnnotationTarget {
   const selector = "[data-agent-annotation-object-id]";
-  const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
-    ? range.startContainer as Element
-    : range.startContainer.parentElement;
-  const endElement = range.endContainer.nodeType === Node.ELEMENT_NODE
-    ? range.endContainer as Element
-    : range.endContainer.parentElement;
+  const startElement =
+    range.startContainer.nodeType === Node.ELEMENT_NODE
+      ? (range.startContainer as Element)
+      : range.startContainer.parentElement;
+  const endElement =
+    range.endContainer.nodeType === Node.ELEMENT_NODE
+      ? (range.endContainer as Element)
+      : range.endContainer.parentElement;
   const startTarget = startElement?.closest<HTMLElement>(selector);
   const endTarget = endElement?.closest<HTMLElement>(selector);
   const objectId = startTarget?.dataset.agentAnnotationObjectId?.trim();
-  if (
-    !startTarget ||
-    !objectId ||
-    startTarget !== endTarget
-  ) {
+  if (!startTarget || !objectId || startTarget !== endTarget) {
     return target;
   }
 
   const objectType =
     startTarget.dataset.agentAnnotationObjectType?.trim() || target.objectType;
   const objectLabel =
-    startTarget.dataset.agentAnnotationObjectLabel?.trim() || target.objectLabel;
+    startTarget.dataset.agentAnnotationObjectLabel?.trim() ||
+    target.objectLabel;
   const explicitPath = startTarget.dataset.agentAnnotationObjectPath?.trim();
   const parentId = startTarget.dataset.agentAnnotationParentId?.trim();
-  const objectPath = explicitPath || (() => {
-    if (target.surface === "canvas") {
-      return `${target.objectPath}/nodes/${objectId}`;
-    }
-    if (target.surface === "timeline") {
-      return objectType === "timeline-track"
-        ? `${target.objectPath}/tracks/${objectId}`
-        : `${target.objectPath}/tracks/${parentId ?? "unknown"}/items/${objectId}`;
-    }
-    if (objectType === "director-scene") {
-      return `${target.objectPath}/scene`;
-    }
-    if (objectType === "director-camera") {
-      return `${target.objectPath}/cameras/${objectId}`;
-    }
-    return `${target.objectPath}/objects/${objectId}`;
-  })();
+  const objectPath =
+    explicitPath ||
+    (() => {
+      if (target.surface === "canvas") {
+        return `${target.objectPath}/nodes/${objectId}`;
+      }
+      if (target.surface === "timeline") {
+        return objectType === "timeline-track"
+          ? `${target.objectPath}/tracks/${objectId}`
+          : `${target.objectPath}/tracks/${parentId ?? "unknown"}/items/${objectId}`;
+      }
+      if (objectType === "director-scene") {
+        return `${target.objectPath}/scene`;
+      }
+      if (objectType === "director-camera") {
+        return `${target.objectPath}/cameras/${objectId}`;
+      }
+      return `${target.objectPath}/objects/${objectId}`;
+    })();
   return {
     ...target,
     objectId,
@@ -150,15 +153,34 @@ function rectStyle(rect: AgentAnnotationVisualRect) {
 }
 
 function AnnotationHighlight({
+  annotation,
   rects,
   number,
   draft = false,
+  active = false,
+  onSelect,
+  onLocate,
+  onRemove,
 }: {
+  annotation?: AgentAnnotationDraft;
   rects: readonly AgentAnnotationVisualRect[];
   number: number;
   draft?: boolean;
+  active?: boolean;
+  onSelect?: (annotationId: string) => void;
+  onLocate?: (annotationId: string) => void;
+  onRemove?: (annotationId: string) => void;
 }) {
   const finalRect = rects.at(-1);
+  const pinClassName = `absolute flex h-6 min-w-6 -translate-y-1/2 translate-x-1/3 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(215,78,58,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+    annotation ? "pointer-events-auto cursor-pointer" : ""
+  } ${active ? "ring-2 ring-white ring-offset-2 ring-offset-brand" : ""}`;
+  const pinStyle = finalRect
+    ? {
+        left: `${(finalRect.x + finalRect.width) * 100}%`,
+        top: `${(finalRect.y + finalRect.height / 2) * 100}%`,
+      }
+    : undefined;
   return (
     <>
       {rects.map((rect, index) => (
@@ -173,17 +195,39 @@ function AnnotationHighlight({
         />
       ))}
       {finalRect ? (
-        <span
-          data-agent-annotation-pin=""
-          aria-label={`Annotation ${number}`}
-          className="absolute flex h-6 min-w-6 -translate-y-1/2 translate-x-1/3 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(215,78,58,0.28)]"
-          style={{
-            left: `${(finalRect.x + finalRect.width) * 100}%`,
-            top: `${(finalRect.y + finalRect.height / 2) * 100}%`,
-          }}
-        >
-          {number}
-        </span>
+        annotation && onSelect ? (
+          <AgentAnnotationActionsContextMenu
+            annotation={annotation}
+            onOpen={() => onSelect(annotation.id)}
+            onLocate={onLocate ? () => onLocate(annotation.id) : undefined}
+            onRemove={onRemove ? () => onRemove(annotation.id) : undefined}
+          >
+            <button
+              type="button"
+              data-agent-annotation-pin=""
+              aria-label={`Annotation ${number}`}
+              aria-pressed={active}
+              className={pinClassName}
+              style={pinStyle}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelect(annotation.id);
+              }}
+            >
+              {number}
+            </button>
+          </AgentAnnotationActionsContextMenu>
+        ) : (
+          <span
+            data-agent-annotation-pin=""
+            aria-label={`Annotation ${number}`}
+            className={pinClassName}
+            style={pinStyle}
+          >
+            {number}
+          </span>
+        )
       ) : null}
     </>
   );
@@ -195,9 +239,27 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
     target: AgentAnnotationTarget | null;
     annotations: readonly AgentAnnotationDraft[];
     onCreate: (target: AgentAnnotationTarget, note: string) => void;
+    /** Restrict this overlay to one editor-owned object. */
+    objectId?: string;
+    /** Keep object types owned by a nested editor out of a broader surface overlay. */
+    excludedObjectTypes?: readonly string[];
+    activeId?: string | null;
+    onSelect?: (annotationId: string) => void;
+    onLocate?: (annotationId: string) => void;
+    onRemove?: (annotationId: string) => void;
   }
 >(function AgentSelectionAnnotationOverlay(
-  { target, annotations, onCreate },
+  {
+    target,
+    annotations,
+    onCreate,
+    objectId,
+    excludedObjectTypes = [],
+    activeId = null,
+    onSelect,
+    onLocate,
+    onRemove,
+  },
   ref,
 ) {
   const [draft, setDraft] = useState<SelectionDraft | null>(null);
@@ -209,17 +271,21 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
         const selection = annotation.target.selection;
         if (
           !selection?.visualRects?.length ||
-          annotation.target.surfaceId !== target?.surfaceId
+          annotation.target.surfaceId !== target?.surfaceId ||
+          (objectId && annotation.target.objectId !== objectId) ||
+          excludedObjectTypes.includes(annotation.target.objectType)
         ) {
           return [];
         }
-        return [{
-          annotation,
-          number: index + 1,
-          rects: selection.visualRects,
-        }];
+        return [
+          {
+            annotation,
+            number: index + 1,
+            rects: selection.visualRects,
+          },
+        ];
       }),
-    [annotations, target?.surfaceId],
+    [annotations, excludedObjectTypes, objectId, target?.surfaceId],
   );
 
   useEffect(() => {
@@ -247,10 +313,19 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
           return false;
         }
 
-        const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
-          ? range.startContainer as Element
-          : range.startContainer.parentElement;
-        if (startElement?.closest("input, textarea, [contenteditable='true']")) {
+        const startElement =
+          range.startContainer.nodeType === Node.ELEMENT_NODE
+            ? (range.startContainer as Element)
+            : range.startContainer.parentElement;
+        const annotationSelectionRoot = startElement?.closest<HTMLElement>(
+          "[data-agent-annotation-selection-root]",
+        );
+        const editable = startElement?.closest("[contenteditable='true']");
+        if (
+          startElement?.closest("input, textarea") ||
+          (annotationSelectionRoot && annotationSelectionRoot !== root) ||
+          (editable && !annotationSelectionRoot)
+        ) {
           return false;
         }
 
@@ -264,8 +339,17 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
         if (visualRects.length === 0) return false;
 
         const prefix = textBeforeRange(root, range).slice(-TEXT_CONTEXT_LENGTH);
-        const suffix = textAfterRange(root, range).slice(0, TEXT_CONTEXT_LENGTH);
+        const suffix = textAfterRange(root, range).slice(
+          0,
+          TEXT_CONTEXT_LENGTH,
+        );
         const resolvedTarget = selectionObjectTarget(target, range);
+        if (
+          (objectId && resolvedTarget.objectId !== objectId) ||
+          excludedObjectTypes.includes(resolvedTarget.objectType)
+        ) {
+          return false;
+        }
         setDraft({
           target: {
             ...resolvedTarget,
@@ -283,7 +367,7 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
         return true;
       },
     }),
-    [target],
+    [excludedObjectTypes, objectId, target],
   );
 
   const submit = (event: FormEvent) => {
@@ -295,7 +379,7 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
   };
 
   const draftRects = draft?.target.selection?.visualRects ?? [];
-  const draftNumber = annotations.length + 1;
+  const draftNumber = pendingSelections.length + 1;
   const anchorRect = draftRects.at(-1);
 
   return (
@@ -306,17 +390,18 @@ export const AgentSelectionAnnotationOverlay = forwardRef<
       {pendingSelections.map(({ annotation, number, rects }) => (
         <AnnotationHighlight
           key={annotation.id}
+          annotation={annotation}
           rects={rects}
           number={number}
+          active={activeId === annotation.id}
+          onSelect={onSelect}
+          onLocate={onLocate}
+          onRemove={onRemove}
         />
       ))}
 
       {draft && draftRects.length > 0 ? (
-        <AnnotationHighlight
-          rects={draftRects}
-          number={draftNumber}
-          draft
-        />
+        <AnnotationHighlight rects={draftRects} number={draftNumber} draft />
       ) : null}
 
       <Popover

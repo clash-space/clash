@@ -34,4 +34,13 @@ describe("SelectMenu primitives", () => {
         expect(dropdownSource).toContain("<DropdownMenuPrimitive.Trigger asChild>");
         expect(dropdownSource).not.toContain("<button");
     });
+
+    it("keeps nested menus inside the pointer corridor and gives trailing controls breathing room", () => {
+        const selectSource = source();
+        const sectionSource = readFunction(selectSource, "DropdownSelectMenuSection");
+
+        expect(selectSource).toContain("const SUBMENU_OFFSET = 2");
+        expect(sectionSource).toContain("sideOffset={SUBMENU_OFFSET}");
+        expect(selectSource).toContain("pl-3 pr-4");
+    });
 });

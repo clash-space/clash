@@ -89,7 +89,7 @@ const StereoMeterIcon: React.FC<{ levels: StereoAudioLevels }> = ({ levels }) =>
           width="4"
           height={left.height}
           rx="2"
-          fill="#16a34a"
+          fill="var(--clash-accent, #ff6b50)"
         />
       </g>
       <g data-audio-meter-channel="R">
@@ -101,7 +101,7 @@ const StereoMeterIcon: React.FC<{ levels: StereoAudioLevels }> = ({ levels }) =>
           width="4"
           height={right.height}
           rx="2"
-          fill="#16a34a"
+          fill="var(--clash-accent, #ff6b50)"
         />
       </g>
     </svg>

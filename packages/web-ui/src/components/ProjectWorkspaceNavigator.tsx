@@ -8,7 +8,7 @@ import {
   Images,
   MagnifyingGlass,
   Plus,
-  SquaresFour,
+  TextT,
   Trash,
   UploadSimple,
 } from "@phosphor-icons/react";
@@ -58,15 +58,23 @@ import {
   projectAssetDisplayName,
   projectAssetThumbnailSource,
 } from "../features/assets/projectAssetPresentation";
+import { CanvasIcon } from "./ProjectSurfaceIcon";
 
 export type ProjectWorkspaceSurface =
   | { kind: "canvas"; canvasId: string }
   | { kind: "timeline"; timelineId: string }
   | { kind: "director-stage"; stageId: string }
+  | { kind: "text-asset"; nodeId: string; canvasId: string }
   | {
       kind: "asset";
       assetId: string;
     };
+
+export interface ProjectTextAsset {
+  id: string;
+  canvasId: string;
+  label: string;
+}
 
 interface ProjectWorkspaceNavigatorProps {
   header?: ReactNode;
@@ -76,12 +84,14 @@ interface ProjectWorkspaceNavigatorProps {
   timelines: ProjectTimeline[];
   directorStages?: ProjectDirectorStage[];
   assets: ProjectAsset[];
+  textAssets?: ProjectTextAsset[];
   globalAssets?: ProjectAsset[];
   surface: ProjectWorkspaceSurface;
   onSelectCanvas: (canvasId: string) => void;
   onSelectTimeline: (timelineId: string) => void;
   onSelectDirectorStage?: (stageId: string) => void;
   onSelectAsset: (assetId: string) => void;
+  onSelectTextAsset?: (asset: ProjectTextAsset) => void;
   onCreateCanvas: () => void;
   onRenameCanvas: (canvas: ProjectCanvas) => void;
   onDeleteCanvas: (canvas: ProjectCanvas) => void;
@@ -150,7 +160,7 @@ function ProjectFolderSection({
               size={null}
               shape={null}
               onClick={onToggle}
-              className="flex h-[var(--clash-project-control-rhythm,2rem)] w-full min-w-0 items-center justify-start gap-1.5 rounded-md bg-transparent px-1 text-left shadow-none hover:bg-black/[0.025] focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-0"
+              className="flex h-[var(--clash-project-control-rhythm,2rem)] w-full min-w-0 items-center justify-start gap-1.5 rounded-md bg-transparent px-1 text-left shadow-none hover:bg-warm-hover focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-0"
             >
               <CaretRight
                 className={`h-3 w-3 shrink-0 text-stone-400 transition-transform ${open ? "rotate-90" : ""}`}
@@ -170,7 +180,7 @@ function ProjectFolderSection({
                   size="sm"
                   shape="rounded"
                   onClick={onAdd}
-                  className={`${sidebarActionSlotClass} rounded-md bg-transparent text-stone-500 hover:bg-black/[0.04] hover:text-slate-950`}
+                  className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
                 />
               </Tooltip>
             ) : null)}
@@ -254,6 +264,12 @@ type ProjectSearchResult =
       id: string;
       label: string;
       searchText: string;
+    }
+  | {
+      kind: "text-asset";
+      id: string;
+      label: string;
+      searchText: string;
     };
 
 function rowClass(active: boolean, collapsed: boolean): string {
@@ -284,10 +300,15 @@ function assetTabId(assetId: string): string {
   return `project-asset-${assetId}`;
 }
 
+function textAssetTabId(nodeId: string): string {
+  return `project-text-asset-${nodeId}`;
+}
+
 function selectedTabId(surface: ProjectWorkspaceSurface): string {
   if (surface.kind === "canvas") return canvasTabId(surface.canvasId);
   if (surface.kind === "timeline") return timelineTabId(surface.timelineId);
   if (surface.kind === "director-stage") return directorStageTabId(surface.stageId);
+  if (surface.kind === "text-asset") return textAssetTabId(surface.nodeId);
   return assetTabId(surface.assetId);
 }
 
@@ -308,12 +329,14 @@ export default function ProjectWorkspaceNavigator({
   timelines,
   directorStages = [],
   assets,
+  textAssets = [],
   globalAssets = [],
   surface,
   onSelectCanvas,
   onSelectTimeline,
   onSelectDirectorStage,
   onSelectAsset,
+  onSelectTextAsset,
   onCreateCanvas,
   onRenameCanvas,
   onDeleteCanvas,
@@ -377,13 +400,19 @@ export default function ProjectWorkspaceNavigator({
             .join(" "),
         };
       }),
+      ...textAssets.map((asset) => ({
+        kind: "text-asset" as const,
+        id: asset.id,
+        label: asset.label,
+        searchText: `${asset.label} text script document asset ${asset.canvasId}`,
+      })),
     ];
 
     if (!normalizedQuery) return results;
     return results.filter((result) =>
       result.searchText.toLocaleLowerCase().includes(normalizedQuery),
     );
-  }, [assets, canvases, directorStages, searchQuery, timelines]);
+  }, [assets, canvases, directorStages, searchQuery, textAssets, timelines]);
 
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
@@ -398,9 +427,21 @@ export default function ProjectWorkspaceNavigator({
       if (kind === "timeline") onSelectTimeline(id);
       if (kind === "director-stage") onSelectDirectorStage?.(id);
       if (kind === "asset") onSelectAsset(id);
+      if (kind === "text-asset") {
+        const textAsset = textAssets.find((candidate) => candidate.id === id);
+        if (textAsset) onSelectTextAsset?.(textAsset);
+      }
       closeSearch();
     },
-    [closeSearch, onSelectAsset, onSelectCanvas, onSelectDirectorStage, onSelectTimeline],
+    [
+      closeSearch,
+      onSelectAsset,
+      onSelectCanvas,
+      onSelectDirectorStage,
+      onSelectTextAsset,
+      onSelectTimeline,
+      textAssets,
+    ],
   );
 
   const searchStore = useComboboxStore({
@@ -440,7 +481,7 @@ export default function ProjectWorkspaceNavigator({
           ? "timelines"
           : surface.kind === "director-stage"
             ? "director-stages"
-          : "assets";
+            : "assets";
     setOpenFolders((current) =>
       current[folderId] ? current : { ...current, [folderId]: true },
     );
@@ -479,7 +520,14 @@ export default function ProjectWorkspaceNavigator({
     const asset = assets.find(
       (candidate) => assetTabId(candidate.id) === tabId,
     );
-    if (asset) onSelectAsset(asset.id);
+    if (asset) {
+      onSelectAsset(asset.id);
+      return;
+    }
+    const textAsset = textAssets.find(
+      (candidate) => textAssetTabId(candidate.id) === tabId,
+    );
+    if (textAsset) onSelectTextAsset?.(textAsset);
   };
 
   const searchButton = (
@@ -559,7 +607,7 @@ export default function ProjectWorkspaceNavigator({
                       aria-label={canvas.name}
                       className={rowClass(active, collapsed)}
                     >
-                      <SquaresFour
+                      <CanvasIcon
                         className={
                           active
                             ? "h-3.5 w-3.5 text-brand"
@@ -622,7 +670,7 @@ export default function ProjectWorkspaceNavigator({
                               }
                               size="sm"
                               shape="rounded"
-                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-stone-400 opacity-0 hover:bg-stone-100 hover:text-slate-950 group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
                             />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
@@ -733,7 +781,7 @@ export default function ProjectWorkspaceNavigator({
                               }
                               size="sm"
                               shape="rounded"
-                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-stone-400 opacity-0 hover:bg-stone-100 hover:text-slate-950 group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
                             />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
@@ -832,7 +880,7 @@ export default function ProjectWorkspaceNavigator({
                               icon={<DotsThree className="h-4 w-4" weight="bold" />}
                               size="sm"
                               shape="rounded"
-                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-stone-400 opacity-0 hover:bg-stone-100 hover:text-slate-950 group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                              className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
                             />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent side="right" align="start" className="min-w-44 rounded-md p-1">
@@ -862,7 +910,7 @@ export default function ProjectWorkspaceNavigator({
                         icon={<Plus className="h-3 w-3" weight="bold" />}
                         size="sm"
                         shape="rounded"
-                        className={`${sidebarActionSlotClass} rounded-md bg-transparent text-stone-500 hover:bg-black/[0.04] hover:text-slate-950`}
+                        className={`${sidebarActionSlotClass} rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary`}
                       />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -884,8 +932,71 @@ export default function ProjectWorkspaceNavigator({
                   </DropdownMenu>
                 }
               >
-                {assets.length > 0 ? (
+                {assets.length > 0 || textAssets.length > 0 ? (
                   <ul aria-label="Project assets" className="space-y-0">
+                    {textAssets.map((asset) => {
+                      const active =
+                        surface.kind === "text-asset" &&
+                        surface.nodeId === asset.id;
+                      const tab = (
+                        <Tab
+                          id={textAssetTabId(asset.id)}
+                          aria-label={asset.label}
+                          title={asset.label}
+                          className={rowClass(active, collapsed)}
+                        >
+                          <TextT
+                            data-project-text-asset-icon="true"
+                            className={
+                              active
+                                ? "h-3.5 w-3.5 shrink-0 text-brand"
+                                : "h-3.5 w-3.5 shrink-0 text-stone-400"
+                            }
+                            weight={active ? "bold" : "regular"}
+                          />
+                          <span
+                            className={
+                              collapsed ? "sr-only" : "min-w-0 flex-1 truncate"
+                            }
+                          >
+                            {asset.label}
+                          </span>
+                        </Tab>
+                      );
+                      return (
+                        <SidebarItemContextMenu
+                          key={`text-${asset.id}`}
+                          label={asset.label}
+                          onAnnotate={onAnnotate
+                            ? () =>
+                                onAnnotate({
+                                  surface: "canvas",
+                                  surfaceId: asset.canvasId,
+                                  surfaceLabel:
+                                    canvases.find((canvas) => canvas.id === asset.canvasId)?.name ??
+                                    asset.canvasId,
+                                  objectId: asset.id,
+                                  objectType: "canvas-text",
+                                  objectLabel: asset.label,
+                                  objectPath: `canvases/${asset.canvasId}/nodes/${asset.id}`,
+                                  capabilities: ["read", "modify"],
+                                })
+                            : undefined}
+                          actions={[]}
+                        >
+                          <li
+                            data-agent-annotation-object-id={asset.id}
+                            className="group/menu-item relative min-w-0"
+                          >
+                            {collapsed ? (
+                              <Tooltip label={asset.label}>{tab}</Tooltip>
+                            ) : (
+                              tab
+                            )}
+                          </li>
+                        </SidebarItemContextMenu>
+                      );
+                    })}
                     {assets.map((asset) => {
                       const { label } = assetNavigationLabel(asset);
                       const active =
@@ -983,7 +1094,7 @@ export default function ProjectWorkspaceNavigator({
                                   }
                                   size="sm"
                                   shape="rounded"
-                                  className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-stone-400 opacity-0 hover:bg-stone-100 hover:text-slate-950 group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
+                                  className={`${sidebarActionSlotClass} absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-transparent text-content-muted opacity-0 hover:bg-warm-hover hover:text-content-primary group-hover/menu-item:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100`}
                                 />
                               </DropdownMenuTrigger>
                               <DropdownMenuContent
@@ -1058,7 +1169,7 @@ export default function ProjectWorkspaceNavigator({
                       }}
                       className="group w-full rounded-xl border border-warm-border bg-warm-page/50 p-2 text-left transition-colors hover:border-brand/30 hover:bg-brand/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
                     >
-                      <span className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-stone-100">
+                      <span className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-warm-muted">
                         <AssetThumbnail
                           type={asset.type}
                           src={projectAssetThumbnailSource(asset)}
@@ -1067,7 +1178,7 @@ export default function ProjectWorkspaceNavigator({
                           decorative
                         />
                       </span>
-                      <span className="mt-2 block truncate text-sm font-semibold text-slate-900">
+                      <span className="mt-2 block truncate text-sm font-semibold text-content-primary">
                         {label}
                       </span>
                     </button>
@@ -1077,10 +1188,10 @@ export default function ProjectWorkspaceNavigator({
           </ul>
         ) : (
           <div className="mt-5 border-y border-dashed border-warm-border py-12 text-center">
-            <p className="text-sm font-semibold text-slate-900">
+            <p className="text-sm font-semibold text-content-primary">
               No reusable assets available
             </p>
-            <p className="mt-1 text-sm text-stone-500">
+            <p className="mt-1 text-sm text-content-secondary">
               Add assets from the Home Assets tab first.
             </p>
           </div>
@@ -1138,7 +1249,7 @@ export default function ProjectWorkspaceNavigator({
                   result.kind === "asset"
                     ? ImageIcon
                     : result.kind === "canvas"
-                      ? SquaresFour
+                      ? CanvasIcon
                       : result.kind === "director-stage"
                         ? Cube
                         : FilmSlate;

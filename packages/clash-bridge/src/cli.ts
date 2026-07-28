@@ -237,8 +237,8 @@ async function runAdHocPair(): Promise<void> {
       const agentTemplateId = startMsg.agent_template_id ?? agents[0]?.id ?? "master-clash";
       const agentRuntime = await readAgentRuntime(agentTemplateId);
       const pickedAgent =
+        candidates.find((a) => a.id === startMsg.agent_id) ??
         candidates.find((a) => a.id === agentRuntime?.agent_id) ??
-        candidates.find((a) => a.id === "codex-acp") ??
         candidates[0];
       process.stderr.write(
         `→ spawning agent=${agentTemplateId} via ${pickedAgent.spec.command} (${pickedAgent.id})${
@@ -246,7 +246,9 @@ async function runAdHocPair(): Promise<void> {
         } …\n`,
       );
       // Workspace cwd: ~/.clash/projects/<projectId-or-default>/
-      const sessionCwd = await ensureAgentCwd(agentTemplateId);
+      const sessionCwd = await ensureAgentCwd(agentTemplateId, undefined, {
+        harnessId: pickedAgent.id,
+      });
       // Browser passed CLASH_API_KEY (issued by /pair); inject so the
       // spawned ACP agent's `clash` CLI / plugin hooks authenticate
       // without prompting.

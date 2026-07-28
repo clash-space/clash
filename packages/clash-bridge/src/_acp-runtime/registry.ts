@@ -65,32 +65,6 @@ function registryShimName(id: string): string {
   return `clash-acp-${id}`;
 }
 
-const CODEX_CONFIG_OPTIONS: KnownAgentConfigOption[] = [
-  {
-    id: "model",
-    name: "Model",
-    type: "select",
-    category: "model",
-    currentValue: "gpt-5.5",
-    options: [
-      { value: "gpt-5.5", name: "GPT-5.5", description: "Codex conversational model" },
-      { value: "gpt-5.4", name: "GPT-5.4", description: "Codex compatibility profile" },
-    ],
-  },
-  {
-    id: "thought_level",
-    name: "Thinking effort",
-    type: "select",
-    category: "thought_level",
-    currentValue: "medium",
-    options: [
-      { value: "low", name: "Low" },
-      { value: "medium", name: "Medium" },
-      { value: "high", name: "High" },
-    ],
-  },
-];
-
 export const KNOWN_ACP_AGENTS: KnownAgentEntry[] = [
   {
     id: "codex-acp",
@@ -99,7 +73,6 @@ export const KNOWN_ACP_AGENTS: KnownAgentEntry[] = [
     registryId: "codex-acp",
     installSource: "registry",
     homepage: "https://github.com/zed-industries/codex-acp",
-    configOptions: CODEX_CONFIG_OPTIONS,
   },
   {
     id: "claude-acp",

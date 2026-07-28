@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
@@ -25,6 +25,15 @@ function now() {
 async function writeJson(filePath, value) {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function readTextIfFile(filePath) {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 function recordCheck(name, pass, evidence, extra = {}) {
@@ -1332,10 +1341,16 @@ async function main() {
   );
 
   const localConfigKeys = sqliteRows("SELECT key FROM local_config ORDER BY key").map((row) => row.key);
+  const userConfigPath = path.join(dataDir, "config.yaml");
+  const userConfigText = await readTextIfFile(userConfigPath);
   recordCheck(
-    "local config writes persist through sqlite local_config rows",
-    ["local-audio-config", "local-harness-config", "local-sync-config"].every((key) => localConfigKeys.includes(key)),
-    JSON.stringify(localConfigKeys),
+    "local config writes persist through config.yaml without active sqlite config rows",
+    typeof userConfigText === "string" &&
+      userConfigText.includes("harnesses:") &&
+      userConfigText.includes("audio:") &&
+      userConfigText.includes("sync:") &&
+      ["local-audio-config", "local-harness-config", "local-sync-config"].every((key) => !localConfigKeys.includes(key)),
+    JSON.stringify({ userConfigPath, userConfigText, localConfigKeys }),
   );
 
   await request("/api/v1/model-providers", {
@@ -4127,7 +4142,7 @@ async function main() {
       syncConfigReceiptAccepted: checks.some((check) => check.name === "sync config update with receipt read token is accepted" && check.status === "pass"),
       syncConfigAuditRecorded: checks.some((check) => check.name === "sync config update writes sanitized local mutation audit evidence" && check.status === "pass"),
       localConfigNoSidecars: checks.some((check) => check.name === "local config writes do not create JSON sidecar files" && check.status === "pass"),
-      localConfigSqliteRowsPersisted: checks.some((check) => check.name === "local config writes persist through sqlite local_config rows" && check.status === "pass"),
+      localConfigYamlPersisted: checks.some((check) => check.name === "local config writes persist through config.yaml without active sqlite config rows" && check.status === "pass"),
       audioConfigGetReceiptReturned: checks.some((check) => check.name === "audio config get returns receipt read token" && check.status === "pass"),
       audioConfigMissingReadRejected: checks.some((check) => check.name === "audio config update without prior read is rejected" && check.status === "pass"),
       audioConfigBareCasRejected: checks.some((check) => check.name === "audio config update with bare CAS token is rejected" && check.status === "pass"),

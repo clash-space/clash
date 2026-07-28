@@ -1,3 +1,4 @@
 {
-  "agent_id": "codex-acp"
+  "agent_id": "codex-acp",
+  "plugins": ["clash"]
 }

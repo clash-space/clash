@@ -107,4 +107,32 @@ describe("MilkdownEditor controlled value", () => {
     fireEvent.click(screen.getByText("Legal note"));
     expect(onMentionAdded).not.toHaveBeenCalled();
   });
+
+  it("exposes real document formatting commands to editor toolbars", async () => {
+    const onChange = vi.fn();
+    const ref = createRef<MilkdownEditorHandle>();
+    render(
+      <MilkdownEditor
+        ref={ref}
+        value=""
+        onChange={onChange}
+      />,
+    );
+
+    await screen.findByRole("textbox");
+
+    act(() => {
+      expect(ref.current?.formatSelection("bold")).toBe(true);
+      ref.current?.insertAtCursor("Important");
+    });
+
+    await waitFor(() => {
+      expect(
+        onChange.mock.calls.some(
+          ([markdown]) =>
+            typeof markdown === "string" && markdown.includes("**Important**"),
+        ),
+      ).toBe(true);
+    });
+  });
 });

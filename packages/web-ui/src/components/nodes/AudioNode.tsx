@@ -284,26 +284,26 @@ const AudioNode = ({
       contentClassName="max-w-md h-auto rounded-2xl shadow-2xl p-6 gap-6 animate-in fade-in zoom-in-95 duration-200"
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-slate-900">Audio Player</h3>
+        <h3 className="text-lg font-bold text-content-primary">Audio Player</h3>
         <IconButton
           label="Close audio player"
           onClick={() => setShowModal(false)}
           icon={<X size={20} />}
           size="sm"
           shape="circle"
-          className="text-slate-700 hover:bg-warm-muted hover:text-slate-900 dark:text-slate-300"
+          className="text-content-secondary hover:bg-warm-hover hover:text-content-primary"
         />
       </div>
 
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-center py-8 bg-warm-muted rounded-xl">
-          <div className="h-32 w-32 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 dark:text-slate-300 shadow-inner">
+          <div className="flex h-32 w-32 items-center justify-center rounded-full border border-warm-border bg-warm-page text-content-secondary shadow-inner">
             <SpeakerHigh size={48} weight="fill" />
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
-          <div className="flex justify-between text-xs font-medium text-slate-700 dark:text-slate-300 tabular-nums">
+          <div className="flex justify-between text-xs font-medium tabular-nums text-content-secondary">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
@@ -318,7 +318,7 @@ const AudioNode = ({
             className="relative h-12 w-full cursor-pointer group/waveform disabled:cursor-not-allowed disabled:opacity-70"
           >
             {decoding && !peaks && (
-              <div className="absolute inset-0 flex items-center justify-center text-slate-700 dark:text-slate-300">
+              <div className="absolute inset-0 flex items-center justify-center text-content-secondary">
                 <Spinner size={20} className="animate-spin" />
               </div>
             )}
@@ -329,7 +329,7 @@ const AudioNode = ({
                 return (
                   <div
                     key={index}
-                    className={`w-1.5 rounded-full transition-all duration-150 ${isPlayed ? "bg-slate-900" : "bg-slate-200 group-hover/waveform:bg-slate-300"}`}
+                    className={`w-1.5 rounded-full transition-all duration-150 ${isPlayed ? "bg-brand" : "bg-content-disabled group-hover/waveform:bg-content-muted"}`}
                     style={{ height: `${Math.max(6, p * 100)}%` }}
                   />
                 );
@@ -340,7 +340,7 @@ const AudioNode = ({
             </SliderTrack>
             <SliderThumb
               aria-label="Audio playhead"
-              className="h-5 w-1.5 rounded-full bg-slate-900 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/waveform:opacity-100 data-[disabled]:hidden"
+              className="h-5 w-1.5 rounded-full bg-brand opacity-0 transition-opacity focus-visible:opacity-100 group-hover/waveform:opacity-100 data-[disabled]:hidden"
             />
           </Slider>
         </div>
@@ -353,7 +353,7 @@ const AudioNode = ({
             icon={<SkipBack size={24} weight="fill" />}
             size="md"
             shape="circle"
-            className="text-slate-700 hover:bg-transparent hover:text-slate-900 disabled:opacity-30 dark:text-slate-300"
+            className="text-content-secondary hover:bg-transparent hover:text-content-primary disabled:opacity-30"
           />
           <IconButton
             onClick={togglePlay}
@@ -366,7 +366,7 @@ const AudioNode = ({
             )}
             size="lg"
             shape="circle"
-            className="h-16 min-h-16 w-16 min-w-16 bg-slate-900 text-white shadow-lg transition-transform hover:scale-105 hover:bg-slate-800 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+            className="h-16 min-h-16 w-16 min-w-16 bg-brand text-brand-foreground shadow-lg transition-transform hover:scale-105 hover:bg-brand/90 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
           />
           <IconButton
             onClick={handleSkipForward}
@@ -375,7 +375,7 @@ const AudioNode = ({
             icon={<SkipForward size={24} weight="fill" />}
             size="md"
             shape="circle"
-            className="text-slate-700 hover:bg-transparent hover:text-slate-900 disabled:opacity-30 dark:text-slate-300"
+            className="text-content-secondary hover:bg-transparent hover:text-content-primary disabled:opacity-30"
           />
         </div>
       </div>

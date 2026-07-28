@@ -41,4 +41,6 @@ program.addCommand(auditCommand);
 program.addCommand(effectCommand);
 program.addCommand(directorCommand);
 
-program.parse();
+// The bundled host may execute this entry through Electron's Node mode.
+// Its argv still includes the script path, so Commander must parse as Node.
+program.parse(process.argv, { from: "node" });

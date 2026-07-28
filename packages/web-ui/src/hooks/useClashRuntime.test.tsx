@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useClashRuntime } from "./useClashRuntime";
@@ -33,6 +33,7 @@ class FakeWebSocket {
 
 describe("useClashRuntime", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     FakeWebSocket.instances = [];
@@ -109,7 +110,7 @@ describe("useClashRuntime", () => {
     });
   });
 
-  it("loads runtimes on startup without blocking on agent metadata probes", async () => {
+  it("uses the server-owned startup readiness barrier when loading runtimes", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ runtimes: [] }), {
       headers: { "content-type": "application/json" },
     }));
@@ -123,8 +124,312 @@ describe("useClashRuntime", () => {
       !init?.method && String(input).endsWith("/api/v1/runtimes")
     ))).toBe(true);
     expect(fetchMock.mock.calls.some(([input, init]) => (
-      !init?.method && String(input).includes("/api/v1/runtimes?probe=config")
+      !init?.method && String(input).includes("probe=")
     ))).toBe(false);
+  });
+
+  it("keeps the startup snapshot pending until the server readiness barrier settles", async () => {
+    let resolveSnapshot!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveSnapshot = resolve;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(result.current.startupStatus).toBe("loading");
+
+    await act(async () => {
+      resolveSnapshot(new Response(JSON.stringify({ runtimes: [] }), {
+        headers: { "content-type": "application/json" },
+      }));
+    });
+
+    await waitFor(() => expect(result.current.startupStatus).toBe("ready"));
+  });
+
+  it("restores only valid recent choices from the startup snapshot and records the effective run", async () => {
+    let createBody: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({
+          runtimes: [{
+            id: "desktop-local",
+            machine_id: "desktop-local",
+            hostname: "local",
+            os: "darwin",
+            version: "desktop",
+            status: "online",
+            last_heartbeat: 1,
+            created_at: 1,
+            preferences: {
+              agent_id: "codex-acp",
+              config_by_agent: {
+                "codex-acp": {
+                  model: "gpt-5.6-terra",
+                  effort: "removed",
+                  "fast-mode": true,
+                },
+              },
+              mode_by_agent: {
+                "codex-acp": "plan",
+              },
+            },
+            agents: [{
+              id: "claude-acp",
+              config_options: [],
+            }, {
+              id: "codex-acp",
+              config_options: [{
+                id: "model",
+                name: "Model",
+                type: "select",
+                category: "model",
+                currentValue: "gpt-5.6-sol",
+                options: [
+                  { value: "gpt-5.6-sol", name: "GPT-5.6-Sol" },
+                  { value: "gpt-5.6-terra", name: "GPT-5.6-Terra" },
+                ],
+              }, {
+                id: "effort",
+                name: "Effort",
+                type: "select",
+                category: "thought_level",
+                currentValue: "medium",
+                options: [
+                  { value: "medium", name: "Medium" },
+                  { value: "high", name: "High" },
+                ],
+              }, {
+                id: "fast-mode",
+                name: "Fast mode",
+                type: "boolean",
+                currentValue: false,
+              }],
+              session_modes: {
+                currentModeId: "default",
+                availableModes: [
+                  { id: "default", name: "Default" },
+                  { id: "plan", name: "Plan" },
+                ],
+              },
+            }],
+          }],
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        createBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ session_id: "recent-session" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await waitFor(() => expect(result.current.runtimes).toHaveLength(1));
+
+    act(() => {
+      result.current.startDraft("desktop-local", undefined, {
+        projectId: "project-one",
+      });
+    });
+
+    expect(result.current.selectedAgentId).toBe("codex-acp");
+    expect(result.current.sessionConfigOptions).toEqual([
+      expect.objectContaining({ id: "model", currentValue: "gpt-5.6-terra" }),
+      expect.objectContaining({ id: "effort", currentValue: "medium" }),
+      expect.objectContaining({ id: "fast-mode", currentValue: true }),
+    ]);
+    expect(result.current.sessionModes?.currentModeId).toBe("plan");
+
+    act(() => {
+      result.current.sendMessage("hello");
+    });
+    await waitFor(() => expect(createBody).not.toBeNull());
+    expect(createBody).toMatchObject({
+      agent_id: "codex-acp",
+      permission_mode: "plan",
+      config_values: {
+        model: "gpt-5.6-terra",
+        effort: "medium",
+        "fast-mode": true,
+      },
+    });
+  });
+
+  it("rejects an explicit refresh when the runtime snapshot cannot be loaded", async () => {
+    let requestCount = 0;
+    const fetchMock = vi.fn(async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("startup snapshot unavailable", { status: 503 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await waitFor(() => expect(requestCount).toBe(1));
+
+    await expect(result.current.refresh()).rejects.toThrow(
+      "Runtime snapshot request failed: HTTP 503",
+    );
+  });
+
+  it("keeps ACP permission requests out of the transcript and sends the selected option", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/runtimes/desktop-local/sessions") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-permission" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.select("desktop-local", undefined, { agentId: "codex-acp" });
+    });
+
+    const ws = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.permission_request",
+          session_id: "local-session-permission",
+          request_id: "permission-1",
+          tool_call: { toolCallId: "tool-1", title: "Edit file" },
+          options: [
+            { optionId: "reject", name: "Reject", kind: "reject_once" },
+            { optionId: "allow", name: "Allow", kind: "allow_once" },
+          ],
+        }),
+      });
+    });
+
+    expect(result.current.permissionRequests).toEqual([{
+      requestId: "permission-1",
+      sessionId: "local-session-permission",
+      toolCall: { toolCallId: "tool-1", title: "Edit file" },
+      options: [
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+        { optionId: "allow", name: "Allow", kind: "allow_once" },
+      ],
+    }]);
+    expect(result.current.messages).toEqual([]);
+
+    act(() => {
+      result.current.respondPermission("permission-1", "allow");
+    });
+
+    expect(ws.sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      type: "permission_response",
+      request_id: "permission-1",
+      option_id: "allow",
+    });
+    expect(result.current.permissionRequests).toHaveLength(1);
+
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.permission_resolved",
+          session_id: "local-session-permission",
+          request_id: "permission-1",
+        }),
+      });
+    });
+    expect(result.current.permissionRequests).toEqual([]);
+  });
+
+  it("replaces stale draft config when a fresh startup probe completes", async () => {
+    let runtimeRead = 0;
+    const runtimeWithModel = (value: string, name: string) => ({
+      runtimes: [{
+        id: "desktop-local",
+        machine_id: "desktop-local",
+        hostname: "local",
+        os: "darwin",
+        version: "desktop",
+        status: "online",
+        last_heartbeat: 1,
+        created_at: 1,
+        agents: [{
+          id: "codex-acp",
+          label: "Codex",
+          config_options: [{
+            id: "model",
+            name: "Model",
+            type: "select",
+            category: "model",
+            currentValue: value,
+            options: [{ value, name }],
+          }, {
+            id: "fast-mode",
+            name: "Fast mode",
+            type: "boolean",
+            currentValue: true,
+          }],
+        }],
+      }],
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.method && String(input).includes("/api/v1/runtimes")) {
+        runtimeRead += 1;
+        const payload = runtimeRead === 1
+          ? runtimeWithModel("gpt-5.5", "GPT-5.5")
+          : runtimeWithModel("gpt-5.6-sol", "GPT-5.6-Sol");
+        return new Response(JSON.stringify(payload), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await waitFor(() => {
+      expect(result.current.runtimes[0]?.agents[0]?.config_options?.[0]?.currentValue).toBe("gpt-5.5");
+    });
+
+    act(() => {
+      result.current.startDraft("desktop-local", undefined, {
+        agentId: "codex-acp",
+        projectId: "project-one",
+      });
+    });
+    expect(result.current.sessionConfigOptions[0]?.currentValue).toBe("gpt-5.5");
+    act(() => {
+      result.current.setConfigOption("fast-mode", false);
+    });
+
+    await act(async () => {
+      await result.current.refresh({ probe: "config", refresh: true });
+    });
+
+    expect(result.current.runtimes[0]?.agents[0]?.config_options?.[0]?.currentValue).toBe("gpt-5.6-sol");
+    expect(result.current.sessionConfigOptions[0]?.currentValue).toBe("gpt-5.6-sol");
+    expect(
+      result.current.sessionConfigOptions.find((option) => option.id === "fast-mode")?.currentValue,
+    ).toBe(false);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
   it("prepares a runtime draft without creating a local session", async () => {
@@ -159,6 +464,71 @@ describe("useClashRuntime", () => {
     expect(result.current.messages).toEqual([]);
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it("seeds slash commands from the cold-start runtime snapshot without creating a session", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({
+          runtimes: [
+            {
+              id: "desktop-local",
+              machine_id: "desktop-local",
+              hostname: "This Mac",
+              os: "darwin/arm64",
+              version: "desktop",
+              status: "online",
+              created_at: 1,
+              last_heartbeat: 1,
+              agents: [
+                {
+                  id: "codex-acp",
+                  label: "Codex",
+                  available_commands: [
+                    {
+                      name: "review",
+                      description: "Review the current project",
+                      _meta: {
+                        commandAction: {
+                          kind: "prefixPrompt",
+                          presentation: "state",
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await waitFor(() => expect(result.current.runtimes).toHaveLength(1));
+    act(() => {
+      result.current.startDraft("desktop-local", undefined, {
+        agentId: "codex-acp",
+      });
+    });
+
+    expect(result.current.availableCommands).toEqual([
+      {
+        name: "review",
+        description: "Review the current project",
+        _meta: {
+          commandAction: {
+            kind: "prefixPrompt",
+            presentation: "state",
+          },
+        },
+      },
+    ]);
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
   it("creates a local session from a draft only after the first prompt and sends after ready", async () => {
@@ -635,13 +1005,30 @@ describe("useClashRuntime", () => {
               currentValue: "gpt-5.5",
               options: [{ value: "gpt-5.5", name: "GPT-5.5" }],
             },
+            {
+              id: "fast-mode",
+              name: "Fast mode",
+              type: "boolean",
+              currentValue: true,
+            },
+            {
+              id: "collaboration_mode",
+              name: "Collaboration mode",
+              type: "select",
+              currentValue: "plan",
+              options: [
+                { value: "default", name: "Default" },
+                { value: "plan", name: "Plan" },
+              ],
+            },
           ],
         }),
       });
     });
 
-    expect(result.current.sessionConfigOptions).toHaveLength(1);
+    expect(result.current.sessionConfigOptions).toHaveLength(3);
     expect(result.current.sessionConfigOptions[0]?.category).toBe("model");
+    expect(result.current.sessionConfigOptions[1]?.currentValue).toBe(true);
 
     act(() => {
       result.current.setConfigOption("model", "gpt-5.4");
@@ -652,6 +1039,52 @@ describe("useClashRuntime", () => {
       config_id: "model",
       value: "gpt-5.4",
     });
+
+    act(() => {
+      result.current.setConfigOption("fast-mode", false);
+    });
+
+    expect(JSON.parse(ws.sent.at(-1)!)).toEqual({
+      type: "set_config_option",
+      config_id: "fast-mode",
+      value: false,
+    });
+
+    act(() => {
+      result.current.setConfigOption("collaboration_mode", "default");
+    });
+    expect(JSON.parse(ws.sent.at(-1)!)).toEqual({
+      type: "set_config_option",
+      config_id: "collaboration_mode",
+      value: "default",
+    });
+    expect(
+      result.current.sessionConfigOptions.find((option) => option.id === "collaboration_mode")?.currentValue,
+    ).toBe("plan");
+
+    act(() => {
+      ws.onmessage?.({
+        data: JSON.stringify({
+          type: "session.config_options",
+          session_id: "local-session-config",
+          config_options: [
+            {
+              id: "collaboration_mode",
+              name: "Collaboration mode",
+              type: "select",
+              currentValue: "default",
+              options: [
+                { value: "default", name: "Default" },
+                { value: "plan", name: "Plan" },
+              ],
+            },
+          ],
+        }),
+      });
+    });
+    expect(
+      result.current.sessionConfigOptions.find((option) => option.id === "collaboration_mode")?.currentValue,
+    ).toBe("default");
   });
 
   it("tracks ACP session modes and sends native mode updates", async () => {
@@ -664,7 +1097,7 @@ describe("useClashRuntime", () => {
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+      if (url.includes("/api/v1/runtimes") && !init?.method) {
         return new Response(JSON.stringify({
           runtimes: [
             {
@@ -1224,11 +1657,17 @@ describe("useClashRuntime", () => {
       })),
     }))).toEqual([
       { role: "user", text: "first", tools: [] },
-      { role: "assistant", text: "before steer", tools: [] },
-      { role: "assistant", text: "", tools: [{ id: "tool-1", status: "completed", output: "/tmp/project\n" }] },
+      {
+        role: "assistant",
+        text: "before steer",
+        tools: [{ id: "tool-1", status: "completed", output: "/tmp/project\n" }],
+      },
       { role: "user", text: "steer after tool", tools: [] },
-      { role: "assistant", text: "same message after steer still contiguous", tools: [] },
-      { role: "assistant", text: "", tools: [{ id: "tool-2", status: undefined, output: undefined }] },
+      {
+        role: "assistant",
+        text: "same message after steer still contiguous",
+        tools: [{ id: "tool-2", status: undefined, output: undefined }],
+      },
     ]);
     act(() => {
       ws.onmessage?.({
@@ -1937,6 +2376,255 @@ describe("useClashRuntime", () => {
     expect(result.current.messages.at(0)?.parts).toEqual([
       { type: "text", text: "replayed from local-api backlog" },
     ]);
+  });
+
+  it("keeps every streamed event in one stable assistant turn container", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-stable/messages") && !init?.method) {
+        return new Response(JSON.stringify({ messages: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-stable/_attach") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-stable" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.attachSession({
+        id: "local-session-stable",
+        threadId: "local-session-stable",
+        type: "runtime",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+
+    const stream = FakeWebSocket.instances.at(-1)!;
+    const sendEvent = (event: unknown) => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-stable",
+          turn_id: "turn-stable",
+          event,
+        }),
+      });
+    };
+
+    act(() => {
+      sendEvent({
+        sessionUpdate: "agent_thought_chunk",
+        messageId: "thought-one",
+        content: { type: "text", text: "**Planning**" },
+      });
+      sendEvent({
+        sessionUpdate: "agent_message_chunk",
+        messageId: "commentary-one",
+        content: { type: "text", text: "我先读取当前画布。" },
+        _meta: { codex: { phase: "commentary" } },
+      });
+      sendEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "canvas-list",
+        title: "List Canvas",
+        status: "in_progress",
+      });
+      sendEvent({
+        sessionUpdate: "agent_thought_chunk",
+        messageId: "thought-two",
+        content: { type: "text", text: "**Summarizing**" },
+      });
+      sendEvent({
+        sessionUpdate: "agent_message_chunk",
+        messageId: "answer-one",
+        content: { type: "text", text: "画布里有 1 个节点。" },
+        _meta: { codex: { phase: "final_answer" } },
+      });
+    });
+
+    const assistantMessages = result.current.messages.filter((message) => message.role === "assistant");
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]?.id).toBe("asst-turn-stable");
+    expect(assistantMessages[0]?.parts.map((part) => part.type)).toEqual([
+      "thought",
+      "text",
+      "tool_call",
+      "thought",
+      "text",
+    ]);
+  });
+
+  it("tracks Goal and usage state from turnless ACP updates without transcript noise", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/runtimes") && !init?.method) {
+        return new Response(JSON.stringify({ runtimes: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-goal/messages") && !init?.method) {
+        return new Response(JSON.stringify({ messages: [] }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/api/v1/local-sessions/local-session-goal/_attach") && init?.method === "POST") {
+        return new Response(JSON.stringify({ session_id: "local-session-goal" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+
+    const { result } = renderHook(() => useClashRuntime());
+    await act(async () => {
+      await result.current.attachSession({
+        id: "local-session-goal",
+        threadId: "local-session-goal",
+        type: "runtime",
+        projectId: "project-one",
+        runtimeId: "desktop-local",
+        agentId: "codex-acp",
+        status: "active",
+      });
+    });
+
+    const stream = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-goal",
+          turn_id: "",
+          event: {
+            sessionUpdate: "session_info_update",
+            _meta: {
+              codex: {
+                goal: {
+                  objective: "Ship the Goal bar",
+                  status: "active",
+                  tokenBudget: 24_000,
+                  timeUsedSeconds: 90,
+                  controlMethod: "_codex/session/goal_control",
+                },
+              },
+            },
+          },
+        }),
+      });
+    });
+
+    expect(result.current.goal).toEqual(expect.objectContaining({
+      objective: "Ship the Goal bar",
+      status: "active",
+      timeUsedSeconds: 90,
+    }));
+    expect(result.current.sessionInfoMeta).toEqual({
+      codex: {
+        goal: expect.objectContaining({
+          objective: "Ship the Goal bar",
+          status: "active",
+        }),
+      },
+    });
+    expect(result.current.messages).toEqual([]);
+
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-goal",
+          turn_id: "",
+          event: {
+            sessionUpdate: "usage_update",
+            used: 12_500,
+            size: 200_000,
+            cost: { amount: 0.42, currency: "USD" },
+            _meta: { "_claude/origin": "first_party" },
+          },
+        }),
+      });
+    });
+
+    expect(result.current.sessionUsage).toEqual({
+      used: 12_500,
+      size: 200_000,
+      cost: { amount: 0.42, currency: "USD" },
+      metadata: { "_claude/origin": "first_party" },
+    });
+    expect(result.current.messages).toEqual([]);
+
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-goal",
+          turn_id: "",
+          event: {
+            sessionUpdate: "session_info_update",
+            title: "Goal session",
+            _meta: {
+              codex: {
+                threadStatus: { type: "idle" },
+              },
+              claude: {
+                branch: "preserved-for-a-future-adapter",
+              },
+            },
+          },
+        }),
+      });
+    });
+
+    expect(result.current.goal).toEqual(expect.objectContaining({
+      objective: "Ship the Goal bar",
+      status: "active",
+    }));
+    expect(result.current.sessionInfoMeta).toEqual({
+      codex: {
+        goal: expect.objectContaining({
+          objective: "Ship the Goal bar",
+          status: "active",
+        }),
+        threadStatus: { type: "idle" },
+      },
+      claude: {
+        branch: "preserved-for-a-future-adapter",
+      },
+    });
+    expect(result.current.currentSession?.title).toBe("Goal session");
+
+    act(() => {
+      stream.onmessage?.({
+        data: JSON.stringify({
+          type: "session.event",
+          session_id: "local-session-goal",
+          turn_id: "",
+          event: {
+            sessionUpdate: "session_info_update",
+            _meta: { codex: { goal: null } },
+          },
+        }),
+      });
+    });
+
+    expect(result.current.goal).toBeNull();
   });
 
   it("ignores late lifecycle events from a detached session socket", async () => {

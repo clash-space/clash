@@ -1,5 +1,6 @@
 import { mkdir, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { clashHomeForLocalDataDir } from "./local-paths.js";
 
 export function assetRoot(dataDir: string): string {
   return join(dataDir, "assets");
@@ -18,12 +19,6 @@ export function normalizeAssetStorageKey(storageKey: string): string {
   return normalize(slashKey).replace(/\\/g, "/");
 }
 
-function inferClashRoot(dataDir: string, explicit?: string): string {
-  if (explicit?.trim()) return resolve(explicit);
-  const resolved = resolve(dataDir);
-  return basename(resolved) === "local-api" ? dirname(resolved) : resolved;
-}
-
 export function localBlobAssetPath(clashRoot: string, storageKey: string): string {
   const root = join(clashRoot, "assets", "blobs");
   const blobKey = storageKey.slice("local-blobs/".length);
@@ -38,7 +33,10 @@ export function localBlobAssetPath(clashRoot: string, storageKey: string): strin
 function assetPath(dataDir: string, storageKey: string, clashRoot?: string): string {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    return localBlobAssetPath(inferClashRoot(dataDir, clashRoot), normalizedKey);
+    return localBlobAssetPath(
+      clashHomeForLocalDataDir(dataDir, clashRoot),
+      normalizedKey,
+    );
   }
   const root = assetRoot(dataDir);
   const resolved = normalize(join(root, normalizedKey));
@@ -58,7 +56,7 @@ type AssetPathCandidate = {
 function localAssetPathCandidate(dataDir: string, storageKey: string, clashRoot?: string): AssetPathCandidate {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    const ownerRoot = inferClashRoot(dataDir, clashRoot);
+    const ownerRoot = clashHomeForLocalDataDir(dataDir, clashRoot);
     const root = join(ownerRoot, "assets", "blobs");
     return { ownerRoot, root, path: localBlobAssetPath(ownerRoot, normalizedKey) };
   }

@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 describe('ProjectTimelineEditorSurface NLE handoff', () => {
   it('uses a hash-style Canvas icon for the persistent parent Canvas action', () => {
     const source = readFileSync(new URL('./ProjectWorkspaceSurfaces.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('HashStraight,');
-    expect(source).toContain('icon={<HashStraight className="h-4 w-4" weight="regular" />}');
+    expect(source).toContain("import { CanvasIcon } from './ProjectSurfaceIcon';");
+    expect(source).toContain('icon={<CanvasIcon className="h-4 w-4" weight="regular" />}');
     expect(source).not.toContain('icon={<SquaresFour className="h-4 w-4" weight="regular" />}');
   });
 
@@ -40,7 +40,7 @@ describe('ProjectTimelineEditorSurface NLE handoff', () => {
       source.indexOf('type ProjectTimelineEditorState'),
     );
     expect(source).toContain('data-timeline-loading-shell=""');
-    expect(loadingShell).toContain('[grid-template-columns:minmax(12rem,300px)_minmax(21rem,1fr)_minmax(13rem,clamp(280px,22%,340px))]');
+    expect(loadingShell).toContain('[grid-template-columns:minmax(min(12rem,25%),300px)_minmax(min(21rem,42%),1fr)_minmax(min(13rem,28%),clamp(280px,22%,340px))]');
     expect(loadingShell).toContain('[grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_280px]');
     expect(loadingShell).toContain('gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page');
     expect(loadingShell).toContain('pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)]');

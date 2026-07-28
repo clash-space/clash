@@ -214,7 +214,11 @@ export function registerClashCanvasMcp(
         : Array.isArray((projectsValue as { items?: unknown[] } | null)?.items)
           ? (projectsValue as { items: unknown[] }).items
           : [];
-      const structuredContent = { cwd: cwd ?? process.cwd(), host, projects };
+      const structuredContent = {
+        cwd: cwd ?? process.env.CLASH_WORKSPACE_ROOT ?? process.cwd(),
+        host,
+        projects,
+      };
       return {
         content: [{ type: "text" as const, text: `Opened Clash Studio with ${projects.length} project${projects.length === 1 ? "" : "s"}.` }],
         structuredContent,

@@ -10,7 +10,10 @@ export default defineConfig({
   },
   format: ["esm"],
   outDir: "dist",
-  clean: true,
+  // Runtime-only builds happen after the bundled agent tree is assembled.
+  // The package script removes stale runtime outputs while preserving
+  // dist/agents; tsup must not delete that independently built subtree.
+  clean: false,
   banner: { js: "#!/usr/bin/env node" },
   // acp-runtime is vendored into ./src/_acp-runtime — no external bundle
   // step needed. ws and @agentclientprotocol/sdk stay external (declared

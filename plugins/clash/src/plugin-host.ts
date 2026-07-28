@@ -1,9 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import {
+  clashHomeForLocalDataDir,
+  defaultLocalApiDataDir,
+} from "@clash/shared-runtime/local-paths";
 import {
   LOCAL_HOST_PROTOCOL_VERSION,
   isCompatibleHost,
@@ -31,11 +34,6 @@ type StartHost = (context: {
   dataDir: string;
   env: NodeJS.ProcessEnv;
 }) => Promise<OwnedPluginHost>;
-
-function defaultClashHome(env: NodeJS.ProcessEnv): string {
-  const clashHome = env.CLASH_HOME?.trim();
-  return clashHome ? resolve(clashHome) : join(homedir(), ".clash");
-}
 
 function processExists(pid: number): boolean {
   try {
@@ -172,6 +170,7 @@ async function removeOwnedDiscovery(runDir: string, hostId: string): Promise<voi
 async function startBundledHost(context: Parameters<StartHost>[0]): Promise<OwnedPluginHost> {
   const localApiEntry = fileURLToPath(new URL("./local-api.cjs", import.meta.url));
   const cliEntry = fileURLToPath(new URL("./clash-cli.cjs", import.meta.url));
+  const pluginRoot = dirname(dirname(localApiEntry));
   let stderr = "";
   const child = spawn(process.execPath, [localApiEntry], {
     env: {
@@ -181,6 +180,8 @@ async function startBundledHost(context: Parameters<StartHost>[0]): Promise<Owne
       CLASH_PLUGIN_OWNER_CLIENT_ID: context.ownerClientId,
       CLASH_CLI_ENTRY_PATH: cliEntry,
       CLASH_NODE_EXEC_PATH: process.execPath,
+      CLASH_AGENT_BUNDLE_ROOT: join(dirname(localApiEntry), "agents"),
+      CLASH_BUILTIN_PLUGIN_ROOT: pluginRoot,
       PORT: "0",
     },
     stdio: ["ignore", "ignore", "pipe"],
@@ -228,9 +229,9 @@ export function createPluginHostManager(options: {
   startHost?: StartHost;
 } = {}): PluginHostManager {
   const env = options.env ?? process.env;
-  const clashHome = defaultClashHome(env);
+  const dataDir = options.dataDir ?? defaultLocalApiDataDir(env);
+  const clashHome = clashHomeForLocalDataDir(dataDir);
   const runDir = options.runDir ?? join(clashHome, "run");
-  const dataDir = options.dataDir ?? env.CLASH_LOCAL_DATA_DIR?.trim() ?? join(clashHome, "local-api");
   const ownerClientId = options.ownerClientId ?? `codex-plugin-${randomUUID()}`;
   const readHost = options.readHost ?? (() => readActivePluginHost(runDir));
   const startHost = options.startHost ?? startBundledHost;

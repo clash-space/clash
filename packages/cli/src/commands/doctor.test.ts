@@ -1142,7 +1142,7 @@ test("storage doctor fails when local secret files are agent-writable or unprote
   const corrupted = {
     ...status,
     protectedPaths: status.protectedPaths.filter(
-      (path) => path !== status.storage.localSecrets.files.cliConfig.path,
+      (path) => path !== status.storage.localSecrets.files.bridgeCredentials.path,
     ),
     storage: {
       ...status.storage,
@@ -1165,11 +1165,11 @@ test("storage doctor fails when local secret files are agent-writable or unprote
   const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
   assert.equal(contract.level, "error");
   assert.match(contract.message, /local secrets are agent-writable/);
-  assert.match(contract.message, /CLI config secret path is not protected/);
+  assert.match(contract.message, /bridge credentials secret path is not protected/);
   assert.match(contract.message, /bridge credentials secret is agent-writable/);
 });
 
-test("storage doctor fails when machine-local config is not modeled as protected SQLite state", () => {
+test("storage doctor fails when machine-local config is not modeled as protected YAML", () => {
   const status = buildProjectStatus(
     { projectId: "doctor_project", source: "explicit" },
     { homeDir: "/tmp/clash-home" },
@@ -1184,10 +1184,11 @@ test("storage doctor fails when machine-local config is not modeled as protected
           ...status.storage.canonicalReplica.metadata,
           localConfig: {
             ...status.storage.canonicalReplica.metadata.localConfig,
-            table: "user_variables",
+            format: "json",
+            path: "/tmp/clash-home/config.json",
             agentWritable: true,
             mutationSurface: "direct-file-edit",
-            jsonSidecars: "available",
+            sqliteConfigRows: "active",
           },
         },
       },
@@ -1198,10 +1199,11 @@ test("storage doctor fails when machine-local config is not modeled as protected
 
   const contract = checkById({ checks } as Awaited<ReturnType<typeof runStorageDoctor>>, "storage-role-contract");
   assert.equal(contract.level, "error");
-  assert.match(contract.message, /machine-local config table is wrong/);
+  assert.match(contract.message, /machine-local config format is wrong/);
+  assert.match(contract.message, /machine-local config path is wrong/);
   assert.match(contract.message, /machine-local config is agent-writable/);
   assert.match(contract.message, /machine-local config mutation surface is wrong/);
-  assert.match(contract.message, /machine-local config JSON sidecars are not removed/);
+  assert.match(contract.message, /machine-local SQLite config rows are not migration-only/);
 });
 
 test("storage doctor rejects media-backed text revisions and non-Loro Timeline history", () => {

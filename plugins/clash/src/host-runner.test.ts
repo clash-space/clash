@@ -93,3 +93,51 @@ test("host runner asks its host manager to bootstrap Clash when no Desktop host 
   });
   assert.equal(ensures, 1);
 });
+
+test("host runner defaults every product tool to the ACP session workspace", async () => {
+  const module = await loadRunnerModule();
+  assert.equal(typeof module.createHostCliRunner, "function");
+  const root = await mkdtemp(join(tmpdir(), "clash-plugin-workspace-"));
+  const workspace = join(root, "workspace");
+  const cliPath = join(root, "clash-plugin-cli");
+  await mkdir(join(workspace, ".clash"), { recursive: true });
+  await writeFile(join(workspace, ".clash", "project.toml"), [
+    "schema_version = 1",
+    'project_id = "project-workspace"',
+    "",
+  ].join("\n"));
+  await writeFile(cliPath, [
+    "#!/usr/bin/env node",
+    "console.log(JSON.stringify({ cwd: process.cwd() }));",
+    "",
+  ].join("\n"), "utf8");
+  await chmod(cliPath, 0o755);
+  const runner = (module.createHostCliRunner as (options: Record<string, unknown>) => (
+    args: string[], cwd?: string
+  ) => Promise<unknown>)({
+    env: {
+      ...process.env,
+      CLASH_WORKSPACE_ROOT: workspace,
+      CLASH_PROJECT_ID: "project-workspace",
+    },
+    hostManager: {
+      ensureHost: async () => ({
+        schemaVersion: 1,
+        protocolVersion: 1,
+        dataSchemaVersion: 1,
+        hostId: "plugin-host",
+        endpoint: "http://127.0.0.1:49322",
+        pid: process.pid,
+        launchMode: "desktop",
+        startedBy: "desktop",
+        agentCliPath: cliPath,
+        startedAt: "2026-07-16T00:00:00.000Z",
+        updatedAt: "2026-07-16T00:00:00.000Z",
+      }),
+    },
+  });
+
+  assert.deepEqual(await runner(["canvas", "list", "--json"]), {
+    cwd: await realpath(workspace),
+  });
+});

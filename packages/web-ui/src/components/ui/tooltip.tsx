@@ -47,7 +47,7 @@ export function Tooltip({ label, children, placement }: TooltipProps) {
         unmountOnHide
         gutter={8}
         data-placement={placement}
-        className="z-50 whitespace-nowrap rounded-md border border-warm-border bg-warm-surface px-2 py-1 text-xs font-medium text-stone-800 shadow-md"
+        className="z-50 whitespace-nowrap rounded-md border border-warm-border bg-warm-surface px-2 py-1 text-xs font-medium text-content-primary shadow-md"
       >
         {label}
       </AriakitTooltip>

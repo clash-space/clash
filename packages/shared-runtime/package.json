@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./local-paths": {
+      "types": "./dist/local-paths.d.ts",
+      "import": "./dist/local-paths.js",
+      "default": "./dist/local-paths.js"
     }
   },
   "scripts": {

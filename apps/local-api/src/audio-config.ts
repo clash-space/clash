@@ -13,6 +13,10 @@ import {
   type LocalTtsSynthesis,
 } from "@clash-space/sdk";
 import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
+import {
+  createClashUserConfigStore,
+  type ClashUserConfigStore,
+} from "./user-config.js";
 
 export type LocalAsrProvider = "builtin-funasr";
 export type LocalTtsProvider = "builtin-piper";
@@ -248,7 +252,7 @@ async function readState(
   };
 }
 
-async function readConfig(store: SqliteLocalConfigStore): Promise<LocalAudioConfigFile | null> {
+async function readLegacyConfig(store: SqliteLocalConfigStore): Promise<LocalAudioConfigFile | null> {
   const data = await store.getJson<Partial<LocalAudioConfigFile>>(LOCAL_AUDIO_CONFIG_KEY);
   if (!data) return null;
   return {
@@ -265,8 +269,49 @@ async function readConfig(store: SqliteLocalConfigStore): Promise<LocalAudioConf
   };
 }
 
-async function writeConfig(store: SqliteLocalConfigStore, config: LocalAudioConfigFile): Promise<void> {
-  await store.setJson(LOCAL_AUDIO_CONFIG_KEY, config, config.updatedAt);
+function normalizeYamlAudioConfig(value: unknown): LocalAudioConfigFile | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const asr = record.asr && typeof record.asr === "object" && !Array.isArray(record.asr)
+    ? record.asr as Record<string, unknown>
+    : {};
+  const tts = record.tts && typeof record.tts === "object" && !Array.isArray(record.tts)
+    ? record.tts as Record<string, unknown>
+    : {};
+  return {
+    version: 2,
+    asrEnabled: asr.enabled === true,
+    asrProvider: normalizeProvider(asr.provider),
+    asrBaseUrl: null,
+    asrApiKey: null,
+    asrModel: normalizeModel(asr.model, DEFAULT_ASR_MODEL),
+    ttsEnabled: tts.enabled === true,
+    ttsProvider: normalizeTtsProvider(tts.provider),
+    ttsModel: normalizeModel(tts.model, DEFAULT_TTS_MODEL),
+    updatedAt: typeof record.updated_at === "string"
+      ? record.updated_at
+      : new Date(0).toISOString(),
+  };
+}
+
+function yamlAudioConfig(config: LocalAudioConfigFile): Record<string, unknown> {
+  return {
+    asr: {
+      enabled: config.asrEnabled,
+      provider: config.asrProvider,
+      model: config.asrModel,
+    },
+    tts: {
+      enabled: config.ttsEnabled,
+      provider: config.ttsProvider,
+      model: config.ttsModel,
+    },
+    updated_at: config.updatedAt,
+  };
+}
+
+async function writeConfig(store: ClashUserConfigStore, config: LocalAudioConfigFile): Promise<void> {
+  await store.setSection("audio", yamlAudioConfig(config));
 }
 
 function defaultClashSdkPythonPath(): string {
@@ -370,15 +415,29 @@ async function transcribeWithRuntime(
 export function createLocalAudioConfigStore(
   options: LocalAudioConfigStoreOptions,
 ): LocalAudioConfigStore {
-  const configStore = createSqliteLocalConfigStore(options.dataDir);
+  const configStore = createClashUserConfigStore(options.dataDir);
+  const legacyStore = createSqliteLocalConfigStore(options.dataDir);
   const pythonBinary = options.pythonBinary ?? DEFAULT_PYTHON_BINARY;
   const asrCacheDir = join(options.dataDir, "models", "speech", "asr");
   const asrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir);
   const ttsCacheDir = join(options.dataDir, "models", "speech", "tts");
   const ttsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir);
 
+  let migration: Promise<void> | null = null;
+  async function ensureMigrated(): Promise<void> {
+    migration ??= (async () => {
+      if (normalizeYamlAudioConfig(await configStore.getSection("audio"))) return;
+      const legacy = await readLegacyConfig(legacyStore);
+      if (!legacy) return;
+      await writeConfig(configStore, legacy);
+      await legacyStore.delete(LOCAL_AUDIO_CONFIG_KEY);
+    })();
+    return migration;
+  }
+
   async function current(): Promise<LocalAudioConfigFile> {
-    return (await readConfig(configStore)) ?? defaultConfig();
+    await ensureMigrated();
+    return normalizeYamlAudioConfig(await configStore.getSection("audio")) ?? defaultConfig();
   }
 
   async function currentAsrStatus(model: string): Promise<LocalModelStatus> {

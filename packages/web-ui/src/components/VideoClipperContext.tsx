@@ -208,12 +208,12 @@ export function VideoClipperPanel({
     return (
         <>
             <div className="flex items-center justify-between px-5 py-3 border-b border-warm-border bg-warm-surface">
-                <h2 className="text-base font-semibold text-slate-800">Video Clipper</h2>
+                <h2 className="text-base font-semibold text-content-primary">Video Clipper</h2>
                 <Button
                     size="sm"
                     onClick={onClose}
                     disabled={busy}
-                    className="rounded-md px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-300"
+                    className="rounded-md px-3 py-1.5 text-sm text-content-secondary hover:bg-warm-hover hover:text-content-primary"
                 >
                     Cancel
                 </Button>
@@ -244,7 +244,7 @@ export function VideoClipperPanel({
 
                 <div className="w-72 border-l border-warm-border bg-warm-surface p-4 flex flex-col gap-4 overflow-y-auto">
                     <section>
-                        <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">Mode</h3>
+                        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-content-secondary">Mode</h3>
                         <ToggleGroup
                             type="single"
                             value={mode}
@@ -273,33 +273,33 @@ export function VideoClipperPanel({
 
                     {mode === 'screenshot' ? (
                         <section>
-                            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-content-secondary">
                                 Time
                             </h3>
-                            <div className="text-2xl font-mono text-slate-800 tabular-nums">
+                            <div className="font-mono text-2xl tabular-nums text-content-primary">
                                 {formatTime(frameTimeSec)}
                             </div>
-                            <div className="text-xs text-slate-700 dark:text-slate-300 mt-0.5">
+                            <div className="mt-0.5 text-xs text-content-secondary">
                                 of {formatTime(duration)}
                             </div>
                         </section>
                     ) : (
                         <section>
-                            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
+                            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-content-secondary">
                                 Range
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <RangeReadout label="Start" value={startSec} />
                                 <RangeReadout label="End" value={endSec} />
                             </div>
-                            <div className="text-[11px] text-slate-700 dark:text-slate-300 mt-2 tabular-nums">
+                            <div className="mt-2 text-[11px] tabular-nums text-content-secondary">
                                 Length {formatTime(Math.max(0, endSec - startSec))}
                             </div>
                         </section>
                     )}
 
                     {error && (
-                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md p-2">
+                        <div className="rounded-md border border-red-500/25 bg-red-500/10 p-2 text-xs text-red-700 dark:text-red-300">
                             {error}
                         </div>
                     )}
@@ -348,8 +348,8 @@ export function VideoClipperPanel({
 function RangeReadout({ label, value }: { label: string; value: number }) {
     return (
         <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{label}</span>
-            <span className="text-base font-mono text-slate-800 tabular-nums">{formatTime(value)}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-content-secondary">{label}</span>
+            <span className="font-mono text-base tabular-nums text-content-primary">{formatTime(value)}</span>
         </div>
     );
 }

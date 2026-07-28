@@ -2,7 +2,7 @@
 
 Status: Accepted
 
-Last updated: 2026-07-11
+Last updated: 2026-07-26
 
 ## Invariants
 
@@ -11,6 +11,8 @@ Last updated: 2026-07-11
 3. Immutable media bytes are globally deduplicated by content hash.
 4. Machine-local metadata is SQLite, not a JSON database.
 5. Cloud collaboration replicates the local model; it does not fork it.
+6. Self-hosted configuration follows
+   [`self-host-storage-spec.md`](./self-host-storage-spec.md).
 
 ## Marker Workspace
 
@@ -54,13 +56,14 @@ $CLASH_HOME/
     text-revision-blobs/<prefix>/<hash>.md
   assets/
     blobs/<sha256>/original.<ext>
-  config.json
+  config.yaml
   credentials.json
   projects/<encoded-project-id>/
     runtime/
 ```
 
-These paths are product-owned and not agent-editable.
+`config.yaml` is deliberately user-editable. The remaining paths are
+product-owned; `credentials.json` is opaque and owner-only.
 
 ### Project Loro Replica
 
@@ -77,7 +80,6 @@ second snapshot in cwd and no separate Timeline history store.
 - assets, project asset membership, and derived Canvas reference indexes;
 - immutable text revision metadata;
 - provider accounts and encrypted provider/OAuth state;
-- local sync/audio/harness configuration;
 - sanitized mutation audit evidence.
 
 SQLite does not store media bodies or Timeline history. The mutation audit
@@ -107,10 +109,13 @@ revision table, content endpoint, lock file, or revision JSON sidecar exists.
 ## Configuration Formats
 
 - TOML: project pointer.
-- SQLite: host-owned mutable machine state.
+- YAML: user-editable, non-secret machine configuration and agent-facing
+  projections.
+- SQLite: transactional and queryable host-owned product state, never user
+  preferences.
 - Loro binary/update log: collaborative Project state.
-- JSON/YAML/Markdown: agent-facing projections, plans, manifests, and
-  intentionally editable configuration.
+- JSON/Markdown: opaque machine records and agent-facing projections, plans,
+  and manifests.
 - Content-addressed files: immutable media and text revision bodies.
 
 No broad mutable JSON database path is supported.

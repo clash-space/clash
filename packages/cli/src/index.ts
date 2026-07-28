@@ -61,4 +61,7 @@ program.addCommand(mcpCommand);
 program.addCommand(effectCommand);
 program.addCommand(directorCommand);
 
-program.parse();
+// Commander auto-detects Electron and otherwise treats argv[1] as the first
+// user command. Clash Desktop intentionally runs this entry with
+// ELECTRON_RUN_AS_NODE, whose argv is Node-compatible, so force that contract.
+program.parse(process.argv, { from: "node" });

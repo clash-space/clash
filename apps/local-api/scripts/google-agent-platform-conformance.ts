@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createLocalApiApp } from "../src/app.js";
+import { defaultLocalApiDataDir } from "../src/local-paths.js";
 import { createLocalProviderStore } from "../src/local-provider-store.js";
 import {
   createProviderConformanceStubs,
@@ -47,17 +47,6 @@ function argValue(name: string): string | undefined {
 
 function hasFlag(name: string): boolean {
   return process.argv.includes(name);
-}
-
-function defaultDesktopDataDir(): string {
-  return join(homedir(), "Library", "Application Support", "@master-clash", "desktop", "local-api");
-}
-
-function defaultDataDir(): string {
-  if (process.env.CLASH_LOCAL_DATA_DIR) return process.env.CLASH_LOCAL_DATA_DIR;
-  const desktop = defaultDesktopDataDir();
-  if (existsSync(join(desktop, "local.sqlite"))) return desktop;
-  return join(homedir(), ".clash", "local-api");
 }
 
 function defaultRecordingPath(): string {
@@ -188,7 +177,7 @@ async function runTarget(input: {
 }
 
 async function main(): Promise<void> {
-  const dataDir = resolve(argValue("--data-dir") ?? defaultDataDir());
+  const dataDir = resolve(argValue("--data-dir") ?? defaultLocalApiDataDir(process.env));
   const userId = argValue("--user-id") ?? process.env.CLASH_USER_ID ?? "local-user";
   const recordingPath = resolve(argValue("--recording") ?? process.env.CLASH_PROVIDER_TEST_RECORDING_PATH ?? defaultRecordingPath());
   const replayOnly = hasFlag("--replay");

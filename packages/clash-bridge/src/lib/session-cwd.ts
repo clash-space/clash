@@ -19,18 +19,35 @@
  * be an explicit product action.
  */
 
-import { mkdir, readFile, cp, writeFile } from "node:fs/promises";
+import {
+  cp,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { McpServer } from "@agentclientprotocol/sdk";
 import { projectIdPathSegment, projectWorkspaceId } from "@clash/shared-runtime";
+import { resolveHarnessProjectSkillDirectory } from "./agent-skills.js";
 import { paths } from "./platform.js";
 
 /** Used when the caller doesn't supply a project id (e.g. Quick connect). */
 const DEFAULT_PROJECT = "_default";
 
 /** Bridge's bundled `dist/agents/` root. */
-function bundledAgentsDir(): string {
+export function resolveBundledAgentsDir(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const externalRoot = env.CLASH_AGENT_BUNDLE_ROOT?.trim();
+  if (externalRoot) return resolve(externalRoot);
+
   // After tsup bundles, this module lives in `dist/<chunk>.js`, so the
   // agent tree is the SIBLING `dist/agents/` — i.e. ./agents/ from here.
   // Source-tree callers run from `src/lib/*`, so look at the built
@@ -48,11 +65,30 @@ function bundledAgentsDir(): string {
   return fileURLToPath(candidates[0]);
 }
 
+function bundledAgentsDir(): string {
+  return resolveBundledAgentsDir();
+}
+
 export interface AgentTemplateManifest {
   id: string;
   label: string;
   summary: string;
   agent_id: string;
+}
+
+export interface AgentRuntimeConfig {
+  agent_id: string;
+  plugins?: string[];
+}
+
+export interface AgentWorkspaceCapabilities {
+  /**
+   * ACP harness selected for this session. Its native project Skill directory
+   * is resolved through the skills compatibility adapter. No default is
+   * intentional: an unknown harness must not inherit another harness's
+   * filesystem contract.
+   */
+  harnessId?: string;
 }
 
 /** Read the bundled agent manifest. Used by daemon hello + picker. */
@@ -71,13 +107,148 @@ export async function listBundledAgents(): Promise<AgentTemplateManifest[]> {
  * CLI to spawn). Returns null when the id isn't a known bundled agent
  * template — caller should treat that as a 404-equivalent error.
  */
-export async function readAgentRuntime(agentTemplateId: string): Promise<{ agent_id: string } | null> {
+export async function readAgentRuntime(agentTemplateId: string): Promise<AgentRuntimeConfig | null> {
   try {
     const text = await readFile(join(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
-    return JSON.parse(text) as { agent_id: string };
+    return JSON.parse(text) as AgentRuntimeConfig;
   } catch {
     return null;
   }
+}
+
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertInside(root: string, candidate: string, label: string): string {
+  const fromRoot = relative(root, candidate);
+  if (
+    fromRoot === ".." ||
+    fromRoot.startsWith(`..${sep}`) ||
+    isAbsolute(fromRoot)
+  ) {
+    throw new Error(`${label} must stay inside the bundled plugin`);
+  }
+  return candidate;
+}
+
+function resolvePluginPath(pluginRoot: string, base: string, value: string): string {
+  if (!value.startsWith("./") && !value.startsWith("../")) return value;
+  return assertInside(pluginRoot, resolve(base, value), `plugin path '${value}'`);
+}
+
+function configuredEnv(value: unknown): Array<{ name: string; value: string }> {
+  if (value === undefined) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) =>
+      isRecord(entry) && typeof entry.name === "string" && typeof entry.value === "string"
+        ? [{ name: entry.name, value: entry.value }]
+        : []);
+  }
+  if (!isRecord(value)) return [];
+  return Object.entries(value).flatMap(([name, entry]) =>
+    typeof entry === "string" ? [{ name, value: entry }] : []);
+}
+
+function pluginMcpEnv(
+  runtimeEnv: Record<string, string | undefined>,
+  pluginEnv: unknown,
+  usesElectronNode: boolean,
+): Array<{ name: string; value: string }> {
+  const merged = new Map<string, string>();
+  for (const [name, value] of Object.entries(runtimeEnv)) {
+    if (value && (name.startsWith("CLASH_") || name === "PATH" || name === "NODE_PATH")) {
+      merged.set(name, value);
+    }
+  }
+  for (const entry of configuredEnv(pluginEnv)) merged.set(entry.name, entry.value);
+  if (usesElectronNode) merged.set("ELECTRON_RUN_AS_NODE", "1");
+  return [...merged].map(([name, value]) => ({ name, value }));
+}
+
+async function resolvePluginMcpServers(
+  pluginRoot: string,
+  runtimeEnv: Record<string, string | undefined>,
+): Promise<McpServer[]> {
+  const manifest = JSON.parse(
+    await readFile(join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
+  ) as JsonRecord;
+  const pluginName = typeof manifest.name === "string" ? manifest.name : "plugin";
+  const mcpManifestPath = manifest.mcpServers;
+  if (typeof mcpManifestPath !== "string" || !mcpManifestPath.startsWith("./")) {
+    throw new Error(`built-in plugin '${pluginName}' has no valid mcpServers manifest`);
+  }
+  const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
+  const mcpConfig = JSON.parse(await readFile(mcpPath, "utf8")) as JsonRecord;
+  const wrapped = isRecord(mcpConfig.mcpServers)
+    ? mcpConfig.mcpServers
+    : isRecord(mcpConfig.mcp_servers)
+      ? mcpConfig.mcp_servers
+      : mcpConfig;
+  const servers: McpServer[] = [];
+
+  for (const [serverName, rawServer] of Object.entries(wrapped)) {
+    if (!isRecord(rawServer) || rawServer.enabled === false) continue;
+    if (typeof rawServer.command !== "string") {
+      throw new Error(`built-in MCP '${serverName}' must use stdio`);
+    }
+    const cwd = rawServer.cwd === undefined || rawServer.cwd === "."
+      ? pluginRoot
+      : typeof rawServer.cwd === "string"
+        ? resolvePluginPath(pluginRoot, pluginRoot, rawServer.cwd)
+        : pluginRoot;
+    const configuredArgs = Array.isArray(rawServer.args)
+      ? rawServer.args.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    const nodeCommand = rawServer.command === "node";
+    const command = nodeCommand
+      ? runtimeEnv.CLASH_NODE_EXEC_PATH || process.execPath
+      : resolvePluginPath(pluginRoot, cwd, rawServer.command);
+    const usesElectronNode = nodeCommand && command === runtimeEnv.CLASH_NODE_EXEC_PATH;
+    servers.push({
+      name: serverName,
+      command,
+      args: configuredArgs.map((arg) => resolvePluginPath(pluginRoot, cwd, arg)),
+      env: pluginMcpEnv(runtimeEnv, rawServer.env, usesElectronNode),
+      _meta: {
+        "io.modelcontextprotocol/ui": {
+          host: pluginName,
+          mimeTypes: ["text/html;profile=mcp-app"],
+        },
+        ...(pluginName === "clash"
+          ? {
+              "clash.plugin": "builtin",
+              "clash.renderer": "product",
+            }
+          : {}),
+      },
+    });
+  }
+  return servers;
+}
+
+/**
+ * Resolve built-in Codex-compatible plugins into ACP session/new MCP
+ * descriptors. The ACP harness owns the MCP subprocess; Clash only supplies
+ * the packaged plugin entrypoint and host environment.
+ */
+export async function resolveAgentMcpServers(
+  agentTemplateId: string,
+  runtimeEnv: Record<string, string | undefined>,
+): Promise<McpServer[]> {
+  const runtime = await readAgentRuntime(agentTemplateId);
+  if (!runtime?.plugins?.length) return [];
+  const agentRoot = join(bundledAgentsDir(), sanitize(agentTemplateId));
+  const resolved = await Promise.all(runtime.plugins.map((pluginId) =>
+    resolvePluginMcpServers(
+      pluginId === "clash" && runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT
+        ? resolve(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT)
+        : join(agentRoot, "plugins", sanitize(pluginId)),
+      runtimeEnv,
+    )));
+  return resolved.flat();
 }
 
 /**
@@ -88,17 +259,24 @@ export async function readAgentRuntime(agentTemplateId: string): Promise<{ agent
  *   ~/.clash/projects/<encoded-project-id>/
  *     AGENTS.md
  *     .clash/project.toml
- *     .claude/
- *       skills/...
- *       commands/...
+ *     AGENTS.md / CLAUDE.md / GEMINI.md
  */
-export async function ensureAgentCwd(agentTemplateId: string, projectId?: string): Promise<string> {
+export async function ensureAgentCwd(
+  agentTemplateId: string,
+  projectId?: string,
+  capabilities: AgentWorkspaceCapabilities = {},
+): Promise<string> {
   const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
   const projectPathSegment = projectIdPathSegment(canonicalProjectId);
   const cwd = join(paths().projectsDir, projectPathSegment);
   await mkdir(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
   await installAgentTemplate(agentTemplateId, cwd);
+  await installNativeAgentSkills(
+    agentTemplateId,
+    resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""),
+    cwd,
+  );
   await writeProjectMarker(cwd, canonicalProjectId);
   return cwd;
 }
@@ -125,7 +303,9 @@ function sanitize(id: string): string {
 
 /**
  * Copy the bundled agent template into the project cwd. Reapplied every
- * spawn so an upgraded daemon refreshes stale prompts / skills automatically.
+ * spawn so an upgraded daemon refreshes stale startup guidance automatically.
+ * Skills stay in the bundled plugin and are linked into the selected
+ * harness's native project discovery directory during session startup.
  * Per-project files with non-overlapping names are preserved; matching bundled
  * names get overwritten.
  */
@@ -139,6 +319,77 @@ async function installAgentTemplate(agentTemplateId: string, cwd: string): Promi
       throw new Error(`unknown agent template: ${templateId}`);
     }
     throw e;
+  }
+}
+
+function resolveWorkspaceSkillRoot(
+  cwd: string,
+  workspaceSkillDirectory: string | undefined,
+): string | null {
+  if (!workspaceSkillDirectory) return null;
+  if (isAbsolute(workspaceSkillDirectory)) {
+    throw new Error("workspace Skill directory must be relative to the session cwd");
+  }
+  const root = resolve(cwd, workspaceSkillDirectory);
+  const fromCwd = relative(cwd, root);
+  if (fromCwd === ".." || fromCwd.startsWith(`..${sep}`) || isAbsolute(fromCwd)) {
+    throw new Error("workspace Skill directory must stay inside the session cwd");
+  }
+  return root;
+}
+
+async function replaceManagedSkillLink(target: string, source: string): Promise<void> {
+  const current = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (current) {
+    if (!current.isSymbolicLink()) {
+      throw new Error(`Cannot install bundled Clash skill over an existing workspace entry: ${target}`);
+    }
+    if (await readlink(target) === source) return;
+    await unlink(target);
+  }
+  await symlink(source, target, "dir");
+}
+
+async function installNativeAgentSkills(
+  agentTemplateId: string,
+  workspaceSkillDirectory: string | undefined,
+  cwd: string,
+): Promise<void> {
+  const root = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
+  if (!root) return;
+  const runtime = await readAgentRuntime(agentTemplateId);
+  if (!runtime?.plugins?.length) return;
+  await mkdir(root, { recursive: true });
+
+  for (const pluginId of runtime.plugins) {
+    const pluginRoot = join(
+      bundledAgentsDir(),
+      sanitize(agentTemplateId),
+      "plugins",
+      sanitize(pluginId),
+    );
+    const manifest = JSON.parse(
+      await readFile(join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"),
+    ) as JsonRecord;
+    const configuredRoots = typeof manifest.skills === "string"
+      ? [manifest.skills]
+      : Array.isArray(manifest.skills)
+        ? manifest.skills.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    for (const configuredRoot of configuredRoots) {
+      const skillRoot = resolvePluginPath(pluginRoot, pluginRoot, configuredRoot);
+      const entries = await readdir(skillRoot, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        await replaceManagedSkillLink(
+          join(root, sanitize(entry.name)),
+          join(skillRoot, entry.name),
+        );
+      }
+    }
   }
 }
 

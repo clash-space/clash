@@ -164,15 +164,13 @@ describe("desktop Electron runtime", () => {
     expect(release).toContain("gh release upload desktop-preview");
   });
 
-  it("packages built-in ACP harness wrappers as desktop resources", () => {
+  it("keeps self-hosted ACP runtimes out of immutable desktop resources", () => {
     const builderConfig = readFileSync(
       new URL("../electron-builder.yml", import.meta.url),
       "utf8",
     );
 
-    expect(builderConfig).toMatch(
-      /-\s+from:\s+build\/acp-bin\n\s+to:\s+acp-bin/m,
-    );
+    expect(builderConfig).not.toMatch(/\bbuild\/acp-(?:bin|node)\b/);
   });
 
   it("packages the local-model Python SDK as an unpacked desktop resource", () => {

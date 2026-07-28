@@ -439,7 +439,7 @@ export const Editor: React.FC<EditorProps> = ({
       aria-label="Collapse Properties"
       title="Collapse Properties"
       onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}
-      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-stone-500 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 dark:text-stone-400 dark:hover:text-slate-50"
+      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
     >
       <InspectorPanelToggleIcon collapsed={false} />
     </RemotionButton>
@@ -461,7 +461,7 @@ export const Editor: React.FC<EditorProps> = ({
       aria-label="Collapse editor panel"
       title="Collapse editor panel"
       onClick={() => setSidePanelCollapsed(true)}
-      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-stone-500 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 dark:text-stone-400 dark:hover:text-slate-50"
+      className="clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center bg-transparent text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
     >
       <EditorPanelToggleIcon collapsed={false} />
     </RemotionButton>
@@ -474,7 +474,7 @@ export const Editor: React.FC<EditorProps> = ({
         ref={editorRootRef}
         data-layout={layout}
         style={editorTypographyVariables}
-        className="h-full w-full overflow-hidden bg-warm-page font-sans text-slate-950 dark:text-slate-50"
+        className="h-full w-full overflow-hidden bg-warm-page font-sans text-content-primary"
       >
         {layout === 'embedded' ? (
           <div
@@ -483,11 +483,11 @@ export const Editor: React.FC<EditorProps> = ({
             data-inspector-collapsed={inspectorCollapsed ? 'true' : 'false'}
             data-transcript-workspace-expanded={transcriptWorkspaceActive ? 'true' : 'false'}
             style={{
-              '--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : '12rem',
+              '--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)',
               '--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`,
-              '--clash-timeline-preview-min-width': '21rem',
+              '--clash-timeline-preview-min-width': 'min(21rem,42%)',
               '--clash-timeline-height': `${timelineHeight}px`,
-              '--clash-timeline-inspector-min-width': inspectorCollapsed ? '0px' : '13rem',
+              '--clash-timeline-inspector-min-width': inspectorCollapsed ? '0px' : 'min(13rem,28%)',
               '--clash-timeline-inspector-width': inspectorCollapsed ? '0px' : 'clamp(280px,22%,340px)',
             } as React.CSSProperties}
             className={`group/timeline-editor grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] ${reserveHeaderEndGutter ? 'pr-[var(--clash-timeline-gutter)]' : ''} motion-reduce:transition-none [grid-template-columns:minmax(var(--clash-timeline-side-panel-min-width),var(--clash-timeline-side-panel-width))_minmax(var(--clash-timeline-preview-min-width),1fr)_minmax(var(--clash-timeline-inspector-min-width),var(--clash-timeline-inspector-width))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_var(--clash-timeline-height)] ${
@@ -533,7 +533,7 @@ export const Editor: React.FC<EditorProps> = ({
                             className={`clash-workbench-control-button flex h-8 w-8 shrink-0 items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${
                               activePrimaryTool === tool.id
                                 ? 'bg-brand/[0.09] text-brand hover:bg-brand/[0.14]'
-                                : 'text-stone-500 hover:bg-black/[0.035] hover:text-slate-950'
+                                : 'text-content-muted hover:bg-warm-hover hover:text-content-primary'
                             }`}
                           >
                             <TimelinePrimaryToolIcon tool={tool.id} />
@@ -714,7 +714,7 @@ export const Editor: React.FC<EditorProps> = ({
                   data-timeline-project-asset-drop-indicator=""
                   className="pointer-events-none absolute inset-1 z-40 rounded-matrix border border-dashed border-brand/50 bg-brand/[0.04] shadow-[inset_0_0_0_1px_rgba(255,107,82,0.06)]"
                 >
-                  <span className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-md border border-brand/20 bg-warm-surface/95 px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm">
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-md border border-brand/20 bg-warm-surface/95 px-2.5 py-1.5 text-xs font-medium text-content-primary shadow-sm">
                     <span className="h-1.5 w-1.5 rounded-full bg-brand" />
                     Release to add media
                   </span>

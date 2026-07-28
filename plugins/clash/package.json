@@ -13,7 +13,9 @@
   "scripts": {
     "build:deps": "pnpm --filter @master-clash/local-api build && pnpm --filter @clash-space/mcp-server build && pnpm --filter @clash-space/timeline-plugin build && pnpm --filter @clash-space/director-plugin build",
     "build:host": "tsx scripts/build-host-runtime.ts",
-    "build": "pnpm build:deps && tsup && pnpm build:host && tsx scripts/copy-app-bundles.ts",
+    "build:core": "pnpm build:deps && tsup && pnpm build:host && tsx scripts/copy-app-bundles.ts",
+    "bundle:agents": "tsx scripts/bundle-agent-runtime.ts",
+    "build": "pnpm build:core && pnpm --filter @clash-space/bridge build && pnpm bundle:agents",
     "clean": "rm -rf runtime",
     "lint": "tsc --noEmit",
     "pretest": "pnpm build",
@@ -26,7 +28,8 @@
     "@clash-space/mcp-server": "workspace:*",
     "@clash-space/timeline-plugin": "workspace:*",
     "@master-clash/local-api": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

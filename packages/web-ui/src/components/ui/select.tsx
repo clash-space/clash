@@ -66,6 +66,7 @@ export interface SelectMenuProps<Value extends SelectValue = string> {
 
 const VIEWPORT_MARGIN = 12;
 const MENU_OFFSET = 8;
+const SUBMENU_OFFSET = 2;
 
 const triggerVariantClasses = {
     inline:
@@ -95,7 +96,7 @@ function menuItemClassName({
     className?: string;
 } = {}) {
     return cn(
-        'flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors',
+        'flex min-h-[40px] w-full items-center gap-3 rounded-xl py-2 pl-3 pr-4 text-left text-sm transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand',
         'data-[state=open]:bg-warm-muted/75 dark:data-[state=open]:bg-warm-muted/80',
         selected
@@ -223,7 +224,7 @@ function DropdownSelectMenu<Value extends SelectValue = string>({
                         maxHeight: `min(var(--radix-dropdown-menu-content-available-height), ${maxMenuHeight}px)`,
                     }}
                     className={cn(
-                        'z-[80] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay',
+                        'z-[80] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay dark:bg-warm-surface',
                         menuWidth === 'auto' && 'min-w-[min(var(--radix-dropdown-menu-trigger-width),calc(100vw-24px))]',
                         menuClassName,
                     )}
@@ -362,7 +363,7 @@ function RadixSelectMenu<Value extends SelectValue = string>({
                         maxHeight: `min(var(--radix-select-content-available-height), ${maxMenuHeight}px)`,
                     }}
                     className={cn(
-                        'z-[80] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay',
+                        'z-[80] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay dark:bg-warm-surface',
                         menuWidth === 'auto' && 'min-w-[min(var(--radix-select-trigger-width),calc(100vw-24px))]',
                         menuClassName,
                     )}
@@ -486,10 +487,10 @@ function DropdownSelectMenuSection<Value extends SelectValue>({
                                 <DropdownMenuPrimitive.Portal>
                                     <DropdownMenuPrimitive.SubContent
                                         aria-label={String(option.submenuLabel ?? option.label)}
-                                        sideOffset={MENU_OFFSET}
+                                        sideOffset={SUBMENU_OFFSET}
                                         collisionPadding={VIEWPORT_MARGIN}
                                         style={{ width: submenuWidth }}
-                                        className="z-[90] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay"
+                                        className="z-[90] overflow-hidden rounded-2xl border border-overlay-border bg-overlay-surface text-content-primary shadow-overlay dark:bg-warm-surface"
                                     >
                                         <div className="max-h-[min(var(--radix-dropdown-menu-content-available-height),320px)] overflow-y-auto p-1.5">
                                             {(option.submenuSections ?? []).map((submenuSection, submenuIndex) => (

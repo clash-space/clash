@@ -60,7 +60,7 @@ export function HarnessUpdateNotifier() {
     const discoverUpdates = async () => {
       try {
         const response = await fetch(
-          runtimeApiUrl("/api/v1/local/harnesses?probe=auth&refresh=1"),
+          runtimeApiUrl("/api/v1/local/harnesses"),
           { credentials: "include" },
         );
         if (!response.ok) return;

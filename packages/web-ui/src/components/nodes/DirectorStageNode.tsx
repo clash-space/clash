@@ -78,22 +78,22 @@ function DirectorStageNode({
           </div>
           <div className={`${outputVideoSrc ? "hidden" : "grid"} h-28 w-48 grid-cols-2 gap-3 rounded-xl border border-white/10 bg-white/[0.035] p-4 text-stone-300`}>
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-white/[0.04]">
-              <UsersThree className="h-7 w-7 text-[#5f9eff]" weight="duotone" />
+              <UsersThree className="h-7 w-7 text-stone-300" weight="duotone" />
               <span className="text-[10px]">{stage?.state.objects.length ?? 0} objects</span>
             </div>
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-white/[0.04]">
-              <Camera className="h-7 w-7 text-[var(--clash-director-camera)]" weight="duotone" />
+              <Camera className="h-7 w-7 text-stone-300" weight="duotone" />
               <span className="text-[10px]">{stage?.state.cameras.length ?? 0} cameras</span>
             </div>
           </div>
         </div>
         <div className="flex h-12 items-center justify-between gap-3 border-t border-warm-border bg-warm-muted px-3">
           <div className="min-w-0">
-            <div className="truncate font-display text-xs font-semibold text-slate-800">
+            <div className="truncate font-display text-xs font-semibold text-content-primary">
               {label}
             </div>
             {outputVideoAssetId ? (
-              <div className="text-[10px] font-medium text-emerald-700">
+              <div className="text-[10px] font-medium text-content-secondary">
                 Reference video ready
               </div>
             ) : null}

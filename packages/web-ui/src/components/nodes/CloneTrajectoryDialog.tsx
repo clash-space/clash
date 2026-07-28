@@ -451,8 +451,8 @@ const CloneTrajectoryDialog = ({
                 {/* Header */}
                 <div className="px-4 sm:px-6 pt-4 sm:pt-5 pb-3 flex items-start justify-between gap-3 sm:gap-4 border-b border-warm-border shrink-0">
                     <div className="min-w-0">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Clone trajectory</div>
-                        <h2 className="text-sm sm:text-base font-bold text-slate-900">Drop upstream stages</h2>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-content-secondary">Clone trajectory</div>
+                        <h2 className="text-sm font-bold text-content-primary sm:text-base">Drop upstream stages</h2>
                         <div className="hidden sm:block text-xs text-slate-700 dark:text-slate-300 mt-0.5">
                             The clone forks into its own independent trajectory — even heads are fresh nodes. Click <strong>drop stage</strong> on an action to remove it plus any upstream that only fed it; its output then becomes a head copy of the completed asset. Drops that would promote a draft to head are blocked.
                         </div>
@@ -466,7 +466,7 @@ const CloneTrajectoryDialog = ({
                         icon={<X className="w-4 h-4" weight="bold" />}
                         size="md"
                         shape="rounded"
-                        className="shrink-0 text-slate-700 hover:bg-warm-hover hover:text-slate-950 dark:text-slate-300"
+                        className="shrink-0 text-content-secondary hover:bg-warm-hover hover:text-content-primary"
                     />
                 </div>
 
@@ -485,8 +485,8 @@ const CloneTrajectoryDialog = ({
                 {/* Footer */}
                 <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border-t border-warm-border bg-warm-muted shrink-0">
                     <div className="text-xs text-slate-700 dark:text-slate-300 text-center sm:text-left order-2 sm:order-1" aria-live="polite" aria-atomic="true">
-                        <strong className="text-emerald-700">{stats.reused}</strong> head cop{stats.reused === 1 ? 'y' : 'ies'} ·{' '}
-                        <strong className="text-slate-900">{stats.clones}</strong> draft{stats.clones === 1 ? '' : 's'}
+                        <strong className="text-emerald-700 dark:text-emerald-300">{stats.reused}</strong> head cop{stats.reused === 1 ? 'y' : 'ies'} ·{' '}
+                        <strong className="text-content-primary">{stats.clones}</strong> draft{stats.clones === 1 ? '' : 's'}
                     </div>
                     <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 order-1 sm:order-2">
                         <Button

@@ -13,6 +13,77 @@ import ProjectWorkspaceNavigator from "./ProjectWorkspaceNavigator";
 afterEach(cleanup);
 
 describe("ProjectWorkspaceNavigator", () => {
+  it("lists Canvas text nodes in Assets and selects their first-class workspace page", () => {
+    const textAsset = {
+      id: "text-script",
+      canvasId: "main",
+      label: "短剧剧本｜迟到的婚礼",
+    };
+    const onSelectTextAsset = vi.fn();
+
+    render(
+      <ProjectWorkspaceNavigator
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[]}
+        assets={[]}
+        textAssets={[textAsset]}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onSelectTextAsset={onSelectTextAsset}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("list", { name: "Project assets" })).toBeTruthy();
+    const row = screen.getByRole("tab", { name: textAsset.label });
+    expect(row.querySelector('[data-project-text-asset-icon="true"]')).toBeTruthy();
+    fireEvent.click(row);
+    expect(onSelectTextAsset).toHaveBeenCalledWith(textAsset);
+  });
+
+  it("marks an open Text asset as the active project surface", () => {
+    const textAsset = {
+      id: "text-script",
+      canvasId: "main",
+      label: "Short film script",
+    };
+
+    render(
+      <ProjectWorkspaceNavigator
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[]}
+        assets={[]}
+        textAssets={[textAsset]}
+        surface={{
+          kind: "text-asset",
+          nodeId: textAsset.id,
+          canvasId: textAsset.canvasId,
+        }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onSelectTextAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("tab", { name: textAsset.label });
+    expect(row.getAttribute("aria-selected")).toBe("true");
+    expect(row.className).toContain("bg-brand/[0.09]");
+  });
+
   it("keeps the project search control on the semantic surface in dark mode", () => {
     render(
       <ProjectWorkspaceNavigator
@@ -35,6 +106,44 @@ describe("ProjectWorkspaceNavigator", () => {
     const search = screen.getByRole("button", { name: "Search project" });
     expect(search.className).toContain("bg-warm-surface");
     expect(search.className).not.toContain("bg-white");
+  });
+
+  it("keeps folder add controls readable through dark hover states", () => {
+    render(
+      <ProjectWorkspaceNavigator
+        canvases={[{ id: "main", name: "Main", position: 0 }]}
+        timelines={[]}
+        assets={[]}
+        surface={{ kind: "canvas", canvasId: "main" }}
+        onSelectCanvas={vi.fn()}
+        onSelectTimeline={vi.fn()}
+        onSelectAsset={vi.fn()}
+        onCreateCanvas={vi.fn()}
+        onRenameCanvas={vi.fn()}
+        onDeleteCanvas={vi.fn()}
+        onCreateTimeline={vi.fn()}
+        onAttachTimeline={vi.fn()}
+        onAddAsset={vi.fn()}
+      />,
+    );
+
+    for (const name of ["New Canvas", "New Timeline", "Add Asset"]) {
+      const add = screen.getByRole("button", { name });
+      expect(add.className).toContain("text-content-muted");
+      expect(add.className).toContain("hover:bg-warm-hover");
+      expect(add.className).toContain("hover:text-content-primary");
+    }
+
+    const canvasFolder = screen.getByRole("button", { name: "Canvases" });
+    expect(canvasFolder.className).toContain("hover:bg-warm-hover");
+    expect(canvasFolder.className).not.toContain("hover:bg-black");
+
+    const rowActions = screen.getByRole("button", {
+      name: "Canvas actions for Main",
+    });
+    expect(rowActions.className).toContain("text-content-muted");
+    expect(rowActions.className).toContain("hover:bg-warm-hover");
+    expect(rowActions.className).toContain("hover:text-content-primary");
   });
 
   it("keeps destructive Timeline cleanup in the row action menu", async () => {

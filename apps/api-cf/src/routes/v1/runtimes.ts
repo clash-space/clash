@@ -19,7 +19,7 @@
  *   4. CLI POSTs `/agents/runtime/exchange` with `{ code, machine_id, hostname, os, version }`.
  *      Server validates code, inserts `runtime` row + `runtime_token` row,
  *      returns the token plaintext (only time it's ever transmitted).
- *   5. CLI writes ~/.config/clash/credentials.json + installs launchd plist.
+ *   5. CLI writes ~/.clash/credentials.json + installs the platform service file.
  */
 
 import { Hono } from "hono";

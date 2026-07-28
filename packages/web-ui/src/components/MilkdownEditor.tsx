@@ -12,6 +12,12 @@ import { history } from '@milkdown/plugin-history';
 import { $prose, replaceAll } from '@milkdown/utils';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
+import {
+    lift,
+    setBlockType,
+    toggleMark,
+    wrapIn,
+} from '@milkdown/prose/commands';
 import { SignedImg } from './SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { ComboboxItem, ComboboxList, ComboboxProvider, useComboboxStore } from './ui/combobox';
@@ -54,7 +60,15 @@ export interface MilkdownEditorHandle {
     insertAtCursor: (markdown: string) => void;
     /** Clear all editor content */
     clear: () => void;
+    /** Apply a document-formatting command to the current selection. */
+    formatSelection: (format: MilkdownFormat) => boolean;
 }
+
+export type MilkdownFormat =
+    | 'bold'
+    | 'italic'
+    | 'heading-2'
+    | 'blockquote';
 
 interface MilkdownEditorProps {
     value: string;
@@ -534,15 +548,12 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
         },
         insertAtCursor(markdown: string) {
             const view = editorViewRef.current;
-            console.log('[MilkdownEditor] insertAtCursor, view:', !!view);
             if (!view) return;
 
             const imgMatch = markdown.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
-            console.log('[MilkdownEditor] imgMatch:', !!imgMatch, 'schema nodes:', Object.keys(view.state.schema.nodes));
             if (imgMatch) {
                 const [, alt, src] = imgMatch;
                 const imageType = view.state.schema.nodes.image;
-                console.log('[MilkdownEditor] imageType:', !!imageType);
                 if (imageType) {
                     const imageNode = imageType.create({ src, alt });
                     const { from } = view.state.selection;
@@ -558,6 +569,48 @@ const MilkdownEditorInner = forwardRef<MilkdownEditorHandle, MilkdownEditorProps
             const tr = view.state.tr.insertText(markdown, from);
             view.dispatch(tr);
             view.focus();
+        },
+        formatSelection(format: MilkdownFormat) {
+            const view = editorViewRef.current;
+            if (!view) return false;
+
+            const { state } = view;
+            const { schema } = state;
+            const run = (() => {
+                if (format === 'bold' && schema.marks.strong) {
+                    return toggleMark(schema.marks.strong);
+                }
+                if (format === 'italic' && schema.marks.em) {
+                    return toggleMark(schema.marks.em);
+                }
+                if (format === 'heading-2' && schema.nodes.heading && schema.nodes.paragraph) {
+                    const isHeadingTwo =
+                        state.selection.$from.parent.type === schema.nodes.heading &&
+                        state.selection.$from.parent.attrs.level === 2;
+                    return isHeadingTwo
+                        ? setBlockType(schema.nodes.paragraph)
+                        : setBlockType(schema.nodes.heading, { level: 2 });
+                }
+                if (format === 'blockquote' && schema.nodes.blockquote) {
+                    let depth = state.selection.$from.depth;
+                    while (depth > 0) {
+                        if (
+                            state.selection.$from.node(depth).type ===
+                            schema.nodes.blockquote
+                        ) {
+                            return lift;
+                        }
+                        depth -= 1;
+                    }
+                    return wrapIn(schema.nodes.blockquote);
+                }
+                return null;
+            })();
+
+            if (!run) return false;
+            const applied = run(state, view.dispatch, view);
+            if (applied) view.focus();
+            return applied;
         },
     }), []);
 

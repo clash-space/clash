@@ -24,8 +24,12 @@ export type DirectorAdapter = {
   mutate(name: DirectorPluginToolName, input: DirectorToolInput): Promise<unknown>;
 };
 
-function workspaceCwd(input: DirectorToolInput): string {
-  const candidate = input.cwd?.trim() || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+export function directorWorkspaceCwd(input: DirectorToolInput): string {
+  const candidate =
+    input.cwd?.trim() ||
+    process.env.CLASH_WORKSPACE_ROOT ||
+    process.env.CODEX_WORKSPACE_ROOT ||
+    process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 
@@ -88,7 +92,7 @@ export function createDirectorAdapter(options: {
   const run = options.run ?? createClashDirectorRunner();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
   const list = async (input: DirectorToolInput): Promise<DirectorEntity[]> => stageList(
-    await run(buildDirectorCliArgs("clash_director_list", input), workspaceCwd(input)),
+    await run(buildDirectorCliArgs("clash_director_list", input), directorWorkspaceCwd(input)),
   );
   const get = async (input: DirectorToolInput): Promise<DirectorEntity> => {
     const stageId = input.stageId?.trim();
@@ -98,7 +102,7 @@ export function createDirectorAdapter(options: {
     return stage;
   };
   const invoke = (name: DirectorPluginToolName, input: DirectorToolInput) =>
-    run(buildDirectorCliArgs(name, input), workspaceCwd(input));
+    run(buildDirectorCliArgs(name, input), directorWorkspaceCwd(input));
 
   return {
     list,
@@ -114,7 +118,7 @@ export function createDirectorAdapter(options: {
         throw new Error("state must be a Director Stage object");
       }
       await get(input);
-      const cwd = workspaceCwd(input);
+      const cwd = directorWorkspaceCwd(input);
       const filePath = join(cwd, "director-stages", `${projectionSegment(stageId)}.director-stage.json`);
       await writeProjection(filePath, `${JSON.stringify(input.state, null, 2)}\n`);
       const args = ["director", "apply", "--stage", stageId, "--file", filePath];

@@ -119,13 +119,13 @@ export default function GlobalAssetsClient({ initialAssets }: { initialAssets: A
                     ) : asset.kind === "video" && asset.signedCoverUrl ? (
                       <img src={assetPreviewUrl(asset)} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full items-center justify-center bg-stone-100 text-stone-400"><Icon className="h-9 w-9" weight="light" /></div>
+                      <div className="flex h-full items-center justify-center bg-warm-muted text-content-muted"><Icon className="h-9 w-9" weight="light" /></div>
                     )}
                     <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-stone-950/75 px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone-50">
                       <Icon className="h-3 w-3" />{asset.kind}
                     </span>
                   </div>
-                  <p className="mt-2 truncate text-sm font-semibold text-slate-900" title={label}>{label}</p>
+                  <p className="mt-2 truncate text-sm font-semibold text-content-primary" title={label}>{label}</p>
                 </li>
               );
             })}

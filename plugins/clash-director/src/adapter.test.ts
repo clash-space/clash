@@ -25,3 +25,23 @@ test("adapter reads before save and applies a deterministic Director projection"
     join(cwd, "director-stages", "stage-1.director-stage.json"), "--json",
   ]);
 });
+
+test("defaults to the Clash ACP workspace instead of the MCP process cwd", async () => {
+  const module = await import("./adapter.js").catch(() => ({} as Record<string, any>));
+  const previous = process.env.CLASH_WORKSPACE_ROOT;
+  process.env.CLASH_WORKSPACE_ROOT = "/workspace/from-acp-session";
+  const calls: Array<{ args: string[]; cwd: string }> = [];
+  try {
+    const adapter = module.createDirectorAdapter({
+      run: async (args: string[], cwd: string) => {
+        calls.push({ args, cwd });
+        return [];
+      },
+    });
+    await adapter.list({});
+    assert.equal(calls[0]?.cwd, "/workspace/from-acp-session");
+  } finally {
+    if (previous === undefined) delete process.env.CLASH_WORKSPACE_ROOT;
+    else process.env.CLASH_WORKSPACE_ROOT = previous;
+  }
+});

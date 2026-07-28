@@ -3,7 +3,7 @@
     {
       "id": "master-clash",
       "label": "Master Clash",
-      "summary": "Runs the Clash project through the local clash CLI.",
+      "summary": "Operates the Clash project through its native Skill and bundled MCP tools.",
       "agent_id": "codex-acp"
     }
   ]

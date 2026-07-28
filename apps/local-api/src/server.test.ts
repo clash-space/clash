@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { createServer } from "node:net";
-import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import { LOCAL_HOST_PROTOCOL_VERSION } from "@clash/shared-runtime";
 import { readHostDiscovery } from "./host-discovery";
@@ -11,6 +13,8 @@ import {
   defaultLocalApiDataDir,
   startLocalApiServer,
 } from "./server";
+
+const execFileAsync = promisify(execFile);
 
 async function withLocalDataDir<T>(dataDir: string, run: () => Promise<T>): Promise<T> {
   const previous = process.env.CLASH_LOCAL_DATA_DIR;
@@ -78,6 +82,35 @@ describe("local API server configuration", () => {
       CLASH_HOME: "/tmp/clash-home",
       CLASH_LOCAL_DATA_DIR: "/tmp/explicit-local-api",
     })).toBe("/tmp/explicit-local-api");
+    expect(defaultLocalApiDataDir({
+      CLASH_LOCAL_DATA_DIR: "./relative-local-api",
+    })).toBe(resolve("./relative-local-api"));
+  });
+
+  it("uses the server data directory as the ACP lifecycle directory", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-root-"));
+    const dataDir = join(clashRoot, "local-api");
+    const acpBinDir = join(dataDir, "acp-bin");
+    await mkdir(acpBinDir, { recursive: true });
+    const codexShim = join(acpBinDir, "codex-acp");
+    await writeFile(codexShim, "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(codexShim, 0o755);
+
+    const adapter = createConfiguredLocalAcpAdapter(
+      { PATH: "" },
+      { dataDir },
+    );
+
+    await expect(adapter.listRuntimes()).resolves.toMatchObject({
+      runtimes: [{
+        agents: expect.arrayContaining([
+          expect.objectContaining({
+            id: "codex-acp",
+            binary: codexShim,
+          }),
+        ]),
+      }],
+    });
   });
 
   it("rejects when the requested listen port is occupied", async () => {
@@ -144,6 +177,50 @@ describe("local API server configuration", () => {
     await expect(readHostDiscovery({ runDir })).resolves.toEqual({ status: "inactive" });
   });
 
+  it("keeps default host discovery beside the configured local-api data directory", async () => {
+    const clashRoot = await mkdtemp(join(tmpdir(), "clash-local-api-root-"));
+    const unrelatedClashHome = await mkdtemp(join(tmpdir(), "clash-unrelated-home-"));
+    const dataDir = join(clashRoot, "local-api");
+    const runDir = join(clashRoot, "run");
+    const previousClashHome = process.env.CLASH_HOME;
+    process.env.CLASH_HOME = unrelatedClashHome;
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        port: 0,
+        remotePersistence: null,
+        localAcp: createConfiguredLocalAcpAdapter({ CLASH_E2E_STUB_ACP: "1" }),
+        discovery: {
+          enabled: true,
+          launchMode: "desktop",
+          ownerClientId: "desktop-canonical-root",
+          startedBy: "desktop",
+        },
+      });
+
+      await expect(readHostDiscovery({ runDir })).resolves.toMatchObject({
+        status: "active",
+        record: {
+          ownerClientId: "desktop-canonical-root",
+          agentCliPath: join(dataDir, "agent-bin", "clash"),
+        },
+      });
+    } finally {
+      if (server) {
+        await new Promise<void>((resolveClose) => server!.close(() => resolveClose()));
+      }
+      if (previousClashHome === undefined) {
+        delete process.env.CLASH_HOME;
+      } else {
+        process.env.CLASH_HOME = previousClashHome;
+      }
+    }
+
+    await expect(readHostDiscovery({ runDir })).resolves.toEqual({ status: "inactive" });
+  });
+
   it("waits for local ACP disposal before completing server close", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-shutdown-"));
     let releaseDispose!: () => void;
@@ -194,6 +271,66 @@ describe("local API server configuration", () => {
     expect(settledBeforeDispose).toBe(false);
   });
 
+  it("observes config.yaml edits made while ACP warmup is still running", async () => {
+    const clashHome = await mkdtemp(join(tmpdir(), "clash-local-api-startup-config-"));
+    const dataDir = join(clashHome, "local-api");
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(
+      join(clashHome, "config.yaml"),
+      "version: 1\nharnesses:\n  enabled:\n    - codex-acp\n",
+    );
+    let releaseWarmup!: () => void;
+    const warmupGate = new Promise<void>((resolve) => {
+      releaseWarmup = resolve;
+    });
+    const reconcileConfiguration = vi.fn(async () => undefined);
+    const localAcp = {
+      updateSpawnEnv() {},
+      warmup: vi.fn(async () => warmupGate),
+      reconcileConfiguration,
+      async listRuntimes() {
+        return { runtimes: [] };
+      },
+      async createSession() {
+        return { session_id: "unused" };
+      },
+      async listResumeSessions() {
+        return { sessions: [] };
+      },
+      async disposeAll() {},
+    };
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | null = null;
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        port: 0,
+        remotePersistence: null,
+        discovery: { enabled: false },
+        localAcp: localAcp as never,
+      });
+      await writeFile(
+        join(clashHome, "config.yaml"),
+        "version: 1\nharnesses:\n  enabled:\n    - codex-acp\n    - claude-acp\n",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      releaseWarmup();
+
+      await vi.waitFor(
+        () => expect(reconcileConfiguration).toHaveBeenCalledOnce(),
+        { timeout: 1_000 },
+      );
+    } catch (error) {
+      if (errorCode(error) === "EPERM") return;
+      throw error;
+    } finally {
+      releaseWarmup();
+      if (server) {
+        await new Promise<void>((resolve) => server?.close(() => resolve()));
+      }
+      await rm(clashHome, { recursive: true, force: true });
+    }
+  });
+
   it("creates a local Clash CLI shim and injects it into agent spawn env", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
     const env = createLocalAgentToolEnv({
@@ -215,6 +352,28 @@ describe("local API server configuration", () => {
     expect(shimText).not.toContain("CLASH_API_KEY");
     expect(shimText).toContain("command -v node");
     expect(shimText).toContain("ELECTRON_RUN_AS_NODE=1");
+  });
+
+  it("pins the published Clash CLI to the authoritative Clash home", async () => {
+    const clashHome = await mkdtemp(join(tmpdir(), "canonical-clash-home-"));
+    const dataDir = join(clashHome, "local-api");
+    const env = createLocalAgentToolEnv({
+      dataDir,
+      apiBaseUrl: "http://127.0.0.1:49397",
+      env: {
+        PATH: "/usr/bin:/bin",
+        CLASH_HOME: "/tmp/stale-clash-home",
+        CLASH_LOCAL_DATA_DIR: "/tmp/stale-clash-home/local-api",
+      },
+    });
+
+    expect(env.CLASH_HOME).toBe(clashHome);
+    expect(env.CLASH_LOCAL_DATA_DIR).toBe(dataDir);
+
+    const shimText = await readFile(join(dataDir, "agent-bin", "clash"), "utf8");
+    expect(shimText).toContain(`export CLASH_HOME='${clashHome}'`);
+    expect(shimText).toContain(`export CLASH_LOCAL_DATA_DIR='${dataDir}'`);
+    expect(shimText).not.toContain("/tmp/stale-clash-home");
   });
 
   it("passes an explicit Node runtime through to the local Clash CLI shim", async () => {
@@ -251,9 +410,38 @@ describe("local API server configuration", () => {
     const shim = join(dataDir, "agent-bin", "clash");
     const shimText = await readFile(shim, "utf8");
     expect(shimText).toContain("/Applications/Clash.app/Contents/Resources/clash-cli/dist/index.js");
-    expect(shimText).toContain("CLASH_CLI_NODE_PATH");
+    expect(shimText).toContain(
+      "export CLASH_CLI_NODE_PATH='/Applications/Clash.app/Contents/Resources/clash-cli/vendor'",
+    );
     expect(childEnv.CLASH_CLI_NODE_PATH).toBe("/Applications/Clash.app/Contents/Resources/clash-cli/vendor");
     expect(shimText).not.toContain("app.asar/node_modules/@clash-space/cli");
+  });
+
+  it("keeps the packaged CLI vendor path when the shim runs from a clean shell", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-agent-tools-"));
+    const cliEntry = join(dataDir, "print-node-path.cjs");
+    const vendorPath = join(dataDir, "packaged-vendor");
+    await writeFile(
+      cliEntry,
+      'process.stdout.write(process.env.NODE_PATH ?? "");\n',
+      "utf8",
+    );
+
+    createLocalAgentToolEnv({
+      dataDir,
+      apiBaseUrl: "http://127.0.0.1:49397",
+      env: {
+        PATH: process.env.PATH,
+        CLASH_CLI_ENTRY_PATH: cliEntry,
+        CLASH_CLI_NODE_PATH: vendorPath,
+      },
+    });
+
+    const shim = join(dataDir, "agent-bin", "clash");
+    const { stdout } = await execFileAsync(shim, [], {
+      env: { PATH: process.env.PATH },
+    });
+    expect(stdout).toBe(vendorPath);
   });
 
   it("can expose a deterministic mock ACP agent for desktop smoke tests", async () => {
@@ -458,16 +646,21 @@ describe("local API server configuration", () => {
     expect(runtimes.runtimes[0]?.agents.some((agent) => agent.id === "mock-acp")).toBe(false);
   });
 
-  it("preserves explicit ACP binary directories when composing the local agent spawn env", async () => {
+  it("uses only the self-hosted ACP directory when a packaged runtime directory is also present", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-data-"));
-    const acpBinDir = await mkdtemp(join(tmpdir(), "clash-local-api-acp-bin-"));
-    const codexShim = join(acpBinDir, "codex-acp");
+    const packagedBinDir = await mkdtemp(join(tmpdir(), "clash-local-api-packaged-acp-bin-"));
+    const managedBinDir = join(dataDir, "acp-bin");
+    await mkdir(managedBinDir, { recursive: true });
+    const packagedCodexShim = join(packagedBinDir, "codex-acp");
+    const codexShim = join(managedBinDir, "codex-acp");
+    await writeFile(packagedCodexShim, "#!/bin/sh\nexit 0\n", "utf8");
+    await chmod(packagedCodexShim, 0o755);
     await writeFile(codexShim, "#!/bin/sh\nexit 0\n", "utf8");
     await chmod(codexShim, 0o755);
 
     const adapter = createConfiguredLocalAcpAdapter({
       CLASH_LOCAL_DATA_DIR: dataDir,
-      CLASH_ACP_BIN_DIR: acpBinDir,
+      CLASH_ACP_BIN_DIR: packagedBinDir,
       PATH: "",
     });
 

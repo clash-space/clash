@@ -214,7 +214,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
               className={`clash-workbench-control-button h-8 shrink-0 whitespace-nowrap px-2 text-[length:var(--clash-editor-text-control)] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 ${
                 view === candidate.id
                   ? 'bg-brand/[0.10] text-brand'
-                  : 'text-stone-500 hover:bg-black/[0.035] hover:text-slate-950'
+                  : 'text-content-muted hover:bg-warm-hover hover:text-content-primary'
               }`}
             >
               {candidate.label}
@@ -227,11 +227,11 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
       {view === 'recognize' ? (
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <div className="rounded-matrix bg-warm-page p-3 ring-1 ring-warm-border/70">
-            <h2 className={`m-0 font-semibold text-slate-950 dark:text-stone-100 ${captionTypography.heading}`}>Auto captions</h2>
-            <p className={`mb-0 mt-1 text-stone-500 dark:text-stone-400 ${captionTypography.caption}`}>
+            <h2 className={`m-0 font-semibold text-content-primary ${captionTypography.heading}`}>Auto captions</h2>
+            <p className={`mb-0 mt-1 text-content-secondary ${captionTypography.caption}`}>
               Recognize speech from Timeline media and create frame-aligned captions.
             </p>
-            <div className={`mt-3 flex items-center justify-between gap-3 text-stone-500 ${captionTypography.caption}`}>
+            <div className={`mt-3 flex items-center justify-between gap-3 text-content-secondary ${captionTypography.caption}`}>
               <span>{mediaAssets.length} spoken-media asset{mediaAssets.length === 1 ? '' : 's'}</span>
               <RemotionButton
                 type="button"
@@ -245,9 +245,9 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
             </div>
           </div>
           {mediaAssets.length === 0 ? (
-            <p className={`m-0 mt-3 text-stone-500 ${captionTypography.caption}`}>Add video or audio to the Timeline first.</p>
+            <p className={`m-0 mt-3 text-content-secondary ${captionTypography.caption}`}>Add video or audio to the Timeline first.</p>
           ) : null}
-          <label className={`mt-auto flex items-center gap-2 pt-3 text-stone-600 ${captionTypography.caption}`}>
+          <label className={`mt-auto flex items-center gap-2 pt-3 text-content-secondary ${captionTypography.caption}`}>
             <input
               type="checkbox"
               checked={replaceExisting}
@@ -256,7 +256,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
             />
             Replace existing captions
           </label>
-          {message ? <p role="status" className={`m-0 mt-3 text-stone-600 ${captionTypography.caption}`}>{message}</p> : null}
+          {message ? <p role="status" className={`m-0 mt-3 text-content-secondary ${captionTypography.caption}`}>{message}</p> : null}
         </div>
       ) : null}
 
@@ -275,7 +275,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
               className={`clash-workbench-control-button h-7 shrink-0 whitespace-nowrap px-2 font-medium transition-colors ${
                 editMode === 'caption-text'
                   ? 'bg-brand/[0.10] text-brand'
-                  : 'text-stone-500 hover:bg-black/[0.035] hover:text-slate-950'
+                  : 'text-content-muted hover:bg-warm-hover hover:text-content-primary'
               } ${captionTypography.control}`}
             >
               Caption text
@@ -288,7 +288,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
               className={`clash-workbench-control-button h-7 shrink-0 whitespace-nowrap px-2 font-medium transition-colors ${
                 editMode === 'timeline'
                   ? 'bg-brand/[0.10] text-brand'
-                  : 'text-stone-500 hover:bg-black/[0.035] hover:text-slate-950'
+                  : 'text-content-muted hover:bg-warm-hover hover:text-content-primary'
               } ${captionTypography.control}`}
             >
               Timeline edit
@@ -303,13 +303,13 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
               {captionEntries.length > 0 ? (
                 <div className="space-y-2">
                   <div className="flex items-baseline justify-between gap-2">
-                    <h2 className={`m-0 font-semibold text-slate-950 dark:text-stone-100 ${captionTypography.heading}`}>Caption text</h2>
-                    <span className={`text-stone-400 ${captionTypography.caption}`}>{captionEntries.length} sentences</span>
+                    <h2 className={`m-0 font-semibold text-content-primary ${captionTypography.heading}`}>Caption text</h2>
+                    <span className={`text-content-muted ${captionTypography.caption}`}>{captionEntries.length} sentences</span>
                   </div>
                   {captionEntries.flatMap((entry) => entry.item.cues.map((cue) => ({ entry, cue })))
                     .map(({ entry, cue }, index) => (
                       <label key={`${entry.item.id}:${cue.id}`} className="block rounded-matrix bg-warm-page p-2 ring-1 ring-warm-border/70">
-                        <span className={`mb-1 block font-medium text-stone-500 ${captionTypography.caption}`}>Sentence {index + 1}</span>
+                        <span className={`mb-1 block font-medium text-content-secondary ${captionTypography.caption}`}>Sentence {index + 1}</span>
                         <RemotionTextarea
                           aria-label={`Caption sentence ${index + 1} text`}
                           value={cue.text}
@@ -319,15 +319,15 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
                             dispatch({ type: 'SELECT_ITEM', payload: entry.item.id });
                           }}
                           onChange={(event) => updateCueText(entry, cue.id, event.target.value)}
-                          className={`w-full resize-none rounded-md border border-warm-border bg-warm-surface px-2 py-1.5 text-slate-950 outline-none focus:border-brand/50 focus:ring-2 focus:ring-brand/15 dark:text-stone-100 ${captionTypography.item}`}
+                          className={`w-full resize-none rounded-md border border-warm-border bg-warm-surface px-2 py-1.5 text-content-primary outline-none focus:border-brand/50 focus:ring-2 focus:ring-brand/15 ${captionTypography.item}`}
                         />
                       </label>
                     ))}
                 </div>
               ) : (
                 <div className="flex h-40 flex-col items-center justify-center text-center">
-                  <p className={`m-0 font-semibold text-slate-950 dark:text-stone-100 ${captionTypography.item}`}>No captions yet</p>
-                  <p className={`m-0 mt-1 text-stone-500 ${captionTypography.caption}`}>Recognize speech or import a subtitle file first.</p>
+                  <p className={`m-0 font-semibold text-content-primary ${captionTypography.item}`}>No captions yet</p>
+                  <p className={`m-0 mt-1 text-content-secondary ${captionTypography.caption}`}>Recognize speech or import a subtitle file first.</p>
                 </div>
               )}
             </div>
@@ -338,8 +338,8 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
       {view === 'import' ? (
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-matrix border border-dashed border-warm-border bg-warm-page px-4 text-center transition-colors hover:border-brand/45 hover:bg-brand/[0.025]">
-            <span className={`font-semibold text-slate-950 dark:text-stone-100 ${captionTypography.item}`}>Import subtitle file</span>
-            <span className={`mt-1 text-stone-500 ${captionTypography.caption}`}>SRT, VTT, ASS, or SSA</span>
+            <span className={`font-semibold text-content-primary ${captionTypography.item}`}>Import subtitle file</span>
+            <span className={`mt-1 text-content-secondary ${captionTypography.caption}`}>SRT, VTT, ASS, or SSA</span>
             <RemotionFileInput
               aria-label="Import subtitle file"
               accept=".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip"
@@ -352,7 +352,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
               className="sr-only"
             />
           </label>
-          <label className={`mt-3 flex items-center gap-2 text-stone-600 ${captionTypography.caption}`}>
+          <label className={`mt-3 flex items-center gap-2 text-content-secondary ${captionTypography.caption}`}>
             <input
               type="checkbox"
               checked={replaceExisting}
@@ -361,7 +361,7 @@ export const CaptionWorkspace: React.FC<CaptionWorkspaceProps> = ({
             />
             Replace existing captions
           </label>
-          {message ? <p role="status" className={`m-0 mt-3 text-stone-600 ${captionTypography.caption}`}>{message}</p> : null}
+          {message ? <p role="status" className={`m-0 mt-3 text-content-secondary ${captionTypography.caption}`}>{message}</p> : null}
         </div>
       ) : null}
 

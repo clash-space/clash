@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  clashHomeForLocalDataDir,
   defaultLocalApiDataDir,
   startLocalApiServer,
 } from "@master-clash/local-api";
@@ -29,7 +30,9 @@ async function main(): Promise<void> {
   const ownerClientId = process.env.CLASH_PLUGIN_OWNER_CLIENT_ID?.trim();
   if (!ownerClientId) throw new Error("CLASH_PLUGIN_OWNER_CLIENT_ID is required");
   const dataDir = defaultLocalApiDataDir(process.env);
-  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || join(dataDir, "..", "run");
+  const runDir =
+    process.env.CLASH_HOST_RUN_DIR?.trim() ||
+    join(clashHomeForLocalDataDir(dataDir), "run");
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir,

@@ -1,4 +1,4 @@
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { build } from "esbuild";
@@ -10,6 +10,9 @@ const importMetaUrlShim = "__clash_import_meta_url";
 const require = createRequire(import.meta.url);
 
 await mkdir(runtimeDir, { recursive: true });
+// A core build must never let a stale agent tree leak into the bridge bundle.
+// The fresh agent tree is installed only after the bridge has rebuilt it.
+await rm(resolve(runtimeDir, "agents"), { recursive: true, force: true });
 
 await build({
   entryPoints: [resolve(pluginRoot, "src/local-api-entry.ts")],
@@ -36,12 +39,6 @@ await build({
     js: `#!/usr/bin/env node\nconst ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
   },
 });
-
-await cp(
-  resolve(repoRoot, "packages/clash-bridge/dist/agents"),
-  resolve(runtimeDir, "agents"),
-  { recursive: true },
-);
 
 await cp(
   require.resolve("loro-crdt/nodejs/loro_wasm_bg.wasm"),

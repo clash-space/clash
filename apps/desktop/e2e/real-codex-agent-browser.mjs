@@ -1,7 +1,8 @@
 import path from "node:path";
 import { homedir } from "node:os";
-import { stat } from "node:fs/promises";
+import { lstat, readFile, readlink, stat } from "node:fs/promises";
 import {
+  assertComposerToolbarLayout,
   clickButtonByLabel,
   clickByText,
   clickComposerSubmitButton,
@@ -10,6 +11,7 @@ import {
   ensureAgentBrowser,
   evalJson,
   findFreePort,
+  observeComposerToolbarLayout,
   openSessionHistoryMenu,
   recoverAgentBrowserTarget,
   repoRoot,
@@ -28,6 +30,7 @@ import {
   finalAnswerTextFromEvents,
   terminalOutputsFromEvents,
 } from "./real-codex-transcript.mjs";
+import { assertColdStartProductContract } from "./product-cold-start-contract.mjs";
 
 if (process.env.CLASH_E2E_REAL_CODEX !== "1") {
   throw new Error("Refusing to run the real Codex E2E without CLASH_E2E_REAL_CODEX=1");
@@ -41,6 +44,8 @@ const failureScreenshot = path.join(captureDir, "failure.png");
 const finalScreenshot = path.join(captureDir, "final.png");
 const historyScreenshot = path.join(captureDir, "history.png");
 const retryStatusScreenshot = path.join(captureDir, "retry-status.png");
+const coldStartScreenshot = path.join(captureDir, "cold-start-product-contract.png");
+const narrowPlanScreenshot = path.join(captureDir, "narrow-plan-composer.png");
 
 function currentClashHome() {
   return process.env.CLASH_HOME || path.join(homedir(), ".clash");
@@ -71,6 +76,28 @@ async function assertProjectWorkspaceLayout(projectId) {
     throw new Error(`Project workspace layout is missing ${missing.join(", ")} under ${projectWorkspaceRoot}`);
   }
   return { projectWorkspaceRoot, required };
+}
+
+async function assertNativeClashSkill(projectWorkspaceRoot) {
+  const skillDirectory = path.join(
+    projectWorkspaceRoot,
+    ".agents",
+    "skills",
+    "clash",
+  );
+  const info = await lstat(skillDirectory);
+  if (!info.isSymbolicLink()) {
+    throw new Error(`Codex project Skill must be a symlink: ${skillDirectory}`);
+  }
+  const target = await readlink(skillDirectory);
+  if (!path.isAbsolute(target)) {
+    throw new Error(`Codex project Skill symlink must resolve to the bundled source: ${target}`);
+  }
+  const skill = await readFile(path.join(skillDirectory, "SKILL.md"), "utf8");
+  if (!skill.includes("name: clash") || !skill.includes("bundled `clash_*` tools")) {
+    throw new Error(`Codex project Skill did not resolve to the canonical Clash Skill: ${target}`);
+  }
+  return { skillDirectory, target };
 }
 
 async function fetchAndAssertProjectStatus(apiPort, projectId) {
@@ -192,6 +219,116 @@ async function selectCodexHarness(agentBrowser) {
   );
 }
 
+async function verifyPlanCommandResponsiveComposer(agentBrowser) {
+  const command = "/plan";
+  if (!typeComposer(agentBrowser, command)) {
+    throw new Error("Could not type /plan into composer");
+  }
+  if (!clickComposerSubmitButton(agentBrowser)) {
+    throw new Error("Could not submit /plan");
+  }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const tag = document.querySelector('[data-testid="session-plan-tag"]');
+      const close = tag?.querySelector('button[aria-label="Exit Plan mode"]');
+      const rect = tag?.getBoundingClientRect();
+      return !!tag && !!close && !!rect && rect.width > 0 && rect.height > 0;
+    })()`,
+    "active Plan tag after /plan",
+    10000,
+  );
+
+  const initialPanel = evalJson(agentBrowser, `(() => {
+    const panel = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
+    const handle = document.querySelector('[aria-label="Resize panel"]')?.getBoundingClientRect();
+    if (!panel || !handle) return null;
+    return {
+      width: panel.width,
+      handleX: handle.left + handle.width / 2,
+      handleY: handle.top + handle.height / 2,
+      shrinkTargetX: panel.right - 24,
+    };
+  })()`);
+  if (!initialPanel) throw new Error("Could not locate the desktop Copilot resize handle");
+  const alreadyAtMinimumWidth = initialPanel.width <= 430;
+  if (!alreadyAtMinimumWidth) {
+    agentBrowser(["mouse", "move", String(initialPanel.handleX), String(initialPanel.handleY)]);
+    agentBrowser(["mouse", "down", "left"]);
+    try {
+      agentBrowser([
+        "mouse",
+        "move",
+        String((initialPanel.handleX + initialPanel.shrinkTargetX) / 2),
+        String(initialPanel.handleY),
+      ]);
+      agentBrowser(["mouse", "move", String(initialPanel.shrinkTargetX), String(initialPanel.handleY)]);
+    } finally {
+      agentBrowser(["mouse", "up", "left"], { allowFailure: true });
+    }
+  }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const panel = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
+      return !!panel && panel.width <= 430 &&
+        !!document.querySelector('.clash-chat-input-toolbar-row');
+    })()`,
+    "minimum-width Plan composer",
+    10000,
+  );
+  assertComposerToolbarLayout(
+    observeComposerToolbarLayout(agentBrowser),
+    "Narrow Plan composer",
+  );
+  agentBrowser(["screenshot", narrowPlanScreenshot]);
+
+  if (!alreadyAtMinimumWidth) {
+    const narrowedPanel = evalJson(agentBrowser, `(() => {
+      const panel = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect();
+      const handle = document.querySelector('[aria-label="Resize panel"]')?.getBoundingClientRect();
+      if (!panel || !handle) return null;
+      return {
+        handleX: handle.left + handle.width / 2,
+        handleY: handle.top + handle.height / 2,
+        restoreTargetX: panel.right - ${JSON.stringify(initialPanel.width)},
+      };
+    })()`);
+    if (!narrowedPanel) throw new Error("Could not locate the narrowed Copilot resize handle");
+    agentBrowser(["mouse", "move", String(narrowedPanel.handleX), String(narrowedPanel.handleY)]);
+    agentBrowser(["mouse", "down", "left"]);
+    try {
+      agentBrowser([
+        "mouse",
+        "move",
+        String((narrowedPanel.handleX + narrowedPanel.restoreTargetX) / 2),
+        String(narrowedPanel.handleY),
+      ]);
+      agentBrowser(["mouse", "move", String(narrowedPanel.restoreTargetX), String(narrowedPanel.handleY)]);
+    } finally {
+      agentBrowser(["mouse", "up", "left"], { allowFailure: true });
+    }
+    await waitForEval(
+      agentBrowser,
+      `(() => {
+        const width = document.querySelector('#clash-copilot-panel')?.getBoundingClientRect().width;
+        return typeof width === "number" && Math.abs(width - ${JSON.stringify(initialPanel.width)}) <= 2;
+      })()`,
+      "restored Copilot width",
+      10000,
+    );
+  }
+  if (!clickButtonByLabel(agentBrowser, "Exit Plan mode")) {
+    throw new Error("Could not close the active Plan tag");
+  }
+  await waitForEval(
+    agentBrowser,
+    `!document.querySelector('[data-testid="session-plan-tag"]')`,
+    "Plan tag closed",
+    10000,
+  );
+}
+
 async function logRuntimeSnapshot(apiPort, label) {
   const url = `http://127.0.0.1:${apiPort}/api/v1/runtimes?probe=config&refresh=1`;
   try {
@@ -283,6 +420,99 @@ async function waitForPersistedFinalAnswer(apiPort, sessionId, expectedAnswer) {
   );
 }
 
+function clashMcpToolUpdate(event) {
+  if (!event || typeof event !== "object") return null;
+  const outer = event;
+  const update = outer.update && typeof outer.update === "object"
+    ? outer.update
+    : outer;
+  if (!["tool_call", "tool_call_update"].includes(update.sessionUpdate)) return null;
+  const meta = update._meta && typeof update._meta === "object" ? update._meta : {};
+  const input = update.rawInput && typeof update.rawInput === "object"
+    ? update.rawInput
+    : {};
+  const toolName = meta.mcp_tool_name ?? meta.mcpToolName ?? input.tool;
+  if (toolName !== "clash_canvas_list") return null;
+  return { update, meta, input };
+}
+
+function structuredNodeCount(rawOutput) {
+  const outer = rawOutput && typeof rawOutput === "object" ? rawOutput : {};
+  const result = outer.result && typeof outer.result === "object" ? outer.result : outer;
+  const structured = result.structuredContent ?? result.structured_content;
+  if (!structured || typeof structured !== "object") return null;
+  if (Array.isArray(structured.nodes)) return structured.nodes.length;
+  if (Array.isArray(structured.items)) return structured.items.length;
+  return null;
+}
+
+async function waitForPersistedClashMcpOutput(apiPort, sessionId) {
+  const deadline = Date.now() + 90000;
+  let lastState = null;
+  while (Date.now() < deadline) {
+    try {
+      const messagesRes = await fetch(
+        `http://127.0.0.1:${apiPort}/api/v1/local-sessions/${encodeURIComponent(sessionId)}/messages`,
+      );
+      const messagesJson = messagesRes.ok ? await messagesRes.json() : null;
+      const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+      const events = messages.flatMap((message) => Array.isArray(message?.events) ? message.events : []);
+      const transcript = JSON.stringify(events);
+      if (
+        /[\\/]\\.codex[\\/]plugins[\\/]cache[\\/]personal[\\/]clash/i.test(transcript)
+        || /\bclash\s+canvas\s+list\b/i.test(transcript)
+        || /Cannot connect to Clash server/i.test(transcript)
+      ) {
+        throw new Error(`Clash product work fell back to a global skill or shell CLI: ${transcript.slice(0, 4000)}`);
+      }
+      const calls = new Map();
+      for (const event of events) {
+        const mcp = clashMcpToolUpdate(event);
+        if (!mcp) continue;
+        const toolCallId = mcp.update.toolCallId ?? mcp.update.tool_call_id ?? null;
+        const previous = calls.get(toolCallId) ?? {
+          sessionId,
+          toolCallId,
+          trusted: false,
+          renderer: null,
+          nodeCount: null,
+        };
+        const nodeCount = structuredNodeCount(mcp.update.rawOutput);
+        const current = {
+          ...previous,
+          trusted: previous.trusted || mcp.meta["clash.host_trusted_mcp"] === true,
+          renderer: mcp.meta["clash.renderer"] ?? previous.renderer,
+          nodeCount: nodeCount ?? previous.nodeCount,
+        };
+        calls.set(toolCallId, current);
+        if (
+          current.trusted
+          && current.renderer === "product"
+          && current.nodeCount !== null
+        ) {
+          return current;
+        }
+        lastState = current;
+      }
+      if (calls.size === 0) {
+        lastState = {
+          sessionId,
+          messagesStatus: messagesRes.status,
+          messages: messages.length,
+          clashMcpEvents: 0,
+        };
+      }
+    } catch (error) {
+      if (error instanceof Error && /fell back to a global skill or shell CLI/.test(error.message)) {
+        throw error;
+      }
+      lastState = { error: error instanceof Error ? error.message : String(error) };
+    }
+    await sleep(500);
+  }
+  throw new Error(`Timed out waiting for trusted Clash MCP output: ${JSON.stringify(lastState)}`);
+}
+
 function clickPwdToolRow(agentBrowser) {
   return evalJson(agentBrowser, `(() => {
     const exactLabels = new Set(["Ran pwd", "Run pwd", "已运行 pwd", "已运行  pwd"]);
@@ -360,7 +590,11 @@ async function main() {
     agentBrowser(["connect", String(cdpPort)]);
     await waitForEval(agentBrowser, `document.body.innerText.includes("Home")`, "home page");
 
-    if (!clickByText(agentBrowser, "Projects")) throw new Error("Could not open Projects");
+    recoverAgentBrowserTarget(agentBrowser, {
+      cdpPort,
+      expectedUrlPrefix: webOrigin,
+    });
+    agentBrowser(["click", "a[href='/projects']"]);
     await waitForEval(agentBrowser, `location.pathname === "/projects"`, "projects route");
     if (!clickByText(agentBrowser, "New Project")) throw new Error("Could not create project");
     await submitProjectCreateDialog(agentBrowser, "Real Codex E2E");
@@ -379,16 +613,28 @@ async function main() {
       "copilot composer",
       30000,
     );
+    const coldStartProductContract = await assertColdStartProductContract({
+      agentBrowser,
+      apiOrigin: `http://127.0.0.1:${apiPort}`,
+      projectId,
+      harnessId: "codex-acp",
+    });
+    agentBrowser(["screenshot", coldStartScreenshot]);
     const runtimeSnapshot = await logRuntimeSnapshot(apiPort, "runtime snapshot before harness select");
     const codexAuth = runtimeSnapshot?.runtimes
       ?.flatMap((runtime) => runtime?.agents ?? [])
       .find((agent) => agent?.id === "codex-acp")
       ?.auth;
+    const configuredAuthMethod = String(codexAuth?.methodId ?? "");
+    const supportedAuthMethods = Array.isArray(codexAuth?.methods)
+      ? codexAuth.methods.map((method) => String(method?.id ?? ""))
+      : [];
     if (
       codexAuth?.status !== "configured" ||
-      !["chat-gpt", "chatgpt"].includes(String(codexAuth?.methodId ?? "").toLowerCase())
+      !configuredAuthMethod ||
+      !supportedAuthMethods.includes(configuredAuthMethod)
     ) {
-      throw new Error(`Real Codex E2E must use the configured ChatGPT subscription: ${JSON.stringify(codexAuth)}`);
+      throw new Error(`Real Codex E2E requires a configured, runtime-declared auth method: ${JSON.stringify(codexAuth)}`);
     }
     await selectCodexHarness(agentBrowser);
 
@@ -413,6 +659,9 @@ async function main() {
 
     const persistedToolOutput = await waitForPersistedPwdOutput(apiPort, projectId);
     const projectWorkspaceLayout = await assertProjectWorkspaceLayout(projectId);
+    const nativeClashSkill = await assertNativeClashSkill(
+      projectWorkspaceLayout.projectWorkspaceRoot,
+    );
     const projectStatus = await fetchAndAssertProjectStatus(apiPort, projectId);
     await waitAndClickPwdToolRow(agentBrowser);
     await waitForEval(
@@ -444,6 +693,52 @@ async function main() {
     if (transportDiagnosticObserved && !retryStatus) {
       throw new Error("Codex transport retry/fallback was observed in logs, but no retry status appeared in the UI");
     }
+
+    await verifyPlanCommandResponsiveComposer(agentBrowser);
+
+    const mcpPrompt = [
+      "Inspect the current Canvas with the bundled Clash MCP tool clash_canvas_list.",
+      "Do not use a shell or the Clash CLI.",
+      "Reply with exactly nodes: N using the returned node count.",
+    ].join(" ");
+    if (!typeComposer(agentBrowser, mcpPrompt)) {
+      throw new Error("Could not type the Clash MCP prompt into composer");
+    }
+    if (!clickComposerSubmitButton(agentBrowser)) {
+      throw new Error("Could not submit the Clash MCP prompt");
+    }
+    await waitForEval(
+      agentBrowser,
+      `(() => {
+        const editor = document.querySelector(".milkdown-chat-input [contenteditable='true']");
+        return !!editor && !(editor.innerText || editor.textContent || "").includes(${JSON.stringify(mcpPrompt)});
+      })()`,
+      "Clash MCP prompt cleared after submit",
+      10000,
+    );
+    const persistedClashMcpOutput = await waitForPersistedClashMcpOutput(
+      apiPort,
+      persistedToolOutput.sessionId,
+    );
+    await waitForEval(
+      agentBrowser,
+      `!document.querySelector(".clash-chat-input-stop")`,
+      "Clash MCP turn idle after final answer",
+      240000,
+    );
+    const persistedClashMcpAnswer = await waitForPersistedFinalAnswer(
+      apiPort,
+      persistedToolOutput.sessionId,
+      `nodes: ${persistedClashMcpOutput.nodeCount}`,
+    );
+    await waitForEval(
+      agentBrowser,
+      `document.body.innerText.includes("List Canvas") &&
+        document.body.innerText.includes(${JSON.stringify(`${persistedClashMcpOutput.nodeCount} nodes`)}) &&
+        !document.body.innerText.includes("Cannot connect to Clash server")`,
+      "trusted Clash MCP result visible without CLI fallback",
+      30000,
+    );
     agentBrowser(["screenshot", finalScreenshot]);
 
     recoverAgentBrowserTarget(agentBrowser, {
@@ -495,11 +790,16 @@ async function main() {
       finalScreenshot,
       historyScreenshot,
       retryStatusScreenshot: retryStatus?.screenshot ?? null,
+      coldStartScreenshot,
+      coldStartProductContract,
       retryStatusText: retryStatus?.text ?? null,
       transportDiagnosticObserved,
       persistedToolOutput,
       persistedFinalAnswer,
+      persistedClashMcpOutput,
+      persistedClashMcpAnswer,
       projectWorkspaceLayout,
+      nativeClashSkill,
       projectStatus,
       state,
     }));

@@ -1,9 +1,13 @@
+import { mkdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { delimiter, dirname, join, normalize, relative } from "node:path";
+import { dirname, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
-import { startLocalApiServer } from "@master-clash/local-api";
+import {
+  defaultLocalApiDataDir,
+  startLocalApiServer,
+} from "@master-clash/local-api";
 import {
   DEFAULT_DESKTOP_API_PORT,
   isAddressInUse,
@@ -11,9 +15,11 @@ import {
 } from "./api-port";
 import {
   prependPythonPath,
-  resolveAcpBinDirs,
+  resolveAcpBinDir,
+  resolveAgentBundleRoot,
   resolveClashCliEntryPath,
   resolveClashCliNodePath,
+  resolveDesktopStatePaths,
   resolveClashSdkPythonPath,
   resolveWebDistDir,
 } from "./paths";
@@ -109,18 +115,31 @@ async function logRendererState(label: string, window: BrowserWindow): Promise<v
 }
 
 function resolveDataDir(): string {
-  return process.env.CLASH_LOCAL_DATA_DIR ?? join(app.getPath("userData"), "local-api");
+  return defaultLocalApiDataDir(process.env);
 }
 
+function configureElectronStatePaths(dataDir: string): void {
+  const state = resolveDesktopStatePaths(dataDir);
+  for (const directory of Object.values(state)) {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
+  app.setPath("userData", state.userData);
+  app.setPath("sessionData", state.sessionData);
+  app.setPath("logs", state.logs);
+  app.setPath("crashDumps", state.crashDumps);
+}
+
+const desktopDataDir = resolveDataDir();
+configureElectronStatePaths(desktopDataDir);
+
 async function configureAcpHarnessEnvironment(dataDir: string): Promise<void> {
-  const acpBinDirs = resolveAcpBinDirs({
+  const acpBinDir = resolveAcpBinDir(dataDir);
+  process.env.CLASH_ACP_BIN_DIR = process.env.CLASH_ACP_TEST_BIN_DIR || acpBinDir;
+  process.env.CLASH_AGENT_BUNDLE_ROOT = resolveAgentBundleRoot({
     isPackaged: app.isPackaged,
     moduleDir: __dirname,
     resourcesPath: process.resourcesPath,
-    dataDir,
   });
-  const testBinDirs = process.env.CLASH_ACP_TEST_BIN_DIR?.split(delimiter).filter(Boolean) ?? [];
-  process.env.CLASH_ACP_BIN_DIR = [...new Set([...testBinDirs, ...acpBinDirs])].join(delimiter);
   process.env.CLASH_CLI_ENTRY_PATH = resolveClashCliEntryPath({
     isPackaged: app.isPackaged,
     moduleDir: __dirname,
@@ -141,8 +160,7 @@ async function configureAcpHarnessEnvironment(dataDir: string): Promise<void> {
   });
   process.env.PYTHONPATH = prependPythonPath(process.env.PYTHONPATH, clashSdkPythonPath);
 
-  const hotDownloadBinDir = acpBinDirs[0];
-  if (hotDownloadBinDir) await mkdir(hotDownloadBinDir, { recursive: true });
+  await mkdir(acpBinDir, { recursive: true });
 }
 
 function contentTypeForPath(path: string): string {
@@ -197,9 +215,8 @@ async function startLocalApiOnPort(port: number, dataDir: string): Promise<void>
   });
 }
 
-async function initializeRuntime(): Promise<void> {
+async function initializeRuntime(dataDir: string): Promise<void> {
   let apiPort = DEFAULT_DESKTOP_API_PORT;
-  const dataDir = resolveDataDir();
   await configureAcpHarnessEnvironment(dataDir);
 
   if (!process.env.CLASH_API_BASE_URL) {
@@ -319,7 +336,7 @@ async function createWindow(): Promise<BrowserWindow> {
   return window;
 }
 
-function registerWindowIpc(): void {
+function registerWindowIpc(dataDir: string): void {
   ipcMain.handle("clash:new-window", async () => {
     const window = await createWindow();
     return { windowId: window.id, windowCount: windowRegistry.count() };
@@ -345,7 +362,7 @@ function registerWindowIpc(): void {
   });
   ipcMain.handle("clash:open-in-nle", async (_event, request: DesktopNleHandoffRequest) => {
     const documentPath = await materializeNleHandoff(
-      join(app.getPath("userData"), "nle-handoffs"),
+      join(dirname(dataDir), "nle-handoffs"),
       request,
     );
     await openNleDocument(request.target, documentPath);
@@ -354,10 +371,11 @@ function registerWindowIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  const dataDir = desktopDataDir;
   registerWebProtocol();
   installApplicationMenu();
-  registerWindowIpc();
-  await initializeRuntime();
+  registerWindowIpc(dataDir);
+  await initializeRuntime(dataDir);
   await createWindow();
 
   app.on("activate", () => {

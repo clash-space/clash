@@ -31,6 +31,8 @@ export interface DialogProps {
   overlayClassName?: string;
   containerClassName?: string;
   contentClassName?: string;
+  /** Optional local surface for dialogs whose interaction must stay inside a workspace. */
+  portalContainer?: HTMLElement | null;
 }
 
 const sizeClasses = {
@@ -64,6 +66,7 @@ export function Dialog({
   overlayClassName,
   containerClassName,
   contentClassName,
+  portalContainer,
 }: DialogProps) {
   if (process.env.NODE_ENV !== "production" && !title && !ariaLabel) {
     // eslint-disable-next-line no-console
@@ -81,7 +84,7 @@ export function Dialog({
         if (!nextOpen) onClose();
       }}
     >
-      <DialogPrimitive.Portal>
+      <DialogPrimitive.Portal container={portalContainer}>
         <DialogPrimitive.Overlay asChild>
           <motion.div
             initial={{ opacity: 0 }}

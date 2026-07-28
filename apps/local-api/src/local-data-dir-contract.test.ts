@@ -83,14 +83,15 @@ function filesUnder(path: string): string[] {
 }
 
 describe("local data dir contract", () => {
-  it("selects active local-api data stores by SQLite presence in conformance scripts", () => {
+  it("uses only the canonical local-api data directory in conformance scripts", () => {
     const providerConformance = readScript("provider-conformance.ts");
     const googleAgentPlatform = readScript("google-agent-platform-conformance.ts");
 
-    expect(providerConformance).toContain('existsSync(join(desktop, "local.sqlite"))');
-    expect(googleAgentPlatform).toContain('existsSync(join(desktop, "local.sqlite"))');
-    expect(providerConformance).not.toContain("|| existsSync(join(desktop,");
-    expect(googleAgentPlatform).not.toContain("|| existsSync(join(desktop,");
+    for (const script of [providerConformance, googleAgentPlatform]) {
+      expect(script).toContain("defaultLocalApiDataDir(process.env)");
+      expect(script).not.toContain("Application Support");
+      expect(script).not.toContain("defaultDesktopDataDir");
+    }
   });
 
   it("keeps broad app metadata file names out of local-first source, docs, and skills", () => {
@@ -119,7 +120,7 @@ describe("local data dir contract", () => {
     expect(matches).toEqual([]);
   });
 
-  it("keeps local-api config state out of visible JSON sidecar filenames", () => {
+  it("keeps retired local-api JSON sidecars confined to one-way migration code and spec", () => {
     const forbiddenLocalConfigFiles = [
       spell(115, 121, 110, 99, 46, 106, 115, 111, 110),
       spell(97, 117, 100, 105, 111, 46, 106, 115, 111, 110),
@@ -133,7 +134,14 @@ describe("local data dir contract", () => {
       ...sourceFilesUnder("packages/web-ui/src"),
       ...sourceFilesUnder("skills"),
       ...sourceFilesUnder("docs"),
-    ].filter((file) => !file.endsWith("apps/local-api/src/local-data-dir-contract.test.ts"));
+    ].filter((file) => {
+      const relative = file.slice(repoRoot.length + 1);
+      return (
+        relative !== "apps/local-api/src/local-data-dir-contract.test.ts"
+        && relative !== "apps/local-api/src/local-acp.ts"
+        && relative !== "docs/self-host-storage-spec.md"
+      );
+    });
 
     const forbiddenLocalConfigFilePatterns = forbiddenLocalConfigFiles.map((name) => ({
       name,

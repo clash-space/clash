@@ -38,7 +38,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "npm --prefix ../shared-runtime run build && tsup && node scripts/bundle-agents.mjs",
+    "build:runtime": "npm --prefix ../shared-runtime run build && node scripts/clean-runtime.mjs && tsup",
+    "build": "pnpm build:runtime && pnpm bundle:agents",
     "bundle:agents": "node scripts/bundle-agents.mjs",
     "dev": "tsup --watch",
     "test": "vitest run",
@@ -49,7 +50,7 @@
     "@agentclientprotocol/claude-agent-acp": "^0.47.0",
     "@agentclientprotocol/sdk": "^0.28.1",
     "@clash/shared-runtime": "workspace:*",
-    "@openma/common": "github:openma-ai/openma-common#86bbc8a1ee67d9944b4bc38b25af6f7b6a93e273",
+    "@openma/common": "github:openma-ai/openma-common#codex/acp-lifecycle-v05",
     "ws": "^8.18.0"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-export { D as DIRECTOR_PLUGIN_TOOL_NAMES, a as DirectorAdapter, b as DirectorCommandRunner, c as DirectorEntity, d as DirectorPluginToolName, e as DirectorProjectionWriter, f as DirectorToolInput, g as buildDirectorCliArgs, h as createClashDirectorRunner, i as createDirectorAdapter } from './adapter-CzOWT90T.js';
+export { D as DIRECTOR_PLUGIN_TOOL_NAMES, a as DirectorAdapter, b as DirectorCommandRunner, c as DirectorEntity, d as DirectorPluginToolName, e as DirectorProjectionWriter, f as DirectorToolInput, g as buildDirectorCliArgs, h as createClashDirectorRunner, i as createDirectorAdapter, j as directorWorkspaceCwd } from './adapter-CNijvpDJ.js';
 export { createDirectorPluginServer, registerDirectorPluginMcp, serveDirectorPluginStdio } from './server.js';
 import '@modelcontextprotocol/sdk/server/mcp.js';
 

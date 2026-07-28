@@ -10,6 +10,8 @@ interface NodeModalDialogProps {
   children: ReactNode;
   contentClassName?: string;
   overlayClassName?: string;
+  portalContainer?: HTMLElement | null;
+  selectionOverlayCompatible?: boolean;
 }
 
 export function NodeModalDialog({
@@ -19,6 +21,8 @@ export function NodeModalDialog({
   children,
   contentClassName,
   overlayClassName,
+  portalContainer,
+  selectionOverlayCompatible = false,
 }: NodeModalDialogProps) {
   return (
     <Dialog
@@ -28,8 +32,16 @@ export function NodeModalDialog({
       size="auto"
       hideCloseButton
       unstyled
-      overlayClassName={cn("z-[9999] bg-warm-page/80", overlayClassName)}
-      containerClassName="z-[9999] p-8"
+      overlayClassName={cn(
+        selectionOverlayCompatible ? "!z-[60]" : "z-[9999]",
+        "bg-warm-page/80",
+        overlayClassName,
+      )}
+      containerClassName={cn(
+        selectionOverlayCompatible ? "!z-[60]" : "z-[9999]",
+        "p-8",
+      )}
+      portalContainer={portalContainer}
       contentClassName={cn(
         "w-full max-w-5xl h-[85vh] bg-warm-surface rounded-xl shadow-lg overflow-hidden flex flex-col border border-warm-border",
         contentClassName,

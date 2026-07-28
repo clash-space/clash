@@ -1,14 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import {
+  ArrowLeft,
   CaretDown,
   CaretUp,
   Crosshair,
-  Cube,
-  FilmSlate,
-  HashStraight,
-  Images,
   NotePencil,
   Quotes,
+  Trash,
   X,
 } from "@phosphor-icons/react";
 import type {
@@ -20,6 +18,15 @@ import { useSignedUrl } from "@clash/web-ui/lib/hooks/useSignedUrl";
 import { IconButton } from "../ui/icon-button";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/popover";
 import { Textarea } from "../ui/textarea";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "../ui/context-menu";
+import { ProjectSurfaceIcon } from "../ProjectSurfaceIcon";
 
 const SURFACE_LABELS = {
   canvas: "Canvas",
@@ -50,13 +57,13 @@ function SurfaceIcon({
   surface: AgentAnnotationDraft["target"]["surface"];
   className?: string;
 }) {
-  if (surface === "timeline")
-    return <FilmSlate className={className} weight="duotone" />;
-  if (surface === "director-stage")
-    return <Cube className={className} weight="duotone" />;
-  if (surface === "asset")
-    return <Images className={className} weight="duotone" />;
-  return <HashStraight className={className} weight="duotone" />;
+  return (
+    <ProjectSurfaceIcon
+      surface={surface}
+      className={className}
+      weight="duotone"
+    />
+  );
 }
 
 /**
@@ -71,6 +78,54 @@ function AnnotationNumberBadge({ number }: { number: number }) {
     >
       {number}
     </span>
+  );
+}
+
+export function AgentAnnotationActionsContextMenu({
+  annotation,
+  onOpen,
+  onLocate,
+  onRemove,
+  children,
+}: {
+  annotation: AgentAnnotationDraft;
+  onOpen?: () => void;
+  onLocate?: () => void;
+  onRemove?: () => void;
+  children: ReactNode;
+}) {
+  if (!onOpen && !onLocate && !onRemove) return <>{children}</>;
+  return (
+    <ContextMenu modal={false}>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent
+        aria-label={`Annotation actions for ${annotation.target.objectLabel}`}
+      >
+        <ContextMenuLabel>{annotation.target.objectLabel}</ContextMenuLabel>
+        {onOpen ? (
+          <ContextMenuItem onSelect={onOpen}>
+            <NotePencil className="h-4 w-4 shrink-0" weight="duotone" />
+            Open annotation
+          </ContextMenuItem>
+        ) : null}
+        {onLocate ? (
+          <ContextMenuItem onSelect={onLocate}>
+            <Crosshair className="h-4 w-4 shrink-0" weight="bold" />
+            Locate in workspace
+          </ContextMenuItem>
+        ) : null}
+        {onRemove ? <ContextMenuSeparator /> : null}
+        {onRemove ? (
+          <ContextMenuItem
+            onSelect={onRemove}
+            className="text-red-600 dark:text-red-400"
+          >
+            <Trash className="h-4 w-4 shrink-0" weight="bold" />
+            Remove annotation
+          </ContextMenuItem>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -155,6 +210,7 @@ function AnnotationRow({
   expanded,
   disabled,
   onToggle,
+  onOpen,
   onChange,
   onRemove,
   onLocate,
@@ -164,6 +220,7 @@ function AnnotationRow({
   expanded: boolean;
   disabled: boolean;
   onToggle: () => void;
+  onOpen?: () => void;
   onChange?: (note: string) => void;
   onRemove?: () => void;
   onLocate?: () => void;
@@ -176,7 +233,7 @@ function AnnotationRow({
     editor.setSelectionRange(end, end);
   }, []);
 
-  return (
+  const row = (
     <li
       data-testid="agent-annotation-item"
       data-agent-annotation-surface={target.surface}
@@ -188,7 +245,7 @@ function AnnotationRow({
           type="button"
           aria-expanded={expanded}
           aria-label={`Annotation ${number}: ${target.objectLabel}`}
-          onClick={onToggle}
+          onClick={onOpen ?? onToggle}
           disabled={disabled}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand disabled:opacity-60"
         >
@@ -298,6 +355,16 @@ function AnnotationRow({
       ) : null}
     </li>
   );
+  return (
+    <AgentAnnotationActionsContextMenu
+      annotation={annotation}
+      onOpen={onOpen}
+      onLocate={onLocate}
+      onRemove={onRemove}
+    >
+      {row}
+    </AgentAnnotationActionsContextMenu>
+  );
 }
 
 export function AgentAnnotationTray({
@@ -306,12 +373,14 @@ export function AgentAnnotationTray({
   onChange,
   onRemove,
   onLocate,
+  onOpen,
 }: {
   annotations: readonly AgentAnnotationDraft[];
   disabled?: boolean;
   onChange?: (id: string, note: string) => void;
   onRemove?: (id: string) => void;
   onLocate?: (id: string) => void;
+  onOpen?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   // null = automatic (a single annotation opens straight into its details);
@@ -398,6 +467,14 @@ export function AgentAnnotationTray({
               number={index + 1}
               expanded={detailId === annotation.id}
               disabled={disabled}
+              onOpen={
+                onOpen
+                  ? () => {
+                      setOpen(false);
+                      onOpen(annotation.id);
+                    }
+                  : undefined
+              }
               onToggle={() =>
                 setExpandedId(
                   detailId === annotation.id ? COLLAPSED_ALL : annotation.id,
@@ -413,5 +490,207 @@ export function AgentAnnotationTray({
         </ul>
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function AgentAnnotationInspector({
+  annotations,
+  activeId,
+  disabled = false,
+  onSelect,
+  onBack,
+  onChange,
+  onRemove,
+  onLocate,
+}: {
+  annotations: readonly AgentAnnotationDraft[];
+  activeId: string;
+  disabled?: boolean;
+  onSelect: (id: string) => void;
+  onBack: () => void;
+  onChange?: (id: string, note: string) => void;
+  onRemove?: (id: string) => void;
+  onLocate?: (id: string) => void;
+}) {
+  const activeIndex = annotations.findIndex(
+    (annotation) => annotation.id === activeId,
+  );
+  const annotation = activeIndex >= 0 ? annotations[activeIndex] : null;
+  if (!annotation) return null;
+  const { target } = annotation;
+
+  return (
+    <section
+      data-testid="agent-annotation-inspector"
+      aria-label={`Annotation for ${target.objectLabel}`}
+      className="flex h-full min-h-0 flex-col bg-warm-page text-content-primary"
+    >
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-warm-border px-3">
+        <IconButton
+          label="Back to chat"
+          title="Back to chat"
+          size="sm"
+          shape="rounded"
+          onClick={onBack}
+          icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold">Annotation</div>
+          <div className="text-[11px] text-content-muted">
+            {activeIndex + 1} of {annotations.length}
+          </div>
+        </div>
+        {onLocate ? (
+          <IconButton
+            label={`Locate annotation for ${target.objectLabel}`}
+            title="Locate in workspace"
+            size="sm"
+            shape="rounded"
+            onClick={() => onLocate(annotation.id)}
+            icon={<Crosshair className="h-4 w-4" weight="bold" />}
+          />
+        ) : null}
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="rounded-xl border border-warm-border bg-warm-surface p-3 shadow-sm">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <AnnotationNumberBadge number={activeIndex + 1} />
+            {target.previewAssetId ? (
+              <AnnotationAssetThumbnail target={target} size="md" />
+            ) : (
+              <span
+                className="mt-0.5 shrink-0 text-content-muted"
+                aria-hidden="true"
+              >
+                <SurfaceIcon surface={target.surface} />
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">
+                {target.objectLabel}
+              </div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-content-muted">
+                <span>{target.surfaceLabel}</span>
+                <span aria-hidden="true">·</span>
+                <span className="truncate">
+                  {formatObjectType(target.objectType)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 truncate rounded-lg bg-warm-muted/70 px-2.5 py-2 font-mono text-[10px] text-content-muted">
+            {target.objectPath}
+          </div>
+          {target.previewAssetId ? (
+            <div className="mt-3 overflow-hidden rounded-lg bg-warm-muted">
+              <AnnotationAssetThumbnail target={target} size="lg" />
+            </div>
+          ) : null}
+          {target.selection ? (
+            <blockquote className="mt-3 flex gap-2 rounded-lg border border-warm-border/80 bg-warm-muted/50 px-3 py-2.5 text-[13px] leading-5 text-content-secondary">
+              <Quotes
+                className="mt-0.5 h-4 w-4 shrink-0 text-content-muted"
+                weight="fill"
+                aria-hidden="true"
+              />
+              <span>{target.selection.exact}</span>
+            </blockquote>
+          ) : null}
+        </div>
+
+        <div className="mt-4">
+          <label
+            htmlFor={`annotation-note-${annotation.id}`}
+            className="text-[11px] font-semibold uppercase tracking-[0.08em] text-content-muted"
+          >
+            Instruction for agent
+          </label>
+          <Textarea
+            id={`annotation-note-${annotation.id}`}
+            aria-label={`Annotation for ${target.objectLabel}`}
+            value={annotation.note}
+            placeholder={
+              target.selection
+                ? "Add context for the selected passage…"
+                : "What should the agent inspect or change?"
+            }
+            rows={5}
+            readOnly={!onChange}
+            disabled={disabled}
+            onChange={(event) => onChange?.(annotation.id, event.target.value)}
+            className="mt-2 min-h-28 resize-y rounded-xl border-warm-border bg-warm-surface px-3 py-2.5 text-sm leading-5 shadow-sm"
+          />
+          <p className="mt-2 text-[11px] leading-4 text-content-muted">
+            This instruction stays attached to the selected workspace object
+            when you send it to the agent.
+          </p>
+        </div>
+
+        {annotations.length > 1 ? (
+          <div className="mt-5 border-t border-warm-border pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-content-muted">
+              All annotations
+            </div>
+            <div className="space-y-1">
+              {annotations.map((candidate, index) => {
+                const selected = candidate.id === annotation.id;
+                const row = (
+                  <button
+                    type="button"
+                    aria-label={`Open annotation ${index + 1}: ${candidate.target.objectLabel}`}
+                    aria-current={selected ? "true" : undefined}
+                    onClick={() => onSelect(candidate.id)}
+                    className={`flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand ${
+                      selected
+                        ? "bg-warm-muted text-content-primary"
+                        : "text-content-secondary hover:bg-warm-muted/60 hover:text-content-primary"
+                    }`}
+                  >
+                    <AnnotationNumberBadge number={index + 1} />
+                    <SurfaceIcon
+                      surface={candidate.target.surface}
+                      className="h-3.5 w-3.5 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                      {candidate.target.objectLabel}
+                    </span>
+                  </button>
+                );
+                return (
+                  <AgentAnnotationActionsContextMenu
+                    key={candidate.id}
+                    annotation={candidate}
+                    onOpen={() => onSelect(candidate.id)}
+                    onLocate={
+                      onLocate ? () => onLocate(candidate.id) : undefined
+                    }
+                    onRemove={
+                      onRemove ? () => onRemove(candidate.id) : undefined
+                    }
+                  >
+                    {row}
+                  </AgentAnnotationActionsContextMenu>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {onRemove ? (
+        <footer className="shrink-0 border-t border-warm-border p-3">
+          <button
+            type="button"
+            onClick={() => onRemove(annotation.id)}
+            disabled={disabled}
+            className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-[13px] font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/35"
+          >
+            <Trash className="h-4 w-4" weight="bold" />
+            Remove annotation
+          </button>
+        </footer>
+      ) : null}
+    </section>
   );
 }

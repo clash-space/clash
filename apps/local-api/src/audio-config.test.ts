@@ -46,7 +46,19 @@ describe("local audio config", () => {
         ],
       })),
     };
-    const store = createLocalAudioConfigStore({ dataDir, asrRuntime: runtime });
+    const ttsRuntime: LocalTtsRuntime = {
+      status: vi.fn(async () => ({ available: false })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      synthesize: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const store = createLocalAudioConfigStore({
+      dataDir,
+      asrRuntime: runtime,
+      ttsRuntime,
+    });
 
     await expect(store.getPublicConfig()).resolves.toMatchObject({
       asr: {
@@ -72,9 +84,14 @@ describe("local audio config", () => {
       asr_model: "iic/SenseVoiceSmall",
     });
     await expect(stat(join(dataDir, removedAudioSidecar))).rejects.toMatchObject({ code: "ENOENT" });
-    const sqliteInfo = await stat(join(dataDir, "local.sqlite"));
-    expect(sqliteInfo.mode & 0o777).toBe(0o600);
-    await expect(createLocalAudioConfigStore({ dataDir, asrRuntime: runtime }).getPublicConfig()).resolves.toMatchObject({
+    const configInfo = await stat(join(dataDir, "config.yaml"));
+    expect(configInfo.mode & 0o777).toBe(0o600);
+    await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(createLocalAudioConfigStore({
+      dataDir,
+      asrRuntime: runtime,
+      ttsRuntime,
+    }).getPublicConfig()).resolves.toMatchObject({
       asr: {
         enabled: true,
         model: "iic/SenseVoiceSmall",

@@ -13,7 +13,6 @@ packages:
   - 'packages/cli'
   - 'packages/mcp-server'
   - 'packages/clash-bridge'
-  - 'packages/claude-code-plugin'
   - 'plugins/*'
 supportedArchitectures:
   cpu: [arm64, x64]

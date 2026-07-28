@@ -152,15 +152,15 @@ describe("project status path builder", () => {
     expect(status.runtimeRoot).toBe(status.roots.runtime);
     expect(status.localSqlitePath).toBe("/tmp/clash-home/local-api/local.sqlite");
     expect(status.storage.canonicalReplica.metadata.localConfig).toEqual({
-      role: "machine-local-config",
-      table: "local_config",
-      keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+      role: "user-editable-machine-config",
+      format: "yaml",
+      path: "/tmp/clash-home/config.yaml",
+      sections: ["server", "harnesses", "audio", "sync"],
       syncDefault: "local-only",
       agentWritable: false,
-      mutationSurface: "host-api-or-cli",
-      jsonSidecars: "removed",
+      mutationSurface: "host-api-cli-or-editor",
+      sqliteConfigRows: "migration-only",
     });
-    expect(status.storage.localSecrets.files.cliConfig.path).toBe("/tmp/clash-home/config.json");
     expect(status.storage.localSecrets.files.bridgeCredentials.path).toBe("/tmp/clash-home/credentials.json");
     expect(status.loro.snapshotPath).toBe("/tmp/clash-home/local-api/projects/project%2Fone/loro/snapshot.bin");
     expect(status.storage.canonicalReplica.mediaAssets.path).toBe("/tmp/clash-home/assets/blobs");
@@ -199,7 +199,7 @@ describe("project status path builder", () => {
     expect(status.protectedPaths).toContain(status.loro.snapshotPath);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.mediaAssets.path);
     expect(status.protectedPaths).toContain(status.storage.canonicalReplica.contentBlobs.textRevisions.path);
-    expect(status.protectedPaths).toContain(status.storage.localSecrets.files.cliConfig.path);
+    expect(status.protectedPaths).toContain(status.storage.canonicalReplica.metadata.localConfig.path);
     expect(status.protectedPaths).toContain(status.storage.localSecrets.files.bridgeCredentials.path);
     expect(status.protectedPaths).toContain(status.roots.runtime);
     expect(status.collaboration).toEqual({
@@ -297,13 +297,14 @@ describe("project status path builder", () => {
           path: status.localSqlitePath,
           agentWritable: false,
           localConfig: {
-            role: "machine-local-config",
-            table: "local_config",
-            keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+            role: "user-editable-machine-config",
+            format: "yaml",
+            path: "/tmp/clash-home/config.yaml",
+            sections: ["server", "harnesses", "audio", "sync"],
             syncDefault: "local-only",
             agentWritable: false,
-            mutationSurface: "host-api-or-cli",
-            jsonSidecars: "removed",
+            mutationSurface: "host-api-cli-or-editor",
+            sqliteConfigRows: "migration-only",
           },
         },
         projectState: {
@@ -337,13 +338,8 @@ describe("project status path builder", () => {
         syncDefault: "local-only",
         agentWritable: false,
         files: {
-          cliConfig: {
-            kind: "cli-api-key-config",
-            path: "/tmp/clash-home/config.json",
-            agentWritable: false,
-          },
           bridgeCredentials: {
-            kind: "local-runtime-credentials",
+            kind: "machine-credential-store",
             path: "/tmp/clash-home/credentials.json",
             agentWritable: false,
           },

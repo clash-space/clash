@@ -28,6 +28,19 @@ function requestBodyText(request) {
   return JSON.stringify(request?.body ?? {});
 }
 
+function requestBodyTools(request) {
+  const body = request?.body;
+  const direct = Array.isArray(body?.tools) ? body.tools : [];
+  const additional = Array.isArray(body?.input)
+    ? body.input.flatMap((item) => (
+        item?.type === "additional_tools" && Array.isArray(item.tools)
+          ? item.tools
+          : []
+      ))
+    : [];
+  return [...direct, ...additional];
+}
+
 async function findFreePort(start) {
   const failures = [];
   for (let port = start; port < start + 100; port += 1) {
@@ -897,7 +910,6 @@ async function writeCodexStubConfig(home, mockCodex) {
   await writeFile(
     path.join(home, "config.toml"),
     [
-      'model = "gpt-5.5"',
       'model_provider = "stub-openai"',
       'approval_policy = "never"',
       'sandbox_mode = "danger-full-access"',
@@ -919,20 +931,37 @@ function hasConfigOption(options, category) {
   return Array.isArray(options) && options.some((option) => option?.category === category);
 }
 
+function configSelectValues(option) {
+  if (option?.type !== "select" || !Array.isArray(option.options)) return [];
+  return option.options.flatMap((entry) => {
+    const candidates = Array.isArray(entry?.options) ? entry.options : [entry];
+    return candidates.flatMap((candidate) => (
+      candidate && typeof candidate.value === "string" ? [candidate.value] : []
+    ));
+  });
+}
+
 async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocalAgentToolEnv) {
-  const fakeDataDir = path.join(repoRoot, ".tmp", "local-api-fake-acp-e2e-data");
   const fakeHome = path.join(repoRoot, ".tmp", "local-api-fake-acp-home");
+  const fakeClashHome = path.join(fakeHome, ".clash");
+  const fakeDataDir = path.join(fakeClashHome, "local-api");
   const fakeBinDir = path.join(repoRoot, ".tmp", "local-api-fake-acp-bin");
   await rm(fakeDataDir, { recursive: true, force: true });
   await rm(fakeHome, { recursive: true, force: true });
   await rm(fakeBinDir, { recursive: true, force: true });
-  await mkdir(fakeHome, { recursive: true });
+  await mkdir(fakeClashHome, { recursive: true });
+  await writeFile(
+    path.join(fakeClashHome, "config.yaml"),
+    "version: 1\nharnesses:\n  enabled:\n    - codex-acp\n",
+    "utf8",
+  );
   await writeFakeCodexAcp(fakeBinDir);
 
   const envSnapshot = {
     CLASH_ACP_TEST_BIN_DIR: process.env.CLASH_ACP_TEST_BIN_DIR,
     CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
     CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
+    CLASH_HOME: process.env.CLASH_HOME,
     CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
     CLASH_NODE_EXEC_PATH: process.env.CLASH_NODE_EXEC_PATH,
     HOME: process.env.HOME,
@@ -940,9 +969,10 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
   const port = await findFreePort(49620);
   const origin = `http://127.0.0.1:${port}`;
 
-  delete process.env.CLASH_ACP_TEST_BIN_DIR;
-  process.env.CLASH_ACP_BIN_DIR = fakeBinDir;
+  process.env.CLASH_ACP_TEST_BIN_DIR = fakeBinDir;
+  delete process.env.CLASH_ACP_BIN_DIR;
   delete process.env.CLASH_E2E_STUB_ACP;
+  process.env.CLASH_HOME = fakeClashHome;
   process.env.CLASH_LOCAL_DATA_DIR = fakeDataDir;
   process.env.CLASH_NODE_EXEC_PATH = process.execPath;
   process.env.HOME = fakeHome;
@@ -1084,12 +1114,19 @@ async function exerciseFakeCodexAcpChildSession(startLocalApiServer, createLocal
 }
 
 async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, createLocalAgentToolEnv) {
-  const realDataDir = path.join(repoRoot, ".tmp", "local-api-official-codex-acp-e2e-data");
   const codexHome = path.join(repoRoot, ".tmp", "local-api-official-codex-acp-home");
+  const clashHome = path.join(codexHome, ".clash");
+  const realDataDir = path.join(clashHome, "local-api");
   const tapPath = path.join(repoRoot, ".tmp", "local-api-official-codex-acp-events.jsonl");
   await rm(realDataDir, { recursive: true, force: true });
   await rm(codexHome, { recursive: true, force: true });
   await rm(tapPath, { force: true });
+  await mkdir(clashHome, { recursive: true });
+  await writeFile(
+    path.join(clashHome, "config.yaml"),
+    "version: 1\nharnesses:\n  enabled:\n    - codex-acp\n",
+    "utf8",
+  );
 
   const mockCodex = await startMockCodexResponses();
   await writeCodexStubConfig(codexHome, mockCodex);
@@ -1098,6 +1135,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
     CLASH_ACP_TEST_BIN_DIR: process.env.CLASH_ACP_TEST_BIN_DIR,
     CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
     CLASH_E2E_STUB_ACP: process.env.CLASH_E2E_STUB_ACP,
+    CLASH_HOME: process.env.CLASH_HOME,
     CLASH_LOCAL_DATA_DIR: process.env.CLASH_LOCAL_DATA_DIR,
     CLASH_NODE_EXEC_PATH: process.env.CLASH_NODE_EXEC_PATH,
     CLASH_ACP_TAP: process.env.CLASH_ACP_TAP,
@@ -1109,9 +1147,10 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
   const port = await findFreePort(49720);
   const origin = `http://127.0.0.1:${port}`;
 
-  process.env.CLASH_ACP_TEST_BIN_DIR = path.join(repoRoot, "packages", "clash-bridge", "node_modules", ".bin");
+  process.env.CLASH_ACP_TEST_BIN_DIR = path.join(repoRoot, "apps", "desktop", "node_modules", ".bin");
   delete process.env.CLASH_ACP_BIN_DIR;
   delete process.env.CLASH_E2E_STUB_ACP;
+  process.env.CLASH_HOME = clashHome;
   process.env.CLASH_LOCAL_DATA_DIR = realDataDir;
   process.env.CLASH_NODE_EXEC_PATH = process.execPath;
   process.env.CLASH_ACP_TAP = tapPath;
@@ -1157,6 +1196,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
 
     const ws = new WebSocket(`${origin.replace("http:", "ws:")}/api/v1/local-sessions/${encodeURIComponent(session.session_id)}/_stream`);
     const events = [];
+    let selectedModel = null;
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         ws.close();
@@ -1174,7 +1214,8 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
         }
         if (msg.type === "session.ready") {
           const options = msg.config_options || [];
-          if (!hasConfigOption(options, "model")) {
+          const modelOption = options.find((option) => option?.category === "model");
+          if (!modelOption) {
             clearTimeout(timeout);
             ws.close();
             reject(new Error(`session.ready did not include ACP model config option: ${JSON.stringify(msg)}`));
@@ -1186,12 +1227,22 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
             reject(new Error(`session.ready did not include ACP thought_level config option: ${JSON.stringify(msg)}`));
             return;
           }
-          ws.send(JSON.stringify({ type: "set_config_option", config_id: "model", value: "gpt-5.4-mini" }));
+          selectedModel = configSelectValues(modelOption).find(
+            (value) => value !== modelOption.currentValue,
+          ) ?? null;
+          if (!selectedModel) {
+            clearTimeout(timeout);
+            ws.close();
+            reject(new Error(`ACP model config option has no alternate advertised value: ${JSON.stringify(modelOption)}`));
+            return;
+          }
+          ws.send(JSON.stringify({ type: "set_config_option", config_id: "model", value: selectedModel }));
           return;
         }
         if (
           msg.type === "session.config_options" &&
-          msg.config_options?.some((option) => option.id === "model" && option.currentValue === "gpt-5.4-mini") &&
+          selectedModel &&
+          msg.config_options?.some((option) => option.id === "model" && option.currentValue === selectedModel) &&
           !promptSent
         ) {
           promptSent = true;
@@ -1237,24 +1288,25 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
     assert(request.authorization === "Bearer sk-daemon-codex-stub", "official codex ACP used the stub API key", request);
     assert(request.accept.includes("text/event-stream"), "official codex ACP requested Responses SSE", request);
     assert(request.body?.stream === true, "official codex ACP enabled response streaming", request.body);
-    assert(request.body?.model === "gpt-5.4-mini", "official codex ACP honored ACP model config", request.body);
-    assert(Array.isArray(request.body?.tools) && request.body.tools.length > 0, "official codex ACP exposed tool schemas to the model", request.body);
+    assert(request.body?.model === selectedModel, "official codex ACP honored ACP model config", request.body);
+    const requestTools = requestBodyTools(request);
+    assert(requestTools.length > 0, "official codex ACP exposed tool schemas to the model", request.body);
     const requestText = requestBodyText(request);
     assert(
-      requestText.includes("# Clash agent contract (read first)"),
-      "official codex ACP request includes the Clash prompt contract",
+      requestText.includes("# Clash agent operating rules"),
+      "official codex ACP request includes the Clash operating contract",
     );
     assert(
-      requestText.includes("Master Clash"),
+      requestText.includes("# You are Master Clash"),
       "official codex ACP request includes the single Master Clash identity",
     );
     assert(
-      requestText.includes(`CLASH_PROJECT_ID=${project.id}`),
-      "official codex ACP request includes the active Clash project id",
+      requestText.includes(project.id),
+      "official codex ACP request includes the active Clash project context",
     );
     assert(
-      requestText.includes("# User request") && requestText.includes("Say exactly stub ok."),
-      "official codex ACP request preserves the user request after the Clash contract",
+      requestText.includes("Say exactly stub ok."),
+      "official codex ACP request preserves the user request",
     );
     assert(
       !requestText.includes("No AGENTS.md was found"),
@@ -1265,7 +1317,7 @@ async function exerciseOfficialCodexAcpWithStubModel(startLocalApiServer, create
       sessionId: session.session_id,
       projectId: project.id,
       model: request.body.model,
-      toolCount: request.body.tools.length,
+      toolCount: requestTools.length,
       requestCount: mockCodex.requests.length,
       promptContract: "clash-contract-present",
       eventTypes: events

@@ -41,7 +41,12 @@ describe('OpenInMenu', () => {
     );
 
     expect(screen.getAllByRole('button')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Export' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export' }).className).toContain(
+      'clash-workbench-control-button',
+    );
+    expect(screen.getByRole('button', { name: 'Export' }).className).not.toContain(
+      'rounded-md',
+    );
     expect(screen.queryByRole('button', { name: 'Open in' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));

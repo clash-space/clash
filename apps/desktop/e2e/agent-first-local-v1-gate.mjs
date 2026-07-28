@@ -103,7 +103,7 @@ const suiteDefinitions = [
     requiredBooleans: [
       "syncConfigAuditRecorded",
       "localConfigNoSidecars",
-      "localConfigSqliteRowsPersisted",
+      "localConfigYamlPersisted",
       "localObsoleteProjectEndpointsRejected",
       "providerOAuthCompleteAuditRecorded",
       "audioTranscriptionAuditRecorded",

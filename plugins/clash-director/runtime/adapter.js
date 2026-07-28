@@ -197,8 +197,8 @@ function buildDirectorCliArgs(name, input) {
 
 // src/adapter.ts
 var execFileAsync = promisify(execFile);
-function workspaceCwd(input) {
-  const candidate = input.cwd?.trim() || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+function directorWorkspaceCwd(input) {
+  const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 function projectionSegment(stageId) {
@@ -239,7 +239,7 @@ function createDirectorAdapter(options = {}) {
   const run = options.run ?? createClashDirectorRunner();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
   const list = async (input) => stageList(
-    await run(buildDirectorCliArgs("clash_director_list", input), workspaceCwd(input))
+    await run(buildDirectorCliArgs("clash_director_list", input), directorWorkspaceCwd(input))
   );
   const get = async (input) => {
     const stageId = input.stageId?.trim();
@@ -248,7 +248,7 @@ function createDirectorAdapter(options = {}) {
     if (!stage) throw new Error(`Director Stage ${stageId} not found`);
     return stage;
   };
-  const invoke = (name, input) => run(buildDirectorCliArgs(name, input), workspaceCwd(input));
+  const invoke = (name, input) => run(buildDirectorCliArgs(name, input), directorWorkspaceCwd(input));
   return {
     list,
     get,
@@ -263,7 +263,7 @@ function createDirectorAdapter(options = {}) {
         throw new Error("state must be a Director Stage object");
       }
       await get(input);
-      const cwd = workspaceCwd(input);
+      const cwd = directorWorkspaceCwd(input);
       const filePath = join(cwd, "director-stages", `${projectionSegment(stageId)}.director-stage.json`);
       await writeProjection(filePath, `${JSON.stringify(input.state, null, 2)}
 `);
@@ -276,5 +276,6 @@ function createDirectorAdapter(options = {}) {
 }
 export {
   createClashDirectorRunner,
-  createDirectorAdapter
+  createDirectorAdapter,
+  directorWorkspaceCwd
 };

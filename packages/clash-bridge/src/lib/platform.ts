@@ -37,8 +37,6 @@ export interface Paths {
   logFile: string;
   /** Local project roots. ACP agents run here; sessions do not own cwd. */
   projectsDir: string;
-  /** Legacy workspace root retained for migration/scanning only. */
-  workspacesDir: string;
   /** launchd plist (macOS) / systemd user unit (linux). null on win32. */
   serviceFile: string | null;
   /** Service identifier — reverse-DNS style. */
@@ -55,7 +53,6 @@ export function paths(): Paths {
   const credsFile = join(configDir, "credentials.json");
   const machineIdFile = join(configDir, "machine-id");
   const projectsDir = join(configDir, "projects");
-  const workspacesDir = join(configDir, "workspaces");
   const logFile = join(configDir, "logs", "bridge.log");
 
   let serviceFile: string | null = null;
@@ -64,7 +61,7 @@ export function paths(): Paths {
   } else if (p === "linux") {
     serviceFile = join(home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
   }
-  return { configDir, credsFile, machineIdFile, projectsDir, workspacesDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
+  return { configDir, credsFile, machineIdFile, projectsDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
 }
 
 /** "darwin/arm64" — sent to server as the runtime's `os` field. */

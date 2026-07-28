@@ -65,13 +65,13 @@ const BuildPlanDialog = ({
       {/* Header */}
       <div className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 flex items-start justify-between gap-3 sm:gap-4 border-b border-warm-border shrink-0">
         <div className="min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-content-secondary">
             Build plan
           </div>
           <Tooltip label={targetLabel}>
             <h2
               id={headerId}
-              className="text-base sm:text-lg font-bold text-slate-900 truncate"
+              className="truncate text-base font-bold text-content-primary sm:text-lg"
             >
               {targetLabel}
             </h2>
@@ -81,7 +81,7 @@ const BuildPlanDialog = ({
           label="Close build plan dialog"
           icon={<X className="w-4 h-4" weight="bold" aria-hidden="true" />}
           onClick={onCancel}
-          className="shrink-0 text-slate-700 hover:bg-warm-hover hover:text-slate-950 dark:text-slate-300"
+          className="shrink-0 text-content-secondary hover:bg-warm-hover hover:text-content-primary"
         />
       </div>
 
@@ -128,7 +128,7 @@ const BuildPlanDialog = ({
             {plan.warnings.map((msg, i) => (
               <div
                 key={i}
-                className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900"
+                className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200"
               >
                 <Warning
                   size={14}
@@ -147,7 +147,7 @@ const BuildPlanDialog = ({
           <section aria-labelledby={`${headerId}-actions`}>
             <h3
               id={`${headerId}-actions`}
-              className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
+              className="mb-2 text-[10px] font-bold uppercase tracking-wider text-content-secondary"
             >
               Actions to invoke · {totalCalls} total
             </h3>
@@ -159,10 +159,10 @@ const BuildPlanDialog = ({
                     i > 0 ? "border-t border-warm-border" : ""
                   }`}
                 >
-                  <span className="font-medium text-slate-800 truncate">
+                  <span className="truncate font-medium text-content-primary">
                     {row.actionDefinitionName}
                   </span>
-                  <span className="shrink-0 px-2 py-0.5 rounded-md bg-warm-muted text-slate-800 dark:text-slate-200 text-xs font-semibold">
+                  <span className="shrink-0 rounded-md bg-warm-muted px-2 py-0.5 text-xs font-semibold text-content-primary">
                     <span aria-hidden="true">×</span>
                     <span className="sr-only"> invocations: </span>
                     {row.count}
@@ -178,7 +178,7 @@ const BuildPlanDialog = ({
           <section aria-labelledby={`${headerId}-drafts`}>
             <h3
               id={`${headerId}-drafts`}
-              className="text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2"
+              className="mb-2 text-[10px] font-bold uppercase tracking-wider text-content-secondary"
             >
               Affected drafts · {plan.entries.length}
             </h3>
@@ -193,12 +193,12 @@ const BuildPlanDialog = ({
                   <div className="min-w-0 flex items-center gap-2">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand" />
                     <Tooltip label={entry.label}>
-                      <span className="truncate text-slate-800 dark:text-slate-200">
+                      <span className="truncate text-content-primary">
                         {entry.label}
                       </span>
                     </Tooltip>
                   </div>
-                  <span className="shrink-0 text-[10px] text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-content-secondary">
                     {entry.modality}
                     {i === plan.entries.length - 1 ? " · target" : ""}
                   </span>
@@ -213,7 +213,7 @@ const BuildPlanDialog = ({
       <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 border-t border-warm-border bg-warm-muted shrink-0">
         <Button
           onClick={onCancel}
-          className="w-full rounded-lg border-transparent bg-transparent px-4 py-2 text-sm text-slate-800 shadow-none hover:bg-warm-hover dark:text-slate-200 sm:w-auto"
+          className="w-full rounded-lg border-transparent bg-transparent px-4 py-2 text-sm text-content-secondary shadow-none hover:bg-warm-hover hover:text-content-primary sm:w-auto"
         >
           Cancel
         </Button>

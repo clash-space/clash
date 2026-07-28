@@ -11518,10 +11518,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start, key, sep, value } = collItem;
+        const { start, key, sep: sep2, value } = collItem;
         const keyProps = resolveProps.resolveProps(start, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -11535,7 +11535,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep) {
+          if (!keyProps.anchor && !keyProps.tag && !sep2) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map2.comment)
@@ -11559,7 +11559,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map2.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep ?? [], {
+        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -11575,7 +11575,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -11666,7 +11666,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep = "";
+        let sep2 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -11680,13 +11680,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep + cb;
-              sep = "";
+                comment += sep2 + cb;
+              sep2 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep += source;
+                sep2 += source;
               hasSpace = true;
               break;
             default:
@@ -11729,18 +11729,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start, key, sep, value } = collItem;
+        const { start, key, sep: sep2, value } = collItem;
         const props = resolveProps.resolveProps(start, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep && !value) {
+          if (!props.anchor && !props.tag && !sep2 && !value) {
             if (i === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i < fc.items.length - 1)
@@ -11794,8 +11794,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
+        if (!isMap && !sep2 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -11807,7 +11807,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep ?? [], {
+          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -11818,8 +11818,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap && !props.found && ctx.options.strict) {
-              if (sep)
-                for (const st of sep) {
+              if (sep2)
+                for (const st of sep2) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -11836,7 +11836,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -12016,7 +12016,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i + 1;
       }
       let value = "";
-      let sep = "";
+      let sep2 = "";
       let prevMoreIndented = false;
       for (let i = 0; i < contentStart; ++i)
         value += lines[i][0].slice(trimIndent) + "\n";
@@ -12033,24 +12033,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep === " ")
-            sep = "\n";
-          else if (!prevMoreIndented && sep === "\n")
-            sep = "\n\n";
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          if (sep2 === " ")
+            sep2 = "\n";
+          else if (!prevMoreIndented && sep2 === "\n")
+            sep2 = "\n\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep === "\n")
+          if (sep2 === "\n")
             value += "\n";
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          value += sep + content;
-          sep = " ";
+          value += sep2 + content;
+          sep2 = " ";
           prevMoreIndented = false;
         }
       }
@@ -12232,25 +12232,25 @@ var require_resolve_flow_scalar = __commonJS({
       if (!match2)
         return source;
       let res = match2[1];
-      let sep = " ";
+      let sep2 = " ";
       let pos = first.lastIndex;
       line.lastIndex = pos;
       while (match2 = line.exec(source)) {
         if (match2[1] === "") {
-          if (sep === "\n")
-            res += sep;
+          if (sep2 === "\n")
+            res += sep2;
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          res += sep + match2[1];
-          sep = " ";
+          res += sep2 + match2[1];
+          sep2 = " ";
         }
         pos = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos;
       match2 = last.exec(source);
-      return res + sep + (match2?.[1] ?? "");
+      return res + sep2 + (match2?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -13060,14 +13060,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start, key, sep, value }) {
+    function stringifyItem({ start, key, sep: sep2, value }) {
       let res = "";
       for (const st of start)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep)
-        for (const st of sep)
+      if (sep2)
+        for (const st of sep2)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -14234,18 +14234,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start = getFirstKeyStartProps(prev);
-          let sep;
+          let sep2;
           if (scalar.end) {
-            sep = scalar.end;
-            sep.push(this.sourceToken);
+            sep2 = scalar.end;
+            sep2.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep = [this.sourceToken];
+            sep2 = [this.sourceToken];
           const map2 = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start, key: scalar, sep }]
+            items: [{ start, key: scalar, sep: sep2 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map2;
@@ -14398,15 +14398,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start2 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep = it.sep;
-                  sep.push(this.sourceToken);
+                  const sep2 = it.sep;
+                  sep2.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key, sep }]
+                    items: [{ start: start2, key, sep: sep2 }]
                   });
                 } else if (start.length > 0) {
                   it.sep = it.sep.concat(start, this.sourceToken);
@@ -14600,13 +14600,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep = fc.end.splice(1, fc.end.length);
-            sep.push(this.sourceToken);
+            const sep2 = fc.end.splice(1, fc.end.length);
+            sep2.push(this.sourceToken);
             const map2 = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start, key: fc, sep }]
+              items: [{ start, key: fc, sep: sep2 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map2;
@@ -14765,7 +14765,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument(source, options = {}) {
+    function parseDocument2(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -14791,7 +14791,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument(src, options);
+      const doc = parseDocument2(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log2.warn(doc.options.logLevel, warning));
@@ -14827,7 +14827,7 @@ var require_public_api = __commonJS({
     }
     exports2.parse = parse4;
     exports2.parseAllDocuments = parseAllDocuments;
-    exports2.parseDocument = parseDocument;
+    exports2.parseDocument = parseDocument2;
     exports2.stringify = stringify2;
   }
 });
@@ -17132,7 +17132,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash6 } = require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash7 } = require("crypto");
     var { Duplex, Readable: Readable2 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -17800,7 +17800,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash6("sha1").update(key + GUID).digest("base64");
+        const digest = createHash7("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -18169,7 +18169,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash6 } = require("crypto");
+    var { createHash: createHash7 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -18476,7 +18476,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash6("sha1").update(key + GUID).digest("base64");
+        const digest = createHash7("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -18564,14 +18564,13 @@ var require_websocket_server = __commonJS({
 });
 
 // src/local-api-entry.ts
-var import_node_path17 = require("node:path");
+var import_node_path19 = require("node:path");
 
 // ../../apps/local-api/dist/server.js
 var import_node_module4 = require("node:module");
-var import_node_os5 = require("node:os");
-var import_node_path16 = require("node:path");
+var import_node_path18 = require("node:path");
 var import_node_url2 = require("node:url");
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 
 // ../../node_modules/.pnpm/@hono+node-server@1.19.14_hono@4.12.27/node_modules/@hono/node-server/dist/index.mjs
 var import_http = require("http");
@@ -19067,7 +19066,7 @@ var responseViaResponseObject = async (res, outgoing, options = {}) => {
         });
         if (!chunk) {
           if (i === 1) {
-            await new Promise((resolve8) => setTimeout(resolve8));
+            await new Promise((resolve9) => setTimeout(resolve9));
             maxReadCount = 3;
             continue;
           }
@@ -30757,11 +30756,11 @@ var PipelineRuntimeStateSchema = z.object({
 });
 
 // ../../apps/local-api/dist/app.js
-var import_promises12 = require("node:fs/promises");
-var import_node_crypto7 = require("node:crypto");
+var import_promises13 = require("node:fs/promises");
+var import_node_crypto8 = require("node:crypto");
 var import_node_child_process3 = require("node:child_process");
-var import_node_fs2 = require("node:fs");
-var import_node_path12 = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_node_path14 = require("node:path");
 var import_node_util3 = require("node:util");
 
 // ../../node_modules/.pnpm/hono@4.12.27/node_modules/hono/dist/compose.js
@@ -32919,6 +32918,24 @@ var cors = (options) => {
   };
 };
 
+// ../../packages/shared-runtime/dist/local-paths.js
+var import_node_os = require("node:os");
+var import_node_path = require("node:path");
+function defaultClashHome(env = process.env) {
+  const explicit = env.CLASH_HOME?.trim();
+  return explicit ? (0, import_node_path.resolve)(explicit) : (0, import_node_path.join)((0, import_node_os.homedir)(), ".clash");
+}
+function defaultLocalApiDataDir(env = process.env) {
+  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
+  return explicit ? (0, import_node_path.resolve)(explicit) : (0, import_node_path.join)(defaultClashHome(env), "local-api");
+}
+function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
+  if (explicitClashHome?.trim())
+    return (0, import_node_path.resolve)(explicitClashHome);
+  const resolved = (0, import_node_path.resolve)(localDataDir);
+  return (0, import_node_path.basename)(resolved) === "local-api" ? (0, import_node_path.dirname)(resolved) : resolved;
+}
+
 // ../../packages/shared-runtime/dist/text-generation.js
 function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
@@ -33107,7 +33124,7 @@ function buildProjectStatus(context, options) {
   const mode = typeof options.replicationState?.mode === "string" ? options.replicationState.mode : "unknown";
   const collaboration = projectCollaborationStatus(mode, options.replicationState ?? void 0);
   const localSqlitePath = joinPath(localApiDataDir, "local.sqlite");
-  const cliConfigPath = joinPath(clashRoot, "config.json");
+  const userConfigPath = joinPath(clashRoot, "config.yaml");
   const bridgeCredentialsPath = joinPath(clashRoot, "credentials.json");
   const mediaAssetBlobRoot = joinPath(clashRoot, "assets", "blobs");
   const textRevisionBlobRoot = joinPath(localApiDataDir, "text-revision-blobs");
@@ -33124,7 +33141,7 @@ function buildProjectStatus(context, options) {
   const protectedPaths = [
     localApiDataDir,
     localSqlitePath,
-    cliConfigPath,
+    userConfigPath,
     bridgeCredentialsPath,
     loroReplicaRoot,
     loroSnapshotPath,
@@ -33231,13 +33248,14 @@ function buildProjectStatus(context, options) {
           path: localSqlitePath,
           agentWritable: false,
           localConfig: {
-            role: "machine-local-config",
-            table: "local_config",
-            keys: ["local-sync-config", "local-audio-config", "local-harness-config"],
+            role: "user-editable-machine-config",
+            format: "yaml",
+            path: userConfigPath,
+            sections: ["server", "harnesses", "audio", "sync"],
             syncDefault: "local-only",
             agentWritable: false,
-            mutationSurface: "host-api-or-cli",
-            jsonSidecars: "removed"
+            mutationSurface: "host-api-cli-or-editor",
+            sqliteConfigRows: "migration-only"
           }
         },
         projectState: {
@@ -33271,13 +33289,8 @@ function buildProjectStatus(context, options) {
         syncDefault: "local-only",
         agentWritable: false,
         files: {
-          cliConfig: {
-            kind: "cli-api-key-config",
-            path: cliConfigPath,
-            agentWritable: false
-          },
           bridgeCredentials: {
-            kind: "local-runtime-credentials",
+            kind: "machine-credential-store",
             path: bridgeCredentialsPath,
             agentWritable: false
           }
@@ -33663,7 +33676,7 @@ function defaultRuntimeCapabilities(mode) {
 // ../../apps/local-api/dist/text-revision-content.js
 var import_node_crypto = require("node:crypto");
 var import_promises = require("node:fs/promises");
-var import_node_path = require("node:path");
+var import_node_path2 = require("node:path");
 function textRevisionContentHash(content) {
   return (0, import_node_crypto.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
@@ -33671,7 +33684,7 @@ function textRevisionContentBlobPath(dataDir2, contentHash) {
   if (!/^[a-f0-9]{16}$/.test(contentHash)) {
     throw new Error("Invalid text revision content hash");
   }
-  return (0, import_node_path.join)(dataDir2, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
+  return (0, import_node_path2.join)(dataDir2, "text-revision-blobs", contentHash.slice(0, 2), `${contentHash}.md`);
 }
 function textRevisionContentUrl(revision) {
   return `/api/v1/projects/${encodeURIComponent(revision.projectId)}/text-revisions/${encodeURIComponent(revision.revisionId)}/content`;
@@ -33711,7 +33724,7 @@ async function storeTextRevisionContentBlob(dataDir2, revision, content) {
       ...textRevisionContentDescriptor(revision, { stored: true })
     };
   }
-  await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
+  await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path), { recursive: true });
   await (0, import_promises.writeFile)(path, content, { encoding: "utf8", mode: 292 });
   await (0, import_promises.chmod)(path, 292).catch(() => void 0);
   return {
@@ -33734,8 +33747,8 @@ var import_node_child_process = require("node:child_process");
 var import_node_crypto2 = require("node:crypto");
 var import_node_fs = require("node:fs");
 var import_promises2 = require("node:fs/promises");
-var import_node_os = require("node:os");
-var import_node_path2 = require("node:path");
+var import_node_os2 = require("node:os");
+var import_node_path3 = require("node:path");
 var import_node_util = require("node:util");
 var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
 function jsonResponse(data, status = 200) {
@@ -34010,7 +34023,7 @@ async function makeRenderedVideoFrame(record2, dir) {
   if (!qlmanage)
     return null;
   const layout = makeVideoFrameLayout(record2);
-  const svgPath = (0, import_node_path2.join)(dir, "frame.svg");
+  const svgPath = (0, import_node_path3.join)(dir, "frame.svg");
   await (0, import_promises2.writeFile)(svgPath, makeVideoFrameSvg(record2, layout), "utf8");
   await execFileAsync(qlmanage, ["-t", "-s", String(layout.canvasWidth), "-o", dir, svgPath], { timeout: 1e4, maxBuffer: 1024 * 1024 * 10 });
   const pngPath = `${svgPath}.png`;
@@ -34106,9 +34119,9 @@ async function makeMp4(record2) {
       extension: ".mp4"
     };
   }
-  const dir = await (0, import_promises2.mkdtemp)((0, import_node_path2.join)((0, import_node_os.tmpdir)(), "clash-fal-video-"));
-  const framePath = (0, import_node_path2.join)(dir, "frame.ppm");
-  const outputPath = (0, import_node_path2.join)(dir, "mock.mp4");
+  const dir = await (0, import_promises2.mkdtemp)((0, import_node_path3.join)((0, import_node_os2.tmpdir)(), "clash-fal-video-"));
+  const framePath = (0, import_node_path3.join)(dir, "frame.ppm");
+  const outputPath = (0, import_node_path3.join)(dir, "mock.mp4");
   try {
     const renderedFrame = await makeRenderedVideoFrame(record2, dir).catch(() => null);
     const inputFramePath = renderedFrame?.path ?? framePath;
@@ -34449,8 +34462,8 @@ async function handleFalMockHttpRequest(service, request) {
 // ../../apps/local-api/dist/dreamina-cli.js
 var import_node_child_process2 = require("node:child_process");
 var import_promises3 = require("node:fs/promises");
-var import_node_os2 = require("node:os");
-var import_node_path3 = require("node:path");
+var import_node_os3 = require("node:os");
+var import_node_path4 = require("node:path");
 var import_node_util2 = require("node:util");
 var execFileAsync2 = (0, import_node_util2.promisify)(import_node_child_process2.execFile);
 var DEFAULT_DREAMINA_BIN = "dreamina";
@@ -34514,7 +34527,7 @@ function mediaTypeForFile(name) {
 async function firstDownloadedMedia(downloadDir) {
   const names = await (0, import_promises3.readdir)(downloadDir).catch(() => []);
   const media = names.filter((name) => /\.(mp4|mov|webm|png|jpe?g)$/i.test(name)).sort()[0];
-  return media ? { path: (0, import_node_path3.join)(downloadDir, media), contentType: mediaTypeForFile(media) } : null;
+  return media ? { path: (0, import_node_path4.join)(downloadDir, media), contentType: mediaTypeForFile(media) } : null;
 }
 function createDreaminaCliOAuthDriver(options = {}) {
   const run = options.run ?? createDreaminaCliRun(options.binary);
@@ -34566,7 +34579,7 @@ ${result.stderr}`);
 async function generateDreaminaCliVideoMedia(input) {
   const run = input.run ?? createDreaminaCliRun(input.binary);
   const submitted = await generateDreaminaCliVideo({ ...input, run });
-  const downloadDir = await (0, import_promises3.mkdtemp)((0, import_node_path3.join)((0, import_node_os2.tmpdir)(), "dreamina-cli-"));
+  const downloadDir = await (0, import_promises3.mkdtemp)((0, import_node_path4.join)((0, import_node_os3.tmpdir)(), "dreamina-cli-"));
   try {
     const start = Date.now();
     const pollIntervalMs = input.pollIntervalMs ?? 5e3;
@@ -34591,7 +34604,7 @@ ${result.stderr}`;
         };
       }
       if (pollIntervalMs > 0)
-        await new Promise((resolve8) => setTimeout(resolve8, pollIntervalMs));
+        await new Promise((resolve9) => setTimeout(resolve9, pollIntervalMs));
     }
     throw new Error(`Dreamina CLI task timed out after ${maxWaitMs}ms. Task: ${submitted.taskId}`);
   } finally {
@@ -35040,7 +35053,7 @@ async function generateGoogleAgentPlatformVideo(input, route, fetchImpl, rawCred
     }
     if (operation?.done)
       break;
-    await new Promise((resolve8) => setTimeout(resolve8, 5e3));
+    await new Promise((resolve9) => setTimeout(resolve9, 5e3));
   }
   if (!operation?.done) {
     throw new Error(`Google Cloud Agent Platform video request timed out: ${operationName}`);
@@ -35199,7 +35212,7 @@ async function generateFalMedia(input, kind, route, options, apiKey) {
       throw new Error(`fal request failed: ${statusJson.error ?? status}`);
     }
     if (status !== "COMPLETED")
-      await new Promise((resolve8) => setTimeout(resolve8, 1e3));
+      await new Promise((resolve9) => setTimeout(resolve9, 1e3));
   }
   if (status !== "COMPLETED")
     throw new Error(`fal request timed out: ${requestId}`);
@@ -35343,7 +35356,7 @@ async function generateKieMedia(input, kind, route, options, apiKey) {
     }
     state = kieTaskState(task);
     if (state === "pending")
-      await new Promise((resolve8) => setTimeout(resolve8, 1e3));
+      await new Promise((resolve9) => setTimeout(resolve9, 1e3));
   }
   if (state === "pending")
     throw new Error(`KIE request timed out: ${taskId}`);
@@ -35416,7 +35429,7 @@ async function generateSunoMedia(input, route, options, apiKey, callbackUrl) {
     }
     if (status === "SUCCESS")
       break;
-    await new Promise((resolve8) => setTimeout(resolve8, 5e3));
+    await new Promise((resolve9) => setTimeout(resolve9, 5e3));
   }
   if (task?.data?.status !== "SUCCESS") {
     throw new Error(`Suno API generation timed out: ${taskId}`);
@@ -35482,7 +35495,7 @@ async function generateReplicateMedia(input, kind, route, options, apiKey) {
     }
     state = replicateState(prediction);
     if (state === "pending")
-      await new Promise((resolve8) => setTimeout(resolve8, 1e3));
+      await new Promise((resolve9) => setTimeout(resolve9, 1e3));
   }
   if (state === "pending")
     throw new Error(`Replicate request timed out: ${predictionId}`);
@@ -35808,7 +35821,7 @@ ${input.prompt || "Mock text"}`),
 
 // ../../apps/local-api/dist/provider-test-recorder.js
 var import_promises4 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 var PROVIDER_TEST_RECORDING_SCHEMA_VERSION = 1;
 function createProviderConformanceStubs(options = {}) {
   const supports = listProviderModelSupport({ includeMock: options.includeMock ?? false });
@@ -35893,7 +35906,7 @@ function createProviderTestRecorder(options) {
   };
 }
 async function createJsonlProviderTestRecorder(filePath) {
-  await (0, import_promises4.mkdir)((0, import_node_path4.dirname)(filePath), { recursive: true });
+  await (0, import_promises4.mkdir)((0, import_node_path5.dirname)(filePath), { recursive: true });
   return createProviderTestRecorder({
     write: async (event) => {
       await (0, import_promises4.appendFile)(filePath, providerTestRecordingEventToJsonl(event), "utf8");
@@ -36028,9 +36041,9 @@ async function providerTestFetchResponseBody(response) {
 }
 
 // ../../apps/local-api/dist/audio-config.js
-var import_promises6 = require("node:fs/promises");
-var import_node_os3 = require("node:os");
-var import_node_path6 = require("node:path");
+var import_promises7 = require("node:fs/promises");
+var import_node_os4 = require("node:os");
+var import_node_path8 = require("node:path");
 var import_node_url = require("node:url");
 
 // ../../node_modules/.pnpm/ws@8.21.0/node_modules/ws/wrapper.mjs
@@ -36068,7 +36081,7 @@ var PythonLocalModelRpcClient = class {
     return unwrapRpcResponse(response);
   }
   spawnPythonRpc(request) {
-    return new Promise((resolve8, reject) => {
+    return new Promise((resolve9, reject) => {
       const env = {
         ...process.env,
         ...this.env
@@ -36111,7 +36124,7 @@ var PythonLocalModelRpcClient = class {
           return;
         }
         try {
-          resolve8(unwrapRpcResponse(parsed));
+          resolve9(unwrapRpcResponse(parsed));
         } catch (error51) {
           reject(error51);
         }
@@ -36395,10 +36408,10 @@ function parseRpcJson(stdout) {
 // ../../apps/local-api/dist/local-config-store.js
 var import_node_module = require("node:module");
 var import_promises5 = require("node:fs/promises");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var require2 = (0, import_node_module.createRequire)(__clash_import_meta_url);
 function sqlitePath(dataDir2) {
-  return (0, import_node_path5.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path6.join)(dataDir2, "local.sqlite");
 }
 function openDatabase(path) {
   const { DatabaseSync } = require2("node:sqlite");
@@ -36467,7 +36480,347 @@ function createSqliteLocalConfigStore(dataDir2) {
             updated_at = excluded.updated_at
         `).run(key, JSON.stringify(value), updatedAt);
       });
+    },
+    async delete(key) {
+      if (!await exists(path))
+        return;
+      await withDb((db) => {
+        db.prepare("DELETE FROM local_config WHERE key = ?").run(key);
+      });
     }
+  };
+}
+
+// ../../apps/local-api/dist/user-config.js
+var import_node_crypto3 = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var import_promises6 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+var import_yaml2 = __toESM(require_dist(), 1);
+var writes = /* @__PURE__ */ new Map();
+var LOCK_TIMEOUT_MS = 5e3;
+var STALE_LOCK_MS = 3e4;
+function isRecord5(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function sourceHash(source) {
+  return (0, import_node_crypto3.createHash)("sha256").update(source).digest("hex");
+}
+function optionalRecord(root, key) {
+  const value = root[key];
+  if (value === void 0)
+    return null;
+  if (!isRecord5(value))
+    throw new Error(`${key} must be a mapping`);
+  return value;
+}
+function validateStringField(record2, key, path) {
+  if (record2[key] !== void 0 && typeof record2[key] !== "string") {
+    throw new Error(`${path}.${key} must be a string`);
+  }
+}
+function validateClashUserConfig(value) {
+  if (!isRecord5(value))
+    throw new Error("config.yaml root must be a mapping");
+  if (value.version !== void 0 && value.version !== 1) {
+    throw new Error("config.yaml version must be 1");
+  }
+  const server2 = optionalRecord(value, "server");
+  if (server2)
+    validateStringField(server2, "url", "server");
+  const harnesses = optionalRecord(value, "harnesses");
+  if (harnesses?.enabled !== void 0 && (!Array.isArray(harnesses.enabled) || !harnesses.enabled.every((id) => typeof id === "string"))) {
+    throw new Error("harnesses.enabled must be a string list");
+  }
+  if (harnesses?.agents !== void 0 && !isRecord5(harnesses.agents)) {
+    throw new Error("harnesses.agents must be a mapping");
+  }
+  const audio = optionalRecord(value, "audio");
+  for (const key of ["asr", "tts"]) {
+    const section = audio ? optionalRecord(audio, key) : null;
+    if (!section)
+      continue;
+    if (section.enabled !== void 0 && typeof section.enabled !== "boolean") {
+      throw new Error(`audio.${key}.enabled must be a boolean`);
+    }
+    validateStringField(section, "provider", `audio.${key}`);
+    validateStringField(section, "model", `audio.${key}`);
+  }
+  const sync = optionalRecord(value, "sync");
+  if (sync) {
+    if (sync.mode !== void 0 && sync.mode !== "local-only" && sync.mode !== "cloud-sync") {
+      throw new Error("sync.mode must be local-only or cloud-sync");
+    }
+    const remote = optionalRecord(sync, "remote_loro");
+    if (remote && remote.url !== void 0 && remote.url !== null && typeof remote.url !== "string") {
+      throw new Error("sync.remote_loro.url must be a string or null");
+    }
+    const capabilities = optionalRecord(sync, "capabilities");
+    if (capabilities) {
+      for (const key of ["canvas", "asset_metadata", "revision_content"]) {
+        if (capabilities[key] !== void 0 && typeof capabilities[key] !== "boolean") {
+          throw new Error(`sync.capabilities.${key} must be a boolean`);
+        }
+      }
+    }
+  }
+}
+async function readText(path) {
+  try {
+    return await (0, import_promises6.readFile)(path, "utf8");
+  } catch (error51) {
+    if (error51.code === "ENOENT")
+      return null;
+    throw error51;
+  }
+}
+async function atomicWrite(path, contents) {
+  await (0, import_promises6.mkdir)((0, import_node_path7.dirname)(path), { recursive: true, mode: 448 });
+  const temporaryPath = `${path}.${process.pid}.${(0, import_node_crypto3.randomUUID)()}.tmp`;
+  try {
+    await (0, import_promises6.writeFile)(temporaryPath, contents, { encoding: "utf8", mode: 384 });
+    await (0, import_promises6.chmod)(temporaryPath, 384);
+    await (0, import_promises6.rename)(temporaryPath, path);
+    await (0, import_promises6.chmod)(path, 384);
+  } finally {
+    await (0, import_promises6.rm)(temporaryPath, { force: true }).catch(() => void 0);
+  }
+}
+async function wait(milliseconds) {
+  await new Promise((resolve9) => setTimeout(resolve9, milliseconds));
+}
+async function withConfigLock(clashHome, task) {
+  await (0, import_promises6.mkdir)(clashHome, { recursive: true, mode: 448 });
+  await (0, import_promises6.chmod)(clashHome, 448);
+  const lockPath = (0, import_node_path7.join)(clashHome, ".config.lock");
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  while (true) {
+    try {
+      await (0, import_promises6.mkdir)(lockPath, { mode: 448 });
+      await (0, import_promises6.writeFile)((0, import_node_path7.join)(lockPath, "owner"), `pid=${process.pid}
+created_at=${(/* @__PURE__ */ new Date()).toISOString()}
+`, { encoding: "utf8", mode: 384 });
+      break;
+    } catch (error51) {
+      if (error51.code !== "EEXIST")
+        throw error51;
+      const info = await (0, import_promises6.stat)(lockPath).catch(() => null);
+      if (info && Date.now() - info.mtimeMs > STALE_LOCK_MS) {
+        await (0, import_promises6.rm)(lockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for Clash configuration lock: ${lockPath}`);
+      }
+      await wait(25);
+    }
+  }
+  try {
+    return await task();
+  } finally {
+    await (0, import_promises6.rm)(lockPath, { recursive: true, force: true });
+  }
+}
+function serializeYamlSection(source, name, value) {
+  const document = (0, import_yaml2.parseDocument)(source ?? "");
+  if (document.errors.length > 0) {
+    throw new Error(`Cannot update config.yaml: ${document.errors[0]?.message ?? "invalid YAML"}`);
+  }
+  const current = document.toJS();
+  if (source?.trim() && !isRecord5(current)) {
+    throw new Error("Cannot update config.yaml: config.yaml root must be a mapping");
+  }
+  if (!isRecord5(current)) {
+    document.contents = null;
+  }
+  document.set("version", 1);
+  document.set(name, value);
+  return document.toString({ lineWidth: 0 });
+}
+async function serializeCredentials(path, update) {
+  const source = await readText(path);
+  let current = {};
+  if (source) {
+    try {
+      const parsed = JSON.parse(source);
+      if (isRecord5(parsed))
+        current = parsed;
+    } catch {
+      throw new Error("Cannot update credentials.json: invalid JSON");
+    }
+  }
+  return `${JSON.stringify(update(current), null, 2)}
+`;
+}
+async function serializedWrite(path, task) {
+  const previous = writes.get(path) ?? Promise.resolve();
+  const next = previous.catch(() => void 0).then(task);
+  writes.set(path, next);
+  try {
+    await next;
+  } finally {
+    if (writes.get(path) === next)
+      writes.delete(path);
+  }
+}
+function createClashUserConfigStore(localDataDir) {
+  const clashHome = clashHomeForLocalDataDir(localDataDir);
+  const configPath = (0, import_node_path7.join)(clashHome, "config.yaml");
+  const credentialsPath = (0, import_node_path7.join)(clashHome, "credentials.json");
+  const legacyConfigPath = (0, import_node_path7.join)(clashHome, "config.json");
+  let rootMigration = null;
+  const ensureRootMigrated = () => {
+    rootMigration ??= (async () => {
+      const legacySource = await readText(legacyConfigPath);
+      if (!legacySource)
+        return;
+      let legacy;
+      try {
+        const value = JSON.parse(legacySource);
+        if (!isRecord5(value))
+          return;
+        legacy = value;
+      } catch {
+        return;
+      }
+      await withConfigLock(clashHome, async () => {
+        const source = await readText(configPath);
+        const document = (0, import_yaml2.parseDocument)(source ?? "");
+        if (document.errors.length > 0) {
+          throw new Error(`Cannot migrate config.json: ${document.errors[0]?.message ?? "invalid config.yaml"}`);
+        }
+        document.set("version", 1);
+        const root = document.toJS();
+        const server2 = isRecord5(root) && isRecord5(root.server) ? root.server : {};
+        if (typeof server2.url !== "string" && typeof legacy.serverUrl === "string") {
+          document.setIn(["server", "url"], legacy.serverUrl);
+        }
+        await atomicWrite(configPath, document.toString({ lineWidth: 0 }));
+        if (typeof legacy.apiKey === "string") {
+          await atomicWrite(credentialsPath, await serializeCredentials(credentialsPath, (current) => ({
+            ...current,
+            ...typeof current.cliApiKey === "string" ? {} : { cliApiKey: legacy.apiKey }
+          })));
+        }
+        await (0, import_promises6.unlink)(legacyConfigPath).catch((error51) => {
+          if (error51.code !== "ENOENT")
+            throw error51;
+        });
+      });
+    })();
+    return rootMigration;
+  };
+  return {
+    clashHome,
+    configPath,
+    credentialsPath,
+    async getSection(name) {
+      await ensureRootMigrated();
+      const source = await readText(configPath);
+      if (!source)
+        return null;
+      const document = (0, import_yaml2.parseDocument)(source);
+      if (document.errors.length > 0) {
+        throw new Error(`Cannot read config.yaml: ${document.errors[0]?.message ?? "invalid YAML"}`);
+      }
+      const root = document.toJS();
+      validateClashUserConfig(root);
+      if (!(name in root))
+        return null;
+      return root[name];
+    },
+    async setSection(name, value) {
+      await ensureRootMigrated();
+      await serializedWrite(configPath, async () => {
+        await withConfigLock(clashHome, async () => {
+          const source = await readText(configPath);
+          await atomicWrite(configPath, serializeYamlSection(source, name, value));
+        });
+      });
+    },
+    async getCredentials() {
+      await ensureRootMigrated();
+      const source = await readText(credentialsPath);
+      if (!source)
+        return {};
+      try {
+        const parsed = JSON.parse(source);
+        return isRecord5(parsed) ? parsed : {};
+      } catch {
+        throw new Error("Cannot read credentials.json: invalid JSON");
+      }
+    },
+    async updateCredentials(update) {
+      await ensureRootMigrated();
+      await serializedWrite(credentialsPath, async () => {
+        await withConfigLock(clashHome, async () => {
+          await atomicWrite(credentialsPath, await serializeCredentials(credentialsPath, update));
+        });
+      });
+    }
+  };
+}
+function watchClashUserConfig(localDataDir, options) {
+  const store = createClashUserConfigStore(localDataDir);
+  (0, import_node_fs2.mkdirSync)(store.clashHome, { recursive: true, mode: 448 });
+  let timer = null;
+  let closed = false;
+  let lastAppliedHash;
+  let lastAppliedConfig = null;
+  try {
+    const initialSource = (0, import_node_fs2.readFileSync)(store.configPath, "utf8");
+    lastAppliedHash = sourceHash(initialSource);
+    const initialDocument = (0, import_yaml2.parseDocument)(initialSource);
+    if (initialDocument.errors.length === 0) {
+      const initialValue = initialDocument.toJS();
+      validateClashUserConfig(initialValue);
+      lastAppliedConfig = initialValue;
+    }
+  } catch (error51) {
+    if (error51.code !== "ENOENT")
+      throw error51;
+    lastAppliedHash = null;
+  }
+  const applyLatest = async () => {
+    const source = await readText(store.configPath);
+    if (source === null) {
+      throw new Error("config.yaml was removed; keeping the last known-good configuration");
+    }
+    const hash2 = sourceHash(source);
+    if (hash2 === lastAppliedHash)
+      return;
+    const document = (0, import_yaml2.parseDocument)(source);
+    if (document.errors.length > 0) {
+      throw new Error(`Cannot reload config.yaml: ${document.errors[0]?.message ?? "invalid YAML"}`);
+    }
+    const value = document.toJS();
+    validateClashUserConfig(value);
+    await options.onChange(value, lastAppliedConfig);
+    lastAppliedHash = hash2;
+    lastAppliedConfig = value;
+  };
+  const watcher = (0, import_node_fs2.watch)(store.clashHome, (eventType, filename) => {
+    if (closed || filename?.toString() !== "config.yaml")
+      return;
+    if (eventType !== "change" && eventType !== "rename")
+      return;
+    if (timer)
+      clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      void applyLatest().catch((error51) => {
+        options.onError?.(error51 instanceof Error ? error51 : new Error(String(error51)));
+      });
+    }, options.debounceMs ?? 120);
+  });
+  watcher.on("error", (error51) => {
+    options.onError?.(error51);
+  });
+  return () => {
+    closed = true;
+    if (timer)
+      clearTimeout(timer);
+    watcher.close();
   };
 }
 
@@ -36582,7 +36935,7 @@ async function readState(config2, asrStatus, ttsStatus) {
     updated_at: config2.updatedAt
   };
 }
-async function readConfig(store) {
+async function readLegacyConfig(store) {
   const data = await store.getJson(LOCAL_AUDIO_CONFIG_KEY);
   if (!data)
     return null;
@@ -36599,11 +36952,45 @@ async function readConfig(store) {
     updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 }
+function normalizeYamlAudioConfig(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return null;
+  const record2 = value;
+  const asr = record2.asr && typeof record2.asr === "object" && !Array.isArray(record2.asr) ? record2.asr : {};
+  const tts = record2.tts && typeof record2.tts === "object" && !Array.isArray(record2.tts) ? record2.tts : {};
+  return {
+    version: 2,
+    asrEnabled: asr.enabled === true,
+    asrProvider: normalizeProvider(asr.provider),
+    asrBaseUrl: null,
+    asrApiKey: null,
+    asrModel: normalizeModel(asr.model, DEFAULT_ASR_MODEL),
+    ttsEnabled: tts.enabled === true,
+    ttsProvider: normalizeTtsProvider(tts.provider),
+    ttsModel: normalizeModel(tts.model, DEFAULT_TTS_MODEL),
+    updatedAt: typeof record2.updated_at === "string" ? record2.updated_at : (/* @__PURE__ */ new Date(0)).toISOString()
+  };
+}
+function yamlAudioConfig(config2) {
+  return {
+    asr: {
+      enabled: config2.asrEnabled,
+      provider: config2.asrProvider,
+      model: config2.asrModel
+    },
+    tts: {
+      enabled: config2.ttsEnabled,
+      provider: config2.ttsProvider,
+      model: config2.ttsModel
+    },
+    updated_at: config2.updatedAt
+  };
+}
 async function writeConfig(store, config2) {
-  await store.setJson(LOCAL_AUDIO_CONFIG_KEY, config2, config2.updatedAt);
+  await store.setSection("audio", yamlAudioConfig(config2));
 }
 function defaultClashSdkPythonPath() {
-  return (0, import_node_path6.resolve)((0, import_node_path6.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
+  return (0, import_node_path8.resolve)((0, import_node_path8.dirname)((0, import_node_url.fileURLToPath)(__clash_import_meta_url)), "../../..", "packages", "clash-sdk", "python");
 }
 function displayErrorMessage(error51) {
   return error51 instanceof Error ? error51.message : String(error51);
@@ -36634,7 +37021,7 @@ function createHookBackedRuntime(options, pythonBinary, cacheDir) {
     async transcribe(input) {
       if (!options.builtinTranscribe)
         return fallback.transcribe(input);
-      const file2 = new File([await (0, import_promises6.readFile)(input.audioPath)], (0, import_node_path6.basename)(input.audioPath), { type: "audio/webm" });
+      const file2 = new File([await (0, import_promises7.readFile)(input.audioPath)], (0, import_node_path8.basename)(input.audioPath), { type: "audio/webm" });
       return options.builtinTranscribe({
         file: file2,
         model: input.model,
@@ -36658,11 +37045,11 @@ function createDefaultTtsRuntime(options, pythonBinary, cacheDir) {
   });
 }
 async function transcribeWithRuntime(runtime, input, model) {
-  const dir = await (0, import_promises6.mkdtemp)((0, import_node_path6.join)((0, import_node_os3.tmpdir)(), "clash-asr-"));
-  const extension2 = (0, import_node_path6.extname)(input.file.name || "") || ".webm";
-  const audioPath = (0, import_node_path6.join)(dir, (0, import_node_path6.basename)(input.file.name || `input${extension2}`));
+  const dir = await (0, import_promises7.mkdtemp)((0, import_node_path8.join)((0, import_node_os4.tmpdir)(), "clash-asr-"));
+  const extension2 = (0, import_node_path8.extname)(input.file.name || "") || ".webm";
+  const audioPath = (0, import_node_path8.join)(dir, (0, import_node_path8.basename)(input.file.name || `input${extension2}`));
   try {
-    await (0, import_promises6.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
+    await (0, import_promises7.writeFile)(audioPath, Buffer.from(await input.file.arrayBuffer()));
     return await runtime.transcribe({
       model,
       audioPath,
@@ -36673,18 +37060,33 @@ async function transcribeWithRuntime(runtime, input, model) {
       throw error51;
     throw new LocalAudioConfigError(`Local ASR transcription failed: ${displayErrorMessage(error51)}`, 502);
   } finally {
-    await (0, import_promises6.rm)(dir, { recursive: true, force: true });
+    await (0, import_promises7.rm)(dir, { recursive: true, force: true });
   }
 }
 function createLocalAudioConfigStore(options) {
-  const configStore = createSqliteLocalConfigStore(options.dataDir);
+  const configStore = createClashUserConfigStore(options.dataDir);
+  const legacyStore = createSqliteLocalConfigStore(options.dataDir);
   const pythonBinary = options.pythonBinary ?? DEFAULT_PYTHON_BINARY;
-  const asrCacheDir = (0, import_node_path6.join)(options.dataDir, "models", "speech", "asr");
+  const asrCacheDir = (0, import_node_path8.join)(options.dataDir, "models", "speech", "asr");
   const asrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir);
-  const ttsCacheDir = (0, import_node_path6.join)(options.dataDir, "models", "speech", "tts");
+  const ttsCacheDir = (0, import_node_path8.join)(options.dataDir, "models", "speech", "tts");
   const ttsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir);
+  let migration = null;
+  async function ensureMigrated() {
+    migration ??= (async () => {
+      if (normalizeYamlAudioConfig(await configStore.getSection("audio")))
+        return;
+      const legacy = await readLegacyConfig(legacyStore);
+      if (!legacy)
+        return;
+      await writeConfig(configStore, legacy);
+      await legacyStore.delete(LOCAL_AUDIO_CONFIG_KEY);
+    })();
+    return migration;
+  }
   async function current() {
-    return await readConfig(configStore) ?? defaultConfig();
+    await ensureMigrated();
+    return normalizeYamlAudioConfig(await configStore.getSection("audio")) ?? defaultConfig();
   }
   async function currentAsrStatus(model) {
     try {
@@ -36842,8 +37244,8 @@ function createLocalAudioConfigStore(options) {
       if (!status.available) {
         throw new LocalAudioConfigError(`Selected TTS model is not downloaded. Open Settings > Models and download it.${status.message ? ` ${status.message}.` : ""}`, 409);
       }
-      const dir = await (0, import_promises6.mkdtemp)((0, import_node_path6.join)((0, import_node_os3.tmpdir)(), "clash-tts-"));
-      const outputPath = (0, import_node_path6.join)(dir, "speech.wav");
+      const dir = await (0, import_promises7.mkdtemp)((0, import_node_path8.join)((0, import_node_os4.tmpdir)(), "clash-tts-"));
+      const outputPath = (0, import_node_path8.join)(dir, "speech.wav");
       try {
         const synthesis = await ttsRuntime.synthesize({
           model,
@@ -36855,7 +37257,7 @@ function createLocalAudioConfigStore(options) {
         });
         const { outputPath: _outputPath, ...metadata } = synthesis;
         return {
-          audio: new Uint8Array(await (0, import_promises6.readFile)(outputPath)),
+          audio: new Uint8Array(await (0, import_promises7.readFile)(outputPath)),
           metadata
         };
       } catch (error51) {
@@ -36863,21 +37265,21 @@ function createLocalAudioConfigStore(options) {
           throw error51;
         throw new LocalAudioConfigError(`Local TTS synthesis failed: ${displayErrorMessage(error51)}`, 502);
       } finally {
-        await (0, import_promises6.rm)(dir, { recursive: true, force: true });
+        await (0, import_promises7.rm)(dir, { recursive: true, force: true });
       }
     }
   };
 }
 
 // ../../apps/local-api/dist/sync.js
-var import_node_crypto5 = require("node:crypto");
-var import_node_path10 = require("node:path");
+var import_node_crypto6 = require("node:crypto");
+var import_node_path12 = require("node:path");
 var import_loro_crdt6 = __toESM(require_nodejs(), 1);
 
 // ../../apps/local-api/dist/loro/file-replica-store.js
-var import_promises7 = require("node:fs/promises");
-var import_node_crypto3 = require("node:crypto");
-var import_node_path7 = require("node:path");
+var import_promises8 = require("node:fs/promises");
+var import_node_crypto4 = require("node:crypto");
+var import_node_path9 = require("node:path");
 var import_loro_crdt5 = __toESM(require_nodejs(), 1);
 function exactBytes(view) {
   return view.byteOffset === 0 && view.byteLength === view.buffer.byteLength ? view : new Uint8Array(view);
@@ -36893,7 +37295,7 @@ var FileReplicaStore = class {
   }
   async loadSnapshot(projectId) {
     try {
-      return exactBytes(await (0, import_promises7.readFile)(this.snapshotPath(projectId)));
+      return exactBytes(await (0, import_promises8.readFile)(this.snapshotPath(projectId)));
     } catch (error51) {
       if (isMissingFile(error51))
         return null;
@@ -36907,17 +37309,17 @@ var FileReplicaStore = class {
   }
   async appendUpdateUnsafe(projectId, update) {
     const logPath = this.updateLogPath(projectId);
-    await (0, import_promises7.mkdir)(this.loroDir(projectId), { recursive: true });
+    await (0, import_promises8.mkdir)(this.loroDir(projectId), { recursive: true });
     const updateBytes = exactBytes(update);
     const header = Buffer.alloc(4);
     header.writeUInt32BE(updateBytes.byteLength, 0);
-    await (0, import_promises7.appendFile)(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
+    await (0, import_promises8.appendFile)(logPath, Buffer.concat([header, Buffer.from(updateBytes)]));
   }
   async loadUpdateLog(projectId) {
     const logPath = this.updateLogPath(projectId);
     let log2;
     try {
-      log2 = await (0, import_promises7.readFile)(logPath);
+      log2 = await (0, import_promises8.readFile)(logPath);
     } catch (error51) {
       if (isMissingFile(error51))
         return [];
@@ -36927,14 +37329,14 @@ var FileReplicaStore = class {
     let offset = 0;
     while (offset < log2.byteLength) {
       if (offset + 4 > log2.byteLength) {
-        await (0, import_promises7.truncate)(logPath, offset);
+        await (0, import_promises8.truncate)(logPath, offset);
         break;
       }
       const length = log2.readUInt32BE(offset);
       const recordStart = offset + 4;
       const recordEnd = recordStart + length;
       if (recordEnd > log2.byteLength) {
-        await (0, import_promises7.truncate)(logPath, offset);
+        await (0, import_promises8.truncate)(logPath, offset);
         break;
       }
       updates.push(exactBytes(log2.subarray(recordStart, recordEnd)));
@@ -36965,34 +37367,34 @@ var FileReplicaStore = class {
   }
   async saveSnapshotAtomicUnsafe(projectId, snapshot) {
     const dir = this.loroDir(projectId);
-    await (0, import_promises7.mkdir)(dir, { recursive: true });
+    await (0, import_promises8.mkdir)(dir, { recursive: true });
     const finalPath = this.snapshotPath(projectId);
-    const tempPath = (0, import_node_path7.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto3.randomUUID)()}.tmp`);
+    const tempPath = (0, import_node_path9.join)(dir, `snapshot.bin.${process.pid}.${(0, import_node_crypto4.randomUUID)()}.tmp`);
     const snapshotBytes = exactBytes(snapshot);
     try {
-      const handle = await (0, import_promises7.open)(tempPath, "wx");
+      const handle = await (0, import_promises8.open)(tempPath, "wx");
       try {
         await handle.writeFile(snapshotBytes);
         await handle.sync();
       } finally {
         await handle.close();
       }
-      await (0, import_promises7.rename)(tempPath, finalPath);
+      await (0, import_promises8.rename)(tempPath, finalPath);
     } catch (error51) {
-      await (0, import_promises7.rm)(tempPath, { force: true }).catch(() => {
+      await (0, import_promises8.rm)(tempPath, { force: true }).catch(() => {
       });
       throw error51;
     }
   }
   async truncateUpdateLog(projectId) {
     const logPath = this.updateLogPath(projectId);
-    await (0, import_promises7.mkdir)(this.loroDir(projectId), { recursive: true });
+    await (0, import_promises8.mkdir)(this.loroDir(projectId), { recursive: true });
     try {
-      await (0, import_promises7.truncate)(logPath, 0);
+      await (0, import_promises8.truncate)(logPath, 0);
     } catch (error51) {
       if (!isMissingFile(error51))
         throw error51;
-      await (0, import_promises7.writeFile)(logPath, new Uint8Array(), { mode: 384 });
+      await (0, import_promises8.writeFile)(logPath, new Uint8Array(), { mode: 384 });
     }
   }
   async recover(projectId) {
@@ -37000,7 +37402,7 @@ var FileReplicaStore = class {
   }
   async deleteReplica(projectId) {
     await this.enqueueProjectWrite(projectId, async () => {
-      await (0, import_promises7.rm)(this.projectDir(projectId), { recursive: true, force: true });
+      await (0, import_promises8.rm)(this.projectDir(projectId), { recursive: true, force: true });
     });
   }
   async recoverUnsafe(projectId) {
@@ -37016,16 +37418,16 @@ var FileReplicaStore = class {
     return doc;
   }
   loroDir(projectId) {
-    return (0, import_node_path7.join)(this.projectDir(projectId), "loro");
+    return (0, import_node_path9.join)(this.projectDir(projectId), "loro");
   }
   projectDir(projectId) {
-    return (0, import_node_path7.join)(this.rootDir, encodeURIComponent(projectId));
+    return (0, import_node_path9.join)(this.rootDir, encodeURIComponent(projectId));
   }
   snapshotPath(projectId) {
-    return (0, import_node_path7.join)(this.loroDir(projectId), "snapshot.bin");
+    return (0, import_node_path9.join)(this.loroDir(projectId), "snapshot.bin");
   }
   updateLogPath(projectId) {
-    return (0, import_node_path7.join)(this.loroDir(projectId), "updates.log");
+    return (0, import_node_path9.join)(this.loroDir(projectId), "updates.log");
   }
   async enqueueProjectWrite(projectId, task) {
     const key = encodeURIComponent(projectId);
@@ -37043,13 +37445,13 @@ var FileReplicaStore = class {
 };
 
 // ../../apps/local-api/dist/local-processor.js
-var import_node_crypto4 = require("node:crypto");
-var import_promises10 = require("node:fs/promises");
+var import_node_crypto5 = require("node:crypto");
+var import_promises11 = require("node:fs/promises");
 
 // ../../apps/local-api/dist/local-metadata-store.js
 var import_node_module2 = require("node:module");
-var import_promises8 = require("node:fs/promises");
-var import_node_path8 = require("node:path");
+var import_promises9 = require("node:fs/promises");
+var import_node_path10 = require("node:path");
 var EMPTY_METADATA_DB = {
   projects: [],
   assets: [],
@@ -37063,7 +37465,7 @@ var EMPTY_METADATA_DB = {
 var METADATA_MIGRATION_ID = "metadata-sqlite-v1";
 var require3 = (0, import_node_module2.createRequire)(__clash_import_meta_url);
 function sqlitePath2(dataDir2) {
-  return (0, import_node_path8.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path10.join)(dataDir2, "local.sqlite");
 }
 function openDatabase2(path) {
   const { DatabaseSync } = require3("node:sqlite");
@@ -37477,21 +37879,21 @@ function createLocalMetadataStore(dataDir2) {
   const path = sqlitePath2(dataDir2);
   async function exists2() {
     try {
-      await (0, import_promises8.stat)(path);
+      await (0, import_promises9.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises8.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises9.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase2(path);
     try {
       applySchema2(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises8.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises9.chmod)(path, 384).catch(() => void 0);
     }
   }
   function insertMutationAudit(db, record2) {
@@ -37914,10 +38316,10 @@ function createLocalMetadataStore(dataDir2) {
 }
 
 // ../../apps/local-api/dist/local-asset-paths.js
-var import_promises9 = require("node:fs/promises");
-var import_node_path9 = require("node:path");
+var import_promises10 = require("node:fs/promises");
+var import_node_path11 = require("node:path");
 function assetRoot(dataDir2) {
-  return (0, import_node_path9.join)(dataDir2, "assets");
+  return (0, import_node_path11.join)(dataDir2, "assets");
 }
 function normalizeAssetStorageKey(storageKey) {
   const raw2 = storageKey.trim();
@@ -37929,19 +38331,13 @@ function normalizeAssetStorageKey(storageKey) {
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
     throw new Error("Invalid asset storage key");
   }
-  return (0, import_node_path9.normalize)(slashKey).replace(/\\/g, "/");
-}
-function inferClashRoot(dataDir2, explicit) {
-  if (explicit?.trim())
-    return (0, import_node_path9.resolve)(explicit);
-  const resolved = (0, import_node_path9.resolve)(dataDir2);
-  return (0, import_node_path9.basename)(resolved) === "local-api" ? (0, import_node_path9.dirname)(resolved) : resolved;
+  return (0, import_node_path11.normalize)(slashKey).replace(/\\/g, "/");
 }
 function localBlobAssetPath(clashRoot, storageKey) {
-  const root = (0, import_node_path9.join)(clashRoot, "assets", "blobs");
+  const root = (0, import_node_path11.join)(clashRoot, "assets", "blobs");
   const blobKey = storageKey.slice("local-blobs/".length);
-  const resolved = (0, import_node_path9.normalize)((0, import_node_path9.join)(root, blobKey));
-  const rel = (0, import_node_path9.relative)(root, resolved);
+  const resolved = (0, import_node_path11.normalize)((0, import_node_path11.join)(root, blobKey));
+  const rel = (0, import_node_path11.relative)(root, resolved);
   if (!blobKey || rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid local blob path");
   }
@@ -37950,11 +38346,11 @@ function localBlobAssetPath(clashRoot, storageKey) {
 function assetPath(dataDir2, storageKey, clashRoot) {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    return localBlobAssetPath(inferClashRoot(dataDir2, clashRoot), normalizedKey);
+    return localBlobAssetPath(clashHomeForLocalDataDir(dataDir2, clashRoot), normalizedKey);
   }
   const root = assetRoot(dataDir2);
-  const resolved = (0, import_node_path9.normalize)((0, import_node_path9.join)(root, normalizedKey));
-  const rel = (0, import_node_path9.relative)(root, resolved);
+  const resolved = (0, import_node_path11.normalize)((0, import_node_path11.join)(root, normalizedKey));
+  const rel = (0, import_node_path11.relative)(root, resolved);
   if (rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid asset path");
   }
@@ -37963,22 +38359,22 @@ function assetPath(dataDir2, storageKey, clashRoot) {
 function localAssetPathCandidate(dataDir2, storageKey, clashRoot) {
   const normalizedKey = normalizeAssetStorageKey(storageKey);
   if (normalizedKey.startsWith("local-blobs/")) {
-    const ownerRoot2 = inferClashRoot(dataDir2, clashRoot);
-    const root = (0, import_node_path9.join)(ownerRoot2, "assets", "blobs");
+    const ownerRoot2 = clashHomeForLocalDataDir(dataDir2, clashRoot);
+    const root = (0, import_node_path11.join)(ownerRoot2, "assets", "blobs");
     return { ownerRoot: ownerRoot2, root, path: localBlobAssetPath(ownerRoot2, normalizedKey) };
   }
-  const ownerRoot = (0, import_node_path9.resolve)(dataDir2);
+  const ownerRoot = (0, import_node_path11.resolve)(dataDir2);
   return { ownerRoot, root: assetRoot(dataDir2), path: assetPath(dataDir2, normalizedKey, clashRoot) };
 }
 function assertRealAssetPathInsideRoot(rootRealPath, targetRealPath) {
-  const rel = (0, import_node_path9.relative)(rootRealPath, targetRealPath);
-  if (rel.startsWith("..") || rel === ".." || (0, import_node_path9.isAbsolute)(rel)) {
+  const rel = (0, import_node_path11.relative)(rootRealPath, targetRealPath);
+  if (rel.startsWith("..") || rel === ".." || (0, import_node_path11.isAbsolute)(rel)) {
     throw new Error("Asset path escapes local asset storage");
   }
 }
 async function realpathOrNull(path) {
   try {
-    return await (0, import_promises9.realpath)(path);
+    return await (0, import_promises10.realpath)(path);
   } catch (error51) {
     if (error51.code === "ENOENT")
       return null;
@@ -37987,22 +38383,22 @@ async function realpathOrNull(path) {
 }
 async function assetPathForRead(dataDir2, storageKey, clashRoot) {
   const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
-  const ownerRootRealPath = await (0, import_promises9.realpath)(candidate.ownerRoot);
-  const rootRealPath = await (0, import_promises9.realpath)(candidate.root);
+  const ownerRootRealPath = await (0, import_promises10.realpath)(candidate.ownerRoot);
+  const rootRealPath = await (0, import_promises10.realpath)(candidate.root);
   assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
-  const targetRealPath = await (0, import_promises9.realpath)(candidate.path);
+  const targetRealPath = await (0, import_promises10.realpath)(candidate.path);
   assertRealAssetPathInsideRoot(rootRealPath, targetRealPath);
   return candidate.path;
 }
 async function assetPathForWrite(dataDir2, storageKey, clashRoot) {
   const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
-  await (0, import_promises9.mkdir)(candidate.ownerRoot, { recursive: true });
-  await (0, import_promises9.mkdir)(candidate.root, { recursive: true });
-  const ownerRootRealPath = await (0, import_promises9.realpath)(candidate.ownerRoot);
-  const rootRealPath = await (0, import_promises9.realpath)(candidate.root);
+  await (0, import_promises10.mkdir)(candidate.ownerRoot, { recursive: true });
+  await (0, import_promises10.mkdir)(candidate.root, { recursive: true });
+  const ownerRootRealPath = await (0, import_promises10.realpath)(candidate.ownerRoot);
+  const rootRealPath = await (0, import_promises10.realpath)(candidate.root);
   assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
-  await (0, import_promises9.mkdir)((0, import_node_path9.dirname)(candidate.path), { recursive: true });
-  const parentRealPath = await (0, import_promises9.realpath)((0, import_node_path9.dirname)(candidate.path));
+  await (0, import_promises10.mkdir)((0, import_node_path11.dirname)(candidate.path), { recursive: true });
+  const parentRealPath = await (0, import_promises10.realpath)((0, import_node_path11.dirname)(candidate.path));
   assertRealAssetPathInsideRoot(rootRealPath, parentRealPath);
   const existingTargetRealPath = await realpathOrNull(candidate.path);
   if (existingTargetRealPath) {
@@ -38014,7 +38410,7 @@ async function assetPathForDelete(dataDir2, storageKey, clashRoot) {
   const candidate = localAssetPathCandidate(dataDir2, storageKey, clashRoot);
   const ownerRootRealPath = await realpathOrNull(candidate.ownerRoot);
   const rootRealPath = await realpathOrNull(candidate.root);
-  const parentRealPath = await realpathOrNull((0, import_node_path9.dirname)(candidate.path));
+  const parentRealPath = await realpathOrNull((0, import_node_path11.dirname)(candidate.path));
   if (ownerRootRealPath && rootRealPath) {
     assertRealAssetPathInsideRoot(ownerRootRealPath, rootRealPath);
   }
@@ -38029,8 +38425,8 @@ function normalizeLocalBlobStorageKey(localBlobKey) {
     throw new Error("localBlobKey must start with blobs/");
   }
   const root = "blobs";
-  const resolved = (0, import_node_path9.normalize)((0, import_node_path9.join)(root, normalized.slice("blobs/".length)));
-  const rel = (0, import_node_path9.relative)(root, resolved);
+  const resolved = (0, import_node_path11.normalize)((0, import_node_path11.join)(root, normalized.slice("blobs/".length)));
+  const rel = (0, import_node_path11.relative)(root, resolved);
   if (!rel || rel.startsWith("..") || rel === "..") {
     throw new Error("Invalid local blob path");
   }
@@ -38083,7 +38479,7 @@ function stringList(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string" && item.length > 0) : [];
 }
 function textHash(content) {
-  return (0, import_node_crypto4.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_node_crypto5.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function textRevisionActor(nodeData, userId) {
   if (nodeData.actorType !== "user" && nodeData.actorType !== "agent")
@@ -38106,7 +38502,7 @@ function generatedTextRevision(options) {
     createdAt,
     actor: actor ?? null
   });
-  const suffix = (0, import_node_crypto4.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
+  const suffix = (0, import_node_crypto5.createHash)("sha256").update(seed).digest("hex").slice(0, 12);
   return {
     schemaVersion: 1,
     kind: "clash.text.revision",
@@ -38130,7 +38526,7 @@ async function recordGeneratedTextRevision(options) {
   }, { resultEntityId: revision.revisionId });
   await storeTextRevisionContentBlob(options.dataDir, revision, options.content);
   await createLocalMetadataStore(options.dataDir).upsertTextRevision(revision, {
-    id: (0, import_node_crypto4.randomUUID)(),
+    id: (0, import_node_crypto5.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -38196,7 +38592,7 @@ async function saveAsset(options) {
   const extension2 = extensionForContentType(options.contentType);
   const storageKey = `generated/${sanitizeStorageSegment(options.taskId)}${extension2}`;
   const assetPath2 = await assetPathForWrite(options.dataDir, storageKey);
-  await (0, import_promises10.writeFile)(assetPath2, options.bytes);
+  await (0, import_promises11.writeFile)(assetPath2, options.bytes);
   const now = Math.floor(Date.now() / 1e3);
   const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = modelFromData(options.nodeData, `mock-${options.kind}`);
@@ -38240,7 +38636,7 @@ async function saveAsset(options) {
     projectId: options.projectId,
     importedAt: now
   }, {
-    id: (0, import_node_crypto4.randomUUID)(),
+    id: (0, import_node_crypto5.randomUUID)(),
     createdAt: Date.now(),
     operation: mutation.operation,
     entity: mutation.entity,
@@ -38607,7 +39003,7 @@ function createHttpRemoteLoroPersistence(options) {
   };
 }
 async function loadDoc(options) {
-  const store = new FileReplicaStore((0, import_node_path10.join)(options.dataDir, "projects"));
+  const store = new FileReplicaStore((0, import_node_path12.join)(options.dataDir, "projects"));
   let doc;
   try {
     doc = await store.recover(options.projectId);
@@ -39024,7 +39420,7 @@ function presenceFromHeaders(headers) {
   const userName = headerString(headers["x-user-name"]);
   const name = clientType === "agent" ? headerString(headers["x-agent-name"]) ?? userName ?? "Local Agent" : clientType === "cli" ? userName ?? "Local CLI" : userName ?? "Local User";
   return {
-    id: (0, import_node_crypto5.randomUUID)(),
+    id: (0, import_node_crypto6.randomUUID)(),
     clientType,
     userId,
     name
@@ -39149,7 +39545,7 @@ function toReadState(config2) {
     updated_at: config2.updatedAt
   };
 }
-async function readConfig2(store) {
+async function readLegacyConfig2(store) {
   const data = await store.getJson(LOCAL_SYNC_CONFIG_KEY);
   if (!data)
     return null;
@@ -39162,14 +39558,61 @@ async function readConfig2(store) {
     updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : (/* @__PURE__ */ new Date(0)).toISOString()
   };
 }
+async function readConfig(store) {
+  const value = await store.getSection("sync");
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return null;
+  const record2 = value;
+  const remote = record2.remote_loro && typeof record2.remote_loro === "object" && !Array.isArray(record2.remote_loro) ? record2.remote_loro : {};
+  const credentials = await store.getCredentials();
+  return {
+    version: 1,
+    mode: normalizeMode(record2.mode),
+    remoteLoroUrl: normalizeRemoteUrl(remote.url),
+    remoteLoroToken: trimToNull(credentials.syncRemoteLoroToken),
+    capabilities: normalizeCapabilities(record2.capabilities),
+    updatedAt: typeof record2.updated_at === "string" ? record2.updated_at : (/* @__PURE__ */ new Date(0)).toISOString()
+  };
+}
 async function writeConfig2(store, config2) {
-  await store.setJson(LOCAL_SYNC_CONFIG_KEY, config2, config2.updatedAt);
+  await store.updateCredentials((current) => {
+    const next = { ...current };
+    if (config2.remoteLoroToken) {
+      next.syncRemoteLoroToken = config2.remoteLoroToken;
+    } else {
+      delete next.syncRemoteLoroToken;
+    }
+    return next;
+  });
+  await store.setSection("sync", {
+    mode: config2.mode,
+    remote_loro: {
+      url: config2.remoteLoroUrl
+    },
+    capabilities: config2.capabilities,
+    updated_at: config2.updatedAt
+  });
 }
 function createLocalSyncConfigStore(options) {
-  const configStore = createSqliteLocalConfigStore(options.dataDir);
+  const configStore = createClashUserConfigStore(options.dataDir);
+  const legacyStore = createSqliteLocalConfigStore(options.dataDir);
   const env = options.env ?? {};
+  let migration = null;
+  async function ensureMigrated() {
+    migration ??= (async () => {
+      if (await readConfig(configStore))
+        return;
+      const legacy = await readLegacyConfig2(legacyStore);
+      if (!legacy)
+        return;
+      await writeConfig2(configStore, legacy);
+      await legacyStore.delete(LOCAL_SYNC_CONFIG_KEY);
+    })();
+    return migration;
+  }
   async function effective() {
-    const file2 = await readConfig2(configStore);
+    await ensureMigrated();
+    const file2 = await readConfig(configStore);
     if (!file2)
       return envConfig(env);
     return {
@@ -39189,7 +39632,8 @@ function createLocalSyncConfigStore(options) {
       return toReadState(await effective());
     },
     async updateFromRequest(input) {
-      const current = await readConfig2(configStore) ?? {
+      await ensureMigrated();
+      const current = await readConfig(configStore) ?? {
         version: 1,
         mode: envConfig(env).mode,
         remoteLoroUrl: envConfig(env).remoteLoroUrl,
@@ -39540,7 +39984,7 @@ async function generateFalDirectorModel({ input, apiKey, fetch: fetchImpl = fetc
       throw new Error(`fal 3D model request failed: ${statusJson.error ?? status}`);
     }
     if (pollIntervalMs > 0) {
-      await new Promise((resolve8) => setTimeout(resolve8, pollIntervalMs));
+      await new Promise((resolve9) => setTimeout(resolve9, pollIntervalMs));
     }
   }
   if (!completed)
@@ -39572,20 +40016,20 @@ async function generateFalDirectorModel({ input, apiKey, fetch: fetchImpl = fetc
 }
 
 // ../../apps/local-api/dist/local-provider-store.js
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 var import_node_module3 = require("node:module");
-var import_promises11 = require("node:fs/promises");
-var import_node_path11 = require("node:path");
+var import_promises12 = require("node:fs/promises");
+var import_node_path13 = require("node:path");
 var require4 = (0, import_node_module3.createRequire)(__clash_import_meta_url);
 var PROVIDER_ACCOUNTS_MIGRATION_ID = "provider-accounts-sqlite-v1";
 var PROVIDER_OAUTH_MIGRATION_ID = "provider-oauth-sqlite-v1";
 var SECRET_PREFIX = "enc:v1:";
 var secretKeyCache = /* @__PURE__ */ new Map();
 function sqlitePath3(dataDir2) {
-  return (0, import_node_path11.join)(dataDir2, "local.sqlite");
+  return (0, import_node_path13.join)(dataDir2, "local.sqlite");
 }
 function fallbackKeyPath(dataDir2) {
-  return (0, import_node_path11.join)(dataDir2, "provider-secret.key");
+  return (0, import_node_path13.join)(dataDir2, "provider-secret.key");
 }
 function openDatabase3(path) {
   const { DatabaseSync } = require4("node:sqlite");
@@ -39934,21 +40378,21 @@ function keyFromString(value) {
     if (decoded.byteLength === 32)
       return decoded;
   }
-  return (0, import_node_crypto6.createHash)("sha256").update(trimmed).digest();
+  return (0, import_node_crypto7.createHash)("sha256").update(trimmed).digest();
 }
 async function resolveKeyFromFile(dataDir2) {
   const path = fallbackKeyPath(dataDir2);
   try {
-    const existing = (await (0, import_promises11.readFile)(path, "utf8")).trim();
+    const existing = (await (0, import_promises12.readFile)(path, "utf8")).trim();
     if (existing)
       return keyFromString(`base64:${existing}`);
   } catch {
   }
-  await (0, import_promises11.mkdir)(dataDir2, { recursive: true });
-  const generated = (0, import_node_crypto6.randomBytes)(32).toString("base64");
-  await (0, import_promises11.writeFile)(path, `${generated}
+  await (0, import_promises12.mkdir)(dataDir2, { recursive: true });
+  const generated = (0, import_node_crypto7.randomBytes)(32).toString("base64");
+  await (0, import_promises12.writeFile)(path, `${generated}
 `, { mode: 384 });
-  await (0, import_promises11.chmod)(path, 384).catch(() => void 0);
+  await (0, import_promises12.chmod)(path, 384).catch(() => void 0);
   return keyFromString(`base64:${generated}`);
 }
 async function resolveProviderSecretKey(dataDir2) {
@@ -39965,8 +40409,8 @@ async function resolveProviderSecretKey(dataDir2) {
   return task;
 }
 function encryptSecret(value, key, aad) {
-  const iv = (0, import_node_crypto6.randomBytes)(12);
-  const cipher = (0, import_node_crypto6.createCipheriv)("aes-256-gcm", key, iv);
+  const iv = (0, import_node_crypto7.randomBytes)(12);
+  const cipher = (0, import_node_crypto7.createCipheriv)("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(aad, "utf8"));
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -39987,7 +40431,7 @@ function decryptSecret(value, key, aad) {
   if (version2 !== "v1")
     throw new Error(`Unsupported encrypted local provider secret version: ${version2}`);
   try {
-    const decipher = (0, import_node_crypto6.createDecipheriv)("aes-256-gcm", key, Buffer.from(ivText, "base64"));
+    const decipher = (0, import_node_crypto7.createDecipheriv)("aes-256-gcm", key, Buffer.from(ivText, "base64"));
     decipher.setAAD(Buffer.from(aad, "utf8"));
     decipher.setAuthTag(Buffer.from(tagText, "base64"));
     return Buffer.concat([
@@ -40293,21 +40737,21 @@ function createLocalProviderStore(dataDir2) {
   const path = sqlitePath3(dataDir2);
   async function exists2() {
     try {
-      await (0, import_promises11.stat)(path);
+      await (0, import_promises12.stat)(path);
       return true;
     } catch {
       return false;
     }
   }
   async function withDb(task) {
-    await (0, import_promises11.mkdir)(dataDir2, { recursive: true });
+    await (0, import_promises12.mkdir)(dataDir2, { recursive: true });
     const db = openDatabase3(path);
     try {
       applySchema3(db);
       return task(db);
     } finally {
       db.close();
-      await (0, import_promises11.chmod)(path, 384).catch(() => void 0);
+      await (0, import_promises12.chmod)(path, 384).catch(() => void 0);
     }
   }
   async function ensureProviderAccountsMigrated() {
@@ -40497,17 +40941,17 @@ function parseAssetEditInvocation(input) {
   });
 }
 function localFfmpegPath() {
-  return [process.env.FFMPEG_PATH, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs2.existsSync)(candidate)) ?? null;
+  return [process.env.FFMPEG_PATH, "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs3.existsSync)(candidate)) ?? null;
 }
 function localFfprobePath() {
   const ffmpeg = localFfmpegPath();
   return [
     process.env.FFPROBE_PATH,
-    ffmpeg ? (0, import_node_path12.join)((0, import_node_path12.dirname)(ffmpeg), "ffprobe") : void 0,
+    ffmpeg ? (0, import_node_path14.join)((0, import_node_path14.dirname)(ffmpeg), "ffprobe") : void 0,
     "/opt/homebrew/bin/ffprobe",
     "/usr/local/bin/ffprobe",
     "/usr/bin/ffprobe"
-  ].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs2.existsSync)(candidate)) ?? null;
+  ].filter((candidate) => !!candidate).find((candidate) => (0, import_node_fs3.existsSync)(candidate)) ?? null;
 }
 function finitePositiveNumber(value) {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -40515,7 +40959,7 @@ function finitePositiveNumber(value) {
 }
 async function probeLocalAsset(input) {
   const sourcePath = await assetPathForRead(input.dataDir, input.srcR2Key, input.clashRoot);
-  const fileInfo = await (0, import_promises12.stat)(sourcePath);
+  const fileInfo = await (0, import_promises13.stat)(sourcePath);
   const baseMetadata = { bytes: fileInfo.size };
   if (input.kind === "model")
     return { metadata: baseMetadata };
@@ -40548,7 +40992,7 @@ async function probeLocalAsset(input) {
     return { metadata };
   const coverR2Key = `covers/${input.assetId}.jpg`;
   const coverPath = await assetPathForWrite(input.dataDir, coverR2Key);
-  await (0, import_promises12.mkdir)((0, import_node_path12.dirname)(coverPath), { recursive: true });
+  await (0, import_promises13.mkdir)((0, import_node_path14.dirname)(coverPath), { recursive: true });
   const seekSeconds = durationSeconds ? Math.min(1, Math.max(0, durationSeconds / 2)) : 0;
   await execFileAsync3(ffmpeg, [
     "-y",
@@ -40609,7 +41053,7 @@ async function preflightTextRevisionContentBlob(dataDir2, revision, content) {
     throw new Error("text revision contentHash does not match content");
   }
   const path = textRevisionContentBlobPath(dataDir2, revision.contentHash);
-  const existing = await (0, import_promises12.readFile)(path, "utf8").catch((error51) => {
+  const existing = await (0, import_promises13.readFile)(path, "utf8").catch((error51) => {
     if (error51 && typeof error51 === "object" && error51.code === "ENOENT")
       return null;
     throw error51;
@@ -40625,9 +41069,9 @@ function localMutationEnvelope(operation, kind, id) {
   };
 }
 function sha256Hex(bytes) {
-  return (0, import_node_crypto7.createHash)("sha256").update(bytes).digest("hex");
+  return (0, import_node_crypto8.createHash)("sha256").update(bytes).digest("hex");
 }
-var LOCAL_API_READ_RECEIPT_SECRET = (0, import_node_crypto7.randomBytes)(32).toString("hex");
+var LOCAL_API_READ_RECEIPT_SECRET = (0, import_node_crypto8.randomBytes)(32).toString("hex");
 var PROJECT_PURGE_DELAY_MS = 7 * 24 * 60 * 60 * 1e3;
 function refreshAssetReferenceProjectionState(current, projectIds, projectedCanvasAssetRefs) {
   const observedAt = Math.floor(Date.now() / 1e3);
@@ -40747,12 +41191,6 @@ function localAudioReceiptReadToken(readState2) {
     updatedAt: readState2.updated_at
   });
 }
-function inferClashRoot2(dataDir2, explicit) {
-  if (explicit?.trim())
-    return (0, import_node_path12.resolve)(explicit);
-  const resolved = (0, import_node_path12.resolve)(dataDir2);
-  return (0, import_node_path12.basename)(resolved) === "local-api" ? (0, import_node_path12.dirname)(resolved) : resolved;
-}
 async function updateRuntimeSession(db, sessionId, patch) {
   await db.update((state) => {
     const session = state.sessions.find((candidate) => candidate.id === sessionId);
@@ -40783,7 +41221,7 @@ function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 function contentTypeForPath(path) {
-  const ext = (0, import_node_path12.extname)(path).toLowerCase();
+  const ext = (0, import_node_path14.extname)(path).toLowerCase();
   if (ext === ".png")
     return "image/png";
   if (ext === ".jpg" || ext === ".jpeg")
@@ -40933,7 +41371,7 @@ function sanitizeMutationForAudit(mutation) {
 }
 function mutationAuditRecord(options) {
   return {
-    id: (0, import_node_crypto7.randomUUID)(),
+    id: (0, import_node_crypto8.randomUUID)(),
     createdAt: Date.now(),
     operation: options.mutation.operation,
     entity: options.mutation.entity,
@@ -40961,13 +41399,20 @@ function appendPersistedSessionMessage(state, sessionId, incoming) {
     });
     return;
   }
-  const seen = new Set(existing.events.map(eventKey));
+  const persistedCounts = /* @__PURE__ */ new Map();
+  for (const event of existing.events) {
+    const key = eventKey(event);
+    persistedCounts.set(key, (persistedCounts.get(key) ?? 0) + 1);
+  }
+  const incomingCounts = /* @__PURE__ */ new Map();
   for (const event of incoming.events) {
     const key = eventKey(event);
-    if (seen.has(key))
+    const occurrence = (incomingCounts.get(key) ?? 0) + 1;
+    incomingCounts.set(key, occurrence);
+    if (occurrence <= (persistedCounts.get(key) ?? 0))
       continue;
     existing.events.push(structuredClone(event));
-    seen.add(key);
+    persistedCounts.set(key, occurrence);
   }
 }
 function extractUserPromptTitle(message) {
@@ -41111,7 +41556,7 @@ function stringArray(value) {
 async function collectProjectCanvasAssetRefs(dataDir2, projectIds) {
   if (projectIds.length === 0)
     return [];
-  const store = new FileReplicaStore((0, import_node_path12.join)(dataDir2, "projects"));
+  const store = new FileReplicaStore((0, import_node_path14.join)(dataDir2, "projects"));
   const refs = [];
   for (const projectId of projectIds) {
     const doc = await store.recover(projectId);
@@ -41132,12 +41577,12 @@ function canvasNodeType(value) {
   const type = value.type;
   return typeof type === "string" && type.trim() ? type.trim() : "unknown";
 }
-function isRecord5(value) {
+function isRecord6(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 async function discoverProjectReplicaIds(dataDir2) {
   try {
-    const entries = await (0, import_promises12.readdir)((0, import_node_path12.join)(dataDir2, "projects"), {
+    const entries = await (0, import_promises13.readdir)((0, import_node_path14.join)(dataDir2, "projects"), {
       withFileTypes: true,
       encoding: "utf8"
     });
@@ -41414,7 +41859,7 @@ function toV1Project(project, state, assetMode = "preview") {
   };
 }
 function localApiProjectReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`project:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`project:${readToken}`).digest("base64url");
 }
 function projectReceiptReadToken(project) {
   const readToken = projectReadToken(project);
@@ -41427,7 +41872,7 @@ function verifyLocalApiProjectReadReceipt(proof) {
   return proof.namespace === "project" && proof.receipt === localApiProjectReadReceipt(proof.baseReadToken);
 }
 function localApiSessionReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`session:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`session:${readToken}`).digest("base64url");
 }
 function sessionReceiptReadToken(session) {
   const readToken = sessionReadToken(session);
@@ -41440,7 +41885,7 @@ function verifyLocalApiSessionReadReceipt(proof) {
   return proof.namespace === "session" && proof.receipt === localApiSessionReadReceipt(proof.baseReadToken);
 }
 function localApiLocalConfigReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`local-config:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`local-config:${readToken}`).digest("base64url");
 }
 function localConfigReceiptReadToken(config2) {
   const readToken = localConfigReadToken({
@@ -41493,7 +41938,7 @@ function localAgentServersReceiptReadToken(result) {
   });
 }
 function localApiProviderAccountReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-account:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-account:${readToken}`).digest("base64url");
 }
 function providerAccountReceiptReadToken(account) {
   const readToken = providerAccountReadToken(account);
@@ -41506,7 +41951,7 @@ function verifyLocalApiProviderAccountReadReceipt(proof) {
   return proof.namespace === "provider-account" && proof.receipt === localApiProviderAccountReadReceipt(proof.baseReadToken);
 }
 function localApiProviderAccountsReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-accounts:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-accounts:${readToken}`).digest("base64url");
 }
 function providerAccountsReceiptReadToken(accounts) {
   const readToken = providerAccountsReadToken(accounts);
@@ -41525,7 +41970,7 @@ function providerOAuthBaseReadToken(record2) {
   });
 }
 function localApiProviderOAuthReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-oauth:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`provider-oauth:${readToken}`).digest("base64url");
 }
 function providerOAuthReceiptReadToken(record2) {
   const readToken = providerOAuthBaseReadToken(record2);
@@ -41556,16 +42001,16 @@ function publicModelProvidersResponse(accounts) {
   };
 }
 function localApiCanvasReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-node:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-node:${readToken}`).digest("base64url");
 }
 function localApiCanvasEdgeReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edge:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edge:${readToken}`).digest("base64url");
 }
 function localApiCanvasEdgesReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edges:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-edges:${readToken}`).digest("base64url");
 }
 function localApiCanvasBatchDeleteReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-batch-delete:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`canvas-batch-delete:${readToken}`).digest("base64url");
 }
 function canvasNodeReceiptReadToken(node) {
   const readToken = canvasNodeReadToken(node);
@@ -41627,7 +42072,7 @@ function edgeCanvas(doc, edge) {
   if (typeof edge.target !== "string")
     throw new Error("Edge target is required");
   const rawTarget = doc.getMap("nodes").get(edge.target);
-  if (!isRecord5(rawTarget))
+  if (!isRecord6(rawTarget))
     throw new Error(`Target node not found: ${edge.target}`);
   const canvasId = typeof rawTarget.canvasId === "string" ? rawTarget.canvasId : "main";
   return new Canvas(doc, () => {
@@ -41677,12 +42122,12 @@ function readCanvasGuardrailNodes(doc) {
   const nodesMap = doc.getMap("nodes");
   const nodes = [];
   for (const [id, rawNode] of nodesMap.entries()) {
-    if (!isRecord5(rawNode))
+    if (!isRecord6(rawNode))
       continue;
     nodes.push({
       id,
       type: typeof rawNode.type === "string" ? rawNode.type : void 0,
-      data: isRecord5(rawNode.data) ? rawNode.data : void 0
+      data: isRecord6(rawNode.data) ? rawNode.data : void 0
     });
   }
   return nodes;
@@ -41708,7 +42153,7 @@ function canvasNodeDataPatchFromBody(body) {
   const patch = {};
   const nestedData = body.data;
   if (nestedData !== void 0) {
-    if (!isRecord5(nestedData))
+    if (!isRecord6(nestedData))
       return { ok: false, error: "Invalid node data patch" };
     for (const [key, value] of Object.entries(nestedData)) {
       if (value !== void 0)
@@ -41725,7 +42170,7 @@ function canvasNodeDataPatchFromBody(body) {
   return { ok: true, patch };
 }
 function localApiAssetReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset:${readToken}`).digest("base64url");
 }
 function assetReceiptReadToken(asset) {
   const readToken = assetReadToken(asset);
@@ -41738,7 +42183,7 @@ function verifyLocalApiAssetReadReceipt(proof) {
   return proof.namespace === "asset" && proof.receipt === localApiAssetReadReceipt(proof.baseReadToken);
 }
 function localApiAssetRefReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-ref:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-ref:${readToken}`).digest("base64url");
 }
 function assetRefReceiptReadToken(ref) {
   const readToken = assetRefReadToken(ref);
@@ -41751,7 +42196,7 @@ function verifyLocalApiAssetRefReadReceipt(proof) {
   return proof.namespace === "asset-ref" && proof.receipt === localApiAssetRefReadReceipt(proof.baseReadToken);
 }
 function localApiAssetGcReadReceipt(readToken) {
-  return (0, import_node_crypto7.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-gc:${readToken}`).digest("base64url");
+  return (0, import_node_crypto8.createHmac)("sha256", LOCAL_API_READ_RECEIPT_SECRET).update(`asset-gc:${readToken}`).digest("base64url");
 }
 function assetGarbageCollectionReadToken(plan) {
   return agentReadToken({
@@ -42354,9 +42799,9 @@ function providerTestStubForAccount(account, modelId, route) {
 function createLocalApiApp(options) {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
-  const localApiDataDir = (0, import_node_path12.resolve)(options.dataDir);
-  const clashRoot = inferClashRoot2(options.dataDir, options.clashRoot);
-  const replicaStore = new FileReplicaStore((0, import_node_path12.join)(options.dataDir, "projects"));
+  const localApiDataDir = (0, import_node_path14.resolve)(options.dataDir);
+  const clashRoot = clashHomeForLocalDataDir(options.dataDir, options.clashRoot);
+  const replicaStore = new FileReplicaStore((0, import_node_path14.join)(options.dataDir, "projects"));
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
   const falMock2 = options.falMock ?? createMockFalQueueService();
@@ -43479,6 +43924,9 @@ function createLocalApiApp(options) {
   app.get("/api/v1/runtimes", async (c) => {
     if (!options.localAcp)
       return json({ runtimes: [] });
+    if (c.req.query("readiness") !== "snapshot") {
+      await options.localAcpReady;
+    }
     const rawProbe = c.req.query("probe");
     const probe = rawProbe === "1" || rawProbe === "true" ? true : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none" ? rawProbe : false;
     const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
@@ -43492,6 +43940,7 @@ function createLocalApiApp(options) {
         readToken: localHarnessesReceiptReadToken(result2)
       });
     }
+    await options.localAcpReady;
     const rawProbe = c.req.query("probe");
     const probe = rawProbe === "1" || rawProbe === "true" ? "auth" : rawProbe === "auth" || rawProbe === "config" || rawProbe === "none" ? rawProbe : false;
     const refresh = c.req.query("refresh") === "1" || c.req.query("refresh") === "true";
@@ -43868,6 +44317,22 @@ function createLocalApiApp(options) {
       }, 500);
     }
   });
+  app.put("/api/v1/runtimes/:runtimeId/preferences", async (c) => {
+    if (!options.localAcp?.updateRunPreferences) {
+      return c.json({ error: "Local agent runtime preferences unavailable" }, 404);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const agentId = typeof body.agent_id === "string" ? body.agent_id.trim() : "";
+    if (!agentId)
+      return c.json({ error: "Missing agent_id" }, 400);
+    const configValues = body.config_values && typeof body.config_values === "object" && !Array.isArray(body.config_values) ? Object.fromEntries(Object.entries(body.config_values).filter((entry) => typeof entry[1] === "string" || typeof entry[1] === "boolean")) : void 0;
+    const modeId = typeof body.mode_id === "string" && body.mode_id.trim() ? body.mode_id.trim() : void 0;
+    return c.json(await options.localAcp.updateRunPreferences({
+      agent_id: agentId,
+      ...configValues ? { config_values: configValues } : {},
+      ...modeId ? { mode_id: modeId } : {}
+    }));
+  });
   app.post("/api/v1/runtimes/:runtimeId/sessions", async (c) => {
     if (!options.localAcp) {
       return c.json({
@@ -43884,6 +44349,7 @@ function createLocalApiApp(options) {
     let agentMemberId = body.agent_member_id?.trim() || void 0;
     const requestedAgentId = body.agent_id?.trim() || void 0;
     const permissionMode = body.permission_mode?.trim() || void 0;
+    const configValues = body.config_values && typeof body.config_values === "object" && !Array.isArray(body.config_values) ? Object.fromEntries(Object.entries(body.config_values).filter((entry) => typeof entry[1] === "string" || typeof entry[1] === "boolean")) : void 0;
     let agentId = requestedAgentId;
     if (agentMemberId) {
       const agentMembers = await db.update((state) => seedLocalAgentMembers(state, userId));
@@ -43968,6 +44434,15 @@ function createLocalApiApp(options) {
           }
         } : {}
       });
+      if (agentId && options.localAcp.updateRunPreferences) {
+        await options.localAcp.updateRunPreferences({
+          agent_id: agentId,
+          ...configValues ? { config_values: configValues } : {},
+          ...permissionMode ? { mode_id: permissionMode } : {}
+        }).catch((error51) => {
+          console.warn("[local-api] could not persist recent ACP run choices:", errorMessage(error51));
+        });
+      }
       if (body.project_id && localSessionId) {
         await finalizeRuntimeSessionId(db, localSessionId, created.session_id, {
           ...pendingSessionPatches.get(localSessionId),
@@ -44304,7 +44779,7 @@ function createLocalApiApp(options) {
       return c.json({ error: "text revision not found" }, 404);
     let content;
     try {
-      content = await (0, import_promises12.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
+      content = await (0, import_promises13.readFile)(textRevisionContentBlobPath(options.dataDir, revision.contentHash), "utf8");
     } catch {
       return c.json({ error: "text revision content not found" }, 404);
     }
@@ -45565,7 +46040,7 @@ function createLocalApiApp(options) {
         }, 409);
       }
     }
-    await (0, import_promises12.writeFile)(path, bytes);
+    await (0, import_promises13.writeFile)(path, bytes);
     const at = Math.floor(Date.now() / 1e3);
     const exp = signedUrlExp();
     const asset = {
@@ -45635,7 +46110,7 @@ function createLocalApiApp(options) {
         mutation: hostMutationRejected(envelope, message)
       }, 400);
     }
-    await (0, import_promises12.writeFile)(path, new Uint8Array(await file2.arrayBuffer()));
+    await (0, import_promises13.writeFile)(path, new Uint8Array(await file2.arrayBuffer()));
     const preconditions = requestProjectWritePreconditions(c);
     const mutation = hostMutationSucceeded(envelope, {
       resultEntityId: storageKey
@@ -45657,7 +46132,7 @@ function createLocalApiApp(options) {
     }
     try {
       const path = await assetPathForRead(options.dataDir, storageKey, clashRoot);
-      const fileInfo = await (0, import_promises12.stat)(path);
+      const fileInfo = await (0, import_promises13.stat)(path);
       const range = parseAssetByteRange(c.req.header("range"), fileInfo.size);
       if (range === "unsatisfiable") {
         return new Response(null, {
@@ -45670,7 +46145,7 @@ function createLocalApiApp(options) {
       }
       if (range) {
         const length = range.end - range.start + 1;
-        const handle = await (0, import_promises12.open)(path, "r");
+        const handle = await (0, import_promises13.open)(path, "r");
         try {
           const bytes2 = new Uint8Array(length);
           const { bytesRead } = await handle.read(bytes2, 0, length, range.start);
@@ -45688,7 +46163,7 @@ function createLocalApiApp(options) {
           await handle.close();
         }
       }
-      const bytes = await (0, import_promises12.readFile)(path);
+      const bytes = await (0, import_promises13.readFile)(path);
       return new Response(bytes, {
         headers: {
           "accept-ranges": "bytes",
@@ -45747,8 +46222,8 @@ function createLocalApiApp(options) {
     const fileName = generated.fileName.toLowerCase().endsWith(".glb") ? generated.fileName : `${generated.fileName}.glb`;
     const storageKey = `projects/${sanitizeFileName(projectId)}/generated-models/${assetId}.glb`;
     const outputPath = await assetPathForWrite(options.dataDir, storageKey);
-    await (0, import_promises12.mkdir)((0, import_node_path12.dirname)(outputPath), { recursive: true });
-    await (0, import_promises12.writeFile)(outputPath, generated.bytes);
+    await (0, import_promises13.mkdir)((0, import_node_path14.dirname)(outputPath), { recursive: true });
+    await (0, import_promises13.writeFile)(outputPath, generated.bytes);
     const at = Math.floor(Date.now() / 1e3);
     const sourceUrl = localAssetUrl(c, storageKey);
     const asset = {
@@ -45848,8 +46323,8 @@ function createLocalApiApp(options) {
     const storageKey = `projects/${sanitizeFileName(projectId)}/edits/${assetId}.${ext}`;
     const path = await assetPathForWrite(options.dataDir, storageKey);
     const bytes = new Uint8Array(await file2.arrayBuffer());
-    await (0, import_promises12.mkdir)((0, import_node_path12.join)(path, ".."), { recursive: true });
-    await (0, import_promises12.writeFile)(path, bytes);
+    await (0, import_promises13.mkdir)((0, import_node_path14.join)(path, ".."), { recursive: true });
+    await (0, import_promises13.writeFile)(path, bytes);
     const at = Math.floor(Date.now() / 1e3);
     const asset = {
       id: assetId,
@@ -45916,7 +46391,7 @@ function createLocalApiApp(options) {
     const storageKey = `projects/${sanitizeFileName(projectId)}/edits/${assetId}.mp4`;
     const inputPath = await assetPathForRead(options.dataDir, source.srcR2Key, clashRoot);
     const outputPath = await assetPathForWrite(options.dataDir, storageKey);
-    await (0, import_promises12.mkdir)((0, import_node_path12.dirname)(outputPath), { recursive: true });
+    await (0, import_promises13.mkdir)((0, import_node_path14.dirname)(outputPath), { recursive: true });
     try {
       await execFileAsync3(ffmpeg, [
         "-y",
@@ -45935,10 +46410,10 @@ function createLocalApiApp(options) {
         outputPath
       ]);
     } catch (error51) {
-      await (0, import_promises12.rm)(outputPath, { force: true });
+      await (0, import_promises13.rm)(outputPath, { force: true });
       return c.json({ error: `Video trim failed: ${errorMessage(error51)}` }, 500);
     }
-    const bytes = await (0, import_promises12.readFile)(outputPath);
+    const bytes = await (0, import_promises13.readFile)(outputPath);
     const at = Math.floor(Date.now() / 1e3);
     const asset = {
       id: assetId,
@@ -46150,7 +46625,7 @@ function createLocalApiApp(options) {
     };
     let fileInfo;
     try {
-      fileInfo = await (0, import_promises12.stat)(await assetPathForRead(options.dataDir, srcR2Key, clashRoot));
+      fileInfo = await (0, import_promises13.stat)(await assetPathForRead(options.dataDir, srcR2Key, clashRoot));
       if (!fileInfo.isFile())
         throw new Error("Local blob is not a file");
     } catch {
@@ -46461,7 +46936,7 @@ function createLocalApiApp(options) {
     });
     if (result.status === 200) {
       for (const key of result.blobKeys) {
-        await (0, import_promises12.rm)(await assetPathForDelete(options.dataDir, key, clashRoot), {
+        await (0, import_promises13.rm)(await assetPathForDelete(options.dataDir, key, clashRoot), {
           force: true
         });
       }
@@ -46805,16 +47280,14 @@ function createLocalApiApp(options) {
 }
 
 // ../../apps/local-api/dist/host-discovery.js
-var import_node_crypto8 = require("node:crypto");
-var import_promises13 = require("node:fs/promises");
-var import_node_os4 = require("node:os");
-var import_node_path13 = require("node:path");
-function getDefaultHostDiscoveryRunDir() {
-  const clashHome = process.env.CLASH_HOME?.trim();
-  return (0, import_node_path13.join)(clashHome ? (0, import_node_path13.resolve)(clashHome) : (0, import_node_path13.join)((0, import_node_os4.homedir)(), ".clash"), "run");
+var import_node_crypto9 = require("node:crypto");
+var import_promises14 = require("node:fs/promises");
+var import_node_path15 = require("node:path");
+function getDefaultHostDiscoveryRunDir(env = process.env) {
+  return (0, import_node_path15.join)(clashHomeForLocalDataDir(defaultLocalApiDataDir(env)), "run");
 }
 function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()) {
-  return (0, import_node_path13.join)(runDir, "host.json");
+  return (0, import_node_path15.join)(runDir, "host.json");
 }
 function createHostDiscoveryRecord(options) {
   const now = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
@@ -46822,7 +47295,7 @@ function createHostDiscoveryRecord(options) {
     schemaVersion: LOCAL_HOST_RECORD_SCHEMA_VERSION,
     protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
     dataSchemaVersion: LOCAL_HOST_DATA_SCHEMA_VERSION,
-    hostId: options.hostId ?? (0, import_node_crypto8.randomUUID)(),
+    hostId: options.hostId ?? (0, import_node_crypto9.randomUUID)(),
     endpoint: options.endpoint,
     pid: options.pid ?? process.pid,
     launchMode: options.launchMode,
@@ -46838,20 +47311,20 @@ async function writeHostDiscovery(record2, options = {}) {
     throw new Error("Invalid local host discovery record");
   }
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
-  await (0, import_promises13.mkdir)(runDir, { recursive: true });
+  await (0, import_promises14.mkdir)(runDir, { recursive: true });
   const finalPath = getHostDiscoveryPath(runDir);
-  const tmpPath = (0, import_node_path13.join)(runDir, `host.${record2.hostId}.${process.pid}.${Date.now()}.tmp`);
-  await (0, import_promises13.writeFile)(tmpPath, `${JSON.stringify(record2, null, 2)}
+  const tmpPath = (0, import_node_path15.join)(runDir, `host.${record2.hostId}.${process.pid}.${Date.now()}.tmp`);
+  await (0, import_promises14.writeFile)(tmpPath, `${JSON.stringify(record2, null, 2)}
 `, { encoding: "utf8", mode: 384 });
-  await (0, import_promises13.rename)(tmpPath, finalPath);
-  await (0, import_promises13.chmod)(finalPath, 384).catch(() => void 0);
+  await (0, import_promises14.rename)(tmpPath, finalPath);
+  await (0, import_promises14.chmod)(finalPath, 384).catch(() => void 0);
 }
 async function removeHostDiscovery(hostId, options = {}) {
   const runDir = options.runDir ?? getDefaultHostDiscoveryRunDir();
   const filePath = getHostDiscoveryPath(runDir);
   let parsed;
   try {
-    parsed = JSON.parse(await (0, import_promises13.readFile)(filePath, "utf8"));
+    parsed = JSON.parse(await (0, import_promises14.readFile)(filePath, "utf8"));
   } catch (error51) {
     if (isNotFound(error51))
       return;
@@ -46859,7 +47332,7 @@ async function removeHostDiscovery(hostId, options = {}) {
   }
   if (!isLocalHostDiscoveryRecord(parsed) || parsed.hostId !== hostId)
     return;
-  await (0, import_promises13.rm)(filePath, { force: true });
+  await (0, import_promises14.rm)(filePath, { force: true });
 }
 function isNotFound(error51) {
   return Boolean(error51 && typeof error51 === "object" && "code" in error51 && error51.code === "ENOENT");
@@ -46867,9 +47340,9 @@ function isNotFound(error51) {
 
 // ../../apps/local-api/dist/local-acp.js
 var import_node_child_process6 = require("node:child_process");
-var import_node_crypto10 = require("node:crypto");
+var import_node_crypto11 = require("node:crypto");
 var import_promises20 = require("node:fs/promises");
-var import_node_path15 = require("node:path");
+var import_node_path17 = require("node:path");
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -63548,8 +64021,8 @@ var Connection = class {
     this.requestHandler = requestHandler;
     this.notificationHandler = notificationHandler;
     this.stream = stream;
-    this.closedPromise = new Promise((resolve8) => {
-      this.abortController.signal.addEventListener("abort", () => resolve8());
+    this.closedPromise = new Promise((resolve9) => {
+      this.abortController.signal.addEventListener("abort", () => resolve9());
     });
     void this.receive();
   }
@@ -63719,11 +64192,11 @@ var Connection = class {
       return rejectedPromise(this.closedReason());
     }
     const id = this.nextRequestId++;
-    const responsePromise = new Promise((resolve8, reject) => {
+    const responsePromise = new Promise((resolve9, reject) => {
       this.pendingResponses.set(id, {
         resolve: (response) => {
           try {
-            resolve8(mapResponse ? mapResponse(response) : response);
+            resolve9(mapResponse ? mapResponse(response) : response);
           } catch (error51) {
             reject(error51);
           }
@@ -63830,7 +64303,7 @@ var RequestError2 = class _RequestError extends Error {
   }
 };
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+86bbc8a1ee67d_b6422fe62d5f28fe6571d21acd30a7da/node_modules/@openma/common/dist/acp-runtime/session.js
+// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/session.js
 var NON_TRANSCRIPT_SESSION_UPDATES = /* @__PURE__ */ new Set([
   "available_commands_update",
   "current_mode_update",
@@ -63842,6 +64315,63 @@ var LOAD_REPLAY_QUIET_MS = 30;
 var LOAD_REPLAY_MAX_SETTLE_MS = 300;
 var SESSION_CLOSE_TIMEOUT_MS = 1e3;
 var ACP_AUTH_REQUIRED_CODE = -32e3;
+var LEGACY_MODEL_META_KEY = "openma.dev/legacy-model-state";
+function legacyModelStateFromResponse(value) {
+  if (!value || typeof value !== "object")
+    return null;
+  const models = value.models;
+  if (!models || typeof models !== "object")
+    return null;
+  const currentModelId = models.currentModelId;
+  const availableModels = models.availableModels;
+  if (typeof currentModelId !== "string" || !Array.isArray(availableModels))
+    return null;
+  const normalized = availableModels.flatMap((model) => {
+    if (!model || typeof model !== "object")
+      return [];
+    const candidate = model;
+    if (typeof candidate.modelId !== "string" || typeof candidate.name !== "string")
+      return [];
+    return [{
+      modelId: candidate.modelId,
+      name: candidate.name,
+      ...typeof candidate.description === "string" ? { description: candidate.description } : {}
+    }];
+  });
+  if (normalized.length === 0)
+    return null;
+  return { currentModelId, availableModels: normalized };
+}
+function isModelConfigOption(option) {
+  return option.category === "model" || option.id === "model";
+}
+function legacyModelConfigOption(state) {
+  return {
+    id: "model",
+    name: "Model",
+    category: "model",
+    type: "select",
+    currentValue: state.currentModelId,
+    options: state.availableModels.map((model) => ({
+      value: model.modelId,
+      name: model.name,
+      ...model.description ? { description: model.description } : {}
+    })),
+    _meta: { [LEGACY_MODEL_META_KEY]: true }
+  };
+}
+function isLegacyModelConfigOption(option) {
+  return option._meta?.[LEGACY_MODEL_META_KEY] === true;
+}
+function sessionConfigOptionsFromResponse(value) {
+  const responseConfigOptions = value && typeof value === "object" ? value.configOptions : void 0;
+  const configOptions = Array.isArray(responseConfigOptions) ? responseConfigOptions.map((option) => structuredClone(option)) : [];
+  const legacyModels = legacyModelStateFromResponse(value);
+  if (legacyModels && !configOptions.some(isModelConfigOption)) {
+    configOptions.push(legacyModelConfigOption(legacyModels));
+  }
+  return configOptions;
+}
 function sessionUpdateKind(update) {
   if (!update || typeof update !== "object")
     return null;
@@ -64102,6 +64632,25 @@ var AcpSessionImpl = class {
   async setConfigOption(configId, value) {
     if (!this.#agent || !this.#sessionId)
       throw new Error("AcpSession not initialized");
+    const legacyModelOption = this.#configOptions.find((option) => option.id === configId && isLegacyModelConfigOption(option));
+    if (legacyModelOption) {
+      if (typeof value !== "string") {
+        throw new Error("Legacy ACP model selection requires a string model id");
+      }
+      if (!this.#agent.extMethod) {
+        throw new Error("ACP agent does not support legacy model selection");
+      }
+      await this.#agent.extMethod("session/set_model", {
+        sessionId: this.#sessionId,
+        modelId: value
+      });
+      this.#configOptions = this.#configOptions.map((option) => {
+        if (option !== legacyModelOption || option.type !== "select")
+          return option;
+        return { ...option, currentValue: value };
+      });
+      return this.#configOptions;
+    }
     if (!this.#agent.setSessionConfigOption) {
       throw new Error("ACP agent does not support session config options");
     }
@@ -64170,8 +64719,8 @@ var AcpSessionImpl = class {
       } else if (ended || this.#disposed) {
         break;
       } else {
-        await new Promise((resolve8) => {
-          this.#waiters.push(resolve8);
+        await new Promise((resolve9) => {
+          this.#waiters.push(resolve9);
         });
       }
     }
@@ -64202,8 +64751,11 @@ var AcpSessionImpl = class {
       this.#waiters.shift()?.();
   }
   #setSessionStateFromResponse(value) {
-    if (Array.isArray(value?.configOptions))
-      this.#configOptions = value.configOptions;
+    const hasConfigOptions = Array.isArray(value?.configOptions);
+    const hasLegacyModels = legacyModelStateFromResponse(value) !== null;
+    if (hasConfigOptions || hasLegacyModels) {
+      this.#configOptions = sessionConfigOptionsFromResponse(value);
+    }
     if (value?.modes)
       this.#modes = structuredClone(value.modes);
   }
@@ -64220,7 +64772,7 @@ var AcpSessionImpl = class {
     const deadline = Date.now() + LOAD_REPLAY_MAX_SETTLE_MS;
     let lastSeen = this.#lastSuppressedLoadReplayAt;
     while (Date.now() < deadline) {
-      await new Promise((resolve8) => setTimeout(resolve8, LOAD_REPLAY_QUIET_MS));
+      await new Promise((resolve9) => setTimeout(resolve9, LOAD_REPLAY_QUIET_MS));
       if (this.#lastSuppressedLoadReplayAt === lastSeen)
         return;
       lastSeen = this.#lastSuppressedLoadReplayAt;
@@ -64243,7 +64795,7 @@ async function withTimeout(promise2, timeoutMs) {
   }
 }
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+86bbc8a1ee67d_b6422fe62d5f28fe6571d21acd30a7da/node_modules/@openma/common/dist/acp-runtime/runtime.js
+// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/runtime.js
 var nextId = 1;
 var DEFAULT_INIT_TIMEOUT_MS = 12e4;
 var AcpRuntimeImpl = class {
@@ -64287,7 +64839,7 @@ var AcpRuntimeImpl = class {
   }
 };
 
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+86bbc8a1ee67d_b6422fe62d5f28fe6571d21acd30a7da/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
+// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/acp-runtime/spawners/node.js
 var import_node_child_process4 = require("node:child_process");
 var activeChildren = /* @__PURE__ */ new Set();
 var cleanupHandlersInstalled = false;
@@ -64355,13 +64907,13 @@ var NodeSpawner = class {
           spec.onDiagnosticLine?.(buffer);
       });
     }
-    const exited = new Promise((resolve8) => {
+    const exited = new Promise((resolve9) => {
       let settled = false;
       const settle = (code, signal) => {
         if (settled)
           return;
         settled = true;
-        resolve8({ code, signal });
+        resolve9({ code, signal });
       };
       child.once("exit", settle);
       child.once("close", settle);
@@ -64395,8 +64947,8 @@ async function waitForChildExit(exited, timeoutMs) {
   try {
     return await Promise.race([
       exited.then(() => true),
-      new Promise((resolve8) => {
-        timer = setTimeout(() => resolve8(false), timeoutMs);
+      new Promise((resolve9) => {
+        timer = setTimeout(() => resolve9(false), timeoutMs);
         timer.unref?.();
       })
     ]);
@@ -64455,14 +65007,14 @@ function nodeWritableToWeb(stream) {
     write(chunk) {
       if (stream.destroyed || stream.writableEnded)
         return;
-      return new Promise((resolve8, reject) => {
+      return new Promise((resolve9, reject) => {
         const onError = (error51) => {
           cleanup();
           reject(error51);
         };
         const onDrain = () => {
           cleanup();
-          resolve8();
+          resolve9();
         };
         const cleanup = () => {
           stream.off("error", onError);
@@ -64474,7 +65026,7 @@ function nodeWritableToWeb(stream) {
             onError(error51);
           else if (canContinue) {
             cleanup();
-            resolve8();
+            resolve9();
           }
         });
         if (!canContinue)
@@ -64484,7 +65036,7 @@ function nodeWritableToWeb(stream) {
     close() {
       if (stream.destroyed || stream.writableEnded)
         return;
-      return new Promise((resolve8) => stream.end(resolve8));
+      return new Promise((resolve9) => stream.end(resolve9));
     },
     abort() {
       stream.destroy();
@@ -64492,9 +65044,9 @@ function nodeWritableToWeb(stream) {
   });
 }
 
-// ../../packages/clash-bridge/dist/chunk-IE73EAZD.js
+// ../../packages/clash-bridge/dist/chunk-Z7KC3PHH.js
 var import_fs = require("fs");
-var import_promises14 = require("fs/promises");
+var import_promises15 = require("fs/promises");
 var import_os = require("os");
 var import_path2 = require("path");
 
@@ -66456,12 +67008,12 @@ var Connection2 = class {
       return rejectedPromise2(this.closedReason());
     }
     const id = this.nextRequestId++;
-    const responsePromise = new Promise((resolve8, reject) => {
+    const responsePromise = new Promise((resolve9, reject) => {
       this.pendingResponses.set(id, {
         resolve: (response) => {
           try {
             const value = mapResponse ? mapResponse(response) : response;
-            resolve8(value);
+            resolve9(value);
           } catch (error51) {
             reject(error51);
           }
@@ -66503,8 +67055,8 @@ var Connection2 = class {
   initialize(stream, handlers) {
     this.stream = stream;
     this.staticHandlers = handlers;
-    this.closedPromise = new Promise((resolve8) => {
-      this.abortController.signal.addEventListener("abort", () => resolve8());
+    this.closedPromise = new Promise((resolve9) => {
+      this.abortController.signal.addEventListener("abort", () => resolve9());
     });
     void this.receive();
   }
@@ -67101,8 +67653,8 @@ var AsyncQueue = class {
     if (this.failed) {
       return Promise.reject(this.failure);
     }
-    return new Promise((resolve8, reject) => {
-      this.waiters.push({ resolve: resolve8, reject });
+    return new Promise((resolve9, reject) => {
+      this.waiters.push({ resolve: resolve9, reject });
     });
   }
 };
@@ -68152,9 +68704,34 @@ var ClientSideConnection2 = class {
   }
 };
 
-// ../../packages/clash-bridge/dist/chunk-IE73EAZD.js
+// ../../packages/clash-bridge/dist/chunk-Z7KC3PHH.js
+var CLASH_ACP_EXTENSION_CAPABILITIES = {
+  "terminal-auth": true,
+  terminal_output: true,
+  // Cursor uses this negotiated flag to expose thought-level and model-config
+  // parameters as standard SessionConfigOption entries. Other agents ignore it.
+  parameterizedModelPicker: true
+};
+function withClashAcpExtensionCapabilities(capabilities) {
+  const extended = capabilities;
+  return {
+    ...capabilities,
+    session: {
+      ...extended.session ?? {},
+      configOptions: {
+        ...extended.session?.configOptions ?? {},
+        boolean: {}
+      }
+    },
+    _meta: {
+      ...capabilities._meta ?? {},
+      ...CLASH_ACP_EXTENSION_CAPABILITIES
+    }
+  };
+}
 var ACP_AUTH_REQUIRED_CODE3 = -32e3;
-var ACP_CLIENT_CAPABILITIES = {
+var activeSetupConnections = /* @__PURE__ */ new Set();
+var ACP_CLIENT_CAPABILITIES = withClashAcpExtensionCapabilities({
   fs: {
     readTextFile: true,
     writeTextFile: true
@@ -68162,12 +68739,8 @@ var ACP_CLIENT_CAPABILITIES = {
   terminal: true,
   auth: {
     terminal: true
-  },
-  _meta: {
-    "terminal-auth": true,
-    terminal_output: true
   }
-};
+});
 function authMethodType(method) {
   const type = method.type;
   if (typeof type === "string") return type;
@@ -68187,26 +68760,39 @@ function supportedAuthMethods(authMethods) {
     return typeof typed.id === "string" && typed.id.length > 0 && isSupportedAuthMethod(typed);
   });
 }
-function isRecord6(value) {
+function declaredAuthMethods(authMethods) {
+  if (!Array.isArray(authMethods)) return [];
+  return authMethods.filter((method) => {
+    if (!method || typeof method !== "object") return false;
+    const typed = method;
+    return typeof typed.id === "string" && typed.id.length > 0;
+  });
+}
+function unsupportedAuthMethodTypes(methods2) {
+  return [...new Set(
+    methods2.filter((method) => !isSupportedAuthMethod(method)).map(authMethodType).filter((type) => type.length > 0)
+  )];
+}
+function isRecord7(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 function stringArray2(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
 function stringRecord(value) {
-  if (!isRecord6(value)) return void 0;
+  if (!isRecord7(value)) return void 0;
   const entries = Object.entries(value).filter((entry) => typeof entry[1] === "string");
   return entries.length > 0 ? Object.fromEntries(entries) : void 0;
 }
 function authMethodMeta(method) {
   const meta3 = method._meta ?? method.meta;
-  return isRecord6(meta3) ? meta3 : null;
+  return isRecord7(meta3) ? meta3 : null;
 }
 function terminalAuthMeta(method) {
   const meta3 = authMethodMeta(method);
   if (!meta3) return null;
   const terminalAuth = meta3["terminal-auth"];
-  if (!isRecord6(terminalAuth)) return null;
+  if (!isRecord7(terminalAuth)) return null;
   if (typeof terminalAuth.command !== "string" || terminalAuth.command.length === 0) return null;
   return {
     label: typeof terminalAuth.label === "string" && terminalAuth.label.length > 0 ? terminalAuth.label : authMethodName(method) ?? "Login",
@@ -68277,17 +68863,6 @@ function selectAuthMethod(authMethods, methodId) {
   if (!methodId) return methods2[0] ?? null;
   return methods2.find((method) => method.id === methodId) ?? null;
 }
-async function agentReportedAuthMethod(agent, methods2) {
-  if (typeof agent.extMethod !== "function") return null;
-  try {
-    const status = await agent.extMethod("authentication/status", {});
-    const type = isRecord6(status) && typeof status.type === "string" ? status.type : null;
-    if (!type || type === "unauthenticated") return null;
-    return methods2.find((method) => method.id === type) ?? null;
-  } catch {
-    return null;
-  }
-}
 function isAuthRequiredError2(error51) {
   if (!error51 || typeof error51 !== "object") return false;
   const typed = error51;
@@ -68307,7 +68882,7 @@ function inferredCredentialVars(method) {
   const description = authMethodDescription(method);
   if (!description || !/\benvironment variable\b|\benv(?:ironment)? var\b/i.test(description)) return void 0;
   const names = [...new Set(
-    [...description.matchAll(/\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b/g)].map((match2) => match2[1])
+    [...description.matchAll(/\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b/g)].flatMap((match2) => match2[1] ? [match2[1]] : [])
   )];
   if (names.length === 0) return void 0;
   return names.map((name) => ({
@@ -68324,6 +68899,9 @@ function isCredentialPromptAuthMethod(method) {
 }
 function credentialVariableNames(method) {
   return credentialVars(method)?.map((item) => item.name).join(", ");
+}
+function missingCredentialVariableNames(method, env) {
+  return (credentialVars(method) ?? []).filter((variable) => variable.optional !== true).map((variable) => variable.name).filter((name) => !env[name]);
 }
 function publicAuthMethods(methods2, agent, env, cwd) {
   return methods2.map((method) => {
@@ -68344,7 +68922,7 @@ function publicAuthMethods(methods2, agent, env, cwd) {
 function acpErrorMessage(error51) {
   if (error51 && typeof error51 === "object") {
     const data = error51.data;
-    if (isRecord6(data)) {
+    if (isRecord7(data)) {
       const details = data.details;
       if (typeof details === "string" && details.length > 0) return details;
       const message2 = data.message;
@@ -68375,10 +68953,19 @@ function authMethodStatusFields(method, methods2, agent, env, cwd) {
     methods: publicAuthMethods(methods2, agent, env, cwd)
   };
 }
-function publicEnv(env) {
-  if (!env) return void 0;
-  const entries = Object.entries(env).filter((entry) => typeof entry[1] === "string");
-  return entries.length > 0 ? Object.fromEntries(entries) : void 0;
+function mergedStringEnv(...envs) {
+  const out = {};
+  for (const env of envs) {
+    for (const [key, value] of Object.entries(env ?? {})) {
+      if (typeof value === "string") out[key] = value;
+    }
+  }
+  return out;
+}
+function mergedSpawnEnv(...envs) {
+  const out = {};
+  for (const env of envs) Object.assign(out, env);
+  return out;
 }
 function envArrayToRecord(env) {
   if (!Array.isArray(env)) return void 0;
@@ -68386,13 +68973,20 @@ function envArrayToRecord(env) {
   return entries.length > 0 ? Object.fromEntries(entries) : void 0;
 }
 function configOptionsFromResponse(value) {
-  return Array.isArray(value?.configOptions) ? value.configOptions.map((option) => structuredClone(option)) : [];
+  return sessionConfigOptionsFromResponse(value);
 }
 function configOptionsFromSessionUpdate(update) {
   if (!update || typeof update !== "object") return null;
   const typed = update;
   if (typed.sessionUpdate !== "config_option_update" || !Array.isArray(typed.configOptions)) return null;
   return typed.configOptions.map((option) => structuredClone(option));
+}
+function availableCommandsFromSessionUpdate(update) {
+  if (!update || typeof update !== "object") return null;
+  const typed = update;
+  if (typed.sessionUpdate !== "available_commands_update") return null;
+  const commands = Array.isArray(typed.availableCommands) ? typed.availableCommands : Array.isArray(typed.available_commands) ? typed.available_commands : null;
+  return commands?.map((command) => structuredClone(command)) ?? null;
 }
 function modesFromResponse(value) {
   return value?.modes ? structuredClone(value.modes) : null;
@@ -68417,18 +69011,30 @@ async function withTimeout2(promise2, timeoutMs, message) {
     if (timer) clearTimeout(timer);
   }
 }
+async function waitForSignalOrTimeout(signal, timeoutMs) {
+  let timer;
+  try {
+    await Promise.race([
+      signal,
+      new Promise((resolve9) => {
+        timer = setTimeout(resolve9, timeoutMs);
+        timer.unref?.();
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 async function spawnAcpProbeAgent(options) {
-  const env = {
-    ...publicEnv(options.agent.env) ?? {},
-    ...publicEnv(options.env) ?? {}
-  };
+  const env = mergedStringEnv(options.agent.env, options.env);
+  const spawnEnv = mergedSpawnEnv(options.agent.env, options.env);
   const diagnosticLines = [];
   const onDiagnosticLine = options.agent.onDiagnosticLine;
   const spawner = options.spawner ?? new NodeSpawner();
   const child = await spawner.spawn({
     ...options.agent,
     cwd: options.cwd,
-    env,
+    env: spawnEnv,
     onDiagnosticLine: (line) => {
       diagnosticLines.push(line);
       onDiagnosticLine?.(line);
@@ -68442,13 +69048,30 @@ async function spawnAcpProbeAgent(options) {
     },
     stream
   );
+  let disposePromise = null;
+  const dispose = () => {
+    disposePromise ??= withTimeout2(
+      child.kill(),
+      5e3,
+      "ACP setup process disposal timed out after 5000ms"
+    ).catch(() => void 0).finally(() => {
+      activeSetupConnections.delete(dispose);
+    });
+    return disposePromise;
+  };
+  activeSetupConnections.add(dispose);
   return {
     agent,
     child,
     env,
     diagnosticLines,
-    dispose: () => child.kill().catch(() => void 0)
+    dispose
   };
+}
+async function disposeAllAcpSetupProcesses() {
+  await Promise.allSettled(
+    [...activeSetupConnections].map((dispose) => dispose())
+  );
 }
 function initializeAcpAgent(agent) {
   return Promise.resolve(agent.initialize({
@@ -68475,17 +69098,27 @@ function unauthenticatedDiagnostic(lines) {
   return null;
 }
 async function allowDiagnosticsToFlush() {
-  await new Promise((resolve8) => setTimeout(resolve8, 25));
+  await new Promise((resolve9) => setTimeout(resolve9, 25));
 }
 async function probeAgentSessionConfig(options) {
   const cwd = options.cwd ?? (0, import_path2.join)((0, import_os.tmpdir)(), "clash-acp-probe");
-  await (0, import_promises14.mkdir)(cwd, { recursive: true });
+  await (0, import_promises15.mkdir)(cwd, { recursive: true });
   let updatedConfigOptions = [];
+  let updatedAvailableCommands = [];
   let updatedModeId = null;
+  let resolveAvailableCommands = null;
+  const availableCommandsReady = new Promise((resolve9) => {
+    resolveAvailableCommands = resolve9;
+  });
   const client2 = {
     sessionUpdate: async (params) => {
       const next = configOptionsFromSessionUpdate(params.update);
       if (next) updatedConfigOptions = next;
+      const commands = availableCommandsFromSessionUpdate(params.update);
+      if (commands) {
+        updatedAvailableCommands = commands;
+        resolveAvailableCommands?.();
+      }
       const modeId = modeFromSessionUpdate(params.update);
       if (modeId) updatedModeId = modeId;
     },
@@ -68499,20 +69132,84 @@ async function probeAgentSessionConfig(options) {
     client: client2
   });
   const timeoutMs = options.timeoutMs ?? 15e3;
+  const capabilitySettleMs = options.capabilitySettleMs ?? 750;
   try {
     return await withTimeout2(
       (async () => {
-        await initializeAcpAgent(connection.agent);
+        const initResult = await initializeAcpAgent(connection.agent);
+        const methods2 = supportedAuthMethods(initResult.authMethods);
+        const method = selectAuthMethod(initResult.authMethods);
+        if (!method) {
+          const declared = declaredAuthMethods(initResult.authMethods);
+          if (declared.length > 0) {
+            const unsupported = unsupportedAuthMethodTypes(declared);
+            return {
+              configOptions: [],
+              availableCommands: [],
+              auth: {
+                status: "unknown",
+                message: unsupported.length > 0 ? `No supported ACP auth method is available. Unsupported methods: ${unsupported.join(", ")}.` : "No supported ACP auth method is available."
+              }
+            };
+          }
+        }
+        const methodFields = method ? authMethodStatusFields(
+          method,
+          methods2,
+          options.agent,
+          connection.env,
+          cwd
+        ) : {};
+        if (method && isCredentialPromptAuthMethod(method)) {
+          const missing = missingCredentialVariableNames(
+            method,
+            connection.env
+          );
+          if (missing.length > 0) {
+            return {
+              configOptions: [],
+              availableCommands: [],
+              auth: {
+                status: "needs-auth",
+                ...methodFields,
+                message: missing.length === 1 ? `Missing credential variable: ${missing[0]}.` : `Missing credential variables: ${missing.join(", ")}.`
+              }
+            };
+          }
+        }
         try {
           const session = await createAcpProbeSession(connection.agent, cwd);
           const responseConfigOptions = configOptionsFromResponse(session);
           const modes = modesFromResponse(session);
+          await waitForSignalOrTimeout(
+            availableCommandsReady,
+            capabilitySettleMs
+          );
+          await allowDiagnosticsToFlush();
+          const diagnostic = unauthenticatedDiagnostic(
+            connection.diagnosticLines
+          );
           return {
             configOptions: responseConfigOptions.length > 0 ? responseConfigOptions : updatedConfigOptions,
-            ...modes ? { modes: updatedModeId ? { ...modes, currentModeId: updatedModeId } : modes } : {}
+            availableCommands: updatedAvailableCommands,
+            ...modes ? { modes: updatedModeId ? { ...modes, currentModeId: updatedModeId } : modes } : {},
+            auth: diagnostic ? {
+              status: "needs-auth",
+              ...methodFields,
+              message: diagnostic
+            } : method ? { status: "configured", ...methodFields } : { status: "none" }
           };
         } catch (error51) {
-          if (isAuthRequiredError2(error51)) return { configOptions: [] };
+          if (isAuthRequiredError2(error51)) {
+            return {
+              configOptions: [],
+              availableCommands: [],
+              auth: {
+                status: "needs-auth",
+                ...methodFields
+              }
+            };
+          }
           throw error51;
         }
       })(),
@@ -68525,17 +69222,14 @@ async function probeAgentSessionConfig(options) {
 }
 async function authenticateAgent(options) {
   const cwd = options.cwd ?? (0, import_path2.join)((0, import_os.tmpdir)(), "clash-acp-auth");
-  await (0, import_promises14.mkdir)(cwd, { recursive: true });
-  const env = {
-    ...publicEnv(options.agent.env) ?? {},
-    ...publicEnv(options.env) ?? {}
-  };
+  await (0, import_promises15.mkdir)(cwd, { recursive: true });
+  const env = mergedStringEnv(options.agent.env, options.env);
   let authTerminalId = 0;
   let activeAuthMethodName = "Agent";
   let resolveTerminalLaunch = null;
   let rejectTerminalLaunch = null;
-  const terminalLaunch = new Promise((resolve8, reject) => {
-    resolveTerminalLaunch = resolve8;
+  const terminalLaunch = new Promise((resolve9, reject) => {
+    resolveTerminalLaunch = resolve9;
     rejectTerminalLaunch = reject;
   });
   void terminalLaunch.catch(() => void 0);
@@ -68586,7 +69280,7 @@ async function authenticateAgent(options) {
   const keepBackgroundAuthAlive = (authPromise) => {
     keepChildAliveForBackgroundAuth = true;
     let backgroundTimer = setTimeout(() => {
-      void connection.child.kill().catch(() => void 0);
+      void connection.dispose();
       backgroundTimer = void 0;
     }, backgroundAuthTimeoutMs);
     backgroundTimer.unref?.();
@@ -68596,7 +69290,7 @@ async function authenticateAgent(options) {
       } catch {
       } finally {
         if (backgroundTimer) clearTimeout(backgroundTimer);
-        await connection.child.kill().catch(() => void 0);
+        await connection.dispose();
       }
     })();
   };
@@ -68626,8 +69320,8 @@ async function authenticateAgent(options) {
         });
         void authPromise.catch(() => void 0);
         let launchGraceTimer;
-        const launchGrace = agentAuthLaunchGraceMs > 0 ? new Promise((resolve8) => {
-          launchGraceTimer = setTimeout(() => resolve8("launched"), agentAuthLaunchGraceMs);
+        const launchGrace = agentAuthLaunchGraceMs > 0 ? new Promise((resolve9) => {
+          launchGraceTimer = setTimeout(() => resolve9("launched"), agentAuthLaunchGraceMs);
           launchGraceTimer.unref?.();
         }) : null;
         try {
@@ -68661,7 +69355,7 @@ async function authenticateAgent(options) {
 }
 async function probeAgentAuthStatus(options) {
   const cwd = options.cwd ?? (0, import_path2.join)((0, import_os.tmpdir)(), "clash-acp-auth-probe");
-  await (0, import_promises14.mkdir)(cwd, { recursive: true });
+  await (0, import_promises15.mkdir)(cwd, { recursive: true });
   const connection = await spawnAcpProbeAgent({
     agent: options.agent,
     cwd,
@@ -68674,9 +69368,29 @@ async function probeAgentAuthStatus(options) {
       (async () => {
         const initResult = await initializeAcpAgent(connection.agent);
         const methods2 = supportedAuthMethods(initResult.authMethods);
-        const method = await agentReportedAuthMethod(connection.agent, methods2) ?? selectAuthMethod(initResult.authMethods);
-        if (!method) return { status: "none" };
+        const method = selectAuthMethod(initResult.authMethods);
+        if (!method) {
+          const declared = declaredAuthMethods(initResult.authMethods);
+          if (declared.length > 0) {
+            const unsupported = unsupportedAuthMethodTypes(declared);
+            return {
+              status: "unknown",
+              message: unsupported.length > 0 ? `No supported ACP auth method is available. Unsupported methods: ${unsupported.join(", ")}.` : "No supported ACP auth method is available."
+            };
+          }
+          return { status: "none" };
+        }
         const methodFields = authMethodStatusFields(method, methods2, options.agent, connection.env, cwd);
+        if (isCredentialPromptAuthMethod(method)) {
+          const missing = missingCredentialVariableNames(method, connection.env);
+          if (missing.length > 0) {
+            return {
+              status: "needs-auth",
+              ...methodFields,
+              message: missing.length === 1 ? `Missing credential variable: ${missing[0]}.` : `Missing credential variables: ${missing.join(", ")}.`
+            };
+          }
+        }
         try {
           await createAcpProbeSession(connection.agent, cwd);
           await allowDiagnosticsToFlush();
@@ -68757,38 +69471,13 @@ async function listLocalAgentSessions(agent) {
   return listAgentSessions(new NodeSpawner(), { agent });
 }
 
-// ../../packages/clash-bridge/dist/chunk-UCZ252GK.js
+// ../../packages/clash-bridge/dist/chunk-G3AV3ZNV.js
 var import_fs2 = require("fs");
-var import_promises15 = require("fs/promises");
+var import_promises16 = require("fs/promises");
 var import_path3 = require("path");
 function registryShimName(id) {
   return `clash-acp-${id}`;
 }
-var CODEX_CONFIG_OPTIONS = [
-  {
-    id: "model",
-    name: "Model",
-    type: "select",
-    category: "model",
-    currentValue: "gpt-5.5",
-    options: [
-      { value: "gpt-5.5", name: "GPT-5.5", description: "Codex conversational model" },
-      { value: "gpt-5.4", name: "GPT-5.4", description: "Codex compatibility profile" }
-    ]
-  },
-  {
-    id: "thought_level",
-    name: "Thinking effort",
-    type: "select",
-    category: "thought_level",
-    currentValue: "medium",
-    options: [
-      { value: "low", name: "Low" },
-      { value: "medium", name: "Medium" },
-      { value: "high", name: "High" }
-    ]
-  }
-];
 var KNOWN_ACP_AGENTS = [
   {
     id: "codex-acp",
@@ -68796,8 +69485,7 @@ var KNOWN_ACP_AGENTS = [
     spec: { command: "codex-acp" },
     registryId: "codex-acp",
     installSource: "registry",
-    homepage: "https://github.com/zed-industries/codex-acp",
-    configOptions: CODEX_CONFIG_OPTIONS
+    homepage: "https://github.com/zed-industries/codex-acp"
   },
   {
     id: "claude-acp",
@@ -68914,9 +69602,9 @@ var KNOWN_ACP_AGENTS = [
     homepage: "https://docs.openclaw.ai/cli/acp"
   }
 ];
-async function isExecutable(path) {
+async function isExecutable(path, platform2 = process.platform) {
   try {
-    await (0, import_promises15.access)(path, import_fs2.constants.X_OK);
+    await (0, import_promises16.access)(path, platform2 === "win32" ? import_fs2.constants.F_OK : import_fs2.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -68961,7 +69649,7 @@ function candidateSystemDirs(options) {
 async function candidateNodeVersionDirs(root, suffix) {
   const dirs = [];
   try {
-    for (const entry of await (0, import_promises15.readdir)(root, { withFileTypes: true })) {
+    for (const entry of await (0, import_promises16.readdir)(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       dirs.push((0, import_path3.join)(root, entry.name, ...suffix));
     }
@@ -69009,19 +69697,33 @@ function candidateMacAppExecutables(entry, options) {
   }
   return [...new Set(candidates)];
 }
-async function resolveCommandInDirs(command, dirs) {
-  if ((0, import_path3.isAbsolute)(command)) return await isExecutable(command) ? command : null;
+function candidateCommandNames(command, options) {
+  const platform2 = options.platform ?? process.platform;
+  if (platform2 !== "win32" || (0, import_path3.extname)(command)) return [command];
+  const env = options.env ?? process.env;
+  const extensions = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((extension2) => extension2.trim().toLowerCase()).filter(Boolean);
+  return [command, ...extensions.map((extension2) => `${command}${extension2}`)];
+}
+async function resolveCommandInDirs(command, dirs, options) {
+  const platform2 = options.platform ?? process.platform;
+  if ((0, import_path3.isAbsolute)(command)) return await isExecutable(command, platform2) ? command : null;
   for (const dir of dirs) {
-    const candidate = (0, import_path3.join)(dir, command);
-    if (await isExecutable(candidate)) return candidate;
+    for (const name of candidateCommandNames(command, options)) {
+      const candidate = (0, import_path3.join)(dir, name);
+      if (await isExecutable(candidate, platform2)) return candidate;
+    }
   }
   return null;
 }
 async function resolveAgentCommand(command, options = {}) {
-  return resolveCommandInDirs(command, candidateBinDirs(options));
+  return resolveCommandInDirs(command, candidateBinDirs(options), options);
 }
 async function resolveSystemCommand(entry, options = {}) {
-  const fromBins = await resolveCommandInDirs(entry.spec.command, await candidateSystemBinDirs(options));
+  const fromBins = await resolveCommandInDirs(
+    entry.spec.command,
+    await candidateSystemBinDirs(options),
+    options
+  );
   if (fromBins) return fromBins;
   for (const candidate of candidateMacAppExecutables(entry, options)) {
     if (await isExecutable(candidate)) return candidate;
@@ -69033,10 +69735,22 @@ async function detectEntry(entry, options = {}) {
   const command = managedCommand ?? (entry.systemPath ? await resolveSystemCommand(entry, options) : null);
   if (!command) return null;
   if (entry.probe && !await entry.probe(command, options)) return null;
-  const spec = entry.resolveSpec ? await entry.resolveSpec(command, options) : {
-    ...entry.spec,
-    command
-  };
+  let spec;
+  if (entry.resolveSpec) {
+    spec = await entry.resolveSpec(command, options);
+  } else if ((options.platform ?? process.platform) === "win32" && /\.(?:bat|cmd)$/i.test(command)) {
+    const env = options.env ?? process.env;
+    spec = {
+      ...entry.spec,
+      command: env.ComSpec ?? env.COMSPEC ?? "cmd.exe",
+      args: ["/d", "/s", "/c", command, ...entry.spec.args ?? []]
+    };
+  } else {
+    spec = {
+      ...entry.spec,
+      command
+    };
+  }
   return {
     ...entry,
     spec
@@ -69052,7 +69766,7 @@ async function detectAll(options = {}) {
   return results.filter((e) => e !== null);
 }
 
-// ../../packages/clash-bridge/dist/chunk-A2JF7RFE.js
+// ../../packages/clash-bridge/dist/chunk-QHDUUIIF.js
 var import_os2 = require("os");
 var import_child_process2 = require("child_process");
 var import_path4 = require("path");
@@ -69070,7 +69784,6 @@ function paths() {
   const credsFile = (0, import_path4.join)(configDir, "credentials.json");
   const machineIdFile = (0, import_path4.join)(configDir, "machine-id");
   const projectsDir = (0, import_path4.join)(configDir, "projects");
-  const workspacesDir = (0, import_path4.join)(configDir, "workspaces");
   const logFile = (0, import_path4.join)(configDir, "logs", "bridge.log");
   let serviceFile = null;
   if (p === "darwin") {
@@ -69078,7 +69791,7 @@ function paths() {
   } else if (p === "linux") {
     serviceFile = (0, import_path4.join)(home, ".config", "systemd", "user", `${SERVICE_LABEL}.service`);
   }
-  return { configDir, credsFile, machineIdFile, projectsDir, workspacesDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
+  return { configDir, credsFile, machineIdFile, projectsDir, logFile, serviceFile, serviceLabel: SERVICE_LABEL };
 }
 function osTag() {
   return `${(0, import_os2.platform)()}/${process.arch}`;
@@ -69103,15 +69816,15 @@ function machineName() {
   return `${user}'s ${p === "darwin" ? "Mac" : p === "linux" ? "Linux box" : "computer"}`;
 }
 
-// ../../packages/clash-bridge/dist/chunk-4YLSRNDP.js
-var import_promises16 = require("fs/promises");
+// ../../packages/clash-bridge/dist/chunk-TSSNRI4Q.js
+var import_promises17 = require("fs/promises");
 var import_os3 = require("os");
 var import_path5 = require("path");
 var ROOT = (0, import_path5.join)((0, import_os3.homedir)(), ".claude", "projects");
 async function listLocalCcSessions(limit = 20) {
   let projectDirs;
   try {
-    projectDirs = await (0, import_promises16.readdir)(ROOT);
+    projectDirs = await (0, import_promises17.readdir)(ROOT);
   } catch (e) {
     if (e.code === "ENOENT") return [];
     throw e;
@@ -69124,7 +69837,7 @@ async function listLocalCcSessions(limit = 20) {
     const projPath = (0, import_path5.join)(ROOT, projDir);
     let entries = [];
     try {
-      entries = await (0, import_promises16.readdir)(projPath);
+      entries = await (0, import_promises17.readdir)(projPath);
     } catch {
       continue;
     }
@@ -69132,7 +69845,7 @@ async function listLocalCcSessions(limit = 20) {
       if (!entry.endsWith(".jsonl")) continue;
       const file2 = (0, import_path5.join)(projPath, entry);
       try {
-        const st = await (0, import_promises16.stat)(file2);
+        const st = await (0, import_promises17.stat)(file2);
         if (!st.isFile()) continue;
         const id = entry.slice(0, -".jsonl".length);
         const title = await readFirstSummary(file2);
@@ -69154,7 +69867,7 @@ async function listLocalCcSessions(limit = 20) {
 async function readFirstSummary(file2) {
   let text;
   try {
-    const buf = await (0, import_promises16.readFile)(file2, { encoding: "utf-8" });
+    const buf = await (0, import_promises17.readFile)(file2, { encoding: "utf-8" });
     text = buf;
   } catch {
     return "";
@@ -69193,13 +69906,35 @@ function decodeCcProjectDir(name) {
   return "/" + name.slice(1).replace(/-/g, "/");
 }
 
-// ../../packages/clash-bridge/dist/chunk-VDDAEY4I.js
-var import_promises17 = require("fs/promises");
+// ../../packages/clash-bridge/dist/chunk-6GUZPG76.js
+var import_promises18 = require("fs/promises");
 var import_fs3 = require("fs");
 var import_path6 = require("path");
 var import_url6 = require("url");
+var HARNESS_PROJECT_SKILL_DIRECTORIES = {
+  "codex-acp": ".agents/skills",
+  "claude-acp": ".claude/skills",
+  gemini: ".agents/skills",
+  opencode: ".agents/skills",
+  cursor: ".agents/skills",
+  "qwen-code": ".qwen/skills",
+  "github-copilot-cli": ".agents/skills",
+  kilo: ".kilocode/skills",
+  "grok-build": ".grok/skills",
+  "amp-acp": ".agents/skills",
+  goose: ".goose/skills",
+  cline: ".agents/skills",
+  auggie: ".augment/skills",
+  hermes: ".hermes/skills",
+  openclaw: "skills"
+};
+function resolveHarnessProjectSkillDirectory(harnessId) {
+  return HARNESS_PROJECT_SKILL_DIRECTORIES[harnessId];
+}
 var DEFAULT_PROJECT = "_default";
-function bundledAgentsDir() {
+function resolveBundledAgentsDir(env = process.env) {
+  const externalRoot = env.CLASH_AGENT_BUNDLE_ROOT?.trim();
+  if (externalRoot) return (0, import_path6.resolve)(externalRoot);
   const candidates = [
     new URL("./agents/", __clash_import_meta_url),
     new URL("../../dist/agents/", __clash_import_meta_url)
@@ -69210,36 +69945,129 @@ function bundledAgentsDir() {
   }
   return (0, import_url6.fileURLToPath)(candidates[0]);
 }
+function bundledAgentsDir() {
+  return resolveBundledAgentsDir();
+}
 async function readAgentRuntime(agentTemplateId) {
   try {
-    const text = await (0, import_promises17.readFile)((0, import_path6.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
+    const text = await (0, import_promises18.readFile)((0, import_path6.join)(bundledAgentsDir(), agentTemplateId, "runtime.json"), "utf-8");
     return JSON.parse(text);
   } catch {
     return null;
   }
 }
-async function ensureAgentCwd(agentTemplateId, projectId) {
+function isRecord8(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function assertInside(root, candidate, label) {
+  const fromRoot = (0, import_path6.relative)(root, candidate);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${import_path6.sep}`) || (0, import_path6.isAbsolute)(fromRoot)) {
+    throw new Error(`${label} must stay inside the bundled plugin`);
+  }
+  return candidate;
+}
+function resolvePluginPath(pluginRoot, base, value) {
+  if (!value.startsWith("./") && !value.startsWith("../")) return value;
+  return assertInside(pluginRoot, (0, import_path6.resolve)(base, value), `plugin path '${value}'`);
+}
+function configuredEnv(value) {
+  if (value === void 0) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => isRecord8(entry) && typeof entry.name === "string" && typeof entry.value === "string" ? [{ name: entry.name, value: entry.value }] : []);
+  }
+  if (!isRecord8(value)) return [];
+  return Object.entries(value).flatMap(([name, entry]) => typeof entry === "string" ? [{ name, value: entry }] : []);
+}
+function pluginMcpEnv(runtimeEnv, pluginEnv, usesElectronNode) {
+  const merged = /* @__PURE__ */ new Map();
+  for (const [name, value] of Object.entries(runtimeEnv)) {
+    if (value && (name.startsWith("CLASH_") || name === "PATH" || name === "NODE_PATH")) {
+      merged.set(name, value);
+    }
+  }
+  for (const entry of configuredEnv(pluginEnv)) merged.set(entry.name, entry.value);
+  if (usesElectronNode) merged.set("ELECTRON_RUN_AS_NODE", "1");
+  return [...merged].map(([name, value]) => ({ name, value }));
+}
+async function resolvePluginMcpServers(pluginRoot, runtimeEnv) {
+  const manifest = JSON.parse(
+    await (0, import_promises18.readFile)((0, import_path6.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
+  );
+  const pluginName = typeof manifest.name === "string" ? manifest.name : "plugin";
+  const mcpManifestPath = manifest.mcpServers;
+  if (typeof mcpManifestPath !== "string" || !mcpManifestPath.startsWith("./")) {
+    throw new Error(`built-in plugin '${pluginName}' has no valid mcpServers manifest`);
+  }
+  const mcpPath = resolvePluginPath(pluginRoot, pluginRoot, mcpManifestPath);
+  const mcpConfig = JSON.parse(await (0, import_promises18.readFile)(mcpPath, "utf8"));
+  const wrapped = isRecord8(mcpConfig.mcpServers) ? mcpConfig.mcpServers : isRecord8(mcpConfig.mcp_servers) ? mcpConfig.mcp_servers : mcpConfig;
+  const servers = [];
+  for (const [serverName, rawServer] of Object.entries(wrapped)) {
+    if (!isRecord8(rawServer) || rawServer.enabled === false) continue;
+    if (typeof rawServer.command !== "string") {
+      throw new Error(`built-in MCP '${serverName}' must use stdio`);
+    }
+    const cwd = rawServer.cwd === void 0 || rawServer.cwd === "." ? pluginRoot : typeof rawServer.cwd === "string" ? resolvePluginPath(pluginRoot, pluginRoot, rawServer.cwd) : pluginRoot;
+    const configuredArgs = Array.isArray(rawServer.args) ? rawServer.args.filter((entry) => typeof entry === "string") : [];
+    const nodeCommand = rawServer.command === "node";
+    const command = nodeCommand ? runtimeEnv.CLASH_NODE_EXEC_PATH || process.execPath : resolvePluginPath(pluginRoot, cwd, rawServer.command);
+    const usesElectronNode = nodeCommand && command === runtimeEnv.CLASH_NODE_EXEC_PATH;
+    servers.push({
+      name: serverName,
+      command,
+      args: configuredArgs.map((arg) => resolvePluginPath(pluginRoot, cwd, arg)),
+      env: pluginMcpEnv(runtimeEnv, rawServer.env, usesElectronNode),
+      _meta: {
+        "io.modelcontextprotocol/ui": {
+          host: pluginName,
+          mimeTypes: ["text/html;profile=mcp-app"]
+        },
+        ...pluginName === "clash" ? {
+          "clash.plugin": "builtin",
+          "clash.renderer": "product"
+        } : {}
+      }
+    });
+  }
+  return servers;
+}
+async function resolveAgentMcpServers(agentTemplateId, runtimeEnv) {
+  const runtime = await readAgentRuntime(agentTemplateId);
+  if (!runtime?.plugins?.length) return [];
+  const agentRoot = (0, import_path6.join)(bundledAgentsDir(), sanitize(agentTemplateId));
+  const resolved = await Promise.all(runtime.plugins.map((pluginId) => resolvePluginMcpServers(
+    pluginId === "clash" && runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT ? (0, import_path6.resolve)(runtimeEnv.CLASH_BUILTIN_PLUGIN_ROOT) : (0, import_path6.join)(agentRoot, "plugins", sanitize(pluginId)),
+    runtimeEnv
+  )));
+  return resolved.flat();
+}
+async function ensureAgentCwd(agentTemplateId, projectId, capabilities = {}) {
   const canonicalProjectId = projectId && projectId.length > 0 ? projectId : DEFAULT_PROJECT;
   const projectPathSegment = projectIdPathSegment(canonicalProjectId);
   const cwd = (0, import_path6.join)(paths().projectsDir, projectPathSegment);
-  await (0, import_promises17.mkdir)(cwd, { recursive: true });
+  await (0, import_promises18.mkdir)(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
   await installAgentTemplate(agentTemplateId, cwd);
+  await installNativeAgentSkills(
+    agentTemplateId,
+    resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""),
+    cwd
+  );
   await writeProjectMarker(cwd, canonicalProjectId);
   return cwd;
 }
 async function ensureProjectWorkspaceLayout(cwd) {
   await Promise.all([
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "drafts"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "projections", "text"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "projections", "timelines"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "projections", "storyboards"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "projections", "prompts"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "projections", "metadata"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "timelines"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "sessions"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "assets", "links"), { recursive: true }),
-    (0, import_promises17.mkdir)((0, import_path6.join)(cwd, "runtime"), { recursive: true })
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "drafts"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "projections", "text"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "projections", "timelines"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "projections", "storyboards"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "projections", "prompts"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "projections", "metadata"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "timelines"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "sessions"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "assets", "links"), { recursive: true }),
+    (0, import_promises18.mkdir)((0, import_path6.join)(cwd, "runtime"), { recursive: true })
   ]);
 }
 function sanitize(id) {
@@ -69249,7 +70077,7 @@ async function installAgentTemplate(agentTemplateId, cwd) {
   const templateId = sanitize(agentTemplateId);
   const tpl = (0, import_path6.join)(bundledAgentsDir(), templateId, "template");
   try {
-    await (0, import_promises17.cp)(tpl, cwd, { recursive: true, force: true });
+    await (0, import_promises18.cp)(tpl, cwd, { recursive: true, force: true });
   } catch (e) {
     if (e.code === "ENOENT") {
       throw new Error(`unknown agent template: ${templateId}`);
@@ -69257,10 +70085,66 @@ async function installAgentTemplate(agentTemplateId, cwd) {
     throw e;
   }
 }
+function resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory) {
+  if (!workspaceSkillDirectory) return null;
+  if ((0, import_path6.isAbsolute)(workspaceSkillDirectory)) {
+    throw new Error("workspace Skill directory must be relative to the session cwd");
+  }
+  const root = (0, import_path6.resolve)(cwd, workspaceSkillDirectory);
+  const fromCwd = (0, import_path6.relative)(cwd, root);
+  if (fromCwd === ".." || fromCwd.startsWith(`..${import_path6.sep}`) || (0, import_path6.isAbsolute)(fromCwd)) {
+    throw new Error("workspace Skill directory must stay inside the session cwd");
+  }
+  return root;
+}
+async function replaceManagedSkillLink(target, source) {
+  const current = await (0, import_promises18.lstat)(target).catch((error51) => {
+    if (error51.code === "ENOENT") return null;
+    throw error51;
+  });
+  if (current) {
+    if (!current.isSymbolicLink()) {
+      throw new Error(`Cannot install bundled Clash skill over an existing workspace entry: ${target}`);
+    }
+    if (await (0, import_promises18.readlink)(target) === source) return;
+    await (0, import_promises18.unlink)(target);
+  }
+  await (0, import_promises18.symlink)(source, target, "dir");
+}
+async function installNativeAgentSkills(agentTemplateId, workspaceSkillDirectory, cwd) {
+  const root = resolveWorkspaceSkillRoot(cwd, workspaceSkillDirectory);
+  if (!root) return;
+  const runtime = await readAgentRuntime(agentTemplateId);
+  if (!runtime?.plugins?.length) return;
+  await (0, import_promises18.mkdir)(root, { recursive: true });
+  for (const pluginId of runtime.plugins) {
+    const pluginRoot = (0, import_path6.join)(
+      bundledAgentsDir(),
+      sanitize(agentTemplateId),
+      "plugins",
+      sanitize(pluginId)
+    );
+    const manifest = JSON.parse(
+      await (0, import_promises18.readFile)((0, import_path6.join)(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")
+    );
+    const configuredRoots = typeof manifest.skills === "string" ? [manifest.skills] : Array.isArray(manifest.skills) ? manifest.skills.filter((entry) => typeof entry === "string") : [];
+    for (const configuredRoot of configuredRoots) {
+      const skillRoot = resolvePluginPath(pluginRoot, pluginRoot, configuredRoot);
+      const entries = await (0, import_promises18.readdir)(skillRoot, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        await replaceManagedSkillLink(
+          (0, import_path6.join)(root, sanitize(entry.name)),
+          (0, import_path6.join)(skillRoot, entry.name)
+        );
+      }
+    }
+  }
+}
 async function writeProjectMarker(cwd, projectId) {
   const markerDir = (0, import_path6.join)(cwd, ".clash");
-  await (0, import_promises17.mkdir)(markerDir, { recursive: true });
-  await (0, import_promises17.writeFile)(
+  await (0, import_promises18.mkdir)(markerDir, { recursive: true });
+  await (0, import_promises18.writeFile)(
     (0, import_path6.join)(markerDir, "project.toml"),
     [
       "schema_version = 1",
@@ -69273,12 +70157,7 @@ async function writeProjectMarker(cwd, projectId) {
   );
 }
 
-// ../../packages/clash-bridge/dist/chunk-V5TL6ZAL.js
-var import_promises18 = require("fs/promises");
-var import_path7 = require("path");
-var import_url7 = require("url");
-
-// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+86bbc8a1ee67d_b6422fe62d5f28fe6571d21acd30a7da/node_modules/@openma/common/dist/session-kernel/index.js
+// ../../node_modules/.pnpm/@openma+common@https+++codeload.github.com+openma-ai+openma-common+tar.gz+28d93020c85c2_2fe51cb3b18b085048d70b65548de819/node_modules/@openma/common/dist/session-kernel/index.js
 function initialSessionLifecycle(sessionId) {
   return { sessionId, status: "draft" };
 }
@@ -69324,7 +70203,7 @@ function reduceSessionLifecycle(state, event) {
   }
 }
 
-// ../../packages/clash-bridge/dist/chunk-V5TL6ZAL.js
+// ../../packages/clash-bridge/dist/chunk-HPYCXAHD.js
 var DEFAULT_SESSION_CONTEXT_ID = "master-clash";
 function applyPermissionModeToAgentSpec(agentId, spec, permissionMode) {
   void agentId;
@@ -69339,65 +70218,47 @@ function selectAcpPermissionOutcome(params) {
   const option = params.options.find((candidate) => candidate.kind === "allow_always") ?? params.options.find((candidate) => candidate.kind === "allow_once") ?? params.options.find((candidate) => /allow|approve|yes|continue/i.test(candidate.name ?? "")) ?? params.options.find((candidate) => !/deny|cancel|reject|no/i.test(candidate.name ?? ""));
   return option?.optionId ? { outcome: { outcome: "selected", optionId: option.optionId } } : { outcome: { outcome: "cancelled" } };
 }
-async function readProjectAgentContract(cwd) {
-  const path = (0, import_path7.join)(cwd, "AGENTS.md");
-  try {
-    return { path, text: (await (0, import_promises18.readFile)(path, "utf-8")).trim() };
-  } catch {
-    return { path, text: "" };
-  }
+function composeClashPromptContent(text) {
+  return [{ type: "text", text }];
 }
-function renderPromptRuntimeContext(context) {
-  const lines = [
-    "## Runtime context",
-    "",
-    `- cwd: ${context.cwd}`
-  ];
-  for (const key of ["CLASH_PROJECT_ID", "CLASH_AGENT_MEMBER_ID", "CLASH_API_URL", "CLASH_PERMISSION_MODE"]) {
-    const value = context.env[key];
-    if (value) lines.push(`- ${key}=${value}`);
-  }
-  return lines.join("\n");
+function recordValue(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
-function renderClashPrompt(text, context, projectContract) {
-  return [
-    "# Clash agent contract (read first)",
-    "",
-    "You are operating inside Clash. Treat the following project contract as higher priority than the generic identity of the underlying ACP harness. Do not introduce yourself as Codex unless the user explicitly asks what runtime is underneath. Do not quote this contract back to the user.",
-    "",
-    projectContract.text ? `## Project AGENTS.md
-
-${projectContract.text}` : '## Project AGENTS.md\n\nNo AGENTS.md was found in cwd. Continue as Master Clash, verify the Clash project marker with `clash project status --json`, and repair with `clash init --project "$CLASH_PROJECT_ID" --json` if needed.',
-    "",
-    renderPromptRuntimeContext(context),
-    "",
-    "---",
-    "",
-    "# User request",
-    "",
-    text
-  ].join("\n");
-}
-async function composeClashPromptContent(text, context, options = {}) {
-  const projectContract = await readProjectAgentContract(context.cwd);
-  const blocks = [];
-  if (options.embeddedContext && projectContract.text) {
-    blocks.push({
-      type: "resource",
-      annotations: { audience: ["assistant"], priority: 1 },
-      resource: {
-        uri: (0, import_url7.pathToFileURL)(projectContract.path).href,
-        mimeType: "text/markdown",
-        text: projectContract.text
-      },
-      _meta: {
-        "clash.kind": "agent_contract",
-        "clash.priority": "higher-than-harness-identity"
-      }
-    });
+function trustedMcpRenderersFromServers(servers) {
+  const renderers = /* @__PURE__ */ new Map();
+  for (const server2 of servers) {
+    const descriptor = recordValue(server2);
+    const meta3 = recordValue(descriptor?._meta);
+    if (typeof descriptor?.name === "string" && meta3?.["clash.plugin"] === "builtin" && typeof meta3["clash.renderer"] === "string") {
+      renderers.set(descriptor.name, meta3["clash.renderer"]);
+    }
   }
-  blocks.push({ type: "text", text: renderClashPrompt(text, context, projectContract) });
-  return blocks;
+  return renderers;
+}
+function annotateTrustedMcpEvent(event, renderers) {
+  if (renderers.size === 0) return event;
+  const outer = recordValue(event);
+  if (!outer) return event;
+  const nested = recordValue(outer.update);
+  const update = nested ?? outer;
+  const updateType = update.sessionUpdate ?? outer.sessionUpdate;
+  if (updateType !== "tool_call" && updateType !== "tool_call_update") return event;
+  const meta3 = recordValue(update._meta) ?? {};
+  const rawInput = recordValue(update.rawInput ?? update.raw_input ?? update.input);
+  const explicitMcp = meta3.is_mcp_tool_call === true || typeof meta3.mcp_server_name === "string" || typeof meta3.mcpServerName === "string";
+  if (!explicitMcp) return event;
+  const serverName = typeof meta3.mcp_server_name === "string" ? meta3.mcp_server_name : typeof meta3.mcpServerName === "string" ? meta3.mcpServerName : typeof rawInput?.server === "string" ? rawInput.server : null;
+  const renderer = serverName ? renderers.get(serverName) : void 0;
+  if (!renderer) return event;
+  const annotatedUpdate = {
+    ...update,
+    _meta: {
+      ...meta3,
+      "clash.host_trusted_mcp": true,
+      "clash.renderer": renderer
+    }
+  };
+  return nested ? { ...outer, update: annotatedUpdate } : annotatedUpdate;
 }
 function diagnosticDetail(line) {
   if (/request timed out/i.test(line)) return "request timed out";
@@ -69459,6 +70320,7 @@ var SessionManager = class {
   #lifecycles = /* @__PURE__ */ new Map();
   #activeTurnBySession = /* @__PURE__ */ new Map();
   #lastDiagnosticBySession = /* @__PURE__ */ new Map();
+  #requestPermission;
   /** session_id → Promise that resolves once start() has populated #sessions
    *  (or rejected if start failed). The server may push session.prompt
    *  before the corresponding session.start has finished the slow ACP
@@ -69468,8 +70330,9 @@ var SessionManager = class {
   #starting = /* @__PURE__ */ new Map();
   #cancelledStarts = /* @__PURE__ */ new Set();
   #env = {};
-  constructor(send) {
+  constructor(send, options = {}) {
     this.#send = send;
+    this.#requestPermission = options.requestPermission ?? (async (_sessionId, params) => selectAcpPermissionOutcome(params));
   }
   /** Update the env injected into every subsequent spawn. */
   setSpawnEnv(env) {
@@ -69498,7 +70361,9 @@ var SessionManager = class {
       acp_session_id: session.acp.acpSessionId,
       config_options: [...session.acp.configOptions],
       ...modes ? { modes } : {},
-      ...(session.acp.loadedReplayEvents?.length ?? 0) > 0 ? { replay_events: [...session.acp.loadedReplayEvents] } : {}
+      ...(session.acp.loadedReplayEvents?.length ?? 0) > 0 ? {
+        replay_events: session.acp.loadedReplayEvents.map((event) => annotateTrustedMcpEvent(event, session.trustedMcpRenderers))
+      } : {}
     });
   }
   #flushPendingSessionState(sessionId, session) {
@@ -69508,7 +70373,7 @@ var SessionManager = class {
         type: "session.event",
         session_id: sessionId,
         turn_id: "",
-        event
+        event: annotateTrustedMcpEvent(event, session.trustedMcpRenderers)
       });
     }
   }
@@ -69565,7 +70430,11 @@ var SessionManager = class {
       return;
     }
     const resumeId = p.resume?.acp_session_id;
-    const sessionCwd = await ensureAgentCwd(agentTemplateId, p.project_id);
+    const sessionCwd = await ensureAgentCwd(
+      agentTemplateId,
+      p.project_id,
+      { harnessId: resolvedAgentId }
+    );
     process.stderr.write(
       `  \u2192 SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}\u2026)` : ""} cwd=${sessionCwd}
 `
@@ -69581,8 +70450,16 @@ var SessionManager = class {
       }
       if (p.agent_member_id) spawnEnv.CLASH_AGENT_MEMBER_ID = p.agent_member_id;
       if (p.project_id) spawnEnv.CLASH_PROJECT_ID = p.project_id;
+      spawnEnv.CLASH_WORKSPACE_ROOT = sessionCwd;
       const agentSpec = applyPermissionModeToAgentSpec(resolvedAgentId, agent.spec, p.permission_mode);
       const runtimeEnv = { ...agentSpec.env ?? {}, ...spawnEnv };
+      const mcpServers = await resolveAgentMcpServers(agentTemplateId, runtimeEnv);
+      const trustedMcpRenderers = trustedMcpRenderersFromServers(mcpServers);
+      if (trustedMcpRenderers.get("clash") !== "product") {
+        throw new Error(
+          "The bundled Clash MCP is unavailable. Self-host sessions require the built-in Clash MCP and cannot fall back to the shell CLI."
+        );
+      }
       const session = await this.#runtime.start({
         agent: {
           ...agentSpec,
@@ -69591,17 +70468,13 @@ var SessionManager = class {
           onDiagnosticLine: (line) => this.#handleAgentDiagnostic(p.session_id, line)
         },
         resumeAcpSessionId: resumeId,
-        clientCapabilities: {
-          auth: { terminal: true },
-          _meta: {
-            "terminal-auth": true,
-            terminal_output: true
-          }
-        },
+        mcpServers,
+        clientCapabilities: withClashAcpExtensionCapabilities({
+          auth: { terminal: true }
+        }),
         clientCallbacks: {
-          requestPermission: async (params) => selectAcpPermissionOutcome(params)
-        },
-        emitPermissionEvents: true
+          requestPermission: (params) => this.#requestPermission(p.session_id, params)
+        }
       });
       if (this.#cancelledStarts.has(p.session_id)) {
         await session.dispose().catch(() => void 0);
@@ -69619,7 +70492,7 @@ var SessionManager = class {
 `);
       const activeSession = {
         acp: session,
-        promptContext: { cwd: sessionCwd, env: runtimeEnv },
+        trustedMcpRenderers,
         turns: /* @__PURE__ */ new Map(),
         promptQueue: Promise.resolve(),
         disposed: false
@@ -69675,9 +70548,7 @@ var SessionManager = class {
     this.#activeTurnBySession.set(p.session_id, p.turn_id);
     this.#lastDiagnosticBySession.delete(p.session_id);
     try {
-      const promptContent = await composeClashPromptContent(p.text, sess.promptContext, {
-        embeddedContext: sess.acp.promptCapabilities?.embeddedContext === true
-      });
+      const promptContent = composeClashPromptContent(p.text);
       for await (const ev of sess.acp.prompt(promptContent, { abortSignal: ctrl.signal })) {
         if (ctrl.signal.aborted || sess.disposed) break;
         const t = ev?.type;
@@ -69697,7 +70568,7 @@ var SessionManager = class {
           type: "session.event",
           session_id: p.session_id,
           turn_id: p.turn_id,
-          event: ev
+          event: annotateTrustedMcpEvent(ev, sess.trustedMcpRenderers)
         });
       }
       if (sess.disposed) return;
@@ -69841,9 +70712,9 @@ var SessionManager = class {
 
 // ../../apps/local-api/dist/acp-registry-installer.js
 var import_node_child_process5 = require("node:child_process");
-var import_node_crypto9 = require("node:crypto");
+var import_node_crypto10 = require("node:crypto");
 var import_promises19 = require("node:fs/promises");
-var import_node_path14 = require("node:path");
+var import_node_path16 = require("node:path");
 var import_node_util4 = require("node:util");
 var execFileAsync4 = (0, import_node_util4.promisify)(import_node_child_process5.execFile);
 var ACP_REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -69902,7 +70773,7 @@ function renderShellShim(commandPath, args = [], env = {}) {
   ].join("\n");
 }
 async function writeExecutableShim(shimPath, commandPath, args = [], env = {}) {
-  await (0, import_promises19.mkdir)((0, import_node_path14.dirname)(shimPath), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_node_path16.dirname)(shimPath), { recursive: true });
   await (0, import_promises19.writeFile)(shimPath, renderShellShim(commandPath, args, env), "utf8");
   await (0, import_promises19.chmod)(shimPath, 493);
 }
@@ -69936,7 +70807,7 @@ async function listAcpRegistryCatalog(options = {}) {
   });
 }
 function assertSafeRelativeCommand(cmd) {
-  if ((0, import_node_path14.isAbsolute)(cmd))
+  if ((0, import_node_path16.isAbsolute)(cmd))
     throw new Error(`Registry command must be relative: ${cmd}`);
   const normalized = cmd.replace(/\\/g, "/");
   if (normalized.split("/").includes(".."))
@@ -69975,18 +70846,18 @@ function rawBinaryFileName(url2) {
 }
 function versionedInstallDir(root, registryId, version2, archiveUrl) {
   const versionLabel = sanitizePathComponent(version2 ?? "unknown");
-  const hash2 = (0, import_node_crypto9.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
-  return (0, import_node_path14.join)(root, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
+  const hash2 = (0, import_node_crypto10.createHash)("sha256").update(`${version2 ?? ""}\0${archiveUrl}`).digest("hex").slice(0, 16);
+  return (0, import_node_path16.join)(root, "registry", sanitizePathComponent(registryId), `v_${versionLabel}_${hash2}`);
 }
 function registryInstallMetadataPath(root, registryId) {
-  return (0, import_node_path14.join)(root, "registry", sanitizePathComponent(registryId), "install.json");
+  return (0, import_node_path16.join)(root, "registry", sanitizePathComponent(registryId), "install.json");
 }
 async function writeRegistryInstallMetadata(options, metadata) {
   const installRoot = options.installRoot ?? options.binDir;
   if (!installRoot)
     throw new Error("Install metadata requires an install root");
   const metadataPath = registryInstallMetadataPath(installRoot, options.registryId);
-  await (0, import_promises19.mkdir)((0, import_node_path14.dirname)(metadataPath), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_node_path16.dirname)(metadataPath), { recursive: true });
   await (0, import_promises19.writeFile)(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
 }
 async function readAcpRegistryInstallMetadata(options) {
@@ -70011,7 +70882,7 @@ function verifySha256(bytes, expected) {
   if (!expected)
     return;
   const normalized = expected.startsWith("sha256:") ? expected.slice("sha256:".length) : expected;
-  const actual = (0, import_node_crypto9.createHash)("sha256").update(bytes).digest("hex");
+  const actual = (0, import_node_crypto10.createHash)("sha256").update(bytes).digest("hex");
   if (actual.toLowerCase() !== normalized.toLowerCase()) {
     throw new Error(`ACP registry archive checksum mismatch: expected ${normalized}, got ${actual}`);
   }
@@ -70021,9 +70892,9 @@ async function installBinaryDistribution(agent, target, options) {
   const installRoot = options.installRoot ?? options.binDir;
   const finalDir = versionedInstallDir(installRoot, options.registryId, agent.version, target.archive);
   const commandRelativePath = assertSafeRelativeCommand(target.cmd);
-  const commandPath = (0, import_node_path14.resolve)(finalDir, commandRelativePath);
-  const relativeCommandPath = (0, import_node_path14.relative)((0, import_node_path14.resolve)(finalDir), commandPath);
-  if (relativeCommandPath.startsWith("..") || (0, import_node_path14.isAbsolute)(relativeCommandPath)) {
+  const commandPath = (0, import_node_path16.resolve)(finalDir, commandRelativePath);
+  const relativeCommandPath = (0, import_node_path16.relative)((0, import_node_path16.resolve)(finalDir), commandPath);
+  if (relativeCommandPath.startsWith("..") || (0, import_node_path16.isAbsolute)(relativeCommandPath)) {
     throw new Error(`Registry command escapes install directory: ${target.cmd}`);
   }
   try {
@@ -70035,9 +70906,9 @@ async function installBinaryDistribution(agent, target, options) {
     const bytes = await fetchBytes(target.archive, fetchImpl);
     verifySha256(bytes, target.sha256);
     const kind = archiveKind(target.archive);
-    const archivePath = (0, import_node_path14.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path14.extname)(rawBinaryFileName(target.archive))}`);
+    const archivePath = (0, import_node_path16.join)(tmpDir, `download${kind === "zip" ? ".zip" : kind === "tar-gz" ? ".tar.gz" : kind === "tar-bz2" ? ".tar.bz2" : (0, import_node_path16.extname)(rawBinaryFileName(target.archive))}`);
     if (kind === "raw") {
-      await (0, import_promises19.writeFile)((0, import_node_path14.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
+      await (0, import_promises19.writeFile)((0, import_node_path16.join)(tmpDir, rawBinaryFileName(target.archive)), bytes);
     } else {
       await (0, import_promises19.writeFile)(archivePath, bytes);
       if (kind === "zip") {
@@ -70050,11 +70921,11 @@ async function installBinaryDistribution(agent, target, options) {
       await (0, import_promises19.rm)(archivePath, { force: true });
     }
     await (0, import_promises19.rm)(finalDir, { recursive: true, force: true });
-    await (0, import_promises19.mkdir)((0, import_node_path14.dirname)(finalDir), { recursive: true });
+    await (0, import_promises19.mkdir)((0, import_node_path16.dirname)(finalDir), { recursive: true });
     await (0, import_promises19.rename)(tmpDir, finalDir);
     await (0, import_promises19.chmod)(commandPath, 493);
   }
-  const shimPath = (0, import_node_path14.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path16.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, commandPath, options.shimArgs ?? target.args ?? [], {
     ...target.env ?? {},
     ...options.shimEnv ?? {}
@@ -70074,18 +70945,18 @@ function packagePathParts(packageName) {
 }
 async function resolvePackageBin(prefixDir, packageSpec) {
   const packageName = packageNameFromSpec(packageSpec);
-  const packageJsonPath = (0, import_node_path14.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
+  const packageJsonPath = (0, import_node_path16.join)(prefixDir, "node_modules", ...packagePathParts(packageName), "package.json");
   const pkg = JSON.parse(await (0, import_promises19.readFile)(packageJsonPath, "utf8"));
-  const unscopedName = (0, import_node_path14.basename)(packageName);
+  const unscopedName = (0, import_node_path16.basename)(packageName);
   const binName = typeof pkg.bin === "string" ? unscopedName : pkg.bin?.[unscopedName] ? unscopedName : Object.keys(pkg.bin ?? {})[0];
   if (!binName)
     throw new Error(`${packageSpec} does not expose an executable bin`);
-  const candidate = (0, import_node_path14.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
+  const candidate = (0, import_node_path16.join)(prefixDir, "node_modules", ".bin", process.platform === "win32" ? `${binName}.cmd` : binName);
   return candidate;
 }
 async function installNpxDistribution(npx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path14.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
+  const prefixDir = (0, import_node_path16.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "npx");
   await (0, import_promises19.mkdir)(prefixDir, { recursive: true });
   await execFileAsync4(options.npmCommand ?? "npm", ["install", "--prefix", prefixDir, "--omit=dev", "--no-audit", "--no-fund", npx.package], {
     env: {
@@ -70096,7 +70967,7 @@ async function installNpxDistribution(npx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await resolvePackageBin(prefixDir, npx.package);
-  const shimPath = (0, import_node_path14.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path16.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? npx.args ?? [], {
     ...npx.env ?? {},
     ...options.shimEnv ?? {}
@@ -70111,12 +70982,12 @@ async function firstExecutableInDir(binDir, preferredName) {
   const preferred = [
     preferredName,
     preferredName.replace(/-/g, "_"),
-    (0, import_node_path14.basename)(preferredName)
+    (0, import_node_path16.basename)(preferredName)
   ];
   for (const name of [...preferred, ...entries]) {
     if (!entries.includes(name))
       continue;
-    const candidate = (0, import_node_path14.join)(binDir, name);
+    const candidate = (0, import_node_path16.join)(binDir, name);
     try {
       await (0, import_promises19.access)(candidate);
       return candidate;
@@ -70127,9 +70998,9 @@ async function firstExecutableInDir(binDir, preferredName) {
 }
 async function installUvxDistribution(uvx, options) {
   const installRoot = options.installRoot ?? options.binDir;
-  const prefixDir = (0, import_node_path14.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
-  const toolDir = (0, import_node_path14.join)(prefixDir, "tools");
-  const toolBinDir = (0, import_node_path14.join)(prefixDir, "bin");
+  const prefixDir = (0, import_node_path16.join)(installRoot, "registry", sanitizePathComponent(options.registryId), "uvx");
+  const toolDir = (0, import_node_path16.join)(prefixDir, "tools");
+  const toolBinDir = (0, import_node_path16.join)(prefixDir, "bin");
   await (0, import_promises19.mkdir)(toolBinDir, { recursive: true });
   await execFileAsync4("uv", ["tool", "install", "--force", uvx.package], {
     env: {
@@ -70142,7 +71013,7 @@ async function installUvxDistribution(uvx, options) {
     maxBuffer: 1024 * 1024
   });
   const packageBin = await firstExecutableInDir(toolBinDir, pythonPackageNameFromSpec(uvx.package));
-  const shimPath = (0, import_node_path14.join)(options.binDir, options.shimName);
+  const shimPath = (0, import_node_path16.join)(options.binDir, options.shimName);
   await writeExecutableShim(shimPath, packageBin, options.shimArgs ?? uvx.args ?? [], {
     ...uvx.env ?? {},
     ...options.shimEnv ?? {}
@@ -70205,31 +71076,26 @@ async function installManagedAdapter(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const bytes = await fetchBytes(options.downloadUrl, fetchImpl);
   await (0, import_promises19.mkdir)(options.binDir, { recursive: true });
-  const commandPath = (0, import_node_path14.join)(options.binDir, (0, import_node_path14.basename)(options.command));
+  const commandPath = (0, import_node_path16.join)(options.binDir, (0, import_node_path16.basename)(options.command));
   await (0, import_promises19.writeFile)(commandPath, bytes);
   await (0, import_promises19.chmod)(commandPath, 493);
   return { commandPath };
 }
 async function uninstallAcpRegistryAgent(options) {
   const installRoot = options.installRoot ?? options.binDir;
-  await (0, import_promises19.rm)((0, import_node_path14.join)(options.binDir, options.shimName), { force: true });
-  await (0, import_promises19.rm)((0, import_node_path14.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
+  await (0, import_promises19.rm)((0, import_node_path16.join)(options.binDir, options.shimName), { force: true });
+  await (0, import_promises19.rm)((0, import_node_path16.join)(installRoot, "registry", sanitizePathComponent(options.registryId)), {
     recursive: true,
     force: true
   });
 }
 async function uninstallManagedAdapter(options) {
-  await (0, import_promises19.rm)((0, import_node_path14.join)(options.binDir, (0, import_node_path14.basename)(options.command)), { force: true });
+  await (0, import_promises19.rm)((0, import_node_path16.join)(options.binDir, (0, import_node_path16.basename)(options.command)), { force: true });
 }
 
 // ../../apps/local-api/dist/local-acp.js
 var DESKTOP_LOCAL_RUNTIME_ID = "desktop-local";
 var MAX_BACKLOG_MESSAGES = 200;
-var DEFAULT_AGENT_PREFERENCE = [
-  "codex-acp",
-  "claude-acp",
-  "gemini"
-];
 function extractAcpContentText(value) {
   if (typeof value === "string")
     return value;
@@ -70272,7 +71138,7 @@ async function defaultDetectAgents(env = process.env) {
       ...agent,
       spec: {
         ...spec,
-        ...agentEnv ? { env: mergedStringEnv(agentEnv) } : {}
+        ...agentEnv ? { env: mergedStringEnv2(agentEnv) } : {}
       }
     };
   });
@@ -70386,6 +71252,35 @@ function authMethodFields(status) {
     ...methods2 ? { methods: methods2 } : {}
   };
 }
+function localAuthFromProbeStatus(agent, status) {
+  if (status.status === "none")
+    return void 0;
+  const method = status.methodName ?? status.methodId;
+  const methodFields = authMethodFields(status);
+  if (status.status === "configured") {
+    return {
+      status: "configured",
+      message: method ? `${agent.label} ACP auth is configured (${method}).` : `${agent.label} ACP auth is configured.`,
+      command: agent.spec.command,
+      ...methodFields
+    };
+  }
+  if (status.status === "needs-auth") {
+    const prefix = method ? `${agent.label} requires ACP authentication (${method}).` : `${agent.label} requires ACP authentication.`;
+    return {
+      status: "needs-auth",
+      message: status.message ? `${prefix} ${status.message}` : prefix,
+      command: agent.spec.command,
+      ...methodFields
+    };
+  }
+  return {
+    status: "unknown",
+    message: status.message ? `Could not verify ${agent.label} auth: ${status.message}` : `Could not verify ${agent.label} auth.`,
+    command: agent.spec.command,
+    ...methodFields
+  };
+}
 function toHarnessEntry(agent) {
   return {
     id: agent.id,
@@ -70484,55 +71379,140 @@ function shouldEnableRegistryCatalog(options) {
   return options.agentCatalog.some((entry) => entry.installSource === "registry");
 }
 var LOCAL_HARNESS_CONFIG_KEY = "local-harness-config";
-async function readHarnessConfig(store) {
-  const parsed = await store.getJson(LOCAL_HARNESS_CONFIG_KEY);
-  return isPlainObject2(parsed) ? parsed : {};
+var LOCAL_ACP_CAPABILITY_CACHE_KEY = "local-acp-confirmed-capabilities";
+var LOCAL_ACP_RUN_PREFERENCES_KEY = "local-acp-run-preferences";
+function harnessConfigFromLegacy(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return null;
+  const record2 = value;
+  const enabled = Array.isArray(record2.enabled) ? record2.enabled : Array.isArray(record2.enabled_harness_ids) ? record2.enabled_harness_ids : Array.isArray(record2.enabledHarnessIds) ? record2.enabledHarnessIds : null;
+  const agents = record2.agents && typeof record2.agents === "object" && !Array.isArray(record2.agents) ? record2.agents : record2.agent_servers && typeof record2.agent_servers === "object" && !Array.isArray(record2.agent_servers) ? record2.agent_servers : record2.agentServers && typeof record2.agentServers === "object" && !Array.isArray(record2.agentServers) ? record2.agentServers : null;
+  if (!enabled && !agents)
+    return null;
+  return {
+    ...enabled ? { enabled: enabled.filter((id) => typeof id === "string") } : {},
+    ...agents ? { agents: normalizeAgentServersConfig(agents) } : {}
+  };
 }
-async function writeHarnessConfig(store, value) {
-  await store.setJson(LOCAL_HARNESS_CONFIG_KEY, value);
+function normalizeRunPreferences(value) {
+  const record2 = isPlainObject2(value) ? value : {};
+  const agentId = typeof record2.agent_id === "string" && record2.agent_id.trim() ? record2.agent_id.trim() : typeof record2.agent === "string" && record2.agent.trim() ? record2.agent.trim() : void 0;
+  const rawConfig = isPlainObject2(record2.config_by_agent) ? record2.config_by_agent : isPlainObject2(record2.config) ? record2.config : {};
+  const configByAgent = {};
+  for (const [id, rawValues] of Object.entries(rawConfig)) {
+    if (!isPlainObject2(rawValues))
+      continue;
+    configByAgent[id] = Object.fromEntries(Object.entries(rawValues).filter((entry) => typeof entry[1] === "string" || typeof entry[1] === "boolean"));
+  }
+  const rawModes = isPlainObject2(record2.mode_by_agent) ? record2.mode_by_agent : isPlainObject2(record2.mode) ? record2.mode : {};
+  const modeByAgent = Object.fromEntries(Object.entries(rawModes).filter((entry) => typeof entry[1] === "string"));
+  return {
+    ...agentId ? { agent_id: agentId } : {},
+    config_by_agent: configByAgent,
+    mode_by_agent: modeByAgent
+  };
 }
 function createLocalHarnessConfigStore(dataDir2) {
-  const configStore = createSqliteLocalConfigStore(dataDir2);
+  const userConfig = createClashUserConfigStore(dataDir2);
+  const legacyStore = createSqliteLocalConfigStore(dataDir2);
+  const legacySidecarPath = (0, import_node_path17.join)(dataDir2, "harnesses.json");
+  let migration = null;
+  const ensureMigrated = () => {
+    migration ??= (async () => {
+      if (await userConfig.getSection("harnesses"))
+        return;
+      let legacy = null;
+      try {
+        legacy = JSON.parse(await (0, import_promises20.readFile)(legacySidecarPath, "utf8"));
+      } catch {
+        legacy = await legacyStore.getJson(LOCAL_HARNESS_CONFIG_KEY);
+      }
+      const migrated = harnessConfigFromLegacy(legacy);
+      if (!migrated)
+        return;
+      await userConfig.setSection("harnesses", migrated);
+      await legacyStore.delete(LOCAL_HARNESS_CONFIG_KEY);
+      await (0, import_promises20.unlink)(legacySidecarPath).catch(() => void 0);
+    })();
+    return migration;
+  };
+  const loadConfig = async () => {
+    await ensureMigrated();
+    return await userConfig.getSection("harnesses") ?? {};
+  };
   return {
     async loadEnabledHarnessIds() {
-      const parsed = await readHarnessConfig(configStore);
-      const ids = Array.isArray(parsed.enabled_harness_ids) ? parsed.enabled_harness_ids : Array.isArray(parsed.enabledHarnessIds) ? parsed.enabledHarnessIds : null;
+      const parsed = await loadConfig();
+      const ids = Array.isArray(parsed.enabled) ? parsed.enabled : null;
       if (!ids)
         return null;
       return ids.filter((id) => typeof id === "string");
     },
     async saveEnabledHarnessIds(ids) {
-      const parsed = await readHarnessConfig(configStore);
-      await writeHarnessConfig(configStore, { ...parsed, enabled_harness_ids: ids });
+      const parsed = await loadConfig();
+      await userConfig.setSection("harnesses", { ...parsed, enabled: ids });
     },
     async loadAgentServers() {
-      const parsed = await readHarnessConfig(configStore);
-      const servers = normalizeAgentServersConfig(parsed.agent_servers);
+      const parsed = await loadConfig();
+      const servers = normalizeAgentServersConfig(parsed.agents);
       return Object.keys(servers).length > 0 ? servers : null;
     },
     async saveAgentServers(servers) {
-      const parsed = await readHarnessConfig(configStore);
-      await writeHarnessConfig(configStore, {
+      const parsed = await loadConfig();
+      const next = {
         ...parsed,
-        agent_servers: normalizeAgentServersConfig(servers)
-      });
+        agents: normalizeAgentServersConfig(servers)
+      };
+      await userConfig.setSection("harnesses", next);
     }
   };
 }
-function createDefaultSessionManager(send) {
-  return new SessionManager(send);
+function createLocalAcpRunPreferencesStore(dataDir2) {
+  const store = createSqliteLocalConfigStore(dataDir2);
+  return {
+    async load() {
+      return normalizeRunPreferences(await store.getJson(LOCAL_ACP_RUN_PREFERENCES_KEY));
+    },
+    async save(preferences) {
+      await store.setJson(LOCAL_ACP_RUN_PREFERENCES_KEY, normalizeRunPreferences(preferences));
+    }
+  };
 }
-function chooseDefaultAgent(agents) {
-  for (const id of DEFAULT_AGENT_PREFERENCE) {
-    const match2 = agents.find((agent) => agent.id === id);
-    if (match2)
-      return match2;
+function createLocalAcpCapabilityCacheStore(dataDir2) {
+  const store = createSqliteLocalConfigStore(dataDir2);
+  return {
+    async load() {
+      const value = await store.getJson(LOCAL_ACP_CAPABILITY_CACHE_KEY);
+      if (!isPlainObject2(value))
+        return {};
+      return Object.fromEntries(Object.entries(value).flatMap(([agentId, candidate]) => {
+        if (!isPlainObject2(candidate))
+          return [];
+        const capabilities = {
+          ...Array.isArray(candidate.configOptions) ? { configOptions: candidate.configOptions } : {},
+          ...Array.isArray(candidate.availableCommands) ? { availableCommands: candidate.availableCommands } : {},
+          ...candidate.sessionModes !== void 0 ? { sessionModes: candidate.sessionModes } : {}
+        };
+        return [[agentId, capabilities]];
+      }));
+    },
+    async save(value) {
+      await store.setJson(LOCAL_ACP_CAPABILITY_CACHE_KEY, value);
+    }
+  };
+}
+function createDefaultSessionManager(send, requestPermission) {
+  return new SessionManager(send, { requestPermission });
+}
+function chooseDefaultAgent(agents, recentAgentId) {
+  if (recentAgentId) {
+    const recent = agents.find((agent) => agent.id === recentAgentId);
+    if (recent)
+      return recent;
   }
   return agents[0];
 }
 function defaultEnabledHarnessSet(agents) {
-  if (!agents.some((agent) => agent.id === "codex-acp"))
-    return null;
   return new Set(agents.map((agent) => agent.id));
 }
 function sendJson(ws, msg) {
@@ -70670,7 +71650,7 @@ async function geminiAuthPreflight(env) {
       message: "Cannot inspect Gemini auth because HOME is not set."
     };
   }
-  const settings = readJsonObject(await (0, import_promises20.readFile)((0, import_node_path15.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
+  const settings = readJsonObject(await (0, import_promises20.readFile)((0, import_node_path17.join)(home, ".gemini", "settings.json"), "utf8").catch(() => ""));
   const selectedType = nestedString(settings, ["security", "auth", "selectedType"]);
   if (selectedType) {
     return {
@@ -70678,7 +71658,7 @@ async function geminiAuthPreflight(env) {
       message: `Gemini auth method selected: ${selectedType}.`
     };
   }
-  const accounts = readJsonObject(await (0, import_promises20.readFile)((0, import_node_path15.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
+  const accounts = readJsonObject(await (0, import_promises20.readFile)((0, import_node_path17.join)(home, ".gemini", "google_accounts.json"), "utf8").catch(() => ""));
   const activeAccount = nestedString(accounts, ["active"]);
   const hadOldAccounts = Array.isArray(accounts?.old) && accounts.old.length > 0;
   return {
@@ -70694,7 +71674,7 @@ function agentAuthRequiredMessage(agent, auth) {
     "Use the Authenticate button, then check again."
   ].join(" ");
 }
-function mergedStringEnv(env) {
+function mergedStringEnv2(env) {
   return Object.fromEntries(Object.entries(env).filter((entry) => typeof entry[1] === "string"));
 }
 function shellQuote2(value) {
@@ -70721,11 +71701,11 @@ function terminalAuthShellCommand(options) {
   return parts.join(" ");
 }
 function spawnDetachedCommand(command, args, options = {}) {
-  return new Promise((resolve8, reject) => {
+  return new Promise((resolve9, reject) => {
     const child = (0, import_node_child_process6.spawn)(command, args, {
       env: {
         ...process.env,
-        ...mergedStringEnv(options.env ?? {})
+        ...mergedStringEnv2(options.env ?? {})
       },
       detached: true,
       stdio: "ignore"
@@ -70733,7 +71713,7 @@ function spawnDetachedCommand(command, args, options = {}) {
     child.once("error", reject);
     child.once("spawn", () => {
       child.unref();
-      resolve8();
+      resolve9();
     });
   });
 }
@@ -70777,6 +71757,8 @@ var LocalAcpRuntimeAdapter = class {
   createSessionId;
   createSessionManager;
   harnessConfig;
+  runPreferences;
+  capabilityCache;
   agentCatalog;
   registryCatalogEnabled;
   spawnEnv;
@@ -70798,7 +71780,14 @@ var LocalAcpRuntimeAdapter = class {
   registryAgentCatalogCache = null;
   registryAgentCatalogPromise = null;
   npmPackageVersionCache = /* @__PURE__ */ new Map();
+  confirmedCapabilities = /* @__PURE__ */ new Map();
+  confirmedAuth = /* @__PURE__ */ new Map();
+  capabilityCacheLoad = null;
+  capabilityCacheWrite = Promise.resolve();
+  runPreferencesQueue = Promise.resolve();
+  reconcileQueue = Promise.resolve();
   sessionMessageStore = null;
+  lastReconciledEnabledIds = null;
   shutdownPromise = null;
   shuttingDown = false;
   constructor(options = {}) {
@@ -70828,33 +71817,7 @@ var LocalAcpRuntimeAdapter = class {
         env: this.spawnEnv,
         timeoutMs: this.probeTimeoutMs
       });
-      if (status.status === "none")
-        return void 0;
-      const method = status.methodName ?? status.methodId;
-      const methodFields = authMethodFields(status);
-      if (status.status === "configured") {
-        return {
-          status: "configured",
-          message: method ? `${agent.label} ACP auth is configured (${method}).` : `${agent.label} ACP auth is configured.`,
-          command: agent.spec.command,
-          ...methodFields
-        };
-      }
-      if (status.status === "needs-auth") {
-        const prefix = method ? `${agent.label} requires ACP authentication (${method}).` : `${agent.label} requires ACP authentication.`;
-        return {
-          status: "needs-auth",
-          message: status.message ? `${prefix} ${status.message}` : prefix,
-          command: agent.spec.command,
-          ...methodFields
-        };
-      }
-      return {
-        status: "unknown",
-        message: status.message ? `Could not verify ${agent.label} auth: ${status.message}` : `Could not verify ${agent.label} auth.`,
-        command: agent.spec.command,
-        ...methodFields
-      };
+      return localAuthFromProbeStatus(agent, status);
     });
     this.probeAgentSessionConfig = options.probeAgentSessionConfig ?? (options.probeAgentConfigOptions ? async (agent) => ({ configOptions: await options.probeAgentConfigOptions(agent) }) : (agent) => probeAgentSessionConfig({
       agent: {
@@ -70909,9 +71872,11 @@ var LocalAcpRuntimeAdapter = class {
         ...Object.fromEntries(Object.entries(this.spawnEnv).filter((entry) => typeof entry[1] === "string"))
       }
     }));
-    this.createSessionId = options.createSessionId ?? import_node_crypto10.randomUUID;
+    this.createSessionId = options.createSessionId ?? import_node_crypto11.randomUUID;
     this.createSessionManager = options.createSessionManager ?? createDefaultSessionManager;
     this.harnessConfig = options.harnessConfig ?? null;
+    this.runPreferences = options.runPreferences ?? null;
+    this.capabilityCache = options.capabilityCache ?? null;
     this.agentCatalog = options.agentCatalog ?? KNOWN_ACP_AGENTS;
     this.registryCatalogEnabled = shouldEnableRegistryCatalog(options);
     this.hostname = options.hostname ?? machineName;
@@ -70924,11 +71889,51 @@ var LocalAcpRuntimeAdapter = class {
     Object.assign(this.spawnEnv, env);
   }
   async warmup() {
-    await this.refreshDetectedAgents({
+    await this.ensureCapabilityCacheLoaded();
+    const agents = await this.refreshDetectedAgents({
       probeAuth: true,
       probeConfigOptions: true,
-      probeScope: "installed"
+      probeScope: "enabled"
     });
+    this.lastReconciledEnabledIds = await this.enabledHarnessSet() ?? defaultEnabledHarnessSet(agents);
+  }
+  async reconcileConfiguration() {
+    const reconcile = this.reconcileQueue.then(() => this.reconcileConfigurationNow());
+    this.reconcileQueue = reconcile.catch(() => void 0);
+    await reconcile;
+  }
+  async reconcileConfigurationNow() {
+    if (this.detectedAgentsPromise) {
+      await this.detectedAgentsPromise.catch(() => void 0);
+    }
+    const previousAgents = this.detectedAgentsCache ?? [];
+    const previousById = new Map(previousAgents.map((agent) => [agent.id, agent]));
+    const previousEnabled = this.lastReconciledEnabledIds;
+    this.registryAgentCatalogCache = null;
+    const agents = await this.detectAgentsWithProbes({
+      probeAuth: false,
+      probeConfigOptions: false,
+      probeScope: "enabled"
+    });
+    const enabled = await this.enabledHarnessSet() ?? defaultEnabledHarnessSet(agents);
+    const shouldProbe = (agent) => {
+      if (enabled && !enabled.has(agent.id))
+        return false;
+      const previous = previousById.get(agent.id);
+      return !previous || !previousEnabled || !previousEnabled.has(agent.id) || JSON.stringify(previous.spec) !== JSON.stringify(agent.spec);
+    };
+    const probedById = new Map((await Promise.all(agents.filter(shouldProbe).map((agent) => this.probeAgentMetadata(agent, { auth: true, configOptions: true })))).map((agent) => [agent.id, agent]));
+    this.detectedAgentsCache = agents.map((agent) => {
+      const probed = probedById.get(agent.id);
+      if (probed)
+        return probed;
+      const previous = previousById.get(agent.id);
+      return previous && JSON.stringify(previous.spec) === JSON.stringify(agent.spec) ? previous : agent;
+    });
+    this.detectedAgentsCacheProbesAuth = true;
+    this.detectedAgentsCacheProbesConfigOptions = true;
+    this.detectedAgentsCacheProbeScope = "enabled";
+    this.lastReconciledEnabledIds = enabled;
   }
   setSessionMessageStore(store) {
     this.sessionMessageStore = store;
@@ -70995,23 +72000,96 @@ var LocalAcpRuntimeAdapter = class {
     return this.detectedAgentsPromise;
   }
   async probeAgentMetadata(agent, opts) {
-    const shouldProbeAuth = opts.auth || opts.configOptions;
-    const auth = shouldProbeAuth ? await this.probeAgentAuth(agent).catch(() => void 0) : void 0;
-    const withAuth = auth ? { ...agent, auth } : agent;
-    if (!opts.configOptions || authBlocksAgent(auth))
-      return withAuth;
-    let sessionConfig = {};
-    try {
-      sessionConfig = await this.probeAgentSessionConfig(withAuth);
-    } catch {
-      sessionConfig = {};
-    }
-    const configOptions = sessionConfig.configOptions ?? [];
-    return {
-      ...withAuth,
-      ...configOptions.length > 0 ? { configOptions } : {},
-      ...sessionConfig.modes ? { sessionModes: sessionConfig.modes } : {}
+    let auth = agent.auth ?? this.confirmedAuth.get(agent.id);
+    const withAuth = () => {
+      const { auth: _staleAuth, ...withoutAuth } = agent;
+      return auth ? { ...withoutAuth, auth } : withoutAuth;
     };
+    if (!opts.configOptions) {
+      if (!opts.auth)
+        return withAuth();
+      try {
+        auth = await this.probeAgentAuth(agent);
+        if (auth)
+          this.confirmedAuth.set(agent.id, auth);
+        else
+          this.confirmedAuth.delete(agent.id);
+      } catch {
+      }
+      return withAuth();
+    }
+    await this.ensureCapabilityCacheLoaded();
+    const inspectedAt = new Date(this.nowSeconds() * 1e3).toISOString();
+    const confirmed = this.confirmedCapabilities.get(agent.id);
+    try {
+      const sessionConfig = await this.probeAgentSessionConfig(withAuth());
+      if (sessionConfig.auth) {
+        auth = localAuthFromProbeStatus(agent, sessionConfig.auth);
+        if (auth)
+          this.confirmedAuth.set(agent.id, auth);
+        else
+          this.confirmedAuth.delete(agent.id);
+      } else if (opts.auth) {
+        auth = await this.probeAgentAuth(agent).catch(() => auth);
+        if (auth)
+          this.confirmedAuth.set(agent.id, auth);
+      }
+      if (authBlocksAgent(auth)) {
+        return {
+          ...withAuth(),
+          ...confirmed,
+          capabilityInspection: {
+            status: "blocked-auth",
+            inspected_at: inspectedAt
+          }
+        };
+      }
+      const capabilities = {
+        configOptions: sessionConfig.configOptions ?? [],
+        availableCommands: sessionConfig.availableCommands ?? [],
+        ...sessionConfig.modes ? { sessionModes: sessionConfig.modes } : {}
+      };
+      this.confirmedCapabilities.set(agent.id, capabilities);
+      await this.persistConfirmedCapabilities();
+      return {
+        ...withAuth(),
+        ...capabilities,
+        capabilityInspection: {
+          status: "ready",
+          inspected_at: inspectedAt
+        }
+      };
+    } catch (error51) {
+      return {
+        ...withAuth(),
+        ...confirmed,
+        capabilityInspection: {
+          status: "degraded",
+          inspected_at: inspectedAt,
+          error: error51 instanceof Error ? error51.message : String(error51)
+        }
+      };
+    }
+  }
+  async ensureCapabilityCacheLoaded() {
+    if (!this.capabilityCache)
+      return;
+    this.capabilityCacheLoad ??= this.capabilityCache.load().then((value) => {
+      for (const [agentId, capabilities] of Object.entries(value)) {
+        if (!this.confirmedCapabilities.has(agentId)) {
+          this.confirmedCapabilities.set(agentId, capabilities);
+        }
+      }
+    });
+    await this.capabilityCacheLoad;
+  }
+  async persistConfirmedCapabilities() {
+    if (!this.capabilityCache)
+      return;
+    this.capabilityCacheWrite = this.capabilityCacheWrite.then(async () => {
+      await this.capabilityCache?.save(Object.fromEntries(this.confirmedCapabilities.entries()));
+    });
+    await this.capabilityCacheWrite;
   }
   async configuredCustomAgentEntries() {
     const servers = await this.harnessConfig?.loadAgentServers?.() ?? null;
@@ -71126,7 +72204,7 @@ var LocalAcpRuntimeAdapter = class {
         ...registryLatestVersion ? { latestVersion: registryLatestVersion } : {}
       };
     }
-    const shimPath = (0, import_node_path15.join)(this.harnessDownloadDir, (0, import_node_path15.basename)(entry.spec.command));
+    const shimPath = (0, import_node_path17.join)(this.harnessDownloadDir, (0, import_node_path17.basename)(entry.spec.command));
     const installed = await (0, import_promises20.access)(shimPath).then(() => true, () => false);
     if (!installed) {
       return {
@@ -71163,7 +72241,7 @@ var LocalAcpRuntimeAdapter = class {
     if (!this.harnessDownloadDir)
       return void 0;
     try {
-      const packageJson = JSON.parse(await (0, import_promises20.readFile)((0, import_node_path15.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
+      const packageJson = JSON.parse(await (0, import_promises20.readFile)((0, import_node_path17.join)(this.harnessDownloadDir, "registry", registryId, "npx", "node_modules", ...packageName.split("/"), "package.json"), "utf8"));
       return typeof packageJson.version === "string" && packageJson.version.length > 0 ? packageJson.version : void 0;
     } catch {
       return void 0;
@@ -71189,7 +72267,7 @@ var LocalAcpRuntimeAdapter = class {
   }
   async buildHarnesses(opts = {}) {
     const probeAuth = opts.probe === true || opts.probe === "auth" || opts.probe === "config";
-    const probeConfigOptions = opts.probe === "config";
+    const probeConfigOptions = opts.refresh === true || opts.probe === "config";
     const checksForUpdates = opts.refresh === true || opts.probe !== void 0 && opts.probe !== false && opts.probe !== "none";
     if (checksForUpdates) {
       this.registryAgentCatalogCache = null;
@@ -71198,7 +72276,7 @@ var LocalAcpRuntimeAdapter = class {
     const agents = await this.getDetectedAgents({
       probeAuth,
       probeConfigOptions,
-      probeScope: "installed",
+      probeScope: probeConfigOptions ? "enabled" : "installed",
       refresh: opts.refresh === true
     });
     const enabled = await this.enabledHarnessSet() ?? defaultEnabledHarnessSet(agents);
@@ -71245,22 +72323,20 @@ var LocalAcpRuntimeAdapter = class {
   }
   async updateHarnesses(enabledIds) {
     const agents = await this.getDetectedAgents();
+    const previousEnabled = await this.enabledHarnessSet() ?? defaultEnabledHarnessSet(agents);
     const normalized = normalizeEnabledHarnessIds(enabledIds, [
       ...agents.map((agent) => agent.id)
     ]);
     const agentById = new Map(agents.map((agent) => [agent.id, agent]));
-    const probedAgents = await Promise.all(normalized.map((id) => agentById.get(id)).filter((agent) => !!agent).map((agent) => this.probeAgentMetadata(agent, { auth: true, configOptions: false })));
+    const probedAgents = await Promise.all(normalized.filter((id) => !previousEnabled?.has(id)).map((id) => agentById.get(id)).filter((agent) => !!agent).map((agent) => this.probeAgentMetadata(agent, { auth: true, configOptions: false })));
     const blocked = probedAgents.find((agent) => authBlocksAgent(agent.auth));
     if (blocked?.auth) {
       const suffix = blocked.auth.message ? ` ${blocked.auth.message}` : "";
       throw new Error(`Authenticate ${blocked.label} before enabling.${suffix}`);
     }
     await this.harnessConfig?.saveEnabledHarnessIds(normalized);
-    this.detectedAgentsCache = null;
-    this.detectedAgentsCacheProbesAuth = false;
-    this.detectedAgentsCacheProbesConfigOptions = false;
-    this.detectedAgentsCacheProbeScope = null;
-    return { harnesses: await this.buildHarnesses({ probe: "auth", refresh: true }) };
+    await this.reconcileConfiguration();
+    return { harnesses: await this.buildHarnesses({ probe: "none" }) };
   }
   async listAgentServers() {
     return { agent_servers: await this.harnessConfig?.loadAgentServers?.() ?? {} };
@@ -71270,13 +72346,10 @@ var LocalAcpRuntimeAdapter = class {
       throw new Error("Custom agent server settings are not configured");
     const normalized = normalizeAgentServersConfig(servers);
     await this.harnessConfig.saveAgentServers(normalized);
-    this.detectedAgentsCache = null;
-    this.detectedAgentsCacheProbesAuth = false;
-    this.detectedAgentsCacheProbesConfigOptions = false;
-    this.detectedAgentsCacheProbeScope = null;
+    await this.reconcileConfiguration();
     return {
       agent_servers: normalized,
-      harnesses: await this.buildHarnesses({ probe: true, refresh: true })
+      harnesses: await this.buildHarnesses({ probe: "none" })
     };
   }
   async installHarness(id) {
@@ -71290,12 +72363,12 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await installAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path15.basename)(entry.spec.command),
+        shimName: (0, import_node_path17.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir,
         fetchImpl: this.fetchImpl,
         shimArgs: entry.spec.args,
-        shimEnv: entry.spec.env ? mergedStringEnv(entry.spec.env) : void 0,
+        shimEnv: entry.spec.env ? mergedStringEnv2(entry.spec.env) : void 0,
         env: this.spawnEnv
       });
     } else if (entry.installSource === "adapter" && entry.downloadUrl) {
@@ -71340,7 +72413,7 @@ var LocalAcpRuntimeAdapter = class {
         throw new Error(`${entry.label} is missing an ACP registry id`);
       await uninstallAcpRegistryAgent({
         registryId: entry.registryId,
-        shimName: (0, import_node_path15.basename)(entry.spec.command),
+        shimName: (0, import_node_path17.basename)(entry.spec.command),
         binDir: this.harnessDownloadDir,
         installRoot: this.harnessDownloadDir
       });
@@ -71371,6 +72444,7 @@ var LocalAcpRuntimeAdapter = class {
       probeScope: probeConfigOptions ? "installed" : "enabled",
       refresh: opts.refresh === true
     });
+    const preferences = this.runPreferences ? normalizeRunPreferences(await this.runPreferences.load()) : null;
     const now = this.nowSeconds();
     return {
       runtimes: [
@@ -71384,9 +72458,12 @@ var LocalAcpRuntimeAdapter = class {
             label: agent.label,
             binary: agent.spec.command,
             ...Array.isArray(agent.configOptions) && agent.configOptions.length > 0 ? { config_options: agent.configOptions } : {},
+            ...Array.isArray(agent.availableCommands) ? { available_commands: agent.availableCommands } : {},
             ...agent.sessionModes ? { session_modes: agent.sessionModes } : {},
-            ...agent.auth ? { auth: publicAuthForResponse(agent.auth) } : {}
+            ...agent.auth ? { auth: publicAuthForResponse(agent.auth) } : {},
+            ...agent.capabilityInspection ? { capability_inspection: agent.capabilityInspection } : {}
           })),
+          ...preferences ? { preferences } : {},
           version: "desktop",
           status: "online",
           last_heartbeat: now,
@@ -71395,6 +72472,34 @@ var LocalAcpRuntimeAdapter = class {
       ]
     };
   }
+  async updateRunPreferences(update) {
+    const operation = this.runPreferencesQueue.then(async () => {
+      if (!this.runPreferences) {
+        throw new Error("Local ACP run preferences are not configured");
+      }
+      const agentId = update.agent_id.trim();
+      if (!agentId)
+        throw new Error("Missing agent_id");
+      const current = normalizeRunPreferences(await this.runPreferences.load());
+      const configValues = isPlainObject2(update.config_values) ? Object.fromEntries(Object.entries(update.config_values).filter((entry) => typeof entry[1] === "string" || typeof entry[1] === "boolean")) : null;
+      const modeId = update.mode_id?.trim();
+      const preferences = {
+        agent_id: agentId,
+        config_by_agent: {
+          ...current.config_by_agent,
+          ...configValues ? { [agentId]: configValues } : {}
+        },
+        mode_by_agent: {
+          ...current.mode_by_agent,
+          ...modeId ? { [agentId]: modeId } : {}
+        }
+      };
+      await this.runPreferences.save(preferences);
+      return { preferences };
+    });
+    this.runPreferencesQueue = operation.then(() => void 0, () => void 0);
+    return operation;
+  }
   async authenticateHarness(id, options) {
     const agents = await this.getDetectedAgents();
     const agent = agents.find((candidate) => candidate.id === id);
@@ -71402,8 +72507,16 @@ var LocalAcpRuntimeAdapter = class {
       throw new Error(`Local agent harness is not available: ${id}`);
     const result = await this.authenticateAgent(agent, options);
     const authStarted = result?.status === "started";
+    if (!authStarted) {
+      const refreshedAgent = await this.probeAgentMetadata(agent, {
+        auth: true,
+        configOptions: false
+      });
+      this.detectedAgentsCache = agents.map((candidate) => candidate.id === id ? refreshedAgent : candidate);
+      this.detectedAgentsCacheProbesAuth = true;
+    }
     return {
-      harnesses: await this.buildHarnesses(authStarted ? { probe: false, refresh: false } : { probe: "auth", refresh: true })
+      harnesses: await this.buildHarnesses({ probe: false, refresh: false })
     };
   }
   async createSession(params) {
@@ -71424,7 +72537,8 @@ var LocalAcpRuntimeAdapter = class {
     const agents = await this.detectEnabledAgents({ probeAuth: true, probeScope: "enabled" });
     if (this.shuttingDown)
       throw new Error("Local ACP runtime is shutting down");
-    let agent = params.agentId ? agents.find((candidate) => candidate.id === params.agentId) : chooseDefaultAgent(agents);
+    const recentAgentId = !params.agentId && this.runPreferences ? normalizeRunPreferences(await this.runPreferences.load()).agent_id : void 0;
+    let agent = params.agentId ? agents.find((candidate) => candidate.id === params.agentId) : chooseDefaultAgent(agents, recentAgentId);
     if (!agent && params.agentId) {
       const detectedAgents = await this.getDetectedAgents({ probeAuth: true, probeScope: "enabled" });
       const requestedAgent = detectedAgents.find((candidate) => candidate.id === params.agentId);
@@ -71502,7 +72616,7 @@ var LocalAcpRuntimeAdapter = class {
       harnessId: agent.id,
       harnessLabel: agent.label,
       ...harnessVersion ? { harnessVersion } : {},
-      manager: this.createSessionManager(send),
+      manager: this.createSessionManager(send, (requestSessionId, request) => this.brokerPermissionRequest(entry, requestSessionId, request)),
       clients: /* @__PURE__ */ new Set(),
       backlog: [],
       messages: [],
@@ -71514,6 +72628,7 @@ var LocalAcpRuntimeAdapter = class {
       restartReadySent: false,
       persistQueue: Promise.resolve(),
       promptQueue: Promise.resolve(),
+      pendingPermissions: /* @__PURE__ */ new Map(),
       ...params.projectId ? { projectId: params.projectId } : {},
       ...params.agentMemberId ? { agentMemberId: params.agentMemberId } : {}
     };
@@ -71557,6 +72672,49 @@ var LocalAcpRuntimeAdapter = class {
     });
     return { session_id: sessionId };
   }
+  brokerPermissionRequest(entry, sessionId, request) {
+    if (entry.id !== sessionId) {
+      return Promise.resolve({ outcome: { outcome: "cancelled" } });
+    }
+    const requestId = (0, import_node_crypto11.randomUUID)();
+    return new Promise((resolve9) => {
+      const message = {
+        type: "session.permission_request",
+        session_id: sessionId,
+        request_id: requestId,
+        tool_call: request.toolCall,
+        options: request.options
+      };
+      entry.pendingPermissions.set(requestId, {
+        optionIds: new Set(request.options.map((option) => option.optionId)),
+        message,
+        resolve: resolve9
+      });
+      for (const client2 of entry.clients)
+        sendJson(client2, message);
+    });
+  }
+  resolvePermissionRequest(entry, requestId, optionId) {
+    const pending = entry.pendingPermissions.get(requestId);
+    if (!pending)
+      return;
+    entry.pendingPermissions.delete(requestId);
+    const selectedOptionId = typeof optionId === "string" && pending.optionIds.has(optionId) ? optionId : null;
+    pending.resolve(selectedOptionId ? { outcome: { outcome: "selected", optionId: selectedOptionId } } : { outcome: { outcome: "cancelled" } });
+    const resolved = {
+      type: "session.permission_resolved",
+      session_id: entry.id,
+      request_id: requestId,
+      option_id: selectedOptionId
+    };
+    for (const client2 of entry.clients)
+      sendJson(client2, resolved);
+  }
+  cancelPendingPermissions(entry) {
+    for (const requestId of [...entry.pendingPermissions.keys()]) {
+      this.resolvePermissionRequest(entry, requestId, null);
+    }
+  }
   async pushRoomMention(projectId, agentMemberId, mention) {
     const sessionId = this.sessionIndex.get(sessionIndexKey(projectId, agentMemberId));
     if (!sessionId)
@@ -71579,7 +72737,7 @@ var LocalAcpRuntimeAdapter = class {
     const entry = this.sessions.get(sessionId);
     if (!entry)
       throw new Error("Local ACP text session failed to start.");
-    const turnId = `text-gen-${(0, import_node_crypto10.randomUUID)().slice(0, 8)}`;
+    const turnId = `text-gen-${(0, import_node_crypto11.randomUUID)().slice(0, 8)}`;
     const chunks = [];
     const prompt = [
       params.systemPrompt ? `System instructions:
@@ -71587,7 +72745,7 @@ ${params.systemPrompt}` : "",
       "Generate only the requested text. Do not edit the canvas or call tools unless strictly required for the text.",
       params.prompt
     ].filter(Boolean).join("\n\n");
-    return await new Promise((resolve8, reject) => {
+    return await new Promise((resolve9, reject) => {
       const timeout = setTimeout(() => {
         cleanup();
         reject(new Error("Local ACP text generation timed out."));
@@ -71611,7 +72769,7 @@ ${params.systemPrompt}` : "",
             reject(new Error("Local ACP text generation returned no text."));
             return;
           }
-          resolve8({ text, sessionId, agentId: params.agentId });
+          resolve9({ text, sessionId, agentId: params.agentId });
         }
       };
       const cleanup = () => {
@@ -71923,6 +73081,7 @@ ${params.systemPrompt}` : "",
       ...entry.acpSessionId ? { resumeAcpSessionId: entry.acpSessionId } : {}
     };
     entry.restarting = true;
+    this.cancelPendingPermissions(entry);
     for (const client2 of entry.clients) {
       try {
         client2.close(1012, "ACP session restarting");
@@ -71955,6 +73114,7 @@ ${params.systemPrompt}` : "",
     if (!entry)
       return Promise.resolve();
     if (!entry.disposePromise) {
+      this.cancelPendingPermissions(entry);
       entry.disposePromise = Promise.resolve(entry.manager.dispose(sessionId)).catch((error51) => {
         this.sendToSession(entry, {
           type: "session.error",
@@ -71979,6 +73139,7 @@ ${params.systemPrompt}` : "",
       return this.shutdownPromise;
     this.shuttingDown = true;
     this.shutdownPromise = (async () => {
+      await disposeAllAcpSetupProcesses();
       while (this.sessions.size > 0) {
         const entries = [...this.sessions.values()];
         for (const entry of entries) {
@@ -72042,11 +73203,19 @@ ${params.systemPrompt}` : "",
       for (const msg of entry.backlog)
         sendJson(ws, msg);
     }
+    for (const pending of entry.pendingPermissions.values()) {
+      sendJson(ws, pending.message);
+    }
     ws.on("message", (raw2) => {
       const msg = parseBrowserMessage(raw2);
       if (!msg?.type)
         return;
       switch (msg.type) {
+        case "permission_response":
+          if (typeof msg.request_id === "string") {
+            this.resolvePermissionRequest(entry, msg.request_id, typeof msg.option_id === "string" ? msg.option_id : null);
+          }
+          return;
         case "set_prompt_queue_mode":
           if (isPromptQueueMode(msg.queue_mode)) {
             entry.promptQueueMode = msg.queue_mode;
@@ -72176,13 +73345,6 @@ function attachLocalAcpSessions(server2, adapter) {
 // ../../apps/local-api/dist/server.js
 var port = Number(process.env.PORT ?? 49321);
 var dataDir = defaultLocalApiDataDir();
-function defaultLocalApiDataDir(env = process.env) {
-  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
-  if (explicit)
-    return explicit;
-  const clashHome = env.CLASH_HOME?.trim();
-  return (0, import_node_path16.join)(clashHome ? (0, import_node_path16.resolve)(clashHome) : (0, import_node_path16.join)((0, import_node_os5.homedir)(), ".clash"), "local-api");
-}
 function shellQuote3(value) {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
@@ -72192,15 +73354,20 @@ function resolveClashCliEntry(env) {
   return (0, import_node_module4.createRequire)(__clash_import_meta_url).resolve("@clash-space/cli");
 }
 function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env = process.env }) {
-  const binDir = (0, import_node_path16.join)(dataDir2, "agent-bin");
-  (0, import_node_fs3.mkdirSync)(binDir, { recursive: true });
+  const localDataDir = (0, import_node_path18.resolve)(dataDir2);
+  const clashHome = clashHomeForLocalDataDir(localDataDir);
+  const binDir = (0, import_node_path18.join)(localDataDir, "agent-bin");
+  (0, import_node_fs4.mkdirSync)(binDir, { recursive: true });
   const apiUrl = apiBaseUrl;
   const cliEntry = resolveClashCliEntry(env);
-  const shim = (0, import_node_path16.join)(binDir, "clash");
-  (0, import_node_fs3.writeFileSync)(shim, [
+  const shim = (0, import_node_path18.join)(binDir, "clash");
+  (0, import_node_fs4.writeFileSync)(shim, [
     "#!/bin/sh",
     `export CLASH_API_URL=${shellQuote3(apiUrl)}`,
+    `export CLASH_HOME=${shellQuote3(clashHome)}`,
+    `export CLASH_LOCAL_DATA_DIR=${shellQuote3(localDataDir)}`,
     "export ELECTRON_RUN_AS_NODE=1",
+    ...env.CLASH_CLI_NODE_PATH ? [`export CLASH_CLI_NODE_PATH=${shellQuote3(env.CLASH_CLI_NODE_PATH)}`] : [],
     `if [ -n "$CLASH_CLI_NODE_PATH" ]; then`,
     `  export NODE_PATH="$CLASH_CLI_NODE_PATH${"${NODE_PATH:+:$NODE_PATH}"}"`,
     "fi",
@@ -72213,13 +73380,15 @@ function createLocalAgentToolEnv({ dataDir: dataDir2, apiBaseUrl, env = process.
     `exec ${shellQuote3(process.execPath)} ${shellQuote3(cliEntry)} "$@"`,
     ""
   ].join("\n"), "utf8");
-  (0, import_node_fs3.chmodSync)(shim, 493);
+  (0, import_node_fs4.chmodSync)(shim, 493);
   return {
     CLASH_API_URL: apiUrl,
+    CLASH_HOME: clashHome,
+    CLASH_LOCAL_DATA_DIR: localDataDir,
     ...env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {},
     ...env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {},
     ...env.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH } : {},
-    PATH: [binDir, env.PATH].filter(Boolean).join(import_node_path16.delimiter)
+    PATH: [binDir, env.PATH].filter(Boolean).join(import_node_path18.delimiter)
   };
 }
 function createMockCanvasPatch(turnId, text) {
@@ -72371,7 +73540,7 @@ function createMockMissingReadProofPatch(turnId) {
 function createMockAcpSessionManager(send) {
   const delayMs = Number(process.env.CLASH_E2E_STUB_ACP_DELAY_MS ?? "0");
   const promptDelayMs = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : 0;
-  const waitForPromptDelay = () => promptDelayMs > 0 ? new Promise((resolve8) => setTimeout(resolve8, promptDelayMs)) : Promise.resolve();
+  const waitForPromptDelay = () => promptDelayMs > 0 ? new Promise((resolve9) => setTimeout(resolve9, promptDelayMs)) : Promise.resolve();
   return {
     start: ({ session_id }) => {
       send({
@@ -72481,7 +73650,7 @@ function createMockAcpSessionManager(send) {
   };
 }
 function withMockHarnessUpdateFixture(adapter, localDataDir) {
-  const readyPath = (0, import_node_path16.join)(localDataDir, ".e2e-harness-update-ready");
+  const readyPath = (0, import_node_path18.join)(localDataDir, ".e2e-harness-update-ready");
   const listHarnesses = adapter.listHarnesses.bind(adapter);
   const getSessionRuntimeStatus = adapter.getSessionRuntimeStatus.bind(adapter);
   const restartSession = adapter.restartSession.bind(adapter);
@@ -72489,7 +73658,7 @@ function withMockHarnessUpdateFixture(adapter, localDataDir) {
   let restarted = false;
   adapter.listHarnesses = async (options) => {
     const result = await listHarnesses(options);
-    if (!(0, import_node_fs3.existsSync)(readyPath))
+    if (!(0, import_node_fs4.existsSync)(readyPath))
       return result;
     const mock = result.harnesses.find((harness) => harness.id === "mock-acp");
     if (!mock)
@@ -72535,7 +73704,7 @@ function withMockHarnessUpdateFixture(adapter, localDataDir) {
   return adapter;
 }
 function createConfiguredLocalAcpAdapter(env = process.env, options = {}) {
-  const localDataDir = env.CLASH_LOCAL_DATA_DIR ?? dataDir;
+  const localDataDir = options.dataDir ?? defaultLocalApiDataDir(env);
   if (env.CLASH_E2E_STUB_ACP === "1") {
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
@@ -72547,17 +73716,20 @@ function createConfiguredLocalAcpAdapter(env = process.env, options = {}) {
       ],
       listResumeSessions: async () => [],
       createSessionManager: createMockAcpSessionManager,
+      runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
       hostname: () => "Mock Desktop",
       osTag: () => "mock/e2e"
     });
     return env.CLASH_E2E_STUB_HARNESS_UPDATE === "1" ? withMockHarnessUpdateFixture(adapter, localDataDir) : adapter;
   }
-  const harnessDownloadDir = (0, import_node_path16.join)(localDataDir, "acp-bin");
-  const acpBinDir = [env.CLASH_ACP_TEST_BIN_DIR, env.CLASH_ACP_BIN_DIR, harnessDownloadDir].filter(Boolean).join(import_node_path16.delimiter);
+  const harnessDownloadDir = (0, import_node_path18.join)(localDataDir, "acp-bin");
+  const acpBinDir = env.CLASH_ACP_TEST_BIN_DIR || harnessDownloadDir;
   return createLocalAcpAdapter({
     harnessConfig: createLocalHarnessConfigStore(localDataDir),
+    runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
+    capabilityCache: createLocalAcpCapabilityCacheStore(localDataDir),
     harnessDownloadDir,
-    probeCwd: (0, import_node_path16.join)(localDataDir, "acp-probe"),
+    probeCwd: (0, import_node_path18.join)(localDataDir, "acp-probe"),
     spawnEnv: {
       ...createLocalAgentToolEnv({
         dataDir: localDataDir,
@@ -72590,10 +73762,36 @@ async function loadLocalModelCards(dataDir2, userId = "local-user") {
   });
 }
 function startLocalApiServer(options) {
+  const discoveryRunDir = options.discovery?.runDir ?? (0, import_node_path18.join)(clashHomeForLocalDataDir(options.dataDir), "run");
   const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
-    apiBaseUrl: `http://127.0.0.1:${options.port}`
+    apiBaseUrl: `http://127.0.0.1:${options.port}`,
+    dataDir: options.dataDir
   });
-  void Promise.resolve(localAcp.warmup?.()).catch(() => void 0);
+  let configWatcherClosed = false;
+  let localAcpReady;
+  let configReloadQueue = Promise.resolve();
+  const stopConfigWatcher = watchClashUserConfig(options.dataDir, {
+    onChange(config2, previousConfig) {
+      const apply = configReloadQueue.then(async () => {
+        await localAcpReady;
+        if (configWatcherClosed)
+          return;
+        const nextSignature = JSON.stringify(config2.harnesses ?? null);
+        const previousSignature = JSON.stringify(previousConfig?.harnesses ?? null);
+        if (nextSignature === previousSignature)
+          return;
+        await localAcp.reconcileConfiguration?.();
+      });
+      configReloadQueue = apply.catch(() => void 0);
+      return apply;
+    },
+    onError(error51) {
+      console.error("[local-api] config.yaml reload rejected:", error51.message);
+    }
+  });
+  localAcpReady = Promise.resolve(localAcp.warmup?.()).catch((error51) => {
+    console.error("[local-api] ACP startup warmup degraded:", error51 instanceof Error ? error51.message : String(error51));
+  });
   const falMock2 = createMockFalQueueService();
   const syncConfig = createLocalSyncConfigStore({
     dataDir: options.dataDir,
@@ -72606,6 +73804,7 @@ function startLocalApiServer(options) {
   const app = createLocalApiApp({
     dataDir: options.dataDir,
     localAcp,
+    localAcpReady,
     falMock: falMock2,
     syncConfig,
     audioConfig,
@@ -72655,8 +73854,8 @@ function startLocalApiServer(options) {
   let resolveListening;
   let rejectListening;
   let settled = false;
-  const listening = new Promise((resolve8, reject) => {
-    resolveListening = resolve8;
+  const listening = new Promise((resolve9, reject) => {
+    resolveListening = resolve9;
     rejectListening = reject;
   });
   let discoveryHostId;
@@ -72676,7 +73875,7 @@ function startLocalApiServer(options) {
     });
     void (async () => {
       if (options.discovery?.enabled !== false) {
-        discoveryHostId = await writeServerDiscoveryRecord(info.port, options);
+        discoveryHostId = await writeServerDiscoveryRecord(info.port, options, discoveryRunDir);
       }
       resolveListening(server2);
     })().catch((error51) => {
@@ -72684,7 +73883,11 @@ function startLocalApiServer(options) {
       rejectListening(error51);
     });
   });
-  wrapServerCloseWithLifecycleCleanup(server2, () => localAcp.disposeAll(), () => discoveryHostId, options.discovery?.runDir);
+  wrapServerCloseWithLifecycleCleanup(server2, async () => {
+    configWatcherClosed = true;
+    stopConfigWatcher();
+    await localAcp.disposeAll();
+  }, () => discoveryHostId, discoveryRunDir);
   server2.once("error", (error51) => {
     if (settled) {
       console.error("[local-api] server error", error51);
@@ -72696,15 +73899,15 @@ function startLocalApiServer(options) {
   attachLocalAcpSessions(server2, localAcp);
   return listening;
 }
-async function writeServerDiscoveryRecord(actualPort, options) {
+async function writeServerDiscoveryRecord(actualPort, options, runDir) {
   const record2 = createHostDiscoveryRecord({
     endpoint: `http://127.0.0.1:${actualPort}`,
-    agentCliPath: (0, import_node_path16.join)(options.dataDir, "agent-bin", "clash"),
+    agentCliPath: (0, import_node_path18.join)(options.dataDir, "agent-bin", "clash"),
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId
   });
-  await writeHostDiscovery(record2, { runDir: options.discovery?.runDir });
+  await writeHostDiscovery(record2, { runDir });
   return record2.hostId;
 }
 function wrapServerCloseWithLifecycleCleanup(server2, disposeLocalAcp, getHostId, runDir) {
@@ -72760,7 +73963,7 @@ async function main() {
   const ownerClientId = process.env.CLASH_PLUGIN_OWNER_CLIENT_ID?.trim();
   if (!ownerClientId) throw new Error("CLASH_PLUGIN_OWNER_CLIENT_ID is required");
   const dataDir2 = defaultLocalApiDataDir(process.env);
-  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path17.join)(dataDir2, "..", "run");
+  const runDir = process.env.CLASH_HOST_RUN_DIR?.trim() || (0, import_node_path19.join)(clashHomeForLocalDataDir(dataDir2), "run");
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir: dataDir2,

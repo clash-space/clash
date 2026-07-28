@@ -83,21 +83,23 @@ describe("HarnessUpdateNotifier", () => {
   });
 
   it("keeps one persistent chrome control and expands every available ACP update", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ harnesses: availableHarnesses }), {
-            status: 200,
-          }),
-      ),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ harnesses: availableHarnesses }), {
+          status: 200,
+        }),
     );
+    vi.stubGlobal("fetch", fetchMock);
 
     renderNotifier();
 
     const trigger = await screen.findByRole("button", {
       name: "2 ACP updates available",
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/v1\/local\/harnesses$/),
+      { credentials: "include" },
+    );
     expect(screen.queryByText("Codex update available")).toBeNull();
 
     fireEvent.click(trigger);

@@ -287,6 +287,151 @@ describe("application theme contract", () => {
     }
   });
 
+  it("keeps secondary editor dialogs and asset surfaces on semantic dark tokens", () => {
+    const forbiddenBySurface = [
+      {
+        path: "packages/web-ui/src/components/VideoClipperContext.tsx",
+        tokens: [
+          "text-base font-semibold text-slate-800",
+          "hover:bg-slate-100",
+          "text-2xl font-mono text-slate-800",
+          "text-base font-mono text-slate-800",
+          "text-red-600 bg-red-50 border border-red-200",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/GlobalAssetsClient.tsx",
+        tokens: [
+          "bg-stone-100 text-stone-400",
+          "font-semibold text-slate-900",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/ProjectWorkspaceSurfaces.tsx",
+        tokens: [
+          "font-medium text-slate-700",
+          "font-semibold text-stone-600",
+          "overflow-hidden bg-stone-100",
+          "text-stone-500 hover:bg-warm-muted hover:text-slate-950",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/ProjectWorkspaceNavigator.tsx",
+        tokens: [
+          "aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-stone-100",
+          "font-semibold text-slate-900",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/ProjectEditor.tsx",
+        tokens: [
+          "text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950",
+          '"bg-brand/[0.08] text-slate-950"',
+          '"text-stone-600 hover:bg-warm-muted hover:text-slate-950"',
+          "bg-warm-surface text-stone-400 shadow-sm hover:bg-warm-muted hover:text-slate-900",
+          "bg-transparent text-stone-500 hover:text-slate-950",
+          "text-slate-300 cursor-not-allowed",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/UserControls.tsx",
+        tokens: [
+          "hover:bg-stone-200/70",
+          "hover:text-stone-950",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/copilot/NodeProposalCard.tsx",
+        tokens: [
+          "font-semibold text-slate-800",
+          "text-slate-700 hover:bg-warm-muted",
+        ],
+      },
+      {
+        path: "packages/remotion-ui/src/components/Editor.tsx",
+        tokens: [
+          "bg-warm-surface/95 px-2.5 py-1.5 text-xs font-medium text-slate-800",
+          "bg-transparent text-stone-500 transition-colors hover:bg-warm-muted hover:text-slate-950",
+        ],
+      },
+      {
+        path: "packages/remotion-ui/src/components/CaptionWorkspace.tsx",
+        tokens: [
+          "text-stone-",
+          "text-slate-",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/DirectorStageNode.tsx",
+        tokens: [
+          'text-[#5f9eff]',
+          "font-semibold text-slate-800",
+          "font-medium text-emerald-700",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/TextNode.tsx",
+        tokens: [
+          "prose-headings:text-slate-900",
+          "prose-p:text-slate-700",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/PromptNode.tsx",
+        tokens: [
+          "prose-headings:text-slate-900",
+          "prose-p:text-slate-700",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/VideoClipperNode.tsx",
+        tokens: ["aspect-video bg-stone-100"],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/ImageEditorNode.tsx",
+        tokens: ["aspect-video bg-stone-100"],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/BuildPlanDialog.tsx",
+        tokens: [
+          "font-bold text-slate-900",
+          "hover:text-slate-950",
+          "font-medium text-slate-800 truncate",
+          "bg-amber-50 border border-amber-200",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/CloneTrajectoryDialog.tsx",
+        tokens: [
+          "font-bold text-slate-900",
+          "hover:text-slate-950",
+          '<strong className="text-slate-900">',
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/AudioNode.tsx",
+        tokens: [
+          "font-bold text-slate-900",
+          "hover:text-slate-900",
+          "bg-slate-200 flex",
+          '"bg-slate-900" : "bg-slate-200',
+          "bg-slate-900 text-white",
+        ],
+      },
+      {
+        path: "packages/web-ui/src/components/nodes/ActionBadge.tsx",
+        tokens: ['<span className="font-medium text-stone-800">'],
+      },
+    ] as const;
+
+    for (const { path, tokens } of forbiddenBySurface) {
+      const source = readRepoFile(path);
+      for (const token of tokens) {
+        expect(source, `${path} still contains ${token}`).not.toContain(token);
+      }
+    }
+  });
+
   it("uses neutral gray dark surfaces and a muted gray launcher mark", () => {
     const css = readRepoFile("apps/web/app/globals.css");
     const topNavigation = readRepoFile(

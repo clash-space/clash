@@ -3,7 +3,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAppResource, registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
-import { createDirectorAdapter, type DirectorAdapter } from "./adapter.js";
+import {
+  createDirectorAdapter,
+  directorWorkspaceCwd,
+  type DirectorAdapter,
+} from "./adapter.js";
 import {
   DIRECTOR_PLUGIN_TOOL_NAMES,
   type DirectorPluginToolName,
@@ -153,7 +157,7 @@ async function invoke(
         ? stages.find((stage) => stage.id === input.stageId)
         : stages[0];
       if (input.stageId && !selected) throw new Error(`Director Stage ${input.stageId} not found`);
-      return { cwd: input.cwd ?? process.cwd(), stages, selected };
+      return { cwd: directorWorkspaceCwd(input), stages, selected };
     }
     case "clash_director_list": return adapter.list(input);
     case "clash_director_get": return { stage: await adapter.get(input) };

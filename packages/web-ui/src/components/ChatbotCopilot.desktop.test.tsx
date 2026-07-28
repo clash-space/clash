@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   useClashRuntime: vi.fn(),
   useAgentCopilot: vi.fn(),
   AcpMessageList: vi.fn(),
+  getAcpGlobalState: vi.fn((_messages?: unknown[]) => ({
+    planEntries: [] as Array<{ content: string; status: string }>,
+    outputs: [] as unknown[],
+  })),
 }));
 
 vi.mock("@clash/web-ui/hooks/useClashRuntime", () => ({
@@ -27,11 +31,17 @@ vi.mock("./copilot/AcpMessageList", () => ({
   AcpProgressPanel: ({ className }: { className?: string }) => (
     <div data-testid="acp-progress-panel" className={className} />
   ),
-  AcpMessageList: (props: { messages: unknown[] }) => {
+  AcpMessageList: (props: {
+    messages: unknown[];
+    clashEntities?: unknown[];
+    onOpenClashEntity?: (entity: unknown) => void;
+    agentId?: string | null;
+    isStreaming?: boolean;
+  }) => {
     mocks.AcpMessageList(props);
     return <div data-testid="acp-message-list">ACP messages: {props.messages.length}</div>;
   },
-  getAcpGlobalState: () => ({ planEntries: [] }),
+  getAcpGlobalState: (messages: unknown[]) => mocks.getAcpGlobalState(messages),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -188,9 +198,10 @@ const codexAcpConfigOptions = [
   },
 ] as const;
 
-function runtimeState(overrides: Partial<UseClashRuntimeReturn> = {}): UseClashRuntimeReturn {
+function runtimeState(overrides: Partial<UseClashRuntimeReturn> & Record<string, unknown> = {}): UseClashRuntimeReturn {
   return {
     runtimes: [desktopLocalRuntime],
+    startupStatus: "ready",
     selectedRuntimeId: null,
     selectedAgentId: null,
     sessionId: null,
@@ -200,10 +211,13 @@ function runtimeState(overrides: Partial<UseClashRuntimeReturn> = {}): UseClashR
     messages: [],
     availableCommands: [],
     sessionConfigOptions: [],
+    sessionInfoMeta: null,
+    goal: null,
     transientStatus: null,
     diagnostics: [],
     ready: false,
     sessionModes: null,
+    permissionRequests: [],
     sessionRuntimeStatus: null,
     sessionRestartPhase: "idle",
     refresh: vi.fn(),
@@ -224,10 +238,12 @@ function runtimeState(overrides: Partial<UseClashRuntimeReturn> = {}): UseClashR
     clearPromptQueue: vi.fn(),
     setConfigOption: vi.fn(),
     setSessionMode: vi.fn(),
+    respondPermission: vi.fn(),
     restartSession: vi.fn().mockResolvedValue(undefined),
     cancel: vi.fn(),
     shutdown: vi.fn(),
     ...overrides,
+    sessionUsage: overrides.sessionUsage ?? null,
   };
 }
 
@@ -291,6 +307,7 @@ describe("ChatbotCopilot desktop local mode", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    mocks.getAcpGlobalState.mockReturnValue({ planEntries: [], outputs: [] });
     vi.unstubAllGlobals();
     globalThis.__CLASH_RUNTIME_CONFIG__ = undefined;
     window.sessionStorage.clear();
@@ -450,7 +467,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect((screen.getByLabelText("chat draft") as HTMLInputElement).value).toBe("");
   });
 
-  it("keeps the Project composer usable and links to Agents when no local harness is enabled", async () => {
+  it("blocks the Project composer and links to Agents when no local harness is enabled", async () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -464,6 +481,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     Element.prototype.scrollIntoView = vi.fn();
     const refresh = vi.fn().mockResolvedValue(undefined);
     mocks.useClashRuntime.mockReturnValue(runtimeState({
+      startupStatus: "ready",
       runtimes: [{ ...desktopLocalRuntime, agents: [] }],
       selectedRuntimeId: null,
       selectedAgentId: null,
@@ -475,12 +493,11 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilotWithFeedback({ initialPrompt: "Animate the title card" });
 
-    expect(screen.getByTestId("chat-input").getAttribute("data-disabled")).toBe("false");
+    expect(screen.queryByTestId("chat-input")).toBeNull();
     const setupLink = await screen.findByRole("link", { name: "Open Agents" });
     expect(setupLink.getAttribute("href")).toBe("/settings?section=agents");
     expect(screen.getByText("Install or enable an agent harness before starting a project chat.")).toBeTruthy();
-    expect((screen.getByLabelText("chat draft") as HTMLInputElement).value).toBe("Animate the title card");
-    expect(refresh).toHaveBeenCalledWith({ probe: "config", refresh: true });
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("links to Agents when session creation discovers that the selected harness is unavailable", async () => {
@@ -784,6 +801,93 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(container.textContent).not.toContain("Streaming");
   });
 
+  it("keeps the composer unavailable until the cold-start harness probe settles", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      startupStatus: "loading",
+      runtimes: [],
+      status: "idle",
+      ready: false,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.getByRole("status", { name: "Connecting to the local agent on this Mac..." })).toBeTruthy();
+    expect(screen.queryByTestId("chat-input")).toBeNull();
+    expect(screen.queryByTestId("session-harness-config-trigger")).toBeNull();
+    expect((screen.getByRole("button", { name: "New session" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Session history" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("replaces the composer with a Settings action when the ready snapshot has no agents", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      startupStatus: "ready",
+      runtimes: [{ ...desktopLocalRuntime, agents: [] }],
+      status: "idle",
+      ready: false,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    const settings = screen.getByRole("link", { name: "Open Agents" });
+    expect(settings.getAttribute("href")).toBe("/settings?section=agents");
+    expect(screen.queryByTestId("chat-input")).toBeNull();
+    expect(screen.queryByTestId("session-harness-config-trigger")).toBeNull();
+  });
+
+  it("keeps agent controls unavailable when the startup snapshot fails", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      startupStatus: "error",
+      runtimes: [],
+      status: "idle",
+      ready: false,
+      errorMessage: "Runtime snapshot request failed: HTTP 503",
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.getByRole("link", { name: "Open Agents" }).getAttribute("href"))
+      .toBe("/settings?section=agents");
+    expect(screen.getByText("Runtime snapshot request failed: HTTP 503")).toBeTruthy();
+    expect(screen.queryByTestId("chat-input")).toBeNull();
+    expect(screen.queryByTestId("session-harness-config-trigger")).toBeNull();
+  });
+
   it("does not flash a missing-agent sentence before desktop runtimes load", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
@@ -797,6 +901,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     );
     Element.prototype.scrollIntoView = vi.fn();
     mocks.useClashRuntime.mockReturnValue(runtimeState({
+      startupStatus: "loading",
       runtimes: [],
       selectedRuntimeId: null,
       selectedAgentId: null,
@@ -1673,7 +1778,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(sendMessage.mock.calls[0]?.[0]).toContain("Do not edit the canvas, snapshot, or SQLite directly");
   });
 
-  it("renders ACP model and effort as stable primary sections in the composer selector", () => {
+  it("renders each Backchat-style run setting as a submenu with its current value", async () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -1705,6 +1810,8 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(trigger.querySelector("[data-acp-agent-logo]")).toBeTruthy();
     expect(trigger.querySelector("[data-session-config-status-slot]")).toBeTruthy();
     expect(trigger.textContent).toContain("GPT-5.5");
+    expect(trigger.textContent).toContain("Low");
+    expect(trigger.querySelector("[data-session-fast-mode-indicator]")).toBeNull();
     expect(trigger.textContent).not.toContain("Auto");
     expect(trigger.textContent).not.toContain("Local");
     expect(trigger.textContent).not.toContain("Codex");
@@ -1718,19 +1825,25 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(screen.queryByText("Auto")).toBeNull();
     expect(screen.queryByText("Use the selected harness default model")).toBeNull();
     expect(screen.queryByText("Harness")).toBeNull();
-    expect(screen.getByText("Model")).toBeTruthy();
+    const modelSubmenu = screen.getByRole("menuitem", { name: /Model\s*GPT-5\.5/ });
+    const effortSubmenu = screen.getByRole("menuitem", { name: /Effort\s*Low/ });
+    expect(modelSubmenu).toBeTruthy();
     expect(screen.queryByRole("menuitemradio", { name: /Codex/ })).toBeNull();
     expect(screen.queryByText("OpenAI")).toBeNull();
     expect(screen.queryByText("Anthropic")).toBeNull();
-    expect(screen.getByRole("menuitemradio", { name: "GPT-5.5" })).toBeTruthy();
+    expect(screen.queryByRole("menuitemradio", { name: "GPT-5.5" })).toBeNull();
     expect(screen.queryByText("Codex conversational model")).toBeNull();
-    expect(screen.getByText("Effort")).toBeTruthy();
+    expect(effortSubmenu).toBeTruthy();
+    fireEvent.keyDown(effortSubmenu, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByRole("menuitemradio", { name: /Medium/ })).toBeTruthy();
+    });
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Medium/ }));
 
     expect(setConfigOption).toHaveBeenCalledWith("thought_level", "medium");
   });
 
-  it("updates the ACP model through session/set_config_option", () => {
+  it("updates the ACP model through session/set_config_option", async () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -1758,12 +1871,188 @@ describe("ChatbotCopilot desktop local mode", () => {
     const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
     fireEvent.pointerDown(trigger);
 
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "GPT-5.4" }));
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Model\s*GPT-5\.5/ }), { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByRole("menuitemradio", { name: /GPT-5\.4/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /GPT-5\.4/ }));
 
     expect(setConfigOption).toHaveBeenCalledWith("model", "gpt-5.4");
   });
 
-  it("hides the locked harness list while allowing ACP model changes", () => {
+  it("keeps only model, effort, and fast mode in the run menu while routing custom options outside", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const setConfigOption = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      sessionConfigOptions: [
+        ...codexAcpConfigOptions,
+        {
+          id: "fast-mode",
+          name: "Fast mode",
+          type: "boolean",
+          currentValue: true,
+          description: "Use lower-latency inference",
+        },
+        {
+          id: "personality",
+          name: "Personality",
+          type: "select",
+          currentValue: "concise",
+          options: [
+            { value: "concise", name: "Concise" },
+            { value: "explanatory", name: "Explanatory" },
+          ],
+        },
+      ] as any,
+      ready: true,
+      setConfigOption,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    const trigger = screen.getByRole("button", { name: "Session runtime, harness, and model" });
+    expect(trigger.textContent).toContain("GPT-5.5");
+    expect(trigger.textContent).toContain("Low");
+    expect(trigger.querySelector("[data-session-fast-mode-indicator]")).toBeTruthy();
+
+    fireEvent.pointerDown(trigger);
+    const runMenu = screen.getByRole("menu", { name: "Session runtime, harness, and model" });
+    expect(within(runMenu).getByText("Fast mode")).toBeTruthy();
+    expect(within(runMenu).queryByText("Personality")).toBeNull();
+
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Fast mode\s*On/ }), { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByRole("menuitemradio", { name: /Fast mode/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Fast mode/ }));
+    expect(setConfigOption).toHaveBeenCalledWith("fast-mode", false);
+
+    const personalityTrigger = screen.getByRole("button", { name: "Personality" });
+    fireEvent.pointerDown(personalityTrigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Explanatory" }));
+    expect(setConfigOption).toHaveBeenCalledWith("personality", "explanatory");
+  });
+
+  it("shows Plan as a dismissible composer tag only while collaboration mode is active", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const setConfigOption = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      sessionConfigOptions: [
+        ...codexAcpConfigOptions,
+        {
+          id: "collaboration_mode",
+          name: "Collaboration mode",
+          type: "select",
+          currentValue: "plan",
+          options: [
+            { value: "default", name: "Default" },
+            { value: "plan", name: "Plan" },
+          ],
+        },
+      ] as any,
+      ready: true,
+      setConfigOption,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.queryByTestId("session-collaboration-mode-trigger")).toBeNull();
+    const planTag = screen.getByTestId("session-plan-tag");
+    expect(planTag.textContent).toContain("Plan");
+    expect(planTag.className).toContain("shrink-0");
+    fireEvent.click(screen.getByRole("button", { name: "Exit Plan mode" }));
+    expect(setConfigOption).toHaveBeenCalledWith("collaboration_mode", "default");
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Session runtime, harness, and model" }));
+    const runMenu = screen.getByRole("menu", { name: "Session runtime, harness, and model" });
+    expect(within(runMenu).queryByText("Collaboration mode")).toBeNull();
+    expect(within(runMenu).queryByRole("menuitemradio", { name: "Plan" })).toBeNull();
+  });
+
+  it("renders live Goal state as a summary bar and a dismissible composer tag", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const sendMessage = vi.fn();
+    mocks.getAcpGlobalState.mockReturnValue({
+      planEntries: [
+        { content: "Trace the ACP lifecycle", status: "completed" },
+        { content: "Verify the packaged app", status: "in_progress" },
+      ],
+      outputs: [],
+    });
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      sendMessage,
+      goal: {
+        objective: "Repair the Clash Plan and Goal experience",
+        status: "blocked",
+        tokenBudget: 48_000,
+        timeUsedSeconds: 361,
+        createdAt: 1_785_201_976,
+        controlMethod: "_codex/session/goal_control",
+      },
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    const goalBar = screen.getByRole("region", { name: "Goal status" });
+    expect(goalBar.textContent).toContain("Goal blocked");
+    expect(goalBar.textContent).toContain("Repair the Clash Plan and Goal experience");
+    expect(goalBar.textContent).toContain("6m");
+    expect(goalBar.textContent).toContain("1/2");
+    expect(screen.getByTestId("session-goal-tag").textContent).toContain("Goal");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show goal details" }));
+    expect(within(goalBar).getByRole("list", { name: "Goal plan" }).textContent).toContain(
+      "Verify the packaged app",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear goal" }));
+    expect(sendMessage).toHaveBeenCalledWith("/goal clear");
+  });
+
+  it("hides the locked harness list while allowing ACP model changes", async () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -1811,7 +2100,11 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(select).not.toHaveBeenCalled();
     expect(startDraft).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "GPT-5.4" }));
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: /Model\s*GPT-5\.5/ }), { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByRole("menuitemradio", { name: /GPT-5\.4/ })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /GPT-5\.4/ }));
 
     expect(setConfigOption).toHaveBeenCalledWith("model", "gpt-5.4");
   });
@@ -2127,9 +2420,9 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     renderDesktopCopilot();
 
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Agent");
+    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Approve for me");
     fireEvent.pointerDown(screen.getByRole("button", { name: "Harness permission mode" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Read-only/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Ask for approval/ }));
 
     expect(setConfigOption).toHaveBeenCalledWith("mode", "read-only");
     expect(startDraft).toHaveBeenLastCalledWith("desktop-local", undefined, {
@@ -2150,7 +2443,53 @@ describe("ChatbotCopilot desktop local mode", () => {
       agentId: "codex-acp",
       permissionModeId: "read-only",
     });
-    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Read-only");
+    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Ask for approval");
+  });
+
+  it("prefers ACP configOptions mode over deprecated session modes", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const setConfigOption = vi.fn();
+    const setSessionMode = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      sessionModes: codexSessionModes,
+      sessionConfigOptions: [{
+        id: "mode",
+        name: "Permissions",
+        type: "select",
+        category: "mode",
+        currentValue: "agent",
+        options: [
+          { value: "read-only", name: "Ask for approval" },
+          { value: "agent", name: "Approve for me" },
+        ],
+      }] as any,
+      setConfigOption,
+      setSessionMode,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.getByRole("button", { name: "Harness permission mode" }).textContent).toContain("Approve for me");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Harness permission mode" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Ask for approval/ }));
+
+    expect(setConfigOption).toHaveBeenCalledWith("mode", "read-only");
+    expect(setSessionMode).not.toHaveBeenCalled();
   });
 
   it("does not reuse one agent's ACP mode config for another agent without mode config", () => {
@@ -2226,7 +2565,7 @@ describe("ChatbotCopilot desktop local mode", () => {
       availableCommands: [
         { name: "review", description: "Review unstaged changes" },
         { name: "compact", description: "Compact this session" },
-        { name: "frontend-design", description: "Build polished production interfaces" },
+        { name: "frontend-design", description: "Build polished production interfaces", kind: "skill" },
       ],
     }));
     mocks.useAgentCopilot.mockReturnValue(cloudState());
@@ -2243,7 +2582,8 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(within(commandList).getByText("/review")).toBeTruthy();
     expect(within(commandList).getByText("Review unstaged changes")).toBeTruthy();
     expect(within(commandList).getByText("/frontend-design")).toBeTruthy();
-    expect(within(commandList).getByText("Agent commands & skills")).toBeTruthy();
+    expect(within(commandList).getByText("Commands")).toBeTruthy();
+    expect(within(commandList).getByText("Skills")).toBeTruthy();
     const activity = document.querySelector(".clash-copilot-agent-activity-composer-companion");
     expect(activity).toBeTruthy();
     expect(activity!.compareDocumentPosition(commandList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -2259,6 +2599,38 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(screen.queryByText("/review")).toBeNull();
   });
 
+  it("fuzzy-filters advertised ACP commands", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      availableCommands: [
+        { name: "frontend-design", description: "Build polished interfaces", kind: "skill" },
+        { name: "review", description: "Review changes" },
+      ],
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+    fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "/fd" } });
+
+    const commandList = screen.getByRole("listbox", { name: "Slash commands" });
+    expect(within(commandList).getByText("/frontend-design")).toBeTruthy();
+    expect(within(commandList).queryByText("/review")).toBeNull();
+  });
+
   it("does not invent client-side slash commands when the active agent advertises none", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
@@ -2268,12 +2640,14 @@ describe("ChatbotCopilot desktop local mode", () => {
       }),
     );
     Element.prototype.scrollIntoView = vi.fn();
+    const prepareSession = vi.fn();
     mocks.useClashRuntime.mockReturnValue(runtimeState({
       selectedRuntimeId: "desktop-local",
       selectedAgentId: "codex-acp",
-      status: "connected",
-      ready: true,
+      status: "draft",
+      ready: false,
       availableCommands: [],
+      prepareSession,
     }));
     mocks.useAgentCopilot.mockReturnValue(cloudState());
 
@@ -2283,6 +2657,183 @@ describe("ChatbotCopilot desktop local mode", () => {
     const commands = screen.getByRole("listbox", { name: "Slash commands" });
     expect(within(commands).getByText("This agent has no slash commands.")).toBeTruthy();
     expect(screen.queryByText("/model")).toBeNull();
+    expect(prepareSession).not.toHaveBeenCalled();
+  });
+
+  it("exposes the Backchat plan command for any harness advertising collaboration mode", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      runtimes: [{
+        ...desktopLocalRuntime,
+        agents: [{ id: "future-harness", label: "Future Harness" }],
+      }],
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "future-harness",
+      status: "draft",
+      ready: false,
+      availableCommands: [],
+      sessionConfigOptions: [{
+        id: "collaboration_mode",
+        name: "Collaboration mode",
+        type: "select",
+        currentValue: "default",
+        options: [
+          { value: "default", name: "Default" },
+          { value: "plan", name: "Plan" },
+        ],
+      }] as any,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+    fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "/" } });
+
+    const commands = screen.getByRole("listbox", { name: "Slash commands" });
+    expect(within(commands).getByText("/plan")).toBeTruthy();
+    fireEvent.click(within(commands).getByText("/plan"));
+    expect((screen.getByLabelText("chat draft") as HTMLInputElement).value).toBe("/plan");
+  });
+
+  it("executes an advertised config command action without sending it as a prompt", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const sendMessage = vi.fn();
+    const setConfigOption = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      runtimes: [{
+        ...desktopLocalRuntime,
+        agents: [{ id: "future-harness", label: "Future Harness" }],
+      }],
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "future-harness",
+      status: "draft",
+      ready: false,
+      sendMessage,
+      setConfigOption,
+      availableCommands: [{
+        name: "plan",
+        description: "Turn plan mode on.",
+        _meta: {
+          commandAction: {
+            kind: "setConfigOption",
+            configId: "collaboration_mode",
+            value: "plan",
+            resetValue: "default",
+            presentation: "state",
+          },
+        },
+      }] as any,
+      sessionConfigOptions: [{
+        id: "collaboration_mode",
+        name: "Collaboration mode",
+        type: "select",
+        currentValue: "default",
+        options: [
+          { value: "default", name: "Default" },
+          { value: "plan", name: "Plan" },
+        ],
+      }] as any,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+    fireEvent.change(screen.getByLabelText("chat draft"), {
+      target: { value: "/plan" },
+    });
+    fireEvent.click(screen.getByTestId("submit-chat-input"));
+
+    expect(setConfigOption).toHaveBeenCalledWith("collaboration_mode", "plan");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends ACP slash commands without prefixing Clash workspace context", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const sendMessage = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      sendMessage,
+      availableCommands: [{ name: "goal", description: "Set a session goal" }],
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      workspaceContext: {
+        projectId: "project-one",
+        projectName: "Clash",
+        activeSurface: { kind: "canvas", id: "main", name: "Main" },
+      },
+    });
+    fireEvent.change(screen.getByLabelText("chat draft"), {
+      target: { value: "/goal Ship the product" },
+    });
+    fireEvent.click(screen.getByTestId("submit-chat-input"));
+
+    expect(sendMessage).toHaveBeenCalledWith("/goal Ship the product");
+  });
+
+  it("groups Codex dollar-prefixed advertised commands as skills", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      availableCommands: [
+        { name: "review", description: "Review changes" },
+        { name: "$frontend-design", description: "Build polished interfaces" },
+      ],
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+    fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "/" } });
+
+    const commandList = screen.getByRole("listbox", { name: "Slash commands" });
+    expect(within(commandList).getByText("Commands")).toBeTruthy();
+    expect(within(commandList).getByText("Skills")).toBeTruthy();
+    expect(within(commandList).getByText("/$frontend-design")).toBeTruthy();
   });
 
   it("includes audio canvas nodes in the mention candidates", () => {
@@ -2831,8 +3382,71 @@ describe("ChatbotCopilot desktop local mode", () => {
     renderDesktopCopilot();
 
     expect(screen.getByTestId("acp-message-list")).toBeTruthy();
-    expect(mocks.AcpMessageList).toHaveBeenCalledWith({ messages: [assistantMessage] });
+    expect(mocks.AcpMessageList).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [assistantMessage],
+      clashEntities: [],
+    }));
     expect(screen.queryByRole("status", { name: "Streaming activity" })).toBeNull();
+  });
+
+  it("passes project entity identities and navigation through to runtime MCP results", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const assistantMessage = {
+      id: "runtime-clash-mcp",
+      role: "assistant",
+      parts: [{ type: "text", text: "Done." }],
+    };
+    const onOpenClashEntity = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "connected",
+      ready: true,
+      messages: [assistantMessage] as any,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot({
+      workspaceContext: {
+        projectId: "project-one",
+        projectName: "Launch Film",
+        activeSurface: { kind: "canvas", id: "main", name: "Main Storyboard" },
+      },
+      mentionSources: [{
+        id: "action-1",
+        type: "action",
+        label: "Render variants",
+        kind: "node",
+        scope: "current-canvas",
+        canvasId: "main",
+        canvasName: "Main Storyboard",
+      }],
+      onOpenClashEntity,
+    });
+
+    expect(mocks.AcpMessageList).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [assistantMessage],
+      onOpenClashEntity,
+      clashEntities: expect.arrayContaining([
+        { kind: "canvas", id: "main", label: "Main Storyboard" },
+        {
+          kind: "canvas-node",
+          id: "action-1",
+          label: "Render variants",
+          canvasId: "main",
+        },
+      ]),
+    }));
   });
 
   it("treats runtime edge update and delete after same-patch edge creation as new-edge operations", async () => {
@@ -3227,5 +3841,44 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(await screen.findByText("Codex 1.0.2 installed")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Restart session" }));
     expect(restartSession).toHaveBeenCalledWith("now");
+  });
+
+  it("renders ACP permission options as a blocking card inside the Chat panel", async () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const respondPermission = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      sessionId: "session-permission",
+      status: "streaming",
+      ready: true,
+      permissionRequests: [{
+        requestId: "permission-1",
+        sessionId: "session-permission",
+        toolCall: { toolCallId: "tool-1", title: "Edit file" },
+        options: [
+          { optionId: "reject", name: "Reject", kind: "reject_once" },
+          { optionId: "allow", name: "Allow", kind: "allow_once" },
+        ],
+      }],
+      respondPermission,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    const approval = await screen.findByRole("group", { name: "Approval required" });
+    expect(approval.closest("aside")).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Approval required" })).toBeNull();
+    expect(screen.getByText("Edit file")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+    expect(respondPermission).toHaveBeenCalledWith("permission-1", "allow");
   });
 });

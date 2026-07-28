@@ -10,6 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router";
 import type { AgentAnnotationDraft } from "@clash/shared-types";
 
 import { ChatInput } from "./ChatInput";
@@ -21,6 +22,11 @@ const globalCss = readFileSync(
   resolve(root, "apps/web/app/globals.css"),
   "utf8",
 );
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location-probe">{`${location.pathname}${location.search}`}</output>;
+}
 
 vi.mock("../MilkdownEditor", () => ({
   default: forwardRef(
@@ -80,6 +86,66 @@ describe("ChatInput", () => {
     expect(container.querySelector(".clash-chat-input-actions")).toBeTruthy();
     expect(container.querySelector(".clash-chat-input-toolbar")).toBeNull();
     expect(container.querySelector(".clash-input-surface")).toBeNull();
+  });
+
+  it("keeps the composer controls in separate shrinkable lanes at narrow panel widths", async () => {
+    const { container } = render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          toolbarAccessory={<div data-testid="left-accessory">left</div>}
+          rightToolbarAccessory={<div data-testid="right-accessory">right</div>}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+
+    expect(container.querySelector(".clash-chat-input-toolbar-row")).toBeTruthy();
+    expect(container.querySelector(".clash-chat-input-toolbar-start")).toBeTruthy();
+    expect(container.querySelector(".clash-chat-input-toolbar-end")).toBeTruthy();
+    expect(container.querySelector(".clash-chat-input-toolbar-accessory")).toBeTruthy();
+    expect(container.querySelector(".clash-chat-input-toolbar-config")).toBeTruthy();
+    expect(globalCss).toMatch(
+      /\.clash-chat-input-surface\s*\{[\s\S]*?container-type:\s*inline-size;[\s\S]*?container-name:\s*clash-chat-composer;/,
+    );
+    expect(globalCss).toMatch(
+      /\.clash-chat-input-toolbar-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(2\.25rem,\s*1fr\)\s+minmax\(0,\s*max-content\);/,
+    );
+    expect(globalCss).toMatch(
+      /@container clash-chat-composer \(max-width:\s*32rem\)\s*\{[\s\S]*?\.clash-session-state-tag-label\s*\{[\s\S]*?display:\s*none;/,
+    );
+    expect(globalCss).toMatch(
+      /\.clash-session-config-trigger\s*\{[\s\S]*?width:\s*max-content;[\s\S]*?min-width:\s*max-content;[\s\S]*?max-width:\s*100%;/,
+    );
+    expect(globalCss).toMatch(
+      /@container clash-chat-composer \(max-width:\s*32rem\)\s*\{[\s\S]*?\.clash-session-config-effort\s*\{[\s\S]*?display:\s*none;/,
+    );
+    expect(globalCss).toMatch(
+      /@container clash-chat-composer \(max-width:\s*24\.5rem\)\s*\{[\s\S]*?\.clash-session-config-trigger\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?max-width:\s*7\.25rem;/,
+    );
+  });
+
+  it("keeps the same runtime controls when only the composer size is hero", async () => {
+    render(
+      <Suspense fallback={<div>Loading</div>}>
+        <ChatInput
+          input=""
+          onInputChange={() => undefined}
+          onSubmit={() => undefined}
+          variant="hero"
+          toolbarAccessory={<div data-testid="hero-left-accessory">permission</div>}
+          rightToolbarAccessory={<div data-testid="hero-right-accessory">model</div>}
+        />
+      </Suspense>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+
+    expect(screen.getByTestId("hero-left-accessory")).toBeTruthy();
+    expect(screen.getByTestId("hero-right-accessory")).toBeTruthy();
   });
 
   it("uses the shared workbench radius instead of a composer-only pill radius", async () => {
@@ -301,8 +367,8 @@ describe("ChatInput", () => {
     );
   });
 
-  it("renders editable agent-annotation blocks and can remove them", async () => {
-    const onAnnotationChange = vi.fn();
+  it("routes annotation clicks to the shared inspector instead of editing in a popover", async () => {
+    const onAnnotationOpen = vi.fn();
     const onAnnotationRemove = vi.fn();
     const onAnnotationLocate = vi.fn();
     const annotation: AgentAnnotationDraft = {
@@ -329,7 +395,7 @@ describe("ChatInput", () => {
           onInputChange={() => undefined}
           onSubmit={() => undefined}
           annotationBlocks={[annotation]}
-          onAnnotationChange={onAnnotationChange}
+          onAnnotationOpen={onAnnotationOpen}
           onAnnotationRemove={onAnnotationRemove}
           onAnnotationLocate={onAnnotationLocate}
         />
@@ -350,32 +416,14 @@ describe("ChatInput", () => {
     expect(item.textContent).toContain("Main");
     expect(item.textContent).toContain("Hero still");
     expect(item.textContent).toContain("Image");
-    expect(item.textContent).toContain("canvases/canvas-main/nodes/image-1");
-
-    const annotationEditor = screen.getByRole("textbox", {
-      name: "Annotation for Hero still",
-    }) as HTMLTextAreaElement;
-    expect(document.activeElement).toBe(annotationEditor);
-    expect(annotationEditor.selectionStart).toBe(annotation.note.length);
-    expect(annotationEditor.selectionEnd).toBe(annotation.note.length);
-
-    fireEvent.change(annotationEditor, {
-      target: { value: "Use the wider crop and preserve the title safe area." },
-    });
-    expect(onAnnotationChange).toHaveBeenCalledWith(
-      "annotation-canvas-1",
-      "Use the wider crop and preserve the title safe area.",
-    );
-
     fireEvent.click(
-      screen.getByRole("button", { name: "Locate annotation for Hero still" }),
+      screen.getByRole("button", { name: "Annotation 1: Hero still" }),
     );
-    expect(onAnnotationLocate).toHaveBeenCalledWith("annotation-canvas-1");
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove annotation for Hero still" }),
-    );
-    expect(onAnnotationRemove).toHaveBeenCalledWith("annotation-canvas-1");
+    expect(onAnnotationOpen).toHaveBeenCalledWith("annotation-canvas-1");
+    expect(
+      screen.queryByRole("textbox", { name: "Annotation for Hero still" }),
+    ).toBeNull();
   });
 
   it("opens the annotation list only when clicked", async () => {
@@ -589,7 +637,13 @@ describe("ChatInput", () => {
     expect(onSubmit).toHaveBeenCalledWith("", [], [annotation]);
   });
 
-  it("points the microphone to Models when local ASR is not configured", async () => {
+  it("does not enter recording and points the microphone to Audio when voice input is disabled", async () => {
+    const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    const getUserMedia = vi.fn();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes("/api/v1/local/audio")) {
         return new Response(
@@ -618,13 +672,16 @@ describe("ChatInput", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <Suspense fallback={<div>Loading</div>}>
-        <ChatInput
-          input=""
-          onInputChange={() => undefined}
-          onSubmit={() => undefined}
-        />
-      </Suspense>,
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+          />
+        </Suspense>
+        <LocationProbe />
+      </MemoryRouter>,
     );
 
     await screen.findByTestId("milkdown-editor");
@@ -639,9 +696,178 @@ describe("ChatInput", () => {
       ),
     );
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Deploy an ASR model in Models first.");
+    expect(alert.textContent).toContain("Enable voice input in Audio settings first.");
     expect(
-      screen.getByRole("link", { name: "Open Models" }).getAttribute("href"),
-    ).toBe("/settings?section=models");
+      screen.getByRole("link", { name: "Open Audio" }).getAttribute("href"),
+    ).toBe("/settings?section=audio");
+    fireEvent.click(screen.getByRole("link", { name: "Open Audio" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location-probe").textContent).toBe("/settings?section=audio"),
+    );
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "copilot.chatInput.voice" })).toBeNull();
+
+    if (mediaDevicesDescriptor) {
+      Object.defineProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+    } else {
+      Reflect.deleteProperty(navigator, "mediaDevices");
+    }
+  });
+
+  it("points an enabled voice input with an undeployed ASR model to Models", async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({
+        asr: {
+          enabled: true,
+          provider: "builtin-funasr",
+          base_url: null,
+          model: "iic/SenseVoiceSmall",
+          ready: false,
+        },
+      }),
+      { headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+          />
+        </Suspense>
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.voice" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Deploy the selected ASR model in Models first.");
+    fireEvent.click(screen.getByRole("link", { name: "Open Models" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location-probe").textContent).toBe("/settings?section=models"),
+    );
+  });
+
+  it("records a ready local ASR clip, transcribes it, and inserts the returned text", async () => {
+    const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    const stopTracks = vi.fn();
+    const stream = { getTracks: () => [{ stop: stopTracks }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => stream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    class TestMediaRecorder {
+      state: RecordingState = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onerror: (() => void) | null = null;
+      private readonly listeners = new Map<string, Array<() => void>>();
+
+      constructor(_stream: MediaStream) {}
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        if (this.state === "inactive") return;
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["voice"], { type: this.mimeType }) } as BlobEvent);
+        this.listeners.get("stop")?.forEach((listener) => listener());
+      }
+
+      addEventListener(name: string, listener: () => void) {
+        this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]);
+      }
+    }
+
+    class TestAudioContext {
+      createAnalyser() {
+        return {
+          fftSize: 0,
+          smoothingTimeConstant: 0,
+          frequencyBinCount: 24,
+          getByteFrequencyData: (values: Uint8Array) => values.fill(0),
+        } as unknown as AnalyserNode;
+      }
+
+      createMediaStreamSource() {
+        return { connect: vi.fn() } as unknown as MediaStreamAudioSourceNode;
+      }
+
+      close() {
+        return Promise.resolve();
+      }
+    }
+
+    vi.stubGlobal("MediaRecorder", TestMediaRecorder);
+    vi.stubGlobal("AudioContext", TestAudioContext);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 0));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onInputChange = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/api/v1/local/audio/transcriptions")) {
+        expect(init?.method).toBe("POST");
+        expect(init?.body).toBeInstanceOf(FormData);
+        return new Response(JSON.stringify({ text: "hello from ASR" }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (String(input).includes("/api/v1/local/audio")) {
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: true,
+            ready: true,
+            provider: "builtin-funasr",
+            base_url: null,
+            model: "iic/SenseVoiceSmall",
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        <MemoryRouter>
+          <Suspense fallback={<div>Loading</div>}>
+            <ChatInput
+              input="existing"
+              onInputChange={onInputChange}
+              onSubmit={() => undefined}
+            />
+          </Suspense>
+        </MemoryRouter>,
+      );
+
+      await screen.findByTestId("milkdown-editor");
+      fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.voice" }));
+      await screen.findByRole("region", { name: "copilot.chatInput.voice" });
+      expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+
+      fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.confirmVoice" }));
+
+      await waitFor(() => expect(onInputChange).toHaveBeenCalledWith("existing hello from ASR"));
+      expect(stopTracks).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/local/audio/transcriptions"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    } finally {
+      if (mediaDevicesDescriptor) {
+        Object.defineProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, "mediaDevices");
+      }
+    }
   });
 });

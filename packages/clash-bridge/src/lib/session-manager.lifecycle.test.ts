@@ -3,7 +3,23 @@ import type { AcpSession, SessionOptions } from "../_acp-runtime/types.js";
 
 const mocks = vi.hoisted(() => ({
   runtimeStart: vi.fn(),
+  resolveAgentMcpServers: vi.fn(),
 }));
+
+const bundledClashMcp = {
+  name: "clash",
+  command: process.execPath,
+  args: ["/opt/clash/plugins/clash/runtime/index.js"],
+  env: [{ name: "CLASH_PROJECT_ID", value: "project-lifecycle" }],
+  _meta: {
+    "io.modelcontextprotocol/ui": {
+      host: "clash",
+      mimeTypes: ["text/html;profile=mcp-app"],
+    },
+    "clash.plugin": "builtin",
+    "clash.renderer": "product",
+  },
+};
 
 vi.mock("../_acp-runtime/index.js", () => ({
   AcpRuntimeImpl: class {
@@ -18,6 +34,7 @@ vi.mock("../_acp-runtime/spawners/node.js", () => ({
 vi.mock("./session-cwd.js", () => ({
   ensureAgentCwd: vi.fn(async () => "/tmp/clash-session-lifecycle"),
   readAgentRuntime: vi.fn(async () => ({ agent_id: "fake-acp" })),
+  resolveAgentMcpServers: mocks.resolveAgentMcpServers,
 }));
 
 import { SessionManager, type ManagerOut, type SessionStartParams } from "./session-manager.js";
@@ -90,6 +107,112 @@ async function nextTask(): Promise<void> {
 describe("SessionManager lifecycle", () => {
   beforeEach(() => {
     mocks.runtimeStart.mockReset();
+    mocks.resolveAgentMcpServers.mockReset();
+    mocks.resolveAgentMcpServers.mockResolvedValue([bundledClashMcp]);
+  });
+
+  it("mounts the bundled Clash MCP in ACP session/new during cold start", async () => {
+    mocks.runtimeStart.mockResolvedValue(createAcpSession());
+    const manager = new SessionManager(() => undefined);
+    const params = sessionParams("session-bundled-clash-mcp");
+
+    await manager.start(params);
+
+    try {
+      expect(mocks.resolveAgentMcpServers).toHaveBeenCalledWith(
+        "master-clash",
+        expect.objectContaining({
+          CLASH_PROJECT_ID: "project-lifecycle",
+          CLASH_WORKSPACE_ROOT: "/tmp/clash-session-lifecycle",
+        }),
+      );
+      expect(mocks.runtimeStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpServers: [bundledClashMcp],
+        }),
+      );
+    } finally {
+      await manager.dispose(params.session_id);
+    }
+  });
+
+  it("fails closed instead of starting a self-host session without the bundled Clash MCP", async () => {
+    mocks.resolveAgentMcpServers.mockResolvedValue([]);
+    const sent: ManagerOut[] = [];
+    const manager = new SessionManager((message) => sent.push(message));
+    const params = sessionParams("session-missing-bundled-clash-mcp");
+
+    await manager.start(params);
+
+    expect(mocks.runtimeStart).not.toHaveBeenCalled();
+    expect(sent).toContainEqual(expect.objectContaining({
+      type: "session.error",
+      session_id: params.session_id,
+      message: expect.stringMatching(/bundled Clash MCP/i),
+    }));
+    expect(sent.some((message) => message.type === "session.ready")).toBe(false);
+  });
+
+  it("host-marks product rendering only for the bundled MCP injected into this session", async () => {
+    mocks.resolveAgentMcpServers.mockResolvedValue([{
+      name: "clash",
+      command: process.execPath,
+      args: ["/opt/clash/plugins/clash/runtime/index.js"],
+      env: [],
+      _meta: {
+        "clash.plugin": "builtin",
+        "clash.renderer": "product",
+      },
+    }]);
+    mocks.runtimeStart.mockResolvedValue(createAcpSession({
+      prompt() {
+        return (async function* () {
+          yield {
+            sessionUpdate: "tool_call",
+            toolCallId: "bundled-clash",
+            rawInput: { server: "clash", tool: "clash_canvas_list" },
+            _meta: { is_mcp_tool_call: true },
+          };
+          yield {
+            sessionUpdate: "tool_call",
+            toolCallId: "other-mcp",
+            rawInput: { server: "charts", tool: "show_sales" },
+            _meta: { is_mcp_tool_call: true },
+          };
+        })();
+      },
+    }));
+    const sent: ManagerOut[] = [];
+    const manager = new SessionManager((message) => sent.push(message));
+    const params = sessionParams("session-trusted-mcp-renderer");
+
+    await manager.start(params);
+    await manager.prompt({
+      session_id: params.session_id,
+      turn_id: "turn-mcp",
+      text: "inspect canvas",
+    });
+
+    try {
+      const events = sent
+        .filter((message): message is Extract<ManagerOut, { type: "session.event" }> => message.type === "session.event")
+        .map((message) => message.event);
+      expect(events).toEqual([
+        expect.objectContaining({
+          toolCallId: "bundled-clash",
+          _meta: expect.objectContaining({
+            "clash.host_trusted_mcp": true,
+            "clash.renderer": "product",
+          }),
+        }),
+        expect.objectContaining({
+          toolCallId: "other-mcp",
+          _meta: { is_mcp_tool_call: true },
+        }),
+      ]);
+    } finally {
+      await manager.dispose(params.session_id);
+    }
   });
 
   it("coalesces concurrent starts for one session into one ACP child", async () => {

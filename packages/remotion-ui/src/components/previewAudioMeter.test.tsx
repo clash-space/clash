@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -28,5 +30,18 @@ describe('preview audio meter', () => {
     expect(screen.getByRole('meter', { name: 'Left audio level' }).getAttribute('aria-valuenow')).toBe('-6');
     expect(screen.getByRole('meter', { name: 'Right audio level' }).getAttribute('aria-valuenow')).toBe('-12');
     expect(screen.queryByRole('slider')).toBeNull();
+  });
+
+  it('uses theme surfaces and the custom accent instead of light and green literals', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'packages/remotion-ui/src/components/previewAudioMeter.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain("backgroundColor: 'var(--clash-warm-muted");
+    expect(source).toContain("var(--clash-accent, #ff6b50)");
+    expect(source).not.toContain("#ece9e3");
+    expect(source).not.toContain("#16a34a");
+    expect(source).not.toContain("#22c55e");
   });
 });

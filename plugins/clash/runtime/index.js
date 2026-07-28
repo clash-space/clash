@@ -19694,7 +19694,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve6.call(this, root, ref);
+      let _sch = resolve8.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a5 = root.localRefs) === null || _a5 === void 0 ? void 0 : _a5[ref];
         const { schemaId } = this.opts;
@@ -19721,7 +19721,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve6(root, ref) {
+    function resolve8(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -20352,7 +20352,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve6(baseURI, relativeURI, options) {
+    function resolve8(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse5(baseURI, schemelessOptions), parse5(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -20610,7 +20610,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve6,
+      resolve: resolve8,
       resolveComponent,
       equal,
       serialize,
@@ -23600,7 +23600,7 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import { resolve as resolve5 } from "path";
+import { resolve as resolve7 } from "path";
 import { pathToFileURL } from "url";
 
 // src/server.ts
@@ -23688,12 +23688,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve6) => {
+    return new Promise((resolve8) => {
       const json4 = serializeMessage(message);
       if (this._stdout.write(json4)) {
-        resolve6();
+        resolve8();
       } else {
-        this._stdout.once("drain", resolve6);
+        this._stdout.once("drain", resolve8);
       }
     });
   }
@@ -29611,7 +29611,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
+        await new Promise((resolve8) => setTimeout(resolve8, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error55) {
@@ -29628,7 +29628,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve6, reject) => {
+    return new Promise((resolve8, reject) => {
       const earlyReject = (error55) => {
         reject(error55);
       };
@@ -29706,7 +29706,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve6(parseResult.data);
+            resolve8(parseResult.data);
           }
         } catch (error55) {
           reject(error55);
@@ -29967,12 +29967,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve6, reject) => {
+    return new Promise((resolve8, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve6, interval);
+      const timeoutId = setTimeout(resolve8, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -31083,7 +31083,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
+      await new Promise((resolve8) => setTimeout(resolve8, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -31749,7 +31749,7 @@ function N3(Z, $, J, X, V) {
   return Z.registerResource($, J, { mimeType: p, ...X }, V);
 }
 
-// ../../packages/mcp-server/dist/chunk-PBK753EG.js
+// ../../packages/mcp-server/dist/chunk-WWBCNB7Y.js
 import { readFileSync } from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -31885,10 +31885,12 @@ var execFileAsync = promisify(execFile);
 function createClashCliRunner(options = {}) {
   const command = options.command ?? process.env.CLASH_CLI_BIN ?? "clash";
   const argsPrefix = options.argsPrefix ?? [];
+  const env = options.env ?? process.env;
+  const defaultCwd = options.cwd ?? env.CLASH_WORKSPACE_ROOT ?? env.CODEX_WORKSPACE_ROOT ?? process.cwd();
   return async (args, cwd) => {
     const { stdout } = await execFileAsync(command, [...argsPrefix, ...args], {
-      cwd: cwd ?? options.cwd ?? process.cwd(),
-      env: options.env ?? process.env,
+      cwd: cwd ?? defaultCwd,
+      env,
       maxBuffer: 16 * 1024 * 1024
     });
     const text = stdout.trim();
@@ -32320,7 +32322,11 @@ function registerClashCanvasMcp(server, runner, bundledAppJavascript, bundledStu
         runner(["projects", "list", "--json"], cwd)
       ]);
       const projects = Array.isArray(projectsValue) ? projectsValue : Array.isArray(projectsValue?.items) ? projectsValue.items : [];
-      const structuredContent = { cwd: cwd ?? process.cwd(), host, projects };
+      const structuredContent = {
+        cwd: cwd ?? process.env.CLASH_WORKSPACE_ROOT ?? process.cwd(),
+        host,
+        projects
+      };
       return {
         content: [{ type: "text", text: `Opened Clash Studio with ${projects.length} project${projects.length === 1 ? "" : "s"}.` }],
         structuredContent
@@ -32462,8 +32468,8 @@ function buildTimelineCliArgs(name, input) {
   return args;
 }
 var execFileAsync2 = promisify2(execFile2);
-function workspaceCwd(input) {
-  const candidate = input.cwd?.trim() || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+function timelineWorkspaceCwd(input) {
+  const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 function projectionSegment(timelineId) {
@@ -32506,7 +32512,7 @@ function createTimelineAdapter(options = {}) {
   const list = async (input) => {
     const value = await run(
       buildTimelineCliArgs("clash_timeline_list", input),
-      workspaceCwd(input)
+      timelineWorkspaceCwd(input)
     );
     return timelineList(value);
   };
@@ -32517,7 +32523,7 @@ function createTimelineAdapter(options = {}) {
     if (!timeline) throw new Error(`Timeline ${timelineId} not found`);
     return timeline;
   };
-  const invoke3 = async (name, input) => run(buildTimelineCliArgs(name, input), workspaceCwd(input));
+  const invoke3 = async (name, input) => run(buildTimelineCliArgs(name, input), timelineWorkspaceCwd(input));
   return {
     list,
     get,
@@ -32532,7 +32538,7 @@ function createTimelineAdapter(options = {}) {
         throw new Error("state must be a Timeline object");
       }
       await get(input);
-      const cwd = workspaceCwd(input);
+      const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
         cwd,
         "timelines",
@@ -32557,6 +32563,7 @@ function createTimelineAdapter(options = {}) {
 
 // ../clash-timeline/runtime/server.js
 import { execFile as execFile3 } from "child_process";
+import { dirname as dirname2, isAbsolute as isAbsolute2, join as join2, resolve as resolve2 } from "path";
 import { promisify as promisify3 } from "util";
 var __create2 = Object.create;
 var __defProp2 = Object.defineProperty;
@@ -60107,6 +60114,10 @@ var TIMELINE_PLUGIN_TOOL_NAMES = [
   "clash_timeline_copy"
 ];
 var execFileAsync3 = promisify3(execFile3);
+function timelineWorkspaceCwd2(input) {
+  const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+  return isAbsolute2(candidate) ? candidate : resolve2(candidate);
+}
 var TIMELINE_APP_RESOURCE_URI = "ui://clash/timeline";
 var TIMELINE_APP_MIME_TYPE = "text/html;profile=mcp-app";
 function createTimelineAppHtml(bundledJavascript) {
@@ -60505,7 +60516,7 @@ async function invoke(name, input, adapter) {
       if (input.timelineId && !selected) {
         throw new Error(`Timeline ${input.timelineId} not found`);
       }
-      return { cwd: input.cwd ?? process.cwd(), timelines, selected };
+      return { cwd: timelineWorkspaceCwd2(input), timelines, selected };
     }
     case "clash_timeline_list":
       return adapter.list(input);
@@ -60568,7 +60579,7 @@ function registerTimelinePluginMcp(server, adapter, bundledAppJavascript) {
 // ../clash-director/runtime/adapter.js
 import { execFile as execFile4 } from "child_process";
 import { mkdir as mkdir2, writeFile as writeFile2 } from "fs/promises";
-import { dirname as dirname2, isAbsolute as isAbsolute2, join as join2, resolve as resolve2 } from "path";
+import { dirname as dirname3, isAbsolute as isAbsolute3, join as join3, resolve as resolve3 } from "path";
 import { promisify as promisify4 } from "util";
 function required4(input, key) {
   const value = input[key];
@@ -60758,9 +60769,9 @@ function buildDirectorCliArgs(name, input) {
   }
 }
 var execFileAsync4 = promisify4(execFile4);
-function workspaceCwd2(input) {
-  const candidate = input.cwd?.trim() || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
-  return isAbsolute2(candidate) ? candidate : resolve2(candidate);
+function directorWorkspaceCwd(input) {
+  const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+  return isAbsolute3(candidate) ? candidate : resolve3(candidate);
 }
 function projectionSegment2(stageId) {
   return stageId.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^\.+/, "") || "stage";
@@ -60793,14 +60804,14 @@ function createClashDirectorRunner(options = {}) {
   };
 }
 async function writeDirectorProjection(path, content) {
-  await mkdir2(dirname2(path), { recursive: true });
+  await mkdir2(dirname3(path), { recursive: true });
   await writeFile2(path, content, "utf8");
 }
 function createDirectorAdapter(options = {}) {
   const run = options.run ?? createClashDirectorRunner();
   const writeProjection = options.writeProjection ?? writeDirectorProjection;
   const list = async (input) => stageList(
-    await run(buildDirectorCliArgs("clash_director_list", input), workspaceCwd2(input))
+    await run(buildDirectorCliArgs("clash_director_list", input), directorWorkspaceCwd(input))
   );
   const get = async (input) => {
     const stageId = input.stageId?.trim();
@@ -60809,7 +60820,7 @@ function createDirectorAdapter(options = {}) {
     if (!stage) throw new Error(`Director Stage ${stageId} not found`);
     return stage;
   };
-  const invoke3 = (name, input) => run(buildDirectorCliArgs(name, input), workspaceCwd2(input));
+  const invoke3 = (name, input) => run(buildDirectorCliArgs(name, input), directorWorkspaceCwd(input));
   return {
     list,
     get,
@@ -60824,8 +60835,8 @@ function createDirectorAdapter(options = {}) {
         throw new Error("state must be a Director Stage object");
       }
       await get(input);
-      const cwd = workspaceCwd2(input);
-      const filePath = join2(cwd, "director-stages", `${projectionSegment2(stageId)}.director-stage.json`);
+      const cwd = directorWorkspaceCwd(input);
+      const filePath = join3(cwd, "director-stages", `${projectionSegment2(stageId)}.director-stage.json`);
       await writeProjection(filePath, `${JSON.stringify(input.state, null, 2)}
 `);
       const args = ["director", "apply", "--stage", stageId, "--file", filePath];
@@ -60838,6 +60849,7 @@ function createDirectorAdapter(options = {}) {
 
 // ../clash-director/runtime/server.js
 import { execFile as execFile5 } from "child_process";
+import { dirname as dirname4, isAbsolute as isAbsolute4, join as join4, resolve as resolve4 } from "path";
 import { promisify as promisify5 } from "util";
 var __create3 = Object.create;
 var __defProp3 = Object.defineProperty;
@@ -88400,6 +88412,10 @@ var DIRECTOR_PLUGIN_TOOL_NAMES = [
   "clash_director_action_remove"
 ];
 var execFileAsync5 = promisify5(execFile5);
+function directorWorkspaceCwd2(input) {
+  const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+  return isAbsolute4(candidate) ? candidate : resolve4(candidate);
+}
 var DIRECTOR_APP_RESOURCE_URI = "ui://clash/director";
 var DIRECTOR_APP_MIME_TYPE = "text/html;profile=mcp-app";
 function createDirectorAppHtml(bundledJavascript) {
@@ -88639,7 +88655,7 @@ async function invoke2(name, input, adapter) {
       const stages = await adapter.list(input);
       const selected = input.stageId ? stages.find((stage) => stage.id === input.stageId) : stages[0];
       if (input.stageId && !selected) throw new Error(`Director Stage ${input.stageId} not found`);
-      return { cwd: input.cwd ?? process.cwd(), stages, selected };
+      return { cwd: directorWorkspaceCwd2(input), stages, selected };
     }
     case "clash_director_list":
       return adapter.list(input);
@@ -88708,16 +88724,33 @@ function registerDirectorPluginMcp(server, adapter, bundledAppJavascript) {
 
 // src/host-runner.ts
 import { execFile as execFile6 } from "child_process";
-import { isAbsolute as isAbsolute3, resolve as resolve4 } from "path";
+import { isAbsolute as isAbsolute5, resolve as resolve6 } from "path";
 import { promisify as promisify6 } from "util";
 
 // src/plugin-host.ts
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 import { mkdir as mkdir3, open, readFile, rm } from "fs/promises";
-import { homedir } from "os";
 import { fileURLToPath } from "url";
-import { join as join3, resolve as resolve3 } from "path";
+import { dirname as dirname6, join as join6 } from "path";
+
+// ../../packages/shared-runtime/dist/local-paths.js
+import { homedir } from "os";
+import { basename, dirname as dirname5, join as join5, resolve as resolve5 } from "path";
+function defaultClashHome(env = process.env) {
+  const explicit = env.CLASH_HOME?.trim();
+  return explicit ? resolve5(explicit) : join5(homedir(), ".clash");
+}
+function defaultLocalApiDataDir(env = process.env) {
+  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
+  return explicit ? resolve5(explicit) : join5(defaultClashHome(env), "local-api");
+}
+function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
+  if (explicitClashHome?.trim())
+    return resolve5(explicitClashHome);
+  const resolved = resolve5(localDataDir);
+  return basename(resolved) === "local-api" ? dirname5(resolved) : resolved;
+}
 
 // ../../packages/shared-runtime/dist/index.js
 var LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
@@ -88762,10 +88795,6 @@ var desktopTrafficLightPosition = {
 };
 
 // src/plugin-host.ts
-function defaultClashHome(env) {
-  const clashHome = env.CLASH_HOME?.trim();
-  return clashHome ? resolve3(clashHome) : join3(homedir(), ".clash");
-}
 function processExists(pid) {
   try {
     process.kill(pid, 0);
@@ -88780,7 +88809,7 @@ function isUsableHost(value) {
 async function readActivePluginHost(runDir) {
   let value;
   try {
-    value = JSON.parse(await readFile(join3(runDir, "host.json"), "utf8"));
+    value = JSON.parse(await readFile(join6(runDir, "host.json"), "utf8"));
   } catch (error55) {
     if (error55 && typeof error55 === "object" && "code" in error55 && error55.code === "ENOENT") {
       return void 0;
@@ -88794,7 +88823,7 @@ function delay(ms) {
 }
 async function acquireStartupLock(runDir) {
   await mkdir3(runDir, { recursive: true });
-  const lockPath = join3(runDir, "plugin-host-start.lock");
+  const lockPath = join6(runDir, "plugin-host-start.lock");
   const token = randomUUID();
   const deadline = Date.now() + 15e3;
   while (Date.now() < deadline) {
@@ -88862,7 +88891,7 @@ function waitForExit(child, timeoutMs) {
   });
 }
 async function removeOwnedDiscovery(runDir, hostId) {
-  const file4 = join3(runDir, "host.json");
+  const file4 = join6(runDir, "host.json");
   try {
     const current = JSON.parse(await readFile(file4, "utf8"));
     if (current.hostId === hostId) await rm(file4, { force: true });
@@ -88875,6 +88904,7 @@ async function removeOwnedDiscovery(runDir, hostId) {
 async function startBundledHost(context) {
   const localApiEntry = fileURLToPath(new URL("./local-api.cjs", import.meta.url));
   const cliEntry = fileURLToPath(new URL("./clash-cli.cjs", import.meta.url));
+  const pluginRoot = dirname6(dirname6(localApiEntry));
   let stderr = "";
   const child = spawn(process.execPath, [localApiEntry], {
     env: {
@@ -88884,6 +88914,8 @@ async function startBundledHost(context) {
       CLASH_PLUGIN_OWNER_CLIENT_ID: context.ownerClientId,
       CLASH_CLI_ENTRY_PATH: cliEntry,
       CLASH_NODE_EXEC_PATH: process.execPath,
+      CLASH_AGENT_BUNDLE_ROOT: join6(dirname6(localApiEntry), "agents"),
+      CLASH_BUILTIN_PLUGIN_ROOT: pluginRoot,
       PORT: "0"
     },
     stdio: ["ignore", "ignore", "pipe"]
@@ -88922,9 +88954,9 @@ ${stderr}` : ""
 }
 function createPluginHostManager(options = {}) {
   const env = options.env ?? process.env;
-  const clashHome = defaultClashHome(env);
-  const runDir = options.runDir ?? join3(clashHome, "run");
-  const dataDir = options.dataDir ?? env.CLASH_LOCAL_DATA_DIR?.trim() ?? join3(clashHome, "local-api");
+  const dataDir = options.dataDir ?? defaultLocalApiDataDir(env);
+  const clashHome = clashHomeForLocalDataDir(dataDir);
+  const runDir = options.runDir ?? join6(clashHome, "run");
   const ownerClientId = options.ownerClientId ?? `codex-plugin-${randomUUID()}`;
   const readHost = options.readHost ?? (() => readActivePluginHost(runDir));
   const startHost = options.startHost ?? startBundledHost;
@@ -88993,10 +89025,11 @@ function createHostCliRunner(options = {}) {
     runDir: options.runDir,
     env
   });
+  const sessionWorkspace = env.CLASH_WORKSPACE_ROOT?.trim() || env.CODEX_WORKSPACE_ROOT?.trim() || process.cwd();
   return async (args, cwd) => {
     const host = await hostManager.ensureHost();
     const command = host.agentCliPath;
-    const workingDirectory = cwd?.trim() ? isAbsolute3(cwd) ? cwd : resolve4(cwd) : process.cwd();
+    const workingDirectory = cwd?.trim() ? isAbsolute5(cwd) ? cwd : resolve6(cwd) : isAbsolute5(sessionWorkspace) ? sessionWorkspace : resolve6(sessionWorkspace);
     const { stdout } = await execFileAsync6(command, args, {
       cwd: workingDirectory,
       env,
@@ -89078,7 +89111,7 @@ async function serveClashPluginStdio(options = {}) {
 
 // src/index.ts
 function isDirectExecution(moduleUrl, argvEntry = process.argv[1], cwd = process.cwd()) {
-  return Boolean(argvEntry && pathToFileURL(resolve5(cwd, argvEntry)).href === moduleUrl);
+  return Boolean(argvEntry && pathToFileURL(resolve7(cwd, argvEntry)).href === moduleUrl);
 }
 if (isDirectExecution(import.meta.url)) await serveClashPluginStdio();
 export {

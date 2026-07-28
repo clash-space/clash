@@ -30,8 +30,12 @@ export type TimelineAdapter = {
   copy(input: TimelineToolInput): Promise<unknown>;
 };
 
-function workspaceCwd(input: TimelineToolInput): string {
-  const candidate = input.cwd?.trim() || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+export function timelineWorkspaceCwd(input: TimelineToolInput): string {
+  const candidate =
+    input.cwd?.trim() ||
+    process.env.CLASH_WORKSPACE_ROOT ||
+    process.env.CODEX_WORKSPACE_ROOT ||
+    process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 
@@ -99,7 +103,7 @@ export function createTimelineAdapter(options: {
   const list = async (input: TimelineToolInput): Promise<TimelineEntity[]> => {
     const value = await run(
       buildTimelineCliArgs("clash_timeline_list", input),
-      workspaceCwd(input),
+      timelineWorkspaceCwd(input),
     );
     return timelineList(value);
   };
@@ -113,7 +117,7 @@ export function createTimelineAdapter(options: {
   };
 
   const invoke = async (name: string, input: TimelineToolInput): Promise<unknown> => (
-    run(buildTimelineCliArgs(name, input), workspaceCwd(input))
+    run(buildTimelineCliArgs(name, input), timelineWorkspaceCwd(input))
   );
 
   return {
@@ -131,7 +135,7 @@ export function createTimelineAdapter(options: {
       }
 
       await get(input);
-      const cwd = workspaceCwd(input);
+      const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
         cwd,
         "timelines",

@@ -18,10 +18,16 @@ export function createClashCliRunner(options: {
 } = {}): CanvasCliRunner {
   const command = options.command ?? process.env.CLASH_CLI_BIN ?? "clash";
   const argsPrefix = options.argsPrefix ?? [];
+  const env = options.env ?? process.env;
+  const defaultCwd =
+    options.cwd ??
+    env.CLASH_WORKSPACE_ROOT ??
+    env.CODEX_WORKSPACE_ROOT ??
+    process.cwd();
   return async (args, cwd) => {
     const { stdout } = await execFileAsync(command, [...argsPrefix, ...args], {
-      cwd: cwd ?? options.cwd ?? process.cwd(),
-      env: options.env ?? process.env,
+      cwd: cwd ?? defaultCwd,
+      env,
       maxBuffer: 16 * 1024 * 1024,
     });
     const text = stdout.trim();

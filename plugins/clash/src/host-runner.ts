@@ -30,12 +30,16 @@ export function createHostCliRunner(options: {
     runDir: options.runDir,
     env,
   });
+  const sessionWorkspace =
+    env.CLASH_WORKSPACE_ROOT?.trim() ||
+    env.CODEX_WORKSPACE_ROOT?.trim() ||
+    process.cwd();
   return async (args, cwd) => {
     const host = await hostManager.ensureHost();
     const command = host.agentCliPath;
     const workingDirectory = cwd?.trim()
       ? isAbsolute(cwd) ? cwd : resolve(cwd)
-      : process.cwd();
+      : isAbsolute(sessionWorkspace) ? sessionWorkspace : resolve(sessionWorkspace);
     const { stdout } = await execFileAsync(command, args, {
       cwd: workingDirectory,
       env,

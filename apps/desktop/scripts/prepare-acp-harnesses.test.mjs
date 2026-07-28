@@ -28,14 +28,14 @@ describe("prepare ACP harness wrappers", () => {
     expect(script).toContain("exec \"$CLASH_NODE_EXEC_PATH\" \"$SCRIPT\" \"$@\"");
   });
 
-  it("prepares harnesses as part of every desktop package build", async () => {
+  it("keeps harness preparation out of the self-hosted desktop package build", async () => {
     const packageJson = JSON.parse(await readFile(join(desktopRoot, "package.json"), "utf8"));
     const bridgePackageJson = JSON.parse(
       await readFile(join(repoRoot, "packages", "clash-bridge", "package.json"), "utf8"),
     );
 
-    expect(packageJson.scripts["prepare:pack"]).toContain("pnpm prepare:harnesses");
-    expect(packageJson.devDependencies["@agentclientprotocol/codex-acp"]).toBe("^1.1.2");
+    expect(packageJson.scripts["prepare:pack"]).not.toContain("pnpm prepare:harnesses");
+    expect(packageJson.devDependencies["@agentclientprotocol/codex-acp"]).toBe("^1.1.7");
     expect(packageJson.devDependencies["@zed-industries/codex-acp"]).toBeUndefined();
     expect(packageJson.devDependencies["@agentclientprotocol/claude-agent-acp"]).toBeTruthy();
     expect(bridgePackageJson.dependencies["@zed-industries/codex-acp"]).toBeUndefined();

@@ -182,8 +182,8 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: 0,
     overflow: 'hidden',
     borderRadius: 3,
-    backgroundColor: '#ece9e3',
-    boxShadow: 'inset 0 0 0 1px rgba(70, 61, 50, 0.05)',
+    backgroundColor: 'var(--clash-warm-muted, #f4f1eb)',
+    boxShadow: 'inset 0 0 0 1px var(--clash-warm-border, #e1ddd5)',
   },
   meterFill: {
     position: 'absolute',
@@ -192,7 +192,7 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     minHeight: 0,
     borderRadius: 2,
-    background: 'linear-gradient(to top, #16a34a 0%, #22c55e 70%, #f59e0b 88%, #ef4444 100%)',
+    background: 'linear-gradient(to top, var(--clash-accent, #ff6b50) 0%, var(--clash-accent, #ff6b50) 82%, #f59e0b 92%, #ef4444 100%)',
     transition: 'height 45ms linear',
   },
   channelLabel: {

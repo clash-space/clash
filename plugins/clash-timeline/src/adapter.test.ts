@@ -80,3 +80,23 @@ test("does not write when the Timeline has not been read or does not exist", asy
   );
   assert.equal(writes, 0);
 });
+
+test("defaults to the Clash ACP workspace instead of the MCP process cwd", async () => {
+  const module = await adapterModule();
+  const previous = process.env.CLASH_WORKSPACE_ROOT;
+  process.env.CLASH_WORKSPACE_ROOT = "/workspace/from-acp-session";
+  const calls: Array<{ args: string[]; cwd: string }> = [];
+  try {
+    const adapter = module.createTimelineAdapter({
+      run: async (args: string[], cwd: string) => {
+        calls.push({ args, cwd });
+        return [];
+      },
+    });
+    await adapter.list({});
+    assert.equal(calls[0]?.cwd, "/workspace/from-acp-session");
+  } finally {
+    if (previous === undefined) delete process.env.CLASH_WORKSPACE_ROOT;
+    else process.env.CLASH_WORKSPACE_ROOT = previous;
+  }
+});

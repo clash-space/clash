@@ -1,4 +1,5 @@
 import { useState, type MouseEvent } from "react";
+import { ClockCounterClockwise } from "@phosphor-icons/react";
 import type { RevisionHistoryEntry } from "@clash/web-ui/hooks/useRevisionHistory";
 
 interface RevisionHistorySnapshot {
@@ -14,6 +15,8 @@ export interface RevisionHistoryBadgeProps {
   history: RevisionHistorySnapshot;
   onRestoreRevision?: (request: RevisionRestoreRequest) => void;
   className?: string;
+  showWhenEmpty?: boolean;
+  variant?: "badge" | "toolbar";
 }
 
 export interface RevisionRestoreRequest {
@@ -44,12 +47,23 @@ function shellArg(value: string): string {
     : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-export function RevisionHistoryBadge({ nodeId, history, onRestoreRevision, className = "" }: RevisionHistoryBadgeProps) {
+export function RevisionHistoryBadge({
+  nodeId,
+  history,
+  onRestoreRevision,
+  className = "",
+  showWhenEmpty = false,
+  variant = "badge",
+}: RevisionHistoryBadgeProps) {
   const [open, setOpen] = useState(false);
 
-  if (history.count === 0) return null;
+  if (history.count === 0 && !showWhenEmpty) return null;
 
   const label = "Text revision history";
+  const accessibleHistory =
+    history.count === 0
+      ? `${label}: no revisions`
+      : `${label}: ${history.count} revision${history.count === 1 ? "" : "s"}, latest ${history.latest?.revisionId ?? "unknown"}`;
   const stopNodeGesture = (event: MouseEvent) => {
     event.stopPropagation();
   };
@@ -59,10 +73,17 @@ export function RevisionHistoryBadge({ nodeId, history, onRestoreRevision, class
       return;
     }
     if (typeof navigator !== "undefined") {
-      void navigator.clipboard?.writeText(request.command).catch(() => undefined);
+      void navigator.clipboard
+        ?.writeText(request.command)
+        .catch(() => undefined);
     }
     if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
-      window.dispatchEvent(new CustomEvent<RevisionRestoreRequest>(REVISION_RESTORE_REQUEST_EVENT, { detail: request }));
+      window.dispatchEvent(
+        new CustomEvent<RevisionRestoreRequest>(
+          REVISION_RESTORE_REQUEST_EVENT,
+          { detail: request },
+        ),
+      );
     }
   };
 
@@ -75,18 +96,36 @@ export function RevisionHistoryBadge({ nodeId, history, onRestoreRevision, class
     >
       <button
         type="button"
-        className="rounded-md border border-warm-border bg-warm-surface/95 px-2 py-1 text-[10px] font-semibold text-stone-700 shadow-sm transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
-        aria-label={`${label}: ${history.count} revision${history.count === 1 ? "" : "s"}, latest ${history.latest?.revisionId ?? "unknown"}`}
+        className={
+          variant === "toolbar"
+            ? "clash-workbench-control-button inline-flex h-[var(--clash-project-control-height,2rem)] items-center gap-[var(--clash-control-gap,0.25rem)] px-2 text-xs font-medium text-content-muted transition-colors hover:bg-warm-hover hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            : "rounded-md border border-warm-border bg-warm-surface/95 px-2 py-1 text-[10px] font-semibold text-stone-700 shadow-sm transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
+        }
+        aria-label={accessibleHistory}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        {history.count} rev
+        {variant === "toolbar" ? (
+          <>
+            <ClockCounterClockwise className="h-3.5 w-3.5" weight="bold" />
+            <span>History</span>
+            {history.count > 0 ? (
+              <span className="tabular-nums text-content-disabled">
+                {history.count}
+              </span>
+            ) : null}
+          </>
+        ) : (
+          `${history.count} rev`
+        )}
       </button>
       {open && (
         <div
           role="region"
           aria-label={`${label} panel`}
-          className="absolute right-0 top-7 z-50 w-72 rounded-matrix border border-warm-border bg-warm-surface p-2 text-[11px] text-stone-700 shadow-lg dark:text-stone-200"
+          className={`absolute top-8 z-50 w-72 rounded-matrix border border-warm-border bg-warm-surface p-2 text-[11px] text-stone-700 shadow-lg dark:text-stone-200 ${
+            variant === "toolbar" ? "left-0" : "right-0"
+          }`}
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold">{label}</span>
@@ -97,17 +136,31 @@ export function RevisionHistoryBadge({ nodeId, history, onRestoreRevision, class
               {history.error}
             </div>
           )}
+          {!history.loading && !history.error && history.count === 0 ? (
+            <div className="mt-2 rounded-md bg-warm-muted px-2 py-2 text-content-muted">
+              No saved revisions yet.
+            </div>
+          ) : null}
           <ul className="mt-2 space-y-2">
             {history.revisions.map((revision) => {
               const hash = revisionHash(revision);
               const restore = restoreCommand(nodeId, revision.revisionId);
               const directRestore = Boolean(onRestoreRevision);
               return (
-                <li key={revision.revisionId} className="border-t border-warm-border pt-2 first:border-t-0 first:pt-0">
+                <li
+                  key={revision.revisionId}
+                  className="border-t border-warm-border pt-2 first:border-t-0 first:pt-0"
+                >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-mono font-semibold">{revision.revisionId}</span>
+                    <span className="font-mono font-semibold">
+                      {revision.revisionId}
+                    </span>
                     {revision.actor && <span>{revision.actor}</span>}
-                    {revision.createdAt && <span className="text-stone-500">{revision.createdAt}</span>}
+                    {revision.createdAt && (
+                      <span className="text-stone-500">
+                        {revision.createdAt}
+                      </span>
+                    )}
                   </div>
                   {revision.sourceFilePath && (
                     <div className="mt-1 break-all font-mono text-stone-600 dark:text-stone-300">
@@ -130,9 +183,11 @@ export function RevisionHistoryBadge({ nodeId, history, onRestoreRevision, class
                       <button
                         type="button"
                         className="mt-1 inline-flex h-6 items-center rounded-md border border-warm-border bg-warm-surface px-2 text-[10px] font-semibold text-stone-700 transition-colors hover:bg-warm-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:text-stone-200"
-                        aria-label={directRestore
-                          ? `Restore text revision ${revision.revisionId}`
-                          : `Copy restore command for text revision ${revision.revisionId}`}
+                        aria-label={
+                          directRestore
+                            ? `Restore text revision ${revision.revisionId}`
+                            : `Copy restore command for text revision ${revision.revisionId}`
+                        }
                         onClick={() =>
                           requestRestore({
                             kind: "text",

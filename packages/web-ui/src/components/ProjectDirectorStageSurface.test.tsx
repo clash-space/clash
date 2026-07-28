@@ -694,6 +694,10 @@ describe("ProjectDirectorStageSurface", () => {
     expect(source).toContain("SelectMenu");
     expect(source).toContain("IconButton");
     expect(source).toContain("--clash-director-panel-width");
+    expect(source).toContain(
+      "[grid-template-columns:minmax(min(220px,28%),var(--clash-director-panel-width))_minmax(min(320px,40%),1fr)_minmax(min(288px,32%),var(--clash-director-inspector-width))]",
+    );
+    expect(source).not.toContain("data-copilot-width-constraint");
     expect(source).toContain("Capture shot");
     expect(source).toContain("Preview sequence");
     expect(source).toContain("Lens presets");

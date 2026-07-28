@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionStartPicker } from "./SessionStartPicker";
+
+afterEach(cleanup);
 
 describe("SessionStartPicker", () => {
   it("lets the user pick the local ACP agent without exposing role templates", () => {
@@ -24,6 +26,29 @@ describe("SessionStartPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
     expect(onStart).toHaveBeenCalledWith(null, undefined, "codex-acp");
+  });
+
+  it("starts from the latest valid user choice instead of a provider priority list", async () => {
+    const onStart = vi.fn();
+    render(
+      <SessionStartPicker
+        agentTemplates={[]}
+        sessions={[]}
+        agents={[
+          { id: "codex-acp", label: "Codex" },
+          { id: "future-harness", label: "Future Harness" },
+        ]}
+        preferredAgentId="future-harness"
+        onStart={onStart}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: /Future Harness/i }).getAttribute("data-state"))
+        .toBe("checked");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+    expect(onStart).toHaveBeenCalledWith(null, undefined, "future-harness");
   });
 
   it("blocks auth-needed agents and offers a probe refresh action", () => {

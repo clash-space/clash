@@ -5,8 +5,10 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  assertComposerToolbarLayout,
   clickButtonByLabel,
   clickComposerSubmitButton,
+  observeComposerToolbarLayout,
   openSessionHistoryMenu,
   recoverAgentBrowserTarget,
   runtimeSessionPathObservation,
@@ -30,6 +32,7 @@ const sessionName = `clash-desktop-agent-browser-${Date.now().toString(36)}`;
 const latestScreenshot = path.join(captureDir, "latest-agent-browser-desktop.png");
 const historyScreenshot = path.join(captureDir, "history-agent-browser-desktop.png");
 const narrowLayoutScreenshot = path.join(captureDir, "narrow-layout-agent-browser-desktop.png");
+const narrowComposerScreenshot = path.join(captureDir, "narrow-composer-agent-browser-desktop.png");
 const collapsedNavigatorScreenshot = path.join(captureDir, "collapsed-navigator-agent-browser-desktop.png");
 const populatedChromeScreenshot = path.join(
   captureDir,
@@ -1030,6 +1033,39 @@ async function main() {
     }
     agentBrowser(["screenshot", narrowLayoutScreenshot]);
 
+    if (
+      !clickButtonByLabel(agentBrowser, "Expand AI Copilot") &&
+      !clickButtonByLabel(agentBrowser, "Expand chat panel")
+    ) {
+      throw new Error("Could not expand narrow project chat");
+    }
+    await waitForEval(
+      `(() => {
+        const panel = document.querySelector('#clash-copilot-panel');
+        const toolbar = document.querySelector('.clash-chat-input-toolbar-row');
+        const surface = document.querySelector('.clash-chat-input-surface');
+        return panel?.getAttribute('aria-hidden') === 'false' && !!toolbar && !!surface;
+      })()`,
+      "narrow project chat composer",
+      10000,
+    );
+    assertComposerToolbarLayout(
+      observeComposerToolbarLayout(agentBrowser),
+      "Narrow composer",
+    );
+    agentBrowser(["screenshot", narrowComposerScreenshot]);
+    if (
+      !clickButtonByLabel(agentBrowser, "Collapse AI Copilot") &&
+      !clickButtonByLabel(agentBrowser, "Collapse chat panel")
+    ) {
+      throw new Error("Could not collapse narrow project chat");
+    }
+    await waitForEval(
+      `document.querySelector('#clash-copilot-panel')?.getAttribute('aria-hidden') === 'true'`,
+      "collapsed narrow project chat",
+      10000,
+    );
+
     agentBrowser(["press", "Meta+k"]);
     const commandPalette = await waitForEval(
       `(() => {
@@ -1661,6 +1697,9 @@ async function main() {
     );
     console.log(
       `[desktop-agent-browser] narrow screenshot ${narrowLayoutScreenshot}`,
+    );
+    console.log(
+      `[desktop-agent-browser] narrow composer screenshot ${narrowComposerScreenshot}`,
     );
     console.log(
       `[desktop-agent-browser] collapsed navigator screenshot ${collapsedNavigatorScreenshot}`,

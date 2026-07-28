@@ -18,7 +18,6 @@ import {
   Eye,
   EyeSlash,
   GridFour,
-  HashStraight,
   MagnifyingGlass,
   Pause,
   Play,
@@ -30,6 +29,7 @@ import {
   UsersThree,
   VideoCamera,
 } from "@phosphor-icons/react";
+import { CanvasIcon } from "./ProjectSurfaceIcon";
 import {
   DIRECTOR_CAMERA_LENS_PRESETS,
   DIRECTOR_BUILTIN_MODEL_ASSETS,
@@ -4722,14 +4722,14 @@ export function ProjectDirectorStageSurface({
         className="absolute inset-y-0 left-0 min-w-0 overflow-hidden motion-reduce:transition-none"
         style={{ right: rightInset, transition: "right 240ms cubic-bezier(0.22, 1, 0.36, 1)" }}
       >
-        <div className="grid h-full min-h-0 [--clash-director-panel-width:clamp(220px,16vw,260px)] [--clash-director-inspector-width:clamp(288px,20vw,336px)] [--clash-director-timeline-height:clamp(170px,27vh,260px)] [grid-template-columns:var(--clash-director-panel-width)_minmax(0,1fr)_var(--clash-director-inspector-width)] [grid-template-rows:2.75rem_minmax(0,1fr)_var(--clash-director-timeline-height)]">
+        <div className="grid h-full min-h-0 [--clash-director-panel-width:clamp(220px,16vw,260px)] [--clash-director-inspector-width:clamp(288px,20vw,336px)] [--clash-director-timeline-height:clamp(170px,27vh,260px)] [grid-template-columns:minmax(min(220px,28%),var(--clash-director-panel-width))_minmax(min(320px,40%),1fr)_minmax(min(288px,32%),var(--clash-director-inspector-width))] [grid-template-rows:2.75rem_minmax(0,1fr)_var(--clash-director-timeline-height)]">
           <header className="col-span-3 flex min-w-0 items-center justify-between border-b border-[var(--clash-director-panel-divider)] bg-[var(--clash-director-panel)] px-2 text-[var(--clash-director-panel-text)]">
             <div className="flex min-w-0 items-center gap-1.5">
               {parentCanvas ? (
                 <Tooltip label={`Open parent Canvas ${parentCanvas.name}`}>
                   <IconButton
                     label={`Open parent Canvas ${parentCanvas.name}`}
-                    icon={<HashStraight className="h-4 w-4" />}
+                    icon={<CanvasIcon className="h-4 w-4" />}
                     onClick={() => onOpenCanvas(parentCanvas.id)}
                     size="sm"
                     shape="rounded"

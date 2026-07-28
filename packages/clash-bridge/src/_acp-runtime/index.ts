@@ -19,6 +19,7 @@ export { AcpSessionImpl } from "./session.js";
 export { NodeSpawner } from "./spawners/node.js";
 export {
   authenticateAgent,
+  disposeAllAcpSetupProcesses,
   probeAgentAuthStatus,
   probeAgentConfigOptions,
   probeAgentSessionConfig,

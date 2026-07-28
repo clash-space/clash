@@ -44,6 +44,11 @@ test("one Clash plugin server composes the full tool surface and four focused Ap
     "clash_cli_assets",
     "clash_cli_effect",
   ]) assert.ok(tools.includes(name), `missing ${name}`);
+  assert.equal(
+    tools.some((name) => name.startsWith("plugin_") && name.includes("skill")),
+    false,
+    "skills belong to each harness native cwd discovery path, not MCP",
+  );
 
   const appToolUris = new Map(listedTools.map((tool) => [
     tool.name,

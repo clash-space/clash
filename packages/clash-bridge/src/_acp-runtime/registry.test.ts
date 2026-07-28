@@ -6,6 +6,12 @@ import { describe, expect, it } from "vitest";
 import { detect, KNOWN_ACP_AGENTS, resolveAgentCommand } from "./registry";
 
 describe("ACP runtime registry", () => {
+  it("keeps agent Skill installation metadata out of the ACP registry", () => {
+    expect(
+      KNOWN_ACP_AGENTS.some((agent) => "workspaceSkillDirectory" in agent),
+    ).toBe(false);
+  });
+
   it("registers Zed's Codex harness as the only Codex ACP harness", () => {
     const codexIds = KNOWN_ACP_AGENTS
       .filter((agent) => agent.id.includes("codex"))
@@ -17,6 +23,9 @@ describe("ACP runtime registry", () => {
       spec: { command: "codex-acp" },
       homepage: "https://github.com/zed-industries/codex-acp",
     });
+    expect(
+      KNOWN_ACP_AGENTS.find((agent) => agent.id === "codex-acp")?.configOptions,
+    ).toBeUndefined();
   });
 
   it("exposes Codex and Claude as registry-installed harnesses", () => {

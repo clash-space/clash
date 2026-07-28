@@ -37,11 +37,28 @@ export interface Credentials {
   createdAt: number;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRuntimeCredentials(value: unknown): value is Credentials {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.serverUrl === "string"
+    && typeof value.runtimeId === "string"
+    && typeof value.token === "string"
+    && typeof value.machineId === "string"
+    && typeof value.createdAt === "number"
+    && (value.agentApiKey === undefined || typeof value.agentApiKey === "string")
+  );
+}
+
 export async function readCreds(): Promise<Credentials | null> {
   await migrateLegacyConfigDir();
   try {
     const text = await readFile(paths().credsFile, "utf-8");
-    return JSON.parse(text) as Credentials;
+    const parsed = JSON.parse(text) as unknown;
+    return isRuntimeCredentials(parsed) ? parsed : null;
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
@@ -86,7 +103,14 @@ async function migrateLegacyConfigDir(): Promise<void> {
 export async function writeCreds(creds: Credentials): Promise<void> {
   const file = paths().credsFile;
   await mkdir(dirname(file), { recursive: true, mode: 0o700 });
-  await writeFile(file, JSON.stringify(creds, null, 2), { mode: 0o600 });
+  let existing: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+    if (isRecord(parsed)) existing = parsed;
+  } catch {
+    // A missing or malformed old credential file is replaced by valid runtime credentials.
+  }
+  await writeFile(file, JSON.stringify({ ...existing, ...creds }, null, 2), { mode: 0o600 });
   // chmod again in case the file already existed with looser perms.
   await chmod(file, 0o600);
 }

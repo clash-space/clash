@@ -2,9 +2,11 @@ import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import type { SessionPermissionBroker } from "@clash-space/bridge/session-manager";
 import {
   createLocalAcpAdapter as createLocalAcpAdapterImpl,
   createLocalHarnessConfigStore,
+  createLocalAcpRunPreferencesStore,
   type SessionManagerLike,
   type SessionPromptParamsLike,
   type SessionSender,
@@ -62,7 +64,7 @@ function createLocalAcpAdapter(
 }
 
 describe("local ACP adapter", () => {
-  it("writes local harness config to owner-only local sqlite", async () => {
+  it("writes local harness configuration to owner-only config.yaml", async () => {
     const removedHarnessSidecar = String.fromCharCode(104, 97, 114, 110, 101, 115, 115, 101, 115, 46, 106, 115, 111, 110);
     const dataDir = await mkdtemp(join(tmpdir(), "clash-local-acp-config-"));
     try {
@@ -79,14 +81,79 @@ describe("local ACP adapter", () => {
       });
 
       await expect(stat(join(dataDir, removedHarnessSidecar))).rejects.toMatchObject({ code: "ENOENT" });
-      const mode = (await stat(join(dataDir, "local.sqlite"))).mode & 0o777;
+      const mode = (await stat(join(dataDir, "config.yaml"))).mode & 0o777;
       expect(mode).toBe(0o600);
+      await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
       await expect(createLocalHarnessConfigStore(dataDir).loadAgentServers?.()).resolves.toEqual({
         local: {
           type: "custom",
           command: "node",
           args: ["server.js"],
           env: { LOCAL_TOKEN: "redacted" },
+        },
+      });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("migrates the legacy harness sidecar into config.yaml before warmup reads enablement", async () => {
+    const retiredHarnessSidecar = String.fromCharCode(104, 97, 114, 110, 101, 115, 115, 101, 115, 46, 106, 115, 111, 110);
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-acp-migrate-"));
+    try {
+      const sidecarPath = join(dataDir, retiredHarnessSidecar);
+      await writeFile(sidecarPath, JSON.stringify({
+        enabled_harness_ids: ["codex-acp", "claude-acp"],
+      }));
+
+      const store = createLocalHarnessConfigStore(dataDir);
+
+      await expect(store.loadEnabledHarnessIds()).resolves.toEqual([
+        "codex-acp",
+        "claude-acp",
+      ]);
+      await expect(stat(sidecarPath)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(readFile(join(dataDir, "config.yaml"), "utf8")).resolves.toContain("codex-acp");
+      await expect(createLocalHarnessConfigStore(dataDir).loadEnabledHarnessIds()).resolves.toEqual([
+        "codex-acp",
+        "claude-acp",
+      ]);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stores recent ACP run choices in self-hosted SQLite without touching config.yaml", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-acp-recent-"));
+    try {
+      const store = createLocalAcpRunPreferencesStore(dataDir);
+      await store.save({
+        agent_id: "codex-acp",
+        config_by_agent: {
+          "codex-acp": {
+            model: "gpt-5.6-sol",
+            effort: "high",
+          },
+        },
+        mode_by_agent: {
+          "codex-acp": "agent",
+        },
+      });
+
+      await expect(stat(join(dataDir, "config.yaml"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect((await stat(join(dataDir, "local.sqlite"))).mode & 0o777).toBe(0o600);
+      await expect(createLocalAcpRunPreferencesStore(dataDir).load()).resolves.toEqual({
+        agent_id: "codex-acp",
+        config_by_agent: {
+          "codex-acp": {
+            model: "gpt-5.6-sol",
+            effort: "high",
+          },
+        },
+        mode_by_agent: {
+          "codex-acp": "agent",
         },
       });
     } finally {
@@ -125,7 +192,117 @@ describe("local ACP adapter", () => {
     });
   });
 
-  it("warms installed agent metadata in parallel before enablement", async () => {
+  it("publishes self-hosted recent run preferences with the runtime snapshot", async () => {
+    const loadRunPreferences = vi.fn(async () => ({
+      agent_id: "codex-acp",
+      config_by_agent: {
+        "codex-acp": {
+          model: "gpt-5.6-sol",
+          effort: "high",
+        },
+      },
+      mode_by_agent: {
+        "codex-acp": "agent",
+      },
+    }));
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      runPreferences: {
+        load: loadRunPreferences,
+        save: vi.fn(),
+      },
+    } as Parameters<typeof createLocalAcpAdapter>[0]);
+
+    await expect(adapter.listRuntimes()).resolves.toMatchObject({
+      runtimes: [
+        {
+          id: "desktop-local",
+          preferences: {
+            agent_id: "codex-acp",
+            config_by_agent: {
+              "codex-acp": {
+                model: "gpt-5.6-sol",
+                effort: "high",
+              },
+            },
+            mode_by_agent: {
+              "codex-acp": "agent",
+            },
+          },
+        },
+      ],
+    });
+    expect(loadRunPreferences).toHaveBeenCalledOnce();
+  });
+
+  it("records the latest actual run while preserving other agents' recent values", async () => {
+    const saveRunPreferences = vi.fn(async () => undefined);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [],
+      runPreferences: {
+        load: async () => ({
+          agent_id: "claude-acp",
+          config_by_agent: {
+            "claude-acp": { model: "claude-opus-4" },
+          },
+          mode_by_agent: {
+            "claude-acp": "acceptEdits",
+          },
+        }),
+        save: saveRunPreferences,
+      },
+    } as Parameters<typeof createLocalAcpAdapter>[0]);
+
+    await expect(adapter.updateRunPreferences({
+      agent_id: "codex-acp",
+      config_values: {
+        model: "gpt-5.6-sol",
+        effort: "high",
+      },
+      mode_id: "agent",
+    })).resolves.toEqual({
+      preferences: {
+        agent_id: "codex-acp",
+        config_by_agent: {
+          "claude-acp": { model: "claude-opus-4" },
+          "codex-acp": {
+            model: "gpt-5.6-sol",
+            effort: "high",
+          },
+        },
+        mode_by_agent: {
+          "claude-acp": "acceptEdits",
+          "codex-acp": "agent",
+        },
+      },
+    });
+    expect(saveRunPreferences).toHaveBeenCalledWith({
+      agent_id: "codex-acp",
+      config_by_agent: {
+        "claude-acp": { model: "claude-opus-4" },
+        "codex-acp": {
+          model: "gpt-5.6-sol",
+          effort: "high",
+        },
+      },
+      mode_by_agent: {
+        "claude-acp": "acceptEdits",
+        "codex-acp": "agent",
+      },
+    });
+  });
+
+  it("warms every enabled harness in parallel and skips disabled harnesses", async () => {
     const modelConfig = {
       id: "model",
       name: "Model",
@@ -138,7 +315,21 @@ describe("local ACP adapter", () => {
       status: "configured" as const,
       message: `${agent.id} auth configured.`,
     }));
-    const probeAgentConfigOptions = vi.fn(async (_agent: { id: string }) => [modelConfig]);
+    const probesStarted = deferred();
+    const releaseProbes = deferred<void>();
+    const startedAgentIds: string[] = [];
+    const probeAgentSessionConfig = vi.fn(async (agent: { id: string }) => {
+      startedAgentIds.push(agent.id);
+      if (startedAgentIds.length === 2) probesStarted.resolve();
+      await releaseProbes.promise;
+      return {
+        configOptions: [modelConfig],
+        availableCommands: [],
+        auth: {
+          status: "configured" as const,
+        },
+      };
+    });
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
         {
@@ -151,19 +342,33 @@ describe("local ACP adapter", () => {
           label: "Claude",
           spec: { command: "claude-agent-acp" },
         },
+        {
+          id: "gemini",
+          label: "Gemini",
+          spec: { command: "gemini" },
+        },
       ],
       harnessConfig: {
-        loadEnabledHarnessIds: async () => ["codex-acp"],
+        loadEnabledHarnessIds: async () => ["codex-acp", "claude-acp"],
         saveEnabledHarnessIds: vi.fn(),
       },
       probeAgentAuth,
-      probeAgentConfigOptions,
+      probeAgentSessionConfig,
     } as Parameters<typeof createLocalAcpAdapter>[0] & {
       probeAgentAuth: (agent: { id: string }) => Promise<{ status: "configured"; message: string }>;
-      probeAgentConfigOptions: (agent: { id: string }) => Promise<unknown[]>;
+      probeAgentSessionConfig: (agent: { id: string }) => Promise<{
+        configOptions: unknown[];
+        availableCommands: unknown[];
+        auth: { status: "configured" };
+      }>;
     });
 
-    await (adapter as { warmup(): Promise<void> }).warmup();
+    const warmup = (adapter as { warmup(): Promise<void> }).warmup();
+    await probesStarted.promise;
+    expect(startedAgentIds.sort()).toEqual(["claude-acp", "codex-acp"]);
+    expect(probeAgentAuth).not.toHaveBeenCalled();
+    releaseProbes.resolve();
+    await warmup;
 
     await expect(adapter.listRuntimes()).resolves.toMatchObject({
       runtimes: [
@@ -172,12 +377,14 @@ describe("local ACP adapter", () => {
             {
               id: "codex-acp",
             },
+            {
+              id: "claude-acp",
+            },
           ],
         },
       ],
     });
-    expect(probeAgentAuth.mock.calls.map(([agent]) => agent.id).sort()).toEqual(["claude-acp", "codex-acp"]);
-    expect(probeAgentConfigOptions.mock.calls.map(([agent]) => agent.id).sort()).toEqual(["claude-acp", "codex-acp"]);
+    expect(probeAgentSessionConfig.mock.calls.map(([agent]) => agent.id).sort()).toEqual(["claude-acp", "codex-acp"]);
   });
 
   it("does not block lightweight runtime listing behind a slow metadata probe", async () => {
@@ -307,6 +514,53 @@ describe("local ACP adapter", () => {
       expect.objectContaining({ id: "claude-acp", enabled: false, available: true }),
     ]));
     expect(enabledHarnessIds).toEqual(["codex-acp"]);
+  });
+
+  it("uses the most recently selected runnable harness when session creation omits agent_id", async () => {
+    const start = vi.fn<SessionManagerLike["start"]>(async () => undefined);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+        {
+          id: "claude-acp",
+          label: "Claude",
+          spec: { command: "claude-agent-acp" },
+        },
+      ],
+      probeAgentAuth: async () => undefined,
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp", "claude-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      runPreferences: {
+        load: async () => ({
+          agent_id: "claude-acp",
+          config_by_agent: {},
+          mode_by_agent: {},
+        }),
+        save: vi.fn(),
+      },
+      createSessionManager: () => ({
+        start,
+        prompt: vi.fn(),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }),
+      createSessionId: () => "local-acp-session-recent-agent",
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "master-clash",
+    });
+
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({
+      agent_id: "claude-acp",
+    }));
   });
 
   it("surfaces Gemini auth preflight status in harness settings", async () => {
@@ -451,6 +705,46 @@ describe("local ACP adapter", () => {
       vars: [{ name: "OPENAI_API_KEY", label: "API key", secret: true }],
       link: "https://platform.openai.com/api-keys",
     });
+  });
+
+  it("reconciles an edited enable list by probing only newly enabled harnesses", async () => {
+    let enabled = ["codex-acp"];
+    const probeAgentAuth = vi.fn(async (_agent: { id: string }) => ({
+      status: "configured" as const,
+      message: "configured",
+    }));
+    const probeAgentConfigOptions = vi.fn(async (agent: { id: string }) => [{
+      id: "model",
+      name: "Model",
+      type: "select",
+      currentValue: `${agent.id}-model`,
+      options: [],
+    }]);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        { id: "codex-acp", label: "Codex", spec: { command: "codex-acp" } },
+        { id: "claude-acp", label: "Claude", spec: { command: "claude-agent-acp" } },
+      ],
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => enabled,
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      probeAgentAuth,
+      probeAgentConfigOptions,
+    } as Parameters<typeof createLocalAcpAdapter>[0] & {
+      probeAgentAuth: (agent: { id: string }) => Promise<{ status: "configured"; message: string }>;
+      probeAgentConfigOptions: (agent: { id: string }) => Promise<unknown[]>;
+    });
+
+    await adapter.warmup();
+    probeAgentAuth.mockClear();
+    probeAgentConfigOptions.mockClear();
+    enabled = ["codex-acp", "claude-acp"];
+
+    await adapter.reconcileConfiguration();
+
+    expect(probeAgentAuth.mock.calls.map(([agent]) => agent.id)).toEqual(["claude-acp"]);
+    expect(probeAgentConfigOptions.mock.calls.map(([agent]) => agent.id)).toEqual(["claude-acp"]);
   });
 
   it("probes auth before enabling harnesses", async () => {
@@ -725,6 +1019,281 @@ describe("local ACP adapter", () => {
     expect(probeAgentSessionConfig).toHaveBeenCalledWith(expect.objectContaining({ id: "codex-acp" }));
   });
 
+  it("keeps the last confirmed capabilities and marks a transient refresh failure as degraded", async () => {
+    const modelConfig = {
+      id: "model",
+      name: "Model",
+      type: "select",
+      category: "model",
+      currentValue: "gpt-5.6-sol",
+      options: [{ value: "gpt-5.6-sol", name: "GPT-5.6-Sol" }],
+    };
+    let probeFails = false;
+    const probeAgentSessionConfig = vi.fn(async () => {
+      if (probeFails) throw new Error("probe transport closed");
+      return {
+        configOptions: [modelConfig],
+        availableCommands: [{ name: "review", description: "Review the project" }],
+        modes: {
+          currentModeId: "agent",
+          availableModes: [{ id: "agent", name: "Agent" }],
+        },
+      };
+    });
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      nowSeconds: () => 1_700_000_000,
+      probeAgentSessionConfig,
+    });
+
+    await adapter.warmup();
+    probeFails = true;
+
+    await expect(adapter.listRuntimes({ probe: "config", refresh: true })).resolves.toMatchObject({
+      runtimes: [
+        {
+          agents: [
+            {
+              id: "codex-acp",
+              config_options: [modelConfig],
+              available_commands: [{ name: "review", description: "Review the project" }],
+              session_modes: {
+                currentModeId: "agent",
+              },
+              capability_inspection: {
+                status: "degraded",
+                inspected_at: "2023-11-14T22:13:20.000Z",
+                error: "probe transport closed",
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("restores the last confirmed capabilities when the next cold-start probe is degraded", async () => {
+    const modelConfig = {
+      id: "model",
+      name: "Model",
+      type: "select",
+      category: "model",
+      currentValue: "gpt-5.6-sol",
+      options: [{ value: "gpt-5.6-sol", name: "GPT-5.6-Sol" }],
+    };
+    let persisted: Record<string, unknown> = {};
+    const capabilityCache = {
+      async load() {
+        return structuredClone(persisted);
+      },
+      async save(value: Record<string, unknown>) {
+        persisted = structuredClone(value);
+      },
+    };
+    const commonOptions = {
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      capabilityCache,
+    };
+    const firstAdapter = createLocalAcpAdapter({
+      ...commonOptions,
+      probeAgentSessionConfig: async () => ({
+        configOptions: [modelConfig],
+        availableCommands: [{ name: "review" }],
+      }),
+    } as Parameters<typeof createLocalAcpAdapter>[0]);
+    await firstAdapter.warmup();
+
+    const restartedAdapter = createLocalAcpAdapter({
+      ...commonOptions,
+      probeAgentSessionConfig: async () => {
+        throw new Error("startup probe failed");
+      },
+    } as Parameters<typeof createLocalAcpAdapter>[0]);
+    await restartedAdapter.warmup();
+
+    await expect(restartedAdapter.listRuntimes()).resolves.toMatchObject({
+      runtimes: [
+        {
+          agents: [
+            {
+              id: "codex-acp",
+              config_options: [modelConfig],
+              available_commands: [{ name: "review" }],
+              capability_inspection: {
+                status: "degraded",
+                error: "startup probe failed",
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("does not let an auth-only harness refresh erase the warmup capability snapshot", async () => {
+    const modelConfig = {
+      id: "model",
+      name: "Model",
+      type: "select",
+      category: "model",
+      currentValue: "gpt-5.6-sol",
+      options: [{ value: "gpt-5.6-sol", name: "GPT-5.6-Sol" }],
+    };
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      probeAgentSessionConfig: async () => ({
+        configOptions: [modelConfig],
+        availableCommands: [{ name: "review" }],
+      }),
+    });
+    await adapter.warmup();
+
+    await adapter.listHarnesses({ probe: "auth", refresh: true });
+
+    await expect(adapter.listRuntimes()).resolves.toMatchObject({
+      runtimes: [
+        {
+          agents: [
+            {
+              id: "codex-acp",
+              config_options: [modelConfig],
+              available_commands: [{ name: "review" }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("serializes configuration reconciles so an older snapshot cannot overwrite a newer one", async () => {
+    const firstReconcileStarted = deferred();
+    const releaseFirstReconcile = deferred<void>();
+    let detectCount = 0;
+    let activeDetects = 0;
+    let maxActiveDetects = 0;
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => {
+        detectCount += 1;
+        activeDetects += 1;
+        maxActiveDetects = Math.max(maxActiveDetects, activeDetects);
+        if (detectCount === 2) {
+          firstReconcileStarted.resolve();
+          await releaseFirstReconcile.promise;
+        }
+        activeDetects -= 1;
+        return [
+          {
+            id: "codex-acp",
+            label: "Codex",
+            spec: { command: "codex-acp" },
+          },
+        ];
+      },
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+    });
+    await adapter.warmup();
+
+    const first = adapter.reconcileConfiguration();
+    await firstReconcileStarted.promise;
+    const second = adapter.reconcileConfiguration();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(maxActiveDetects).toBe(1);
+    releaseFirstReconcile.resolve();
+    await Promise.all([first, second]);
+    expect(detectCount).toBe(3);
+  });
+
+  it("refreshes only auth after authentication without replacing the capability snapshot", async () => {
+    const probeAgentAuth = vi.fn(async () => ({
+      status: "configured" as const,
+      message: "Codex auth configured.",
+    }));
+    const probeAgentSessionConfig = vi.fn(async () => ({
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          type: "select",
+          currentValue: "gpt-5.6-sol",
+          options: [{ value: "gpt-5.6-sol", name: "GPT-5.6-Sol" }],
+        },
+      ],
+      availableCommands: [{ name: "review" }],
+    }));
+    const authenticateAgent = vi.fn(async () => ({ status: "completed" as const }));
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      harnessConfig: {
+        loadEnabledHarnessIds: async () => ["codex-acp"],
+        saveEnabledHarnessIds: vi.fn(),
+      },
+      probeAgentAuth,
+      probeAgentSessionConfig,
+      authenticateAgent,
+    });
+    await adapter.warmup();
+
+    await adapter.authenticateHarness("codex-acp");
+
+    expect(authenticateAgent).toHaveBeenCalledOnce();
+    expect(probeAgentSessionConfig).toHaveBeenCalledOnce();
+    await expect(adapter.listRuntimes()).resolves.toMatchObject({
+      runtimes: [
+        {
+          agents: [
+            {
+              id: "codex-acp",
+              config_options: [
+                expect.objectContaining({ currentValue: "gpt-5.6-sol" }),
+              ],
+              available_commands: [{ name: "review" }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("refreshes harness probes when requested", async () => {
     let authConfigured = false;
     const detectAgents = vi.fn(async () => [
@@ -773,7 +1342,7 @@ describe("local ACP adapter", () => {
     });
     expect(detectAgents).toHaveBeenCalledTimes(2);
     expect(probeAgentAuth).toHaveBeenCalledTimes(2);
-    expect(probeAgentConfigOptions).not.toHaveBeenCalled();
+    expect(probeAgentConfigOptions).toHaveBeenCalledOnce();
   });
 
   it("authenticates a harness and refreshes probed metadata", async () => {
@@ -1182,7 +1751,7 @@ describe("local ACP adapter", () => {
         }),
       ]);
       expect(installed.harnesses[0]).not.toHaveProperty("updateAvailable");
-      expect(probeAgentConfigOptions).not.toHaveBeenCalled();
+      expect(probeAgentConfigOptions).toHaveBeenCalledOnce();
 
       registryVersion = "1.1.0";
       archiveUrl = "https://example.com/test-agent-bin?version=1.1.0";
@@ -3879,6 +4448,77 @@ describe("local ACP adapter", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(setMode).toHaveBeenCalledWith("local-acp-session-mode", "ask");
+  });
+
+  it("brokers ACP permission requests out of band and waits for the browser decision", async () => {
+    let requestPermission!: SessionPermissionBroker;
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [
+        {
+          id: "codex-acp",
+          label: "Codex",
+          spec: { command: "codex-acp" },
+        },
+      ],
+      createSessionManager: (_send, broker) => {
+        requestPermission = broker!;
+        return {
+          start: vi.fn(),
+          prompt: vi.fn(),
+          cancel: vi.fn(),
+          dispose: vi.fn(),
+        };
+      },
+      createSessionId: () => "local-acp-session-permission",
+    });
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "master-clash",
+      projectId: "project-permission",
+    });
+
+    const ws = {
+      OPEN: 1,
+      readyState: 1,
+      send: vi.fn(),
+      on: vi.fn(),
+      close: vi.fn(),
+    } as any;
+    adapter.bindSessionSocket("local-acp-session-permission", ws);
+    const messageHandler = ws.on.mock.calls.find(([event]: [string]) => event === "message")?.[1];
+    const decision = requestPermission("local-acp-session-permission", {
+      sessionId: "acp-session-permission",
+      toolCall: { toolCallId: "tool-1", title: "Edit file" },
+      options: [
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+        { optionId: "allow", name: "Allow", kind: "allow_once" },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(ws.send).toHaveBeenCalledTimes(2);
+    });
+    const request = JSON.parse(ws.send.mock.calls.at(-1)?.[0] ?? "{}");
+    expect(request).toMatchObject({
+      type: "session.permission_request",
+      session_id: "local-acp-session-permission",
+      tool_call: { toolCallId: "tool-1", title: "Edit file" },
+      options: [
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+        { optionId: "allow", name: "Allow", kind: "allow_once" },
+      ],
+    });
+    expect(request.request_id).toEqual(expect.any(String));
+
+    messageHandler(Buffer.from(JSON.stringify({
+      type: "permission_response",
+      request_id: request.request_id,
+      option_id: "allow",
+    })));
+
+    await expect(decision).resolves.toEqual({
+      outcome: { outcome: "selected", optionId: "allow" },
+    });
   });
 
   it("passes the selected ACP model before running a one-shot text task", async () => {

@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import {
   createTimelineAdapter,
+  timelineWorkspaceCwd,
   type TimelineAdapter,
 } from "./adapter.js";
 import {
@@ -127,7 +128,7 @@ async function invoke(
       if (input.timelineId && !selected) {
         throw new Error(`Timeline ${input.timelineId} not found`);
       }
-      return { cwd: input.cwd ?? process.cwd(), timelines, selected };
+      return { cwd: timelineWorkspaceCwd(input), timelines, selected };
     }
     case "clash_timeline_list":
       return adapter.list(input);

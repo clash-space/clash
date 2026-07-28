@@ -211,6 +211,8 @@ describe('CanvasPreview transport', () => {
     const rightFill = toggle.querySelector<SVGRectElement>('[data-audio-meter-fill="R"]');
     expect(leftFill?.getAttribute('height')).toBe('0');
     expect(rightFill?.getAttribute('height')).toBe('0');
+    expect(leftFill?.getAttribute('fill')).toBe('var(--clash-accent, #ff6b50)');
+    expect(rightFill?.getAttribute('fill')).toBe('var(--clash-accent, #ff6b50)');
 
     act(() => audioMeterStore.setLevels({ left: 0.5, right: 0.25 }));
 

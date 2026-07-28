@@ -1,5 +1,4 @@
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -19,7 +18,9 @@ import { createMockExternalAigcService } from "./local-aigc.js";
 import { createDreaminaCliOAuthDriver } from "./dreamina-cli.js";
 import {
   attachLocalAcpSessions,
+  createLocalAcpCapabilityCacheStore,
   createLocalAcpAdapter,
+  createLocalAcpRunPreferencesStore,
   createLocalHarnessConfigStore,
   type LocalAcpRuntimeAdapter,
   type SessionManagerLike,
@@ -41,18 +42,19 @@ import {
 } from "./sync.js";
 import { createLocalSyncConfigStore } from "./sync-config.js";
 import { createLocalAudioConfigStore } from "./audio-config.js";
+import {
+  clashHomeForLocalDataDir,
+  defaultLocalApiDataDir,
+} from "./local-paths.js";
+import { watchClashUserConfig } from "./user-config.js";
+
+export {
+  clashHomeForLocalDataDir,
+  defaultLocalApiDataDir,
+} from "./local-paths.js";
 
 const port = Number(process.env.PORT ?? 49321);
 const dataDir = defaultLocalApiDataDir();
-
-export function defaultLocalApiDataDir(
-  env: Record<string, string | undefined> = process.env,
-): string {
-  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
-  if (explicit) return explicit;
-  const clashHome = env.CLASH_HOME?.trim();
-  return join(clashHome ? resolve(clashHome) : join(homedir(), ".clash"), "local-api");
-}
 
 export interface LocalApiServerOptions {
   port: number;
@@ -87,7 +89,9 @@ export function createLocalAgentToolEnv({
   apiBaseUrl: string;
   env?: Record<string, string | undefined>;
 }): Record<string, string> {
-  const binDir = join(dataDir, "agent-bin");
+  const localDataDir = resolve(dataDir);
+  const clashHome = clashHomeForLocalDataDir(localDataDir);
+  const binDir = join(localDataDir, "agent-bin");
   mkdirSync(binDir, { recursive: true });
 
   const apiUrl = apiBaseUrl;
@@ -98,7 +102,12 @@ export function createLocalAgentToolEnv({
     [
       "#!/bin/sh",
       `export CLASH_API_URL=${shellQuote(apiUrl)}`,
+      `export CLASH_HOME=${shellQuote(clashHome)}`,
+      `export CLASH_LOCAL_DATA_DIR=${shellQuote(localDataDir)}`,
       "export ELECTRON_RUN_AS_NODE=1",
+      ...(env.CLASH_CLI_NODE_PATH
+        ? [`export CLASH_CLI_NODE_PATH=${shellQuote(env.CLASH_CLI_NODE_PATH)}`]
+        : []),
       `if [ -n "$CLASH_CLI_NODE_PATH" ]; then`,
       `  export NODE_PATH="$CLASH_CLI_NODE_PATH${"${NODE_PATH:+:$NODE_PATH}"}"`,
       "fi",
@@ -117,6 +126,8 @@ export function createLocalAgentToolEnv({
 
   return {
     CLASH_API_URL: apiUrl,
+    CLASH_HOME: clashHome,
+    CLASH_LOCAL_DATA_DIR: localDataDir,
     ...(env.CLASH_NODE_EXEC_PATH ? { CLASH_NODE_EXEC_PATH: env.CLASH_NODE_EXEC_PATH } : {}),
     ...(env.CLASH_CLI_ENTRY_PATH ? { CLASH_CLI_ENTRY_PATH: env.CLASH_CLI_ENTRY_PATH } : {}),
     ...(env.CLASH_CLI_NODE_PATH ? { CLASH_CLI_NODE_PATH: env.CLASH_CLI_NODE_PATH } : {}),
@@ -439,9 +450,9 @@ function withMockHarnessUpdateFixture(
 
 export function createConfiguredLocalAcpAdapter(
   env: Record<string, string | undefined> = process.env,
-  options: { apiBaseUrl?: string } = {},
+  options: { apiBaseUrl?: string; dataDir?: string } = {},
 ) {
-  const localDataDir = env.CLASH_LOCAL_DATA_DIR ?? dataDir;
+  const localDataDir = options.dataDir ?? defaultLocalApiDataDir(env);
   if (env.CLASH_E2E_STUB_ACP === "1") {
     const adapter = createLocalAcpAdapter({
       detectAgents: async () => [
@@ -453,6 +464,7 @@ export function createConfiguredLocalAcpAdapter(
       ],
       listResumeSessions: async () => [],
       createSessionManager: createMockAcpSessionManager,
+      runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
       hostname: () => "Mock Desktop",
       osTag: () => "mock/e2e",
     });
@@ -461,11 +473,11 @@ export function createConfiguredLocalAcpAdapter(
       : adapter;
   }
   const harnessDownloadDir = join(localDataDir, "acp-bin");
-  const acpBinDir = [env.CLASH_ACP_TEST_BIN_DIR, env.CLASH_ACP_BIN_DIR, harnessDownloadDir]
-    .filter(Boolean)
-    .join(delimiter);
+  const acpBinDir = env.CLASH_ACP_TEST_BIN_DIR || harnessDownloadDir;
   return createLocalAcpAdapter({
     harnessConfig: createLocalHarnessConfigStore(localDataDir),
+    runPreferences: createLocalAcpRunPreferencesStore(localDataDir),
+    capabilityCache: createLocalAcpCapabilityCacheStore(localDataDir),
     harnessDownloadDir,
     probeCwd: join(localDataDir, "acp-probe"),
     spawnEnv: {
@@ -511,10 +523,40 @@ async function loadLocalModelCards(
 }
 
 export function startLocalApiServer(options: LocalApiServerOptions) {
+  const discoveryRunDir =
+    options.discovery?.runDir ?? join(clashHomeForLocalDataDir(options.dataDir), "run");
   const localAcp = options.localAcp ?? createConfiguredLocalAcpAdapter(process.env, {
     apiBaseUrl: `http://127.0.0.1:${options.port}`,
+    dataDir: options.dataDir,
   });
-  void Promise.resolve(localAcp.warmup?.()).catch(() => undefined);
+  let configWatcherClosed = false;
+  let localAcpReady!: Promise<void>;
+  let configReloadQueue = Promise.resolve();
+  const stopConfigWatcher = watchClashUserConfig(options.dataDir, {
+    onChange(config, previousConfig) {
+      const apply = configReloadQueue.then(async () => {
+        await localAcpReady;
+        if (configWatcherClosed) return;
+        const nextSignature = JSON.stringify(config.harnesses ?? null);
+        const previousSignature = JSON.stringify(
+          previousConfig?.harnesses ?? null,
+        );
+        if (nextSignature === previousSignature) return;
+        await localAcp.reconcileConfiguration?.();
+      });
+      configReloadQueue = apply.catch(() => undefined);
+      return apply;
+    },
+    onError(error) {
+      console.error("[local-api] config.yaml reload rejected:", error.message);
+    },
+  });
+  localAcpReady = Promise.resolve(localAcp.warmup?.()).catch((error) => {
+    console.error(
+      "[local-api] ACP startup warmup degraded:",
+      error instanceof Error ? error.message : String(error),
+    );
+  });
   const falMock = createMockFalQueueService();
   const syncConfig = createLocalSyncConfigStore({
     dataDir: options.dataDir,
@@ -527,6 +569,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   const app = createLocalApiApp({
     dataDir: options.dataDir,
     localAcp,
+    localAcpReady,
     falMock,
     syncConfig,
     audioConfig,
@@ -605,7 +648,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     });
     void (async () => {
       if (options.discovery?.enabled !== false) {
-        discoveryHostId = await writeServerDiscoveryRecord(info.port, options);
+        discoveryHostId = await writeServerDiscoveryRecord(info.port, options, discoveryRunDir);
       }
       resolveListening(server);
     })().catch((error) => {
@@ -615,9 +658,13 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   });
   wrapServerCloseWithLifecycleCleanup(
     server,
-    () => localAcp.disposeAll(),
+    async () => {
+      configWatcherClosed = true;
+      stopConfigWatcher();
+      await localAcp.disposeAll();
+    },
     () => discoveryHostId,
-    options.discovery?.runDir,
+    discoveryRunDir,
   );
   server.once("error", (error) => {
     if (settled) {
@@ -634,6 +681,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
 async function writeServerDiscoveryRecord(
   actualPort: number,
   options: LocalApiServerOptions,
+  runDir: string,
 ): Promise<string> {
   const record = createHostDiscoveryRecord({
     endpoint: `http://127.0.0.1:${actualPort}`,
@@ -642,7 +690,7 @@ async function writeServerDiscoveryRecord(
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
   });
-  await writeHostDiscovery(record, { runDir: options.discovery?.runDir });
+  await writeHostDiscovery(record, { runDir });
   return record.hostId;
 }
 

@@ -18,6 +18,7 @@ type SqliteDatabase = {
 export interface SqliteLocalConfigStore {
   getJson<T>(key: string): Promise<T | null>;
   setJson(key: string, value: unknown, updatedAt?: string): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 const require = createRequire(import.meta.url);
@@ -98,6 +99,13 @@ export function createSqliteLocalConfigStore(dataDir: string): SqliteLocalConfig
             value_json = excluded.value_json,
             updated_at = excluded.updated_at
         `).run(key, JSON.stringify(value), updatedAt);
+      });
+    },
+
+    async delete(key) {
+      if (!(await exists(path))) return;
+      await withDb((db) => {
+        db.prepare("DELETE FROM local_config WHERE key = ?").run(key);
       });
     },
   };

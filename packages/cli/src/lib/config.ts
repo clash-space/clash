@@ -1,5 +1,17 @@
-import { chmodSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { parseDocument } from "yaml";
 import { resolveClashRoot } from "./clash-home";
 
 export function configDir(env: Record<string, string | undefined> = process.env): string {
@@ -7,7 +19,11 @@ export function configDir(env: Record<string, string | undefined> = process.env)
 }
 
 export function configFilePath(env: Record<string, string | undefined> = process.env): string {
-  return join(configDir(env), "config.json");
+  return join(configDir(env), "config.yaml");
+}
+
+export function credentialsFilePath(env: Record<string, string | undefined> = process.env): string {
+  return join(configDir(env), "credentials.json");
 }
 
 export interface ClashConfig {
@@ -15,23 +31,148 @@ export interface ClashConfig {
   serverUrl?: string;
 }
 
-export function loadConfig(): ClashConfig {
-  const path = configFilePath();
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function readObject(path: string): Record<string, unknown> {
+  if (!existsSync(path)) return {};
   try {
-    if (!existsSync(path)) return {};
-    const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw) as ClashConfig;
+    const value = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    return isRecord(value) ? value : {};
   } catch {
     return {};
   }
 }
 
+function atomicWrite(path: string, contents: string): void {
+  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  writeFileSync(temporaryPath, contents, { encoding: "utf8", mode: 0o600 });
+  chmodSync(temporaryPath, 0o600);
+  renameSync(temporaryPath, path);
+  chmodSync(path, 0o600);
+}
+
+function wait(milliseconds: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function withConfigLock<T>(dir: string, task: () => T): T {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  const lockPath = join(dir, ".config.lock");
+  const deadline = Date.now() + 5_000;
+  while (true) {
+    try {
+      mkdirSync(lockPath, { mode: 0o700 });
+      writeFileSync(
+        join(lockPath, "owner"),
+        `pid=${process.pid}\ncreated_at=${new Date().toISOString()}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      let stale = false;
+      try {
+        stale = Date.now() - statSync(lockPath).mtimeMs > 30_000;
+      } catch {
+        continue;
+      }
+      if (stale) {
+        rmSync(lockPath, { recursive: true, force: true });
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for Clash configuration lock: ${lockPath}`);
+      }
+      wait(25);
+    }
+  }
+  try {
+    return task();
+  } finally {
+    rmSync(lockPath, { recursive: true, force: true });
+  }
+}
+
+function updateYamlServerUrl(path: string, serverUrl: string | undefined): void {
+  const document = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
+  if (document.errors.length > 0) {
+    throw new Error(`Cannot update config.yaml: ${document.errors[0]?.message ?? "invalid YAML"}`);
+  }
+  document.set("version", 1);
+  if (serverUrl) {
+    document.setIn(["server", "url"], serverUrl);
+  } else {
+    document.deleteIn(["server", "url"]);
+  }
+  atomicWrite(path, document.toString({ lineWidth: 0 }));
+}
+
+function updateCliCredential(path: string, apiKey: string | undefined): void {
+  const credentials = readObject(path);
+  if (apiKey) credentials.cliApiKey = apiKey;
+  else delete credentials.cliApiKey;
+  atomicWrite(path, `${JSON.stringify(credentials, null, 2)}\n`);
+}
+
+function migrateLegacyConfig(env: Record<string, string | undefined> = process.env): void {
+  const dir = configDir(env);
+  const legacyPath = join(dir, "config.json");
+  if (!existsSync(legacyPath)) return;
+  const legacy = readObject(legacyPath);
+  const configPath = configFilePath(env);
+  const credentialsPath = credentialsFilePath(env);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+
+  withConfigLock(dir, () => {
+    const existing = loadConfigFiles(env);
+    updateYamlServerUrl(
+      configPath,
+      existing.serverUrl ?? (typeof legacy.serverUrl === "string" ? legacy.serverUrl : undefined),
+    );
+    updateCliCredential(
+      credentialsPath,
+      existing.apiKey ?? (typeof legacy.apiKey === "string" ? legacy.apiKey : undefined),
+    );
+    unlinkSync(legacyPath);
+  });
+}
+
+function loadConfigFiles(env: Record<string, string | undefined> = process.env): ClashConfig {
+  let serverUrl: string | undefined;
+  const configPath = configFilePath(env);
+  if (existsSync(configPath)) {
+    try {
+      const document = parseDocument(readFileSync(configPath, "utf8"));
+      const root = document.toJS() as unknown;
+      if (isRecord(root) && isRecord(root.server) && typeof root.server.url === "string") {
+        serverUrl = root.server.url;
+      }
+    } catch {
+      // Invalid user configuration is reported by write paths; reads remain non-fatal.
+    }
+  }
+  const credentials = readObject(credentialsFilePath(env));
+  return {
+    ...(typeof credentials.cliApiKey === "string" ? { apiKey: credentials.cliApiKey } : {}),
+    ...(serverUrl ? { serverUrl } : {}),
+  };
+}
+
+export function loadConfig(): ClashConfig {
+  migrateLegacyConfig();
+  return loadConfigFiles();
+}
+
 export function saveConfig(config: ClashConfig): void {
   const dir = configDir();
-  const path = configFilePath();
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path, JSON.stringify(config, null, 2) + "\n", { encoding: "utf-8", mode: 0o600 });
-  chmodSync(path, 0o600);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  withConfigLock(dir, () => {
+    updateYamlServerUrl(configFilePath(), config.serverUrl);
+    updateCliCredential(credentialsFilePath(), config.apiKey);
+  });
 }
 
 /**

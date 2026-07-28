@@ -1,6 +1,7 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { parse } from "yaml";
 
 const require = createRequire(process.execPath);
 
@@ -24,6 +25,20 @@ export function readProductReplicationState(
   options: ProductReplicationStateOptions,
 ): Record<string, unknown> {
   const fallback = syncStateFromEnv(options.env ?? {});
+  if (fallback.mode === "cloud-sync") return fallback;
+  const configPath = join(options.localApiDataDir, "..", "config.yaml");
+  if (existsSync(configPath)) {
+    try {
+      const root = parse(readFileSync(configPath, "utf8")) as unknown;
+      if (!isRecord(root)) return { mode: "unknown" };
+      return syncStateFromStoredConfig(root.sync);
+    } catch {
+      return { mode: "unknown" };
+    }
+  }
+
+  // Read the retired SQLite row only until local-api performs the one-way
+  // import. Once config.yaml exists it is the sole source of truth.
   const sqlitePath = join(options.localApiDataDir, "local.sqlite");
   if (!existsSync(sqlitePath)) return fallback;
 
@@ -56,7 +71,13 @@ function syncStateFromStoredConfig(value: unknown): Record<string, unknown> {
   if (value.mode === "local-only") {
     return { mode: "local-only", capabilities: emptyCapabilities() };
   }
-  if (value.mode !== "cloud-sync" || !nonEmptyString(value.remoteLoroUrl)) {
+  const remote = isRecord(value.remote_loro) ? value.remote_loro : {};
+  const remoteUrl = nonEmptyString(remote.url)
+    ? remote.url
+    : nonEmptyString(value.remoteLoroUrl)
+      ? value.remoteLoroUrl
+      : null;
+  if (value.mode !== "cloud-sync" || !remoteUrl) {
     return { mode: "unknown" };
   }
   const capabilities = isRecord(value.capabilities) ? value.capabilities : {};

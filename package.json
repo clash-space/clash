@@ -18,6 +18,7 @@
     "test:agent:real-codex": "pnpm --filter @master-clash/desktop test:agent:real-codex",
     "test:startup": "pnpm --filter @master-clash/desktop test:startup",
     "test:startup:harness-update-gui": "pnpm --filter @master-clash/desktop test:startup:harness-update-gui",
+    "test:startup:real-codex-cold": "pnpm --filter @master-clash/desktop test:startup:real-codex-cold",
     "test:startup:real-codex": "pnpm --filter @master-clash/desktop test:startup:real-codex",
     "test:startup:real-codex-resume": "pnpm --filter @master-clash/desktop test:startup:real-codex-resume",
     "assets:director:anny": "tsx scripts/generate-director-anny-assets.ts",

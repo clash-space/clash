@@ -3,9 +3,9 @@ import {
   FilmSlate,
   FlowArrow,
   Quotes,
-  SquaresFour,
   Stack,
 } from '@phosphor-icons/react';
+import { CanvasIcon } from '../../components/ProjectSurfaceIcon';
 import { AssetThumbnail } from './AssetThumbnail';
 import type { AssetRelationSummary } from './relations';
 
@@ -72,7 +72,7 @@ export function AssetRelationsPanel({
             aria-label={`Open origin Canvas ${relations.origin.canvasName}`}
             onClick={() => onOpenCanvas?.(relations.origin!.canvasId, relations.origin!.nodeId)}
           >
-            <SquaresFour className="h-4 w-4 shrink-0 text-brand" weight="fill" aria-hidden="true" />
+            <CanvasIcon className="h-4 w-4 shrink-0 text-brand" weight="bold" aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate font-medium">{relations.origin.canvasName}</span>
             <span className="text-[10px] uppercase tracking-[0.08em] text-stone-400">Canvas</span>
             <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-stone-300 transition-colors group-hover:text-brand" aria-hidden="true" />
@@ -90,7 +90,7 @@ export function AssetRelationsPanel({
               aria-label={`Open Canvas ${canvas.canvasName}`}
               onClick={() => onOpenCanvas?.(canvas.canvasId, canvas.nodeId)}
             >
-              <SquaresFour className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
+              <CanvasIcon className="h-4 w-4 shrink-0 text-stone-400" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate">{canvas.canvasName}</span>
               <span className="text-[10px] text-stone-400">
                 {canvas.nodeCount} {canvas.role === 'reference' ? 'ref' : 'node'}{canvas.nodeCount === 1 ? '' : 's'}
@@ -182,4 +182,3 @@ export function AssetRelationsPanel({
     </aside>
   );
 }
-

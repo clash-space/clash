@@ -257,14 +257,14 @@ export function SettingsSurface({
                   id={item.id}
                   className={`relative flex h-8 w-full items-center gap-2 rounded-md border px-2 text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
                     isActive
-                      ? 'border-brand/35 bg-brand-light text-brand shadow-sm dark:border-brand/30 dark:bg-brand/10 dark:text-neutral-100'
-                      : 'border-transparent text-stone-700 hover:bg-warm-surface/60 hover:text-stone-900 dark:text-stone-200'
+                      ? 'border-warm-border bg-warm-hover text-content-primary shadow-sm dark:text-neutral-100'
+                      : 'border-transparent text-content-secondary hover:bg-warm-hover hover:text-content-primary'
                   }`}
                 >
                   {isActive && (
                     <span aria-hidden="true" className="absolute left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-brand" />
                   )}
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-brand' : ''}`} weight="bold" />
+                  <Icon className="h-4 w-4" weight="bold" />
                   <span className="truncate">{item.label}</span>
                 </Tab>
               );

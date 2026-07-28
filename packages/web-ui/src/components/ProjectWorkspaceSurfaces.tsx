@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import {
     ArrowsOutSimple,
     FilmSlate,
-    HashStraight,
     Image as ImageIcon,
     MagnifyingGlassMinus,
     MagnifyingGlassPlus,
@@ -33,6 +32,7 @@ import { stripSrcFromTracks } from '@clash/web-ui/lib/timelineDsl';
 import { resolveAssetMediaUrl } from '../features/assets/media-url';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
+import { CanvasIcon } from './ProjectSurfaceIcon';
 import { hasProjectAssetDragData, readProjectAssetDragId } from '@clash/web-ui/lib/projectAssetDrag';
 import {
     canonicalizeTimelineItemScopeRefs,
@@ -73,7 +73,7 @@ function TimelineEditorLoadingShell() {
             role="status"
             aria-label="Preparing timeline"
             data-timeline-loading-shell=""
-            className="grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] pr-[var(--clash-timeline-gutter)] [grid-template-columns:minmax(12rem,300px)_minmax(21rem,1fr)_minmax(13rem,clamp(280px,22%,340px))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_280px]"
+            className="grid h-full min-h-0 [--clash-timeline-gutter:var(--clash-project-chrome-gutter,0.5rem)] [--clash-timeline-control-gap:var(--clash-control-gap,0.25rem)] [--clash-timeline-control-size:var(--clash-project-control-height,2rem)] gap-[var(--clash-timeline-gutter)] overflow-hidden bg-warm-page pb-[var(--clash-timeline-gutter)] pl-[var(--clash-timeline-gutter)] pr-[var(--clash-timeline-gutter)] [grid-template-columns:minmax(min(12rem,25%),300px)_minmax(min(21rem,42%),1fr)_minmax(min(13rem,28%),clamp(280px,22%,340px))] [grid-template-rows:var(--clash-project-sidebar-header-height,2.5rem)_minmax(0,1fr)_280px]"
         >
             <header
                 data-loading-region="command-bar"
@@ -283,7 +283,7 @@ export function ProjectAssetSurface({
     }, [asset.id, asset.url]);
 
     const fallback = (
-        <div className="flex flex-col items-center gap-2 text-stone-400">
+        <div className="flex flex-col items-center gap-2 text-content-muted">
             {asset.type === 'video' ? (
                 <FilmSlate className="h-7 w-7" weight="regular" aria-hidden="true" />
             ) : asset.type === 'audio' ? (
@@ -305,13 +305,13 @@ export function ProjectAssetSurface({
                 style={{ paddingRight: headerEndInset }}
             >
                 {asset.type === 'video' ? (
-                    <FilmSlate className="h-3.5 w-3.5 shrink-0 text-stone-400" weight="regular" />
+                    <FilmSlate className="h-3.5 w-3.5 shrink-0 text-content-muted" weight="regular" />
                 ) : asset.type === 'audio' ? (
-                    <SpeakerHigh className="h-3.5 w-3.5 shrink-0 text-stone-400" weight="regular" />
+                    <SpeakerHigh className="h-3.5 w-3.5 shrink-0 text-content-muted" weight="regular" />
                 ) : (
-                    <ImageIcon className="h-3.5 w-3.5 shrink-0 text-stone-400" weight="regular" />
+                    <ImageIcon className="h-3.5 w-3.5 shrink-0 text-content-muted" weight="regular" />
                 )}
-                <span title={path} className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">
+                <span title={path} className="min-w-0 flex-1 truncate text-xs font-medium text-content-secondary">
                     {label}
                 </span>
                 {renderEditor && !editing && (asset.type === 'image' || asset.type === 'video') ? (
@@ -322,13 +322,13 @@ export function ProjectAssetSurface({
                         disabled={!mediaMetadata}
                         onClick={() => mediaMetadata && setEditing(true)}
                         aria-label={asset.type === 'video' ? 'Edit video' : 'Edit image'}
-                        className="h-7 min-h-7 rounded-md border-warm-border bg-warm-surface px-2.5 text-xs font-semibold text-stone-600 shadow-none hover:bg-warm-muted hover:text-slate-950"
+                        className="h-7 min-h-7 rounded-md border-warm-border bg-warm-surface px-2.5 text-xs font-semibold text-content-secondary shadow-none hover:bg-warm-hover hover:text-content-primary"
                     >
                         Edit
                     </Button>
                 ) : null}
             </header>
-            <div className="flex min-h-0 flex-1 overflow-hidden bg-stone-100">
+            <div className="flex min-h-0 flex-1 overflow-hidden bg-warm-muted">
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col items-stretch justify-stretch overflow-hidden">
                     {editing && mediaMetadata && renderEditor
                         ? renderEditor(mediaMetadata, () => setEditing(false))
@@ -703,11 +703,11 @@ export function ProjectTimelineEditorSurface({
         <Tooltip label={`Open parent Canvas ${parentCanvas.name}`}>
             <IconButton
                 label={`Open parent Canvas ${parentCanvas.name}`}
-                icon={<HashStraight className="h-4 w-4" weight="regular" />}
+                icon={<CanvasIcon className="h-4 w-4" weight="regular" />}
                 size="sm"
                 shape="rounded"
                 onClick={() => onOpenCanvas(parentCanvas.id)}
-                className="h-8 min-h-8 w-8 min-w-8 rounded-md text-stone-500 hover:bg-warm-muted hover:text-slate-950"
+                className="h-8 min-h-8 w-8 min-w-8 rounded-md text-content-muted hover:bg-warm-hover hover:text-content-primary"
             />
         </Tooltip>
     ) : undefined;

@@ -18,7 +18,13 @@ import {
 } from "@agentclientprotocol/sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { authenticateAgent, probeAgentAuthStatus, probeAgentConfigOptions, probeAgentSessionConfig } from "./probe.js";
+import {
+  authenticateAgent,
+  disposeAllAcpSetupProcesses,
+  probeAgentAuthStatus,
+  probeAgentConfigOptions,
+  probeAgentSessionConfig,
+} from "./probe.js";
 import type { ChildHandle, Spawner } from "./types.js";
 
 function makeStreamPair(): { child: ChildHandle; agentInput: ReadableStream<Uint8Array>; agentOutput: WritableStream<Uint8Array> } {
@@ -153,8 +159,24 @@ class SessionConfigProbeAgent extends AuthRequiredProbeAgent {
   }
 }
 
+class LegacyModelProbeAgent extends AuthRequiredProbeAgent {
+  override async newSession(_params: NewSessionRequest): Promise<NewSessionResponse> {
+    this.calls.push("newSession");
+    return {
+      sessionId: "legacy-model-session",
+      models: {
+        currentModelId: "gemini-2.5-pro",
+        availableModels: [
+          { modelId: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+          { modelId: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+        ],
+      },
+    } as NewSessionResponse;
+  }
+}
+
 class NoAuthMethodsProbeAgent implements Agent {
-  constructor(private readonly calls: string[]) {}
+  constructor(protected readonly calls: string[]) {}
 
   async initialize(_params: InitializeRequest): Promise<InitializeResponse> {
     this.calls.push("initialize");
@@ -213,6 +235,21 @@ class EnvVarAuthProbeAgent extends AuthRequiredProbeAgent {
         description: "Use an OpenAI-compatible API key",
         vars: [{ name: "OPENAI_API_KEY", label: "API key", secret: true }],
         link: "https://platform.openai.com/api-keys",
+      } as never],
+      agentCapabilities: { promptCapabilities: {} },
+    };
+  }
+}
+
+class UnsupportedAuthProbeAgent extends NoAuthMethodsProbeAgent {
+  override async initialize(_params: InitializeRequest): Promise<InitializeResponse> {
+    this.calls.push("initialize");
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      authMethods: [{
+        id: "magic-card",
+        name: "Magic Card",
+        type: "card",
       } as never],
       agentCapabilities: { promptCapabilities: {} },
     };
@@ -329,7 +366,7 @@ describe("probeAgentAuthStatus", () => {
       }],
     });
 
-    expect(calls).toEqual(["initialize:terminal=true", "newSession"]);
+    expect(calls).toEqual(["initialize:terminal=true"]);
   });
 
   it("reports env_var auth methods without treating them as sign-in flows", async () => {
@@ -352,7 +389,7 @@ describe("probeAgentAuthStatus", () => {
       }],
     });
 
-    expect(calls).toEqual(["initialize", "newSession"]);
+    expect(calls).toEqual(["initialize"]);
   });
 
   it("reports configured auth when a session can be created", async () => {
@@ -371,7 +408,7 @@ describe("probeAgentAuthStatus", () => {
     expect(calls).toEqual(["initialize", "newSession"]);
   });
 
-  it("uses the agent-reported auth status instead of the first advertised method", async () => {
+  it("uses the first supported ACP auth method without a private extension probe", async () => {
     const calls: string[] = [];
     await expect(probeAgentAuthStatus({
       agent: { command: "fake-agent" },
@@ -379,15 +416,15 @@ describe("probeAgentAuthStatus", () => {
       spawner: connectProbeAgent(() => new ReportedAuthProbeAgent(calls)),
     })).resolves.toEqual({
       status: "configured",
-      methodId: "chat-gpt",
-      methodName: "ChatGPT",
+      methodId: "api-key",
+      methodName: "API Key",
       methods: [
         { id: "api-key", name: "API Key", type: "agent" },
         { id: "chat-gpt", name: "ChatGPT", type: "agent" },
       ],
     });
 
-    expect(calls).toEqual(["initialize", "extMethod:authentication/status", "newSession"]);
+    expect(calls).toEqual(["initialize", "newSession"]);
   });
 
   it("reports needs-auth when a session succeeds with unauthenticated diagnostics", async () => {
@@ -420,6 +457,47 @@ describe("probeAgentAuthStatus", () => {
 
     expect(calls).toEqual(["initialize"]);
   });
+
+  it("blocks unsupported auth methods instead of treating them as no auth", async () => {
+    const calls: string[] = [];
+    await expect(probeAgentAuthStatus({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-probe-test",
+      spawner: connectProbeAgent(() => new UnsupportedAuthProbeAgent(calls)),
+    })).resolves.toEqual({
+      status: "unknown",
+      message: "No supported ACP auth method is available. Unsupported methods: card.",
+    });
+
+    expect(calls).toEqual(["initialize"]);
+  });
+});
+
+describe("ACP setup lifecycle", () => {
+  it("lets shutdown dispose externally pending auth children", async () => {
+    const calls: string[] = [];
+    const delegate = connectProbeAgent(() => new BrowserHostedAuthProbeAgent(calls, 60_000));
+    const kill = vi.fn(async () => undefined);
+    const spawner: Spawner = {
+      async spawn(spec) {
+        return {
+          ...await delegate.spawn(spec),
+          kill,
+        };
+      },
+    };
+
+    await expect(authenticateAgent({
+      agent: { command: "browser-auth-agent" },
+      cwd: "/tmp/clash-acp-background-auth-test",
+      spawner,
+      agentAuthLaunchGraceMs: 1,
+      backgroundAuthTimeoutMs: 60_000,
+    })).resolves.toEqual({ status: "started" });
+
+    await disposeAllAcpSetupProcesses();
+    expect(kill).toHaveBeenCalledOnce();
+  });
 });
 
 describe("probeAgentConfigOptions", () => {
@@ -435,6 +513,27 @@ describe("probeAgentConfigOptions", () => {
     expect(calls).toEqual(["initialize", "newSession"]);
   });
 
+  it("returns auth and capabilities from the same disposable ACP process", async () => {
+    const calls: string[] = [];
+
+    await expect(probeAgentSessionConfig({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-full-probe-test",
+      spawner: connectProbeAgent(() => new AuthRequiredProbeAgent(calls)),
+    })).resolves.toEqual({
+      availableCommands: [],
+      configOptions: [],
+      auth: {
+        status: "needs-auth",
+        methodId: "login",
+        methodName: "Login",
+        methods: [{ id: "login", name: "Login", type: "agent" }],
+      },
+    });
+
+    expect(calls).toEqual(["initialize", "newSession"]);
+  });
+
   it("returns ACP session modes alongside config options", async () => {
     const calls: string[] = [];
 
@@ -443,6 +542,7 @@ describe("probeAgentConfigOptions", () => {
       cwd: "/tmp/clash-acp-session-config-probe-test",
       spawner: connectProbeAgent(() => new SessionConfigProbeAgent(calls)),
     })).resolves.toEqual({
+      availableCommands: [],
       configOptions: [
         {
           id: "model",
@@ -459,9 +559,91 @@ describe("probeAgentConfigOptions", () => {
           { id: "code", name: "Code" },
         ],
       },
+      auth: {
+        status: "configured",
+        methodId: "login",
+        methodName: "Login",
+        methods: [{ id: "login", name: "Login", type: "agent" }],
+      },
     });
 
     expect(calls).toEqual(["initialize", "newSession"]);
+  });
+
+  it("normalizes legacy ACP models during the cold-start probe", async () => {
+    const calls: string[] = [];
+
+    await expect(probeAgentSessionConfig({
+      agent: { command: "gemini" },
+      cwd: "/tmp/clash-acp-legacy-model-probe-test",
+      spawner: connectProbeAgent(() => new LegacyModelProbeAgent(calls)),
+    })).resolves.toMatchObject({
+      configOptions: [{
+        id: "model",
+        category: "model",
+        type: "select",
+        currentValue: "gemini-2.5-pro",
+        options: [
+          { value: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+          { value: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+        ],
+      }],
+    });
+
+    expect(calls).toEqual(["initialize", "newSession"]);
+  });
+
+  it("captures available commands published just after session creation", async () => {
+    const spawner = connectProbeAgent((connection) => ({
+      async initialize() {
+        return {
+          protocolVersion: PROTOCOL_VERSION,
+          agentCapabilities: { promptCapabilities: {} },
+        };
+      },
+      async newSession() {
+        setTimeout(() => {
+          void connection.sessionUpdate({
+            sessionId: "probe-session",
+            update: {
+              sessionUpdate: "available_commands_update",
+              availableCommands: [
+                {
+                  name: "review",
+                  description: "Review the current project",
+                },
+              ],
+            },
+          });
+        }, 0);
+        return {
+          sessionId: "probe-session",
+          configOptions: [],
+        };
+      },
+      async authenticate() {
+        return {};
+      },
+      async prompt() {
+        return { stopReason: "end_turn" };
+      },
+      async cancel() {
+        return undefined;
+      },
+    }));
+
+    await expect(probeAgentSessionConfig({
+      agent: { command: "fake-agent" },
+      cwd: "/tmp/clash-acp-available-commands-probe-test",
+      spawner,
+    })).resolves.toMatchObject({
+      availableCommands: [
+        {
+          name: "review",
+          description: "Review the current project",
+        },
+      ],
+    });
   });
 });
 

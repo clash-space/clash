@@ -160,7 +160,7 @@ describe("ProjectEditor workspace model", () => {
     );
   });
 
-  it("keeps collapsed editors full-width and reserves a gutter for the expanded floating Copilot", () => {
+  it("keeps collapsed editors full-width and reserves padding for the rounded floating Copilot", () => {
     expect(source).toMatch(
       /const shouldReserveCopilotSpace\s*=\s*workspaceSurface\.kind !== "canvas" && !isSidebarCollapsed/,
     );
@@ -178,6 +178,24 @@ describe("ProjectEditor workspace model", () => {
     expect(source).toMatch(
       /id="project-workspace-shell"[\s\S]*?style=\{\{[\s\S]*?right: copilotWorkspaceRight/,
     );
+    expect(source).not.toContain("data-copilot-resizing={isCopilotResizing}");
+    expect(source).toContain(
+      "onResizeStateChange={handleCopilotResizeStateChange}",
+    );
+    expect(source).toContain(
+      "onWidthPreview={handleCopilotWidthPreview}",
+    );
+    expect(source).toContain("onWidthChange={handleCopilotWidthChange}");
+    expect(source).toContain(
+      'shell.style.right = `${nextWidth + COPILOT_PANEL_GUTTER_PX * 2}px`',
+    );
+    expect(source).toContain(
+      'shell.dataset.copilotResizing = resizing ? "true" : "false"',
+    );
+    expect(source).not.toContain("[data-copilot-width-constraint]");
+    expect(source).not.toContain("measureMinContentWidth");
+    expect(source).not.toContain("copilotWorkspaceMinWidthRef");
+    expect(source).not.toContain("STRUCTURED_WORKSPACE_MIN_WIDTH");
     expect(source).not.toContain("rightInset={copilotWorkspaceInset}");
     expect(source).toContain('layoutMode="floating"');
     expect(source).not.toContain('layoutMode="docked"');

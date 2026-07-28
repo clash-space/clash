@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -6,7 +6,6 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   applyPermissionModeToAgentSpec,
-  composeClashPrompt,
   composeClashPromptContent,
   SessionManager,
   type ManagerOut,
@@ -126,6 +125,11 @@ describe("applyPermissionModeToAgentSpec", () => {
     } as never)).toEqual({ outcome: { outcome: "selected", optionId: "allow" } });
   });
 
+  it("does not mirror broker permission requests into transcript events", async () => {
+    const source = await readFile(new URL("./session-manager.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("emitPermissionEvents: true");
+  });
+
   it("leaves the agent spec unchanged when no permission mode is selected", () => {
     const spec = { command: "codex-acp", args: ["--flag"], env: { KEEP: "1" } };
     expect(applyPermissionModeToAgentSpec(
@@ -172,93 +176,22 @@ describe("applyPermissionModeToAgentSpec", () => {
   });
 });
 
-describe("composeClashPrompt", () => {
-  it("prepends the project AGENTS.md contract and runtime context to every prompt", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "clash-prompt-cwd-"));
-    await writeFile(
-      join(cwd, "AGENTS.md"),
-      [
-        "# Clash agent operating rules",
-        "",
-        "You are a Clash project agent, not a generic coding assistant.",
-        "Use `clash project status --json` and `clash canvas list --json` from this cwd.",
-      ].join("\n"),
-      "utf-8",
-    );
+describe("composeClashPromptContent", () => {
+  it("sends only the user turn because harness-native startup files own the system contract", async () => {
+    const blocks = await composeClashPromptContent("你是谁？");
 
-    const prompt = await composeClashPrompt("你是谁？", {
-      cwd,
-      env: {
-        CLASH_PROJECT_ID: "project-contract",
-        CLASH_AGENT_MEMBER_ID: "local-master-clash",
-        CLASH_PERMISSION_MODE: "codex:full-access",
-      },
-    });
-
-    expect(prompt).toContain("# Clash agent contract (read first)");
-    expect(prompt).toContain("# Clash agent operating rules");
-    expect(prompt).toContain("not a generic coding assistant");
-    expect(prompt).toContain(`- cwd: ${cwd}`);
-    expect(prompt).toContain("- CLASH_PROJECT_ID=project-contract");
-    expect(prompt).toContain("- CLASH_AGENT_MEMBER_ID=local-master-clash");
-    expect(prompt).toContain("- CLASH_PERMISSION_MODE=codex:full-access");
-    expect(prompt).toContain("# User request\n\n你是谁？");
+    expect(blocks).toEqual([{ type: "text", text: "你是谁？" }]);
   });
 
-  it("falls back to standard clash init guidance when AGENTS.md is missing", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "clash-prompt-empty-cwd-"));
+  it("does not duplicate AGENTS.md as an embedded resource", async () => {
+    const blocks = await composeClashPromptContent("开始");
 
-    const prompt = await composeClashPrompt("开始", {
-      cwd,
-      env: { CLASH_PROJECT_ID: "project-missing-contract" },
-    });
-
-    expect(prompt).toContain("No AGENTS.md was found in cwd");
-    expect(prompt).toContain("clash init --project \"$CLASH_PROJECT_ID\" --json");
-    expect(prompt).toContain("- CLASH_PROJECT_ID=project-missing-contract");
-  });
-
-  it("can attach AGENTS.md as an ACP embedded resource when the harness supports embedded context", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "clash-prompt-resource-cwd-"));
-    await writeFile(
-      join(cwd, "AGENTS.md"),
-      [
-        "# Master Clash",
-        "",
-        "Always use the Clash CLI before guessing project state.",
-      ].join("\n"),
-      "utf-8",
-    );
-
-    const blocks = await composeClashPromptContent("开始", {
-      cwd,
-      env: {
-        CLASH_PROJECT_ID: "project-resource-contract",
-        CLASH_AGENT_MEMBER_ID: "local-master-clash",
-      },
-    }, { embeddedContext: true });
-
-    expect(blocks).toHaveLength(2);
-    expect(blocks[0]).toMatchObject({
-      type: "resource",
-      resource: {
-        uri: pathToFileURL(join(cwd, "AGENTS.md")).href,
-        mimeType: "text/markdown",
-        text: expect.stringContaining("Always use the Clash CLI"),
-      },
-      _meta: {
-        "clash.kind": "agent_contract",
-      },
-    });
-    expect(blocks[1]).toMatchObject({
-      type: "text",
-      text: expect.stringContaining("# Clash agent contract (read first)"),
-    });
+    expect(blocks).toEqual([{ type: "text", text: "开始" }]);
   });
 });
 
 describe("SessionManager harness prompt contract", () => {
-  it("starts registry-only agents from the supplied agent spec", async () => {
+  it("starts a registry agent from the supplied spec and installs its project Skill", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-dynamic-agent-spec-"));
     const binDir = join(root, "bin");
     const captureDir = join(root, "captures");
@@ -283,16 +216,31 @@ describe("SessionManager harness prompt contract", () => {
       manager.setSpawnEnv({ CLASH_E2E_PROMPT_CAPTURE_DIR: captureDir });
 
       await manager.start({
-        session_id: "session-dynamic-devin",
+        session_id: "session-dynamic-codex",
         agent_template_id: "master-clash",
-        agent_id: "registry-only-devin",
+        agent_id: "codex-acp",
         agent_spec: { command: join(binDir, "codex-acp") },
-        project_id: "project-dynamic-devin",
+        project_id: "project-dynamic-codex",
       });
-      await manager.dispose("session-dynamic-devin");
+      await manager.dispose("session-dynamic-codex");
 
       expect(sent.some((msg) => msg.type === "session.ready")).toBe(true);
       expect(sent.some((msg) => msg.type === "session.error")).toBe(false);
+      expect(
+        (
+          await lstat(
+            join(
+              home,
+              ".clash",
+              "projects",
+              "project-dynamic-codex",
+              ".agents",
+              "skills",
+              "clash",
+            ),
+          )
+        ).isSymbolicLink(),
+      ).toBe(true);
     } finally {
       restoreEnv(previousEnv);
     }
@@ -363,7 +311,7 @@ describe("SessionManager harness prompt contract", () => {
     }
   });
 
-  it("injects the Clash contract before prompts for every registry harness", async () => {
+  it("keeps every registry harness prompt free of repeated system-contract text", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-harness-contract-"));
     const binDir = join(root, "bin");
     const captureDir = join(root, "captures");
@@ -418,20 +366,14 @@ describe("SessionManager harness prompt contract", () => {
 
         expect(sent.some((msg) => msg.type === "session.complete" && msg.turn_id === `turn-${agentId}`)).toBe(true);
         const prompt = await readFile(join(captureDir, `${binaryName}.txt`), "utf-8");
-        expect(prompt).toContain("# Clash agent contract (read first)");
-        expect(prompt).toContain("Master Clash");
-        expect(prompt).toContain(`# User request\n\nidentify ${agentId}`);
-        expect(prompt).toContain(`- CLASH_PROJECT_ID=${projectId}`);
-        expect(prompt).toContain("- CLASH_AGENT_MEMBER_ID=local-master-clash");
-        expect(prompt).toContain(`- CLASH_PERMISSION_MODE=${agentId}:full-access`);
-        expect(prompt).not.toContain("No AGENTS.md was found");
+        expect(prompt).toBe(`identify ${agentId}`);
       }
     } finally {
       restoreEnv(previousEnv);
     }
   }, 10_000);
 
-  it("uses ACP embedded context for AGENTS.md when the harness advertises support", async () => {
+  it("does not duplicate AGENTS.md when the harness advertises embedded context", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-harness-resource-"));
     const binDir = join(root, "bin");
     const captureDir = join(root, "captures");
@@ -476,20 +418,7 @@ describe("SessionManager harness prompt contract", () => {
 
       expect(sent.some((msg) => msg.type === "session.complete" && msg.turn_id === "turn-embedded-context")).toBe(true);
       const promptBlocks = JSON.parse(await readFile(join(captureJsonDir, "codex-acp.json"), "utf-8"));
-      expect(promptBlocks[0]).toMatchObject({
-        type: "resource",
-        resource: {
-          mimeType: "text/markdown",
-          text: expect.stringContaining("Master Clash"),
-        },
-        _meta: {
-          "clash.kind": "agent_contract",
-        },
-      });
-      expect(promptBlocks[1]).toMatchObject({
-        type: "text",
-        text: expect.stringContaining("# User request\n\nread contract"),
-      });
+      expect(promptBlocks).toEqual([{ type: "text", text: "read contract" }]);
     } finally {
       restoreEnv(previousEnv);
     }

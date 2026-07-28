@@ -413,6 +413,7 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
     }
     validateMachineLocalConfigContract(
       problems,
+      status,
       storage.canonicalReplica.metadata.localConfig,
     );
     if (storage.canonicalReplica.projectState.agentWritable !== false) {
@@ -527,26 +528,31 @@ export function inspectStorageContract(status: ProjectStatus): StorageDoctorChec
 
 function validateMachineLocalConfigContract(
   problems: string[],
+  status: ProjectStatus,
   localConfig: ProjectStatus["storage"]["canonicalReplica"]["metadata"]["localConfig"] | undefined,
 ): void {
   if (!localConfig) {
     problems.push("missing machine-local config contract");
     return;
   }
-  if (localConfig.role !== "machine-local-config") {
+  if (localConfig.role !== "user-editable-machine-config") {
     problems.push("machine-local config role is wrong");
   }
-  if (localConfig.table !== "local_config") {
-    problems.push("machine-local config table is wrong");
+  if (localConfig.format !== "yaml") {
+    problems.push("machine-local config format is wrong");
   }
-  const expectedKeys: Array<(typeof localConfig.keys)[number]> = [
-    "local-sync-config",
-    "local-audio-config",
-    "local-harness-config",
+  if (localConfig.path !== join(status.clashHome, "config.yaml")) {
+    problems.push("machine-local config path is wrong");
+  }
+  const expectedSections: Array<(typeof localConfig.sections)[number]> = [
+    "server",
+    "harnesses",
+    "audio",
+    "sync",
   ];
-  for (const key of expectedKeys) {
-    if (!localConfig.keys.includes(key)) {
-      problems.push(`machine-local config missing ${key} key`);
+  for (const section of expectedSections) {
+    if (!localConfig.sections.includes(section)) {
+      problems.push(`machine-local config missing ${section} section`);
     }
   }
   if (localConfig.syncDefault !== "local-only") {
@@ -555,11 +561,11 @@ function validateMachineLocalConfigContract(
   if (localConfig.agentWritable !== false) {
     problems.push("machine-local config is agent-writable");
   }
-  if (localConfig.mutationSurface !== "host-api-or-cli") {
+  if (localConfig.mutationSurface !== "host-api-cli-or-editor") {
     problems.push("machine-local config mutation surface is wrong");
   }
-  if (localConfig.jsonSidecars !== "removed") {
-    problems.push("machine-local config JSON sidecars are not removed");
+  if (localConfig.sqliteConfigRows !== "migration-only") {
+    problems.push("machine-local SQLite config rows are not migration-only");
   }
 }
 
@@ -584,15 +590,9 @@ function validateLocalSecretsContract(
 
   const expectedFiles = [
     {
-      label: "CLI config",
-      file: localSecrets.files?.cliConfig,
-      kind: "cli-api-key-config",
-      path: join(status.clashHome, "config.json"),
-    },
-    {
       label: "bridge credentials",
       file: localSecrets.files?.bridgeCredentials,
-      kind: "local-runtime-credentials",
+      kind: "machine-credential-store",
       path: join(status.clashHome, "credentials.json"),
     },
   ];

@@ -94,6 +94,18 @@ describe("UserControls", () => {
     expect(settings.className).toContain("hover:text-content-primary");
   });
 
+  it("keeps the full-size desktop Settings entry visible on dark navigation chrome", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+
+    renderUserControls();
+
+    const settings = screen.getByRole("link", { name: "Settings" });
+    expect(settings.className).toContain("text-content-secondary");
+    expect(settings.className).toContain("hover:bg-warm-hover");
+    expect(settings.className).toContain("hover:text-content-primary");
+    expect(settings.className).not.toContain("hover:border-brand");
+  });
+
   it("uses the shared tooltip primitive for icon controls instead of browser title attributes", () => {
     const source = readFileSync(
       resolve(process.cwd(), "packages/web-ui/src/components/UserControls.tsx"),

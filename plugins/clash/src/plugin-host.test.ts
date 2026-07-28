@@ -139,3 +139,46 @@ test("separate plugin managers coordinate one host startup through the run direc
   await first.close();
   await second.close();
 });
+
+test("plugin host derives discovery from the authoritative local-api data directory", async () => {
+  const module = await loadHostModule();
+  assert.equal(typeof module.createPluginHostManager, "function");
+  const create = module.createPluginHostManager as (options: Record<string, unknown>) => {
+    ensureHost(): Promise<HostRecord>;
+    close(): Promise<void>;
+  };
+  const staleRoot = await mkdtemp(join(tmpdir(), "clash-plugin-stale-root-"));
+  const canonicalRoot = await mkdtemp(join(tmpdir(), "clash-plugin-canonical-root-"));
+  const dataDir = join(canonicalRoot, "local-api");
+  let startedWith: { runDir: string; dataDir: string } | undefined;
+  const pluginHost: HostRecord = {
+    ...existingHost,
+    hostId: "plugin-canonical-root",
+    launchMode: "plugin",
+    startedBy: "plugin",
+    ownerClientId: "plugin-canonical-root",
+  };
+  const manager = create({
+    ownerClientId: "plugin-canonical-root",
+    env: {
+      CLASH_HOME: staleRoot,
+      CLASH_LOCAL_DATA_DIR: dataDir,
+    },
+    readHost: async () => undefined,
+    startHost: async (context: { runDir: string; dataDir: string }) => {
+      startedWith = {
+        runDir: context.runDir,
+        dataDir: context.dataDir,
+      };
+      return { record: pluginHost, close: async () => undefined };
+    },
+  });
+
+  await manager.ensureHost();
+
+  assert.deepEqual(startedWith, {
+    dataDir,
+    runDir: join(canonicalRoot, "run"),
+  });
+  await manager.close();
+});

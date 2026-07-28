@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   LOCAL_HOST_DATA_SCHEMA_VERSION,
   LOCAL_HOST_PROTOCOL_VERSION,
@@ -12,6 +11,10 @@ import {
   type HostStartedBy,
   type LocalHostDiscoveryRecord,
 } from "@clash/shared-runtime";
+import {
+  clashHomeForLocalDataDir,
+  defaultLocalApiDataDir,
+} from "./local-paths.js";
 
 export type HostDiscoveryState =
   | { status: "active"; record: LocalHostDiscoveryRecord }
@@ -26,9 +29,13 @@ export interface HostDiscoveryWriteOptions {
   runDir?: string;
 }
 
-export function getDefaultHostDiscoveryRunDir(): string {
-  const clashHome = process.env.CLASH_HOME?.trim();
-  return join(clashHome ? resolve(clashHome) : join(homedir(), ".clash"), "run");
+export function getDefaultHostDiscoveryRunDir(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return join(
+    clashHomeForLocalDataDir(defaultLocalApiDataDir(env)),
+    "run",
+  );
 }
 
 export function getHostDiscoveryPath(runDir = getDefaultHostDiscoveryRunDir()): string {

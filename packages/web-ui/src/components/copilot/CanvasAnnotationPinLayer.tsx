@@ -3,11 +3,8 @@ import { ViewportPortal, useViewport } from "@xyflow/react";
 import type { AgentAnnotationDraft } from "@clash/shared-types";
 import { annotationLocateSelector } from "@clash/web-ui/lib/agentAnnotationLocate";
 
-import { AnnotationNoteEditor } from "./AnnotationDomPinLayer";
+import { AgentAnnotationActionsContextMenu } from "./AgentAnnotationBlock";
 import { projectCanvasAnnotationPin } from "./canvasAnnotationPins";
-
-const EDITOR_WIDTH = 256;
-const EDITOR_HEIGHT_ESTIMATE = 128;
 
 interface CanvasPin {
   id: string;
@@ -15,8 +12,6 @@ interface CanvasPin {
   x: number;
   y: number;
   visible: boolean;
-  editorX: number;
-  editorY: number;
 }
 
 function samePins(a: CanvasPin[], b: CanvasPin[]): boolean {
@@ -28,9 +23,7 @@ function samePins(a: CanvasPin[], b: CanvasPin[]): boolean {
       pin.number === next.number &&
       pin.visible === next.visible &&
       Math.abs(pin.x - next.x) < 0.5 &&
-      Math.abs(pin.y - next.y) < 0.5 &&
-      Math.abs(pin.editorX - next.editorX) < 0.5 &&
-      Math.abs(pin.editorY - next.editorY) < 0.5
+      Math.abs(pin.y - next.y) < 0.5
     );
   });
 }
@@ -44,17 +37,17 @@ export function CanvasAnnotationPinLayer({
   annotations,
   canvasId,
   flowBoundsRef,
-  editingId,
-  onEditingChange,
-  onChangeNote,
+  activeId,
+  onSelect,
+  onLocate,
   onRemove,
 }: {
   annotations: readonly AgentAnnotationDraft[];
   canvasId: string;
   flowBoundsRef: RefObject<HTMLDivElement | null>;
-  editingId: string | null;
-  onEditingChange: (annotationId: string | null) => void;
-  onChangeNote: (annotationId: string, note: string) => void;
+  activeId: string | null;
+  onSelect: (annotationId: string) => void;
+  onLocate?: (annotationId: string) => void;
   onRemove: (annotationId: string) => void;
 }) {
   const viewport = useViewport();
@@ -105,15 +98,6 @@ export function CanvasAnnotationPinLayer({
           rect.top < flowBounds.bottom - 2 &&
           rect.right > flowBounds.left + 2 &&
           rect.left < flowBounds.right - 2;
-        const editorScreenX = Math.max(
-          4,
-          Math.min(pin.screenX + 10, flowBounds.width - EDITOR_WIDTH - 12),
-        );
-        const editorScreenY =
-          pin.screenY + 12 + EDITOR_HEIGHT_ESTIMATE > flowBounds.height
-            ? Math.max(4, pin.screenY - EDITOR_HEIGHT_ESTIMATE)
-            : pin.screenY + 12;
-        const zoom = Math.max(currentViewport.zoom, Number.EPSILON);
         return [
           {
             id: annotation.id,
@@ -121,8 +105,6 @@ export function CanvasAnnotationPinLayer({
             x: pin.x,
             y: pin.y,
             visible,
-            editorX: (editorScreenX - currentViewport.x) / zoom,
-            editorY: (editorScreenY - currentViewport.y) / zoom,
           },
         ];
       });
@@ -134,13 +116,6 @@ export function CanvasAnnotationPinLayer({
     return () => window.cancelAnimationFrame(frame);
   }, [flowBoundsRef, relevant, viewport.x, viewport.y, viewport.zoom]);
 
-  const editingPin = editingId
-    ? (pins.find((pin) => pin.id === editingId) ?? null)
-    : null;
-  const editingAnnotation = editingPin
-    ? (annotations.find((annotation) => annotation.id === editingPin.id) ??
-      null)
-    : null;
   const inverseZoom = 1 / Math.max(viewport.zoom, Number.EPSILON);
 
   if (relevant.length === 0) return null;
@@ -149,49 +124,46 @@ export function CanvasAnnotationPinLayer({
     <ViewportPortal>
       {pins
         .filter((pin) => pin.visible)
-        .map((pin) => (
-          <button
-            key={pin.id}
-            type="button"
-            data-agent-annotation-canvas-pin=""
-            aria-label={`Annotation ${pin.number}`}
-            aria-expanded={editingId === pin.id}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation();
-              onEditingChange(editingId === pin.id ? null : pin.id);
-            }}
-            className="nodrag nopan nowheel pointer-events-auto absolute flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(215,78,58,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            style={{
-              left: pin.x,
-              top: pin.y,
-              zIndex: 10000,
-              transform: `translate(-50%, -50%) scale(${inverseZoom})`,
-            }}
-          >
-            {pin.number}
-          </button>
-        ))}
-      {editingPin?.visible && editingAnnotation ? (
-        <div
-          className="nodrag nopan nowheel pointer-events-auto absolute"
-          style={{
-            left: editingPin.editorX,
-            top: editingPin.editorY,
-            zIndex: 10001,
-            transform: `scale(${inverseZoom})`,
-            transformOrigin: "top left",
-          }}
-        >
-          <AnnotationNoteEditor
-            number={editingPin.number}
-            note={editingAnnotation.note}
-            onChangeNote={(note) => onChangeNote(editingAnnotation.id, note)}
-            onRemove={() => onRemove(editingAnnotation.id)}
-            onClose={() => onEditingChange(null)}
-          />
-        </div>
-      ) : null}
+        .map((pin) => {
+          const annotation = relevant.find(
+            (candidate) => candidate.annotation.id === pin.id,
+          )?.annotation;
+          if (!annotation) return null;
+          return (
+            <AgentAnnotationActionsContextMenu
+              key={pin.id}
+              annotation={annotation}
+              onOpen={() => onSelect(pin.id)}
+              onLocate={onLocate ? () => onLocate(pin.id) : undefined}
+              onRemove={() => onRemove(pin.id)}
+            >
+              <button
+                type="button"
+                data-agent-annotation-canvas-pin=""
+                aria-label={`Annotation ${pin.number}`}
+                aria-pressed={activeId === pin.id}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(pin.id);
+                }}
+                className={`nodrag nopan nowheel pointer-events-auto absolute flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold leading-none text-white shadow-[0_4px_12px_rgba(215,78,58,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 ${
+                  activeId === pin.id
+                    ? "ring-2 ring-white ring-offset-2 ring-offset-brand"
+                    : ""
+                }`}
+                style={{
+                  left: pin.x,
+                  top: pin.y,
+                  zIndex: 10000,
+                  transform: `translate(-50%, -50%) scale(${inverseZoom})`,
+                }}
+              >
+                {pin.number}
+              </button>
+            </AgentAnnotationActionsContextMenu>
+          );
+        })}
     </ViewportPortal>
   );
 }

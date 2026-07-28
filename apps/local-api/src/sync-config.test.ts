@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("local sync config", () => {
-  it("stores remote sync tokens in owner-only local sqlite config", async () => {
+  it("stores sync intent in config.yaml and the token in owner-only credentials", async () => {
     const removedSyncSidecar = String.fromCharCode(115, 121, 110, 99, 46, 106, 115, 111, 110);
     const store = createLocalSyncConfigStore({ dataDir, env: {} });
 
@@ -26,8 +26,15 @@ describe("local sync config", () => {
     });
 
     await expect(stat(join(dataDir, removedSyncSidecar))).rejects.toMatchObject({ code: "ENOENT" });
-    const info = await stat(join(dataDir, "local.sqlite"));
-    expect(info.mode & 0o777).toBe(0o600);
+    const configInfo = await stat(join(dataDir, "config.yaml"));
+    const credentialsInfo = await stat(join(dataDir, "credentials.json"));
+    expect(configInfo.mode & 0o777).toBe(0o600);
+    expect(credentialsInfo.mode & 0o777).toBe(0o600);
+    const configText = await readFile(join(dataDir, "config.yaml"), "utf8");
+    expect(configText).toContain("https://sync.example");
+    expect(configText).not.toContain("secret-token");
+    await expect(readFile(join(dataDir, "credentials.json"), "utf8")).resolves.toContain("secret-token");
+    await expect(stat(join(dataDir, "local.sqlite"))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(store.getPublicConfig()).resolves.toMatchObject({
       remote_loro: {
         has_token: true,

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
-  configFilePath,
+  credentialsFilePath,
   saveConfig as saveConfigFile,
   loadConfig as loadConfigFile,
   getApiKey,
@@ -334,7 +334,7 @@ export const authCommand = new Command("auth")
 Run: clash auth login (OAuth 2.0 Authorization Code + PKCE)
 Set CLASH_AUTH_URL when the browser app and API use different local origins.
 Pure local projects do not require login.
-Config stored at: $CLASH_HOME/config.json, or ~/.clash/config.json by default`);
+Credentials stored at: $CLASH_HOME/credentials.json, or ~/.clash/credentials.json by default`);
 
 authCommand
   .command("login")
@@ -345,7 +345,7 @@ authCommand
     try {
       await runCliLogin();
       console.log("\nAuthenticated successfully!");
-      console.log(`API key saved to ${configFilePath()}`);
+      console.log(`API key saved to ${credentialsFilePath()}`);
     } catch (error) {
       console.error(
         `\nAuthentication failed: ${error instanceof Error ? error.message : String(error)}`,

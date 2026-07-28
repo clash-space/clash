@@ -1,15 +1,35 @@
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   prependPythonPath,
-  resolveAcpBinDirs,
+  resolveAcpBinDir,
+  resolveAgentBundleRoot,
   resolveClashCliEntryPath,
   resolveClashCliNodePath,
+  resolveDesktopStatePaths,
   resolveClashSdkPythonPath,
   resolveWebDistDir,
 } from "./paths";
 
 describe("desktop paths", () => {
+  it("keeps mutable NLE handoffs under the canonical Clash home", () => {
+    const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+
+    expect(mainSource).not.toContain('app.getPath("userData")');
+    expect(mainSource).toContain('join(dirname(dataDir), "nle-handoffs")');
+  });
+
+  it("keeps Electron-owned browser state below the canonical Clash home", () => {
+    expect(resolveDesktopStatePaths("/Users/me/.clash/local-api")).toEqual({
+      root: join("/Users/me/.clash", "desktop"),
+      userData: join("/Users/me/.clash", "desktop", "user-data"),
+      sessionData: join("/Users/me/.clash", "desktop", "session-data"),
+      logs: join("/Users/me/.clash", "logs", "desktop"),
+      crashDumps: join("/Users/me/.clash", "desktop", "crash-dumps"),
+    });
+  });
+
   it("lets an explicit web dist directory override packaged and dev defaults", () => {
     expect(
       resolveWebDistDir({
@@ -42,30 +62,15 @@ describe("desktop paths", () => {
   });
 
   it("uses the managed ACP install directory in packaged apps", () => {
-    expect(
-      resolveAcpBinDirs({
-        isPackaged: true,
-        moduleDir: "/app/dist",
-        resourcesPath: "/app/resources",
-        dataDir: "/Users/me/Library/Application Support/Clash/local-api",
-      }),
-    ).toEqual([
-      join("/app/resources", "acp-bin"),
-      join("/Users/me/Library/Application Support/Clash/local-api", "acp-bin"),
-    ]);
+    expect(resolveAcpBinDir("/Users/me/.clash/local-api")).toBe(
+      join("/Users/me/.clash/local-api", "acp-bin"),
+    );
   });
 
   it("uses the managed ACP install directory in development", () => {
-    expect(
-      resolveAcpBinDirs({
-        isPackaged: false,
-        moduleDir: "/repo/apps/desktop/dist",
-        resourcesPath: "/app/resources",
-        dataDir: "/tmp/clash-local-api",
-      }),
-    ).toEqual([
+    expect(resolveAcpBinDir("/tmp/clash-local-api")).toBe(
       join("/tmp/clash-local-api", "acp-bin"),
-    ]);
+    );
   });
 
   it("exposes the Clash CLI from resources for packaged child processes", () => {
@@ -83,6 +88,23 @@ describe("desktop paths", () => {
         resourcesPath: "/app/resources",
       }),
     ).toBe(join("/app/resources", "clash-cli", "vendor"));
+  });
+
+  it("exposes built-in agents from Resources instead of app.asar", () => {
+    expect(
+      resolveAgentBundleRoot({
+        isPackaged: true,
+        moduleDir: "/app/Resources/app.asar/dist",
+        resourcesPath: "/app/Resources",
+      }),
+    ).toBe(join("/app/Resources", "agents"));
+    expect(
+      resolveAgentBundleRoot({
+        isPackaged: false,
+        moduleDir: "/repo/apps/desktop/dist",
+        resourcesPath: "/app/Resources",
+      }),
+    ).toBe(resolve("/repo/apps/desktop/dist", "../../../packages/clash-bridge/dist/agents"));
   });
 
   it("exposes the workspace Clash CLI build in development", () => {

@@ -31808,8 +31808,8 @@ function buildTimelineCliArgs(name, input) {
 
 // src/adapter.ts
 var execFileAsync = promisify(execFile);
-function workspaceCwd(input) {
-  const candidate = input.cwd?.trim() || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
+function timelineWorkspaceCwd(input) {
+  const candidate = input.cwd?.trim() || process.env.CLASH_WORKSPACE_ROOT || process.env.CODEX_WORKSPACE_ROOT || process.cwd();
   return isAbsolute(candidate) ? candidate : resolve(candidate);
 }
 function projectionSegment(timelineId) {
@@ -31852,7 +31852,7 @@ function createTimelineAdapter(options = {}) {
   const list = async (input) => {
     const value = await run(
       buildTimelineCliArgs("clash_timeline_list", input),
-      workspaceCwd(input)
+      timelineWorkspaceCwd(input)
     );
     return timelineList(value);
   };
@@ -31863,7 +31863,7 @@ function createTimelineAdapter(options = {}) {
     if (!timeline) throw new Error(`Timeline ${timelineId} not found`);
     return timeline;
   };
-  const invoke2 = async (name, input) => run(buildTimelineCliArgs(name, input), workspaceCwd(input));
+  const invoke2 = async (name, input) => run(buildTimelineCliArgs(name, input), timelineWorkspaceCwd(input));
   return {
     list,
     get,
@@ -31878,7 +31878,7 @@ function createTimelineAdapter(options = {}) {
         throw new Error("state must be a Timeline object");
       }
       await get(input);
-      const cwd = workspaceCwd(input);
+      const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
         cwd,
         "timelines",
@@ -32302,7 +32302,7 @@ async function invoke(name, input, adapter) {
       if (input.timelineId && !selected) {
         throw new Error(`Timeline ${input.timelineId} not found`);
       }
-      return { cwd: input.cwd ?? process.cwd(), timelines, selected };
+      return { cwd: timelineWorkspaceCwd(input), timelines, selected };
     }
     case "clash_timeline_list":
       return adapter.list(input);
@@ -32397,5 +32397,6 @@ export {
   createTimelinePluginServer,
   isDirectExecution,
   registerTimelinePluginMcp,
-  serveTimelinePluginStdio
+  serveTimelinePluginStdio,
+  timelineWorkspaceCwd
 };

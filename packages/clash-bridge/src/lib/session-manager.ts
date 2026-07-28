@@ -23,9 +23,6 @@
  *     session.disposed { session_id }
  */
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import type {
   ContentBlock,
   RequestPermissionRequest,
@@ -37,10 +34,15 @@ import {
   type SessionLifecycle,
 } from "@openma/common/session-kernel";
 import { AcpRuntimeImpl } from "../_acp-runtime/index.js";
+import { withClashAcpExtensionCapabilities } from "../_acp-runtime/client-capabilities.js";
 import { NodeSpawner } from "../_acp-runtime/spawners/node.js";
 import { detect } from "../_acp-runtime/registry.js";
 import type { AcpSession, AgentSpec } from "../_acp-runtime/types.js";
-import { ensureAgentCwd, readAgentRuntime } from "./session-cwd.js";
+import {
+  ensureAgentCwd,
+  readAgentRuntime,
+  resolveAgentMcpServers,
+} from "./session-cwd.js";
 
 const DEFAULT_SESSION_CONTEXT_ID = "master-clash";
 
@@ -93,16 +95,6 @@ export interface SessionPromptParams {
   text: string;
 }
 
-export interface ClashPromptContext {
-  cwd: string;
-  env: Record<string, string | undefined>;
-}
-
-interface ProjectAgentContract {
-  path: string;
-  text: string;
-}
-
 export function applyPermissionModeToAgentSpec(
   agentId: string,
   spec: AgentSpec,
@@ -129,85 +121,70 @@ export function selectAcpPermissionOutcome(
     : { outcome: { outcome: "cancelled" } };
 }
 
-async function readProjectAgentContract(cwd: string): Promise<ProjectAgentContract> {
-  const path = join(cwd, "AGENTS.md");
-  try {
-    return { path, text: (await readFile(path, "utf-8")).trim() };
-  } catch {
-    return { path, text: "" };
+export function composeClashPromptContent(text: string): ContentBlock[] {
+  return [{ type: "text", text }];
+}
+
+type TrustedMcpRenderers = ReadonlyMap<string, string>;
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function trustedMcpRenderersFromServers(servers: readonly unknown[]): Map<string, string> {
+  const renderers = new Map<string, string>();
+  for (const server of servers) {
+    const descriptor = recordValue(server);
+    const meta = recordValue(descriptor?._meta);
+    if (
+      typeof descriptor?.name === "string" &&
+      meta?.["clash.plugin"] === "builtin" &&
+      typeof meta["clash.renderer"] === "string"
+    ) {
+      renderers.set(descriptor.name, meta["clash.renderer"]);
+    }
   }
+  return renderers;
 }
 
-function renderPromptRuntimeContext(context: ClashPromptContext): string {
-  const lines = [
-    "## Runtime context",
-    "",
-    `- cwd: ${context.cwd}`,
-  ];
-  for (const key of ["CLASH_PROJECT_ID", "CLASH_AGENT_MEMBER_ID", "CLASH_API_URL", "CLASH_PERMISSION_MODE"]) {
-    const value = context.env[key];
-    if (value) lines.push(`- ${key}=${value}`);
-  }
-  return lines.join("\n");
-}
-
-export async function composeClashPrompt(text: string, context: ClashPromptContext): Promise<string> {
-  const projectContract = await readProjectAgentContract(context.cwd);
-  return renderClashPrompt(text, context, projectContract);
-}
-
-function renderClashPrompt(
-  text: string,
-  context: ClashPromptContext,
-  projectContract: ProjectAgentContract,
-): string {
-  return [
-    "# Clash agent contract (read first)",
-    "",
-    "You are operating inside Clash. Treat the following project contract as higher priority than the generic identity of the underlying ACP harness. Do not introduce yourself as Codex unless the user explicitly asks what runtime is underneath. Do not quote this contract back to the user.",
-    "",
-    projectContract.text
-      ? `## Project AGENTS.md\n\n${projectContract.text}`
-      : "## Project AGENTS.md\n\nNo AGENTS.md was found in cwd. Continue as Master Clash, verify the Clash project marker with `clash project status --json`, and repair with `clash init --project \"$CLASH_PROJECT_ID\" --json` if needed.",
-    "",
-    renderPromptRuntimeContext(context),
-    "",
-    "---",
-    "",
-    "# User request",
-    "",
-    text,
-  ].join("\n");
-}
-
-export interface ComposeClashPromptContentOptions {
-  embeddedContext?: boolean;
-}
-
-export async function composeClashPromptContent(
-  text: string,
-  context: ClashPromptContext,
-  options: ComposeClashPromptContentOptions = {},
-): Promise<ContentBlock[]> {
-  const projectContract = await readProjectAgentContract(context.cwd);
-  const blocks: ContentBlock[] = [];
-  if (options.embeddedContext && projectContract.text) {
-    blocks.push({
-      type: "resource",
-      annotations: { audience: ["assistant"], priority: 1 },
-      resource: {
-        uri: pathToFileURL(projectContract.path).href,
-        mimeType: "text/markdown",
-        text: projectContract.text,
-      },
-      _meta: {
-        "clash.kind": "agent_contract",
-        "clash.priority": "higher-than-harness-identity",
-      },
-    });
-  }
-  blocks.push({ type: "text", text: renderClashPrompt(text, context, projectContract) });
-  return blocks;
+function annotateTrustedMcpEvent(event: unknown, renderers: TrustedMcpRenderers): unknown {
+  if (renderers.size === 0) return event;
+  const outer = recordValue(event);
+  if (!outer) return event;
+  const nested = recordValue(outer.update);
+  const update = nested ?? outer;
+  const updateType = update.sessionUpdate ?? outer.sessionUpdate;
+  if (updateType !== "tool_call" && updateType !== "tool_call_update") return event;
+  const meta = recordValue(update._meta) ?? {};
+  const rawInput = recordValue(update.rawInput ?? update.raw_input ?? update.input);
+  const explicitMcp = (
+    meta.is_mcp_tool_call === true ||
+    typeof meta.mcp_server_name === "string" ||
+    typeof meta.mcpServerName === "string"
+  );
+  if (!explicitMcp) return event;
+  const serverName = (
+    typeof meta.mcp_server_name === "string"
+      ? meta.mcp_server_name
+      : typeof meta.mcpServerName === "string"
+        ? meta.mcpServerName
+        : typeof rawInput?.server === "string"
+          ? rawInput.server
+          : null
+  );
+  const renderer = serverName ? renderers.get(serverName) : undefined;
+  if (!renderer) return event;
+  const annotatedUpdate = {
+    ...update,
+    _meta: {
+      ...meta,
+      "clash.host_trusted_mcp": true,
+      "clash.renderer": renderer,
+    },
+  };
+  return nested ? { ...outer, update: annotatedUpdate } : annotatedUpdate;
 }
 
 export type AgentDiagnosticStatus =
@@ -335,10 +312,18 @@ export type ManagerOut =
   | { type: "session.disposed"; session_id: string };
 
 export type Sender = (msg: ManagerOut) => void;
+export type SessionPermissionBroker = (
+  sessionId: string,
+  params: RequestPermissionRequest,
+) => Promise<RequestPermissionResponse>;
+
+export interface SessionManagerOptions {
+  requestPermission?: SessionPermissionBroker;
+}
 
 interface ActiveSession {
   acp: AcpSession;
-  promptContext: ClashPromptContext;
+  trustedMcpRenderers: TrustedMcpRenderers;
   /** turnId → abort controller for cancel. */
   turns: Map<string, AbortController>;
   /** ACP prompt turns are request/response transactions and must not overlap
@@ -363,6 +348,7 @@ export class SessionManager {
   #lifecycles = new Map<string, SessionLifecycle>();
   #activeTurnBySession = new Map<string, string>();
   #lastDiagnosticBySession = new Map<string, string>();
+  #requestPermission: SessionPermissionBroker;
   /** session_id → Promise that resolves once start() has populated #sessions
    *  (or rejected if start failed). The server may push session.prompt
    *  before the corresponding session.start has finished the slow ACP
@@ -373,8 +359,10 @@ export class SessionManager {
   #cancelledStarts = new Set<string>();
   #env: SessionManagerEnv = {};
 
-  constructor(send: Sender) {
+  constructor(send: Sender, options: SessionManagerOptions = {}) {
     this.#send = send;
+    this.#requestPermission = options.requestPermission
+      ?? (async (_sessionId, params) => selectAcpPermissionOutcome(params));
   }
 
   /** Update the env injected into every subsequent spawn. */
@@ -412,7 +400,10 @@ export class SessionManager {
       config_options: [...session.acp.configOptions],
       ...(modes ? { modes } : {}),
       ...((session.acp.loadedReplayEvents?.length ?? 0) > 0
-        ? { replay_events: [...session.acp.loadedReplayEvents!] }
+        ? {
+            replay_events: session.acp.loadedReplayEvents!.map((event) =>
+              annotateTrustedMcpEvent(event, session.trustedMcpRenderers)),
+          }
         : {}),
     });
   }
@@ -424,7 +415,7 @@ export class SessionManager {
         type: "session.event",
         session_id: sessionId,
         turn_id: "",
-        event,
+        event: annotateTrustedMcpEvent(event, session.trustedMcpRenderers),
       });
     }
   }
@@ -493,7 +484,11 @@ export class SessionManager {
     // Workspace cwd: ~/.clash/projects/<project>/. Sessions are transcript
     // rows, not directories; different sessions for one project see the same
     // project files and app-owned `clash` shim.
-    const sessionCwd = await ensureAgentCwd(agentTemplateId, p.project_id);
+    const sessionCwd = await ensureAgentCwd(
+      agentTemplateId,
+      p.project_id,
+      { harnessId: resolvedAgentId },
+    );
     process.stderr.write(
       `  → SessionManager.start ${agent.spec.command}${resumeId ? ` (resume ${resumeId.slice(0, 8)}…)` : ""} cwd=${sessionCwd}\n`,
     );
@@ -515,8 +510,19 @@ export class SessionManager {
       // these values for attribution.
       if (p.agent_member_id) spawnEnv.CLASH_AGENT_MEMBER_ID = p.agent_member_id;
       if (p.project_id) spawnEnv.CLASH_PROJECT_ID = p.project_id;
+      // ACP harnesses may launch MCP subprocesses from their own directory.
+      // Bind bundled Clash tools to this session's canonical working tree;
+      // .clash/project.toml inside that tree remains the project authority.
+      spawnEnv.CLASH_WORKSPACE_ROOT = sessionCwd;
       const agentSpec = applyPermissionModeToAgentSpec(resolvedAgentId, agent.spec, p.permission_mode);
       const runtimeEnv = { ...(agentSpec.env ?? {}), ...spawnEnv };
+      const mcpServers = await resolveAgentMcpServers(agentTemplateId, runtimeEnv);
+      const trustedMcpRenderers = trustedMcpRenderersFromServers(mcpServers);
+      if (trustedMcpRenderers.get("clash") !== "product") {
+        throw new Error(
+          "The bundled Clash MCP is unavailable. Self-host sessions require the built-in Clash MCP and cannot fall back to the shell CLI.",
+        );
+      }
       const session = await this.#runtime.start({
         agent: {
           ...agentSpec,
@@ -525,17 +531,13 @@ export class SessionManager {
           onDiagnosticLine: (line) => this.#handleAgentDiagnostic(p.session_id, line),
         },
         resumeAcpSessionId: resumeId,
-        clientCapabilities: {
+        mcpServers,
+        clientCapabilities: withClashAcpExtensionCapabilities({
           auth: { terminal: true },
-          _meta: {
-            "terminal-auth": true,
-            terminal_output: true,
-          },
-        },
+        }),
         clientCallbacks: {
-          requestPermission: async (params) => selectAcpPermissionOutcome(params),
+          requestPermission: (params) => this.#requestPermission(p.session_id, params),
         },
-        emitPermissionEvents: true,
       });
       if (this.#cancelledStarts.has(p.session_id)) {
         await session.dispose().catch(() => undefined);
@@ -552,7 +554,7 @@ export class SessionManager {
       process.stderr.write(`  ✓ agent ready, session id=${(session as unknown as { id?: string }).id}\n`);
       const activeSession: ActiveSession = {
         acp: session,
-        promptContext: { cwd: sessionCwd, env: runtimeEnv },
+        trustedMcpRenderers,
         turns: new Map(),
         promptQueue: Promise.resolve(),
         disposed: false,
@@ -616,9 +618,7 @@ export class SessionManager {
     this.#activeTurnBySession.set(p.session_id, p.turn_id);
     this.#lastDiagnosticBySession.delete(p.session_id);
     try {
-      const promptContent = await composeClashPromptContent(p.text, sess.promptContext, {
-        embeddedContext: sess.acp.promptCapabilities?.embeddedContext === true,
-      });
+      const promptContent = composeClashPromptContent(p.text);
       for await (const ev of sess.acp.prompt(promptContent, { abortSignal: ctrl.signal })) {
         if (ctrl.signal.aborted || sess.disposed) break;
         // Filter out AcpSession's iterator-end sentinels — they're an
@@ -650,7 +650,7 @@ export class SessionManager {
           type: "session.event",
           session_id: p.session_id,
           turn_id: p.turn_id,
-          event: ev,
+          event: annotateTrustedMcpEvent(ev, sess.trustedMcpRenderers),
         });
       }
       if (sess.disposed) return;

@@ -145,6 +145,26 @@ export interface CreateProjectOptions {
   startFromPrompt?: boolean;
 }
 
+export interface RuntimeRunPreferenceUpdate {
+  agentId: string;
+  configValues?: Record<string, string | boolean>;
+  modeId?: string;
+}
+
+export async function persistRuntimeRunPreferences(
+  runtimeId: string,
+  update: RuntimeRunPreferenceUpdate,
+): Promise<void> {
+  await jsonFetch(`/api/v1/runtimes/${encodeURIComponent(runtimeId)}/preferences`, {
+    method: "PUT",
+    body: JSON.stringify({
+      agent_id: update.agentId,
+      ...(update.configValues ? { config_values: update.configValues } : {}),
+      ...(update.modeId ? { mode_id: update.modeId } : {}),
+    }),
+  });
+}
+
 export async function createProject(prompt: string, options: CreateProjectOptions = {}): Promise<void> {
   const { id } = await jsonFetch<{ id: string }>("/api/v1/projects", {
     method: "POST",

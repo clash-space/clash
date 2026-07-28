@@ -40,4 +40,38 @@ describe("SettingsSurface primitives", () => {
     expect(source).toContain("dark:text-neutral-100");
     expect(source).not.toContain("dark:text-brand-light");
   });
+
+  it("reserves the brand color for the slim active-section indicator", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "border-warm-border bg-warm-hover text-content-primary shadow-sm",
+    );
+    expect(source).toContain(
+      "absolute left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-brand",
+    );
+    expect(source).not.toContain(
+      "border-brand/35 bg-brand-light text-brand shadow-sm",
+    );
+    expect(source).not.toContain(
+      "className={`h-4 w-4 ${isActive ? 'text-brand' : ''}`}",
+    );
+  });
+
+  it("keeps inactive section labels readable while hovering in dark mode", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/SettingsSurface.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "border-transparent text-content-secondary hover:bg-warm-hover hover:text-content-primary",
+    );
+    expect(source).not.toContain(
+      "border-transparent text-stone-700 hover:bg-warm-surface/60 hover:text-stone-900 dark:text-stone-200",
+    );
+  });
 });

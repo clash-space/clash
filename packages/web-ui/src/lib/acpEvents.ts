@@ -37,6 +37,11 @@
  * computed at render time, not stored.
  */
 
+import {
+  mergeStreamingText as mergeOpenMaStreamingText,
+  parseAcpEvent as parseOpenMaAcpEvent,
+} from '@openma/common/session-events/acp';
+
 // ─── ACP wire shapes (subset we use) ────────────────────────────────
 
 /** ACP-defined ToolCallContent: text content, file diff, or terminal output. */
@@ -64,6 +69,15 @@ export interface AcpToolCallPart {
    *  human label ("Bash" / "Read" / etc). */
   toolName?: string;
   locations?: Array<{ path?: string; line?: number; [k: string]: unknown }>;
+  /** ACP extension metadata, preserved so product renderers can use an
+   * explicit protocol identity instead of guessing from display titles. */
+  meta?: Record<string, unknown>;
+  /** Normalized MCP identity supplied by ACP adapters such as codex-acp. */
+  mcp?: {
+    serverName: string;
+    toolName?: string;
+    renderer?: string;
+  };
 }
 
 export interface PlanEntry {
@@ -76,14 +90,103 @@ export interface AvailableCommand {
   name: string;
   description?: string;
   input?: { hint?: string } | null;
+  kind?: string;
+  type?: string;
+  category?: string;
+  source?: string;
+  /** ACP extension metadata. Command actions are host hints, not transcript. */
+  _meta?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export type AvailableCommandAction =
+  | {
+      kind: 'setConfigOption';
+      configId: string;
+      value: string | boolean;
+      resetValue?: string | boolean;
+      presentation?: string;
+    }
+  | {
+      kind: 'prefixPrompt';
+      presentation?: string;
+    };
+
+export function commandActionFromAvailableCommand(
+  command: AvailableCommand,
+): AvailableCommandAction | null {
+  const meta = plainRecord(command._meta)
+    ? command._meta
+    : plainRecord(command.metadata)
+      ? command.metadata
+      : null;
+  const action = plainRecord(meta?.commandAction) ? meta.commandAction : null;
+  if (!action || typeof action.kind !== 'string') return null;
+  const presentation = typeof action.presentation === 'string' && action.presentation.trim()
+    ? action.presentation.trim()
+    : undefined;
+  if (action.kind === 'prefixPrompt') {
+    return {
+      kind: 'prefixPrompt',
+      ...(presentation ? { presentation } : {}),
+    };
+  }
+  if (
+    action.kind !== 'setConfigOption'
+    || typeof action.configId !== 'string'
+    || !action.configId.trim()
+    || (typeof action.value !== 'string' && typeof action.value !== 'boolean')
+  ) {
+    return null;
+  }
+  const resetValue = typeof action.resetValue === 'string' || typeof action.resetValue === 'boolean'
+    ? action.resetValue
+    : undefined;
+  return {
+    kind: 'setConfigOption',
+    configId: action.configId.trim(),
+    value: action.value,
+    ...(resetValue !== undefined ? { resetValue } : {}),
+    ...(presentation ? { presentation } : {}),
+  };
+}
+
+export interface RuntimeGoalState {
+  objective: string;
+  status: string;
+  tokenBudget?: number;
+  timeUsedSeconds?: number;
+  createdAt?: number;
+  controlMethod?: string;
+}
+
+export interface RuntimeSessionUsage {
+  used: number;
+  size: number;
+  cost?: {
+    amount: number;
+    currency: string;
+  };
+  metadata?: Record<string, unknown>;
+}
+
+export interface AcpSessionInfoStatePatch {
+  title?: string | null;
+  updatedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface ByoMessage {
   id: string;
   role: 'user' | 'assistant';
   parts: Array<
-    | { type: 'text'; text: string }
-    | { type: 'thought'; text: string }
+    | {
+        type: 'text';
+        text: string;
+        messageId?: string;
+        phase?: 'commentary' | 'final_answer';
+      }
+    | { type: 'thought'; text: string; messageId?: string }
     | AcpToolCallPart
     | { type: 'plan'; entries: PlanEntry[] }
     | { type: 'event_note'; title: string; detail?: string; tone?: 'neutral' | 'warning' | 'error' }
@@ -107,6 +210,8 @@ interface ParsedEvent {
   kind: ParsedKind;
   /** For text / thought. */
   text?: string;
+  messageId?: string;
+  phase?: 'commentary' | 'final_answer';
   /** For tool_call (initial or update). Field set follows the wire —
    *  null fields are dropped, undefined fields stay undefined. */
   tool?: Partial<AcpToolCallPart> & { toolCallId: string };
@@ -132,6 +237,131 @@ function sessionUpdateType(inner: Record<string, unknown>, event: unknown): stri
     ev?.sessionUpdate ??
     (rawType && ACP_SESSION_UPDATE_TYPES.has(rawType) ? rawType : undefined)
   );
+}
+
+/**
+ * Codex exposes Goal as session state, not transcript content. Preserve the
+ * three meaningful outcomes so a host can update its UI without inventing
+ * fallback state:
+ *   undefined — this event says nothing about Goal
+ *   null      — Goal was explicitly cleared
+ *   object    — replace the current Goal snapshot
+ */
+export function sessionInfoStateFromAcpEvent(event: unknown): AcpSessionInfoStatePatch | undefined {
+  const inner = sessionUpdateInner(event);
+  if (sessionUpdateType(inner, event) !== 'session_info_update') return undefined;
+  const patch: AcpSessionInfoStatePatch = {};
+  if (Object.prototype.hasOwnProperty.call(inner, 'title')) {
+    patch.title = typeof inner.title === 'string' ? inner.title : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(inner, 'updatedAt')) {
+    patch.updatedAt = typeof inner.updatedAt === 'string' ? inner.updatedAt : null;
+  }
+  const metaKey = Object.prototype.hasOwnProperty.call(inner, '_meta')
+    ? '_meta'
+    : Object.prototype.hasOwnProperty.call(inner, 'meta')
+      ? 'meta'
+      : null;
+  if (metaKey) {
+    const rawMeta = inner[metaKey];
+    patch.metadata = rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)
+      ? rawMeta as Record<string, unknown>
+      : null;
+  }
+  return patch;
+}
+
+function plainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function mergeSessionInfoMetadata(
+  current: Record<string, unknown> | null,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(current ?? {}) };
+  for (const [key, value] of Object.entries(patch)) {
+    const previous = next[key];
+    next[key] = plainRecord(previous) && plainRecord(value)
+      ? mergeSessionInfoMetadata(previous, value)
+      : value;
+  }
+  return next;
+}
+
+function normalizeGoalState(value: unknown): RuntimeGoalState | null {
+  if (!plainRecord(value)) return null;
+  const objective = typeof value.objective === 'string' ? value.objective.trim() : '';
+  const status = typeof value.status === 'string' ? value.status.trim() : '';
+  if (!objective || !status) return null;
+  return {
+    objective,
+    status,
+    ...(typeof value.tokenBudget === 'number' && Number.isFinite(value.tokenBudget)
+      ? { tokenBudget: value.tokenBudget }
+      : {}),
+    ...(typeof value.timeUsedSeconds === 'number' && Number.isFinite(value.timeUsedSeconds)
+      ? { timeUsedSeconds: value.timeUsedSeconds }
+      : {}),
+    ...(typeof value.createdAt === 'number' && Number.isFinite(value.createdAt)
+      ? { createdAt: value.createdAt }
+      : {}),
+    ...(typeof value.controlMethod === 'string' && value.controlMethod.trim()
+      ? { controlMethod: value.controlMethod.trim() }
+      : {}),
+  };
+}
+
+/**
+ * Feature adapters inspect namespaced ACP metadata, never a selected harness
+ * id. The raw sessionInfoMeta remains available so another ACP can add a
+ * renderer without changing the session lifecycle.
+ */
+export function goalStateFromSessionInfoMetadata(
+  metadata: Record<string, unknown> | null,
+): RuntimeGoalState | null {
+  const codex = plainRecord(metadata?.codex) ? metadata.codex : null;
+  return normalizeGoalState(codex?.goal);
+}
+
+export function goalStateFromAcpEvent(event: unknown): RuntimeGoalState | null | undefined {
+  const patch = sessionInfoStateFromAcpEvent(event);
+  if (!patch || patch.metadata === undefined) return undefined;
+  if (patch.metadata === null) return null;
+  const codex = plainRecord(patch.metadata.codex) ? patch.metadata.codex : null;
+  if (!codex || !Object.prototype.hasOwnProperty.call(codex, 'goal')) return undefined;
+  if (codex.goal === null) return null;
+  return normalizeGoalState(codex.goal) ?? undefined;
+}
+
+export function usageStateFromAcpEvent(event: unknown): RuntimeSessionUsage | undefined {
+  const inner = sessionUpdateInner(event);
+  if (sessionUpdateType(inner, event) !== 'usage_update') return undefined;
+  if (
+    typeof inner.used !== 'number'
+    || !Number.isFinite(inner.used)
+    || typeof inner.size !== 'number'
+    || !Number.isFinite(inner.size)
+  ) {
+    return undefined;
+  }
+  const rawCost = plainRecord(inner.cost) ? inner.cost : null;
+  const metadata = plainRecord(inner._meta)
+    ? inner._meta
+    : plainRecord(inner.meta)
+      ? inner.meta
+      : undefined;
+  return {
+    used: inner.used,
+    size: inner.size,
+    ...(rawCost
+      && typeof rawCost.amount === 'number'
+      && Number.isFinite(rawCost.amount)
+      && typeof rawCost.currency === 'string'
+      ? { cost: { amount: rawCost.amount, currency: rawCost.currency } }
+      : {}),
+    ...(metadata ? { metadata } : {}),
+  };
 }
 
 function stringField(raw: Record<string, unknown>, names: string[]): string | undefined {
@@ -214,7 +444,12 @@ const ACP_SESSION_UPDATE_TYPES = new Set([
  *  ACP spec says null/missing fields on an update mean "no change"; we
  *  preserve that by only setting fields whose wire value is non-null. */
 function normalizeToolCall(raw: Record<string, unknown>): Partial<AcpToolCallPart> & { toolCallId: string } {
-  const meta = raw._meta as { claudeCode?: { toolName?: string } } | undefined;
+  const meta = raw._meta && typeof raw._meta === 'object'
+    ? raw._meta as Record<string, unknown>
+    : undefined;
+  const claudeCode = meta?.claudeCode && typeof meta.claudeCode === 'object'
+    ? meta.claudeCode as { toolName?: string }
+    : undefined;
   const toolCallId = raw.toolCallId ?? raw.tool_call_id ?? raw.id;
   const tc: Partial<AcpToolCallPart> & { toolCallId: string } = {
     toolCallId: String(toolCallId ?? ''),
@@ -229,44 +464,51 @@ function normalizeToolCall(raw: Record<string, unknown>): Partial<AcpToolCallPar
   if (rawOutput !== undefined && rawOutput !== null) tc.rawOutput = rawOutput;
   if (Array.isArray(raw.content)) tc.content = raw.content as AcpToolCallContent[];
   if (Array.isArray(raw.locations)) tc.locations = raw.locations as AcpToolCallPart['locations'];
-  const toolName = meta?.claudeCode?.toolName ?? raw.toolName ?? raw.tool_name ?? raw.name;
+  const toolName = claudeCode?.toolName ?? raw.toolName ?? raw.tool_name ?? raw.name;
   if (typeof toolName === 'string') tc.toolName = toolName;
-  return tc;
+  if (meta) tc.meta = meta;
+  return withMcpIdentity(tc);
 }
 
-function normalizePermissionRequest(raw: Record<string, unknown>, event: unknown): ParsedEvent {
-  const params = (raw.params && typeof raw.params === 'object' ? raw.params : raw) as Record<string, unknown>;
-  const toolCall = params.toolCall && typeof params.toolCall === 'object'
-    ? params.toolCall as Record<string, unknown>
-    : null;
-  const id =
-    toolCall?.toolCallId ??
-    toolCall?.tool_call_id ??
-    params.toolCallId ??
-    params.tool_call_id ??
-    params.id ??
-    params.permissionId ??
-    params.permission_id ??
-    'request';
-  const title =
-    toolCall?.title ??
-    params.title ??
-    params.name ??
-    params.toolName ??
-    params.tool_name ??
-    'Permission request';
-  return {
-    kind: 'tool_call',
-    tool: {
-      toolCallId: `permission-${String(id)}`,
-      title: String(title),
-      kind: typeof toolCall?.kind === 'string' ? toolCall.kind : 'permission',
-      status: 'pending',
-      rawInput: toolCall?.rawInput ?? toolCall?.raw_input ?? params,
-      ...(Array.isArray(toolCall?.locations) ? { locations: toolCall.locations as AcpToolCallPart['locations'] } : {}),
-    },
-    event,
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function stringMetaField(meta: Record<string, unknown> | undefined, names: string[]): string | undefined {
+  if (!meta) return undefined;
+  for (const name of names) {
+    const value = meta[name];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+function withMcpIdentity<T extends Partial<AcpToolCallPart> & { toolCallId: string }>(tool: T): T {
+  if (tool.mcp?.serverName) return tool;
+  const meta = tool.meta;
+  const rawInput = recordValue(tool.rawInput);
+  const explicitMcp =
+    meta?.is_mcp_tool_call === true ||
+    stringMetaField(meta, ['mcp_server_name', 'mcpServerName', 'server_id', 'serverId']) !== undefined;
+  if (!explicitMcp) return tool;
+  const serverName =
+    stringMetaField(meta, ['mcp_server_name', 'mcpServerName', 'server_id', 'serverId']) ??
+    (typeof rawInput?.server === 'string' ? rawInput.server : undefined);
+  if (!serverName) return tool;
+  const mcpToolName =
+    stringMetaField(meta, ['mcp_tool_name', 'mcpToolName']) ??
+    (typeof rawInput?.tool === 'string' ? rawInput.tool : undefined);
+  const renderer = typeof meta?.['clash.renderer'] === 'string'
+    ? meta['clash.renderer']
+    : undefined;
+  tool.mcp = {
+    serverName,
+    ...(mcpToolName ? { toolName: mcpToolName } : {}),
+    ...(renderer ? { renderer } : {}),
   };
+  return tool;
 }
 
 function extractContentText(inner: Record<string, unknown>): string | undefined {
@@ -281,6 +523,26 @@ function extractContentText(inner: Record<string, unknown>): string | undefined 
     if (typeof nested.text === 'string') return nested.text;
   }
   return undefined;
+}
+
+function streamMetadata(inner: Record<string, unknown>): {
+  messageId?: string;
+  phase?: 'commentary' | 'final_answer';
+} {
+  const meta = inner._meta && typeof inner._meta === 'object'
+    ? inner._meta as Record<string, unknown>
+    : null;
+  const codex = meta?.codex && typeof meta.codex === 'object'
+    ? meta.codex as Record<string, unknown>
+    : null;
+  const phase = codex?.phase === 'commentary' || codex?.phase === 'final_answer'
+    ? codex.phase
+    : undefined;
+  const messageId = stringField(inner, ['messageId', 'message_id']);
+  return {
+    ...(messageId ? { messageId } : {}),
+    ...(phase ? { phase } : {}),
+  };
 }
 
 function extractTextBlocks(value: unknown): string | undefined {
@@ -305,10 +567,22 @@ function extractTextBlocks(value: unknown): string | undefined {
 }
 
 function isTransportDiagnosticText(text: string): boolean {
-  return /^Falling back from WebSockets to HTTPS transport\./i.test(text.trim());
+  const normalized = text.trim();
+  return /^Falling back from WebSockets to HTTPS transport\./i.test(normalized);
 }
 
-export function parseAcpEvent(event: unknown): ParsedEvent {
+function agentNoticeNote(notice: string): NonNullable<ParsedEvent['note']> {
+  if (/^Warning: Skill descriptions were shortened to fit the \d+% skills context budget\./i.test(notice.trim())) {
+    return {
+      title: 'Skill context limited',
+      detail: notice,
+      tone: 'warning',
+    };
+  }
+  return { title: notice, tone: 'warning' };
+}
+
+function parseClashAcpEventFallback(event: unknown): ParsedEvent {
   // ACP SessionNotification wraps the update under `update`. Older
   // openma-vendored shape exposed sessionUpdate at the top level —
   // accept both so a chat mixing sources still parses cleanly.
@@ -382,7 +656,7 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
       return { kind: 'thought', text: inner.text, event };
     }
     if (inner.type === 'requestPermission') {
-      return normalizePermissionRequest(inner, event);
+      return { kind: 'silent', event };
     }
     if ((inner.type === 'tool_call' || inner.type === 'tool_call_update') && (typeof inner.toolCallId === 'string' || typeof inner.tool_call_id === 'string' || typeof inner.id === 'string')) {
       return { kind: 'tool_call', tool: normalizeToolCall(inner), event };
@@ -405,6 +679,7 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
     return {
       kind: update === 'agent_thought_chunk' ? 'thought' : 'text',
       text,
+      ...streamMetadata(inner),
       event,
     };
   }
@@ -513,6 +788,84 @@ export function parseAcpEvent(event: unknown): ParsedEvent {
   return { kind: 'raw', event };
 }
 
+export function parseAcpEvent(event: unknown): ParsedEvent {
+  const inner = sessionUpdateInner(event);
+
+  // Clash keeps richer actionable error copy. Everything in the ACP protocol
+  // itself is normalized by @openma/common so Backchat and Clash cannot drift.
+  if (inner.type === 'promptError') {
+    return parseClashAcpEventFallback(event);
+  }
+
+  const parsed = parseOpenMaAcpEvent(event);
+  switch (parsed.kind) {
+    case 'text':
+      if (isTransportDiagnosticText(parsed.text)) return { kind: 'silent', event };
+      return {
+        kind: 'text',
+        text: parsed.text,
+        ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
+        ...(parsed.phase ? { phase: parsed.phase } : {}),
+        event,
+      };
+    case 'thought':
+      return {
+        kind: 'thought',
+        text: parsed.text,
+        ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
+        event,
+      };
+    case 'tool_call':
+      return {
+        kind: 'tool_call',
+        tool: withMcpIdentity(
+          parsed.tool as Partial<AcpToolCallPart> & { toolCallId: string },
+        ),
+        event,
+      };
+    case 'commands':
+      return { kind: 'commands', commands: parsed.commands as AvailableCommand[], event };
+    case 'plan':
+      return {
+        kind: 'plan',
+        plan: parsed.plan.map((entry) => ({
+          content: entry.content,
+          ...(entry.priority ? { priority: entry.priority } : {}),
+          status: entry.status ?? 'pending',
+        })),
+        event,
+      };
+    case 'notice':
+      return {
+        kind: 'note',
+        note: agentNoticeNote(parsed.notice),
+        event,
+      };
+    case 'note': {
+      const separator = parsed.note.indexOf(': ');
+      if (
+        separator > 0 &&
+        (parsed.note.startsWith('Plan removed: ') || parsed.note.startsWith('Plan updated: '))
+      ) {
+        return {
+          kind: 'note',
+          note: {
+            title: parsed.note.slice(0, separator),
+            detail: parsed.note.slice(separator + 2),
+            tone: 'neutral',
+          },
+          event,
+        };
+      }
+      return { kind: 'note', note: { title: parsed.note, tone: 'neutral' }, event };
+    }
+    case 'silent':
+      return { kind: 'silent', event };
+    case 'raw':
+      return parseClashAcpEventFallback(event);
+  }
+}
+
 // ─── appendAcpEvent ─────────────────────────────────────────────────
 
 export interface AppendResult {
@@ -597,19 +950,31 @@ export function appendAcpEvent(
     const i = ensure();
     const partType = parsed.kind;
     const last = messages[i].parts[messages[i].parts.length - 1];
-    if (last && last.type === partType) {
+    const sameStream = parsed.kind === 'text'
+      ? last?.type === 'text'
+        && last.messageId === parsed.messageId
+        && last.phase === parsed.phase
+      : last?.type === 'thought'
+        && last.messageId === parsed.messageId;
+    const nextPart = {
+      type: partType,
+      text: parsed.text,
+      ...(parsed.messageId ? { messageId: parsed.messageId } : {}),
+      ...(partType === 'text' && parsed.phase ? { phase: parsed.phase } : {}),
+    } as ByoMessage['parts'][number];
+    if (sameStream && (last.type === 'text' || last.type === 'thought')) {
       const merged = mergeStreamingText(last.text, parsed.text);
       messages[i] = {
         ...messages[i],
         parts: [
           ...messages[i].parts.slice(0, -1),
-          { type: partType, text: merged } as ByoMessage['parts'][number],
+          { ...nextPart, text: merged } as ByoMessage['parts'][number],
         ],
       };
     } else {
       messages[i] = {
         ...messages[i],
-        parts: [...messages[i].parts, { type: partType, text: parsed.text } as ByoMessage['parts'][number]],
+        parts: [...messages[i].parts, nextPart],
       };
     }
     return { idx: i };
@@ -632,6 +997,10 @@ export function appendAcpEvent(
       if (inc.status !== undefined) next.status = inc.status;
       if (inc.toolName !== undefined) next.toolName = inc.toolName;
       if (inc.locations !== undefined) next.locations = inc.locations;
+      if (inc.meta !== undefined) {
+        next.meta = mergeSessionInfoMetadata(prev.meta ?? null, inc.meta);
+      }
+      if (inc.mcp !== undefined) next.mcp = inc.mcp;
       // rawInput: prefer non-empty later value. The skeleton frame
       // sends `{}` then the filled frame sends `{command,...}`; we
       // want the filled one. Empty object → keep previous if previous
@@ -645,7 +1014,7 @@ export function appendAcpEvent(
       // content[]: replace per ACP spec ("Replace the content collection").
       if (inc.content !== undefined) next.content = inc.content;
       const parts = [...messages[i].parts];
-      parts[partIdx] = next;
+      parts[partIdx] = withMcpIdentity(next);
       messages[i] = { ...messages[i], parts };
       return { idx: i };
     }
@@ -705,20 +1074,5 @@ const MIN_OVERLAP = 8;
 const SNAPSHOT_HEAD_PROBE = 16;
 
 export function mergeStreamingText(accumulated: string, incoming: string): string {
-  if (!accumulated) return incoming;
-  if (!incoming) return accumulated;
-  if (incoming === accumulated) return accumulated;
-  if (incoming.startsWith(accumulated)) return incoming;
-  if (accumulated.endsWith(incoming)) return accumulated;
-  if (incoming.length >= accumulated.length) {
-    const head = Math.min(SNAPSHOT_HEAD_PROBE, accumulated.length);
-    if (head > 0 && incoming.slice(0, head) === accumulated.slice(0, head)) {
-      return incoming;
-    }
-  }
-  const maxOverlap = Math.min(accumulated.length, incoming.length);
-  for (let k = maxOverlap; k >= MIN_OVERLAP; k--) {
-    if (accumulated.endsWith(incoming.slice(0, k))) return accumulated + incoming.slice(k);
-  }
-  return accumulated + incoming;
+  return mergeOpenMaStreamingText(accumulated, incoming);
 }

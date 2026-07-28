@@ -63,6 +63,29 @@ describe("local host discovery file", () => {
     }
   });
 
+  it("derives discovery from the authoritative local-api data directory", async () => {
+    const previousClashHome = process.env.CLASH_HOME;
+    const previousLocalDataDir = process.env.CLASH_LOCAL_DATA_DIR;
+    const staleClashHome = await mkdtemp(join(tmpdir(), "stale-clash-home-"));
+    const clashHome = await mkdtemp(join(tmpdir(), "canonical-clash-home-"));
+    process.env.CLASH_HOME = staleClashHome;
+    process.env.CLASH_LOCAL_DATA_DIR = join(clashHome, "local-api");
+    try {
+      expect(getDefaultHostDiscoveryRunDir()).toBe(join(clashHome, "run"));
+    } finally {
+      if (previousClashHome === undefined) {
+        delete process.env.CLASH_HOME;
+      } else {
+        process.env.CLASH_HOME = previousClashHome;
+      }
+      if (previousLocalDataDir === undefined) {
+        delete process.env.CLASH_LOCAL_DATA_DIR;
+      } else {
+        process.env.CLASH_LOCAL_DATA_DIR = previousLocalDataDir;
+      }
+    }
+  });
+
   it("writes and reads a valid discovery record", async () => {
     const runDir = await mkdtemp(join(tmpdir(), "clash-host-discovery-"));
     const record = activeRecord();

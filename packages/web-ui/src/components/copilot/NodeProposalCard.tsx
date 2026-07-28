@@ -35,10 +35,10 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                     {isGenerative ? <MagicWand weight="fill" /> : <Cube weight="fill" />}
                 </div>
                 <div>
-                    <h3 className="text-sm font-semibold text-slate-800">
+                    <h3 className="text-sm font-semibold text-content-primary">
                         {isGenerative ? 'Generative Action Proposed' : 'New Node Proposed'}
                     </h3>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 leading-relaxed">
+                    <p className="mt-1 text-xs leading-relaxed text-content-secondary">
                         {proposal.message}
                     </p>
                 </div>
@@ -47,14 +47,14 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
             {/* Node Preview (Simplified) */}
             <div className="p-3 bg-warm-muted/35 border-b border-warm-border">
                 <div className="bg-warm-surface border border-warm-border rounded-lg p-2 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded bg-warm-muted flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <div className="flex h-6 w-6 items-center justify-center rounded bg-warm-muted text-xs font-bold text-content-secondary">
                         {proposal.nodeType.slice(0, 2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                        <div className="truncate text-xs font-medium text-content-primary">
                             {proposal.nodeData.label || proposal.nodeType}
                         </div>
-                        <div className="text-[10px] text-slate-700 dark:text-slate-300 truncate">
+                        <div className="truncate text-[10px] text-content-secondary">
                             {JSON.stringify(proposal.nodeData)}
                         </div>
                     </div>
@@ -65,7 +65,7 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                 <Button
                     size="sm"
                     onClick={onReject}
-                    className="flex-1 rounded-lg px-3 py-2 text-xs text-slate-700 hover:bg-warm-muted dark:text-slate-300"
+                    className="flex-1 rounded-lg px-3 py-2 text-xs text-content-secondary hover:bg-warm-hover hover:text-content-primary"
                 >
                     <X className="w-3.5 h-3.5" />
                     Reject
@@ -75,7 +75,7 @@ export const NodeProposalCard: React.FC<NodeProposalCardProps> = ({
                     size="sm"
                     onClick={onAccept}
                     className={`flex-1 rounded-lg px-3 py-2 text-xs ${isGenerative
-                            ? 'text-slate-800 hover:bg-warm-muted dark:text-slate-200'
+                            ? 'text-content-secondary hover:bg-warm-hover hover:text-content-primary'
                             : 'clash-copilot-primary shadow-sm'
                         }`}
                 >

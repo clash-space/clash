@@ -4,6 +4,10 @@ import {
   type RemoteLoroPersistenceEnv,
 } from "./sync.js";
 import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
+import {
+  createClashUserConfigStore,
+  type ClashUserConfigStore,
+} from "./user-config.js";
 
 export type LocalSyncMode = "local-only" | "cloud-sync";
 export type RemoteLoroSource = "none" | "env" | "config";
@@ -153,7 +157,7 @@ function toReadState(config: EffectiveLocalSyncConfig): LocalSyncConfigReadState
   };
 }
 
-async function readConfig(store: SqliteLocalConfigStore): Promise<LocalSyncConfigFile | null> {
+async function readLegacyConfig(store: SqliteLocalConfigStore): Promise<LocalSyncConfigFile | null> {
   const data = await store.getJson<Partial<LocalSyncConfigFile>>(LOCAL_SYNC_CONFIG_KEY);
   if (!data) return null;
   return {
@@ -166,17 +170,67 @@ async function readConfig(store: SqliteLocalConfigStore): Promise<LocalSyncConfi
   };
 }
 
-async function writeConfig(store: SqliteLocalConfigStore, config: LocalSyncConfigFile): Promise<void> {
-  await store.setJson(LOCAL_SYNC_CONFIG_KEY, config, config.updatedAt);
+async function readConfig(store: ClashUserConfigStore): Promise<LocalSyncConfigFile | null> {
+  const value = await store.getSection<unknown>("sync");
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const remote = record.remote_loro && typeof record.remote_loro === "object" && !Array.isArray(record.remote_loro)
+    ? record.remote_loro as Record<string, unknown>
+    : {};
+  const credentials = await store.getCredentials();
+  return {
+    version: 1,
+    mode: normalizeMode(record.mode),
+    remoteLoroUrl: normalizeRemoteUrl(remote.url),
+    remoteLoroToken: trimToNull(credentials.syncRemoteLoroToken),
+    capabilities: normalizeCapabilities(record.capabilities),
+    updatedAt: typeof record.updated_at === "string"
+      ? record.updated_at
+      : new Date(0).toISOString(),
+  };
+}
+
+async function writeConfig(store: ClashUserConfigStore, config: LocalSyncConfigFile): Promise<void> {
+  await store.updateCredentials((current) => {
+    const next = { ...current };
+    if (config.remoteLoroToken) {
+      next.syncRemoteLoroToken = config.remoteLoroToken;
+    } else {
+      delete next.syncRemoteLoroToken;
+    }
+    return next;
+  });
+  await store.setSection("sync", {
+    mode: config.mode,
+    remote_loro: {
+      url: config.remoteLoroUrl,
+    },
+    capabilities: config.capabilities,
+    updated_at: config.updatedAt,
+  });
 }
 
 export function createLocalSyncConfigStore(
   options: LocalSyncConfigStoreOptions,
 ): LocalSyncConfigStore {
-  const configStore = createSqliteLocalConfigStore(options.dataDir);
+  const configStore = createClashUserConfigStore(options.dataDir);
+  const legacyStore = createSqliteLocalConfigStore(options.dataDir);
   const env = options.env ?? {};
+  let migration: Promise<void> | null = null;
+
+  async function ensureMigrated(): Promise<void> {
+    migration ??= (async () => {
+      if (await readConfig(configStore)) return;
+      const legacy = await readLegacyConfig(legacyStore);
+      if (!legacy) return;
+      await writeConfig(configStore, legacy);
+      await legacyStore.delete(LOCAL_SYNC_CONFIG_KEY);
+    })();
+    return migration;
+  }
 
   async function effective(): Promise<EffectiveLocalSyncConfig> {
+    await ensureMigrated();
     const file = await readConfig(configStore);
     if (!file) return envConfig(env);
     return {
@@ -199,6 +253,7 @@ export function createLocalSyncConfigStore(
     },
 
     async updateFromRequest(input) {
+      await ensureMigrated();
       const current = (await readConfig(configStore)) ?? {
         version: 1 as const,
         mode: envConfig(env).mode,

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -17,7 +17,7 @@ async function tempDir(): Promise<string> {
 test("config path honors CLASH_HOME", () => {
   assert.equal(
     configFilePath({ CLASH_HOME: "/tmp/clash-home" }),
-    "/tmp/clash-home/config.json",
+    "/tmp/clash-home/config.yaml",
   );
 });
 
@@ -32,8 +32,13 @@ test("saved CLI config uses owner-only permissions", async () => {
       apiKey: "clsh_test",
       serverUrl: "http://localhost:8788",
     });
-    const info = await stat(configFilePath());
-    assert.equal(info.mode & 0o777, 0o600);
+    const configInfo = await stat(configFilePath());
+    const credentialsInfo = await stat(join(clashHome, "credentials.json"));
+    assert.equal(configInfo.mode & 0o777, 0o600);
+    assert.equal(credentialsInfo.mode & 0o777, 0o600);
+    assert.match(await readFile(configFilePath(), "utf8"), /url: http:\/\/localhost:8788/);
+    assert.doesNotMatch(await readFile(configFilePath(), "utf8"), /clsh_test/);
+    assert.match(await readFile(join(clashHome, "credentials.json"), "utf8"), /clsh_test/);
   } finally {
     if (originalClashHome === undefined) {
       delete process.env.CLASH_HOME;

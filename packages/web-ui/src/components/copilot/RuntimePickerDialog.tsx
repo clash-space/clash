@@ -68,6 +68,7 @@ export function RuntimePickerDialog({
         agentTemplates={BUILTIN_AGENT_TEMPLATES}
         sessions={sessions}
         agents={runtime.agents}
+        preferredAgentId={runtime.preferences?.agent_id}
         onStart={onPick}
         onRecheckAuth={onRecheckAgents}
         busy={busy}

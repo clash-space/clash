@@ -67,6 +67,8 @@ import {
   readProjectAssetDrag,
 } from "@clash/web-ui/lib/projectAssetDrag";
 import ChatbotCopilot from "./ChatbotCopilot";
+import type { ClashProjectEntity } from "./copilot/AcpMessageList";
+import { clampCopilotPanelWidthForViewport } from "./copilotPanelLayout";
 import { useSessionHistory } from "@clash/web-ui/hooks/useSessionHistory";
 import { updateProjectName } from "@clash/web-ui/lib/clientActions";
 import VideoNode from "./nodes/VideoNode";
@@ -87,6 +89,9 @@ import { DirectorStageProvider } from "./DirectorStageContext";
 import { ImageEditorProvider } from "./ImageEditorContext";
 import { VideoClipperProvider } from "./VideoClipperContext";
 import { LayoutActionsProvider } from "./LayoutActionsContext";
+import { TextNodeEditorProvider } from "./TextNodeEditorContext";
+import { TextDocumentEditorSurface } from "./TextDocumentEditorSurface";
+import { TextNodePreviewDialog } from "./TextNodePreviewDialog";
 import {
   getAbsoluteRect,
   getAbsolutePosition,
@@ -207,6 +212,7 @@ import {
   AccordionTrigger,
 } from "./ui/accordion";
 import ProjectWorkspaceNavigator, {
+  type ProjectTextAsset,
   type ProjectWorkspaceSurface,
 } from "./ProjectWorkspaceNavigator";
 import {
@@ -282,8 +288,8 @@ function isProjectAssetRenderNode(value: unknown): boolean {
   const renderTarget = (data as { renderTarget?: unknown }).renderTarget;
   return Boolean(
     renderTarget &&
-      typeof renderTarget === "object" &&
-      (renderTarget as { kind?: unknown }).kind === "project-assets",
+    typeof renderTarget === "object" &&
+    (renderTarget as { kind?: unknown }).kind === "project-assets",
   );
 }
 
@@ -648,7 +654,7 @@ function CanvasFolderEntries({
       <button
         type="button"
         onClick={() => onSelect(entry.node)}
-        className={`flex h-[var(--clash-project-control-rhythm)] w-full items-center gap-2 rounded-md pr-2 text-left text-xs text-stone-600 transition-colors hover:bg-warm-muted hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${entry.kind === "group" ? "font-medium" : "font-normal"}`}
+        className={`flex h-[var(--clash-project-control-rhythm)] w-full items-center gap-2 rounded-md pr-2 text-left text-xs text-content-secondary transition-colors hover:bg-warm-hover hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${entry.kind === "group" ? "font-medium" : "font-normal"}`}
         style={{
           paddingLeft: `${8 + entry.depth * 14 + (nested ? 8 : 0)}px`,
         }}
@@ -695,16 +701,10 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   );
 }
 const DEFAULT_COPILOT_PANEL_FRACTION = 1 / 3;
-const MAX_COPILOT_PANEL_FRACTION = 3 / 7;
-const MIN_COPILOT_PANEL_WIDTH = 420;
 
 function clampCopilotPanelWidth(width: number) {
   if (typeof window === "undefined") return width;
-  const maxWidth = Math.max(
-    MIN_COPILOT_PANEL_WIDTH,
-    Math.round(window.innerWidth * MAX_COPILOT_PANEL_FRACTION),
-  );
-  return Math.max(MIN_COPILOT_PANEL_WIDTH, Math.min(maxWidth, width));
+  return clampCopilotPanelWidthForViewport(width, window.innerWidth);
 }
 
 function defaultCopilotPanelWidth() {
@@ -923,6 +923,9 @@ export default function ProjectEditor({
       kind: "canvas",
       canvasId: "main",
     });
+  const [previewTextNodeId, setPreviewTextNodeId] = useState<string | null>(
+    null,
+  );
   const [isCanvasAssetDropActive, setIsCanvasAssetDropActive] = useState(false);
   const previousWorkspaceSurfaceRef = useRef(workspaceSurface);
   const activeCanvasIdRef = useRef(activeCanvasId);
@@ -945,7 +948,11 @@ export default function ProjectEditor({
         previous.stageId !== workspaceSurface.stageId) ||
       (previous.kind === "asset" &&
         workspaceSurface.kind === "asset" &&
-        previous.assetId !== workspaceSurface.assetId);
+        previous.assetId !== workspaceSurface.assetId) ||
+      (previous.kind === "text-asset" &&
+        workspaceSurface.kind === "text-asset" &&
+        (previous.nodeId !== workspaceSurface.nodeId ||
+          previous.canvasId !== workspaceSurface.canvasId));
     if (changed) transientUiStore.dismiss();
     previousWorkspaceSurfaceRef.current = workspaceSurface;
   }, [transientUiStore, workspaceSurface]);
@@ -1400,10 +1407,16 @@ export default function ProjectEditor({
   // Sidebar state
   // Sidebar state starts with server defaults; localStorage is read post-mount to avoid hydration mismatch.
   const [sidebarWidth, setSidebarWidth] = useState(defaultCopilotPanelWidth);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const projectWorkspaceShellRef = useRef<HTMLDivElement>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [pendingAgentAnnotations, setPendingAgentAnnotations] = useState<
     AgentAnnotationDraft[]
   >([]);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(
+    null,
+  );
   const [annotationContextTarget, setAnnotationContextTarget] =
     useState<AgentAnnotationTarget | null>(null);
   const selectionAnnotationOverlayRef =
@@ -1418,6 +1431,36 @@ export default function ProjectEditor({
     : 0;
   const copilotHeaderInset =
     isSidebarCollapsed && workspaceSurface.kind !== "canvas" ? 40 : 0;
+  const handleCopilotWidthPreview = useCallback(
+    (width: number) => {
+      const nextWidth = clampCopilotPanelWidth(width);
+      sidebarWidthRef.current = nextWidth;
+      const shell = projectWorkspaceShellRef.current;
+      if (shell) {
+        if (shouldReserveCopilotSpace) {
+          shell.style.right = `${nextWidth + COPILOT_PANEL_GUTTER_PX * 2}px`;
+        } else {
+          shell.style.right = "0px";
+        }
+      }
+      return nextWidth;
+    },
+    [shouldReserveCopilotSpace],
+  );
+  const handleCopilotWidthChange = useCallback(
+    (width: number) => {
+      const nextWidth = handleCopilotWidthPreview(width);
+      setSidebarWidth((current) =>
+        current === nextWidth ? current : nextWidth,
+      );
+    },
+    [handleCopilotWidthPreview],
+  );
+  const handleCopilotResizeStateChange = useCallback((resizing: boolean) => {
+    const shell = projectWorkspaceShellRef.current;
+    if (!shell) return;
+    shell.dataset.copilotResizing = resizing ? "true" : "false";
+  }, []);
 
   const clearAnnotationContextTarget = useCallback(() => {
     setAnnotationContextTarget(null);
@@ -1430,6 +1473,11 @@ export default function ProjectEditor({
     [],
   );
 
+  const openAgentAnnotation = useCallback((annotationId: string) => {
+    setActiveAnnotationId(annotationId);
+    setIsSidebarCollapsed(false);
+  }, []);
+
   const queueAgentAnnotation = useCallback(
     (target: AgentAnnotationTarget, note = ""): string => {
       const selection = target.selection;
@@ -1441,7 +1489,7 @@ export default function ProjectEditor({
           annotation.target.selection?.suffix === selection?.suffix,
       );
       if (existing) {
-        setIsSidebarCollapsed(false);
+        openAgentAnnotation(existing.id);
         return existing.id;
       }
       const id = `agent-annotation-${Date.now().toString(36)}-${
@@ -1456,16 +1504,10 @@ export default function ProjectEditor({
           target,
         },
       ]);
-      setIsSidebarCollapsed(false);
+      openAgentAnnotation(id);
       return id;
     },
-    [pendingAgentAnnotations],
-  );
-
-  // Annotation whose note is being edited in place on the canvas (via its
-  // numbered pin or right after right-click creation).
-  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(
-    null,
+    [openAgentAnnotation, pendingAgentAnnotations],
   );
 
   const changeAgentAnnotation = useCallback(
@@ -1483,7 +1525,7 @@ export default function ProjectEditor({
     setPendingAgentAnnotations((current) =>
       current.filter((annotation) => annotation.id !== annotationId),
     );
-    setEditingAnnotationId((current) =>
+    setActiveAnnotationId((current) =>
       current === annotationId ? null : current,
     );
   }, []);
@@ -1493,6 +1535,9 @@ export default function ProjectEditor({
       const submitted = new Set(annotationIds);
       setPendingAgentAnnotations((current) =>
         current.filter((annotation) => !submitted.has(annotation.id)),
+      );
+      setActiveAnnotationId((current) =>
+        current && submitted.has(current) ? null : current,
       );
     },
     [],
@@ -1504,7 +1549,7 @@ export default function ProjectEditor({
       const parsedWidth = parseInt(savedWidth, 10);
       const nextDefault = defaultCopilotPanelWidth();
       setSidebarWidth(
-        Number.isFinite(parsedWidth) && parsedWidth >= MIN_COPILOT_PANEL_WIDTH
+        Number.isFinite(parsedWidth)
           ? clampCopilotPanelWidth(parsedWidth)
           : nextDefault,
       );
@@ -1517,6 +1562,14 @@ export default function ProjectEditor({
     );
     setSidebarHydrated(true);
   }, []);
+
+  useEffect(() => {
+    const constrainPanelToViewport = () => {
+      handleCopilotWidthChange(sidebarWidthRef.current);
+    };
+    window.addEventListener("resize", constrainPanelToViewport);
+    return () => window.removeEventListener("resize", constrainPanelToViewport);
+  }, [handleCopilotWidthChange]);
 
   useEffect(() => {
     if (sidebarHydrated)
@@ -3591,6 +3644,43 @@ export default function ProjectEditor({
       ...persistedAssets.map((asset) => localById.get(asset.id) ?? asset),
     ];
   }, [locallyAddedProjectAssets, project.assets]);
+  const projectTextAssets = useMemo<ProjectTextAsset[]>(() => {
+    const byId = new Map<string, ProjectTextAsset>();
+    if (loroSync.doc) {
+      for (const [id, value] of loroSync.doc.getMap("nodes").entries()) {
+        if (!value || typeof value !== "object") continue;
+        const raw = value as {
+          type?: unknown;
+          canvasId?: unknown;
+          data?: Record<string, unknown>;
+        };
+        if (raw.type !== "text" || isProjectAssetRenderNode(raw)) continue;
+        const label =
+          typeof raw.data?.label === "string" && raw.data.label.trim()
+            ? raw.data.label.trim()
+            : "Untitled text";
+        byId.set(id, {
+          id,
+          canvasId:
+            typeof raw.canvasId === "string" && raw.canvasId
+              ? raw.canvasId
+              : activeCanvasId,
+          label,
+        });
+      }
+    }
+    for (const node of nodes) {
+      if (node.type !== "text" || isProjectAssetRenderNode(node)) continue;
+      byId.set(node.id, {
+        id: node.id,
+        canvasId: activeCanvasId,
+        label: canvasFolderNodeLabel(node),
+      });
+    }
+    return [...byId.values()].sort((left, right) =>
+      left.label.localeCompare(right.label),
+    );
+  }, [activeCanvasId, loroSync.doc, nodes]);
   const copilotMentionSources = useMemo(() => {
     const allNodes = loroSync.doc
       ? Array.from(loroSync.doc.getMap("nodes").entries()).flatMap(
@@ -3620,7 +3710,10 @@ export default function ProjectEditor({
         }));
     return buildProjectMentionSources({
       activeCanvasId,
-      activeSurface: workspaceSurface,
+      activeSurface:
+        workspaceSurface.kind === "text-asset"
+          ? { kind: "canvas", canvasId: workspaceSurface.canvasId }
+          : workspaceSurface,
       canvases: loroSync.canvases,
       nodes: allNodes,
       assets: projectAssets,
@@ -3638,17 +3731,21 @@ export default function ProjectEditor({
     workspaceSurface,
   ]);
   const copilotWorkspaceContext = useMemo<CopilotWorkspaceContext>(() => {
-    if (workspaceSurface.kind === "canvas") {
+    if (
+      workspaceSurface.kind === "canvas" ||
+      workspaceSurface.kind === "text-asset"
+    ) {
+      const canvasId = workspaceSurface.canvasId;
       const canvas = loroSync.canvases.find(
-        (candidate) => candidate.id === workspaceSurface.canvasId,
+        (candidate) => candidate.id === canvasId,
       );
       return {
         projectId: project.id,
         projectName,
         activeSurface: {
           kind: "canvas",
-          id: workspaceSurface.canvasId,
-          name: canvas?.name || workspaceSurface.canvasId,
+          id: canvasId,
+          name: canvas?.name || canvasId,
         },
       };
     }
@@ -3750,10 +3847,13 @@ export default function ProjectEditor({
       for (const [, raw] of loroSync.doc.getMap("nodes").entries()) {
         if (!raw || typeof raw !== "object") continue;
         const data = (raw as { data?: Record<string, unknown> }).data;
-        if (data?.status !== "completed" || typeof data.assetId !== "string") continue;
+        if (data?.status !== "completed" || typeof data.assetId !== "string")
+          continue;
         if (
           !assetsToHydrate.has(data.assetId) &&
-          !projectAssets.some((asset) => (asset.assetId ?? asset.id) === data.assetId)
+          !projectAssets.some(
+            (asset) => (asset.assetId ?? asset.id) === data.assetId,
+          )
         ) {
           assetsToHydrate.set(data.assetId, undefined);
         }
@@ -3792,6 +3892,17 @@ export default function ProjectEditor({
     workspaceSurface.kind === "asset"
       ? projectAssets.find((asset) => asset.id === workspaceSurface.assetId)
       : undefined;
+  const selectedTextAsset =
+    workspaceSurface.kind === "text-asset"
+      ? projectTextAssets.find((asset) => asset.id === workspaceSurface.nodeId)
+      : undefined;
+  const selectedTextNode =
+    workspaceSurface.kind === "text-asset"
+      ? nodes.find((node) => node.id === workspaceSurface.nodeId)
+      : undefined;
+  const previewTextNode = previewTextNodeId
+    ? nodes.find((node) => node.id === previewTextNodeId)
+    : undefined;
   const handleEditedAssetApplied = useCallback(
     async (result: EditApplyResult) => {
       const asset = await getAsset(result.assetId);
@@ -4154,6 +4265,22 @@ export default function ProjectEditor({
   );
   const activeSurfaceAnnotationTarget =
     useMemo<AgentAnnotationTarget | null>(() => {
+      if (workspaceSurface.kind === "text-asset") {
+        const canvas = loroSync.canvases.find(
+          (candidate) => candidate.id === workspaceSurface.canvasId,
+        );
+        return {
+          projectId: project.id,
+          surface: "canvas",
+          surfaceId: workspaceSurface.canvasId,
+          surfaceLabel: canvas?.name ?? workspaceSurface.canvasId,
+          objectId: workspaceSurface.nodeId,
+          objectType: "canvas-text",
+          objectLabel: selectedTextAsset?.label ?? "Untitled text",
+          objectPath: `canvases/${workspaceSurface.canvasId}/nodes/${workspaceSurface.nodeId}`,
+          capabilities: ["read", "modify"],
+        };
+      }
       if (workspaceSurface.kind === "timeline" && selectedTimeline) {
         return {
           projectId: project.id,
@@ -4204,8 +4331,9 @@ export default function ProjectEditor({
       loroSync.canvases,
       project.id,
       selectedDirectorStage,
+      selectedTextAsset?.label,
       selectedTimeline,
-      workspaceSurface.kind,
+      workspaceSurface,
     ]);
   const timelineMediaInputs = useMemo(
     () =>
@@ -4281,7 +4409,7 @@ export default function ProjectEditor({
     [loroSync.directorStages, stopFollowingAgent],
   );
 
-  const selectCanvas = useCallback(
+  const activateCanvasData = useCallback(
     (canvasId: string) => {
       if (activeCanvasIdRef.current !== canvasId) {
         setNodes([]);
@@ -4289,10 +4417,17 @@ export default function ProjectEditor({
         setActiveCanvasId(canvasId);
       }
       activeCanvasIdRef.current = canvasId;
+    },
+    [setEdges, setNodes],
+  );
+
+  const selectCanvas = useCallback(
+    (canvasId: string) => {
+      activateCanvasData(canvasId);
       workspaceSurfaceRef.current = { kind: "canvas", canvasId };
       setWorkspaceSurface({ kind: "canvas", canvasId });
     },
-    [setEdges, setNodes],
+    [activateCanvasData],
   );
 
   const focusPendingAssetRelationTarget = useCallback(() => {
@@ -4355,6 +4490,102 @@ export default function ProjectEditor({
       setWorkspaceSurface({ kind: "asset", assetId: relatedAsset.id });
     },
     [projectAssets, stopFollowingAgent],
+  );
+  const openProjectTextAsset = useCallback(
+    (asset: ProjectTextAsset) => {
+      stopFollowingAgent();
+      setPreviewTextNodeId(null);
+      activateCanvasData(asset.canvasId);
+      const surface: ProjectWorkspaceSurface = {
+        kind: "text-asset",
+        nodeId: asset.id,
+        canvasId: asset.canvasId,
+      };
+      workspaceSurfaceRef.current = surface;
+      setWorkspaceSurface(surface);
+    },
+    [activateCanvasData, stopFollowingAgent],
+  );
+  const openCanvasTextEditor = useCallback(
+    (nodeId: string) => {
+      const asset = projectTextAssets.find(
+        (candidate) => candidate.id === nodeId,
+      ) ?? {
+        id: nodeId,
+        canvasId: activeCanvasIdRef.current,
+        label: "Untitled text",
+      };
+      openProjectTextAsset(asset);
+    },
+    [openProjectTextAsset, projectTextAssets],
+  );
+  const openCanvasTextPreview = useCallback(
+    (nodeId: string) => {
+      stopFollowingAgent();
+      setPreviewTextNodeId(nodeId);
+    },
+    [stopFollowingAgent],
+  );
+  const closeTextEditor = useCallback(() => {
+    const surface = workspaceSurfaceRef.current;
+    if (surface.kind !== "text-asset") return;
+    selectCanvas(surface.canvasId);
+  }, [selectCanvas]);
+  const saveTextDocument = useCallback(
+    (nodeId: string, next: { label: string; content: string }) => {
+      const updatedNodes = nodesRef.current.map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                label: next.label,
+                content: next.content,
+              },
+            }
+          : node,
+      );
+      nodesRef.current = updatedNodes;
+      setNodesInternal(updatedNodes);
+      loroSync.updateNode(nodeId, {
+        data: { label: next.label, content: next.content },
+      });
+    },
+    [loroSync, setNodesInternal],
+  );
+
+  const openCopilotClashEntity = useCallback(
+    (entity: ClashProjectEntity) => {
+      if (entity.kind === "canvas") {
+        if (!loroSync.canvases.some((canvas) => canvas.id === entity.id))
+          return;
+        openAssetRelationCanvas(entity.id);
+        return;
+      }
+      if (entity.kind === "canvas-node") {
+        openAssetRelationCanvas(
+          entity.canvasId ?? activeCanvasIdRef.current,
+          entity.id,
+        );
+        return;
+      }
+      if (entity.kind === "timeline") {
+        openAssetRelationTimeline(entity.id);
+        return;
+      }
+      if (entity.kind === "director-stage") {
+        openDirectorStageFromCanvasAction(entity.id);
+        return;
+      }
+      openRelatedAsset(entity.id);
+    },
+    [
+      loroSync.canvases,
+      openAssetRelationCanvas,
+      openAssetRelationTimeline,
+      openDirectorStageFromCanvasAction,
+      openRelatedAsset,
+    ],
   );
 
   useEffect(() => {
@@ -4893,8 +5124,8 @@ export default function ProjectEditor({
           cameraId: input.cameraId,
           sequenceShotId: input.state.shotSequence?.find(
             (shot) =>
-              input.timeSeconds >= shot.startTime
-              && input.timeSeconds < shot.startTime + shot.durationSeconds,
+              input.timeSeconds >= shot.startTime &&
+              input.timeSeconds < shot.startTime + shot.durationSeconds,
           )?.id,
           assetId,
           aspectRatio: input.aspectRatio,
@@ -5034,7 +5265,10 @@ export default function ProjectEditor({
           assetId: asset.assetId ?? asset.id,
         });
 
-        for (const [frameIndex, referenceFrame] of render.referenceFrames.entries()) {
+        for (const [
+          frameIndex,
+          referenceFrame,
+        ] of render.referenceFrames.entries()) {
           const referenceFile = new File(
             [referenceFrame.blob],
             `${safeStage}-${render.shotId ?? "sequence"}-reference-${String(frameIndex + 1).padStart(2, "0")}.png`,
@@ -5061,32 +5295,35 @@ export default function ProjectEditor({
         }
       }
       if (
-        input.renders.some((render) => render.referenceFrames.length > 0)
-        && !loroSync.applyDirectorStageState(input.stageId, packetState)
+        input.renders.some((render) => render.referenceFrames.length > 0) &&
+        !loroSync.applyDirectorStageState(input.stageId, packetState)
       ) {
         throw new Error("Failed to persist Director reference keyframes");
       }
 
       const directorShotReferencePackets = renderedAssets.map(
-        ({ render, asset, assetId }) => createDirectorReferencePacket({
-          stageId: input.stageId,
-          stageRevisionId,
-          state: packetState,
-          exportedAt: new Date().toISOString(),
-          aspectRatio: render.aspectRatio,
-          durationSeconds: render.durationSeconds,
-          fps: input.fps,
-          ...(render.shotId ? {
-            selectedShotIds: [render.shotId],
-            normalizeShotTimes: true,
-          } : {}),
-          referenceVideo: {
-            assetId,
-            src: asset.url,
-            previewUrl: asset.thumbnailUrl ?? asset.url,
-            mimeType: render.blob.type || "video/webm",
-          },
-        }),
+        ({ render, asset, assetId }) =>
+          createDirectorReferencePacket({
+            stageId: input.stageId,
+            stageRevisionId,
+            state: packetState,
+            exportedAt: new Date().toISOString(),
+            aspectRatio: render.aspectRatio,
+            durationSeconds: render.durationSeconds,
+            fps: input.fps,
+            ...(render.shotId
+              ? {
+                  selectedShotIds: [render.shotId],
+                  normalizeShotTimes: true,
+                }
+              : {}),
+            referenceVideo: {
+              assetId,
+              src: asset.url,
+              previewUrl: asset.thumbnailUrl ?? asset.url,
+              mimeType: render.blob.type || "video/webm",
+            },
+          }),
       );
       const directorReferencePacket = directorShotReferencePackets[0];
       if (!directorReferencePacket) {
@@ -5096,33 +5333,37 @@ export default function ProjectEditor({
       if (stage.owner.kind === "canvas-action") {
         const owner = stage.owner;
         const selectedShotIds = renderedAssets.flatMap(({ render }) =>
-          render.shotId ? [render.shotId] : []);
+          render.shotId ? [render.shotId] : [],
+        );
         const firstAsset = renderedAssets[0]!;
-        const outputPatch = input.mode === "selected-shots"
-          ? {
-              directorShotReferencePackets,
-              selectedDirectorShotIds: selectedShotIds,
-              directorShotReferenceOutputs: renderedAssets.map(
-                ({ render, assetId }) => ({
-                  sourceDirectorStageShotId: render.shotId,
-                  assetId,
-                  durationSeconds: render.durationSeconds,
-                }),
-              ),
-              outputVideoStageRevisionId: stageRevisionId,
-            }
-          : {
-              outputVideoAssetId: firstAsset.assetId,
-              outputVideoSrc: firstAsset.asset.url,
-              outputVideoPreviewUrl:
-                firstAsset.asset.thumbnailUrl ?? firstAsset.asset.url,
-              outputVideoDurationSeconds: firstAsset.render.durationSeconds,
-              outputVideoFps: input.fps,
-              outputVideoStageRevisionId: stageRevisionId,
-              directorReferencePacket,
-            };
+        const outputPatch =
+          input.mode === "selected-shots"
+            ? {
+                directorShotReferencePackets,
+                selectedDirectorShotIds: selectedShotIds,
+                directorShotReferenceOutputs: renderedAssets.map(
+                  ({ render, assetId }) => ({
+                    sourceDirectorStageShotId: render.shotId,
+                    assetId,
+                    durationSeconds: render.durationSeconds,
+                  }),
+                ),
+                outputVideoStageRevisionId: stageRevisionId,
+              }
+            : {
+                outputVideoAssetId: firstAsset.assetId,
+                outputVideoSrc: firstAsset.asset.url,
+                outputVideoPreviewUrl:
+                  firstAsset.asset.thumbnailUrl ?? firstAsset.asset.url,
+                outputVideoDurationSeconds: firstAsset.render.durationSeconds,
+                outputVideoFps: input.fps,
+                outputVideoStageRevisionId: stageRevisionId,
+                directorReferencePacket,
+              };
         if (!loroSync.updateNode(owner.actionNodeId, { data: outputPatch })) {
-          throw new Error("Failed to publish the Director Stage reference video");
+          throw new Error(
+            "Failed to publish the Director Stage reference video",
+          );
         }
         if (owner.canvasId === activeCanvasId) {
           setNodes((current) =>
@@ -5139,35 +5380,46 @@ export default function ProjectEditor({
             .filter((edge) => edge.source === owner.actionNodeId)
             .map((edge) => edge.target)
             .filter((nodeId) => {
-              const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
-              return node?.type === "action-badge"
-                && node.data.actionType === "video-gen";
+              const node = nodesRef.current.find(
+                (candidate) => candidate.id === nodeId,
+              );
+              return (
+                node?.type === "action-badge" &&
+                node.data.actionType === "video-gen"
+              );
             });
           for (const nodeId of downstreamGeneratorIds) {
-            if (!loroSync.updateNode(nodeId, {
-              data: {
-                autoRun: true,
-                sourceDirectorStageId: input.stageId,
-                sourceDirectorStageRevisionId: stageRevisionId,
-                sourceDirectorStageShotIds: selectedShotIds,
-              },
-            })) {
-              throw new Error(`Failed to run downstream Video Gen node ${nodeId}`);
+            if (
+              !loroSync.updateNode(nodeId, {
+                data: {
+                  autoRun: true,
+                  sourceDirectorStageId: input.stageId,
+                  sourceDirectorStageRevisionId: stageRevisionId,
+                  sourceDirectorStageShotIds: selectedShotIds,
+                },
+              })
+            ) {
+              throw new Error(
+                `Failed to run downstream Video Gen node ${nodeId}`,
+              );
             }
           }
-          setNodes((current) => current.map((node) =>
-            downstreamGeneratorIds.includes(node.id)
-              ? {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    autoRun: true,
-                    sourceDirectorStageId: input.stageId,
-                    sourceDirectorStageRevisionId: stageRevisionId,
-                    sourceDirectorStageShotIds: selectedShotIds,
-                  },
-                }
-              : node));
+          setNodes((current) =>
+            current.map((node) =>
+              downstreamGeneratorIds.includes(node.id)
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      autoRun: true,
+                      sourceDirectorStageId: input.stageId,
+                      sourceDirectorStageRevisionId: stageRevisionId,
+                      sourceDirectorStageShotIds: selectedShotIds,
+                    },
+                  }
+                : node,
+            ),
+          );
           if (downstreamGeneratorIds.length === 0) {
             throw new Error(
               "Connect the Director Stage to a Video Gen node before generating selected shots.",
@@ -5198,12 +5450,7 @@ export default function ProjectEditor({
       anchor.click();
       URL.revokeObjectURL(url);
     },
-    [
-      activeCanvasId,
-      importProjectAssetFile,
-      loroSync,
-      setNodes,
-    ],
+    [activeCanvasId, importProjectAssetFile, loroSync, setNodes],
   );
 
   const directorPanoramaOptions = useMemo(
@@ -5426,10 +5673,15 @@ export default function ProjectEditor({
       if (!/\.(?:glb|gltf)$/i.test(file.name)) {
         throw new Error("Director Stage models must be .glb or .gltf files");
       }
-      const animationMetadataPromise = inspectDirectorModelFile(file).catch((error) => {
-        console.warn("[Director Stage] Could not inspect uploaded model animations", error);
-        return undefined;
-      });
+      const animationMetadataPromise = inspectDirectorModelFile(file).catch(
+        (error) => {
+          console.warn(
+            "[Director Stage] Could not inspect uploaded model animations",
+            error,
+          );
+          return undefined;
+        },
+      );
       const formData = new FormData();
       formData.append("file", file);
       formData.append("projectId", project.id);
@@ -5518,8 +5770,7 @@ export default function ProjectEditor({
       selectedDirectorStage?.state.objects
         .filter((object) => object.kind === "model")
         .filter(
-          (object) =>
-            !DIRECTOR_BUILTIN_MODEL_ASSET_URLS[object.model.assetId],
+          (object) => !DIRECTOR_BUILTIN_MODEL_ASSET_URLS[object.model.assetId],
         ) ?? [];
     if (models.length === 0) {
       setDirectorModelAssetUrls({});
@@ -5714,6 +5965,7 @@ export default function ProjectEditor({
 
   useEffect(() => {
     setPendingAgentAnnotations([]);
+    setActiveAnnotationId(null);
     clearAnnotationContextTarget();
   }, [clearAnnotationContextTarget, project.id]);
 
@@ -5735,1167 +5987,1347 @@ export default function ProjectEditor({
                         onOpenAssetPreview={openProjectAssetPreview}
                       >
                         <LayoutActionsProvider value={layoutActions}>
-                          <div
-                            data-project-loro-connected={
-                              loroSync.connected ? "true" : "false"
-                            }
-                            className="flex w-full flex-col bg-warm-page overflow-hidden"
-                            style={{
-                              height:
-                                "var(--clash-project-editor-height, 100vh)",
-                            }}
+                          <TextNodeEditorProvider
+                            onOpenNode={openCanvasTextPreview}
                           >
-                            {/* Hidden File Input */}
-                            <Input
-                              type="file"
-                              ref={fileInputRef}
-                              className="hidden"
-                              onChange={handleFileChange}
-                            />
-                            <Input
-                              type="file"
-                              ref={assetFileInputRef}
-                              aria-label="Add project assets"
-                              accept="image/*,video/*"
-                              multiple
-                              className="hidden"
-                              onChange={handleProjectAssetFiles}
-                            />
-                            <ScopedAssetPicker
-                              open={Boolean(assetPickerTarget)}
-                              sections={assetPickerSections}
-                              busy={assetPickerBusy}
-                              onClose={() => {
-                                if (!assetPickerBusy)
-                                  setAssetPickerTarget(null);
-                              }}
-                              onSelect={(option) =>
-                                assetPickerTarget
-                                  ? applyScopedAssetSelection(
-                                      option,
-                                      assetPickerTarget,
-                                    )
-                                  : undefined
+                            <TextNodePreviewDialog
+                              open={Boolean(previewTextNode)}
+                              nodeId={previewTextNode?.id ?? ""}
+                              label={
+                                typeof previewTextNode?.data?.label === "string"
+                                  ? previewTextNode.data.label
+                                  : "Untitled text"
                               }
-                              onUpload={uploadScopedAsset}
+                              content={
+                                typeof previewTextNode?.data?.content ===
+                                "string"
+                                  ? previewTextNode.data.content
+                                  : ""
+                              }
+                              annotationTarget={activeSurfaceAnnotationTarget}
+                              annotations={pendingAgentAnnotations}
+                              portalContainer={projectWorkspaceShellRef.current}
+                              onCreateAnnotation={queueAgentAnnotation}
+                              activeAnnotationId={activeAnnotationId}
+                              onSelectAnnotation={openAgentAnnotation}
+                              onLocateAnnotation={locateAgentAnnotation}
+                              onRemoveAnnotation={removeAgentAnnotation}
+                              onClose={() => setPreviewTextNodeId(null)}
+                              onOpenEditor={() => {
+                                if (previewTextNodeId) {
+                                  openCanvasTextEditor(previewTextNodeId);
+                                }
+                              }}
                             />
-
-                            {/* Top Toolbar */}
-
-                            {/* Main Canvas Area */}
-                            <div className="flex flex-1 overflow-hidden relative">
-                              {/* Activity Toasts */}
-                              <ActivityToast
-                                toasts={toasts}
-                                dismiss={dismissToast}
-                                sidebarWidth={sidebarWidth}
-                                isSidebarCollapsed={isSidebarCollapsed}
+                            <div
+                              data-project-loro-connected={
+                                loroSync.connected ? "true" : "false"
+                              }
+                              className="flex w-full flex-col bg-warm-page overflow-hidden"
+                              style={{
+                                height:
+                                  "var(--clash-project-editor-height, 100vh)",
+                              }}
+                            >
+                              {/* Hidden File Input */}
+                              <Input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                onChange={handleFileChange}
+                              />
+                              <Input
+                                type="file"
+                                ref={assetFileInputRef}
+                                aria-label="Add project assets"
+                                accept="image/*,video/*"
+                                multiple
+                                className="hidden"
+                                onChange={handleProjectAssetFiles}
+                              />
+                              <ScopedAssetPicker
+                                open={Boolean(assetPickerTarget)}
+                                sections={assetPickerSections}
+                                busy={assetPickerBusy}
+                                onClose={() => {
+                                  if (!assetPickerBusy)
+                                    setAssetPickerTarget(null);
+                                }}
+                                onSelect={(option) =>
+                                  assetPickerTarget
+                                    ? applyScopedAssetSelection(
+                                        option,
+                                        assetPickerTarget,
+                                      )
+                                    : undefined
+                                }
+                                onUpload={uploadScopedAsset}
                               />
 
-                              <div
-                                id="project-workspace-shell"
-                                data-copilot-layout={
-                                  shouldReserveCopilotSpace
-                                    ? "reserved-floating"
-                                    : "overlay"
-                                }
-                                data-following-agent={
-                                  followingAgent ? "true" : "false"
-                                }
-                                data-project-navigator-collapsed={
-                                  isProjectNavigatorCollapsed
-                                }
-                                data-canvas-folders-open={canvasFoldersOpen}
-                                onDragEndCapture={clearCanvasAssetDropTarget}
-                                style={{
-                                  right: copilotWorkspaceRight,
-                                }}
-                                className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns,right] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)] [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-control-rhythm:var(--clash-project-control-height)] [--clash-project-action-phase:var(--clash-project-chrome-gutter)] [--clash-project-search-row-height:calc(var(--clash-project-control-rhythm)+var(--clash-project-action-phase))] [--clash-project-sidebar-header-height:2.5rem] [--clash-project-frame-top:calc(var(--clash-project-sidebar-header-height)+var(--clash-project-chrome-gutter))] [--clash-project-header-content-offset-y:var(--clash-control-gap)] [--clash-project-control-rail-left:var(--clash-project-chrome-gutter)] data-[canvas-folders-open=true]:[--clash-project-control-rail-left:13rem]"
-                              >
-                                <ProjectWorkspaceNavigator
-                                  header={
-                                    <div
-                                      id="editor-header"
-                                      className="clash-project-sidebar-header-content clash-project-chrome-header-content flex min-w-0 flex-1 items-center gap-1.5 pointer-events-auto"
-                                    >
-                                      <Tooltip label="Return to projects">
-                                        <IconButton
-                                          label="Return to projects"
-                                          onClick={handleReturnToProjects}
-                                          icon={
-                                            <ArrowLeft
-                                              className="h-4 w-4"
-                                              weight="bold"
-                                            />
-                                          }
-                                          size="sm"
-                                          shape="rounded"
-                                          className={`clash-project-return-button shrink-0 rounded-md text-slate-800 focus-visible:ring-offset-warm-page ${isProjectNavigatorCollapsed ? "" : "-ml-px"}`}
-                                        />
-                                      </Tooltip>
-                                      {!isProjectNavigatorCollapsed ? (
-                                        <form
-                                          className="min-w-0 flex-1"
-                                          onSubmit={handleProjectNameSubmit}
-                                        >
-                                          <Input
-                                            ref={projectTitleInputRef}
-                                            className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[13px] font-semibold text-slate-950 placeholder-stone-400 focus:outline-none focus:ring-0"
-                                            value={projectName}
-                                            onChange={(event) =>
-                                              setProjectName(event.target.value)
-                                            }
-                                            onBlur={() => {
-                                              if (
-                                                projectName !== project.name
-                                              ) {
-                                                updateProjectName(
-                                                  project.id,
-                                                  projectName,
-                                                );
-                                              }
-                                            }}
-                                            placeholder="Untitled"
-                                          />
-                                        </form>
-                                      ) : null}
-                                    </div>
-                                  }
-                                  footer={<UserControls compact />}
-                                  collapsed={isProjectNavigatorCollapsed}
-                                  canvases={loroSync.canvases}
-                                  timelines={loroSync.timelines}
-                                  directorStages={loroSync.directorStages}
-                                  assets={projectAssets}
-                                  globalAssets={globalProjectAssets}
-                                  surface={workspaceSurface}
-                                  onSelectCanvas={selectCanvasFromNavigator}
-                                  onSelectTimeline={(timelineId) => {
-                                    stopFollowingAgent();
-                                    void preloadTimelineEditor();
-                                    setWorkspaceSurface({
-                                      kind: "timeline",
-                                      timelineId,
-                                    });
-                                  }}
-                                  onSelectDirectorStage={(stageId) => {
-                                    stopFollowingAgent();
-                                    setWorkspaceSurface({
-                                      kind: "director-stage",
-                                      stageId,
-                                    });
-                                  }}
-                                  onSelectAsset={(assetId) => {
-                                    stopFollowingAgent();
-                                    setWorkspaceSurface({
-                                      kind: "asset",
-                                      assetId,
-                                    });
-                                  }}
-                                  onCreateCanvas={createCanvasFromNavigator}
-                                  onRenameCanvas={renameCanvasFromNavigator}
-                                  onDeleteCanvas={deleteCanvasFromNavigator}
-                                  onCreateTimeline={createTimelineFromNavigator}
-                                  onAttachTimeline={attachTimelineFromNavigator}
-                                  onDeleteTimeline={deleteTimelineFromNavigator}
-                                  onCreateDirectorStage={
-                                    createDirectorStageFromNavigator
-                                  }
-                                  onAttachDirectorStage={
-                                    attachDirectorStageFromNavigator
-                                  }
-                                  onAddAsset={openProjectAssetPicker}
-                                  onAddGlobalAsset={addGlobalAssetToProject}
-                                  onAddAssetToLibrary={(assetId) => {
-                                    void addProjectAssetToLibrary(assetId);
-                                  }}
-                                  onAnnotate={(target) =>
-                                    queueAgentAnnotation({
-                                      ...target,
-                                      projectId: project.id,
-                                    })
-                                  }
+                              {/* Top Toolbar */}
+
+                              {/* Main Canvas Area */}
+                              <div className="flex flex-1 overflow-hidden relative">
+                                {/* Activity Toasts */}
+                                <ActivityToast
+                                  toasts={toasts}
+                                  dismiss={dismissToast}
+                                  sidebarWidth={sidebarWidth}
+                                  isSidebarCollapsed={isSidebarCollapsed}
                                 />
 
-                                <AgentAnnotationContextMenu
-                                  target={annotationContextTarget}
-                                  onAnnotate={(target) => {
-                                    const annotationId =
-                                      queueAgentAnnotation(target);
-                                    // Object-level annotations edit in place at
-                                    // their numbered pin instead of the composer.
-                                    if (!target.selection) {
-                                      setEditingAnnotationId(annotationId);
-                                    }
+                                <div
+                                  ref={projectWorkspaceShellRef}
+                                  id="project-workspace-shell"
+                                  data-copilot-layout={
+                                    shouldReserveCopilotSpace
+                                      ? "reserved-floating"
+                                      : "overlay"
+                                  }
+                                  data-following-agent={
+                                    followingAgent ? "true" : "false"
+                                  }
+                                  data-project-navigator-collapsed={
+                                    isProjectNavigatorCollapsed
+                                  }
+                                  data-canvas-folders-open={canvasFoldersOpen}
+                                  onDragEndCapture={clearCanvasAssetDropTarget}
+                                  style={{
+                                    right: copilotWorkspaceRight,
                                   }}
+                                  className="absolute inset-0 z-0 grid min-h-0 grid-cols-[12rem_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns,right] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] data-[copilot-resizing=true]:duration-0 data-[project-navigator-collapsed=true]:grid-cols-[0_minmax(0,1fr)] [--clash-project-chrome-gutter:0.5rem] [--clash-project-control-height:2rem] [--clash-project-control-rhythm:var(--clash-project-control-height)] [--clash-project-action-phase:var(--clash-project-chrome-gutter)] [--clash-project-search-row-height:calc(var(--clash-project-control-rhythm)+var(--clash-project-action-phase))] [--clash-project-sidebar-header-height:2.5rem] [--clash-project-frame-top:calc(var(--clash-project-sidebar-header-height)+var(--clash-project-chrome-gutter))] [--clash-project-header-content-offset-y:var(--clash-control-gap)] [--clash-project-control-rail-left:var(--clash-project-chrome-gutter)] data-[canvas-folders-open=true]:[--clash-project-control-rail-left:13rem]"
                                 >
-                                  <div
-                                    id="project-workspace-inset"
-                                    className="relative min-h-0 min-w-0 overflow-hidden"
-                                    onContextMenuCapture={
-                                      clearAnnotationContextTarget
+                                  <ProjectWorkspaceNavigator
+                                    header={
+                                      <div
+                                        id="editor-header"
+                                        className="clash-project-sidebar-header-content clash-project-chrome-header-content flex min-w-0 flex-1 items-center gap-1.5 pointer-events-auto"
+                                      >
+                                        <Tooltip label="Return to projects">
+                                          <IconButton
+                                            label="Return to projects"
+                                            onClick={handleReturnToProjects}
+                                            icon={
+                                              <ArrowLeft
+                                                className="h-4 w-4"
+                                                weight="bold"
+                                              />
+                                            }
+                                            size="sm"
+                                            shape="rounded"
+                                            className={`clash-project-return-button shrink-0 rounded-md text-content-secondary focus-visible:ring-offset-warm-page ${isProjectNavigatorCollapsed ? "" : "-ml-px"}`}
+                                          />
+                                        </Tooltip>
+                                        {!isProjectNavigatorCollapsed ? (
+                                          <form
+                                            className="min-w-0 flex-1"
+                                            onSubmit={handleProjectNameSubmit}
+                                          >
+                                            <Input
+                                              ref={projectTitleInputRef}
+                                              className="clash-project-name-input h-8 w-full min-w-0 bg-transparent px-1 font-display text-[13px] font-semibold text-content-primary placeholder:text-content-muted focus:outline-none focus:ring-0"
+                                              value={projectName}
+                                              onChange={(event) =>
+                                                setProjectName(
+                                                  event.target.value,
+                                                )
+                                              }
+                                              onBlur={() => {
+                                                if (
+                                                  projectName !== project.name
+                                                ) {
+                                                  updateProjectName(
+                                                    project.id,
+                                                    projectName,
+                                                  );
+                                                }
+                                              }}
+                                              placeholder="Untitled"
+                                            />
+                                          </form>
+                                        ) : null}
+                                      </div>
                                     }
-                                    onPointerUpCapture={(event) => {
-                                      selectionAnnotationOverlayRef.current?.captureSelection(
-                                        event.currentTarget,
-                                      );
+                                    footer={<UserControls compact />}
+                                    collapsed={isProjectNavigatorCollapsed}
+                                    canvases={loroSync.canvases}
+                                    timelines={loroSync.timelines}
+                                    directorStages={loroSync.directorStages}
+                                    assets={projectAssets}
+                                    textAssets={projectTextAssets}
+                                    globalAssets={globalProjectAssets}
+                                    surface={workspaceSurface}
+                                    onSelectCanvas={selectCanvasFromNavigator}
+                                    onSelectTimeline={(timelineId) => {
+                                      stopFollowingAgent();
+                                      void preloadTimelineEditor();
+                                      setWorkspaceSurface({
+                                        kind: "timeline",
+                                        timelineId,
+                                      });
                                     }}
+                                    onSelectDirectorStage={(stageId) => {
+                                      stopFollowingAgent();
+                                      setWorkspaceSurface({
+                                        kind: "director-stage",
+                                        stageId,
+                                      });
+                                    }}
+                                    onSelectAsset={(assetId) => {
+                                      stopFollowingAgent();
+                                      setWorkspaceSurface({
+                                        kind: "asset",
+                                        assetId,
+                                      });
+                                    }}
+                                    onSelectTextAsset={openProjectTextAsset}
+                                    onCreateCanvas={createCanvasFromNavigator}
+                                    onRenameCanvas={renameCanvasFromNavigator}
+                                    onDeleteCanvas={deleteCanvasFromNavigator}
+                                    onCreateTimeline={
+                                      createTimelineFromNavigator
+                                    }
+                                    onAttachTimeline={
+                                      attachTimelineFromNavigator
+                                    }
+                                    onDeleteTimeline={
+                                      deleteTimelineFromNavigator
+                                    }
+                                    onCreateDirectorStage={
+                                      createDirectorStageFromNavigator
+                                    }
+                                    onAttachDirectorStage={
+                                      attachDirectorStageFromNavigator
+                                    }
+                                    onAddAsset={openProjectAssetPicker}
+                                    onAddGlobalAsset={addGlobalAssetToProject}
+                                    onAddAssetToLibrary={(assetId) => {
+                                      void addProjectAssetToLibrary(assetId);
+                                    }}
+                                    onAnnotate={(target) =>
+                                      queueAgentAnnotation({
+                                        ...target,
+                                        projectId: project.id,
+                                      })
+                                    }
+                                  />
+
+                                  <AgentAnnotationContextMenu
+                                    target={annotationContextTarget}
+                                    onAnnotate={queueAgentAnnotation}
                                   >
-                                    <AgentSelectionAnnotationOverlay
-                                      ref={selectionAnnotationOverlayRef}
-                                      target={activeSurfaceAnnotationTarget}
-                                      annotations={pendingAgentAnnotations}
-                                      onCreate={queueAgentAnnotation}
-                                    />
-                                    {workspaceSurface.kind !== "canvas" ? (
-                                      <AgentAnnotationDomPinLayer
-                                        annotations={pendingAgentAnnotations}
-                                        surface={workspaceSurface.kind}
-                                        surfaceId={
-                                          workspaceSurface.kind === "timeline"
-                                            ? workspaceSurface.timelineId
-                                            : workspaceSurface.kind ===
-                                                "director-stage"
-                                              ? workspaceSurface.stageId
-                                              : workspaceSurface.assetId
-                                        }
-                                        editingId={editingAnnotationId}
-                                        onEditingChange={setEditingAnnotationId}
-                                        onChangeNote={changeAgentAnnotation}
-                                        onRemove={removeAgentAnnotation}
-                                      />
-                                    ) : null}
-                                    {selectedAsset && (
-                                      <EditableProjectAssetSurface
-                                        asset={selectedAsset}
-                                        projectId={project.id}
-                                        projectAssets={projectAssets}
-                                        canvases={loroSync.canvases}
-                                        timelines={loroSync.timelines}
-                                        relationNodes={assetRelationGraph.nodes}
-                                        relationEdges={assetRelationGraph.edges}
-                                        onOpenCanvas={openAssetRelationCanvas}
-                                        onOpenTimeline={
-                                          openAssetRelationTimeline
-                                        }
-                                        onOpenAsset={openRelatedAsset}
-                                        onApplied={handleEditedAssetApplied}
-                                        headerEndInset={copilotHeaderInset}
-                                      />
-                                    )}
-
-                                    {selectedTimeline && (
-                                      <ProjectTimelineEditorSurface
-                                        key={selectedTimeline.id}
-                                        timeline={selectedTimeline}
-                                        mediaInputs={timelineMediaInputs}
-                                        canvases={loroSync.canvases}
-                                        onSave={saveTimelineFromNavigator}
-                                        onExport={exportTimelineFromNavigator}
-                                        onOpenCanvas={selectCanvasFromNavigator}
-                                        onRequestAsset={() =>
-                                          setAssetPickerTarget({
-                                            kind: "timeline",
-                                            timelineId: selectedTimeline.id,
-                                            owner: selectedTimeline.owner,
-                                          })
-                                        }
-                                        insertAssetRequest={
-                                          timelineInsertRequest?.timelineId ===
-                                          selectedTimeline.id
-                                            ? timelineInsertRequest
-                                            : undefined
-                                        }
-                                        onInsertAssetRequestHandled={
-                                          handleTimelineInsertAssetRequestHandled
-                                        }
-                                        onProjectAssetDrop={
-                                          handleTimelineProjectAssetDrop
-                                        }
-                                        onAnnotationTargetContextMenu={
-                                          handleTimelineAnnotationTarget
-                                        }
-                                        headerEndInset={copilotHeaderInset}
-                                      />
-                                    )}
-
-                                    {selectedDirectorStage && (
-                                      <ProjectDirectorStageSurface
-                                        key={selectedDirectorStage.id}
-                                        stage={selectedDirectorStage}
-                                        canvases={loroSync.canvases}
-                                        headerEndInset={copilotHeaderInset}
-                                        panoramaOptions={
-                                          directorPanoramaOptions
-                                        }
-                                        modelAssetUrls={directorModelAssetUrls}
-                                        onSave={saveDirectorStage}
-                                        onOpenCanvas={selectCanvasFromNavigator}
-                                        onOpenAsset={openRelatedAsset}
-                                        onUndo={loroSync.undo}
-                                        onAnnotationTargetContextMenu={
-                                          handleDirectorAnnotationTarget
-                                        }
-                                        onCaptureShot={captureDirectorStageShot}
-                                        onExportVideo={exportDirectorStageVideo}
-                                        onUploadModel={uploadDirectorModel}
-                                        onGenerateModel={generateDirectorModel}
-                                        onUploadPanorama={
-                                          uploadDirectorPanorama
-                                        }
-                                        onGeneratePanorama={
-                                          generateDirectorPanorama
-                                        }
-                                      />
-                                    )}
-
                                     <div
-                                      ref={flowBoundsRef}
-                                      onDragEnterCapture={
-                                        handleCanvasAssetDragEnter
-                                      }
-                                      onDragOverCapture={
-                                        handleCanvasAssetDragOver
-                                      }
-                                      onDragLeaveCapture={
-                                        handleCanvasAssetDragLeave
-                                      }
-                                      onDropCapture={handleCanvasAssetDrop}
-                                      onDoubleClick={
-                                        createDirectorStageFromPane
-                                      }
-                                      className={`absolute inset-0 z-0 ${workspaceSurface.kind === "canvas" ? "" : "hidden"} ${canvasMode === "hand" ? "[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing" : ""}`}
+                                      id="project-workspace-inset"
+                                      className="relative min-h-0 min-w-0 overflow-hidden"
+                                      onContextMenuCapture={(event) => {
+                                        clearAnnotationContextTarget();
+                                        const captured =
+                                          selectionAnnotationOverlayRef.current?.captureSelection(
+                                            event.currentTarget,
+                                          ) ?? false;
+                                        if (captured) {
+                                          event.preventDefault();
+                                          event.stopPropagation();
+                                        }
+                                      }}
                                     >
-                                      {isCanvasAssetDropActive ? (
-                                        <div
-                                          aria-hidden="true"
-                                          data-testid="canvas-asset-drop-target"
-                                          className="pointer-events-auto absolute inset-0 z-[10000] border-2 border-brand/35 bg-brand/[0.025]"
+                                      {workspaceSurface.kind !==
+                                      "text-asset" ? (
+                                        <AgentSelectionAnnotationOverlay
+                                          ref={selectionAnnotationOverlayRef}
+                                          target={activeSurfaceAnnotationTarget}
+                                          annotations={pendingAgentAnnotations}
+                                          onCreate={queueAgentAnnotation}
+                                          excludedObjectTypes={["canvas-text"]}
+                                          activeId={activeAnnotationId}
+                                          onSelect={openAgentAnnotation}
+                                          onLocate={locateAgentAnnotation}
+                                          onRemove={removeAgentAnnotation}
                                         />
                                       ) : null}
-                                      <ReactFlow
-                                        nodes={nodes}
-                                        edges={edges}
-                                        onInit={(instance) => {
-                                          reactFlowInstanceRef.current =
-                                            instance;
-                                          window.requestAnimationFrame(
-                                            focusPendingAgentTarget,
-                                          );
-                                        }}
-                                        onMoveStart={(event) => {
-                                          if (event) stopFollowingAgent();
-                                        }}
-                                        onNodeClick={(_event, node) => {
-                                          stopFollowingAgent();
-                                          if (node.type !== "action-badge") {
-                                            transientUiStore.dismiss();
+                                      {workspaceSurface.kind !== "canvas" &&
+                                      workspaceSurface.kind !== "text-asset" ? (
+                                        <AgentAnnotationDomPinLayer
+                                          annotations={pendingAgentAnnotations}
+                                          surface={workspaceSurface.kind}
+                                          surfaceId={
+                                            workspaceSurface.kind === "timeline"
+                                              ? workspaceSurface.timelineId
+                                              : workspaceSurface.kind ===
+                                                  "director-stage"
+                                                ? workspaceSurface.stageId
+                                                : workspaceSurface.assetId
                                           }
-                                        }}
-                                        onNodeContextMenu={(_event, node) => {
-                                          handleCanvasNodeAnnotationTarget(
-                                            node,
-                                          );
-                                        }}
-                                        onEdgeContextMenu={(_event, edge) => {
-                                          handleCanvasEdgeAnnotationTarget(
-                                            edge,
-                                          );
-                                        }}
-                                        onPaneClick={() => {
-                                          stopFollowingAgent();
-                                          transientUiStore.dismiss();
-                                        }}
-                                        onNodeDragStart={() => {
-                                          stopFollowingAgent();
-                                          setIsNodeDragging(true);
-                                        }}
-                                        onNodesChange={handleNodesChange}
-                                        onEdgesChange={handleEdgesChange}
-                                        onBeforeDelete={onBeforeDelete}
-                                        onNodesDelete={onNodesDelete}
-                                        onNodeDragStop={onNodeDragStop}
-                                        onConnect={onConnect}
-                                        onSelectionChange={onSelectionChange}
-                                        onSelectionStart={() => {
-                                          stopFollowingAgent();
-                                          setIsMarqueeing(true);
-                                        }}
-                                        onSelectionEnd={() =>
-                                          setIsMarqueeing(false)
-                                        }
-
-                                        nodeTypes={nodeTypes}
-                                        fitView
-                                        onlyRenderVisibleElements
-                                        minZoom={0.1}
-                                        selectionOnDrag={
-                                          canvasMode === "select"
-                                        }
-                                        panOnDrag={
-                                          canvasMode === "select"
-                                            ? [1, 2]
-                                            : true
-                                        }
-                                        selectionMode={SelectionMode.Partial}
-                                        deleteKeyCode={["Backspace", "Delete"]}
-                                        multiSelectionKeyCode="Shift"
-                                        defaultEdgeOptions={{
-                                          interactionWidth: 30,
-                                          focusable: true,
-                                          selectable: true,
-                                          deletable: true,
-                                        }}
-                                        proOptions={{ hideAttribution: true }}
-                                      >
-                                        <Background
-                                          variant={BackgroundVariant.Dots}
-                                          gap={12}
-                                          size={1.5}
-                                          color="var(--canvas-dot)"
-                                          style={{
-                                            backgroundColor: "var(--canvas-bg)",
-                                          }}
+                                          activeId={activeAnnotationId}
+                                          onSelect={openAgentAnnotation}
+                                          onLocate={locateAgentAnnotation}
+                                          onRemove={removeAgentAnnotation}
                                         />
-                                        {workspaceSurface.kind === "canvas" ? (
-                                          <CanvasAnnotationPinLayer
+                                      ) : null}
+                                      {workspaceSurface.kind ===
+                                      "text-asset" ? (
+                                        selectedTextNode ? (
+                                          <TextDocumentEditorSurface
+                                            key={workspaceSurface.nodeId}
+                                            projectId={project.id}
+                                            nodeId={workspaceSurface.nodeId}
+                                            label={
+                                              typeof selectedTextNode.data
+                                                ?.label === "string"
+                                                ? selectedTextNode.data.label
+                                                : (selectedTextAsset?.label ??
+                                                  "Untitled text")
+                                            }
+                                            content={
+                                              typeof selectedTextNode.data
+                                                ?.content === "string"
+                                                ? selectedTextNode.data.content
+                                                : ""
+                                            }
+                                            annotationTarget={
+                                              activeSurfaceAnnotationTarget
+                                            }
                                             annotations={
                                               pendingAgentAnnotations
                                             }
-                                            canvasId={workspaceSurface.canvasId}
-                                            flowBoundsRef={flowBoundsRef}
-                                            editingId={editingAnnotationId}
-                                            onEditingChange={
-                                              setEditingAnnotationId
+                                            onCreateAnnotation={
+                                              queueAgentAnnotation
                                             }
-                                            onChangeNote={changeAgentAnnotation}
-                                            onRemove={removeAgentAnnotation}
+                                            activeAnnotationId={
+                                              activeAnnotationId
+                                            }
+                                            onSelectAnnotation={
+                                              openAgentAnnotation
+                                            }
+                                            onLocateAnnotation={
+                                              locateAgentAnnotation
+                                            }
+                                            onRemoveAnnotation={
+                                              removeAgentAnnotation
+                                            }
+                                            onSave={(next) =>
+                                              saveTextDocument(
+                                                workspaceSurface.nodeId,
+                                                next,
+                                              )
+                                            }
+                                            onClose={closeTextEditor}
+                                          />
+                                        ) : (
+                                          <div
+                                            role="status"
+                                            aria-label="Loading text document"
+                                            className="absolute inset-0 z-10 flex items-center justify-center bg-warm-page text-sm text-content-muted"
+                                          >
+                                            Loading text document…
+                                          </div>
+                                        )
+                                      ) : null}
+                                      {selectedAsset && (
+                                        <EditableProjectAssetSurface
+                                          asset={selectedAsset}
+                                          projectId={project.id}
+                                          projectAssets={projectAssets}
+                                          canvases={loroSync.canvases}
+                                          timelines={loroSync.timelines}
+                                          relationNodes={
+                                            assetRelationGraph.nodes
+                                          }
+                                          relationEdges={
+                                            assetRelationGraph.edges
+                                          }
+                                          onOpenCanvas={openAssetRelationCanvas}
+                                          onOpenTimeline={
+                                            openAssetRelationTimeline
+                                          }
+                                          onOpenAsset={openRelatedAsset}
+                                          onApplied={handleEditedAssetApplied}
+                                          headerEndInset={copilotHeaderInset}
+                                        />
+                                      )}
+
+                                      {selectedTimeline && (
+                                        <ProjectTimelineEditorSurface
+                                          key={selectedTimeline.id}
+                                          timeline={selectedTimeline}
+                                          mediaInputs={timelineMediaInputs}
+                                          canvases={loroSync.canvases}
+                                          onSave={saveTimelineFromNavigator}
+                                          onExport={exportTimelineFromNavigator}
+                                          onOpenCanvas={
+                                            selectCanvasFromNavigator
+                                          }
+                                          onRequestAsset={() =>
+                                            setAssetPickerTarget({
+                                              kind: "timeline",
+                                              timelineId: selectedTimeline.id,
+                                              owner: selectedTimeline.owner,
+                                            })
+                                          }
+                                          insertAssetRequest={
+                                            timelineInsertRequest?.timelineId ===
+                                            selectedTimeline.id
+                                              ? timelineInsertRequest
+                                              : undefined
+                                          }
+                                          onInsertAssetRequestHandled={
+                                            handleTimelineInsertAssetRequestHandled
+                                          }
+                                          onProjectAssetDrop={
+                                            handleTimelineProjectAssetDrop
+                                          }
+                                          onAnnotationTargetContextMenu={
+                                            handleTimelineAnnotationTarget
+                                          }
+                                          headerEndInset={copilotHeaderInset}
+                                        />
+                                      )}
+
+                                      {selectedDirectorStage && (
+                                        <ProjectDirectorStageSurface
+                                          key={selectedDirectorStage.id}
+                                          stage={selectedDirectorStage}
+                                          canvases={loroSync.canvases}
+                                          headerEndInset={copilotHeaderInset}
+                                          panoramaOptions={
+                                            directorPanoramaOptions
+                                          }
+                                          modelAssetUrls={
+                                            directorModelAssetUrls
+                                          }
+                                          onSave={saveDirectorStage}
+                                          onOpenCanvas={
+                                            selectCanvasFromNavigator
+                                          }
+                                          onOpenAsset={openRelatedAsset}
+                                          onUndo={loroSync.undo}
+                                          onAnnotationTargetContextMenu={
+                                            handleDirectorAnnotationTarget
+                                          }
+                                          onCaptureShot={
+                                            captureDirectorStageShot
+                                          }
+                                          onExportVideo={
+                                            exportDirectorStageVideo
+                                          }
+                                          onUploadModel={uploadDirectorModel}
+                                          onGenerateModel={
+                                            generateDirectorModel
+                                          }
+                                          onUploadPanorama={
+                                            uploadDirectorPanorama
+                                          }
+                                          onGeneratePanorama={
+                                            generateDirectorPanorama
+                                          }
+                                        />
+                                      )}
+
+                                      <div
+                                        ref={flowBoundsRef}
+                                        onDragEnterCapture={
+                                          handleCanvasAssetDragEnter
+                                        }
+                                        onDragOverCapture={
+                                          handleCanvasAssetDragOver
+                                        }
+                                        onDragLeaveCapture={
+                                          handleCanvasAssetDragLeave
+                                        }
+                                        onDropCapture={handleCanvasAssetDrop}
+                                        onDoubleClick={
+                                          createDirectorStageFromPane
+                                        }
+                                        className={`absolute inset-0 z-0 ${workspaceSurface.kind === "canvas" ? "" : "hidden"} ${canvasMode === "hand" ? "[&_.react-flow__pane]:cursor-grab [&_.react-flow__pane:active]:cursor-grabbing" : ""}`}
+                                      >
+                                        {isCanvasAssetDropActive ? (
+                                          <div
+                                            aria-hidden="true"
+                                            data-testid="canvas-asset-drop-target"
+                                            className="pointer-events-auto absolute inset-0 z-[10000] border-2 border-brand/35 bg-brand/[0.025]"
                                           />
                                         ) : null}
-                                        <div className="pointer-events-none absolute bottom-[var(--clash-project-chrome-gutter)] left-[var(--clash-project-control-rail-left)] z-10 flex flex-col items-start gap-2 transition-[left] duration-200 ease-out">
-                                          <motion.div
-                                            data-canvas-minimap-shell
-                                            className="nodrag nopan nowheel pointer-events-auto relative shrink-0 overflow-hidden rounded-lg"
-                                            initial={false}
-                                            animate={{
-                                              width: minimapCollapsed
-                                                ? 36
-                                                : minimapSize.width,
-                                              height: minimapCollapsed
-                                                ? 36
-                                                : minimapSize.height,
-                                            }}
-                                            transition={
-                                              minimapResizing
-                                                ? { duration: 0 }
-                                                : minimapCollapsed
-                                                  ? {
-                                                      type: "spring",
-                                                      stiffness: 520,
-                                                      damping: 42,
-                                                      mass: 0.7,
-                                                      velocity:
-                                                        -minimapCollapseVelocity,
-                                                      restDelta: 0.5,
-                                                      restSpeed: 10,
-                                                    }
-                                                  : {
-                                                      duration: 0.22,
-                                                      ease: [0.25, 1, 0.5, 1],
-                                                    }
+                                        <ReactFlow
+                                          nodes={nodes}
+                                          edges={edges}
+                                          onInit={(instance) => {
+                                            reactFlowInstanceRef.current =
+                                              instance;
+                                            window.requestAnimationFrame(
+                                              focusPendingAgentTarget,
+                                            );
+                                          }}
+                                          onMoveStart={(event) => {
+                                            if (event) stopFollowingAgent();
+                                          }}
+                                          onNodeClick={(_event, node) => {
+                                            stopFollowingAgent();
+                                            if (node.type !== "action-badge") {
+                                              transientUiStore.dismiss();
                                             }
-                                          >
-                                            <AnimatePresence initial={false}>
-                                              {minimapCollapsed ? (
-                                                <motion.div
-                                                  key="collapsed-minimap"
-                                                  className="absolute inset-0"
-                                                  initial={{
-                                                    opacity: 0,
-                                                    scale: 0.82,
-                                                  }}
-                                                  animate={{
-                                                    opacity: 1,
-                                                    scale: 1,
-                                                  }}
-                                                  exit={{
-                                                    opacity: 0,
-                                                    scale: 0.9,
-                                                  }}
-                                                  transition={{
-                                                    duration: 0.16,
-                                                    ease: "easeOut",
-                                                  }}
-                                                >
-                                                  <IconButton
-                                                    label="Expand canvas minimap"
-                                                    icon={
-                                                      <MapTrifold
-                                                        className="h-3.5 w-3.5"
-                                                        weight="regular"
-                                                      />
-                                                    }
-                                                    onClick={expandMinimap}
-                                                    size="sm"
-                                                    shape="rounded"
-                                                    className="clash-canvas-minimap-control h-9 min-h-9 w-9 min-w-9 rounded-lg"
-                                                  />
-                                                </motion.div>
-                                              ) : (
-                                                <motion.div
-                                                  key="expanded-minimap"
-                                                  className="absolute bottom-0 left-0 origin-bottom-left"
-                                                  initial={{
-                                                    opacity: 0,
-                                                    scale: 0.94,
-                                                  }}
-                                                  animate={{
-                                                    opacity: 1,
-                                                    scale: 1,
-                                                  }}
-                                                  exit={{
-                                                    opacity: 0,
-                                                    scale: 0.94,
-                                                  }}
-                                                  transition={{
-                                                    duration: 0.16,
-                                                    ease: "easeOut",
-                                                  }}
-                                                  style={{
-                                                    width: minimapSize.width,
-                                                    height: minimapSize.height,
-                                                  }}
-                                                >
-                                                  <MiniMap
-                                                    ariaLabel="Canvas minimap"
-                                                    position="bottom-left"
-                                                    pannable
-                                                    zoomable
-                                                    nodeColor={(node) =>
-                                                      node.type === "group"
-                                                        ? "var(--canvas-minimap-group)"
-                                                        : "var(--canvas-minimap-node)"
-                                                    }
-                                                    nodeStrokeColor={(node) =>
-                                                      node.type === "group"
-                                                        ? "var(--canvas-minimap-group-stroke)"
-                                                        : "var(--canvas-minimap-node-stroke)"
-                                                    }
-                                                    nodeStrokeWidth={2}
-                                                    maskColor="var(--canvas-minimap-mask)"
-                                                    maskStrokeColor="var(--canvas-minimap-viewport)"
-                                                    maskStrokeWidth={1.5}
-                                                    bgColor="var(--canvas-minimap-bg)"
-                                                    offsetScale={8}
+                                          }}
+                                          onNodeContextMenu={(_event, node) => {
+                                            handleCanvasNodeAnnotationTarget(
+                                              node,
+                                            );
+                                          }}
+                                          onEdgeContextMenu={(_event, edge) => {
+                                            handleCanvasEdgeAnnotationTarget(
+                                              edge,
+                                            );
+                                          }}
+                                          onPaneClick={() => {
+                                            stopFollowingAgent();
+                                            transientUiStore.dismiss();
+                                          }}
+                                          onNodeDragStart={() => {
+                                            stopFollowingAgent();
+                                            setIsNodeDragging(true);
+                                          }}
+                                          onNodesChange={handleNodesChange}
+                                          onEdgesChange={handleEdgesChange}
+                                          onBeforeDelete={onBeforeDelete}
+                                          onNodesDelete={onNodesDelete}
+                                          onNodeDragStop={onNodeDragStop}
+                                          onConnect={onConnect}
+                                          onSelectionChange={onSelectionChange}
+                                          onSelectionStart={() => {
+                                            stopFollowingAgent();
+                                            setIsMarqueeing(true);
+                                          }}
+                                          onSelectionEnd={() =>
+                                            setIsMarqueeing(false)
+                                          }
+
+                                          nodeTypes={nodeTypes}
+                                          fitView
+                                          onlyRenderVisibleElements
+                                          minZoom={0.1}
+                                          selectionOnDrag={
+                                            canvasMode === "select"
+                                          }
+                                          panOnDrag={
+                                            canvasMode === "select"
+                                              ? [1, 2]
+                                              : true
+                                          }
+                                          selectionMode={SelectionMode.Partial}
+                                          deleteKeyCode={[
+                                            "Backspace",
+                                            "Delete",
+                                          ]}
+                                          multiSelectionKeyCode="Shift"
+                                          defaultEdgeOptions={{
+                                            interactionWidth: 30,
+                                            focusable: true,
+                                            selectable: true,
+                                            deletable: true,
+                                          }}
+                                          proOptions={{ hideAttribution: true }}
+                                        >
+                                          <Background
+                                            variant={BackgroundVariant.Dots}
+                                            gap={12}
+                                            size={1.5}
+                                            color="var(--canvas-dot)"
+                                            style={{
+                                              backgroundColor:
+                                                "var(--canvas-bg)",
+                                            }}
+                                          />
+                                          {workspaceSurface.kind ===
+                                          "canvas" ? (
+                                            <CanvasAnnotationPinLayer
+                                              annotations={
+                                                pendingAgentAnnotations
+                                              }
+                                              canvasId={
+                                                workspaceSurface.canvasId
+                                              }
+                                              flowBoundsRef={flowBoundsRef}
+                                              activeId={activeAnnotationId}
+                                              onSelect={openAgentAnnotation}
+                                              onLocate={locateAgentAnnotation}
+                                              onRemove={removeAgentAnnotation}
+                                            />
+                                          ) : null}
+                                          <div className="pointer-events-none absolute bottom-[var(--clash-project-chrome-gutter)] left-[var(--clash-project-control-rail-left)] z-10 flex flex-col items-start gap-2 transition-[left] duration-200 ease-out">
+                                            <motion.div
+                                              data-canvas-minimap-shell
+                                              className="nodrag nopan nowheel pointer-events-auto relative shrink-0 overflow-hidden rounded-lg"
+                                              initial={false}
+                                              animate={{
+                                                width: minimapCollapsed
+                                                  ? 36
+                                                  : minimapSize.width,
+                                                height: minimapCollapsed
+                                                  ? 36
+                                                  : minimapSize.height,
+                                              }}
+                                              transition={
+                                                minimapResizing
+                                                  ? { duration: 0 }
+                                                  : minimapCollapsed
+                                                    ? {
+                                                        type: "spring",
+                                                        stiffness: 520,
+                                                        damping: 42,
+                                                        mass: 0.7,
+                                                        velocity:
+                                                          -minimapCollapseVelocity,
+                                                        restDelta: 0.5,
+                                                        restSpeed: 10,
+                                                      }
+                                                    : {
+                                                        duration: 0.22,
+                                                        ease: [0.25, 1, 0.5, 1],
+                                                      }
+                                              }
+                                            >
+                                              <AnimatePresence initial={false}>
+                                                {minimapCollapsed ? (
+                                                  <motion.div
+                                                    key="collapsed-minimap"
+                                                    className="absolute inset-0"
+                                                    initial={{
+                                                      opacity: 0,
+                                                      scale: 0.82,
+                                                    }}
+                                                    animate={{
+                                                      opacity: 1,
+                                                      scale: 1,
+                                                    }}
+                                                    exit={{
+                                                      opacity: 0,
+                                                      scale: 0.9,
+                                                    }}
+                                                    transition={{
+                                                      duration: 0.16,
+                                                      ease: "easeOut",
+                                                    }}
+                                                  >
+                                                    <IconButton
+                                                      label="Expand canvas minimap"
+                                                      icon={
+                                                        <MapTrifold
+                                                          className="h-3.5 w-3.5"
+                                                          weight="regular"
+                                                        />
+                                                      }
+                                                      onClick={expandMinimap}
+                                                      size="sm"
+                                                      shape="rounded"
+                                                      className="clash-canvas-minimap-control h-9 min-h-9 w-9 min-w-9 rounded-lg"
+                                                    />
+                                                  </motion.div>
+                                                ) : (
+                                                  <motion.div
+                                                    key="expanded-minimap"
+                                                    className="absolute bottom-0 left-0 origin-bottom-left"
+                                                    initial={{
+                                                      opacity: 0,
+                                                      scale: 0.94,
+                                                    }}
+                                                    animate={{
+                                                      opacity: 1,
+                                                      scale: 1,
+                                                    }}
+                                                    exit={{
+                                                      opacity: 0,
+                                                      scale: 0.94,
+                                                    }}
+                                                    transition={{
+                                                      duration: 0.16,
+                                                      ease: "easeOut",
+                                                    }}
                                                     style={{
                                                       width: minimapSize.width,
                                                       height:
                                                         minimapSize.height,
                                                     }}
-                                                    className="clash-canvas-minimap"
+                                                  >
+                                                    <MiniMap
+                                                      ariaLabel="Canvas minimap"
+                                                      position="bottom-left"
+                                                      pannable
+                                                      zoomable
+                                                      nodeColor={(node) =>
+                                                        node.type === "group"
+                                                          ? "var(--canvas-minimap-group)"
+                                                          : "var(--canvas-minimap-node)"
+                                                      }
+                                                      nodeStrokeColor={(
+                                                        node,
+                                                      ) =>
+                                                        node.type === "group"
+                                                          ? "var(--canvas-minimap-group-stroke)"
+                                                          : "var(--canvas-minimap-node-stroke)"
+                                                      }
+                                                      nodeStrokeWidth={2}
+                                                      maskColor="var(--canvas-minimap-mask)"
+                                                      maskStrokeColor="var(--canvas-minimap-viewport)"
+                                                      maskStrokeWidth={1.5}
+                                                      bgColor="var(--canvas-minimap-bg)"
+                                                      offsetScale={8}
+                                                      style={{
+                                                        width:
+                                                          minimapSize.width,
+                                                        height:
+                                                          minimapSize.height,
+                                                      }}
+                                                      className="clash-canvas-minimap"
+                                                    />
+                                                    <IconButton
+                                                      label="Collapse canvas minimap"
+                                                      icon={
+                                                        <ArrowsInSimple
+                                                          className="h-3.5 w-3.5"
+                                                          weight="bold"
+                                                        />
+                                                      }
+                                                      onClick={collapseMinimap}
+                                                      size="sm"
+                                                      shape="rounded"
+                                                      className="clash-canvas-minimap-overlay-control absolute left-1.5 top-1.5 z-10 h-7 min-h-7 w-7 min-w-7 rounded-md"
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      aria-label="Resize canvas minimap"
+                                                      data-canvas-minimap-resize-handle
+                                                      onPointerDown={
+                                                        startMinimapResize
+                                                      }
+                                                      onPointerMove={
+                                                        resizeMinimap
+                                                      }
+                                                      onPointerUp={
+                                                        finishMinimapResize
+                                                      }
+                                                      onPointerCancel={
+                                                        finishMinimapResize
+                                                      }
+                                                      className="clash-canvas-minimap-resize-handle absolute right-0 top-0 z-10 h-7 w-7 cursor-nesw-resize touch-none rounded-tr-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                                                    >
+                                                      <span className="clash-canvas-minimap-resize-grip" />
+                                                    </button>
+                                                  </motion.div>
+                                                )}
+                                              </AnimatePresence>
+                                            </motion.div>
+                                          </div>
+
+                                          {/* Collaboration: node-level activity indicators */}
+                                          <NodeActivityIndicator
+                                            highlights={highlights}
+                                          />
+
+                                          {/* Debug: show node IDs as selectable labels */}
+                                          {showDebugIds && (
+                                            <DebugNodeIds nodes={nodes} />
+                                          )}
+
+                                          {/* Floating "Group" pill — appears above marquee/shift selection of 2+ siblings */}
+                                          <SelectionGroupButton
+                                            bounds={selectionBounds}
+                                            onGroup={groupSelectedNodes}
+                                          />
+
+                                          {/* Live cursor + selection awareness from other peers.
+                                          Must be inside ReactFlow so it can read viewport
+                                          (zoom/pan) for translating flow-coords → screen. */}
+                                          <AwarenessLayer
+                                            peers={awareness.peers}
+                                            setLocalCursor={
+                                              awareness.setLocalCursor
+                                            }
+                                            flowBoundsRef={flowBoundsRef}
+                                          />
+
+                                          {/* Unix-pipe cascade dispatcher: adopts drafts on run
+                                          request, propagates cascadeToken across stages. */}
+                                          <CascadeRunnerMount
+                                            nodes={nodes}
+                                            edges={edges}
+                                            setNodes={setNodes}
+                                            customActions={customActions}
+                                          />
+                                        </ReactFlow>
+                                      </div>
+
+                                      {workspaceSurface.kind === "canvas" ? (
+                                        <>
+                                          {!canvasFoldersOpen ? (
+                                            <Tooltip
+                                              label="Canvas folders"
+                                              placement="right"
+                                            >
+                                              <IconButton
+                                                label="Canvas folders"
+                                                icon={
+                                                  <FolderSimple
+                                                    className="h-3.5 w-3.5"
+                                                    weight="regular"
                                                   />
+                                                }
+                                                onClick={() =>
+                                                  setCanvasFoldersOpen(true)
+                                                }
+                                                style={{
+                                                  bottom: minimapControlOffset,
+                                                }}
+                                                size="md"
+                                                shape="rounded"
+                                                className="clash-canvas-minimap-control absolute left-[var(--clash-project-control-rail-left)] z-10 rounded-lg transition-[bottom] duration-200 ease-out"
+                                              />
+                                            </Tooltip>
+                                          ) : null}
+
+                                          {canvasFoldersOpen ? (
+                                            <motion.aside
+                                              aria-label="Canvas folders"
+                                              data-canvas-folders-panel
+                                              className="clash-canvas-overlay-panel pointer-events-auto absolute bottom-[var(--clash-project-chrome-gutter)] left-[var(--clash-project-chrome-gutter)] top-[var(--clash-project-frame-top)] z-20 flex w-48 flex-col overflow-hidden"
+                                              initial={{ opacity: 0, x: -8 }}
+                                              animate={{ opacity: 1, x: 0 }}
+                                              transition={{
+                                                duration: 0.18,
+                                                ease: [0.25, 1, 0.5, 1],
+                                              }}
+                                            >
+                                              <div className="relative flex h-[var(--clash-project-control-rhythm)] shrink-0 items-center px-1.5 after:pointer-events-none after:absolute after:inset-x-1.5 after:bottom-0 after:h-px after:bg-warm-border/50 after:content-['']">
+                                                <span className="pointer-events-none absolute inset-y-0 left-1.5 flex w-6 items-center justify-center text-content-muted">
+                                                  <MagnifyingGlass
+                                                    aria-hidden="true"
+                                                    className="h-3.5 w-3.5"
+                                                    weight="regular"
+                                                  />
+                                                </span>
+                                                <Input
+                                                  aria-label="Search canvas folders"
+                                                  placeholder="Search"
+                                                  value={canvasFolderQuery}
+                                                  onChange={(event) =>
+                                                    setCanvasFolderQuery(
+                                                      event.target.value,
+                                                    )
+                                                  }
+                                                  className="h-[var(--clash-project-control-rhythm)] border-transparent bg-transparent pl-8 pr-2 text-xs text-content-primary shadow-none placeholder:text-content-muted hover:bg-warm-page/45 focus-visible:border-warm-border/70 focus-visible:bg-warm-page/60 focus-visible:ring-0"
+                                                />
+                                              </div>
+                                              <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-10 pt-[var(--clash-project-action-phase)]">
+                                                {activeCanvasUsesImplicitRoot ? (
+                                                  <CanvasFolderEntries
+                                                    entries={
+                                                      filteredCanvasFolderEntries
+                                                    }
+                                                    onSelect={
+                                                      focusCanvasFolderNode
+                                                    }
+                                                  />
+                                                ) : null}
+                                                {canvasFolderCanvases.map(
+                                                  (canvas) => {
+                                                    const isActive =
+                                                      canvas.id ===
+                                                      activeCanvasId;
+                                                    return (
+                                                      <li key={canvas.id}>
+                                                        <button
+                                                          type="button"
+                                                          aria-current={
+                                                            isActive
+                                                              ? "page"
+                                                              : undefined
+                                                          }
+                                                          onClick={() =>
+                                                            selectCanvas(
+                                                              canvas.id,
+                                                            )
+                                                          }
+                                                          className={`flex h-[var(--clash-project-control-rhythm)] w-full items-center gap-2 rounded-md px-2 text-left text-xs font-semibold transition-colors ${
+                                                            isActive
+                                                              ? "bg-brand/[0.08] text-content-primary"
+                                                              : "text-content-secondary hover:bg-warm-hover hover:text-content-primary"
+                                                          }`}
+                                                        >
+                                                          <FolderSimple
+                                                            className={`h-4 w-4 shrink-0 ${isActive ? "text-brand" : "text-content-muted"}`}
+                                                            weight={
+                                                              isActive
+                                                                ? "fill"
+                                                                : "regular"
+                                                            }
+                                                          />
+                                                          <span className="min-w-0 flex-1 truncate">
+                                                            {canvas.name}
+                                                          </span>
+                                                        </button>
+
+                                                        {isActive &&
+                                                        filteredCanvasFolderEntries.length >
+                                                          0 ? (
+                                                          <ul className="ml-4 border-l border-warm-border/80 py-0.5">
+                                                            <CanvasFolderEntries
+                                                              entries={
+                                                                filteredCanvasFolderEntries
+                                                              }
+                                                              onSelect={
+                                                                focusCanvasFolderNode
+                                                              }
+                                                              nested
+                                                            />
+                                                          </ul>
+                                                        ) : null}
+                                                      </li>
+                                                    );
+                                                  },
+                                                )}
+                                              </ul>
+                                              <IconButton
+                                                label="Collapse canvas folders"
+                                                icon={
+                                                  <X
+                                                    className="h-3.5 w-3.5"
+                                                    weight="bold"
+                                                  />
+                                                }
+                                                size="sm"
+                                                shape="rounded"
+                                                onClick={() =>
+                                                  setCanvasFoldersOpen(false)
+                                                }
+                                                className="absolute bottom-1.5 right-1.5 h-7 min-h-7 w-7 min-w-7 rounded-md bg-warm-surface text-content-muted shadow-sm hover:bg-warm-hover hover:text-content-primary"
+                                              />
+                                            </motion.aside>
+                                          ) : null}
+                                        </>
+                                      ) : null}
+
+                                      {/* Left Toolbar - Vertical Palette.
+                                  z-10 keeps it above the canvas (z-0) but well below
+                                  the bottom-right ChatbotCopilot popover and any modal
+                                  Dialog (z-[70]). */}
+                                      {workspaceSurface.kind === "canvas" && (
+                                        <motion.div
+                                          data-project-workspace-toolbar
+                                          className="absolute left-[var(--clash-project-control-rail-left)] top-[var(--clash-project-frame-top)] z-10 flex flex-col items-start gap-2 pointer-events-none transition-[left] duration-200 ease-out"
+                                          initial={{
+                                            opacity: 0,
+                                            x: -8,
+                                            scale: 0.98,
+                                          }}
+                                          animate={{
+                                            opacity: 1,
+                                            x: 0,
+                                            scale: 1,
+                                          }}
+                                          exit={{
+                                            opacity: 0,
+                                            x: -8,
+                                            scale: 0.98,
+                                          }}
+                                          transition={{
+                                            duration: 0.18,
+                                            ease: [0.25, 1, 0.5, 1],
+                                          }}
+                                        >
+                                          <Toolbar.Root
+                                            aria-label="Canvas tools"
+                                            orientation="vertical"
+                                            loop
+                                            className="clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-[var(--clash-project-action-phase)] transition-colors [--clash-toolbar-section-gap:var(--clash-project-action-phase)]"
+                                          >
+                                            <Toolbar.ToggleGroup
+                                              type="single"
+                                              value={canvasMode}
+                                              onValueChange={(mode) => {
+                                                if (
+                                                  mode === "select" ||
+                                                  mode === "hand"
+                                                ) {
+                                                  transientUiStore.dismiss();
+                                                  setCanvasMode(mode);
+                                                }
+                                              }}
+                                              orientation="vertical"
+                                              aria-label="Canvas mode"
+                                              className="flex w-full flex-col items-center gap-0"
+                                            >
+                                              <Tooltip
+                                                label="Select mode (V)"
+                                                placement="right"
+                                              >
+                                                <Toolbar.ToggleItem
+                                                  value="select"
+                                                  asChild
+                                                >
                                                   <IconButton
-                                                    label="Collapse canvas minimap"
+                                                    label="Select mode"
                                                     icon={
-                                                      <ArrowsInSimple
+                                                      <CursorClick
+                                                        className="h-[18px] w-[18px]"
+                                                        weight="regular"
+                                                      />
+                                                    }
+                                                    size="sm"
+                                                    shape="rounded"
+                                                    className="rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
+                                                  />
+                                                </Toolbar.ToggleItem>
+                                              </Tooltip>
+                                              <Tooltip
+                                                label="Hand mode (H)"
+                                                placement="right"
+                                              >
+                                                <Toolbar.ToggleItem
+                                                  value="hand"
+                                                  asChild
+                                                >
+                                                  <IconButton
+                                                    label="Hand mode"
+                                                    icon={
+                                                      <HandGrabbing
+                                                        className="h-[18px] w-[18px]"
+                                                        weight="regular"
+                                                      />
+                                                    }
+                                                    size="sm"
+                                                    shape="rounded"
+                                                    className="rounded-md bg-transparent text-content-muted hover:bg-warm-hover hover:text-content-primary data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
+                                                  />
+                                                </Toolbar.ToggleItem>
+                                              </Tooltip>
+                                            </Toolbar.ToggleGroup>
+
+                                            <div className="flex h-[var(--clash-toolbar-section-gap)] w-full shrink-0 items-center justify-center">
+                                              <Toolbar.Separator
+                                                orientation="horizontal"
+                                                className="h-px w-8 bg-stone-200/80"
+                                              />
+                                            </div>
+
+                                            <div className="flex w-full flex-none flex-col items-center gap-0">
+                                              {toolbarMenu.map((item) => {
+                                                const Icon = item.icon;
+                                                const submenuItems =
+                                                  "items" in item
+                                                    ? item.items
+                                                    : undefined;
+                                                const sectionSpacing =
+                                                  item.id === "actions"
+                                                    ? "mt-[var(--clash-toolbar-section-gap)]"
+                                                    : "";
+                                                if (submenuItems) {
+                                                  return (
+                                                    <DropdownMenu
+                                                      key={item.id}
+                                                      onOpenChange={
+                                                        dismissTransientUiOnMenuOpen
+                                                      }
+                                                    >
+                                                      <Tooltip
+                                                        label={item.label}
+                                                        placement="right"
+                                                      >
+                                                        <DropdownMenuTrigger
+                                                          asChild
+                                                        >
+                                                          <Toolbar.Button
+                                                            asChild
+                                                          >
+                                                            <IconButton
+                                                              label={item.label}
+                                                              icon={
+                                                                <Icon
+                                                                  className="h-[18px] w-[18px]"
+                                                                  weight="regular"
+                                                                />
+                                                              }
+                                                              size="sm"
+                                                              shape="rounded"
+                                                              className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary data-[state=open]:bg-brand/10 data-[state=open]:text-brand`}
+                                                            />
+                                                          </Toolbar.Button>
+                                                        </DropdownMenuTrigger>
+                                                      </Tooltip>
+                                                      <DropdownMenuContent
+                                                        aria-label={`${item.label} tools`}
+                                                        side="right"
+                                                        align="start"
+                                                        sideOffset={10}
+                                                        className="clash-canvas-menu-surface flex min-w-[140px] flex-col gap-0.5 rounded-lg p-1.5"
+                                                      >
+                                                        <div className="px-2 py-1 text-xs font-semibold text-content-muted">
+                                                          {item.label}
+                                                        </div>
+                                                        {submenuItems.map(
+                                                          (subItem) => {
+                                                            const SubIcon =
+                                                              subItem.icon;
+                                                            return (
+                                                              <DropdownMenuItem
+                                                                key={subItem.id}
+                                                                onSelect={() => {
+                                                                  handleToolClick(
+                                                                    subItem.id,
+                                                                  );
+                                                                }}
+                                                                className="clash-input-icon-button gap-2.5 rounded-md px-2.5 py-2 text-sm text-content-secondary transition-colors hover:text-content-primary"
+                                                              >
+                                                                <SubIcon className="h-4 w-4" />
+                                                                <span className="whitespace-nowrap">
+                                                                  {
+                                                                    subItem.label
+                                                                  }
+                                                                </span>
+                                                              </DropdownMenuItem>
+                                                            );
+                                                          },
+                                                        )}
+                                                      </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                  );
+                                                }
+
+                                                return (
+                                                  <Tooltip
+                                                    key={item.id}
+                                                    label={item.label}
+                                                    placement="right"
+                                                  >
+                                                    <Toolbar.Button asChild>
+                                                      <IconButton
+                                                        label={item.label}
+                                                        icon={
+                                                          <Icon
+                                                            className="h-[18px] w-[18px]"
+                                                            weight="regular"
+                                                          />
+                                                        }
+                                                        size="sm"
+                                                        shape="rounded"
+                                                        onClick={() =>
+                                                          handleToolClick(
+                                                            item.id,
+                                                          )
+                                                        }
+                                                        className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary`}
+                                                      />
+                                                    </Toolbar.Button>
+                                                  </Tooltip>
+                                                );
+                                              })}
+                                            </div>
+
+                                            <div className="flex h-[var(--clash-toolbar-section-gap)] w-full shrink-0 items-center justify-center">
+                                              <Toolbar.Separator
+                                                orientation="horizontal"
+                                                className="h-px w-8 bg-stone-200/80"
+                                              />
+                                            </div>
+
+                                            <div className="flex w-full flex-none flex-col items-center gap-0">
+                                              <Tooltip
+                                                label="Auto Layout"
+                                                placement="right"
+                                              >
+                                                <Toolbar.Button asChild>
+                                                  <IconButton
+                                                    label="Auto Layout"
+                                                    icon={
+                                                      <MagicWand
+                                                        className="h-3.5 w-3.5"
+                                                        weight="regular"
+                                                      />
+                                                    }
+                                                    onClick={onLayout}
+                                                    size="sm"
+                                                    shape="rounded"
+                                                    className="clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary"
+                                                  />
+                                                </Toolbar.Button>
+                                              </Tooltip>
+                                              <Tooltip
+                                                label="Center view on nodes"
+                                                placement="right"
+                                              >
+                                                <Toolbar.Button asChild>
+                                                  <IconButton
+                                                    label="Center view on nodes"
+                                                    icon={
+                                                      <Crosshair
                                                         className="h-3.5 w-3.5"
                                                         weight="bold"
                                                       />
                                                     }
-                                                    onClick={collapseMinimap}
+                                                    onClick={
+                                                      centerViewportOnAverageNodePosition
+                                                    }
+                                                    disabled={
+                                                      nodes.length === 0
+                                                    }
                                                     size="sm"
                                                     shape="rounded"
-                                                    className="clash-canvas-minimap-overlay-control absolute left-1.5 top-1.5 z-10 h-7 min-h-7 w-7 min-w-7 rounded-md"
+                                                    className="clash-toolbar-button rounded-md bg-transparent text-content-muted hover:text-content-primary"
                                                   />
-                                                  <button
-                                                    type="button"
-                                                    aria-label="Resize canvas minimap"
-                                                    data-canvas-minimap-resize-handle
-                                                    onPointerDown={
-                                                      startMinimapResize
+                                                </Toolbar.Button>
+                                              </Tooltip>
+                                              <Tooltip
+                                                label="Undo"
+                                                placement="right"
+                                              >
+                                                <Toolbar.Button asChild>
+                                                  <IconButton
+                                                    label="Undo"
+                                                    icon={
+                                                      <ArrowCounterClockwise
+                                                        className="h-[18px] w-[18px]"
+                                                        weight="bold"
+                                                      />
                                                     }
-                                                    onPointerMove={
-                                                      resizeMinimap
+                                                    onClick={() =>
+                                                      loroSync.undo()
                                                     }
-                                                    onPointerUp={
-                                                      finishMinimapResize
+                                                    disabled={!loroSync.canUndo}
+                                                    size="sm"
+                                                    shape="rounded"
+                                                    className={`rounded-md ${
+                                                      loroSync.canUndo
+                                                        ? "clash-toolbar-button text-content-muted hover:text-content-primary"
+                                                        : "cursor-not-allowed text-content-disabled"
+                                                    }`}
+                                                  />
+                                                </Toolbar.Button>
+                                              </Tooltip>
+                                              <Tooltip
+                                                label="Redo"
+                                                placement="right"
+                                              >
+                                                <Toolbar.Button asChild>
+                                                  <IconButton
+                                                    label="Redo"
+                                                    icon={
+                                                      <ArrowClockwise
+                                                        className="h-[18px] w-[18px]"
+                                                        weight="bold"
+                                                      />
                                                     }
-                                                    onPointerCancel={
-                                                      finishMinimapResize
+                                                    onClick={() =>
+                                                      loroSync.redo()
                                                     }
-                                                    className="clash-canvas-minimap-resize-handle absolute right-0 top-0 z-10 h-7 w-7 cursor-nesw-resize touch-none rounded-tr-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                                                  >
-                                                    <span className="clash-canvas-minimap-resize-grip" />
-                                                  </button>
-                                                </motion.div>
-                                              )}
-                                            </AnimatePresence>
-                                          </motion.div>
-                                        </div>
-
-                                        {/* Collaboration: node-level activity indicators */}
-                                        <NodeActivityIndicator
-                                          highlights={highlights}
-                                        />
-
-                                        {/* Debug: show node IDs as selectable labels */}
-                                        {showDebugIds && (
-                                          <DebugNodeIds nodes={nodes} />
-                                        )}
-
-                                        {/* Floating "Group" pill — appears above marquee/shift selection of 2+ siblings */}
-                                        <SelectionGroupButton
-                                          bounds={selectionBounds}
-                                          onGroup={groupSelectedNodes}
-                                        />
-
-                                        {/* Live cursor + selection awareness from other peers.
-                                          Must be inside ReactFlow so it can read viewport
-                                          (zoom/pan) for translating flow-coords → screen. */}
-                                        <AwarenessLayer
-                                          peers={awareness.peers}
-                                          setLocalCursor={
-                                            awareness.setLocalCursor
-                                          }
-                                          flowBoundsRef={flowBoundsRef}
-                                        />
-
-                                        {/* Unix-pipe cascade dispatcher: adopts drafts on run
-                                          request, propagates cascadeToken across stages. */}
-                                        <CascadeRunnerMount
-                                          nodes={nodes}
-                                          edges={edges}
-                                          setNodes={setNodes}
-                                          customActions={customActions}
-                                        />
-                                      </ReactFlow>
-                                    </div>
-
-                                    {workspaceSurface.kind === "canvas" ? (
-                                      <>
-                                        {!canvasFoldersOpen ? (
-                                          <Tooltip
-                                            label="Canvas folders"
-                                            placement="right"
-                                          >
-                                            <IconButton
-                                              label="Canvas folders"
-                                              icon={
-                                                <FolderSimple
-                                                  className="h-3.5 w-3.5"
-                                                  weight="regular"
-                                                />
-                                              }
-                                              onClick={() =>
-                                                setCanvasFoldersOpen(true)
-                                              }
-                                              style={{
-                                                bottom: minimapControlOffset,
-                                              }}
-                                              size="md"
-                                              shape="rounded"
-                                              className="clash-canvas-minimap-control absolute left-[var(--clash-project-control-rail-left)] z-10 rounded-lg transition-[bottom] duration-200 ease-out"
-                                            />
-                                          </Tooltip>
-                                        ) : null}
-
-                                        {canvasFoldersOpen ? (
-                                          <motion.aside
-                                            aria-label="Canvas folders"
-                                            data-canvas-folders-panel
-                                            className="clash-canvas-overlay-panel pointer-events-auto absolute bottom-[var(--clash-project-chrome-gutter)] left-[var(--clash-project-chrome-gutter)] top-[var(--clash-project-frame-top)] z-20 flex w-48 flex-col overflow-hidden"
-                                            initial={{ opacity: 0, x: -8 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{
-                                              duration: 0.18,
-                                              ease: [0.25, 1, 0.5, 1],
-                                            }}
-                                          >
-                                            <div className="relative flex h-[var(--clash-project-control-rhythm)] shrink-0 items-center px-1.5 after:pointer-events-none after:absolute after:inset-x-1.5 after:bottom-0 after:h-px after:bg-warm-border/50 after:content-['']">
-                                              <span className="pointer-events-none absolute inset-y-0 left-1.5 flex w-6 items-center justify-center text-stone-400">
-                                                <MagnifyingGlass
-                                                  aria-hidden="true"
-                                                  className="h-3.5 w-3.5"
-                                                  weight="regular"
-                                                />
-                                              </span>
-                                              <Input
-                                                aria-label="Search canvas folders"
-                                                placeholder="Search"
-                                                value={canvasFolderQuery}
-                                                onChange={(event) =>
-                                                  setCanvasFolderQuery(
-                                                    event.target.value,
-                                                  )
-                                                }
-                                                className="h-[var(--clash-project-control-rhythm)] border-transparent bg-transparent pl-8 pr-2 text-xs shadow-none placeholder:text-stone-400 hover:bg-warm-page/45 focus-visible:border-warm-border/70 focus-visible:bg-warm-page/60 focus-visible:ring-0"
-                                              />
+                                                    disabled={!loroSync.canRedo}
+                                                    size="sm"
+                                                    shape="rounded"
+                                                    className={`rounded-md ${
+                                                      loroSync.canRedo
+                                                        ? "clash-toolbar-button text-content-muted hover:text-content-primary"
+                                                        : "cursor-not-allowed text-content-disabled"
+                                                    }`}
+                                                  />
+                                                </Toolbar.Button>
+                                              </Tooltip>
                                             </div>
-                                            <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-10 pt-[var(--clash-project-action-phase)]">
-                                              {activeCanvasUsesImplicitRoot ? (
-                                                <CanvasFolderEntries
-                                                  entries={
-                                                    filteredCanvasFolderEntries
-                                                  }
-                                                  onSelect={
-                                                    focusCanvasFolderNode
-                                                  }
-                                                />
-                                              ) : null}
-                                              {canvasFolderCanvases.map(
-                                                (canvas) => {
-                                                  const isActive =
-                                                    canvas.id ===
-                                                    activeCanvasId;
-                                                  return (
-                                                    <li key={canvas.id}>
-                                                      <button
-                                                        type="button"
-                                                        aria-current={
-                                                          isActive
-                                                            ? "page"
-                                                            : undefined
-                                                        }
-                                                        onClick={() =>
-                                                          selectCanvas(
-                                                            canvas.id,
-                                                          )
-                                                        }
-                                                        className={`flex h-[var(--clash-project-control-rhythm)] w-full items-center gap-2 rounded-md px-2 text-left text-xs font-semibold transition-colors ${
-                                                          isActive
-                                                            ? "bg-brand/[0.08] text-slate-950"
-                                                            : "text-stone-600 hover:bg-warm-muted hover:text-slate-950"
-                                                        }`}
-                                                      >
-                                                        <FolderSimple
-                                                          className={`h-4 w-4 shrink-0 ${isActive ? "text-brand" : "text-stone-400"}`}
-                                                          weight={
-                                                            isActive
-                                                              ? "fill"
-                                                              : "regular"
-                                                          }
-                                                        />
-                                                        <span className="min-w-0 flex-1 truncate">
-                                                          {canvas.name}
-                                                        </span>
-                                                      </button>
+                                          </Toolbar.Root>
+                                        </motion.div>
+                                      )}
+                                    </div>
+                                  </AgentAnnotationContextMenu>
 
-                                                      {isActive &&
-                                                      filteredCanvasFolderEntries.length >
-                                                        0 ? (
-                                                        <ul className="ml-4 border-l border-warm-border/80 py-0.5">
-                                                          <CanvasFolderEntries
-                                                            entries={
-                                                              filteredCanvasFolderEntries
-                                                            }
-                                                            onSelect={
-                                                              focusCanvasFolderNode
-                                                            }
-                                                            nested
-                                                          />
-                                                        </ul>
-                                                      ) : null}
-                                                    </li>
-                                                  );
-                                                },
-                                              )}
-                                            </ul>
-                                            <IconButton
-                                              label="Collapse canvas folders"
-                                              icon={
-                                                <X
-                                                  className="h-3.5 w-3.5"
-                                                  weight="bold"
-                                                />
-                                              }
-                                              size="sm"
-                                              shape="rounded"
-                                              onClick={() =>
-                                                setCanvasFoldersOpen(false)
-                                              }
-                                              className="absolute bottom-1.5 right-1.5 h-7 min-h-7 w-7 min-w-7 rounded-md bg-warm-surface text-stone-400 shadow-sm hover:bg-warm-muted hover:text-slate-900"
-                                            />
-                                          </motion.aside>
-                                        ) : null}
-                                      </>
-                                    ) : null}
-
-                                    {/* Left Toolbar - Vertical Palette.
-                                  z-10 keeps it above the canvas (z-0) but well below
-                                  the bottom-right ChatbotCopilot popover and any modal
-                                  Dialog (z-[70]). */}
-                                    {workspaceSurface.kind === "canvas" && (
-                                      <motion.div
-                                        data-project-workspace-toolbar
-                                        className="absolute left-[var(--clash-project-control-rail-left)] top-[var(--clash-project-frame-top)] z-10 flex flex-col items-start gap-2 pointer-events-none transition-[left] duration-200 ease-out"
-                                        initial={{
-                                          opacity: 0,
-                                          x: -8,
-                                          scale: 0.98,
-                                        }}
-                                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                                        exit={{
-                                          opacity: 0,
-                                          x: -8,
-                                          scale: 0.98,
-                                        }}
-                                        transition={{
-                                          duration: 0.18,
-                                          ease: [0.25, 1, 0.5, 1],
-                                        }}
-                                      >
-                                        <Toolbar.Root
-                                          aria-label="Canvas tools"
-                                          orientation="vertical"
-                                          loop
-                                          className="clash-canvas-toolbar-surface pointer-events-auto flex w-12 flex-col items-center gap-0 rounded-lg py-[var(--clash-project-action-phase)] transition-colors [--clash-toolbar-section-gap:var(--clash-project-action-phase)]"
-                                        >
-                                          <Toolbar.ToggleGroup
-                                            type="single"
-                                            value={canvasMode}
-                                            onValueChange={(mode) => {
-                                              if (
-                                                mode === "select" ||
-                                                mode === "hand"
-                                              ) {
-                                                transientUiStore.dismiss();
-                                                setCanvasMode(mode);
-                                              }
-                                            }}
-                                            orientation="vertical"
-                                            aria-label="Canvas mode"
-                                            className="flex w-full flex-col items-center gap-0"
-                                          >
-                                            <Tooltip
-                                              label="Select mode (V)"
-                                              placement="right"
-                                            >
-                                              <Toolbar.ToggleItem
-                                                value="select"
-                                                asChild
-                                              >
-                                                <IconButton
-                                                  label="Select mode"
-                                                  icon={
-                                                    <CursorClick
-                                                      className="h-[18px] w-[18px]"
-                                                      weight="regular"
-                                                    />
-                                                  }
-                                                  size="sm"
-                                                  shape="rounded"
-                                                  className="rounded-md bg-transparent text-stone-500 hover:text-slate-950 data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
-                                                />
-                                              </Toolbar.ToggleItem>
-                                            </Tooltip>
-                                            <Tooltip
-                                              label="Hand mode (H)"
-                                              placement="right"
-                                            >
-                                              <Toolbar.ToggleItem
-                                                value="hand"
-                                                asChild
-                                              >
-                                                <IconButton
-                                                  label="Hand mode"
-                                                  icon={
-                                                    <HandGrabbing
-                                                      className="h-[18px] w-[18px]"
-                                                      weight="regular"
-                                                    />
-                                                  }
-                                                  size="sm"
-                                                  shape="rounded"
-                                                  className="rounded-md bg-transparent text-stone-500 hover:text-slate-950 data-[state=on]:bg-brand/10 data-[state=on]:text-brand"
-                                                />
-                                              </Toolbar.ToggleItem>
-                                            </Tooltip>
-                                          </Toolbar.ToggleGroup>
-
-                                          <div className="flex h-[var(--clash-toolbar-section-gap)] w-full shrink-0 items-center justify-center">
-                                            <Toolbar.Separator
-                                              orientation="horizontal"
-                                              className="h-px w-8 bg-stone-200/80"
-                                            />
-                                          </div>
-
-                                          <div className="flex w-full flex-none flex-col items-center gap-0">
-                                            {toolbarMenu.map((item) => {
-                                              const Icon = item.icon;
-                                              const submenuItems =
-                                                "items" in item
-                                                  ? item.items
-                                                  : undefined;
-                                              const sectionSpacing =
-                                                item.id === "actions"
-                                                  ? "mt-[var(--clash-toolbar-section-gap)]"
-                                                  : "";
-                                              if (submenuItems) {
-                                                return (
-                                                  <DropdownMenu
-                                                    key={item.id}
-                                                    onOpenChange={
-                                                      dismissTransientUiOnMenuOpen
-                                                    }
-                                                  >
-                                                    <Tooltip
-                                                      label={item.label}
-                                                      placement="right"
-                                                    >
-                                                      <DropdownMenuTrigger
-                                                        asChild
-                                                      >
-                                                        <Toolbar.Button asChild>
-                                                          <IconButton
-                                                            label={item.label}
-                                                            icon={
-                                                              <Icon
-                                                                className="h-[18px] w-[18px]"
-                                                                weight="regular"
-                                                              />
-                                                            }
-                                                            size="sm"
-                                                            shape="rounded"
-                                                            className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950 data-[state=open]:bg-brand/10 data-[state=open]:text-brand`}
-                                                          />
-                                                        </Toolbar.Button>
-                                                      </DropdownMenuTrigger>
-                                                    </Tooltip>
-                                                    <DropdownMenuContent
-                                                      aria-label={`${item.label} tools`}
-                                                      side="right"
-                                                      align="start"
-                                                      sideOffset={10}
-                                                      className="clash-canvas-menu-surface flex min-w-[140px] flex-col gap-0.5 rounded-lg p-1.5"
-                                                    >
-                                                      <div className="px-2 py-1 text-xs font-semibold text-stone-500">
-                                                        {item.label}
-                                                      </div>
-                                                      {submenuItems.map(
-                                                        (subItem) => {
-                                                          const SubIcon =
-                                                            subItem.icon;
-                                                          return (
-                                                            <DropdownMenuItem
-                                                              key={subItem.id}
-                                                              onSelect={() => {
-                                                                handleToolClick(
-                                                                  subItem.id,
-                                                                );
-                                                              }}
-                                                              className="clash-input-icon-button gap-2.5 rounded-md px-2.5 py-2 text-sm text-stone-600 transition-colors hover:text-slate-950"
-                                                            >
-                                                              <SubIcon className="h-4 w-4" />
-                                                              <span className="whitespace-nowrap">
-                                                                {subItem.label}
-                                                              </span>
-                                                            </DropdownMenuItem>
-                                                          );
-                                                        },
-                                                      )}
-                                                    </DropdownMenuContent>
-                                                  </DropdownMenu>
-                                                );
-                                              }
-
-                                              return (
-                                                <Tooltip
-                                                  key={item.id}
-                                                  label={item.label}
-                                                  placement="right"
-                                                >
-                                                  <Toolbar.Button asChild>
-                                                    <IconButton
-                                                      label={item.label}
-                                                      icon={
-                                                        <Icon
-                                                          className="h-[18px] w-[18px]"
-                                                          weight="regular"
-                                                        />
-                                                      }
-                                                      size="sm"
-                                                      shape="rounded"
-                                                      onClick={() =>
-                                                        handleToolClick(item.id)
-                                                      }
-                                                      className={`${sectionSpacing} clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950`}
-                                                    />
-                                                  </Toolbar.Button>
-                                                </Tooltip>
-                                              );
-                                            })}
-                                          </div>
-
-                                          <div className="flex h-[var(--clash-toolbar-section-gap)] w-full shrink-0 items-center justify-center">
-                                            <Toolbar.Separator
-                                              orientation="horizontal"
-                                              className="h-px w-8 bg-stone-200/80"
-                                            />
-                                          </div>
-
-                                          <div className="flex w-full flex-none flex-col items-center gap-0">
-                                            <Tooltip
-                                              label="Auto Layout"
-                                              placement="right"
-                                            >
-                                              <Toolbar.Button asChild>
-                                                <IconButton
-                                                  label="Auto Layout"
-                                                  icon={
-                                                    <MagicWand
-                                                      className="h-3.5 w-3.5"
-                                                      weight="regular"
-                                                    />
-                                                  }
-                                                  onClick={onLayout}
-                                                  size="sm"
-                                                  shape="rounded"
-                                                  className="clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950"
-                                                />
-                                              </Toolbar.Button>
-                                            </Tooltip>
-                                            <Tooltip
-                                              label="Center view on nodes"
-                                              placement="right"
-                                            >
-                                              <Toolbar.Button asChild>
-                                                <IconButton
-                                                  label="Center view on nodes"
-                                                  icon={
-                                                    <Crosshair
-                                                      className="h-3.5 w-3.5"
-                                                      weight="bold"
-                                                    />
-                                                  }
-                                                  onClick={
-                                                    centerViewportOnAverageNodePosition
-                                                  }
-                                                  disabled={nodes.length === 0}
-                                                  size="sm"
-                                                  shape="rounded"
-                                                  className="clash-toolbar-button rounded-md bg-transparent text-stone-500 hover:text-slate-950"
-                                                />
-                                              </Toolbar.Button>
-                                            </Tooltip>
-                                            <Tooltip
-                                              label="Undo"
-                                              placement="right"
-                                            >
-                                              <Toolbar.Button asChild>
-                                                <IconButton
-                                                  label="Undo"
-                                                  icon={
-                                                    <ArrowCounterClockwise
-                                                      className="h-[18px] w-[18px]"
-                                                      weight="bold"
-                                                    />
-                                                  }
-                                                  onClick={() =>
-                                                    loroSync.undo()
-                                                  }
-                                                  disabled={!loroSync.canUndo}
-                                                  size="sm"
-                                                  shape="rounded"
-                                                  className={`rounded-md ${
-                                                    loroSync.canUndo
-                                                      ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
-                                                      : "text-slate-300 cursor-not-allowed"
-                                                  }`}
-                                                />
-                                              </Toolbar.Button>
-                                            </Tooltip>
-                                            <Tooltip
-                                              label="Redo"
-                                              placement="right"
-                                            >
-                                              <Toolbar.Button asChild>
-                                                <IconButton
-                                                  label="Redo"
-                                                  icon={
-                                                    <ArrowClockwise
-                                                      className="h-[18px] w-[18px]"
-                                                      weight="bold"
-                                                    />
-                                                  }
-                                                  onClick={() =>
-                                                    loroSync.redo()
-                                                  }
-                                                  disabled={!loroSync.canRedo}
-                                                  size="sm"
-                                                  shape="rounded"
-                                                  className={`rounded-md ${
-                                                    loroSync.canRedo
-                                                      ? "clash-toolbar-button text-stone-500 hover:text-slate-950"
-                                                      : "text-slate-300 cursor-not-allowed"
-                                                  }`}
-                                                />
-                                              </Toolbar.Button>
-                                            </Tooltip>
-                                          </div>
-                                        </Toolbar.Root>
-                                      </motion.div>
-                                    )}
-                                  </div>
-                                </AgentAnnotationContextMenu>
-
-                                <div
-                                  id="copilot-container"
-                                  className="fixed bottom-2 right-2 z-40 pointer-events-none"
-                                  style={{
-                                    top: "calc(var(--clash-desktop-chrome-height, 0px) + 0.5rem)",
-                                  }}
-                                >
-                                  <div className="pointer-events-auto h-full">
-                                    <ChatbotCopilot
-                                      key={`${threadId || "draft"}-${sessionKey}`}
-                                      projectId={project.id}
-                                      threadId={threadId}
-                                      initialMessages={EMPTY_COPILOT_MESSAGES}
-                                      width={sidebarWidth}
-                                      onWidthChange={setSidebarWidth}
-                                      isCollapsed={isSidebarCollapsed}
-                                      onCollapseChange={setIsSidebarCollapsed}
-                                      collapsedLauncherPlacement={workspaceSurface.kind === "canvas" ? "canvas" : "header"}
-                                      layoutMode="floating"
-                                      followingAgent={followingAgent}
-                                      onFollowingAgentChange={
-                                        setFollowingAgentMode
-                                      }
-                                      onAgentCanvasTarget={recordAgentTarget}
-                                      onAddNode={addNode}
-                                      onRemoveNode={removeCanvasNodeFromCopilot}
-                                      onAddEdge={addCanvasEdgeFromCopilot}
-                                      onUpdateEdge={updateCanvasEdgeFromCopilot}
-                                      onRemoveEdge={removeCanvasEdgeFromCopilot}
-                                      onApplyTimeline={
-                                        applyCanvasTimelineFromCopilot
-                                      }
-                                      nodes={copilotNodes}
-                                      mentionSources={copilotMentionSources}
-                                      workspaceContext={copilotWorkspaceContext}
-                                      initialPrompt={chatInitialPrompt}
-                                      sessionHistory={sessionHistory}
-                                      onNewSession={handleNewSession}
-                                      onSwitchSession={handleSwitchSession}
-                                      onDeleteSession={handleDeleteSession}
-                                      onUpsertSession={upsertSession}
-                                      onCreateSession={
-                                        handleCopilotCreateSession
-                                      }
-                                      actorUserId={project.ownerId}
-                                      annotationBlocks={pendingAgentAnnotations}
-                                      onAnnotationChange={changeAgentAnnotation}
-                                      onAnnotationRemove={removeAgentAnnotation}
-                                      onAnnotationLocate={locateAgentAnnotation}
-                                      onAnnotationsSubmitted={
-                                        clearSubmittedAgentAnnotations
-                                      }
-                                    />
+                                  <div
+                                    id="copilot-container"
+                                    className="fixed bottom-2 right-2 z-40 pointer-events-none"
+                                    style={{
+                                      top: "calc(var(--clash-desktop-chrome-height, 0px) + 0.5rem)",
+                                    }}
+                                  >
+                                    <div className="pointer-events-auto h-full">
+                                      <ChatbotCopilot
+                                        key={`${threadId || "draft"}-${sessionKey}`}
+                                        projectId={project.id}
+                                        threadId={threadId}
+                                        initialMessages={EMPTY_COPILOT_MESSAGES}
+                                        width={sidebarWidth}
+                                        onWidthPreview={
+                                          handleCopilotWidthPreview
+                                        }
+                                        onWidthChange={handleCopilotWidthChange}
+                                        onResizeStateChange={
+                                          handleCopilotResizeStateChange
+                                        }
+                                        isCollapsed={isSidebarCollapsed}
+                                        onCollapseChange={setIsSidebarCollapsed}
+                                        collapsedLauncherPlacement={
+                                          workspaceSurface.kind === "canvas"
+                                            ? "canvas"
+                                            : "header"
+                                        }
+                                        layoutMode="floating"
+                                        followingAgent={followingAgent}
+                                        onFollowingAgentChange={
+                                          setFollowingAgentMode
+                                        }
+                                        onAgentCanvasTarget={recordAgentTarget}
+                                        onOpenClashEntity={
+                                          openCopilotClashEntity
+                                        }
+                                        onAddNode={addNode}
+                                        onRemoveNode={
+                                          removeCanvasNodeFromCopilot
+                                        }
+                                        onAddEdge={addCanvasEdgeFromCopilot}
+                                        onUpdateEdge={
+                                          updateCanvasEdgeFromCopilot
+                                        }
+                                        onRemoveEdge={
+                                          removeCanvasEdgeFromCopilot
+                                        }
+                                        onApplyTimeline={
+                                          applyCanvasTimelineFromCopilot
+                                        }
+                                        nodes={copilotNodes}
+                                        mentionSources={copilotMentionSources}
+                                        workspaceContext={
+                                          copilotWorkspaceContext
+                                        }
+                                        initialPrompt={chatInitialPrompt}
+                                        sessionHistory={sessionHistory}
+                                        onNewSession={handleNewSession}
+                                        onSwitchSession={handleSwitchSession}
+                                        onDeleteSession={handleDeleteSession}
+                                        onUpsertSession={upsertSession}
+                                        onCreateSession={
+                                          handleCopilotCreateSession
+                                        }
+                                        actorUserId={project.ownerId}
+                                        annotationBlocks={
+                                          pendingAgentAnnotations
+                                        }
+                                        activeAnnotationId={activeAnnotationId}
+                                        onAnnotationOpen={
+                                          openAgentAnnotation
+                                        }
+                                        onAnnotationClose={() =>
+                                          setActiveAnnotationId(null)
+                                        }
+                                        onAnnotationChange={
+                                          changeAgentAnnotation
+                                        }
+                                        onAnnotationRemove={
+                                          removeAgentAnnotation
+                                        }
+                                        onAnnotationLocate={
+                                          locateAgentAnnotation
+                                        }
+                                        onAnnotationsSubmitted={
+                                          clearSubmittedAgentAnnotations
+                                        }
+                                      />
+                                    </div>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
+                          </TextNodeEditorProvider>
                         </LayoutActionsProvider>
                       </MediaViewerProvider>
                     </VideoEditorProvider>

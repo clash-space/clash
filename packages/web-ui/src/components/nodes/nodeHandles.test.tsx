@@ -64,6 +64,39 @@ vi.mock("../../../lib/hooks/useSignedUrl", () => ({
 }));
 
 describe("node handle wiring", () => {
+  it("keeps the Text card as a drag surface instead of a selectable annotation surface", () => {
+    const { container } = render(
+      <TextNode
+        id="text-1"
+        selected={false}
+        type="text"
+        dragging={false}
+        draggable={true}
+        selectable={true}
+        deletable={true}
+        zIndex={1}
+        isConnectable={true}
+        positionAbsoluteX={0}
+        positionAbsoluteY={0}
+        data={{
+          label: "Outline",
+          content: "hello",
+          status: "completed",
+        }}
+      />,
+    );
+
+    const dragSurface = within(container).getByTestId("text-node-drag-surface");
+    const preview = within(container).getByTestId("text-node-preview");
+
+    expect(dragSurface.className).toContain("cursor-grab");
+    expect(dragSurface.className).not.toContain("nodrag");
+    expect(preview.className).toContain("pointer-events-none");
+    expect(preview.className).toContain("select-none");
+    expect(preview.hasAttribute("data-agent-annotation-object-id")).toBe(false);
+    expect(within(container).queryByRole("textbox")).toBeNull();
+  });
+
   it("renders downstream source-handle menu for text nodes", () => {
     const { container } = render(
       <TextNode

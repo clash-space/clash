@@ -1,7 +1,7 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { ArrowBendDownRight, BookOpen, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning, SlidersHorizontal } from '@phosphor-icons/react';
+import { ArrowBendDownRight, BookOpen, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning, SlidersHorizontal, Lightbulb, Lightning, Target, X, Play, Pause } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { UserMessage } from './copilot/UserMessage';
 import { AgentCard, type AgentLog } from './copilot/AgentCard';
@@ -9,9 +9,15 @@ import { ToolCall } from './copilot/ToolCall';
 import { ApprovalCard } from './copilot/ApprovalCard';
 import { ThinkingProcess } from './copilot/ThinkingProcess';
 import { ChatInput } from './copilot/ChatInput';
+import { AgentAnnotationInspector } from './copilot/AgentAnnotationBlock';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
-import { AcpMessageList, AcpProgressPanel, getAcpGlobalState } from './copilot/AcpMessageList';
+import {
+    AcpMessageList,
+    AcpProgressPanel,
+    getAcpGlobalState,
+    type ClashProjectEntity,
+} from './copilot/AcpMessageList';
 import { AgentMotion, type AgentMotionState } from './copilot/AgentMotion';
 import { AcpAgentLogo } from './copilot/AcpAgentLogo';
 import { CopilotRailSlot } from './copilot/CopilotRail';
@@ -31,7 +37,13 @@ import { SortableList, useSortableItem } from './ui/sortable';
 import { useDragGesture } from './ui/gesture';
 import { useAppFeedback } from './AppFeedback';
 import { useClashRuntime, type AcpSessionConfigOption, type AcpSessionModeState, type ClashRuntimeStatus, type Runtime, type RuntimePromptQueueMode, type RuntimeQueuedPrompt, type RuntimeSessionInfo } from '@clash/web-ui/hooks/useClashRuntime';
-import type { AvailableCommand, ByoMessage as RuntimeMessage } from '@clash/web-ui/lib/acpEvents';
+import {
+    commandActionFromAvailableCommand,
+    type AvailableCommand,
+    type ByoMessage as RuntimeMessage,
+    type PlanEntry,
+    type RuntimeGoalState,
+} from '@clash/web-ui/lib/acpEvents';
 import { applyAgentAttribution, parseAgentCanvasPatch } from '@clash/web-ui/lib/agentCanvasPatch';
 import type { Node as RFNode, Edge as RFEdge, Connection as RFConnection } from '@xyflow/react';
 import ReactMarkdown from 'react-markdown';
@@ -50,6 +62,19 @@ import {
     REVISION_RESTORE_REQUEST_EVENT,
     type RevisionRestoreRequest,
 } from './nodes/RevisionHistoryBadge';
+import {
+    buildComposerConfigOptions,
+    buildRunMenuConfigOptions,
+    configModeOptionPresentation,
+    findSelectConfigOption,
+    isFastSessionConfigOption,
+    sessionConfigOptionEnabled,
+    withSessionStateCommands,
+} from '@clash/web-ui/lib/sessionConfigOptions';
+import { preferredRecentAgentId } from '@clash/web-ui/lib/recentRunPreferences';
+import {
+    clampCopilotPanelWidthForViewport,
+} from './copilotPanelLayout';
 
 
 interface Message {
@@ -67,7 +92,9 @@ interface ChatbotCopilotProps {
     threadId: string;
     initialMessages: Message[];
     width: number;
+    onWidthPreview?: (width: number) => void;
     onWidthChange: (width: number) => void;
+    onResizeStateChange?: (resizing: boolean) => void;
     isCollapsed: boolean;
     onCollapseChange: (collapsed: boolean) => void;
     collapsedLauncherPlacement?: 'canvas' | 'header';
@@ -75,6 +102,7 @@ interface ChatbotCopilotProps {
     followingAgent?: boolean;
     onFollowingAgentChange?: (following: boolean) => void;
     onAgentCanvasTarget?: (nodeId: string) => void;
+    onOpenClashEntity?: (entity: ClashProjectEntity) => void;
     onAddNode?: (type: string, extraData?: any) => string;
     onRemoveNode?: (nodeId: string, options?: { actorClientType?: string; ifMatch?: string }) => void;
     onAddEdge?: (params: RFEdge | RFConnection, options?: { actorClientType?: string; ifMatch?: string }) => void;
@@ -100,14 +128,15 @@ interface ChatbotCopilotProps {
     /** Human user represented by the selected local agent. */
     actorUserId?: string;
     annotationBlocks?: AgentAnnotationDraft[];
+    activeAnnotationId?: string | null;
+    onAnnotationOpen?: (annotationId: string) => void;
+    onAnnotationClose?: () => void;
     onAnnotationChange?: (annotationId: string, note: string) => void;
     onAnnotationRemove?: (annotationId: string) => void;
     onAnnotationLocate?: (annotationId: string) => void;
     onAnnotationsSubmitted?: (annotationIds: string[]) => void;
 }
 
-const COPILOT_PANEL_MIN_WIDTH = 420;
-const COPILOT_PANEL_MAX_WIDTH_FRACTION = 3 / 7;
 const CREATIVE_STATUS_ROTATION_MS = 15_000;
 const ACTIVITY_DURATION_MINUTE_MS = 60_000;
 
@@ -200,11 +229,6 @@ const markdownComponents = {
 type MentionNodeRef = { id: string; type: string; label: string; thumbnail?: string };
 
 const DESKTOP_LOCAL_RUNTIME_ID = 'desktop-local';
-const LOCAL_AGENT_PREFERENCE = [
-    'codex-acp',
-    'claude-acp',
-    'gemini',
-];
 
 const COPILOT_PANEL_TRANSITION = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
 const COPILOT_PANEL_COLLAPSE_TRANSITION = { duration: 0.34, ease: [0.22, 1, 0.36, 1] as const, times: [0, 0.52, 1] };
@@ -240,14 +264,7 @@ const COPILOT_PANEL_EXPANDED_DESKTOP_STATE = {
     y: 0,
 };
 
-function preferredLocalAgentId(agents: Runtime['agents']): string | undefined {
-    for (const id of LOCAL_AGENT_PREFERENCE) {
-        if (agents.some((agent) => agent.id === id)) return id;
-    }
-    return agents[0]?.id;
-}
-
-function agentDisplayName(agentId?: string | null): string {
+export function agentDisplayName(agentId?: string | null): string {
     if (!agentId) return 'Agent';
     if (agentId === 'codex-acp') return 'Codex';
     if (agentId === 'claude-acp') return 'Claude';
@@ -258,10 +275,14 @@ function agentDisplayName(agentId?: string | null): string {
         .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-type AcpSelectValue = { value: string; name: string; description?: string | null };
-type AcpSelectValueGroup = { id: string; name: string; options: AcpSelectValue[] };
+type AcpSelectValue = {
+    value: string;
+    name: string;
+    description?: string | null;
+    groupName?: string;
+};
 
-function findAcpSelectConfigOption(
+export function findAcpSelectConfigOption(
     options: AcpSessionConfigOption[],
     category: 'model' | 'thought_level' | 'mode',
 ): AcpSessionConfigOption | null {
@@ -272,10 +293,19 @@ function findAcpSelectConfigOption(
     ) ?? null;
 }
 
+function isAcpSelectConfigOption(option: AcpSessionConfigOption): boolean {
+    return option.type === 'select' && Array.isArray(option.options);
+}
+
 function flattenAcpSelectValues(option?: AcpSessionConfigOption | null): AcpSelectValue[] {
-    if (!option?.options) return [];
+    if (!option?.options || !isAcpSelectConfigOption(option)) return [];
     return option.options.flatMap((entry) => {
-        if ('options' in entry && Array.isArray(entry.options)) return entry.options;
+        if ('options' in entry && Array.isArray(entry.options)) {
+            return entry.options.map((value) => ({
+                ...value,
+                groupName: entry.name,
+            }));
+        }
         return [entry as AcpSelectValue];
     }).filter((entry): entry is AcpSelectValue =>
         !!entry &&
@@ -284,20 +314,20 @@ function flattenAcpSelectValues(option?: AcpSessionConfigOption | null): AcpSele
     );
 }
 
-function defaultPermissionModeForSession(
+export function defaultPermissionModeForSession(
     sessionModes?: AcpSessionModeState | null,
     modeConfigOption?: AcpSessionConfigOption | null,
 ): string | null {
+    const modeValues = flattenAcpSelectValues(modeConfigOption);
+    if (typeof modeConfigOption?.currentValue === 'string' && modeValues.some((value) => value.value === modeConfigOption.currentValue)) {
+        return modeConfigOption.currentValue;
+    }
+    if (modeValues.length > 0) return modeValues[0]?.value ?? null;
     const availableModes = sessionModes?.availableModes ?? [];
     if (sessionModes?.currentModeId && availableModes.some((mode) => mode.id === sessionModes.currentModeId)) {
         return sessionModes.currentModeId;
     }
     if (availableModes.length > 0) return availableModes[0]?.id ?? null;
-    const modeValues = flattenAcpSelectValues(modeConfigOption);
-    if (modeConfigOption?.currentValue && modeValues.some((value) => value.value === modeConfigOption.currentValue)) {
-        return modeConfigOption.currentValue;
-    }
-    if (modeValues.length > 0) return modeValues[0]?.value ?? null;
     return null;
 }
 
@@ -307,14 +337,14 @@ function isPermissionModeValidForSession(
     modeConfigOption?: AcpSessionConfigOption | null,
 ): modeId is string {
     if (!modeId) return false;
-    const availableModes = sessionModes?.availableModes ?? [];
-    if (availableModes.length > 0) return availableModes.some((mode) => mode.id === modeId);
     const modeValues = flattenAcpSelectValues(modeConfigOption);
     if (modeValues.length > 0) return modeValues.some((value) => value.value === modeId);
+    const availableModes = sessionModes?.availableModes ?? [];
+    if (availableModes.length > 0) return availableModes.some((mode) => mode.id === modeId);
     return false;
 }
 
-function resolvePermissionModeForSession(
+export function resolvePermissionModeForSession(
     savedModeId: string | undefined,
     sessionModes?: AcpSessionModeState | null,
     modeConfigOption?: AcpSessionConfigOption | null,
@@ -323,7 +353,7 @@ function resolvePermissionModeForSession(
     return defaultPermissionModeForSession(sessionModes, modeConfigOption);
 }
 
-function permissionModeOption(modeId: string | null | undefined): { permissionModeId?: string } {
+export function permissionModeOption(modeId: string | null | undefined): { permissionModeId?: string } {
     return modeId ? { permissionModeId: modeId } : {};
 }
 
@@ -352,19 +382,6 @@ function revisionRestorePrompt(request: RevisionRestoreRequest): string {
         request.command,
         '```',
     ].join('\n');
-}
-
-function modelValuesForHarness(
-    option: AcpSessionConfigOption | null,
-    harnessName: string,
-): AcpSelectValueGroup[] {
-    const values = flattenAcpSelectValues(option);
-    if (values.length === 0) return [];
-    return [{
-        id: harnessName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'harness',
-        name: harnessName,
-        options: values,
-    }];
 }
 
 function selectedAcpSelectValue(option?: AcpSessionConfigOption | null): AcpSelectValue | null {
@@ -593,7 +610,9 @@ function ChatbotCopilot({
     threadId,
     initialMessages,
     width,
+    onWidthPreview,
     onWidthChange,
+    onResizeStateChange,
     isCollapsed,
     onCollapseChange,
     collapsedLauncherPlacement = 'canvas',
@@ -601,6 +620,7 @@ function ChatbotCopilot({
     followingAgent = false,
     onFollowingAgentChange,
     onAgentCanvasTarget,
+    onOpenClashEntity,
     onAddNode,
     onRemoveNode,
     onAddEdge,
@@ -620,6 +640,9 @@ function ChatbotCopilot({
     onUploadFiles,
     actorUserId,
     annotationBlocks = [],
+    activeAnnotationId = null,
+    onAnnotationOpen,
+    onAnnotationClose,
     onAnnotationChange,
     onAnnotationRemove,
     onAnnotationLocate,
@@ -676,41 +699,28 @@ function ChatbotCopilot({
         if (draft === dismissedSlashCommand) return null;
         return query.toLowerCase();
     }, [chatMode, dismissedSlashCommand, input]);
-    const slashCommandCandidates = useMemo(() => {
-        const seen = new Set<string>();
-        return (clashRt.availableCommands ?? []).filter((command) => {
-            const name = normalizeSlashCommandName(command).toLowerCase();
-            if (!name || seen.has(name)) return false;
-            seen.add(name);
-            return true;
-        });
-    }, [clashRt.availableCommands]);
-    const slashCommandOptions = useMemo(() => {
-        if (slashCommandQuery === null) return [];
-        return slashCommandCandidates
-            .filter((command) => {
-                const name = normalizeSlashCommandName(command);
-                if (!name) return false;
-                if (slashCommandQuery.length === 0) return true;
-                return name.toLowerCase().startsWith(slashCommandQuery);
-            })
-            .slice(0, 12);
-    }, [slashCommandCandidates, slashCommandQuery]);
-    useEffect(() => {
-        if (slashCommandQuery === null || clashRt.status !== 'draft') return;
-        clashRt.prepareSession?.();
-    }, [clashRt.prepareSession, clashRt.status, slashCommandQuery]);
-    const handlePickSlashCommand = useCallback((command: AvailableCommand) => {
-        const name = normalizeSlashCommandName(command);
-        if (!name) return;
-        setDismissedSlashCommand(`/${name}`);
-        setInput(`/${name} `);
-    }, []);
     const isDesktopLocalMode = useMemo(() => getRuntimeConfig().mode === 'desktop', []);
     const desktopLocalRuntime = useMemo(
         () => clashRt.runtimes.find((rt) => rt.id === DESKTOP_LOCAL_RUNTIME_ID) ?? null,
         [clashRt.runtimes],
     );
+    const desktopRuntimeStartupPending =
+        chatMode === 'runtime' &&
+        isDesktopLocalMode &&
+        clashRt.startupStatus === 'loading';
+    const desktopRuntimeStartupFailed =
+        chatMode === 'runtime' &&
+        isDesktopLocalMode &&
+        clashRt.startupStatus === 'error';
+    const desktopRuntimeNeedsSetup =
+        chatMode === 'runtime' &&
+        isDesktopLocalMode &&
+        clashRt.startupStatus === 'ready' &&
+        (!desktopLocalRuntime || desktopLocalRuntime.agents.length === 0);
+    const desktopRuntimeUnavailable =
+        desktopRuntimeStartupPending ||
+        desktopRuntimeStartupFailed ||
+        desktopRuntimeNeedsSetup;
     const selectedRuntimeForSession = useMemo(
         () => (chatMode === 'runtime'
             ? clashRt.runtimes.find((rt) => rt.id === clashRt.selectedRuntimeId) ?? desktopLocalRuntime
@@ -721,7 +731,10 @@ function ChatbotCopilot({
     const effectiveSessionHarnessId =
         sessionHarnessId ??
         clashRt.selectedAgentId ??
-        preferredLocalAgentId(sessionHarnessOptions) ??
+        preferredRecentAgentId(
+            sessionHarnessOptions,
+            selectedRuntimeForSession?.preferences?.agent_id,
+        ) ??
         null;
     const selectedSessionHarness = useMemo(
         () => sessionHarnessOptions.find((agent) => agent.id === effectiveSessionHarnessId) ?? null,
@@ -763,10 +776,6 @@ function ChatbotCopilot({
         () => findAcpSelectConfigOption(effectiveSessionConfigOptions, 'model'),
         [effectiveSessionConfigOptions],
     );
-    const thoughtLevelConfigOption = useMemo(
-        () => findAcpSelectConfigOption(effectiveSessionConfigOptions, 'thought_level'),
-        [effectiveSessionConfigOptions],
-    );
     const modeConfigOption = useMemo(
         () => findAcpSelectConfigOption(effectiveSessionConfigOptions, 'mode'),
         [effectiveSessionConfigOptions],
@@ -774,16 +783,51 @@ function ChatbotCopilot({
     const sessionPermissionModeId = useMemo(() => {
         if (!effectiveSessionHarnessId) return defaultPermissionModeForSession(effectiveSessionModes, modeConfigOption);
         return resolvePermissionModeForSession(
-            sessionPermissionModeByAgentId[effectiveSessionHarnessId],
+            sessionPermissionModeByAgentId[effectiveSessionHarnessId]
+                ?? selectedRuntimeForSession?.preferences?.mode_by_agent[effectiveSessionHarnessId],
             effectiveSessionModes,
             modeConfigOption,
         );
-    }, [effectiveSessionHarnessId, effectiveSessionModes, modeConfigOption, sessionPermissionModeByAgentId]);
+    }, [
+        effectiveSessionHarnessId,
+        effectiveSessionModes,
+        modeConfigOption,
+        selectedRuntimeForSession?.preferences?.mode_by_agent,
+        sessionPermissionModeByAgentId,
+    ]);
     const setSessionPermissionModeForAgent = useCallback((agentId: string | null | undefined, modeId: string) => {
         if (!agentId) return;
         setSessionPermissionModeByAgentId((prev) => (
             prev[agentId] === modeId ? prev : { ...prev, [agentId]: modeId }
         ));
+    }, []);
+    const slashCommandCandidates = useMemo(() => {
+        const seen = new Set<string>();
+        return withSessionStateCommands(
+            clashRt.availableCommands ?? [],
+            effectiveSessionConfigOptions,
+        ).filter((command) => {
+            const name = normalizeSlashCommandName(command).toLowerCase();
+            if (!name || seen.has(name)) return false;
+            seen.add(name);
+            return true;
+        });
+    }, [clashRt.availableCommands, effectiveSessionConfigOptions, effectiveSessionHarnessId]);
+    const slashCommandOptions = useMemo(() => {
+        if (slashCommandQuery === null) return [];
+        return slashCommandCandidates
+            .filter((command) => {
+                const name = normalizeSlashCommandName(command);
+                if (!name) return false;
+                return matchesSlashCommand(command, slashCommandQuery);
+            })
+            .slice(0, 12);
+    }, [slashCommandCandidates, slashCommandQuery]);
+    const handlePickSlashCommand = useCallback((command: AvailableCommand) => {
+        const name = normalizeSlashCommandName(command);
+        if (!name) return;
+        setDismissedSlashCommand(`/${name}`);
+        setInput(name.toLowerCase() === 'plan' ? `/${name}` : `/${name} `);
     }, []);
     const runtimeTitle = useMemo(
         () => titleFromRuntimeMessages(clashRt.messages) ?? normalizedRuntimeSessionTitle(clashRt.currentSession?.title),
@@ -817,8 +861,15 @@ function ChatbotCopilot({
     useEffect(() => {
         if (sessionHarnessOptions.length === 0) return;
         if (effectiveSessionHarnessId && sessionHarnessOptions.some((agent) => agent.id === effectiveSessionHarnessId)) return;
-        setSessionHarnessId(preferredLocalAgentId(sessionHarnessOptions) ?? null);
-    }, [effectiveSessionHarnessId, sessionHarnessOptions]);
+        setSessionHarnessId(preferredRecentAgentId(
+            sessionHarnessOptions,
+            selectedRuntimeForSession?.preferences?.agent_id,
+        ) ?? null);
+    }, [
+        effectiveSessionHarnessId,
+        selectedRuntimeForSession?.preferences?.agent_id,
+        sessionHarnessOptions,
+    ]);
 
     const handleSelectSessionHarness = useCallback((agentId: string) => {
         if (sessionHarnessLocked) return;
@@ -949,13 +1000,18 @@ function ChatbotCopilot({
 
     const handleSelectSessionPermissionMode = useCallback((modeId: string) => {
         const runtime = selectedRuntimeForSession ?? desktopLocalRuntime;
-        const agentId = effectiveSessionHarnessId ?? preferredLocalAgentId(runtime?.agents ?? []);
+        const agentId = effectiveSessionHarnessId ?? preferredRecentAgentId(
+            runtime?.agents ?? [],
+            runtime?.preferences?.agent_id,
+        );
         if (!agentId) return;
         setSessionPermissionModeForAgent(agentId, modeId);
 
-        if (effectiveSessionModes) {
-            clashRt.setSessionMode(modeId);
-            if (chatMode === 'runtime' && runtime?.status === 'online' && !clashRt.ready && clashRt.status !== 'draft') {
+        if (modeConfigOption) {
+            if (clashRt.ready || clashRt.status === 'draft') {
+                clashRt.setConfigOption(modeConfigOption.id, modeId);
+            }
+            if (!clashRt.ready && chatMode === 'runtime' && runtime?.status === 'online') {
                 clashRt.startDraft(runtime.id, undefined, {
                     projectId,
                     agentId,
@@ -965,23 +1021,14 @@ function ChatbotCopilot({
             return;
         }
 
-        if (modeConfigOption && clashRt.ready) {
-            clashRt.setConfigOption(modeConfigOption.id, modeId);
-            return;
-        }
-        if (modeConfigOption && clashRt.status === 'draft') {
-            clashRt.setConfigOption(modeConfigOption.id, modeId);
-        }
-        if (chatMode === 'runtime' && runtime?.status === 'online') {
-            const sessionOptions = {
-                projectId,
-                agentId,
-                ...permissionModeOption(modeId),
-            };
-            if (clashRt.ready) {
-                void clashRt.select(runtime.id, undefined, sessionOptions);
-            } else {
-                clashRt.startDraft(runtime.id, undefined, sessionOptions);
+        if (effectiveSessionModes) {
+            clashRt.setSessionMode(modeId);
+            if (chatMode === 'runtime' && runtime?.status === 'online' && !clashRt.ready && clashRt.status !== 'draft') {
+                clashRt.startDraft(runtime.id, undefined, {
+                    projectId,
+                    agentId,
+                    ...permissionModeOption(modeId),
+                });
             }
         }
     }, [
@@ -1013,6 +1060,8 @@ function ChatbotCopilot({
     const historyButtonRef = useRef<HTMLButtonElement | null>(null);
     const panelRef = useRef<HTMLElement | null>(null);
     const resizeStartWidthRef = useRef(width);
+    const resizeFrameRef = useRef<number | null>(null);
+    const pendingResizeWidthRef = useRef(width);
     const appliedRuntimeCanvasNodesRef = useRef<Set<string>>(new Set());
     const appliedRuntimeCanvasNodeDeletesRef = useRef<Set<string>>(new Set());
     const appliedRuntimeCanvasEdgesRef = useRef<Set<string>>(new Set());
@@ -1068,7 +1117,10 @@ function ChatbotCopilot({
                 if (!clashRt.selectedRuntimeId || clashRt.status === 'idle' || clashRt.status === 'disconnected') {
                     clashRt.startDraft(runtime.id, undefined, {
                         projectId,
-                        agentId: effectiveSessionHarnessId ?? preferredLocalAgentId(runtime.agents),
+                        agentId: effectiveSessionHarnessId ?? preferredRecentAgentId(
+                            runtime.agents,
+                            runtime.preferences?.agent_id,
+                        ),
                         ...permissionModeOption(sessionPermissionModeId),
                     });
                 }
@@ -1122,7 +1174,10 @@ function ChatbotCopilot({
         if (!runtime || runtime.status !== 'online' || runtime.agents.length === 0) return;
         clashRt.startDraft(runtime.id, undefined, {
             projectId,
-            agentId: preferredLocalAgentId(runtime.agents),
+            agentId: preferredRecentAgentId(
+                runtime.agents,
+                runtime.preferences?.agent_id,
+            ),
             ...permissionModeOption(sessionPermissionModeId),
         });
     }, [
@@ -1263,6 +1318,7 @@ function ChatbotCopilot({
     }, [desktopLocalSetupIssue, notifyAgentHarnessRequired]);
     const showRuntimeComposerCompanion =
         chatMode === 'runtime' &&
+        !desktopRuntimeUnavailable &&
         clashRt.messages.length === 0 &&
         !desktopLocalSetupIssue &&
         (showRuntimeActivityRow || (isDesktopLocalMode && (clashRt.status === 'draft' || clashRt.ready)));
@@ -1502,7 +1558,10 @@ function ChatbotCopilot({
         if (chatMode === 'runtime' && runtime?.status === 'online') {
             clashRt.startDraft(runtime.id, undefined, {
                 projectId,
-                agentId: effectiveSessionHarnessId ?? preferredLocalAgentId(runtime.agents),
+                agentId: effectiveSessionHarnessId ?? preferredRecentAgentId(
+                    runtime.agents,
+                    runtime.preferences?.agent_id,
+                ),
                 ...permissionModeOption(sessionPermissionModeId),
                 freshSession: true,
             });
@@ -1691,6 +1750,47 @@ function ChatbotCopilot({
                 scope: 'current-canvas' as const,
             }));
     }, [nodes, mentionSources, assetThumbsByNodeId]);
+    const clashProjectEntities = useMemo<ClashProjectEntity[]>(() => {
+        const entities = new Map<string, ClashProjectEntity>();
+        const addEntity = (entity: ClashProjectEntity) => {
+            entities.set(`${entity.kind}:${entity.id}`, entity);
+        };
+        if (workspaceContext?.activeSurface) {
+            addEntity({
+                kind: workspaceContext.activeSurface.kind,
+                id: workspaceContext.activeSurface.id,
+                label: workspaceContext.activeSurface.name,
+            });
+        }
+        for (const source of mentionSources) {
+            if (source.kind === 'node') {
+                addEntity({
+                    kind: 'canvas-node',
+                    id: source.id,
+                    label: source.label,
+                    ...(source.canvasId ? { canvasId: source.canvasId } : {}),
+                });
+                if (source.canvasId) {
+                    addEntity({
+                        kind: 'canvas',
+                        id: source.canvasId,
+                        label: source.canvasName?.trim() || source.canvasId,
+                    });
+                }
+            } else if (
+                source.kind === 'asset'
+                || source.kind === 'timeline'
+                || source.kind === 'director-stage'
+            ) {
+                addEntity({
+                    kind: source.kind,
+                    id: source.id,
+                    label: source.label,
+                });
+            }
+        }
+        return [...entities.values()];
+    }, [mentionSources, workspaceContext]);
 
     // ─── Submit ──────────────────────────────────────────────
     const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -1731,14 +1831,32 @@ function ChatbotCopilot({
 
         // Persistent-runtime mode: raw prompt, daemon handles the local ACP session.
         if (chatMode === 'runtime') {
-            const runtimePrompt = buildCopilotPrompt(
-                value,
-                workspaceContext,
-                mentionableNodes,
-                annotations,
-            );
+            // ACP slash commands are control-plane input. Prefixing them with
+            // Clash's workspace-context comment stops harnesses from parsing
+            // the leading slash, so send commands exactly as the user typed.
+            const runtimePrompt = rawValue.startsWith('/')
+                ? rawValue
+                : buildCopilotPrompt(
+                    value,
+                    workspaceContext,
+                    mentionableNodes,
+                    annotations,
+                );
             if (selectedSessionHarnessAuth) {
                 setInput(rawValue);
+                return;
+            }
+            const exactSlashCommand = rawValue.startsWith('/') && !/\s/.test(rawValue)
+                ? slashCommandCandidates.find((command) => (
+                    normalizeSlashCommandName(command).toLowerCase() === rawValue.slice(1).toLowerCase()
+                ))
+                : null;
+            const advertisedAction = exactSlashCommand
+                ? commandActionFromAvailableCommand(exactSlashCommand)
+                : null;
+            if (advertisedAction?.kind === 'setConfigOption') {
+                setInput('');
+                clashRt.setConfigOption(advertisedAction.configId, advertisedAction.value);
                 return;
             }
             if (!clashRt.ready) {
@@ -1747,7 +1865,10 @@ function ChatbotCopilot({
                     if (!clashRt.selectedRuntimeId || clashRt.status === 'idle' || clashRt.status === 'disconnected') {
                         clashRt.startDraft(runtime.id, undefined, {
                             projectId,
-                            agentId: effectiveSessionHarnessId ?? preferredLocalAgentId(runtime.agents),
+                            agentId: effectiveSessionHarnessId ?? preferredRecentAgentId(
+                                runtime.agents,
+                                runtime.preferences?.agent_id,
+                            ),
                             ...permissionModeOption(sessionPermissionModeId),
                         });
                     }
@@ -1805,17 +1926,22 @@ function ChatbotCopilot({
     };
 
     // A prompt created on Home is still a normal Project composer submit.
-    // Wait until the desktop runtime inventory arrives so an empty list does
-    // not briefly masquerade as a missing harness during the initial fetch.
+    // The server-owned startup snapshot is the only authority here: never
+    // interpret a not-yet-loaded inventory as an agent selection.
     useEffect(() => {
         const message = initialMessageRef.current?.trim();
         if (!message || chatMode !== 'runtime' || initialRuntimePromptHandledRef.current) return;
+        if (isDesktopLocalMode && clashRt.startupStatus !== 'ready') return;
+        if (desktopRuntimeNeedsSetup) {
+            initialRuntimePromptHandledRef.current = true;
+            return;
+        }
         if (isDesktopLocalMode && !desktopLocalRuntime) return;
         initialRuntimePromptHandledRef.current = true;
         void handleSubmit(message);
         // handleSubmit intentionally uses the render that supplied the now-known runtime inventory.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [chatMode, desktopLocalRuntime, isDesktopLocalMode]);
+    }, [chatMode, clashRt.startupStatus, desktopLocalRuntime, desktopRuntimeNeedsSetup, isDesktopLocalMode]);
 
     // Strip the ?prompt= query param after first use so a manual reload
     // doesn't re-send the original landing prompt.
@@ -1827,21 +1953,50 @@ function ChatbotCopilot({
     }, []);
 
     // ─── Resize ──────────────────────────────────────────────
-    const resizeGestureBind = useDragGesture(({ active, first, movement: [movementX] }) => {
-        if (first) resizeStartWidthRef.current = width;
-        setIsResizing((current) => (current === active ? current : active));
-        const maxWidth = Math.max(
-            COPILOT_PANEL_MIN_WIDTH,
-            Math.floor(window.innerWidth * COPILOT_PANEL_MAX_WIDTH_FRACTION),
+    const applyResizePreview = useCallback((nextWidth: number) => {
+        if (panelRef.current) panelRef.current.style.width = `${nextWidth}px`;
+        onWidthPreview?.(nextWidth);
+    }, [onWidthPreview]);
+
+    const cancelResizeFrame = useCallback(() => {
+        if (resizeFrameRef.current === null) return;
+        cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+    }, []);
+
+    const scheduleResizePreview = useCallback((nextWidth: number) => {
+        pendingResizeWidthRef.current = nextWidth;
+        if (resizeFrameRef.current !== null) return;
+        resizeFrameRef.current = requestAnimationFrame(() => {
+            resizeFrameRef.current = null;
+            applyResizePreview(pendingResizeWidthRef.current);
+        });
+    }, [applyResizePreview]);
+
+    const resizeGestureBind = useDragGesture<PointerEvent>(({ first, last, movement: [movementX], event }) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (first) {
+            resizeStartWidthRef.current = width;
+            setIsResizing(true);
+            onResizeStateChange?.(true);
+        }
+        const nextWidth = clampCopilotPanelWidthForViewport(
+            resizeStartWidthRef.current - movementX,
+            window.innerWidth,
         );
-        const nextWidth = Math.max(
-            COPILOT_PANEL_MIN_WIDTH,
-            Math.min(maxWidth, resizeStartWidthRef.current - movementX),
-        );
-        onWidthChange(nextWidth);
+        if (last) {
+            cancelResizeFrame();
+            applyResizePreview(nextWidth);
+            onWidthChange(nextWidth);
+            setIsResizing(false);
+            onResizeStateChange?.(false);
+            return;
+        }
+        scheduleResizePreview(nextWidth);
     }, {
-        axis: 'x',
         preventDefault: true,
+        axis: 'x',
         pointer: { capture: true },
         eventOptions: { passive: false },
     });
@@ -1854,6 +2009,11 @@ function ChatbotCopilot({
             document.body.style.userSelect = previousUserSelect;
         };
     }, [isResizing]);
+
+    useEffect(() => () => {
+        cancelResizeFrame();
+        onResizeStateChange?.(false);
+    }, [cancelResizeFrame, onResizeStateChange]);
 
     // ─── Render ──────────────────────────────────────────────
     return (
@@ -2009,6 +2169,7 @@ function ChatbotCopilot({
                                         onClick={handleNewSession}
                                         label={t('copilot.header.newSession')}
                                         size="sm"
+                                        disabled={desktopRuntimeUnavailable}
                                         icon={<Plus className="w-4 h-4" weight="bold" />}
                                     />
                                     <DropdownMenu>
@@ -2017,6 +2178,7 @@ function ChatbotCopilot({
                                                 ref={historyButtonRef}
                                                 label={t('copilot.header.history')}
                                                 size="sm"
+                                                disabled={desktopRuntimeUnavailable}
                                                 className="relative"
                                                 icon={
                                                     <>
@@ -2180,6 +2342,7 @@ function ChatbotCopilot({
                                             <RuntimeMessageList
                                                 messages={clashRt.messages}
                                                 ready={clashRt.ready}
+                                                startupPending={desktopRuntimeStartupPending}
                                                 desktopLocalMode={isDesktopLocalMode}
                                                 localRuntime={desktopLocalRuntime}
                                                 setupIssue={desktopLocalSetupIssue}
@@ -2187,6 +2350,9 @@ function ChatbotCopilot({
                                                 activityLabel={showRuntimeActivityRow ? activityStatusLabel : null}
                                                 agentMotionState={agentMotionState}
                                                 mentionableNodes={mentionableNodes}
+                                                clashEntities={clashProjectEntities}
+                                                onOpenClashEntity={onOpenClashEntity}
+                                                agentId={clashRt.currentSession?.agentId ?? clashRt.selectedAgentId}
                                                 renderEmptyActivity={!showRuntimeComposerCompanion}
                                             />
                                         </>
@@ -2243,6 +2409,7 @@ function ChatbotCopilot({
                                 )}
                             </AnimatePresence>
 
+                            {!desktopRuntimeUnavailable && (
                             <div className="clash-copilot-composer-stack absolute bottom-0 left-0 right-0">
                                 {showRuntimeComposerCompanion && (
                                     <motion.div
@@ -2260,6 +2427,10 @@ function ChatbotCopilot({
                                         />
                                     </motion.div>
                                 )}
+                                <AcpPermissionCard
+                                    request={clashRt.permissionRequests[0] ?? null}
+                                    onRespond={clashRt.respondPermission}
+                                />
                                 {slashCommandQuery !== null && (
                                     <SlashCommandPalette
                                         commands={slashCommandOptions}
@@ -2283,6 +2454,17 @@ function ChatbotCopilot({
                                         onReorder={clashRt.reorderPromptQueue}
                                     />
                                 )}
+                                {chatMode === 'runtime' && clashRt.goal ? (
+                                    <GoalSessionBar
+                                        goal={clashRt.goal}
+                                        planEntries={acpGlobalState.planEntries}
+                                        onEdit={() => setInput(`/goal ${clashRt.goal?.objective ?? ''}`)}
+                                        onToggle={() => clashRt.sendMessage(
+                                            clashRt.goal?.status === 'active' ? '/goal pause' : '/goal resume',
+                                        )}
+                                        onClear={() => clashRt.sendMessage('/goal clear')}
+                                    />
+                                ) : null}
                                 <div className="relative z-20">
                                     <div
                                         aria-hidden="true"
@@ -2306,11 +2488,12 @@ function ChatbotCopilot({
                                             mentionableNodes={mentionableNodes}
                                             projectId={projectId}
                                             annotationBlocks={annotationBlocks}
+                                            onAnnotationOpen={onAnnotationOpen}
                                             onAnnotationChange={onAnnotationChange}
                                             onAnnotationRemove={onAnnotationRemove}
                                             onAnnotationLocate={onAnnotationLocate}
                                             toolbarAccessory={(
-                                                <div className="flex min-w-0 items-center gap-1">
+                                                <div className="clash-composer-session-controls flex min-w-0 items-center gap-1">
                                                     {onFollowingAgentChange ? (
                                                         <Tooltip label={t(followingAgent ? 'copilot.follow.stop' : 'copilot.follow.start')}>
                                                             <IconButton
@@ -2325,10 +2508,24 @@ function ChatbotCopilot({
                                                         </Tooltip>
                                                     ) : null}
                                                     <HarnessPermissionSelector
+                                                        agentId={effectiveSessionHarnessId}
                                                         selectedPermissionModeId={sessionPermissionModeId}
                                                         sessionModes={effectiveSessionModes}
                                                         modeConfigOption={modeConfigOption}
                                                         onSelectPermissionMode={handleSelectSessionPermissionMode}
+                                                    />
+                                                    <SessionPlanTag
+                                                        configOptions={effectiveSessionConfigOptions}
+                                                        onSelectConfigOption={handleSelectSessionConfigOption}
+                                                    />
+                                                    {clashRt.goal ? (
+                                                        <SessionGoalTag
+                                                            onClear={() => clashRt.sendMessage('/goal clear')}
+                                                        />
+                                                    ) : null}
+                                                    <InlineSessionConfigControls
+                                                        configOptions={effectiveSessionConfigOptions}
+                                                        onSelectConfigOption={handleSelectSessionConfigOption}
                                                     />
                                                 </div>
                                             )}
@@ -2341,8 +2538,8 @@ function ChatbotCopilot({
                                                     statusLabel={null}
                                                     harnessOptions={sessionHarnessOptions}
                                                     harnessLocked={sessionHarnessLocked}
+                                                    configOptions={effectiveSessionConfigOptions}
                                                     modelConfigOption={modelConfigOption}
-                                                    thoughtLevelConfigOption={thoughtLevelConfigOption}
                                                     onSelectHarness={handleSelectSessionHarness}
                                                     onSelectConfigOption={handleSelectSessionConfigOption}
                                                 />
@@ -2351,6 +2548,53 @@ function ChatbotCopilot({
                                     </div>
                                 </div>
                             </div>
+                            )}
+                            {(desktopRuntimeNeedsSetup || desktopRuntimeStartupFailed) && (
+                                <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-4 sm:px-6">
+                                    <div className="mx-auto flex w-full max-w-[68rem] items-center gap-3 rounded-2xl border border-warm-border bg-warm-surface/95 p-4 shadow-lg backdrop-blur">
+                                        <ShieldWarning className="h-5 w-5 shrink-0 text-stone-600 dark:text-stone-300" weight="duotone" />
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                                {t('copilot.status.agentHarnessRequiredTitle')}
+                                            </div>
+                                            <div className="mt-0.5 text-xs text-stone-600 dark:text-stone-300">
+                                                {desktopRuntimeStartupFailed
+                                                    ? clashRt.errorMessage ?? t('copilot.status.desktopLocalSetupRequired')
+                                                    : t('copilot.status.agentHarnessRequired')}
+                                            </div>
+                                        </div>
+                                        <a
+                                            href="/settings?section=agents"
+                                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg bg-brand px-3 text-sm font-semibold text-white transition-colors hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-warm-surface"
+                                        >
+                                            {t('copilot.actions.openAgents')}
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+                            <AnimatePresence>
+                                {activeAnnotationId && annotationBlocks.some((annotation) => annotation.id === activeAnnotationId) ? (
+                                    <motion.div
+                                        key="annotation-inspector"
+                                        className="absolute inset-0 z-[80] bg-warm-page"
+                                        initial={{ opacity: 0, x: 16 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        exit={{ opacity: 0, x: 12 }}
+                                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                                    >
+                                        <AgentAnnotationInspector
+                                            annotations={annotationBlocks}
+                                            activeId={activeAnnotationId}
+                                            disabled={isProcessing}
+                                            onSelect={(annotationId) => onAnnotationOpen?.(annotationId)}
+                                            onBack={() => onAnnotationClose?.()}
+                                            onChange={onAnnotationChange}
+                                            onRemove={onAnnotationRemove}
+                                            onLocate={onAnnotationLocate}
+                                        />
+                                    </motion.div>
+                                ) : null}
+                            </AnimatePresence>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -2368,7 +2612,10 @@ function ChatbotCopilot({
                     setRuntimePicker(null);
                     if (!rt) return;
                     setChatMode('runtime');
-                    const pickedAgentId = agentId ?? preferredLocalAgentId(rt.agents);
+                    const pickedAgentId = agentId ?? preferredRecentAgentId(
+                        rt.agents,
+                        rt.preferences?.agent_id,
+                    );
                     const pickedAgent = pickedAgentId ? rt.agents.find((agent) => agent.id === pickedAgentId) : null;
                     if (pickedAgent?.auth?.status === 'needs-auth') {
                         setSessionHarnessId(pickedAgent.id);
@@ -2399,6 +2646,59 @@ function ChatbotCopilot({
             />
             </Collapsible>
         </MotionConfig>
+    );
+}
+
+function AcpPermissionCard({
+    request,
+    onRespond,
+}: {
+    request: ReturnType<typeof useClashRuntime>['permissionRequests'][number] | null;
+    onRespond: (requestId: string, optionId: string | null) => void;
+}) {
+    if (!request) return null;
+    const toolTitle = typeof request.toolCall.title === 'string'
+        ? request.toolCall.title
+        : 'The agent wants to run a tool';
+    return (
+        <div
+            role="group"
+            aria-label="Approval required"
+            data-testid="acp-permission-card"
+            className={`${COPILOT_COMPOSER_RAIL_WIDTH_CLASS} relative z-30 mb-2 overflow-hidden rounded-xl border border-warm-border bg-warm-surface/95 p-3 shadow-lg backdrop-blur`}
+        >
+            <div className="mb-2 flex min-w-0 items-start gap-2">
+                <ShieldWarning
+                    className="mt-0.5 h-4 w-4 shrink-0 text-status-attention"
+                    weight="duotone"
+                    aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-content-primary">
+                        Approval required
+                    </div>
+                    <div className="truncate text-xs text-content-secondary" title={toolTitle}>
+                        {toolTitle}
+                    </div>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {request.options.map((option) => (
+                    <Button
+                        key={option.optionId}
+                        type="button"
+                        onClick={() => onRespond(request.requestId, option.optionId)}
+                        className={`min-h-9 justify-start rounded-lg border border-warm-border bg-warm-muted px-3 text-left text-xs font-medium shadow-none hover:bg-warm-hover ${
+                            option.kind.startsWith('reject')
+                                ? 'text-status-down'
+                                : 'text-content-primary'
+                        }`}
+                    >
+                        {option.name}
+                    </Button>
+                ))}
+            </div>
+        </div>
     );
 }
 
@@ -2460,6 +2760,42 @@ function normalizeSlashCommandName(command: AvailableCommand): string {
     return command.name.replace(/^\/+/, '').trim();
 }
 
+function matchesSlashCommand(command: AvailableCommand, query: string): boolean {
+    if (!query) return true;
+    const name = normalizeSlashCommandName(command).toLowerCase();
+    const normalizedQuery = query.toLowerCase();
+    if (name.startsWith(normalizedQuery) || name.includes(normalizedQuery)) return true;
+    let cursor = 0;
+    for (const character of normalizedQuery) {
+        cursor = name.indexOf(character, cursor);
+        if (cursor === -1) return false;
+        cursor += 1;
+    }
+    return true;
+}
+
+function isSkillSlashCommand(command: AvailableCommand): boolean {
+    if (/^(?:\$|skill[:/])/i.test(normalizeSlashCommandName(command))) return true;
+    const metadata = command.metadata ?? {};
+    const markers = [
+        command.kind,
+        command.type,
+        command.category,
+        command.source,
+        metadata.kind,
+        metadata.type,
+        metadata.category,
+        metadata.source,
+    ];
+    if (markers.some((value) => (
+        typeof value === 'string' &&
+        (value.toLowerCase() === 'skill' || value.toLowerCase() === 'skills')
+    ))) {
+        return true;
+    }
+    return /^\[?skill[:\]\s-]/i.test(command.description?.trim() ?? '');
+}
+
 function SlashCommandPalette({
     commands,
     onPick,
@@ -2471,14 +2807,14 @@ function SlashCommandPalette({
 }) {
     const sections = [
         {
-            id: 'agent',
-            label: 'Agent commands & skills',
-            commands: commands.filter((command) => normalizeSlashCommandName(command) !== 'model'),
+            id: 'commands',
+            label: 'Commands',
+            commands: commands.filter((command) => !isSkillSlashCommand(command)),
         },
         {
-            id: 'session',
-            label: 'Session',
-            commands: commands.filter((command) => normalizeSlashCommandName(command) === 'model'),
+            id: 'skills',
+            label: 'Skills',
+            commands: commands.filter(isSkillSlashCommand),
         },
     ].filter((section) => section.commands.length > 0);
     const commandStore = useComboboxStore({
@@ -2524,7 +2860,7 @@ function SlashCommandPalette({
                                         className="group flex min-h-14 w-full cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-warm-muted/80 data-[active-item]:bg-warm-muted focus-visible:bg-warm-muted"
                                     >
                                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warm-border bg-warm-page text-stone-600 group-data-[active-item]:border-brand/20 group-data-[active-item]:text-brand dark:text-stone-300">
-                                            {section.id === 'session'
+                                            {section.id === 'commands'
                                                 ? <SlidersHorizontal className="h-4 w-4" weight="bold" aria-hidden="true" />
                                                 : <BookOpen className="h-4 w-4" weight="bold" aria-hidden="true" />}
                                         </span>
@@ -2614,7 +2950,7 @@ function RuntimeAuthNotice({
     );
 }
 
-function SessionConfigSelector({
+export function SessionConfigSelector({
     open,
     onOpenChange,
     embedded = false,
@@ -2622,8 +2958,8 @@ function SessionConfigSelector({
     statusLabel,
     harnessOptions,
     harnessLocked,
+    configOptions,
     modelConfigOption,
-    thoughtLevelConfigOption,
     onSelectHarness,
     onSelectConfigOption,
 }: {
@@ -2634,30 +2970,40 @@ function SessionConfigSelector({
     statusLabel?: string | null;
     harnessOptions: Runtime['agents'];
     harnessLocked?: boolean;
+    configOptions: AcpSessionConfigOption[];
     modelConfigOption: AcpSessionConfigOption | null;
-    thoughtLevelConfigOption: AcpSessionConfigOption | null;
     onSelectHarness: (agentId: string) => void;
     onSelectConfigOption: (configId: string, value: string | boolean) => void;
 }) {
     const { t } = useTranslation();
     const selectedHarnessName = agentDisplayName(selectedHarnessId);
-    const modelGroups = useMemo(
-        () => modelValuesForHarness(modelConfigOption, selectedHarnessName),
-        [modelConfigOption, selectedHarnessName],
-    );
     const selectedModel = useMemo(() => selectedAcpSelectValue(modelConfigOption), [modelConfigOption]);
-    const thoughtValues = useMemo(() => flattenAcpSelectValues(thoughtLevelConfigOption), [thoughtLevelConfigOption]);
-    const selectedThoughtLevel = useMemo(() => selectedAcpSelectValue(thoughtLevelConfigOption), [thoughtLevelConfigOption]);
     const modelLabel = selectedModel?.name ?? agentDisplayName(selectedHarnessId);
-    const triggerLabel = selectedModel
-        ? `${selectedHarnessName} · ${modelLabel}`
-        : selectedHarnessName;
-    const modelOptionCount = useMemo(
-        () => modelGroups.reduce((count, group) => count + group.options.length, 0),
-        [modelGroups],
+    const configurableOptions = useMemo(
+        () => buildRunMenuConfigOptions(configOptions),
+        [configOptions],
     );
-    const hasModelSwitch = !!modelConfigOption && modelOptionCount > 0;
-    const selectorDisabled = !!harnessLocked && !hasModelSwitch;
+    const effortConfigOption = useMemo(
+        () => configurableOptions.find((option) => option.type === 'select' && option.category === 'thought_level') ?? null,
+        [configurableOptions],
+    );
+    const selectedEffort = useMemo(
+        () => selectedAcpSelectValue(effortConfigOption),
+        [effortConfigOption],
+    );
+    const fastModeEnabled = configurableOptions.some(
+        (option) => isFastSessionConfigOption(option) && sessionConfigOptionEnabled(option),
+    );
+    const triggerLabel = [
+        selectedModel ? `${selectedHarnessName} · ${modelLabel}` : selectedHarnessName,
+        selectedEffort?.name,
+        fastModeEnabled ? 'Fast mode' : null,
+    ].filter(Boolean).join(' · ');
+    const hasConfigSwitch = configurableOptions.some((option) => (
+        option.type === 'boolean' ||
+        (option.type === 'select' && flattenAcpSelectValues(option).length > 0)
+    ));
+    const selectorDisabled = !!harnessLocked && !hasConfigSwitch;
     const hasStatusLabel = !!statusLabel;
     const menuLabel = t('copilot.sessionConfig.label');
     const comboHarnesses = harnessOptions.length > 0
@@ -2667,18 +3013,6 @@ function SessionConfigSelector({
             : [];
     const modelSections = useMemo<SelectSection<string>[]>(() => {
         const sections: SelectSection<string>[] = [];
-        const thoughtSubmenuSections: SelectSection<string>[] = thoughtLevelConfigOption && thoughtValues.length > 0
-            ? [{
-                id: 'thought-level-values',
-                label: <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">Effort</span>,
-                options: thoughtValues.map((value) => ({
-                    value: JSON.stringify({ type: 'config', configId: thoughtLevelConfigOption.id, value: value.value }),
-                    label: value.name,
-                    description: value.description ?? undefined,
-                    selected: value.value === thoughtLevelConfigOption.currentValue,
-                })),
-            }]
-            : [];
         if (!harnessLocked && comboHarnesses.length > 0) {
             sections.push({
                 id: 'harness',
@@ -2695,57 +3029,68 @@ function SessionConfigSelector({
                 })),
             });
         }
-        if (modelConfigOption && modelGroups.length > 0) {
-            sections.push({
-                id: 'acp-model',
-                label: (
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.11em]">
-                        {modelConfigOption.name || 'Model'}
-                    </span>
-                ),
-                options: modelGroups.flatMap((group) => group.options).map((value) => {
-                    return {
-                        value: JSON.stringify({ type: 'config', configId: modelConfigOption.id, value: value.value }),
-                        label: value.name,
-                        selected: value.value === modelConfigOption.currentValue,
-                    };
-                }),
-            });
-        }
-        if (modelConfigOption && thoughtSubmenuSections.length > 0) {
-            sections.push(...thoughtSubmenuSections);
-        }
-        if (!modelConfigOption && thoughtLevelConfigOption && thoughtValues.length > 0) {
-            sections.push({
-                id: 'thought-level',
-                options: [{
-                    value: JSON.stringify({ type: 'noop', configId: thoughtLevelConfigOption.id }),
-                    label: thoughtLevelConfigOption.name || 'Thinking effort',
-                    description: selectedThoughtLevel?.name,
+        const configRows = configurableOptions.flatMap((option) => {
+            const label = option.category === 'model'
+                ? 'Model'
+                : option.category === 'thought_level'
+                    ? 'Effort'
+                    : isFastSessionConfigOption(option)
+                        ? 'Fast mode'
+                        : option.name;
+            if (option.type === 'boolean' && typeof option.currentValue === 'boolean') {
+                return [{
+                    value: JSON.stringify({ type: 'noop', configId: option.id }),
+                    label,
+                    description: option.currentValue ? 'On' : 'Off',
                     hasSubmenu: true,
-                    submenuLabel: thoughtLevelConfigOption.name || 'Thinking effort',
+                    submenuLabel: label,
                     submenuSections: [{
-                        id: 'thought-level-values',
-                        options: thoughtValues.map((value) => ({
-                            value: JSON.stringify({ type: 'config', configId: thoughtLevelConfigOption.id, value: value.value }),
-                            label: value.name,
-                            description: value.description ?? undefined,
-                            selected: value.value === thoughtLevelConfigOption.currentValue,
-                        })),
+                        id: `acp-config-${option.id}-values`,
+                        options: [{
+                            value: JSON.stringify({
+                                type: 'config',
+                                configId: option.id,
+                                value: !option.currentValue,
+                            }),
+                            label: option.name,
+                            description: option.description ?? (option.currentValue ? 'On' : 'Off'),
+                            selected: option.currentValue,
+                        }],
                     }],
+                }];
+            }
+            const values = flattenAcpSelectValues(option);
+            const selected = values.find((value) => value.value === option.currentValue);
+            if (values.length === 0) return [];
+            return [{
+                value: JSON.stringify({ type: 'noop', configId: option.id }),
+                label,
+                description: selected?.name ?? String(option.currentValue),
+                hasSubmenu: true,
+                submenuLabel: label,
+                submenuSections: [{
+                    id: `acp-config-${option.id}-values`,
+                    options: values.map((value) => ({
+                        value: JSON.stringify({ type: 'config', configId: option.id, value: value.value }),
+                        label: value.name,
+                        description: value.groupName ?? value.description ?? option.description ?? undefined,
+                        selected: value.value === option.currentValue,
+                    })),
                 }],
+            }];
+        });
+        if (configRows.length > 0) {
+            sections.push({
+                id: 'acp-run-config',
+                options: configRows,
             });
         }
         return sections;
     }, [
         comboHarnesses,
+        configurableOptions,
         harnessLocked,
-        modelConfigOption,
-        modelGroups,
         selectedHarnessId,
-        selectedThoughtLevel?.name,
-        thoughtLevelConfigOption,
-        thoughtValues,
     ]);
 
     return (
@@ -2762,8 +3107,12 @@ function SessionConfigSelector({
             disabled={selectorDisabled}
             onValueChange={(value) => {
                 try {
-                    const parsed = JSON.parse(value) as { type?: string; configId?: string; value?: string; agentId?: string };
-                    if (parsed.type === 'config' && parsed.configId && typeof parsed.value === 'string') {
+                    const parsed = JSON.parse(value) as { type?: string; configId?: string; value?: string | boolean; agentId?: string };
+                    if (
+                        parsed.type === 'config' &&
+                        parsed.configId &&
+                        (typeof parsed.value === 'string' || typeof parsed.value === 'boolean')
+                    ) {
                         onSelectConfigOption(parsed.configId, parsed.value);
                     } else if (parsed.type === 'harness' && parsed.agentId) {
                         onSelectHarness(parsed.agentId);
@@ -2794,17 +3143,36 @@ function SessionConfigSelector({
                 </span>
                 </>
             )}
-            triggerLabel={modelLabel}
+            triggerLabel={(
+                <span className="clash-session-config-summary inline-flex min-w-0 items-center gap-1.5">
+                    {fastModeEnabled ? (
+                        <Lightning
+                            data-session-fast-mode-indicator=""
+                            aria-label="Fast mode on"
+                            className="h-3.5 w-3.5 shrink-0 text-content-primary"
+                            weight="fill"
+                        />
+                    ) : null}
+                    <span className="shrink-0">{modelLabel}</span>
+                    {selectedEffort ? (
+                        <span className="clash-session-config-effort truncate font-normal text-stone-500 dark:text-stone-400">
+                            {selectedEffort.name}
+                        </span>
+                    ) : null}
+                </span>
+            )}
         />
     );
 }
 
-function HarnessPermissionSelector({
+export function HarnessPermissionSelector({
+    agentId,
     selectedPermissionModeId,
     sessionModes,
     modeConfigOption,
     onSelectPermissionMode,
 }: {
+    agentId: string | null;
     selectedPermissionModeId: string | null;
     sessionModes: AcpSessionModeState | null;
     modeConfigOption: AcpSessionConfigOption | null;
@@ -2826,6 +3194,14 @@ function HarnessPermissionSelector({
         selectedAcpSelectValue(modeConfigOption)
     ), [modeConfigOption, modeValues, selectedPermissionModeId]);
     const selectedMode = useMemo(() => {
+        if (selectedAcpMode) {
+            const presentation = configModeOptionPresentation(selectedAcpMode);
+            return {
+                value: selectedAcpMode.value,
+                label: presentation.label,
+                description: presentation.description,
+            };
+        }
         if (selectedSessionMode) {
             return {
                 value: selectedSessionMode.id,
@@ -2833,42 +3209,38 @@ function HarnessPermissionSelector({
                 description: selectedSessionMode.description ?? undefined,
             };
         }
-        if (selectedAcpMode) {
-            return {
-                value: selectedAcpMode.value,
-                label: selectedAcpMode.name,
-                description: selectedAcpMode.description ?? undefined,
-            };
-        }
         return null;
-    }, [selectedAcpMode, selectedSessionMode]);
+    }, [agentId, selectedAcpMode, selectedSessionMode]);
     const sections = useMemo<SelectSection<string>[]>(() => [
         {
             id: 'modes',
-            label: sessionModeValues.length > 0 ? 'Mode' : modeConfigOption?.name ?? 'Mode',
-            options: sessionModeValues.length > 0
-                ? sessionModeValues.map((mode) => ({
+            label: modeValues.length > 0 ? modeConfigOption?.name ?? 'Mode' : 'Mode',
+            options: modeValues.length > 0
+                ? modeValues.map((mode) => {
+                    const presentation = configModeOptionPresentation(mode);
+                    return {
+                        value: mode.value,
+                        label: presentation.label,
+                        description: presentation.description,
+                        selected: mode.value === selectedPermissionModeId,
+                        icon: <ShieldWarning className="h-4 w-4" aria-hidden="true" />,
+                    };
+                })
+                : sessionModeValues.map((mode) => ({
                     value: mode.id,
                     label: mode.name,
                     description: mode.description ?? undefined,
                     selected: mode.id === selectedMode?.value,
                     icon: <ShieldWarning className="h-4 w-4" aria-hidden="true" />,
-                }))
-                : modeValues.map((mode) => ({
-                    value: mode.value,
-                    label: mode.name,
-                    description: mode.description ?? undefined,
-                    selected: mode.value === selectedPermissionModeId,
-                    icon: <ShieldWarning className="h-4 w-4" aria-hidden="true" />,
-            })),
+                })),
         },
-    ], [modeConfigOption?.name, modeValues, selectedMode, selectedPermissionModeId, sessionModeValues]);
+    ], [agentId, modeConfigOption?.name, modeValues, selectedMode, selectedPermissionModeId, sessionModeValues]);
 
     if (!selectedMode) return null;
     return (
         <SelectMenu
-            className="relative flex justify-start"
-            triggerClassName="clash-session-permission-trigger max-w-full text-left text-status-down"
+            className="relative flex shrink-0 justify-start"
+            triggerClassName="clash-session-permission-trigger shrink-0 text-left text-status-down"
             triggerTestId="session-permission-mode-trigger"
             value={selectedMode.value}
             sections={sections}
@@ -2885,8 +3257,250 @@ function HarnessPermissionSelector({
                     <ShieldWarning className="h-4 w-4" aria-hidden="true" />
                 </span>
             )}
-            triggerLabel={selectedMode.label}
+            triggerLabel={(
+                <span className="clash-session-permission-label truncate">
+                    {selectedMode.label}
+                </span>
+            )}
         />
+    );
+}
+
+export function SessionPlanTag({
+    configOptions,
+    onSelectConfigOption,
+}: {
+    configOptions: AcpSessionConfigOption[];
+    onSelectConfigOption: (configId: string, value: string | boolean) => void;
+}) {
+    const option = findSelectConfigOption(configOptions, 'collaboration_mode');
+    const values = flattenAcpSelectValues(option);
+    const fallback = values.find((value) => value.value === 'default')
+        ?? values.find((value) => value.value !== 'plan');
+    if (!option || option.currentValue !== 'plan' || !fallback) return null;
+    return (
+        <span
+            data-testid="session-plan-tag"
+            className="clash-session-state-tag inline-flex h-8 min-w-0 shrink-0 items-center gap-1 rounded-md bg-warm-muted/75 pl-2 pr-1 text-xs font-semibold text-content-primary"
+        >
+            <Lightbulb className="h-4 w-4 shrink-0 text-stone-600 dark:text-stone-300" aria-hidden="true" />
+            <span className="clash-session-state-tag-label">Plan</span>
+            <IconButton
+                label="Exit Plan mode"
+                size="sm"
+                shape="rounded"
+                className="h-6 min-h-6 w-6 min-w-6 text-stone-500 hover:bg-warm-hover hover:text-content-primary"
+                onClick={() => onSelectConfigOption(option.id, fallback.value)}
+                icon={<X className="h-3.5 w-3.5" weight="bold" />}
+            />
+        </span>
+    );
+}
+
+function SessionGoalTag({ onClear }: { onClear: () => void }) {
+    return (
+        <span
+            data-testid="session-goal-tag"
+            className="clash-session-state-tag inline-flex h-8 min-w-0 shrink-0 items-center gap-1 rounded-md bg-warm-muted/75 pl-2 pr-1 text-xs font-semibold text-content-primary"
+        >
+            <Target className="h-4 w-4 shrink-0 text-stone-600 dark:text-stone-300" aria-hidden="true" />
+            <span className="clash-session-state-tag-label">Goal</span>
+            <IconButton
+                label="Close Goal"
+                size="sm"
+                shape="rounded"
+                className="h-6 min-h-6 w-6 min-w-6 text-stone-500 hover:bg-warm-hover hover:text-content-primary"
+                onClick={onClear}
+                icon={<X className="h-3.5 w-3.5" weight="bold" />}
+            />
+        </span>
+    );
+}
+
+function formatGoalDuration(seconds: number | undefined): string | null {
+    if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return null;
+    if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
+    if (seconds < 3_600) return `${Math.max(1, Math.round(seconds / 60))}m`;
+    return `${Math.max(1, Math.round(seconds / 3_600))}h`;
+}
+
+function GoalSessionBar({
+    goal,
+    planEntries,
+    onEdit,
+    onToggle,
+    onClear,
+}: {
+    goal: RuntimeGoalState;
+    planEntries: PlanEntry[];
+    onEdit: () => void;
+    onToggle: () => void;
+    onClear: () => void;
+}) {
+    const [detailsOpen, setDetailsOpen] = useState(false);
+    const duration = formatGoalDuration(goal.timeUsedSeconds);
+    const isActive = goal.status === 'active';
+    const statusLabel = goal.status.trim().toLowerCase();
+    const completedPlanEntries = planEntries.filter((entry) => entry.status === 'completed').length;
+    return (
+        <div
+            role="region"
+            aria-label="Goal status"
+            className="relative z-20 mx-4 mb-2 overflow-hidden rounded-xl border border-warm-border bg-warm-surface/95 shadow-sm backdrop-blur sm:mx-6"
+        >
+            <div className="flex min-h-12 items-center gap-2 px-3 py-2">
+                <Target className="h-4 w-4 shrink-0 text-stone-500 dark:text-stone-300" weight="duotone" aria-hidden="true" />
+                <span className="shrink-0 text-sm font-semibold text-content-primary">
+                    Goal {statusLabel}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-stone-600 dark:text-stone-300" title={goal.objective}>
+                    {goal.objective}
+                </span>
+                {duration ? (
+                    <span className="shrink-0 text-xs tabular-nums text-stone-500 dark:text-stone-400">{duration}</span>
+                ) : null}
+                {planEntries.length > 0 ? (
+                    <span
+                        aria-label="Goal plan progress"
+                        className="shrink-0 text-xs tabular-nums text-stone-500 dark:text-stone-400"
+                    >
+                        {completedPlanEntries}/{planEntries.length}
+                    </span>
+                ) : null}
+                <span className="flex shrink-0 items-center gap-0.5">
+                    <IconButton
+                        label="Edit goal"
+                        size="sm"
+                        shape="rounded"
+                        onClick={onEdit}
+                        icon={<PencilSimple className="h-4 w-4" />}
+                    />
+                    <IconButton
+                        label={isActive ? 'Pause goal' : 'Resume goal'}
+                        size="sm"
+                        shape="rounded"
+                        onClick={onToggle}
+                        icon={isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    />
+                    <IconButton
+                        label="Clear goal"
+                        size="sm"
+                        shape="rounded"
+                        onClick={onClear}
+                        icon={<Trash className="h-4 w-4" />}
+                    />
+                    <IconButton
+                        label={detailsOpen ? 'Hide goal details' : 'Show goal details'}
+                        aria-expanded={detailsOpen}
+                        size="sm"
+                        shape="rounded"
+                        onClick={() => setDetailsOpen((open) => !open)}
+                        icon={<CaretRight className={`h-4 w-4 transition-transform ${detailsOpen ? 'rotate-90' : ''}`} />}
+                    />
+                </span>
+            </div>
+            {detailsOpen ? (
+                <div className="border-t border-warm-border/80 px-3 py-2 text-xs text-stone-500 dark:text-stone-400">
+                    <div>
+                        <span>Status: {goal.status}</span>
+                        {goal.tokenBudget !== undefined ? (
+                            <span className="ml-3">Budget: {goal.tokenBudget.toLocaleString()} tokens</span>
+                        ) : null}
+                    </div>
+                    {planEntries.length > 0 ? (
+                        <ul aria-label="Goal plan" className="mt-2 space-y-1.5">
+                            {planEntries.map((entry, index) => (
+                                <li
+                                    key={`${entry.content}-${index}`}
+                                    className="flex min-w-0 items-start gap-2 text-content-secondary"
+                                >
+                                    <span
+                                        aria-hidden="true"
+                                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                                            entry.status === 'completed'
+                                                ? 'bg-status-ready'
+                                                : entry.status === 'in_progress'
+                                                    ? 'bg-status-busy'
+                                                    : 'bg-stone-400'
+                                        }`}
+                                    />
+                                    <span className={entry.status === 'completed' ? 'line-through opacity-70' : ''}>
+                                        {entry.content}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : null}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+export function InlineSessionConfigControls({
+    configOptions,
+    onSelectConfigOption,
+}: {
+    configOptions: AcpSessionConfigOption[];
+    onSelectConfigOption: (configId: string, value: string | boolean) => void;
+}) {
+    const options = buildComposerConfigOptions(configOptions);
+    if (options.length === 0) return null;
+    return (
+        <>
+            {options.map((option) => {
+                if (option.type === 'boolean' && typeof option.currentValue === 'boolean') {
+                    return (
+                        <Button
+                            key={option.id}
+                            aria-label={option.name}
+                            aria-pressed={option.currentValue}
+                            title={option.description ?? option.name}
+                            onClick={() => onSelectConfigOption(option.id, !option.currentValue)}
+                            size="sm"
+                            className={`clash-inline-session-config-trigger h-9 min-h-9 shrink-0 gap-1 rounded-md border-transparent px-1.5 text-sm font-semibold shadow-none ${
+                                 option.currentValue
+                                     ? 'bg-brand/[0.08] text-slate-900 dark:bg-brand/[0.12] dark:text-neutral-50'
+                                     : 'bg-transparent text-stone-600 hover:bg-warm-muted/60 dark:text-stone-300'
+                             }`}
+                            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+                         >
+                             <span className="clash-inline-session-config-label">{option.name}</span>
+                         </Button>
+                     );
+                 }
+                const values = flattenAcpSelectValues(option);
+                const selected = values.find((value) => value.value === option.currentValue) ?? values[0];
+                if (!selected) return null;
+                return (
+                    <SelectMenu
+                        key={option.id}
+                        className="relative flex justify-start"
+                        triggerClassName="clash-inline-session-config-trigger max-w-[180px] text-left"
+                        value={selected.value}
+                        sections={[{
+                            id: `composer-config-${option.id}`,
+                            options: values.map((value) => ({
+                                value: value.value,
+                                label: value.name,
+                                description: value.description ?? option.description ?? undefined,
+                                selected: value.value === option.currentValue,
+                            })),
+                        }]}
+                        onValueChange={(value) => onSelectConfigOption(option.id, value)}
+                        ariaLabel={option.name}
+                        title={option.description ?? option.name}
+                        variant="inline"
+                        placement="top"
+                        menuWidth={260}
+                        maxMenuHeight={320}
+                        stopPropagation
+                        triggerPrefix={<SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}
+                        triggerLabel={`${option.name} · ${selected.name}`}
+                    />
+                );
+            })}
+        </>
     );
 }
 
@@ -2932,9 +3546,17 @@ function RuntimeMenuRow({
 const RuntimeMessageRow = memo(function RuntimeMessageRow({
     message,
     mentionableNodes,
+    clashEntities,
+    onOpenClashEntity,
+    agentId,
+    isStreaming,
 }: {
     message: RuntimeMessage;
     mentionableNodes: MentionNodeRef[];
+    clashEntities: readonly ClashProjectEntity[];
+    onOpenClashEntity?: (entity: ClashProjectEntity) => void;
+    agentId?: string | null;
+    isStreaming?: boolean;
 }) {
     const userContent = message.role === 'user'
         ? message.parts
@@ -2959,7 +3581,13 @@ const RuntimeMessageRow = memo(function RuntimeMessageRow({
                     mentionNodes={mentionableNodes}
                 />
             ) : (
-                <AcpMessageList messages={[message]} />
+                <AcpMessageList
+                    messages={[message]}
+                    clashEntities={clashEntities}
+                    onOpenClashEntity={onOpenClashEntity}
+                    agentId={agentId}
+                    isStreaming={isStreaming}
+                />
             )}
         </motion.div>
     );
@@ -2974,6 +3602,7 @@ const RuntimeMessageRow = memo(function RuntimeMessageRow({
 function RuntimeMessageList({
     messages,
     ready,
+    startupPending = false,
     desktopLocalMode,
     localRuntime,
     setupIssue,
@@ -2981,10 +3610,14 @@ function RuntimeMessageList({
     activityLabel,
     agentMotionState,
     mentionableNodes,
+    clashEntities,
+    onOpenClashEntity,
+    agentId,
     renderEmptyActivity = true,
 }: {
     messages: RuntimeMessage[];
     ready: boolean;
+    startupPending?: boolean;
     desktopLocalMode?: boolean;
     localRuntime?: Runtime | null;
     setupIssue?: string | null;
@@ -2992,9 +3625,15 @@ function RuntimeMessageList({
     activityLabel?: string | null;
     agentMotionState: AgentMotionState;
     mentionableNodes: MentionNodeRef[];
+    clashEntities: readonly ClashProjectEntity[];
+    onOpenClashEntity?: (entity: ClashProjectEntity) => void;
+    agentId?: string | null;
     renderEmptyActivity?: boolean;
 }) {
     const { t } = useTranslation();
+    if (startupPending) {
+        return <RuntimeLoadingStatus label={t('copilot.status.desktopLocalStarting')} />;
+    }
     if (messages.length === 0) {
         const hasLocalAgent = !!localRuntime && localRuntime.status === 'online' && localRuntime.agents.length > 0;
         const activitySlot = (
@@ -3042,6 +3681,8 @@ function RuntimeMessageList({
             </div>
         );
     }
+    const lastAssistantId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
+    const hasStreamingTurn = status === 'sending' || status === 'streaming';
     return (
         <div className="mx-auto flex w-full max-w-[68rem] flex-col gap-3">
             {messages.map((message) => (
@@ -3049,6 +3690,10 @@ function RuntimeMessageList({
                     key={message.id}
                     message={message}
                     mentionableNodes={mentionableNodes}
+                    clashEntities={clashEntities}
+                    onOpenClashEntity={onOpenClashEntity}
+                    agentId={agentId}
+                    isStreaming={hasStreamingTurn && message.id === lastAssistantId}
                 />
             ))}
             {activityLabel ? (
@@ -3263,7 +3908,28 @@ function AgentStatusLine({ label }: { label: string }) {
 
 function RuntimeLoadingStatus({ label }: { label: string }) {
     return (
-        <div role="status" aria-label={label} aria-live="polite" className="sr-only" />
+        <div
+            role="status"
+            aria-label={label}
+            aria-live="polite"
+            className="flex min-h-[calc(100dvh-6.5rem)] items-center justify-center"
+        >
+            <span aria-hidden="true" className="flex items-center gap-1.5">
+                {[0, 1, 2].map((index) => (
+                    <motion.span
+                        key={index}
+                        className="h-2 w-2 rounded-full bg-brand"
+                        animate={{ opacity: [0.3, 1, 0.3], scale: [0.82, 1, 0.82] }}
+                        transition={{
+                            duration: 1.05,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                            delay: index * 0.14,
+                        }}
+                    />
+                ))}
+            </span>
+        </div>
     );
 }
 

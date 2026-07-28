@@ -11,11 +11,12 @@ import {
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { LoroDoc } from "loro-crdt";
+import { clashHomeForLocalDataDir } from "./local-paths.js";
 import {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
@@ -238,6 +239,9 @@ export interface LocalApiOptions {
   clashRoot?: string;
   userId?: string;
   localAcp?: LocalAcpAdapter;
+  /** Single process-owned cold-start barrier. Runtime/config consumers wait
+   * for it; diagnostic snapshot reads may opt out explicitly. */
+  localAcpReady?: Promise<void>;
   falMock?: FalMockQueueService;
   audioConfig?: LocalAudioConfigStore;
   syncConfig?: LocalSyncConfigStore;
@@ -542,11 +546,23 @@ export interface LocalAcpAttachSessionParams extends LocalAcpCreateSessionParams
 
 export interface LocalAcpAdapter {
   warmup?(): Promise<void> | void;
+  reconcileConfiguration?(): Promise<void> | void;
   disposeAll?(): Promise<void> | void;
   listRuntimes(opts?: {
     probe?: boolean | "auth" | "config" | "none";
     refresh?: boolean;
   }): Promise<{ runtimes: LocalAcpRuntime[] }>;
+  updateRunPreferences?(update: {
+    agent_id: string;
+    config_values?: Record<string, string | boolean>;
+    mode_id?: string;
+  }): Promise<{
+    preferences: {
+      agent_id?: string;
+      config_by_agent: Record<string, Record<string, string | boolean>>;
+      mode_by_agent: Record<string, string>;
+    };
+  }>;
   createSession(
     params: LocalAcpCreateSessionParams,
   ): Promise<{ session_id: string }>;
@@ -843,12 +859,6 @@ function localAudioReceiptReadToken(
     config: { asr: readState.asr, tts: readState.tts },
     updatedAt: readState.updated_at,
   });
-}
-
-function inferClashRoot(dataDir: string, explicit?: string): string {
-  if (explicit?.trim()) return resolve(explicit);
-  const resolved = resolve(dataDir);
-  return basename(resolved) === "local-api" ? dirname(resolved) : resolved;
 }
 
 async function updateRuntimeSession(
@@ -1153,12 +1163,19 @@ function appendPersistedSessionMessage(
     return;
   }
 
-  const seen = new Set(existing.events.map(eventKey));
+  const persistedCounts = new Map<string, number>();
+  for (const event of existing.events) {
+    const key = eventKey(event);
+    persistedCounts.set(key, (persistedCounts.get(key) ?? 0) + 1);
+  }
+  const incomingCounts = new Map<string, number>();
   for (const event of incoming.events) {
     const key = eventKey(event);
-    if (seen.has(key)) continue;
+    const occurrence = (incomingCounts.get(key) ?? 0) + 1;
+    incomingCounts.set(key, occurrence);
+    if (occurrence <= (persistedCounts.get(key) ?? 0)) continue;
     existing.events.push(structuredClone(event));
-    seen.add(key);
+    persistedCounts.set(key, occurrence);
   }
 }
 
@@ -3389,7 +3406,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
   const localApiDataDir = resolve(options.dataDir);
-  const clashRoot = inferClashRoot(options.dataDir, options.clashRoot);
+  const clashRoot = clashHomeForLocalDataDir(options.dataDir, options.clashRoot);
   const replicaStore = new FileReplicaStore(join(options.dataDir, "projects"));
   const sessionMessageStore = createLocalSessionMessageStore(db);
   options.localAcp?.setSessionMessageStore?.(sessionMessageStore);
@@ -5026,6 +5043,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.all("/fal/*", (c) => handleFalMockHttpRequest(falMock, c.req.raw));
   app.get("/api/v1/runtimes", async (c) => {
     if (!options.localAcp) return json({ runtimes: [] });
+    if (c.req.query("readiness") !== "snapshot") {
+      await options.localAcpReady;
+    }
     const rawProbe = c.req.query("probe");
     const probe =
       rawProbe === "1" || rawProbe === "true"
@@ -5046,6 +5066,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         readToken: localHarnessesReceiptReadToken(result),
       });
     }
+    await options.localAcpReady;
     const rawProbe = c.req.query("probe");
     const probe =
       rawProbe === "1" || rawProbe === "true"
@@ -5679,6 +5700,38 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
   });
 
+  app.put("/api/v1/runtimes/:runtimeId/preferences", async (c) => {
+    if (!options.localAcp?.updateRunPreferences) {
+      return c.json({ error: "Local agent runtime preferences unavailable" }, 404);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      agent_id?: unknown;
+      config_values?: unknown;
+      mode_id?: unknown;
+    };
+    const agentId = typeof body.agent_id === "string" ? body.agent_id.trim() : "";
+    if (!agentId) return c.json({ error: "Missing agent_id" }, 400);
+    const configValues =
+      body.config_values &&
+      typeof body.config_values === "object" &&
+      !Array.isArray(body.config_values)
+        ? Object.fromEntries(
+            Object.entries(body.config_values).filter(
+              (entry): entry is [string, string | boolean] =>
+                typeof entry[1] === "string" || typeof entry[1] === "boolean",
+            ),
+          )
+        : undefined;
+    const modeId = typeof body.mode_id === "string" && body.mode_id.trim()
+      ? body.mode_id.trim()
+      : undefined;
+    return c.json(await options.localAcp.updateRunPreferences({
+      agent_id: agentId,
+      ...(configValues ? { config_values: configValues } : {}),
+      ...(modeId ? { mode_id: modeId } : {}),
+    }));
+  });
+
   app.post("/api/v1/runtimes/:runtimeId/sessions", async (c) => {
     if (!options.localAcp) {
       return c.json(
@@ -5699,6 +5752,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       agent_template_id?: string;
       agent_member_id?: string;
       agent_id?: string;
+      config_values?: unknown;
       permission_mode?: string;
       project_id?: string;
       resume_session_id?: string;
@@ -5708,6 +5762,17 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     let agentMemberId = body.agent_member_id?.trim() || undefined;
     const requestedAgentId = body.agent_id?.trim() || undefined;
     const permissionMode = body.permission_mode?.trim() || undefined;
+    const configValues =
+      body.config_values &&
+      typeof body.config_values === "object" &&
+      !Array.isArray(body.config_values)
+        ? Object.fromEntries(
+            Object.entries(body.config_values).filter(
+              (entry): entry is [string, string | boolean] =>
+                typeof entry[1] === "string" || typeof entry[1] === "boolean",
+            ),
+          )
+        : undefined;
     let agentId: string | undefined = requestedAgentId;
     if (agentMemberId) {
       const agentMembers = await db.update((state) =>
@@ -5830,6 +5895,18 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
             }
           : {}),
       });
+      if (agentId && options.localAcp.updateRunPreferences) {
+        await options.localAcp.updateRunPreferences({
+          agent_id: agentId,
+          ...(configValues ? { config_values: configValues } : {}),
+          ...(permissionMode ? { mode_id: permissionMode } : {}),
+        }).catch((error) => {
+          console.warn(
+            "[local-api] could not persist recent ACP run choices:",
+            errorMessage(error),
+          );
+        });
+      }
       if (body.project_id && localSessionId) {
         await finalizeRuntimeSessionId(db, localSessionId, created.session_id, {
           ...pendingSessionPatches.get(localSessionId),

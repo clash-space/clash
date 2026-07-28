@@ -1,4 +1,4 @@
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 
 export interface WebDistPathInput {
   envWebDistDir?: string;
@@ -7,18 +7,13 @@ export interface WebDistPathInput {
   resourcesPath: string;
 }
 
-export interface AcpBinDirsInput {
-  isPackaged: boolean;
-  moduleDir: string;
-  resourcesPath: string;
-  dataDir: string;
-}
-
 export interface ClashCliEntryPathInput {
   isPackaged: boolean;
   moduleDir: string;
   resourcesPath: string;
 }
+
+export type AgentBundlePathInput = ClashCliEntryPathInput;
 
 export interface ClashSdkPythonPathInput {
   envPythonSdkPath?: string;
@@ -27,20 +22,39 @@ export interface ClashSdkPythonPathInput {
   resourcesPath: string;
 }
 
+export interface DesktopStatePaths {
+  root: string;
+  userData: string;
+  sessionData: string;
+  logs: string;
+  crashDumps: string;
+}
+
+export function resolveDesktopStatePaths(localApiDataDir: string): DesktopStatePaths {
+  const clashHome = dirname(resolve(localApiDataDir));
+  const root = join(clashHome, "desktop");
+  return {
+    root,
+    userData: join(root, "user-data"),
+    sessionData: join(root, "session-data"),
+    logs: join(clashHome, "logs", "desktop"),
+    crashDumps: join(root, "crash-dumps"),
+  };
+}
+
 export function resolveWebDistDir(input: WebDistPathInput): string {
   if (input.envWebDistDir) return input.envWebDistDir;
   if (input.isPackaged) return join(input.resourcesPath, "web-dist");
   return resolve(input.moduleDir, "../../web/dist/client");
 }
 
-export function resolveAcpBinDirs(input: AcpBinDirsInput): string[] {
-  if (input.isPackaged) {
-    return [
-      join(input.resourcesPath, "acp-bin"),
-      join(input.dataDir, "acp-bin"),
-    ];
-  }
-  return [join(input.dataDir, "acp-bin")];
+export function resolveAcpBinDir(dataDir: string): string {
+  return join(dataDir, "acp-bin");
+}
+
+export function resolveAgentBundleRoot(input: AgentBundlePathInput): string {
+  if (input.isPackaged) return join(input.resourcesPath, "agents");
+  return resolve(input.moduleDir, "../../../packages/clash-bridge/dist/agents");
 }
 
 export function resolveClashCliEntryPath(input: ClashCliEntryPathInput): string {

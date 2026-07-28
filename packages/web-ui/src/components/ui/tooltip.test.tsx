@@ -47,4 +47,22 @@ describe("Tooltip transient focus", () => {
       "right",
     );
   });
+
+  it("uses semantic text contrast on dark surfaces", () => {
+    vi.useFakeTimers();
+    render(
+      <Tooltip label="New Timeline">
+        <button type="button">Create timeline</button>
+      </Tooltip>,
+    );
+    const button = screen.getByRole("button", { name: "Create timeline" });
+
+    fireEvent.mouseEnter(button);
+    fireEvent.mouseMove(button, { clientX: 10, clientY: 10 });
+    act(() => vi.advanceTimersByTime(200));
+
+    const tooltip = screen.getByRole("tooltip");
+    expect(tooltip.className).toContain("text-content-primary");
+    expect(tooltip.className).not.toContain("text-stone-800");
+  });
 });

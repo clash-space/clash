@@ -126,6 +126,89 @@ export function evalJson(agentBrowser, expression) {
   return parseEvalOutput(agentBrowser(["eval", expression]));
 }
 
+export function observeComposerToolbarLayout(agentBrowser) {
+  return evalJson(agentBrowser, `(() => {
+    const surfaceElement = document.querySelector('.clash-chat-input-surface');
+    const toolbarElement = surfaceElement?.querySelector('.clash-chat-input-toolbar-row');
+    const startElement = toolbarElement?.querySelector('.clash-chat-input-toolbar-start');
+    const endElement = toolbarElement?.querySelector('.clash-chat-input-toolbar-end');
+    const surface = surfaceElement?.getBoundingClientRect();
+    const toolbar = toolbarElement?.getBoundingClientRect();
+    const start = startElement?.getBoundingClientRect();
+    const end = endElement?.getBoundingClientRect();
+    const visibleButtons = [...(toolbarElement?.querySelectorAll('button') ?? [])]
+      .filter((button) => {
+        const rect = button.getBoundingClientRect();
+        const style = getComputedStyle(button);
+        return rect.width > 0 && rect.height > 0 &&
+          style.display !== 'none' && style.visibility !== 'hidden';
+      })
+      .map((button) => {
+        const rect = button.getBoundingClientRect();
+        return {
+          label: button.getAttribute('aria-label') || button.innerText || '',
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+        };
+      });
+    const overlappingButtons = [];
+    for (let index = 0; index < visibleButtons.length; index += 1) {
+      for (let next = index + 1; next < visibleButtons.length; next += 1) {
+        const a = visibleButtons[index];
+        const b = visibleButtons[next];
+        const verticalOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        const horizontalOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        if (verticalOverlap > 1 && horizontalOverlap > 1) {
+          overlappingButtons.push([a.label, b.label]);
+        }
+      }
+    }
+    const stateTagsOutsideSurface = surface
+      ? [...document.querySelectorAll(
+          '[data-testid="session-plan-tag"], [data-testid="session-goal-tag"]',
+        )]
+          .filter((tag) => {
+            const rect = tag.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 &&
+              (rect.left < surface.left - 1 || rect.right > surface.right + 1);
+          })
+          .map((tag) => tag.getAttribute('data-testid'))
+      : ['missing surface'];
+    return {
+      surfaceWidth: surface ? Math.round(surface.width) : null,
+      toolbarWidth: toolbar ? Math.round(toolbar.width) : null,
+      toolbarOverflow: toolbarElement
+        ? Math.max(0, toolbarElement.scrollWidth - toolbarElement.clientWidth)
+        : null,
+      laneOverlap: start && end ? Math.max(0, start.right - end.left) : null,
+      controlsOutsideSurface: surface
+        ? visibleButtons
+            .filter((button) => button.left < surface.left - 1 || button.right > surface.right + 1)
+            .map((button) => button.label)
+        : ['missing surface'],
+      stateTagsOutsideSurface,
+      overlappingButtons,
+    };
+  })()`);
+}
+
+export function assertComposerToolbarLayout(observation, label = "Composer toolbar") {
+  if (
+    observation.surfaceWidth === null ||
+    observation.surfaceWidth < 280 ||
+    observation.toolbarOverflow > 1 ||
+    observation.laneOverlap > 1 ||
+    observation.controlsOutsideSurface.length > 0 ||
+    observation.stateTagsOutsideSurface.length > 0 ||
+    observation.overlappingButtons.length > 0
+  ) {
+    throw new Error(`${label} controls overlap or escape the input surface: ${JSON.stringify(observation)}`);
+  }
+  return observation;
+}
+
 export function recoverAgentBrowserTarget(agentBrowser, {
   cdpPort,
   expectedUrlPrefix,
@@ -443,9 +526,17 @@ export async function startVite({ webPort, logs }) {
   return web;
 }
 
-export async function startElectron({ cdpPort, webOrigin, apiPort, dataDir, captureDir, logs, env = {} }) {
+export async function startElectron({
+  cdpPort,
+  webOrigin,
+  apiPort,
+  dataDir,
+  electronUserDataDir = path.join(dataDir, "electron-user-data"),
+  captureDir,
+  logs,
+  env = {},
+}) {
   const electronBin = require("electron");
-  const electronUserDataDir = path.join(dataDir, "electron-user-data");
   await mkdir(electronUserDataDir, { recursive: true });
   const electron = spawn(electronBin, [
     `--remote-debugging-port=${cdpPort}`,

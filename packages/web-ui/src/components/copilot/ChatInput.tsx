@@ -5,6 +5,7 @@ import { ArrowUp, Plus, Microphone, X, Check, CircleNotch } from '@phosphor-icon
 import { lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDropzone, type Accept } from 'react-dropzone';
+import { Link } from 'react-router';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Button } from '../ui/button';
@@ -62,6 +63,7 @@ interface ChatInputProps {
     onCaretTargetChange?: (target: { x: number; y: number } | null) => void;
     /** Structured review context attached from Canvas, Timeline, or Director Stage. */
     annotationBlocks?: AgentAnnotationDraft[];
+    onAnnotationOpen?: (annotationId: string) => void;
     onAnnotationChange?: (annotationId: string, note: string) => void;
     onAnnotationRemove?: (annotationId: string) => void;
     /** Jumps the workspace to the annotated object and flashes a highlight. */
@@ -85,6 +87,42 @@ interface LocalAudioConfig {
             status: 'disabled' | 'needs-install' | 'ready';
         };
     };
+}
+
+interface VoiceNotice {
+    message: string;
+    action?: {
+        label: string;
+        href: string;
+    };
+}
+
+function voiceConfigNotice(config?: LocalAudioConfig): VoiceNotice {
+    if (!config || !config.asr.enabled) {
+        return {
+            message: 'Enable voice input in Audio settings first.',
+            action: { label: 'Open Audio', href: '/settings?section=audio' },
+        };
+    }
+    return {
+        message: 'Deploy the selected ASR model in Models first.',
+        action: { label: 'Open Models', href: '/settings?section=models' },
+    };
+}
+
+function voiceTranscriptionNotice(error: unknown): VoiceNotice {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/Local ASR is not enabled/i.test(message)) return voiceConfigNotice();
+    if (/Selected ASR model is not deployed/i.test(message)) return voiceConfigNotice({
+        asr: {
+            enabled: true,
+            ready: false,
+            provider: 'builtin-funasr',
+            base_url: null,
+            model: '',
+        },
+    });
+    return { message };
 }
 
 async function loadLocalAudioConfig(): Promise<LocalAudioConfig> {
@@ -320,6 +358,7 @@ function ChatInputInner({
     rightToolbarAccessory,
     onCaretTargetChange,
     annotationBlocks = [],
+    onAnnotationOpen,
     onAnnotationChange,
     onAnnotationRemove,
     onAnnotationLocate,
@@ -447,7 +486,7 @@ function ChatInputInner({
     // ─── ASR ─────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
-    const [voiceSetupError, setVoiceSetupError] = useState<string | null>(null);
+    const [voiceNotice, setVoiceNotice] = useState<VoiceNotice | null>(null);
     const [audioLevels, setAudioLevels] = useState<number[]>(new Array(24).fill(0));
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<Blob[]>([]);
@@ -486,20 +525,20 @@ function ChatInputInner({
     }, []);
 
     const startListening = useCallback(async () => {
-        setVoiceSetupError(null);
+        setVoiceNotice(null);
         try {
             const audioConfig = await loadLocalAudioConfig();
             if (!audioConfig.asr.enabled || !audioConfig.asr.ready) {
-                setVoiceSetupError('Deploy an ASR model in Models first.');
+                setVoiceNotice(voiceConfigNotice(audioConfig));
                 return;
             }
         } catch {
-            setVoiceSetupError('Deploy an ASR model in Models first.');
+            setVoiceNotice(voiceConfigNotice());
             return;
         }
 
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-            setVoiceSetupError('Local microphone recording is unavailable in this browser.');
+            setVoiceNotice({ message: 'Local microphone recording is unavailable in this browser.' });
             return;
         }
 
@@ -512,7 +551,7 @@ function ChatInputInner({
                 if (event.data.size > 0) recordedChunksRef.current.push(event.data);
             };
             recorder.onerror = () => {
-                setVoiceSetupError('Local microphone recording failed.');
+                setVoiceNotice({ message: 'Local microphone recording failed.' });
                 cleanup();
             };
             mediaRecorderRef.current = recorder;
@@ -536,7 +575,7 @@ function ChatInputInner({
             tick();
             setIsListening(true);
         } catch {
-            setVoiceSetupError('Microphone permission is required for local ASR.');
+            setVoiceNotice({ message: 'Microphone permission is required for local ASR.' });
             cleanup();
         }
     }, [cleanup]);
@@ -544,20 +583,20 @@ function ChatInputInner({
     const confirmVoice = useCallback(async () => {
         if (isTranscribing) return;
         setIsTranscribing(true);
-        setVoiceSetupError(null);
+        setVoiceNotice(null);
         try {
             const chunks = await stopRecorder();
             const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
             const blob = new Blob(chunks, { type: mimeType });
             cleanup();
             if (!blob.size) {
-                setVoiceSetupError('No microphone audio was captured.');
+                setVoiceNotice({ message: 'No microphone audio was captured.' });
                 return;
             }
             const text = (await transcribeLocalAudio(blob)).trim();
             if (text) onInputChange(input ? `${input} ${text}` : text);
         } catch (err) {
-            setVoiceSetupError(err instanceof Error ? err.message : String(err));
+            setVoiceNotice(voiceTranscriptionNotice(err));
             cleanup();
         } finally {
             setIsTranscribing(false);
@@ -610,7 +649,7 @@ function ChatInputInner({
                             </Button>
                         </motion.div>
                     )}
-                    {voiceSetupError && (
+                    {voiceNotice && (
                         <motion.div
                             role="alert"
                             initial={{ opacity: 0, y: 4 }}
@@ -618,14 +657,18 @@ function ChatInputInner({
                             exit={{ opacity: 0, y: 4 }}
                             className="clash-chat-input-alert-error mb-2 px-3 py-1.5 text-xs rounded-lg text-center"
                         >
-                            <span>{voiceSetupError}</span>
-                            {' '}
-                            <a
-                                href="/settings?section=models"
-                                className="font-semibold underline underline-offset-2"
-                            >
-                                Open Models
-                            </a>
+                            <span>{voiceNotice.message}</span>
+                            {voiceNotice.action ? (
+                                <>
+                                    {' '}
+                                    <Link
+                                        to={voiceNotice.action.href}
+                                        className="font-semibold underline underline-offset-2"
+                                    >
+                                        {voiceNotice.action.label}
+                                    </Link>
+                                </>
+                            ) : null}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -676,6 +719,7 @@ function ChatInputInner({
                         <AgentAnnotationTray
                             annotations={annotationBlocks}
                             disabled={actionLocked}
+                            onOpen={onAnnotationOpen}
                             onChange={onAnnotationChange}
                             onRemove={onAnnotationRemove}
                             onLocate={onAnnotationLocate}
@@ -724,8 +768,8 @@ function ChatInputInner({
                         )}
 
                         {/* Bottom toolbar */}
-                        <div className={`clash-chat-input-actions flex items-center justify-between pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
-                            <div className="flex min-w-0 items-center gap-2">
+                        <div className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
+                            <div className="clash-chat-input-toolbar-start flex min-w-0 items-center gap-2">
                                 <IconButton
                                     onClick={open}
                                     disabled={actionLocked}
@@ -734,15 +778,15 @@ function ChatInputInner({
                                     icon={<Plus className="w-4 h-4" weight="bold" />}
                                     className="-ml-1.5"
                                 />
-                                {!isHero && toolbarAccessory ? (
-                                    <div className="min-w-0">
+                                {toolbarAccessory ? (
+                                    <div className="clash-chat-input-toolbar-accessory min-w-0">
                                         {toolbarAccessory}
                                     </div>
                                 ) : null}
                             </div>
-                            <div className="flex items-center gap-1.5 -mr-1.5">
-                                {!isHero && rightToolbarAccessory ? (
-                                    <div className="min-w-0">
+                            <div className="clash-chat-input-toolbar-end -mr-1.5 flex min-w-0 items-center justify-end gap-1.5">
+                                {rightToolbarAccessory ? (
+                                    <div className="clash-chat-input-toolbar-config min-w-0">
                                         {rightToolbarAccessory}
                                     </div>
                                 ) : null}

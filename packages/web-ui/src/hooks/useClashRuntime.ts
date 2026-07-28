@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { visibleUserPromptText } from '@clash/shared-runtime';
-import { appendAcpEvent, getAcpEventBlockKey, parseAcpEvent, type ByoMessage, type AvailableCommand } from '@clash/web-ui/lib/acpEvents';
+import {
+  appendAcpEvent,
+  getAcpEventBlockKey,
+  goalStateFromSessionInfoMetadata,
+  mergeSessionInfoMetadata,
+  parseAcpEvent,
+  sessionInfoStateFromAcpEvent,
+  usageStateFromAcpEvent,
+  type ByoMessage,
+  type AvailableCommand,
+  type RuntimeGoalState,
+  type RuntimeSessionUsage,
+} from '@clash/web-ui/lib/acpEvents';
 import type { BridgeSession } from '@clash/web-ui/hooks/useAgentByoBridge';
 import { runtimeApiUrl, runtimeWebSocketUrl } from '../lib/runtimeConfig';
 import {
@@ -10,6 +22,13 @@ import {
   type SessionRestartPhase,
   type SessionRuntimeStatus,
 } from '../lib/sessionRuntime';
+import {
+  applyRecentConfigPreferences,
+  applyRecentModePreference,
+  configValuesFromOptions,
+  preferredRecentAgentId,
+  type RunConfigValue,
+} from '../lib/recentRunPreferences';
 
 /**
  * useClashRuntime — chat through a registered local-runtime daemon.
@@ -48,8 +67,15 @@ export interface RuntimeAgent {
   binary?: string;
   version?: string;
   config_options?: AcpSessionConfigOption[];
+  available_commands?: AvailableCommand[];
   session_modes?: AcpSessionModeState;
   auth?: RuntimeAgentAuth;
+}
+
+export interface RuntimeRunPreferences {
+  agent_id?: string;
+  config_by_agent: Record<string, Record<string, RunConfigValue>>;
+  mode_by_agent: Record<string, string>;
 }
 
 export interface Runtime {
@@ -58,6 +84,7 @@ export interface Runtime {
   hostname: string;
   os: string;
   agents: RuntimeAgent[];
+  preferences?: RuntimeRunPreferences;
   version: string;
   status: RuntimeStatus;
   last_heartbeat: number | null;
@@ -131,6 +158,7 @@ export interface RuntimeSessionInfo {
   permissionMode?: string;
   acpSessionId?: string;
   status?: string;
+  updatedAt?: string;
 }
 
 export interface AcpSessionConfigSelectValue {
@@ -151,7 +179,7 @@ export interface AcpSessionConfigOption {
   type: string;
   category?: string | null;
   description?: string | null;
-  currentValue?: string;
+  currentValue?: string | boolean;
   options?: Array<AcpSessionConfigSelectValue | AcpSessionConfigSelectGroup>;
 }
 
@@ -166,9 +194,26 @@ export interface AcpSessionModeState {
   availableModes: AcpSessionMode[];
 }
 
+export interface RuntimePermissionOption {
+  optionId: string;
+  name: string;
+  kind: string;
+}
+
+export interface RuntimePermissionRequest {
+  requestId: string;
+  sessionId: string;
+  toolCall: Record<string, unknown>;
+  options: RuntimePermissionOption[];
+}
+
+export type RuntimeStartupStatus = 'loading' | 'ready' | 'error';
+
 export interface UseClashRuntimeReturn {
   /** All runtimes the user has registered (any status). */
   runtimes: Runtime[];
+  /** Cold-start capability snapshot lifecycle. UI must not expose agent controls while loading. */
+  startupStatus: RuntimeStartupStatus;
   /** id of the runtime the user picked, or null = none / cloud. */
   selectedRuntimeId: string | null;
   /** ACP agent id selected for the current local-runtime session. */
@@ -195,6 +240,14 @@ export interface UseClashRuntimeReturn {
   sessionConfigOptions: AcpSessionConfigOption[];
   /** ACP-native session modes reported by the current agent. */
   sessionModes: AcpSessionModeState | null;
+  /** Lossless, namespaced metadata announced through ACP session_info_update. */
+  sessionInfoMeta: Record<string, unknown> | null;
+  /** Harness-owned long-running Goal snapshot announced through session_info_update. */
+  goal: RuntimeGoalState | null;
+  /** Latest standard ACP context-window usage snapshot, kept outside the transcript. */
+  sessionUsage: RuntimeSessionUsage | null;
+  /** Blocking ACP permission requests, kept outside the transcript. */
+  permissionRequests: RuntimePermissionRequest[];
   /** Version state of the ACP child currently holding this session. */
   sessionRuntimeStatus: SessionRuntimeStatus | null;
   /** Restart lifecycle shown in the session-scoped update notice. */
@@ -227,6 +280,7 @@ export interface UseClashRuntimeReturn {
   clearPromptQueue: () => void;
   setConfigOption: (configId: string, value: string | boolean) => void;
   setSessionMode: (modeId: string) => void;
+  respondPermission: (requestId: string, optionId: string | null) => void;
   restartSession: (mode: SessionRestartMode) => Promise<void>;
   cancel: () => void;
   shutdown: () => void;
@@ -312,7 +366,11 @@ async function fetchRuntimeSessionMessages(sessionId: string): Promise<ByoMessag
         .map((part) => part as { type?: string; text?: string })
         .filter((part) => part?.type === 'text' && typeof part.text === 'string')
         .map((part) => ({ type: 'text' as const, text: part.text! }));
-      bubbles.push({ id: row.id, role: 'user', parts });
+      bubbles.push({
+        id: row.turn_id ? `user-${row.turn_id}` : row.id,
+        role: 'user',
+        parts,
+      });
       continue;
     }
 
@@ -354,6 +412,9 @@ function runtimeTranscriptCompleteness(messages: ByoMessage[]) {
 
 function persistedTranscriptCanReplaceLive(history: ByoMessage[], live: ByoMessage[]): boolean {
   if (live.length === 0) return true;
+  const persistedAssistantMessages = history.filter((message) => message.role === 'assistant').length;
+  const liveAssistantMessages = live.filter((message) => message.role === 'assistant').length;
+  if (persistedAssistantMessages < liveAssistantMessages) return false;
   const persisted = runtimeTranscriptCompleteness(history);
   const streamed = runtimeTranscriptCompleteness(live);
   return persisted.userParts >= streamed.userParts
@@ -386,9 +447,9 @@ function normalizeSessionConfigOptions(value: unknown): AcpSessionConfigOption[]
       type: String(option.type),
       ...(typeof option.category === 'string' || option.category === null ? { category: option.category } : {}),
       ...(typeof option.description === 'string' || option.description === null ? { description: option.description } : {}),
-      ...(typeof option.currentValue === 'string'
+      ...(typeof option.currentValue === 'string' || typeof option.currentValue === 'boolean'
         ? { currentValue: option.currentValue }
-        : typeof option.current_value === 'string'
+        : typeof option.current_value === 'string' || typeof option.current_value === 'boolean'
           ? { currentValue: option.current_value }
           : {}),
       ...(Array.isArray(option.options) ? { options: option.options as AcpSessionConfigOption['options'] } : {}),
@@ -413,11 +474,41 @@ function normalizeSessionModes(value: unknown): AcpSessionModeState | null {
   };
 }
 
+function normalizeAvailableCommands(value: unknown): AvailableCommand[] | null {
+  if (!Array.isArray(value)) return null;
+  return value
+    .filter((command): command is Record<string, unknown> => (
+      !!command &&
+      typeof command === 'object' &&
+      typeof (command as Record<string, unknown>).name === 'string'
+    ))
+    .map((command) => ({
+      name: String(command.name),
+      ...(typeof command.description === 'string' ? { description: command.description } : {}),
+      ...(command.input && typeof command.input === 'object'
+        ? { input: command.input as AvailableCommand['input'] }
+        : {}),
+      ...(typeof command.kind === 'string' ? { kind: command.kind } : {}),
+      ...(typeof command.type === 'string' ? { type: command.type } : {}),
+      ...(typeof command.category === 'string' ? { category: command.category } : {}),
+      ...(typeof command.source === 'string' ? { source: command.source } : {}),
+      ...(command._meta && typeof command._meta === 'object' && !Array.isArray(command._meta)
+        ? { _meta: command._meta as Record<string, unknown> }
+        : {}),
+      ...(command.metadata && typeof command.metadata === 'object'
+        ? { metadata: command.metadata as Record<string, unknown> }
+        : {}),
+    }));
+}
+
 function normalizeRuntimeAgent(value: unknown): RuntimeAgent | null {
   if (!value || typeof value !== 'object') return null;
   const agent = value as Record<string, unknown>;
   if (typeof agent.id !== 'string') return null;
   const configOptions = normalizeSessionConfigOptions(agent.config_options ?? agent.configOptions);
+  const availableCommands = normalizeAvailableCommands(
+    agent.available_commands ?? agent.availableCommands,
+  );
   const sessionModes = normalizeSessionModes(agent.session_modes ?? agent.sessionModes);
   const rawAuth = agent.auth && typeof agent.auth === 'object' ? agent.auth as Record<string, unknown> : null;
   const auth = rawAuth && (
@@ -437,8 +528,48 @@ function normalizeRuntimeAgent(value: unknown): RuntimeAgent | null {
     ...(typeof agent.binary === 'string' ? { binary: agent.binary } : {}),
     ...(typeof agent.version === 'string' ? { version: agent.version } : {}),
     ...(configOptions && configOptions.length > 0 ? { config_options: configOptions } : {}),
+    ...(availableCommands ? { available_commands: availableCommands } : {}),
     ...(sessionModes ? { session_modes: sessionModes } : {}),
     ...(auth ? { auth } : {}),
+  };
+}
+
+function normalizeRunPreferences(value: unknown): RuntimeRunPreferences | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const configByAgent: RuntimeRunPreferences['config_by_agent'] = {};
+  if (
+    raw.config_by_agent
+    && typeof raw.config_by_agent === 'object'
+    && !Array.isArray(raw.config_by_agent)
+  ) {
+    for (const [agentId, candidate] of Object.entries(raw.config_by_agent)) {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+      configByAgent[agentId] = Object.fromEntries(
+        Object.entries(candidate).filter(
+          (entry): entry is [string, RunConfigValue] => (
+            typeof entry[1] === 'string' || typeof entry[1] === 'boolean'
+          ),
+        ),
+      );
+    }
+  }
+  const modeByAgent =
+    raw.mode_by_agent
+    && typeof raw.mode_by_agent === 'object'
+    && !Array.isArray(raw.mode_by_agent)
+      ? Object.fromEntries(
+          Object.entries(raw.mode_by_agent).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+          ),
+        )
+      : {};
+  return {
+    ...(typeof raw.agent_id === 'string' && raw.agent_id.trim()
+      ? { agent_id: raw.agent_id.trim() }
+      : {}),
+    config_by_agent: configByAgent,
+    mode_by_agent: modeByAgent,
   };
 }
 
@@ -459,12 +590,14 @@ function normalizeRuntime(value: unknown): Runtime | null {
   const agents = Array.isArray(runtime.agents)
     ? runtime.agents.map(normalizeRuntimeAgent).filter((agent): agent is RuntimeAgent => agent !== null)
     : [];
+  const preferences = normalizeRunPreferences(runtime.preferences);
   return {
     id: runtime.id,
     machine_id: runtime.machine_id,
     hostname: runtime.hostname,
     os: runtime.os,
     agents,
+    ...(preferences ? { preferences } : {}),
     version: runtime.version,
     status: runtime.status,
     last_heartbeat: typeof runtime.last_heartbeat === 'number' ? runtime.last_heartbeat : null,
@@ -478,15 +611,36 @@ function resolveRuntimeAgent(runtime: Runtime | undefined, agentId?: string | nu
     const match = runtime.agents.find((agent) => agent.id === agentId);
     if (match) return match;
   }
-  return runtime.agents[0] ?? null;
+  const preferredId = preferredRecentAgentId(
+    runtime.agents,
+    runtime.preferences?.agent_id,
+  );
+  return runtime.agents.find((agent) => agent.id === preferredId) ?? null;
 }
 
 function seedConfigOptionsForAgent(runtime: Runtime | undefined, agentId?: string | null): AcpSessionConfigOption[] {
-  return resolveRuntimeAgent(runtime, agentId)?.config_options ?? [];
+  const agent = resolveRuntimeAgent(runtime, agentId);
+  if (!agent) return [];
+  return applyRecentConfigPreferences(
+    agent.config_options,
+    runtime?.preferences?.config_by_agent[agent.id],
+  );
+}
+
+function seedAvailableCommandsForAgent(
+  runtime: Runtime | undefined,
+  agentId?: string | null,
+): AvailableCommand[] {
+  return resolveRuntimeAgent(runtime, agentId)?.available_commands ?? [];
 }
 
 function seedSessionModesForAgent(runtime: Runtime | undefined, agentId?: string | null): AcpSessionModeState | null {
-  return resolveRuntimeAgent(runtime, agentId)?.session_modes ?? null;
+  const agent = resolveRuntimeAgent(runtime, agentId);
+  if (!agent) return null;
+  return applyRecentModePreference(
+    agent.session_modes,
+    runtime?.preferences?.mode_by_agent[agent.id],
+  );
 }
 
 function configOptionsFromAcpEvent(event: unknown): AcpSessionConfigOption[] | null {
@@ -500,19 +654,6 @@ function modeIdFromAcpEvent(event: unknown): string | null {
   if ((update as { sessionUpdate?: unknown } | null | undefined)?.sessionUpdate !== 'current_mode_update') return null;
   const modeId = (update as { currentModeId?: unknown } | null | undefined)?.currentModeId;
   return typeof modeId === 'string' && modeId.length > 0 ? modeId : null;
-}
-
-function runtimeBlockMessageId(turnId: string, blockKey: string | null, fallback: string): string {
-  if (!blockKey) return fallback;
-  return `asst-${turnId}-${blockKey.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
-}
-
-function lastAssistantRunIndex(messages: ByoMessage[], partType: 'text' | 'thought'): number | undefined {
-  const lastIndex = messages.length - 1;
-  const lastMessage = messages[lastIndex];
-  if (lastMessage?.role !== 'assistant') return undefined;
-  const lastPart = lastMessage.parts.at(-1);
-  return lastPart?.type === partType ? lastIndex : undefined;
 }
 
 function normalizePromptQueue(value: unknown): RuntimeQueuedPrompt[] | null {
@@ -533,6 +674,7 @@ function normalizePromptQueue(value: unknown): RuntimeQueuedPrompt[] | null {
 
 export function useClashRuntime(): UseClashRuntimeReturn {
   const [runtimes, setRuntimes] = useState<Runtime[]>([]);
+  const [startupStatus, setStartupStatus] = useState<RuntimeStartupStatus>('loading');
   const [selectedRuntimeId, setSelectedRuntimeId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -548,6 +690,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const [promptQueueMode, setPromptQueueModeState] = useState<RuntimePromptQueueMode>('single');
   const [sessionConfigOptions, setSessionConfigOptions] = useState<AcpSessionConfigOption[]>([]);
   const [sessionModes, setSessionModes] = useState<AcpSessionModeState | null>(null);
+  const [sessionInfoMeta, setSessionInfoMeta] = useState<Record<string, unknown> | null>(null);
+  const [goal, setGoal] = useState<RuntimeGoalState | null>(null);
+  const [sessionUsage, setSessionUsage] = useState<RuntimeSessionUsage | null>(null);
+  const [permissionRequests, setPermissionRequests] = useState<RuntimePermissionRequest[]>([]);
   const [sessionRuntimeStatus, setSessionRuntimeStatus] = useState<SessionRuntimeStatus | null>(null);
   const [sessionRestartPhase, setSessionRestartPhase] = useState<SessionRestartPhase>('idle');
 
@@ -560,17 +706,19 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const queuedPromptLookupRef = useRef(new Map<string, RuntimeQueuedPrompt>());
   const promptQueueEnabledRef = useRef(readPromptQueueEnabled());
   const promptQueueModeRef = useRef<RuntimePromptQueueMode>('single');
+  const sessionInfoMetaRef = useRef<Record<string, unknown> | null>(null);
   const draftRef = useRef<{ runtimeId: string; agentMemberId?: string; opts?: ClashRuntimeSelectOptions } | null>(null);
   const pendingPromptRef = useRef<{ turnId: string; text: string } | null>(null);
   const pendingTitleRef = useRef<string | null>(null);
   const pendingConfigOptionsRef = useRef(new Map<string, string | boolean>());
   const pendingSessionModeRef = useRef<string | null>(null);
+  const runtimeSnapshotErrorRef = useRef<string | null>(null);
   const resendQueuedAfterRestartRef = useRef(false);
   const turnSeq = useRef(0);
   const queuedPromptSeq = useRef(0);
   const turnToMsgIdx = useRef(new Map<string, number>());
-  const eventBlockToMsgIdx = useRef(new Map<string, number>());
-  const turnFallbackSegment = useRef(new Map<string, number>());
+  const toolCallToMsgIdx = useRef(new Map<string, number>());
+  const turnAssistantSegment = useRef(new Map<string, number>());
   const activeTurnIds = useRef(new Set<string>());
   /** Monotonic selection token. Backchat keys lifecycle state by session;
    * this single-session surface uses the same rule by rejecting async work
@@ -609,17 +757,37 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       const path = query.toString() ? `${RUNTIMES_PATH}?${query.toString()}` : RUNTIMES_PATH;
       const res = await fetch(runtimeApiUrl(path), { credentials: 'include' });
       if (!res.ok) {
-        // Don't error-state the whole hook just because the list call
-        // failed — chat panel still works in cloud mode.
-        return;
+        throw new Error(`Runtime snapshot request failed: HTTP ${res.status}`);
       }
       const json = (await res.json()) as { runtimes?: unknown[] };
       const next = Array.isArray(json.runtimes)
         ? json.runtimes.map(normalizeRuntime).filter((runtime): runtime is Runtime => runtime !== null)
         : [];
       setRuntimes(next);
-    } catch {
-      /* network noise; user can refresh manually */
+      const draft = draftRef.current;
+      if (statusRef.current === 'draft' && draft) {
+        const runtime = next.find((candidate) => candidate.id === draft.runtimeId);
+        const agentId = draft.opts?.agentId;
+        const configOptions = seedConfigOptionsForAgent(runtime, agentId).map((option) => {
+          const pendingValue = pendingConfigOptionsRef.current.get(option.id);
+          return typeof pendingValue === 'string' || typeof pendingValue === 'boolean'
+            ? { ...option, currentValue: pendingValue }
+            : option;
+        });
+        setSessionConfigOptions(configOptions);
+        setAvailableCommands(seedAvailableCommandsForAgent(runtime, agentId));
+        setSessionModes(seedSessionModesForAgent(runtime, agentId));
+      }
+      const priorSnapshotError = runtimeSnapshotErrorRef.current;
+      runtimeSnapshotErrorRef.current = null;
+      if (priorSnapshotError) {
+        setErrorMessage((current) => current === priorSnapshotError ? null : current);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      runtimeSnapshotErrorRef.current = message;
+      setErrorMessage(message);
+      throw error;
     }
   }, []);
 
@@ -635,9 +803,22 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     }
   }, []);
 
-  // Initial fetch should make the local machine visible quickly. Agent auth and
-  // model metadata probes run from explicit settings refreshes or session flows.
-  useEffect(() => { void refresh(); }, [refresh]);
+  // The local host owns the cold-start capability barrier. Its ordinary
+  // runtime list does not resolve until the single startup warmup settles.
+  useEffect(() => {
+    let cancelled = false;
+    void refresh().then(
+      () => {
+        if (!cancelled) setStartupStatus('ready');
+      },
+      () => {
+        if (!cancelled) setStartupStatus('error');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (!sessionId) {
@@ -690,29 +871,17 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const handleAcpEvent = useCallback((turnId: string, event: unknown) => {
     setMessages((prev) => {
       const messages = prev.slice();
-      const parsed = parseAcpEvent(event);
-      const blockKey = getAcpEventBlockKey(event);
-      const knownIdx = blockKey
-        ? eventBlockToMsgIdx.current.get(blockKey)
-        : (
-            parsed.kind === 'text' || parsed.kind === 'thought'
-              ? lastAssistantRunIndex(messages, parsed.kind)
-              : turnToMsgIdx.current.get(turnId)
-          );
-      const segment = turnFallbackSegment.current.get(turnId) ?? 0;
-      const fallbackMessageId = segment > 0 ? `asst-${turnId}-${segment}` : `asst-${turnId}`;
-      const messageId = runtimeBlockMessageId(turnId, blockKey, fallbackMessageId);
+      const toolBlockKey = getAcpEventBlockKey(event);
+      const toolKey = toolBlockKey ? `${turnId}:${toolBlockKey}` : null;
+      const knownToolIdx = toolKey ? toolCallToMsgIdx.current.get(toolKey) : undefined;
+      const knownTurnIdx = turnToMsgIdx.current.get(turnId);
+      const knownIdx = knownToolIdx ?? knownTurnIdx;
+      const segment = turnAssistantSegment.current.get(turnId) ?? 0;
+      const messageId = segment > 0 ? `asst-${turnId}-${segment}` : `asst-${turnId}`;
       const result = appendAcpEvent(messages, turnId, knownIdx, event, messageId);
       if (result.idx >= 0) {
-        if (blockKey) {
-          eventBlockToMsgIdx.current.set(blockKey, result.idx);
-        } else if (parsed.kind === 'text' || parsed.kind === 'thought') {
-          if (knownIdx === undefined) {
-            turnFallbackSegment.current.set(turnId, segment + 1);
-          }
-        } else if (knownIdx === undefined) {
-          turnToMsgIdx.current.set(turnId, result.idx);
-        }
+        if (toolKey) toolCallToMsgIdx.current.set(toolKey, result.idx);
+        if (knownToolIdx === undefined) turnToMsgIdx.current.set(turnId, result.idx);
       }
       if (result.commands) setAvailableCommands(result.commands);
       messagesRef.current = messages;
@@ -829,19 +998,25 @@ export function useClashRuntime(): UseClashRuntimeReturn {
   const resetRuntimeState = useCallback((opts: { disposeSocket?: boolean } = {}) => {
     closeSessionSocket({ dispose: opts.disposeSocket });
     turnToMsgIdx.current.clear();
-    eventBlockToMsgIdx.current.clear();
-    turnFallbackSegment.current.clear();
+    toolCallToMsgIdx.current.clear();
+    turnAssistantSegment.current.clear();
     activeTurnIds.current.clear();
     queuedPromptLookupRef.current.clear();
     pendingPromptRef.current = null;
     pendingTitleRef.current = null;
     pendingSessionModeRef.current = null;
+    runtimeSnapshotErrorRef.current = null;
     messagesRef.current = [];
     setMessages([]);
     setAvailableCommands([]);
     replacePromptQueue([]);
     setSessionConfigOptions([]);
     setSessionModes(null);
+    sessionInfoMetaRef.current = null;
+    setSessionInfoMeta(null);
+    setGoal(null);
+    setSessionUsage(null);
+    setPermissionRequests([]);
     setSessionRuntimeStatus(null);
     setSessionRestartPhase('idle');
     setErrorMessage(null);
@@ -871,6 +1046,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       code?: string;
       agent_id?: string;
       auth?: unknown;
+      request_id?: string;
+      tool_call?: unknown;
+      options?: unknown;
+      option_id?: string | null;
     };
     try { msg = JSON.parse(typeof data === 'string' ? data : ''); }
     catch { return; }
@@ -946,6 +1125,50 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           if (modes) setSessionModes(modes);
         }
         return;
+      case 'session.permission_request':
+        if (
+          typeof msg.request_id === 'string' &&
+          typeof msg.session_id === 'string' &&
+          msg.tool_call &&
+          typeof msg.tool_call === 'object' &&
+          !Array.isArray(msg.tool_call) &&
+          Array.isArray(msg.options)
+        ) {
+          const options = msg.options
+            .filter((option): option is Record<string, unknown> => (
+              !!option && typeof option === 'object' && !Array.isArray(option)
+            ))
+            .filter((option) => (
+              typeof option.optionId === 'string' &&
+              typeof option.name === 'string' &&
+              typeof option.kind === 'string'
+            ))
+            .map((option) => ({
+              optionId: option.optionId as string,
+              name: option.name as string,
+              kind: option.kind as string,
+            }));
+          if (options.length > 0) {
+            const request: RuntimePermissionRequest = {
+              requestId: msg.request_id,
+              sessionId: msg.session_id,
+              toolCall: msg.tool_call as Record<string, unknown>,
+              options,
+            };
+            setPermissionRequests((current) => [
+              ...current.filter((candidate) => candidate.requestId !== request.requestId),
+              request,
+            ]);
+          }
+        }
+        return;
+      case 'session.permission_resolved':
+        if (typeof msg.request_id === 'string') {
+          setPermissionRequests((current) => (
+            current.filter((request) => request.requestId !== msg.request_id)
+          ));
+        }
+        return;
       case 'session.queue_update':
         if (msg.mode === 'single' || msg.mode === 'flush') {
           promptQueueModeRef.current = msg.mode;
@@ -1006,6 +1229,34 @@ export function useClashRuntime(): UseClashRuntimeReturn {
           if (currentModeId) {
             setSessionModes((prev) => prev ? { ...prev, currentModeId } : prev);
           }
+          const sessionInfoPatch = sessionInfoStateFromAcpEvent(msg.event);
+          const usagePatch = usageStateFromAcpEvent(msg.event);
+          if (usagePatch) setSessionUsage(usagePatch);
+          if (
+            sessionInfoPatch
+            && (sessionInfoPatch.title !== undefined || sessionInfoPatch.updatedAt !== undefined)
+          ) {
+            setCurrentSession((current) => {
+              if (!current) return current;
+              return {
+                ...current,
+                ...(sessionInfoPatch.title !== undefined
+                  ? { title: sessionInfoPatch.title ?? undefined }
+                  : {}),
+                ...(sessionInfoPatch.updatedAt !== undefined
+                  ? { updatedAt: sessionInfoPatch.updatedAt ?? undefined }
+                  : {}),
+              };
+            });
+          }
+          if (sessionInfoPatch?.metadata !== undefined) {
+            const nextMetadata = sessionInfoPatch.metadata === null
+              ? null
+              : mergeSessionInfoMetadata(sessionInfoMetaRef.current, sessionInfoPatch.metadata);
+            sessionInfoMetaRef.current = nextMetadata;
+            setSessionInfoMeta(nextMetadata);
+            setGoal(goalStateFromSessionInfoMetadata(nextMetadata));
+          }
           const parsed = parseAcpEvent(msg.event);
           if (parsed.commands) setAvailableCommands(parsed.commands);
           if (!msg.turn_id) {
@@ -1018,7 +1269,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       case 'session.complete':
         if (msg.turn_id) {
           turnToMsgIdx.current.delete(msg.turn_id);
-          turnFallbackSegment.current.delete(msg.turn_id);
+          turnAssistantSegment.current.delete(msg.turn_id);
+          for (const key of toolCallToMsgIdx.current.keys()) {
+            if (key.startsWith(`${msg.turn_id}:`)) toolCallToMsgIdx.current.delete(key);
+          }
           activeTurnIds.current.delete(msg.turn_id);
         }
         {
@@ -1146,13 +1400,33 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     const runtime = runtimeId ? runtimes.find((candidate) => candidate.id === runtimeId) : undefined;
     const resolvedAgent = resolveRuntimeAgent(runtime, opts?.agentId);
     const resolvedAgentId = resolvedAgent?.id ?? opts?.agentId ?? null;
-    const resolvedOpts: ClashRuntimeSelectOptions | undefined = resolvedAgentId && !opts?.agentId
-      ? { ...(opts ?? {}), agentId: resolvedAgentId }
+    const effectiveConfigOptions = runtimeId
+      ? seedConfigOptionsForAgent(runtime, resolvedAgentId).map((option) => {
+          const pendingValue = pendingConfigOptionsRef.current.get(option.id);
+          return typeof pendingValue === 'string' || typeof pendingValue === 'boolean'
+            ? { ...option, currentValue: pendingValue }
+            : option;
+        })
+      : [];
+    const effectiveModes = runtimeId
+      ? seedSessionModesForAgent(runtime, resolvedAgentId)
+      : null;
+    const resolvedModeId =
+      opts?.permissionModeId
+      ?? pendingSessionModeRef.current
+      ?? effectiveModes?.currentModeId;
+    const resolvedOpts: ClashRuntimeSelectOptions | undefined = resolvedAgentId
+      ? {
+          ...(opts ?? {}),
+          agentId: resolvedAgentId,
+          ...(resolvedModeId ? { permissionModeId: resolvedModeId } : {}),
+        }
       : opts;
     setSelectedRuntimeId(runtimeId);
     setSelectedAgentId(runtimeId ? resolvedAgentId : null);
-    setSessionConfigOptions(runtimeId ? seedConfigOptionsForAgent(runtime, resolvedAgentId) : []);
-    setSessionModes(runtimeId ? seedSessionModesForAgent(runtime, resolvedAgentId) : null);
+    setSessionConfigOptions(effectiveConfigOptions);
+    setAvailableCommands(runtimeId ? seedAvailableCommandsForAgent(runtime, resolvedAgentId) : []);
+    setSessionModes(effectiveModes);
     if (!runtimeId) {
       acpSessionIdRef.current = null;
       setCurrentSession(null);
@@ -1160,6 +1434,14 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       return;
     }
 
+    for (const option of effectiveConfigOptions) {
+      if (
+        typeof option.currentValue === 'string'
+        || typeof option.currentValue === 'boolean'
+      ) {
+        pendingConfigOptionsRef.current.set(option.id, option.currentValue);
+      }
+    }
     setRuntimeStatus('connecting');
     try {
       const sessionContextId = agentMemberId?.trim() || undefined;
@@ -1172,6 +1454,9 @@ export function useClashRuntime(): UseClashRuntimeReturn {
         body: JSON.stringify({
           ...(sessionContextId ? { agent_member_id: sessionContextId } : {}),
           ...(resolvedOpts?.agentId ? { agent_id: resolvedOpts.agentId } : {}),
+          ...(effectiveConfigOptions.length > 0
+            ? { config_values: configValuesFromOptions(effectiveConfigOptions) }
+            : {}),
           ...(resolvedOpts?.permissionModeId ? { permission_mode: resolvedOpts.permissionModeId } : {}),
           ...(resolvedOpts?.projectId ? { project_id: resolvedOpts.projectId } : {}),
           ...(resumeAcpSessionId ? { resume_session_id: resumeAcpSessionId } : {}),
@@ -1237,13 +1522,25 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     const runtime = runtimeId ? runtimes.find((candidate) => candidate.id === runtimeId) : undefined;
     const resolvedAgent = resolveRuntimeAgent(runtime, opts?.agentId);
     const resolvedAgentId = resolvedAgent?.id ?? opts?.agentId ?? null;
-    const resolvedOpts: ClashRuntimeSelectOptions | undefined = resolvedAgentId && !opts?.agentId
-      ? { ...(opts ?? {}), agentId: resolvedAgentId }
+    const effectiveConfigOptions = runtimeId
+      ? seedConfigOptionsForAgent(runtime, resolvedAgentId)
+      : [];
+    const effectiveModes = runtimeId
+      ? seedSessionModesForAgent(runtime, resolvedAgentId)
+      : null;
+    const resolvedModeId = opts?.permissionModeId ?? effectiveModes?.currentModeId;
+    const resolvedOpts: ClashRuntimeSelectOptions | undefined = resolvedAgentId
+      ? {
+          ...(opts ?? {}),
+          agentId: resolvedAgentId,
+          ...(resolvedModeId ? { permissionModeId: resolvedModeId } : {}),
+        }
       : opts;
     setSelectedRuntimeId(runtimeId);
     setSelectedAgentId(runtimeId ? resolvedAgentId : null);
-    setSessionConfigOptions(runtimeId ? seedConfigOptionsForAgent(runtime, resolvedAgentId) : []);
-    setSessionModes(runtimeId ? seedSessionModesForAgent(runtime, resolvedAgentId) : null);
+    setSessionConfigOptions(effectiveConfigOptions);
+    setAvailableCommands(runtimeId ? seedAvailableCommandsForAgent(runtime, resolvedAgentId) : []);
+    setSessionModes(effectiveModes);
     if (!runtimeId) {
       draftRef.current = null;
       setRuntimeStatus('idle');
@@ -1260,6 +1557,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     setSelectedRuntimeId(session.runtimeId);
     setSelectedAgentId(session.agentId ?? null);
     setSessionConfigOptions(seedConfigOptionsForAgent(runtime, session.agentId));
+    setAvailableCommands(seedAvailableCommandsForAgent(runtime, session.agentId));
     setSessionModes(seedSessionModesForAgent(runtime, session.agentId));
     setRuntimeSessionId(session.id);
     setCurrentSession(session);
@@ -1360,6 +1658,13 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       return;
     }
     ws.send(JSON.stringify({ type: 'steer_queued_prompt', turn_id: turnId }));
+    for (const activeTurnId of activeTurnIds.current) {
+      turnToMsgIdx.current.delete(activeTurnId);
+      turnAssistantSegment.current.set(
+        activeTurnId,
+        (turnAssistantSegment.current.get(activeTurnId) ?? 0) + 1,
+      );
+    }
     appendUserMessage(queued.turnId, queued.text);
     queuedPromptLookupRef.current.delete(turnId);
     replacePromptQueue(promptQueueRef.current.filter((prompt) => prompt.turnId !== turnId));
@@ -1415,7 +1720,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
       if (draftRef.current) {
         pendingConfigOptionsRef.current.set(configId, value);
         setSessionConfigOptions((prev) => prev.map((option) => (
-          option.id === configId && typeof value === 'string'
+          option.id === configId
             ? { ...option, currentValue: value }
             : option
         )));
@@ -1462,6 +1767,16 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     }
   }, []);
 
+  const respondPermission = useCallback((requestId: string, optionId: string | null) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: 'permission_response',
+      request_id: requestId,
+      option_id: optionId,
+    }));
+  }, []);
+
   const shutdown = useCallback(() => {
     sessionOperationSeq.current += 1;
     resetRuntimeState({ disposeSocket: true });
@@ -1490,6 +1805,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
 
   return {
     runtimes,
+    startupStatus,
     selectedRuntimeId,
     selectedAgentId,
     sessionId,
@@ -1505,6 +1821,10 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     promptQueueMode,
     sessionConfigOptions,
     sessionModes,
+    sessionInfoMeta,
+    goal,
+    sessionUsage,
+    permissionRequests,
     sessionRuntimeStatus,
     sessionRestartPhase,
     ready,
@@ -1524,6 +1844,7 @@ export function useClashRuntime(): UseClashRuntimeReturn {
     clearPromptQueue,
     setConfigOption,
     setSessionMode,
+    respondPermission,
     restartSession,
     cancel,
     shutdown,

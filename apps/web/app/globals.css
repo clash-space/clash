@@ -67,6 +67,13 @@
   --clash-timeline-item-hover-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 4px 9px rgba(74, 60, 47, 0.16);
   --clash-control-gap: 0.25rem;
+  --clash-document-reading-width: 65ch;
+  --clash-document-page-width: 56rem;
+  --clash-document-page-inline-gutter: clamp(1.5rem, 7vw, 5rem);
+  --clash-document-page-block-gutter: clamp(2.5rem, 5vw, 3.5rem);
+  --clash-document-title-size: clamp(2rem, 4vw, 2.25rem);
+  --clash-document-body-size: 1rem;
+  --clash-document-body-leading: 1.78;
   --clash-floating-panel-border: var(--clash-overlay-border);
   --clash-floating-panel-background: var(--clash-overlay-surface);
   --clash-floating-panel-shadow: var(--clash-overlay-shadow);
@@ -507,6 +514,85 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   outline: none;
 }
 
+.clash-text-node-document {
+  width: 100%;
+  max-width: var(--clash-document-page-width);
+  padding-block: var(--clash-document-page-block-gutter);
+  padding-inline: var(--clash-document-page-inline-gutter);
+}
+
+.clash-text-node-title-shell {
+  width: min(100%, var(--clash-document-reading-width));
+  margin-inline: auto;
+  margin-bottom: 2rem;
+}
+
+.clash-text-node-title-input {
+  font-size: var(--clash-document-title-size);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.clash-text-node-editor .milkdown-editor-wrapper {
+  min-height: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+.clash-text-node-editor .ProseMirror {
+  width: min(100%, var(--clash-document-reading-width));
+  min-height: calc(85vh - 12rem);
+  margin-inline: auto;
+  font-size: var(--clash-document-body-size);
+  line-height: var(--clash-document-body-leading);
+  color: var(--foreground);
+  outline: none;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+
+.clash-text-node-editor .ProseMirror p {
+  margin-block: 0 0.9rem;
+}
+
+.clash-text-node-editor .ProseMirror h1,
+.clash-text-node-editor .ProseMirror h2,
+.clash-text-node-editor .ProseMirror h3 {
+  color: var(--foreground);
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.clash-text-node-editor .ProseMirror h1 {
+  margin-block: 0 1.75rem;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.clash-text-node-editor .ProseMirror h2 {
+  margin-block: 2.25rem 1rem;
+  font-size: 1.5rem;
+  line-height: 1.28;
+}
+
+.clash-text-node-editor .ProseMirror h3 {
+  margin-block: 1.75rem 0.75rem;
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
+
+.clash-text-node-editor .ProseMirror blockquote {
+  margin-block: 1.5rem;
+  border-left: 2px solid var(--clash-accent);
+  padding-left: 1.25rem;
+  color: var(--clash-content-secondary);
+}
+
+.clash-text-node-editor ::selection {
+  background: color-mix(in srgb, var(--clash-accent) 24%, transparent);
+}
+
 .react-flow__edge {
   pointer-events: visibleStroke;
   cursor: pointer;
@@ -586,6 +672,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   position: relative;
 }
 
+.clash-workbench-panel-surface,
 .clash-canvas-overlay-panel,
 .clash-timeline-panel-surface {
   isolation: isolate;
@@ -607,6 +694,7 @@ html.dark.clash-is-scrolling ::-webkit-scrollbar-thumb:hover {
   box-shadow: var(--clash-floating-panel-shadow);
 }
 
+.clash-workbench-panel-surface,
 .clash-timeline-panel-surface {
   box-shadow: var(--clash-timeline-panel-shadow);
 }
@@ -4081,6 +4169,8 @@ html.dark .clash-download-card {
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: clash-chat-composer;
   border-radius: var(--clash-workbench-surface-radius);
   border: 1px solid rgba(225, 221, 213, 0.88);
   background: linear-gradient(
@@ -4126,6 +4216,88 @@ html.dark .clash-download-card {
 
 .clash-chat-input-actions {
   background: transparent;
+}
+
+.clash-chat-input-toolbar-row {
+  display: grid;
+  grid-template-columns: minmax(2.25rem, 1fr) minmax(0, max-content);
+  column-gap: 0.375rem;
+}
+
+.clash-chat-input-toolbar-start,
+.clash-chat-input-toolbar-end,
+.clash-chat-input-toolbar-accessory,
+.clash-chat-input-toolbar-config,
+.clash-composer-session-controls {
+  min-width: 0;
+}
+
+.clash-chat-input-toolbar-start,
+.clash-chat-input-toolbar-accessory,
+.clash-composer-session-controls {
+  overflow: hidden;
+}
+
+.clash-chat-input-toolbar-accessory {
+  flex: 1 1 auto;
+}
+
+.clash-chat-input-toolbar-end {
+  max-width: 100%;
+}
+
+.clash-chat-input-toolbar-config {
+  flex: 1 1 auto;
+  max-width: 14rem;
+}
+
+.clash-session-config-trigger {
+  width: max-content;
+  min-width: max-content;
+  max-width: 100%;
+}
+
+@container clash-chat-composer (max-width: 32rem) {
+  .clash-chat-input-toolbar-row {
+    column-gap: 0.125rem;
+  }
+
+  .clash-chat-input-toolbar-start {
+    gap: 0.125rem;
+  }
+
+  .clash-composer-session-controls {
+    gap: 0;
+  }
+
+  .clash-session-config-effort {
+    display: none;
+  }
+
+  .clash-session-permission-label,
+  .clash-inline-session-config-trigger > span,
+  .clash-inline-session-config-label,
+  .clash-session-state-tag-label {
+    display: none;
+  }
+
+  .clash-session-permission-trigger,
+  .clash-inline-session-config-trigger {
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  .clash-session-state-tag {
+    gap: 0.125rem;
+    padding-inline: 0.375rem 0.125rem;
+  }
+}
+
+@container clash-chat-composer (max-width: 24.5rem) {
+  .clash-session-config-trigger {
+    min-width: 0;
+    max-width: 7.25rem;
+  }
 }
 
 .clash-runtime-prompt-queue {

@@ -1,12 +1,13 @@
 import type { IncomingMessage } from "node:http";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
   detectAll,
   detectEntry,
+  disposeAllAcpSetupProcesses,
   KNOWN_ACP_AGENTS,
   authenticateAgent as authenticateRuntimeAgent,
   listLocalAgentSessions,
@@ -14,10 +15,15 @@ import {
   probeAgentSessionConfig as probeRuntimeAgentSessionConfig,
   type AuthenticateAgentResult,
   type KnownAgentEntry,
+  type ProbeAgentAuthStatus,
 } from "@clash-space/bridge/acp-runtime";
 import { listLocalCcSessions } from "@clash-space/bridge/cc-sessions";
 import { machineName, osTag as defaultOsTag } from "@clash-space/bridge/platform";
-import { SessionManager, type ManagerOut } from "@clash-space/bridge/session-manager";
+import {
+  SessionManager,
+  type ManagerOut,
+  type SessionPermissionBroker,
+} from "@clash-space/bridge/session-manager";
 import type {
   LocalAcpAdapter,
   LocalAcpAttachSessionParams,
@@ -34,7 +40,8 @@ import {
   uninstallAcpRegistryAgent,
   uninstallManagedAdapter,
 } from "./acp-registry-installer.js";
-import { createSqliteLocalConfigStore, type SqliteLocalConfigStore } from "./local-config-store.js";
+import { createSqliteLocalConfigStore } from "./local-config-store.js";
+import { createClashUserConfigStore } from "./user-config.js";
 
 export const DESKTOP_LOCAL_RUNTIME_ID = "desktop-local";
 
@@ -76,13 +83,21 @@ export interface DetectedAcpAgent {
   id: string;
   label: string;
   configOptions?: unknown[];
+  availableCommands?: unknown[];
   sessionModes?: unknown;
   auth?: LocalAcpHarnessAuth;
+  capabilityInspection?: LocalAcpCapabilityInspection;
   spec: {
     command: string;
     args?: string[];
     env?: Record<string, string>;
   };
+}
+
+export interface LocalAcpCapabilityInspection {
+  status: "ready" | "blocked-auth" | "degraded";
+  inspected_at: string;
+  error?: string;
 }
 
 export interface LocalAcpHarnessAuthMethod {
@@ -159,6 +174,35 @@ export interface LocalAcpHarnessConfigStore {
   saveAgentServers?(servers: LocalAcpAgentServersConfig): Promise<void>;
 }
 
+export type LocalAcpRunConfigValue = string | boolean;
+
+export interface LocalAcpRunPreferences {
+  agent_id?: string;
+  config_by_agent: Record<string, Record<string, LocalAcpRunConfigValue>>;
+  mode_by_agent: Record<string, string>;
+}
+
+export interface LocalAcpRunPreferencesStore {
+  load(): Promise<LocalAcpRunPreferences>;
+  save(preferences: LocalAcpRunPreferences): Promise<void>;
+}
+
+export interface LocalAcpRunPreferenceUpdate {
+  agent_id: string;
+  config_values?: Record<string, LocalAcpRunConfigValue>;
+  mode_id?: string;
+}
+
+type LocalAcpConfirmedCapabilities = Pick<
+  DetectedAcpAgent,
+  "configOptions" | "availableCommands" | "sessionModes"
+>;
+
+export interface LocalAcpCapabilityCacheStore {
+  load(): Promise<Record<string, LocalAcpConfirmedCapabilities>>;
+  save(value: Record<string, LocalAcpConfirmedCapabilities>): Promise<void>;
+}
+
 export interface LocalAcpCustomAgentServer {
   type: "custom";
   command: string;
@@ -182,7 +226,12 @@ export interface LocalAcpAdapterOptions {
   detectAgents?: () => Promise<DetectedAcpAgent[]>;
   probeAgentAuth?: (agent: DetectedAcpAgent) => Promise<LocalAcpHarnessAuth | undefined>;
   probeAgentConfigOptions?: (agent: DetectedAcpAgent) => Promise<unknown[]>;
-  probeAgentSessionConfig?: (agent: DetectedAcpAgent) => Promise<{ configOptions?: unknown[]; modes?: unknown }>;
+  probeAgentSessionConfig?: (agent: DetectedAcpAgent) => Promise<{
+    configOptions?: unknown[];
+    availableCommands?: unknown[];
+    modes?: unknown;
+    auth?: ProbeAgentAuthStatus;
+  }>;
   authenticateAgent?: (agent: DetectedAcpAgent, options?: LocalAcpAuthenticateOptions) => Promise<AuthenticateAgentResult | void>;
   launchInteractiveAuth?: (options: InteractiveAuthLaunchOptions) => Promise<void>;
   probeCwd?: string;
@@ -190,8 +239,13 @@ export interface LocalAcpAdapterOptions {
   listResumeSessions?: () => Promise<LocalAcpResumeSession[]>;
   listAgentSessions?: (agent: DetectedAcpAgent) => Promise<LocalAcpResumeSession[]>;
   createSessionId?: () => string;
-  createSessionManager?: (send: SessionSender) => SessionManagerLike;
+  createSessionManager?: (
+    send: SessionSender,
+    requestPermission?: SessionPermissionBroker,
+  ) => SessionManagerLike;
   harnessConfig?: LocalAcpHarnessConfigStore;
+  runPreferences?: LocalAcpRunPreferencesStore;
+  capabilityCache?: LocalAcpCapabilityCacheStore;
   agentCatalog?: KnownAgentEntry[];
   spawnEnv?: Record<string, string | undefined>;
   harnessDownloadDir?: string;
@@ -210,6 +264,8 @@ interface BrowserMessage {
   text?: string;
   queue_mode?: string;
   turn_ids?: unknown[];
+  request_id?: string;
+  option_id?: string | null;
 }
 
 export interface InteractiveAuthLaunchOptions {
@@ -249,6 +305,20 @@ interface LocalAcpSession {
   disposePromise?: Promise<void>;
   disposedSent?: boolean;
   observers?: Set<(msg: unknown) => void>;
+  pendingPermissions: Map<
+    string,
+    {
+      optionIds: Set<string>;
+      message: {
+        type: "session.permission_request";
+        session_id: string;
+        request_id: string;
+        tool_call: unknown;
+        options: unknown[];
+      };
+      resolve: (response: Awaited<ReturnType<SessionPermissionBroker>>) => void;
+    }
+  >;
 }
 
 type PromptQueueMode = "single" | "flush";
@@ -264,11 +334,6 @@ type UpgradeCapableServer = {
 };
 
 const MAX_BACKLOG_MESSAGES = 200;
-const DEFAULT_AGENT_PREFERENCE = [
-  "codex-acp",
-  "claude-acp",
-  "gemini",
-];
 
 function extractAcpContentText(value: unknown): string | null {
   if (typeof value === "string") return value;
@@ -462,6 +527,44 @@ function authMethodFields(status: {
   };
 }
 
+function localAuthFromProbeStatus(
+  agent: DetectedAcpAgent,
+  status: ProbeAgentAuthStatus,
+): LocalAcpHarnessAuth | undefined {
+  if (status.status === "none") return undefined;
+  const method = status.methodName ?? status.methodId;
+  const methodFields = authMethodFields(status);
+  if (status.status === "configured") {
+    return {
+      status: "configured",
+      message: method
+        ? `${agent.label} ACP auth is configured (${method}).`
+        : `${agent.label} ACP auth is configured.`,
+      command: agent.spec.command,
+      ...methodFields,
+    };
+  }
+  if (status.status === "needs-auth") {
+    const prefix = method
+      ? `${agent.label} requires ACP authentication (${method}).`
+      : `${agent.label} requires ACP authentication.`;
+    return {
+      status: "needs-auth",
+      message: status.message ? `${prefix} ${status.message}` : prefix,
+      command: agent.spec.command,
+      ...methodFields,
+    };
+  }
+  return {
+    status: "unknown",
+    message: status.message
+      ? `Could not verify ${agent.label} auth: ${status.message}`
+      : `Could not verify ${agent.label} auth.`,
+    command: agent.spec.command,
+    ...methodFields,
+  };
+}
+
 function toHarnessEntry(agent: DetectedAcpAgent): KnownAgentEntry {
   return {
     id: agent.id,
@@ -570,65 +673,198 @@ function shouldEnableRegistryCatalog(options: LocalAcpAdapterOptions): boolean {
 }
 
 const LOCAL_HARNESS_CONFIG_KEY = "local-harness-config";
+const LOCAL_ACP_CAPABILITY_CACHE_KEY = "local-acp-confirmed-capabilities";
+const LOCAL_ACP_RUN_PREFERENCES_KEY = "local-acp-run-preferences";
 
-async function readHarnessConfig(store: SqliteLocalConfigStore): Promise<Record<string, unknown>> {
-  const parsed = await store.getJson<Record<string, unknown>>(LOCAL_HARNESS_CONFIG_KEY);
-  return isPlainObject(parsed) ? parsed : {};
+function harnessConfigFromLegacy(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const enabled = Array.isArray(record.enabled)
+    ? record.enabled
+    : Array.isArray(record.enabled_harness_ids)
+      ? record.enabled_harness_ids
+      : Array.isArray(record.enabledHarnessIds)
+        ? record.enabledHarnessIds
+        : null;
+  const agents = record.agents && typeof record.agents === "object" && !Array.isArray(record.agents)
+    ? record.agents
+    : record.agent_servers && typeof record.agent_servers === "object" && !Array.isArray(record.agent_servers)
+      ? record.agent_servers
+      : record.agentServers && typeof record.agentServers === "object" && !Array.isArray(record.agentServers)
+        ? record.agentServers
+        : null;
+  if (!enabled && !agents) return null;
+  return {
+    ...(enabled ? { enabled: enabled.filter((id): id is string => typeof id === "string") } : {}),
+    ...(agents ? { agents: normalizeAgentServersConfig(agents) } : {}),
+  };
 }
 
-async function writeHarnessConfig(store: SqliteLocalConfigStore, value: Record<string, unknown>): Promise<void> {
-  await store.setJson(LOCAL_HARNESS_CONFIG_KEY, value);
+function normalizeRunPreferences(value: unknown): LocalAcpRunPreferences {
+  const record = isPlainObject(value) ? value : {};
+  const agentId =
+    typeof record.agent_id === "string" && record.agent_id.trim()
+      ? record.agent_id.trim()
+      : typeof record.agent === "string" && record.agent.trim()
+        ? record.agent.trim()
+        : undefined;
+  const rawConfig = isPlainObject(record.config_by_agent)
+    ? record.config_by_agent
+    : isPlainObject(record.config)
+      ? record.config
+      : {};
+  const configByAgent: LocalAcpRunPreferences["config_by_agent"] = {};
+  for (const [id, rawValues] of Object.entries(rawConfig)) {
+    if (!isPlainObject(rawValues)) continue;
+    configByAgent[id] = Object.fromEntries(
+      Object.entries(rawValues).filter(
+        (entry): entry is [string, LocalAcpRunConfigValue] =>
+          typeof entry[1] === "string" || typeof entry[1] === "boolean",
+      ),
+    );
+  }
+  const rawModes = isPlainObject(record.mode_by_agent)
+    ? record.mode_by_agent
+    : isPlainObject(record.mode)
+      ? record.mode
+      : {};
+  const modeByAgent = Object.fromEntries(
+    Object.entries(rawModes).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+  return {
+    ...(agentId ? { agent_id: agentId } : {}),
+    config_by_agent: configByAgent,
+    mode_by_agent: modeByAgent,
+  };
 }
 
 export function createLocalHarnessConfigStore(dataDir: string): LocalAcpHarnessConfigStore {
-  const configStore = createSqliteLocalConfigStore(dataDir);
+  const userConfig = createClashUserConfigStore(dataDir);
+  const legacyStore = createSqliteLocalConfigStore(dataDir);
+  const legacySidecarPath = join(dataDir, "harnesses.json");
+  let migration: Promise<void> | null = null;
+  const ensureMigrated = () => {
+    migration ??= (async () => {
+      if (await userConfig.getSection("harnesses")) return;
+      let legacy: unknown = null;
+      try {
+        legacy = JSON.parse(await readFile(legacySidecarPath, "utf8")) as unknown;
+      } catch {
+        legacy = await legacyStore.getJson(LOCAL_HARNESS_CONFIG_KEY);
+      }
+      const migrated = harnessConfigFromLegacy(legacy);
+      if (!migrated) return;
+      await userConfig.setSection("harnesses", migrated);
+      await legacyStore.delete(LOCAL_HARNESS_CONFIG_KEY);
+      await unlink(legacySidecarPath).catch(() => undefined);
+    })();
+    return migration;
+  };
+  const loadConfig = async (): Promise<Record<string, unknown>> => {
+    await ensureMigrated();
+    return await userConfig.getSection<Record<string, unknown>>("harnesses") ?? {};
+  };
   return {
     async loadEnabledHarnessIds() {
-      const parsed = await readHarnessConfig(configStore) as {
-        enabled_harness_ids?: unknown;
-        enabledHarnessIds?: unknown;
-      };
-      const ids = Array.isArray(parsed.enabled_harness_ids)
-        ? parsed.enabled_harness_ids
-        : Array.isArray(parsed.enabledHarnessIds)
-          ? parsed.enabledHarnessIds
-          : null;
+      const parsed = await loadConfig();
+      const ids = Array.isArray(parsed.enabled) ? parsed.enabled : null;
       if (!ids) return null;
       return ids.filter((id): id is string => typeof id === "string");
     },
     async saveEnabledHarnessIds(ids) {
-      const parsed = await readHarnessConfig(configStore);
-      await writeHarnessConfig(configStore, { ...parsed, enabled_harness_ids: ids });
+      const parsed = await loadConfig();
+      await userConfig.setSection("harnesses", { ...parsed, enabled: ids });
     },
     async loadAgentServers() {
-      const parsed = await readHarnessConfig(configStore);
-      const servers = normalizeAgentServersConfig(parsed.agent_servers);
+      const parsed = await loadConfig();
+      const servers = normalizeAgentServersConfig(parsed.agents);
       return Object.keys(servers).length > 0 ? servers : null;
     },
     async saveAgentServers(servers) {
-      const parsed = await readHarnessConfig(configStore);
-      await writeHarnessConfig(configStore, {
+      const parsed = await loadConfig();
+      const next = {
         ...parsed,
-        agent_servers: normalizeAgentServersConfig(servers),
-      });
+        agents: normalizeAgentServersConfig(servers),
+      };
+      await userConfig.setSection("harnesses", next);
     },
   };
 }
 
-function createDefaultSessionManager(send: SessionSender): SessionManagerLike {
-  return new SessionManager(send);
+export function createLocalAcpRunPreferencesStore(
+  dataDir: string,
+): LocalAcpRunPreferencesStore {
+  const store = createSqliteLocalConfigStore(dataDir);
+  return {
+    async load() {
+      return normalizeRunPreferences(
+        await store.getJson(LOCAL_ACP_RUN_PREFERENCES_KEY),
+      );
+    },
+    async save(preferences) {
+      await store.setJson(
+        LOCAL_ACP_RUN_PREFERENCES_KEY,
+        normalizeRunPreferences(preferences),
+      );
+    },
+  };
 }
 
-function chooseDefaultAgent(agents: DetectedAcpAgent[]): DetectedAcpAgent | undefined {
-  for (const id of DEFAULT_AGENT_PREFERENCE) {
-    const match = agents.find((agent) => agent.id === id);
-    if (match) return match;
+export function createLocalAcpCapabilityCacheStore(
+  dataDir: string,
+): LocalAcpCapabilityCacheStore {
+  const store = createSqliteLocalConfigStore(dataDir);
+  return {
+    async load() {
+      const value = await store.getJson<Record<string, unknown>>(
+        LOCAL_ACP_CAPABILITY_CACHE_KEY,
+      );
+      if (!isPlainObject(value)) return {};
+      return Object.fromEntries(
+        Object.entries(value).flatMap(([agentId, candidate]) => {
+          if (!isPlainObject(candidate)) return [];
+          const capabilities: LocalAcpConfirmedCapabilities = {
+            ...(Array.isArray(candidate.configOptions)
+              ? { configOptions: candidate.configOptions }
+              : {}),
+            ...(Array.isArray(candidate.availableCommands)
+              ? { availableCommands: candidate.availableCommands }
+              : {}),
+            ...(candidate.sessionModes !== undefined
+              ? { sessionModes: candidate.sessionModes }
+              : {}),
+          };
+          return [[agentId, capabilities]];
+        }),
+      );
+    },
+    async save(value) {
+      await store.setJson(LOCAL_ACP_CAPABILITY_CACHE_KEY, value);
+    },
+  };
+}
+
+function createDefaultSessionManager(
+  send: SessionSender,
+  requestPermission?: SessionPermissionBroker,
+): SessionManagerLike {
+  return new SessionManager(send, { requestPermission });
+}
+
+function chooseDefaultAgent(
+  agents: DetectedAcpAgent[],
+  recentAgentId?: string,
+): DetectedAcpAgent | undefined {
+  if (recentAgentId) {
+    const recent = agents.find((agent) => agent.id === recentAgentId);
+    if (recent) return recent;
   }
   return agents[0];
 }
 
-function defaultEnabledHarnessSet(agents: DetectedAcpAgent[]): Set<string> | null {
-  if (!agents.some((agent) => agent.id === "codex-acp")) return null;
+function defaultEnabledHarnessSet(agents: DetectedAcpAgent[]): Set<string> {
   return new Set(agents.map((agent) => agent.id));
 }
 
@@ -963,7 +1199,12 @@ export async function launchInteractiveAuthCommand(options: InteractiveAuthLaunc
 export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private readonly detectAgents: () => Promise<DetectedAcpAgent[]>;
   private readonly probeAgentAuth: (agent: DetectedAcpAgent) => Promise<LocalAcpHarnessAuth | undefined>;
-  private readonly probeAgentSessionConfig: (agent: DetectedAcpAgent) => Promise<{ configOptions?: unknown[]; modes?: unknown }>;
+  private readonly probeAgentSessionConfig: (agent: DetectedAcpAgent) => Promise<{
+    configOptions?: unknown[];
+    availableCommands?: unknown[];
+    modes?: unknown;
+    auth?: ProbeAgentAuthStatus;
+  }>;
   private readonly authenticateAgent: (agent: DetectedAcpAgent, options?: LocalAcpAuthenticateOptions) => Promise<AuthenticateAgentResult | void>;
   private readonly launchInteractiveAuth: (options: InteractiveAuthLaunchOptions) => Promise<void>;
   private readonly probeCwd: string | null;
@@ -971,8 +1212,13 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private readonly listLocalSessions: () => Promise<LocalAcpResumeSession[]>;
   private readonly listAgentSessions: (agent: DetectedAcpAgent) => Promise<LocalAcpResumeSession[]>;
   private readonly createSessionId: () => string;
-  private readonly createSessionManager: (send: SessionSender) => SessionManagerLike;
+  private readonly createSessionManager: (
+    send: SessionSender,
+    requestPermission?: SessionPermissionBroker,
+  ) => SessionManagerLike;
   private readonly harnessConfig: LocalAcpHarnessConfigStore | null;
+  private readonly runPreferences: LocalAcpRunPreferencesStore | null;
+  private readonly capabilityCache: LocalAcpCapabilityCacheStore | null;
   private readonly agentCatalog: KnownAgentEntry[];
   private readonly registryCatalogEnabled: boolean;
   private readonly spawnEnv: Record<string, string | undefined>;
@@ -994,7 +1240,14 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private registryAgentCatalogCache: KnownAgentEntry[] | null = null;
   private registryAgentCatalogPromise: Promise<KnownAgentEntry[]> | null = null;
   private readonly npmPackageVersionCache = new Map<string, string | null>();
+  private readonly confirmedCapabilities = new Map<string, LocalAcpConfirmedCapabilities>();
+  private readonly confirmedAuth = new Map<string, LocalAcpHarnessAuth>();
+  private capabilityCacheLoad: Promise<void> | null = null;
+  private capabilityCacheWrite: Promise<void> = Promise.resolve();
+  private runPreferencesQueue: Promise<void> = Promise.resolve();
+  private reconcileQueue: Promise<void> = Promise.resolve();
   private sessionMessageStore: LocalAcpSessionMessageStore | null = null;
+  private lastReconciledEnabledIds: Set<string> | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private shuttingDown = false;
 
@@ -1025,38 +1278,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
         env: this.spawnEnv,
         timeoutMs: this.probeTimeoutMs,
       });
-      if (status.status === "none") return undefined;
-      const method = status.methodName ?? status.methodId;
-      const methodFields = authMethodFields(status);
-      if (status.status === "configured") {
-        return {
-          status: "configured",
-          message: method
-            ? `${agent.label} ACP auth is configured (${method}).`
-            : `${agent.label} ACP auth is configured.`,
-          command: agent.spec.command,
-          ...methodFields,
-        };
-      }
-      if (status.status === "needs-auth") {
-        const prefix = method
-          ? `${agent.label} requires ACP authentication (${method}).`
-          : `${agent.label} requires ACP authentication.`;
-        return {
-          status: "needs-auth",
-          message: status.message ? `${prefix} ${status.message}` : prefix,
-          command: agent.spec.command,
-          ...methodFields,
-        };
-      }
-      return {
-        status: "unknown",
-        message: status.message
-          ? `Could not verify ${agent.label} auth: ${status.message}`
-          : `Could not verify ${agent.label} auth.`,
-        command: agent.spec.command,
-        ...methodFields,
-      };
+      return localAuthFromProbeStatus(agent, status);
     });
     this.probeAgentSessionConfig = options.probeAgentSessionConfig ?? (
       options.probeAgentConfigOptions
@@ -1120,6 +1342,8 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     this.createSessionId = options.createSessionId ?? randomUUID;
     this.createSessionManager = options.createSessionManager ?? createDefaultSessionManager;
     this.harnessConfig = options.harnessConfig ?? null;
+    this.runPreferences = options.runPreferences ?? null;
+    this.capabilityCache = options.capabilityCache ?? null;
     this.agentCatalog = options.agentCatalog ?? KNOWN_ACP_AGENTS;
     this.registryCatalogEnabled = shouldEnableRegistryCatalog(options);
     this.hostname = options.hostname ?? machineName;
@@ -1134,11 +1358,66 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   }
 
   async warmup(): Promise<void> {
-    await this.refreshDetectedAgents({
+    await this.ensureCapabilityCacheLoaded();
+    const agents = await this.refreshDetectedAgents({
       probeAuth: true,
       probeConfigOptions: true,
-      probeScope: "installed",
+      probeScope: "enabled",
     });
+    this.lastReconciledEnabledIds =
+      (await this.enabledHarnessSet()) ?? defaultEnabledHarnessSet(agents);
+  }
+
+  async reconcileConfiguration(): Promise<void> {
+    const reconcile = this.reconcileQueue.then(() =>
+      this.reconcileConfigurationNow(),
+    );
+    this.reconcileQueue = reconcile.catch(() => undefined);
+    await reconcile;
+  }
+
+  private async reconcileConfigurationNow(): Promise<void> {
+    if (this.detectedAgentsPromise) {
+      await this.detectedAgentsPromise.catch(() => undefined);
+    }
+    const previousAgents = this.detectedAgentsCache ?? [];
+    const previousById = new Map(previousAgents.map((agent) => [agent.id, agent]));
+    const previousEnabled = this.lastReconciledEnabledIds;
+    this.registryAgentCatalogCache = null;
+    const agents = await this.detectAgentsWithProbes({
+      probeAuth: false,
+      probeConfigOptions: false,
+      probeScope: "enabled",
+    });
+    const enabled = (await this.enabledHarnessSet()) ?? defaultEnabledHarnessSet(agents);
+    const shouldProbe = (agent: DetectedAcpAgent) => {
+      if (enabled && !enabled.has(agent.id)) return false;
+      const previous = previousById.get(agent.id);
+      return (
+        !previous
+        || !previousEnabled
+        || !previousEnabled.has(agent.id)
+        || JSON.stringify(previous.spec) !== JSON.stringify(agent.spec)
+      );
+    };
+    const probedById = new Map(
+      (await Promise.all(agents
+        .filter(shouldProbe)
+        .map((agent) => this.probeAgentMetadata(agent, { auth: true, configOptions: true }))))
+        .map((agent) => [agent.id, agent]),
+    );
+    this.detectedAgentsCache = agents.map((agent) => {
+      const probed = probedById.get(agent.id);
+      if (probed) return probed;
+      const previous = previousById.get(agent.id);
+      return previous && JSON.stringify(previous.spec) === JSON.stringify(agent.spec)
+        ? previous
+        : agent;
+    });
+    this.detectedAgentsCacheProbesAuth = true;
+    this.detectedAgentsCacheProbesConfigOptions = true;
+    this.detectedAgentsCacheProbeScope = "enabled";
+    this.lastReconciledEnabledIds = enabled;
   }
 
   setSessionMessageStore(store: LocalAcpSessionMessageStore): void {
@@ -1218,22 +1497,95 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   }
 
   private async probeAgentMetadata(agent: DetectedAcpAgent, opts: { auth?: boolean; configOptions?: boolean }): Promise<DetectedAcpAgent> {
-    const shouldProbeAuth = opts.auth || opts.configOptions;
-    const auth = shouldProbeAuth ? await this.probeAgentAuth(agent).catch(() => undefined) : undefined;
-    const withAuth = auth ? { ...agent, auth } : agent;
-    if (!opts.configOptions || authBlocksAgent(auth)) return withAuth;
-    let sessionConfig: { configOptions?: unknown[]; modes?: unknown } = {};
-    try {
-      sessionConfig = await this.probeAgentSessionConfig(withAuth);
-    } catch {
-      sessionConfig = {};
-    }
-    const configOptions = sessionConfig.configOptions ?? [];
-    return {
-      ...withAuth,
-      ...(configOptions.length > 0 ? { configOptions } : {}),
-      ...(sessionConfig.modes ? { sessionModes: sessionConfig.modes } : {}),
+    let auth = agent.auth ?? this.confirmedAuth.get(agent.id);
+    const withAuth = () => {
+      const { auth: _staleAuth, ...withoutAuth } = agent;
+      return auth ? { ...withoutAuth, auth } : withoutAuth;
     };
+    if (!opts.configOptions) {
+      if (!opts.auth) return withAuth();
+      try {
+        auth = await this.probeAgentAuth(agent);
+        if (auth) this.confirmedAuth.set(agent.id, auth);
+        else this.confirmedAuth.delete(agent.id);
+      } catch {
+        // Keep the last confirmed auth state across a transient probe failure.
+      }
+      return withAuth();
+    }
+    await this.ensureCapabilityCacheLoaded();
+    const inspectedAt = new Date(this.nowSeconds() * 1_000).toISOString();
+    const confirmed = this.confirmedCapabilities.get(agent.id);
+    try {
+      const sessionConfig = await this.probeAgentSessionConfig(withAuth());
+      if (sessionConfig.auth) {
+        auth = localAuthFromProbeStatus(agent, sessionConfig.auth);
+        if (auth) this.confirmedAuth.set(agent.id, auth);
+        else this.confirmedAuth.delete(agent.id);
+      } else if (opts.auth) {
+        // Compatibility for injected/legacy probes. The production probe
+        // always returns auth from this same ACP child.
+        auth = await this.probeAgentAuth(agent).catch(() => auth);
+        if (auth) this.confirmedAuth.set(agent.id, auth);
+      }
+      if (authBlocksAgent(auth)) {
+        return {
+          ...withAuth(),
+          ...confirmed,
+          capabilityInspection: {
+            status: "blocked-auth",
+            inspected_at: inspectedAt,
+          },
+        };
+      }
+      const capabilities = {
+        configOptions: sessionConfig.configOptions ?? [],
+        availableCommands: sessionConfig.availableCommands ?? [],
+        ...(sessionConfig.modes ? { sessionModes: sessionConfig.modes } : {}),
+      };
+      this.confirmedCapabilities.set(agent.id, capabilities);
+      await this.persistConfirmedCapabilities();
+      return {
+        ...withAuth(),
+        ...capabilities,
+        capabilityInspection: {
+          status: "ready",
+          inspected_at: inspectedAt,
+        },
+      };
+    } catch (error) {
+      return {
+        ...withAuth(),
+        ...confirmed,
+        capabilityInspection: {
+          status: "degraded",
+          inspected_at: inspectedAt,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+  }
+
+  private async ensureCapabilityCacheLoaded(): Promise<void> {
+    if (!this.capabilityCache) return;
+    this.capabilityCacheLoad ??= this.capabilityCache.load().then((value) => {
+      for (const [agentId, capabilities] of Object.entries(value)) {
+        if (!this.confirmedCapabilities.has(agentId)) {
+          this.confirmedCapabilities.set(agentId, capabilities);
+        }
+      }
+    });
+    await this.capabilityCacheLoad;
+  }
+
+  private async persistConfirmedCapabilities(): Promise<void> {
+    if (!this.capabilityCache) return;
+    this.capabilityCacheWrite = this.capabilityCacheWrite.then(async () => {
+      await this.capabilityCache?.save(
+        Object.fromEntries(this.confirmedCapabilities.entries()),
+      );
+    });
+    await this.capabilityCacheWrite;
   }
 
   private async configuredCustomAgentEntries(): Promise<KnownAgentEntry[]> {
@@ -1460,7 +1812,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
   private async buildHarnesses(opts: LocalAcpHarnessListOptions = {}): Promise<LocalAcpHarness[]> {
     const probeAuth =
       opts.probe === true || opts.probe === "auth" || opts.probe === "config";
-    const probeConfigOptions = opts.probe === "config";
+    const probeConfigOptions = opts.refresh === true || opts.probe === "config";
     const checksForUpdates =
       opts.refresh === true ||
       (opts.probe !== undefined &&
@@ -1473,7 +1825,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     const agents = await this.getDetectedAgents({
       probeAuth,
       probeConfigOptions,
-      probeScope: "installed",
+      probeScope: probeConfigOptions ? "enabled" : "installed",
       refresh: opts.refresh === true,
     });
     const enabled = (await this.enabledHarnessSet()) ?? defaultEnabledHarnessSet(agents);
@@ -1523,11 +1875,13 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
 
   async updateHarnesses(enabledIds: string[]) {
     const agents = await this.getDetectedAgents();
+    const previousEnabled = (await this.enabledHarnessSet()) ?? defaultEnabledHarnessSet(agents);
     const normalized = normalizeEnabledHarnessIds(enabledIds, [
       ...agents.map((agent) => agent.id),
     ]);
     const agentById = new Map(agents.map((agent) => [agent.id, agent]));
     const probedAgents = await Promise.all(normalized
+      .filter((id) => !previousEnabled?.has(id))
       .map((id) => agentById.get(id))
       .filter((agent): agent is DetectedAcpAgent => !!agent)
       .map((agent) => this.probeAgentMetadata(agent, { auth: true, configOptions: false })));
@@ -1537,11 +1891,8 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       throw new Error(`Authenticate ${blocked.label} before enabling.${suffix}`);
     }
     await this.harnessConfig?.saveEnabledHarnessIds(normalized);
-    this.detectedAgentsCache = null;
-    this.detectedAgentsCacheProbesAuth = false;
-    this.detectedAgentsCacheProbesConfigOptions = false;
-    this.detectedAgentsCacheProbeScope = null;
-    return { harnesses: await this.buildHarnesses({ probe: "auth", refresh: true }) };
+    await this.reconcileConfiguration();
+    return { harnesses: await this.buildHarnesses({ probe: "none" }) };
   }
 
   async listAgentServers() {
@@ -1552,13 +1903,10 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     if (!this.harnessConfig?.saveAgentServers) throw new Error("Custom agent server settings are not configured");
     const normalized = normalizeAgentServersConfig(servers);
     await this.harnessConfig.saveAgentServers(normalized);
-    this.detectedAgentsCache = null;
-    this.detectedAgentsCacheProbesAuth = false;
-    this.detectedAgentsCacheProbesConfigOptions = false;
-    this.detectedAgentsCacheProbeScope = null;
+    await this.reconcileConfiguration();
     return {
       agent_servers: normalized,
-      harnesses: await this.buildHarnesses({ probe: true, refresh: true }),
+      harnesses: await this.buildHarnesses({ probe: "none" }),
     };
   }
 
@@ -1654,6 +2002,9 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       probeScope: probeConfigOptions ? "installed" : "enabled",
       refresh: opts.refresh === true,
     });
+    const preferences = this.runPreferences
+      ? normalizeRunPreferences(await this.runPreferences.load())
+      : null;
     const now = this.nowSeconds();
     return {
       runtimes: [
@@ -1669,9 +2020,16 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
             ...(Array.isArray(agent.configOptions) && agent.configOptions.length > 0
               ? { config_options: agent.configOptions }
               : {}),
+            ...(Array.isArray(agent.availableCommands)
+              ? { available_commands: agent.availableCommands }
+              : {}),
             ...(agent.sessionModes ? { session_modes: agent.sessionModes } : {}),
             ...(agent.auth ? { auth: publicAuthForResponse(agent.auth) } : {}),
+            ...(agent.capabilityInspection
+              ? { capability_inspection: agent.capabilityInspection }
+              : {}),
           })),
+          ...(preferences ? { preferences } : {}),
           version: "desktop",
           status: "online" as const,
           last_heartbeat: now,
@@ -1681,16 +2039,62 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     };
   }
 
+  async updateRunPreferences(update: LocalAcpRunPreferenceUpdate) {
+    const operation = this.runPreferencesQueue.then(async () => {
+      if (!this.runPreferences) {
+        throw new Error("Local ACP run preferences are not configured");
+      }
+      const agentId = update.agent_id.trim();
+      if (!agentId) throw new Error("Missing agent_id");
+      const current = normalizeRunPreferences(await this.runPreferences.load());
+      const configValues = isPlainObject(update.config_values)
+        ? Object.fromEntries(
+            Object.entries(update.config_values).filter(
+              (entry): entry is [string, LocalAcpRunConfigValue] =>
+                typeof entry[1] === "string" || typeof entry[1] === "boolean",
+            ),
+          )
+        : null;
+      const modeId = update.mode_id?.trim();
+      const preferences: LocalAcpRunPreferences = {
+        agent_id: agentId,
+        config_by_agent: {
+          ...current.config_by_agent,
+          ...(configValues ? { [agentId]: configValues } : {}),
+        },
+        mode_by_agent: {
+          ...current.mode_by_agent,
+          ...(modeId ? { [agentId]: modeId } : {}),
+        },
+      };
+      await this.runPreferences.save(preferences);
+      return { preferences };
+    });
+    this.runPreferencesQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+
   async authenticateHarness(id: string, options?: LocalAcpAuthenticateOptions) {
     const agents = await this.getDetectedAgents();
     const agent = agents.find((candidate) => candidate.id === id);
     if (!agent) throw new Error(`Local agent harness is not available: ${id}`);
     const result = await this.authenticateAgent(agent, options);
     const authStarted = result?.status === "started";
+    if (!authStarted) {
+      const refreshedAgent = await this.probeAgentMetadata(agent, {
+        auth: true,
+        configOptions: false,
+      });
+      this.detectedAgentsCache = agents.map((candidate) =>
+        candidate.id === id ? refreshedAgent : candidate,
+      );
+      this.detectedAgentsCacheProbesAuth = true;
+    }
     return {
-      harnesses: await this.buildHarnesses(authStarted
-        ? { probe: false, refresh: false }
-        : { probe: "auth", refresh: true }),
+      harnesses: await this.buildHarnesses({ probe: false, refresh: false }),
     };
   }
 
@@ -1713,9 +2117,12 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
 
     const agents = await this.detectEnabledAgents({ probeAuth: true, probeScope: "enabled" });
     if (this.shuttingDown) throw new Error("Local ACP runtime is shutting down");
+    const recentAgentId = !params.agentId && this.runPreferences
+      ? normalizeRunPreferences(await this.runPreferences.load()).agent_id
+      : undefined;
     let agent = params.agentId
       ? agents.find((candidate) => candidate.id === params.agentId)
-      : chooseDefaultAgent(agents);
+      : chooseDefaultAgent(agents, recentAgentId);
     if (!agent && params.agentId) {
       const detectedAgents = await this.getDetectedAgents({ probeAuth: true, probeScope: "enabled" });
       const requestedAgent = detectedAgents.find((candidate) => candidate.id === params.agentId);
@@ -1792,7 +2199,11 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       harnessId: agent.id,
       harnessLabel: agent.label,
       ...(harnessVersion ? { harnessVersion } : {}),
-      manager: this.createSessionManager(send),
+      manager: this.createSessionManager(
+        send,
+        (requestSessionId, request) =>
+          this.brokerPermissionRequest(entry, requestSessionId, request),
+      ),
       clients: new Set(),
       backlog: [],
       messages: [],
@@ -1804,6 +2215,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       restartReadySent: false,
       persistQueue: Promise.resolve(),
       promptQueue: Promise.resolve(),
+      pendingPermissions: new Map(),
       ...(params.projectId ? { projectId: params.projectId } : {}),
       ...(params.agentMemberId ? { agentMemberId: params.agentMemberId } : {}),
     };
@@ -1850,6 +2262,62 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     });
 
     return { session_id: sessionId };
+  }
+
+  private brokerPermissionRequest(
+    entry: LocalAcpSession,
+    sessionId: Parameters<SessionPermissionBroker>[0],
+    request: Parameters<SessionPermissionBroker>[1],
+  ): ReturnType<SessionPermissionBroker> {
+    if (entry.id !== sessionId) {
+      return Promise.resolve({ outcome: { outcome: "cancelled" } });
+    }
+    const requestId = randomUUID();
+    return new Promise((resolve) => {
+      const message = {
+        type: "session.permission_request" as const,
+        session_id: sessionId,
+        request_id: requestId,
+        tool_call: request.toolCall,
+        options: request.options,
+      };
+      entry.pendingPermissions.set(requestId, {
+        optionIds: new Set(request.options.map((option) => option.optionId)),
+        message,
+        resolve,
+      });
+      for (const client of entry.clients) sendJson(client, message);
+    });
+  }
+
+  private resolvePermissionRequest(
+    entry: LocalAcpSession,
+    requestId: string,
+    optionId: string | null,
+  ): void {
+    const pending = entry.pendingPermissions.get(requestId);
+    if (!pending) return;
+    entry.pendingPermissions.delete(requestId);
+    const selectedOptionId =
+      typeof optionId === "string" && pending.optionIds.has(optionId)
+        ? optionId
+        : null;
+    pending.resolve(selectedOptionId
+      ? { outcome: { outcome: "selected", optionId: selectedOptionId } }
+      : { outcome: { outcome: "cancelled" } });
+    const resolved = {
+      type: "session.permission_resolved",
+      session_id: entry.id,
+      request_id: requestId,
+      option_id: selectedOptionId,
+    };
+    for (const client of entry.clients) sendJson(client, resolved);
+  }
+
+  private cancelPendingPermissions(entry: LocalAcpSession): void {
+    for (const requestId of [...entry.pendingPermissions.keys()]) {
+      this.resolvePermissionRequest(entry, requestId, null);
+    }
   }
 
   async pushRoomMention(
@@ -2262,6 +2730,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       ...(entry.acpSessionId ? { resumeAcpSessionId: entry.acpSessionId } : {}),
     };
     entry.restarting = true;
+    this.cancelPendingPermissions(entry);
     for (const client of entry.clients) {
       try {
         client.close(1012, "ACP session restarting");
@@ -2306,6 +2775,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     const entry = this.sessions.get(sessionId);
     if (!entry) return Promise.resolve();
     if (!entry.disposePromise) {
+      this.cancelPendingPermissions(entry);
       entry.disposePromise = Promise.resolve(entry.manager.dispose(sessionId))
         .catch((error) => {
           this.sendToSession(entry, {
@@ -2332,6 +2802,7 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     if (this.shutdownPromise) return this.shutdownPromise;
     this.shuttingDown = true;
     this.shutdownPromise = (async () => {
+      await disposeAllAcpSetupProcesses();
       while (this.sessions.size > 0) {
         const entries = [...this.sessions.values()];
         for (const entry of entries) {
@@ -2393,11 +2864,23 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
     if (opts.replayBacklog !== false) {
       for (const msg of entry.backlog) sendJson(ws, msg);
     }
+    for (const pending of entry.pendingPermissions.values()) {
+      sendJson(ws, pending.message);
+    }
 
     ws.on("message", (raw) => {
       const msg = parseBrowserMessage(raw);
       if (!msg?.type) return;
       switch (msg.type) {
+        case "permission_response":
+          if (typeof msg.request_id === "string") {
+            this.resolvePermissionRequest(
+              entry,
+              msg.request_id,
+              typeof msg.option_id === "string" ? msg.option_id : null,
+            );
+          }
+          return;
         case "set_prompt_queue_mode":
           if (isPromptQueueMode(msg.queue_mode)) {
             entry.promptQueueMode = msg.queue_mode;

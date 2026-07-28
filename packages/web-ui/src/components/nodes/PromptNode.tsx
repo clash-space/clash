@@ -168,7 +168,7 @@ const PromptNode = ({
             {/* Content Preview with Fade Out */}
             <div className="flex-1 relative overflow-hidden">
               <div className="absolute inset-0">
-                <div className="prose prose-sm prose-slate prose-p:text-slate-700 prose-headings:text-slate-900 prose-p:leading-tight">
+                <div className="prose prose-sm prose-slate prose-headings:text-content-primary prose-p:leading-tight prose-p:text-content-secondary">
                   <MarkdownPreview content={content} />
                 </div>
               </div>
@@ -196,7 +196,7 @@ const PromptNode = ({
 const MarkdownPreview = ({ content }: { content: string }) => {
   return (
     <div
-      className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-brand prose-code:text-brand prose-code:bg-brand-light prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded"
+      className="prose prose-sm max-w-none prose-slate prose-headings:font-bold prose-headings:text-content-primary prose-p:text-content-secondary prose-a:text-brand prose-code:rounded prose-code:bg-brand-light prose-code:px-1.5 prose-code:py-0.5 prose-code:text-brand"
       dangerouslySetInnerHTML={{
         __html: content
           .replace(/^### (.*$)/gim, "<h3>$1</h3>")

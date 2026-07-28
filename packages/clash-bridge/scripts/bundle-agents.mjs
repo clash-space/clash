@@ -7,28 +7,35 @@
  *   ├── master-clash/
  *   │   ├── runtime.json                      ← bridge-only (which CLI to spawn)
  *   │   └── template/                         ← what gets cp -R'd into the workspace
+ *   │       ├── AGENTS.md
  *   │       ├── CLAUDE.md
- *   │       └── .claude/
- *   │           ├── skills/                   ← from assets/shared-cwd
- *   │           └── commands/
+ *   │       └── GEMINI.md
  *   ├── canvas-editor/...
  *   ...
  *
- * The single agent template inherits the shared `.claude/` config plus
- * its own AGENTS.md product contract.
+ * The plugin is the single source for both Skill content and MCP runtime.
+ * Session startup links its canonical Skill directory into the selected
+ * harness's native project discovery directory. MCP remains a separate tool
+ * transport and never acts as a Skill reader.
  */
 
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = dirname(here);
 const ASSETS = join(root, "assets");
 const DIST = join(root, "dist", "agents");
+const REPO_ROOT = join(root, "..", "..");
+const CLASH_PLUGIN_ROOT =
+  process.env.CLASH_BUILTIN_PLUGIN_ROOT || join(REPO_ROOT, "plugins", "clash");
 
 const LABELS = {
-  "master-clash": { label: "Master Clash", summary: "Runs the Clash project through the local clash CLI." },
+  "master-clash": {
+    label: "Master Clash",
+    summary: "Operates the Clash project through its native Skill and bundled MCP tools.",
+  },
 };
 
 async function main() {
@@ -54,12 +61,33 @@ async function main() {
     // prelude so a fix lands for every agent at once.
     const prelude = await readFile(join(ASSETS, "shared-cwd", "AGENTS-prelude.md"), "utf-8");
     const roleBody = await readFile(join(src, "AGENTS.md"), "utf-8");
-    await writeFile(join(dstTpl, "AGENTS.md"), prelude.trimEnd() + "\n\n" + roleBody);
+    const nativeContract = prelude.trimEnd() + "\n\n" + roleBody;
+    await Promise.all([
+      writeFile(join(dstTpl, "AGENTS.md"), nativeContract),
+      writeFile(join(dstTpl, "CLAUDE.md"), nativeContract),
+      writeFile(join(dstTpl, "GEMINI.md"), nativeContract),
+    ]);
     await cp(join(src, "runtime.json"), join(dst, "runtime.json"));
-    // Copy `.claude/` but EXCLUDE the prelude file we already inlined.
-    await cp(join(ASSETS, "shared-cwd", ".claude"), join(dstTpl, ".claude"), { recursive: true });
-
     const runtime = JSON.parse(await readFile(join(dst, "runtime.json"), "utf-8"));
+    for (const pluginId of runtime.plugins ?? []) {
+      if (pluginId !== "clash") {
+        throw new Error(`unknown built-in agent plugin: ${pluginId}`);
+      }
+      const pluginDst = join(dst, "plugins", pluginId);
+      const pluginRuntimeSrc = join(CLASH_PLUGIN_ROOT, "runtime");
+      const nestedAgentsDir = join(pluginRuntimeSrc, "agents");
+      await Promise.all([
+        cp(join(CLASH_PLUGIN_ROOT, ".codex-plugin"), join(pluginDst, ".codex-plugin"), { recursive: true }),
+        cp(join(CLASH_PLUGIN_ROOT, ".mcp.json"), join(pluginDst, ".mcp.json")),
+        cp(join(CLASH_PLUGIN_ROOT, "skills"), join(pluginDst, "skills"), { recursive: true }),
+        cp(pluginRuntimeSrc, join(pluginDst, "runtime"), {
+          recursive: true,
+          filter: (source) =>
+            source !== nestedAgentsDir
+            && !source.startsWith(`${nestedAgentsDir}${sep}`),
+        }),
+      ]);
+    }
     const meta = LABELS[id] ?? { label: id, summary: "" };
     manifest.push({
       id,

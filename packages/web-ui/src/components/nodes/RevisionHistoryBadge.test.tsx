@@ -5,6 +5,36 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RevisionHistoryBadge } from "./RevisionHistoryBadge";
 
 describe("RevisionHistoryBadge", () => {
+  it("keeps the editor History entry visible before the first revision exists", () => {
+    render(
+      <RevisionHistoryBadge
+        nodeId="text-1"
+        showWhenEmpty
+        variant="toolbar"
+        history={{
+          count: 0,
+          latest: null,
+          revisions: [],
+          loading: false,
+          error: null,
+        }}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Text revision history: no revisions",
+      }),
+    );
+
+    expect(screen.getByText("No saved revisions yet.")).toBeTruthy();
+    expect(
+      screen.getByRole("region", {
+        name: "Text revision history panel",
+      }).className,
+    ).toContain("left-0");
+  });
+
   afterEach(() => {
     cleanup();
   });
