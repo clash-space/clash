@@ -535,9 +535,11 @@ export function AgentAnnotationInspector({
           icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">Annotation</div>
-          <div className="text-[11px] text-content-muted">
-            {activeIndex + 1} of {annotations.length}
+          <div className="truncate text-sm font-semibold">
+            {target.objectLabel}
+          </div>
+          <div className="truncate text-[11px] text-content-muted">
+            Annotation {activeIndex + 1} of {annotations.length}
           </div>
         </div>
         {onLocate ? (
@@ -552,57 +554,68 @@ export function AgentAnnotationInspector({
         ) : null}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <div className="rounded-xl border border-warm-border bg-warm-surface p-3 shadow-sm">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <AnnotationNumberBadge number={activeIndex + 1} />
-            {target.previewAssetId ? (
-              <AnnotationAssetThumbnail target={target} size="md" />
-            ) : (
-              <span
-                className="mt-0.5 shrink-0 text-content-muted"
-                aria-hidden="true"
-              >
-                <SurfaceIcon surface={target.surface} />
-              </span>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">
-                {target.objectLabel}
-              </div>
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-content-muted">
-                <span>{target.surfaceLabel}</span>
-                <span aria-hidden="true">·</span>
-                <span className="truncate">
-                  {formatObjectType(target.objectType)}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+        <AgentAnnotationActionsContextMenu
+          annotation={annotation}
+          onLocate={onLocate ? () => onLocate(annotation.id) : undefined}
+          onRemove={onRemove ? () => onRemove(annotation.id) : undefined}
+        >
+          <div
+            data-testid="agent-annotation-target-summary"
+            className="rounded-xl bg-warm-surface/70 p-3 ring-1 ring-inset ring-warm-border"
+          >
+            <div className="flex min-w-0 items-start gap-2.5">
+              <AnnotationNumberBadge number={activeIndex + 1} />
+              {target.previewAssetId ? (
+                <AnnotationAssetThumbnail target={target} size="md" />
+              ) : (
+                <span
+                  className="mt-0.5 shrink-0 text-content-muted"
+                  aria-hidden="true"
+                >
+                  <SurfaceIcon surface={target.surface} />
                 </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">
+                  {target.objectLabel}
+                </div>
+                <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-content-muted">
+                  <span>{target.surfaceLabel}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="truncate">
+                    {formatObjectType(target.objectType)}
+                  </span>
+                </div>
               </div>
             </div>
+            {target.previewAssetId ? (
+              <div className="mt-3 overflow-hidden rounded-lg bg-warm-muted">
+                <AnnotationAssetThumbnail target={target} size="lg" />
+              </div>
+            ) : null}
+            {target.selection ? (
+              <blockquote className="mt-3 flex gap-2 rounded-r-lg border-l-2 border-brand/45 bg-warm-muted/45 px-3 py-2.5 text-[13px] leading-5 text-content-secondary">
+                <Quotes
+                  className="mt-0.5 h-4 w-4 shrink-0 text-content-muted"
+                  weight="fill"
+                  aria-hidden="true"
+                />
+                <span>{target.selection.exact}</span>
+              </blockquote>
+            ) : (
+              <p className="mt-3 text-[11px] leading-4 text-content-muted">
+                Attached to the whole{" "}
+                {formatObjectType(target.objectType).toLowerCase()}.
+              </p>
+            )}
           </div>
-          <div className="mt-3 truncate rounded-lg bg-warm-muted/70 px-2.5 py-2 font-mono text-[10px] text-content-muted">
-            {target.objectPath}
-          </div>
-          {target.previewAssetId ? (
-            <div className="mt-3 overflow-hidden rounded-lg bg-warm-muted">
-              <AnnotationAssetThumbnail target={target} size="lg" />
-            </div>
-          ) : null}
-          {target.selection ? (
-            <blockquote className="mt-3 flex gap-2 rounded-lg border border-warm-border/80 bg-warm-muted/50 px-3 py-2.5 text-[13px] leading-5 text-content-secondary">
-              <Quotes
-                className="mt-0.5 h-4 w-4 shrink-0 text-content-muted"
-                weight="fill"
-                aria-hidden="true"
-              />
-              <span>{target.selection.exact}</span>
-            </blockquote>
-          ) : null}
-        </div>
+        </AgentAnnotationActionsContextMenu>
 
-        <div className="mt-4">
+        <div className="mt-5">
           <label
             htmlFor={`annotation-note-${annotation.id}`}
-            className="text-[11px] font-semibold uppercase tracking-[0.08em] text-content-muted"
+            className="text-xs font-semibold text-content-secondary"
           >
             Instruction for agent
           </label>
@@ -619,11 +632,10 @@ export function AgentAnnotationInspector({
             readOnly={!onChange}
             disabled={disabled}
             onChange={(event) => onChange?.(annotation.id, event.target.value)}
-            className="mt-2 min-h-28 resize-y rounded-xl border-warm-border bg-warm-surface px-3 py-2.5 text-sm leading-5 shadow-sm"
+            className="mt-2 min-h-32 resize-y rounded-xl border-warm-border bg-warm-surface px-3 py-2.5 text-sm leading-5 shadow-none"
           />
           <p className="mt-2 text-[11px] leading-4 text-content-muted">
-            This instruction stays attached to the selected workspace object
-            when you send it to the agent.
+            Sent with this exact workspace target and selection.
           </p>
         </div>
 

@@ -38,6 +38,7 @@ it("host status emits stable active JSON", async () => {
 
   expect(output).toEqual({
     status: "active",
+    profile: "prod",
     endpoint: "http://127.0.0.1:49321",
     launchMode: "desktop",
     pid: process.pid,
@@ -58,7 +59,7 @@ it("host status emits stable inactive JSON", async () => {
     stdout: (line) => lines.push(line),
   });
 
-  expect(output).toEqual({ status: "inactive" });
+  expect(output).toEqual({ status: "inactive", profile: "prod" });
   expect(JSON.parse(lines.join("\n"))).toEqual(output);
 });
 

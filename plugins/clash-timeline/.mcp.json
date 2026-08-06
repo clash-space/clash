@@ -5,7 +5,10 @@
       "args": [
         "./runtime/index.js"
       ],
-      "cwd": "."
+      "cwd": ".",
+      "env": {
+        "CLASH_PROFILE": "prod"
+      }
     }
   }
 }

@@ -14,6 +14,11 @@ In a built-in self-host ACP session, all Clash product operations MUST go
 through these MCP tools. Never run a shell `clash` command and never fall back
 to a globally installed Clash skill or binary.
 
+The user message is not a project snapshot. Discover the latest product state
+on demand with the smallest relevant typed MCP read; do not assume that Canvas,
+Timeline, Director, asset, or text state was embedded in the prompt, and do not
+scan every entity unless the task actually requires a workspace-wide inventory.
+
 ## Runtime boundary
 
 - The plugin automatically reuses an active Desktop/standalone local-api host.
@@ -53,6 +58,17 @@ that are not backed by a real tool call.
 
 ## Working-tree projections
 
+<!-- BEGIN GENERATED TIMELINE DSL WORKFLOW -->
+- The complete Timeline root, track, common item, item-variant, mask, and keyframe contract is generated from implementation annotations at
+  schema version `3` with fingerprint
+  `fnv1a32:e3826b91`.
+- Before authoring unfamiliar Timeline fields, call `clash_timeline_schema`
+  for the versioned JSON Schema, feature semantics, and executable examples.
+- Before apply or `clash_timeline_save`, validate the complete draft without
+  mutation through `clash_timeline_validate` (CLI equivalent:
+  `clash timeline validate --file <path> --json`). Resolve every reported contract issue before
+  writing; never treat schema discovery alone as validation.
+<!-- END GENERATED TIMELINE DSL WORKFLOW -->
 - Discover Project Timelines with `clash_cli_timeline` and
   `args: ["list", "--json"]`. The owning Canvas node exposes the stable id as
   `data.timelineId`.
@@ -66,10 +82,13 @@ that are not backed by a real tool call.
      `args: ["apply", "--timeline", "<id>", "--file",
      "timelines/<id>.timeline.yaml", "--json"]`.
 
+- For typed `clash_timeline_save`, pass the `revisionId` from
+  `clash_timeline_get` as `baseRevisionId`; stale full-state saves are rejected.
 - Round-trip mutable text through `clash_cli_text` with `pull` and `apply`
   argument arrays.
-- Preserve the read-proof sidecars created by pull commands. Apply uses them
-  for CAS conflict detection.
+- Reads and pulls record the CAS observation internally. Do not create or
+  preserve projection lock/revision sidecars. On a stale conflict, read again
+  and rebase the intended edit.
 
 ## Mutation rules
 

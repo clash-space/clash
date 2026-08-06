@@ -97,6 +97,7 @@ def handle_local_model_rpc(runtime: Any, payload: dict[str, Any]) -> dict[str, A
     `{ "method": "status"|"deploy"|"transcribe", "params": {...} }`.
     """
 
+    request_id = payload.get("id")
     try:
         method = payload.get("method")
         params = payload.get("params") or {}
@@ -121,6 +122,12 @@ def handle_local_model_rpc(runtime: Any, payload: dict[str, Any]) -> dict[str, A
                 model=_string_param(params, "model"),
                 cache_dir=cache_dir,
             )
+        elif method == "warmup":
+            warmup = getattr(runtime, "warmup", runtime.status)
+            warmup_args = {"model": _string_param(params, "model")}
+            if cache_dir:
+                warmup_args["cache_dir"] = cache_dir
+            result = warmup(**warmup_args)
         elif method == "transcribe":
             transcribe_args = {
                 "model": _string_param(params, "model"),
@@ -141,9 +148,12 @@ def handle_local_model_rpc(runtime: Any, payload: dict[str, Any]) -> dict[str, A
             )
         else:
             raise ValueError(f"unsupported local model method: {method}")
-        return {"ok": True, "result": _to_json_value(result)}
+        response = {"ok": True, "result": _to_json_value(result)}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        response = {"ok": False, "error": str(exc)}
+    if isinstance(request_id, str) and request_id:
+        return {"id": request_id, **response}
+    return response
 
 
 def _string_param(params: dict[str, Any], key: str) -> str:

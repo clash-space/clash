@@ -20,6 +20,7 @@ import {
   type UpstreamRef,
 } from "./canvas";
 import { MODEL_CARDS, normalizeModelId, type ModelCard } from "./models";
+import { ExecutablePluginBindingSchema } from "./executable-plugin";
 import { ensureProjectCanvas, readProjectTimeline } from "./project-workspace";
 import {
   clearNodeUpstreamRefs,
@@ -666,7 +667,7 @@ export class Canvas {
     const seenOrdered = new Set(ordered);
     const extras = attachedSourceIds.filter((nid) => !seenOrdered.has(nid));
     const sortedSourceIds = [...ordered, ...extras];
-    const refNodes = sortedSourceIds
+    const resolvedRefNodes = sortedSourceIds
       .map((sid) => this.readNode(sid))
       .filter((n): n is NonNullable<typeof n> => !!n);
 
@@ -675,9 +676,9 @@ export class Canvas {
     // directly) carry their refs as bare `referenceImageAssetIds` on
     // the action-badge data. Synthesize stand-in ref nodes so the
     // unified payload builder can partition them too.
-    if (refNodes.length === 0 && Array.isArray(nodeData.referenceImageAssetIds)) {
+    if (resolvedRefNodes.length === 0 && Array.isArray(nodeData.referenceImageAssetIds)) {
       for (const aid of nodeData.referenceImageAssetIds as string[]) {
-        refNodes.push({
+        resolvedRefNodes.push({
           id: aid,
           type: RF_NODE_TYPE.Image,
           parent_id: null,
@@ -693,7 +694,8 @@ export class Canvas {
         : config.customDef.id;
     const { pendingInput, validationError } = buildGenerationPayload({
       prompt,
-      refNodes,
+      lyrics: typeof nodeData.lyrics === "string" ? nodeData.lyrics : undefined,
+      refNodes: resolvedRefNodes,
       configId,
       config,
       actionType: actionType as
@@ -704,6 +706,9 @@ export class Canvas {
         | `custom:${string}`,
       label: nodeData.label as string | undefined,
       referenceMode: nodeData.referenceMode as string | undefined,
+      pluginBinding: ExecutablePluginBindingSchema.safeParse(nodeData.pluginBinding).success
+        ? ExecutablePluginBindingSchema.parse(nodeData.pluginBinding)
+        : undefined,
     });
 
     if (validationError) {

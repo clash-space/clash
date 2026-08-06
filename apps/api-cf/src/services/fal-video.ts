@@ -8,6 +8,7 @@
  *   - fal-ai/kling-video/v2.1/standard/image-to-video
  */
 import { fal } from "@fal-ai/client";
+import { resolveFlux3KeyframeIndices } from "@clash/shared-runtime";
 
 interface FalVideoParams {
   prompt: string;
@@ -53,6 +54,10 @@ export async function generateFalVideo(
     return generateKlingVideo(params);
   }
 
+  if (params.videoModel?.startsWith('flux-3-video')) {
+    return generateFlux3Video(params);
+  }
+
   if (params.videoModel === 'kling-3') {
     return generateKling3Video(params);
   }
@@ -69,11 +74,136 @@ export async function generateFalVideo(
     return generateSeedance2RefVideo(params);
   }
 
+  if (params.videoModel === 'minimax-h3' || params.videoModel === 'minimax-h3-startend') {
+    return generateMiniMaxH3Video(params);
+  }
+
   if (params.videoModel === 'sora-2') {
     return generateSoraVideo(params);
   }
 
   throw new Error(`Unsupported fal video model: ${params.videoModel ?? params.modelEndpoint ?? "missing model"}`);
+}
+
+async function generateFlux3Video(params: FalVideoParams): Promise<FalVideoResult> {
+  const duration = params.duration ?? "auto";
+  const common: Record<string, unknown> = {
+    prompt: params.prompt,
+    duration,
+    aspect_ratio: params.aspectRatio || "auto",
+    resolution: (params.modelParams?.resolution as string | undefined) ?? "720p",
+    generate_audio: (params.modelParams?.generate_audio as boolean | undefined) ?? true,
+    safety_tolerance: (params.modelParams?.safety_tolerance as number | undefined) ?? 2,
+  };
+
+  let modelId: string;
+  let input: Record<string, unknown> = common;
+  if (params.videoModel === "flux-3-video-continue") {
+    const videoUrl = params.referenceVideoUrls?.[0];
+    if (!videoUrl) throw new Error("FLUX 3 continuation requires one source video.");
+    modelId = "blackforestlabs/flux-3/extend-video";
+    input = { ...common, video_url: videoUrl };
+  } else if (params.videoModel === "flux-3-video-keyframes") {
+    const images = params.referenceImageUrls ?? [];
+    if (images.length === 0) throw new Error("FLUX 3 keyframe generation requires at least one image.");
+    if (images.length > 10) throw new Error("FLUX 3 accepts at most 10 keyframes.");
+    if (images.length === 1) {
+      modelId = "blackforestlabs/flux-3/image-to-video";
+      input = { ...common, image_url: images[0] };
+    } else if (images.length === 2) {
+      modelId = "blackforestlabs/flux-3/first-last-frame-to-video";
+      input = { ...common, start_image_url: images[0], end_image_url: images[1] };
+    } else {
+      const numericDuration = typeof duration === "number" ? duration : Number.parseInt(duration, 10);
+      if (!Number.isFinite(numericDuration)) {
+        throw new Error("FLUX 3 multi-keyframe generation requires an explicit duration.");
+      }
+      const frameIndices = resolveFlux3KeyframeIndices(params.modelParams, images.length, numericDuration);
+      modelId = "blackforestlabs/flux-3/keyframes-to-video";
+      input = {
+        ...common,
+        keyframes: images.map((imageUrl, index) => ({
+          image_url: imageUrl,
+          frame_index: frameIndices[index],
+        })),
+      };
+    }
+  } else {
+    modelId = "blackforestlabs/flux-3/text-to-video";
+  }
+
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 30 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
+  const data = result.data as { video?: { url: string; duration?: number } };
+  if (!data.video?.url) throw new Error("No video in FLUX 3 response");
+  return {
+    url: data.video.url,
+    duration: data.video.duration ?? (typeof duration === "number" ? duration : 5),
+    requestId: result.requestId,
+    model: modelId,
+  };
+}
+
+async function generateMiniMaxH3Video(params: FalVideoParams): Promise<FalVideoResult> {
+  const duration = typeof params.duration === "string"
+    ? Number.parseInt(params.duration, 10)
+    : (params.duration ?? 5);
+  const resolution = (params.modelParams?.resolution as string | undefined) ?? "768P";
+  const input: Record<string, unknown> = {
+    prompt: params.prompt,
+    duration,
+    resolution,
+  };
+
+  let modelId: string;
+  if (params.videoModel === "minimax-h3-startend") {
+    if (!params.startFrameUrl) {
+      throw new Error("MiniMax H3 start/end generation requires a start frame");
+    }
+    modelId = "minimax/h3/image-to-video";
+    input.image_url = params.startFrameUrl;
+    if (params.endFrameUrl) input.end_image_url = params.endFrameUrl;
+  } else {
+    const hasReferences = Boolean(
+      params.referenceImageUrls?.length
+      || params.referenceVideoUrls?.length
+      || params.referenceAudioUrls?.length,
+    );
+    modelId = hasReferences
+      ? "minimax/h3/reference-to-video"
+      : "minimax/h3/text-to-video";
+    if (!hasReferences && params.aspectRatio === "adaptive") {
+      throw new Error("MiniMax H3 Auto aspect ratio on fal requires at least one reference");
+    }
+    input.aspect_ratio = params.aspectRatio || "16:9";
+    if (params.referenceImageUrls?.length) input.reference_image_urls = params.referenceImageUrls;
+    if (params.referenceVideoUrls?.length) input.reference_video_urls = params.referenceVideoUrls;
+    if (params.referenceAudioUrls?.length) input.reference_audio_urls = params.referenceAudioUrls;
+  }
+
+  const result = await fal.subscribe(modelId, {
+    input,
+    timeout: 10 * 60 * 1000,
+    onEnqueue: params.onEnqueue,
+    onQueueUpdate: params.onQueueUpdate as any,
+  } as any);
+  const data = result.data as {
+    video?: { url: string; duration?: number };
+  };
+  if (!data.video?.url) {
+    throw new Error("No video in MiniMax H3 response");
+  }
+
+  return {
+    url: data.video.url,
+    duration: data.video.duration ?? duration,
+    requestId: result.requestId,
+    model: modelId,
+  };
 }
 
 async function generateSoraVideo(params: FalVideoParams): Promise<FalVideoResult> {
@@ -188,6 +318,8 @@ async function generateSeedance2Video(params: FalVideoParams): Promise<FalVideoR
     resolution: (params.modelParams?.resolution as string) ?? '720p',
     generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
   };
+  const seed = params.modelParams?.seed;
+  if (typeof seed === "number" && Number.isFinite(seed)) input.seed = seed;
 
   if (hasImage) {
     input.image_url = params.startFrameUrl;
@@ -342,6 +474,8 @@ async function generateSeedance2RefVideo(params: FalVideoParams): Promise<FalVid
     aspect_ratio: params.aspectRatio || 'auto',
     generate_audio: (params.modelParams?.generate_audio as boolean) ?? true,
   };
+  const seed = params.modelParams?.seed;
+  if (typeof seed === "number" && Number.isFinite(seed)) input.seed = seed;
 
   if (params.referenceImageUrls?.length) input.image_urls = params.referenceImageUrls;
   if (params.referenceVideoUrls?.length) input.video_urls = params.referenceVideoUrls;

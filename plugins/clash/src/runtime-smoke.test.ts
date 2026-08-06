@@ -17,7 +17,7 @@ async function waitUntil(check: () => Promise<boolean>, timeoutMs = 5_000): Prom
   assert.fail("timed out waiting for plugin runtime cleanup");
 }
 
-test("built plugin runtime self-hosts local-api over stdio without Desktop", async () => {
+test("built plugin runtime self-hosts profile-bound local-api without MCP Apps", async () => {
   const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const clashHome = await mkdtemp(join(tmpdir(), "clash-plugin-runtime-"));
   const client = new Client({ name: "clash-runtime-test", version: "1.0.0" });
@@ -29,6 +29,7 @@ test("built plugin runtime self-hosts local-api over stdio without Desktop", asy
     env: {
       ...process.env,
       CLASH_HOME: clashHome,
+      CLASH_PROFILE: "prod",
       CLASH_LOCAL_DATA_DIR: join(clashHome, "local-api"),
     },
   });
@@ -36,13 +37,27 @@ test("built plugin runtime self-hosts local-api over stdio without Desktop", asy
   try {
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.ok(tools.tools.some((tool) => tool.name === "clash_studio_open"));
+    for (const name of [
+      "clash_studio_open",
+      "clash_canvas_open",
+      "clash_canvas_snapshot",
+      "clash_timeline_open",
+      "clash_director_open",
+    ]) assert.equal(tools.tools.some((tool) => tool.name === name), false);
+    await assert.rejects(
+      client.listResources(),
+      (error: unknown) => (error as { code?: number }).code === -32601,
+    );
 
-    const result = await client.callTool({ name: "clash_studio_open", arguments: {} });
+    const result = await client.callTool({
+      name: "clash_cli_host",
+      arguments: { args: ["status", "--json"] },
+    });
     assert.notEqual(result.isError, true, JSON.stringify(result));
     const record = JSON.parse(await readFile(join(clashHome, "run", "host.json"), "utf8"));
     assert.equal(record.launchMode, "plugin");
     assert.equal(record.startedBy, "plugin");
+    assert.equal(record.profile, "prod");
     assert.match(record.agentCliPath, /agent-bin\/clash$/);
 
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));

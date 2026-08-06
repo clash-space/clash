@@ -1,9 +1,9 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { delimiter } from 'node:path';
 
 export type LocalModelKind = 'asr' | 'tts' | 'image' | 'video' | 'audio' | 'text';
 export type LocalSpeechCapability = 'speech-to-text' | 'text-to-speech';
-export type LocalModelRpcMethod = 'status' | 'deploy' | 'remove' | 'transcribe' | 'synthesize';
+export type LocalModelRpcMethod = 'status' | 'deploy' | 'remove' | 'warmup' | 'transcribe' | 'synthesize';
 
 export interface LocalModelStatus {
   available: boolean;
@@ -68,6 +68,7 @@ export interface LocalAsrRuntime {
   status(input: LocalModelStatusInput): Promise<LocalModelStatus>;
   deploy(input: LocalModelDeployInput): Promise<void>;
   remove?(input: LocalModelRemoveInput): Promise<void>;
+  warmup?(input: LocalModelStatusInput): Promise<LocalModelStatus>;
   transcribe(input: LocalAsrTranscribeInput): Promise<LocalAsrTranscription>;
 }
 
@@ -96,6 +97,7 @@ export interface LocalTtsRuntime {
   status(input: LocalModelStatusInput): Promise<LocalModelStatus>;
   deploy(input: LocalModelDeployInput): Promise<void>;
   remove(input: LocalModelRemoveInput): Promise<void>;
+  warmup?(input: LocalModelStatusInput): Promise<LocalModelStatus>;
   synthesize(input: LocalTtsSynthesizeInput): Promise<LocalTtsSynthesis>;
 }
 
@@ -105,8 +107,8 @@ export interface LocalModelRpcRequest {
 }
 
 export type LocalModelRpcResponse =
-  | { ok: true; result?: unknown }
-  | { ok: false; error: string };
+  | { id?: string; ok: true; result?: unknown }
+  | { id?: string; ok: false; error: string };
 
 export type LocalModelRpcInvoker = (request: LocalModelRpcRequest) => Promise<unknown>;
 
@@ -129,25 +131,34 @@ export interface PythonLocalTtsRuntimeOptions extends PythonLocalModelRuntimeOpt
   adapter?: 'tts' | 'piper' | 'kokoro' | string;
 }
 
+interface PersistentPythonWorkerConfig {
+  pythonBinary: string;
+  pythonPath: string[];
+  env: Record<string, string | undefined>;
+  cwd: string;
+}
+
+const persistentPythonWorkers = new Map<string, PersistentPythonWorker>();
+let pythonRpcRequestSequence = 0;
+
 class PythonLocalModelRpcClient {
-  private readonly pythonBinary: string;
   private readonly adapter: string;
-  private readonly pythonPath: string[];
-  private readonly env: Record<string, string | undefined>;
-  private readonly cwd?: string;
+  private readonly workerConfig: PersistentPythonWorkerConfig;
   private readonly timeoutMs: number;
   private readonly invokeRpc?: LocalModelRpcInvoker;
 
   constructor(options: PythonLocalModelRuntimeOptions, defaultAdapter: string) {
-    this.pythonBinary = options.pythonBinary ?? 'python3';
     this.adapter = options.adapter ?? defaultAdapter;
-    this.pythonPath = Array.isArray(options.pythonPath)
-      ? options.pythonPath.filter(Boolean)
-      : options.pythonPath
-        ? [options.pythonPath]
-        : [];
-    this.env = options.env ?? {};
-    this.cwd = options.cwd;
+    this.workerConfig = {
+      pythonBinary: options.pythonBinary ?? 'python3',
+      pythonPath: Array.isArray(options.pythonPath)
+        ? options.pythonPath.filter(Boolean)
+        : options.pythonPath
+          ? [options.pythonPath]
+          : [],
+      env: options.env ?? {},
+      cwd: options.cwd ?? process.cwd(),
+    };
     this.timeoutMs = options.timeoutMs ?? 30 * 60_000;
     this.invokeRpc = options.invokeRpc;
   }
@@ -155,62 +166,135 @@ class PythonLocalModelRpcClient {
   async request(request: LocalModelRpcRequest): Promise<unknown> {
     const response = this.invokeRpc
       ? await this.invokeRpc(request)
-      : await this.spawnPythonRpc(request);
+      : await this.requestPersistentPythonRpc(request);
     return unwrapRpcResponse(response);
   }
 
-  private spawnPythonRpc(request: LocalModelRpcRequest): Promise<unknown> {
+  private requestPersistentPythonRpc(request: LocalModelRpcRequest): Promise<unknown> {
+    const worker = ensurePersistentPythonWorker(this.workerConfig);
+    const id = `${process.pid}-${Date.now()}-${pythonRpcRequestSequence += 1}`;
     return new Promise((resolve, reject) => {
-      const env = {
-        ...process.env,
-        ...this.env,
-      };
-      if (this.pythonPath.length > 0) {
-        env.PYTHONPATH = [this.pythonPath.join(delimiter), env.PYTHONPATH].filter(Boolean).join(delimiter);
-      }
-      const child = spawn(
-        this.pythonBinary,
-        ['-m', 'clash_sdk.local_models.rpc', this.adapter],
-        {
-          cwd: this.cwd,
-          env,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        },
-      );
-      let stdout = '';
-      let stderr = '';
       const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        reject(new Error(`Local model RPC timed out after ${this.timeoutMs}ms`));
+        failPersistentPythonWorker(worker, new Error(`Local model RPC timed out after ${this.timeoutMs}ms`));
+        worker.child.kill('SIGKILL');
       }, this.timeoutMs);
-      child.stdout.setEncoding('utf8');
-      child.stderr.setEncoding('utf8');
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk;
+      worker.pending.set(id, { resolve, reject, timer });
+      worker.child.stdin.write(`${JSON.stringify({ ...request, adapter: this.adapter, id })}\n`, (error) => {
+        if (error) failPersistentPythonWorker(worker, error);
       });
-      child.stderr.on('data', (chunk) => {
-        stderr += chunk;
-      });
-      child.once('error', (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-      child.once('close', (code) => {
-        clearTimeout(timer);
-        const parsed = parseRpcJson(stdout);
-        if (!parsed) {
-          reject(new Error(stderr.trim() || `Local model RPC exited with code ${code ?? 'unknown'}`));
-          return;
-        }
-        try {
-          resolve(unwrapRpcResponse(parsed));
-        } catch (error) {
-          reject(error);
-        }
-      });
-      child.stdin.end(JSON.stringify(request));
     });
   }
+}
+
+function ensurePersistentPythonWorker(config: PersistentPythonWorkerConfig): PersistentPythonWorker {
+  const poolKey = persistentPythonWorkerKey(config);
+  const existing = persistentPythonWorkers.get(poolKey);
+  if (existing && !existing.closed) return existing;
+  const env = {
+    ...process.env,
+    ...config.env,
+  };
+  if (config.pythonPath.length > 0) {
+    env.PYTHONPATH = [config.pythonPath.join(delimiter), env.PYTHONPATH].filter(Boolean).join(delimiter);
+  }
+  const child = spawn(
+    config.pythonBinary,
+    ['-m', 'clash_sdk.local_models.rpc', 'router'],
+    {
+      cwd: config.cwd,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  );
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.unref();
+  unrefNodeStream(child.stdin);
+  unrefNodeStream(child.stdout);
+  unrefNodeStream(child.stderr);
+  const worker: PersistentPythonWorker = {
+    child,
+    poolKey,
+    closed: false,
+    stdoutBuffer: '',
+    stderr: '',
+    pending: new Map(),
+  };
+  persistentPythonWorkers.set(poolKey, worker);
+  child.stdout.on('data', (chunk: string) => {
+    worker.stdoutBuffer += chunk;
+    const lines = worker.stdoutBuffer.split(/\r?\n/g);
+    worker.stdoutBuffer = lines.pop() ?? '';
+    for (const line of lines) handlePersistentPythonWorkerLine(worker, line);
+  });
+  child.stderr.on('data', (chunk: string) => {
+    worker.stderr = `${worker.stderr}${chunk}`.slice(-16_384);
+  });
+  child.once('error', (error) => failPersistentPythonWorker(worker, error));
+  child.once('close', (code) => {
+    if (worker.stdoutBuffer.trim()) handlePersistentPythonWorkerLine(worker, worker.stdoutBuffer);
+    failPersistentPythonWorker(
+      worker,
+      new Error(worker.stderr.trim() || `Local model RPC exited with code ${code ?? 'unknown'}`),
+    );
+  });
+  return worker;
+}
+
+function persistentPythonWorkerKey(config: PersistentPythonWorkerConfig): string {
+  const env = Object.entries(config.env)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify([config.pythonBinary, config.cwd, config.pythonPath, env]);
+}
+
+function unrefNodeStream(stream: unknown): void {
+  const candidate = stream as { unref?: () => void } | null;
+  candidate?.unref?.();
+}
+
+function handlePersistentPythonWorkerLine(worker: PersistentPythonWorker, line: string): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return;
+  }
+  if (!parsed || typeof parsed !== 'object' || typeof (parsed as { id?: unknown }).id !== 'string') return;
+  const id = (parsed as { id: string }).id;
+  const pending = worker.pending.get(id);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  worker.pending.delete(id);
+  pending.resolve(parsed);
+}
+
+function failPersistentPythonWorker(worker: PersistentPythonWorker, error: Error): void {
+  if (persistentPythonWorkers.get(worker.poolKey) === worker) {
+    persistentPythonWorkers.delete(worker.poolKey);
+  }
+  if (worker.closed) return;
+  worker.closed = true;
+  for (const pending of worker.pending.values()) {
+    clearTimeout(pending.timer);
+    pending.reject(error);
+  }
+  worker.pending.clear();
+}
+
+interface PendingPythonRpcRequest {
+  resolve(value: unknown): void;
+  reject(error: Error): void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+interface PersistentPythonWorker {
+  child: ChildProcessWithoutNullStreams;
+  poolKey: string;
+  closed: boolean;
+  stdoutBuffer: string;
+  stderr: string;
+  pending: Map<string, PendingPythonRpcRequest>;
 }
 
 export class PythonLocalAsrRuntime implements LocalAsrRuntime {
@@ -255,6 +339,18 @@ export class PythonLocalAsrRuntime implements LocalAsrRuntime {
         ...(cacheDir ? { cache_dir: cacheDir } : {}),
       },
     });
+  }
+
+  async warmup(input: LocalModelStatusInput): Promise<LocalModelStatus> {
+    const cacheDir = input.cacheDir ?? this.cacheDir;
+    const result = await this.client.request({
+      method: 'warmup',
+      params: {
+        model: input.model,
+        ...(cacheDir ? { cache_dir: cacheDir } : {}),
+      },
+    });
+    return asStatus(result);
   }
 
   async transcribe(input: LocalAsrTranscribeInput): Promise<LocalAsrTranscription> {
@@ -314,6 +410,18 @@ export class PythonLocalTtsRuntime implements LocalTtsRuntime {
         ...(cacheDir ? { cache_dir: cacheDir } : {}),
       },
     });
+  }
+
+  async warmup(input: LocalModelStatusInput): Promise<LocalModelStatus> {
+    const cacheDir = input.cacheDir ?? this.cacheDir;
+    const result = await this.client.request({
+      method: 'warmup',
+      params: {
+        model: input.model,
+        ...(cacheDir ? { cache_dir: cacheDir } : {}),
+      },
+    });
+    return asStatus(result);
   }
 
   async synthesize(input: LocalTtsSynthesizeInput): Promise<LocalTtsSynthesis> {
@@ -501,16 +609,4 @@ function optionalConfidence(value: unknown, label: string): number | undefined {
     throw new Error(`Local ASR ${label} must be between 0 and 1`);
   }
   return value;
-}
-
-function parseRpcJson(stdout: string): unknown | null {
-  const lines = stdout.split(/\r?\n/g).map((line) => line.trim()).filter(Boolean);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    try {
-      return JSON.parse(lines[index]);
-    } catch {
-      // Python runtimes may print progress logs. The last JSON line is the RPC response.
-    }
-  }
-  return null;
 }

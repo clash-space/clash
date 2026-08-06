@@ -2,17 +2,23 @@
   "summary": "The 'Protocol Layer' of the application. Contains Zod schemas and TypeScript interfaces used by both Frontend and Backend.",
   "context_hints": [
     "Modify this package when you need to change API contracts or Data Models",
-    "Run 'pnpm build' in this directory after changes to regenerate artifacts",
+    "Timeline docs and the standalone Timeline skill are generated from annotations during Timeline plugin builds and shared-types prepack; synchronization tests fail on drift",
     "Python models are generated from these Zod schemas"
   ],
   "subdirectories": {
     "src": "Source code containing Zod schema definitions.",
     "python": "Generated Python Pydantic models (do not edit manually).",
-    "scripts": "Scripts for code generation (TS -> Python)."
+    "scripts": "Scripts for code generation (TS -> Python and Timeline contract -> docs/skills)."
   },
   "key_files": {
     "src/index.ts": "Main entry point exporting all types.",
+    "src/executable-plugin.ts": "Versioned agent-editable plugin manifest, Card document/package validation, permission escalation diff, local/hosted invocation ABI, and immutable plugin bindings for persisted workflows.",
     "src/agent-annotation.ts": "Transient structured annotation blocks that address editable Canvas, Timeline, and Director Stage objects, including exact text-quote selections and viewport highlight hints.",
+    "src/timeline-mask.ts": "Implementation-side clip-mask annotations that generate validation, defaults, UI bindings, runtime constants, DSL metadata, examples, and docs.",
+    "src/timeline-keyframes.ts": "Item-local transform and mask animation channels plus structural validation.",
+    "src/timeline-yaml.ts": "Timeline YAML parsing and semantic validation, including mask/keyframe compatibility rules.",
+    "src/timeline-dsl-schema.ts": "Versioned agent-facing Timeline YAML Zod/JSON Schema definition, feature semantics, and executable mask-keyframe example.",
+    "src/timeline-dsl-docs.ts": "Deterministic JavaDoc-style Markdown and Skill reference renderer generated from Timeline capability annotations.",
     "src/models.ts": "AI Model configuration and metadata schemas.",
     "src/tasks.ts": "Task definitions for the Async Job system.",
     "src/pipeline.ts": "Pipeline execution state definitions."

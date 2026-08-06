@@ -245,6 +245,32 @@ describe("computeBuildPlan", () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("computeAdoptionPayload", () => {
+  it("preserves inline reference mentions for provider-side interleaving", () => {
+    const prompt = "Describe @[First](node:img1), then compare @[Second](node:img2).";
+    const action = n({
+      id: "act",
+      type: "action-badge",
+      data: {
+        content: prompt,
+        actionType: "text-gen",
+        modelId: "gpt-5.4",
+        modelParams: {},
+      },
+    });
+    const nodes = [
+      action,
+      n({ id: "img1", type: "image", data: { assetId: "asset-a" } }),
+      n({ id: "img2", type: "image", data: { assetId: "asset-b" } }),
+    ];
+    const edges = [e("1", "img1", "act"), e("2", "img2", "act")];
+
+    const res = computeAdoptionPayload(action, nodes, edges);
+
+    expect(res.ok).toBe(true);
+    expect(res.data?.prompt).toBe(prompt);
+    expect(res.data?.referenceImageAssetIds).toEqual(["asset-a", "asset-b"]);
+  });
+
   it("image-gen: partitions image refs only (drops videos/audios for model that doesn't accept)", () => {
     const action = n({ id: "act", type: "action-badge", data: actionData("test prompt") });
     const nodes = [

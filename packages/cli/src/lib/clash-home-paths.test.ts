@@ -1,10 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { localActionsDir } from "../commands/actions";
 import { assetCacheDir } from "../commands/canvas";
 import { daemonSocketDir } from "./daemon";
 import { getDefaultHostDiscoveryRunDir } from "./host-discovery";
+import { resolveClashRoot } from "./clash-home";
+
+test("CLASH_PROFILE=dev selects the isolated development home", () => {
+  assert.equal(
+    resolveClashRoot({ CLASH_PROFILE: "dev" }),
+    join(homedir(), ".clash", "profiles", "dev"),
+  );
+});
 
 test("CLASH_HOME scopes local action, cache, socket, and host discovery paths", () => {
   const originalClashHome = process.env.CLASH_HOME;

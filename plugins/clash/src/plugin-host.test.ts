@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,6 +41,21 @@ async function loadHostModule(): Promise<Record<string, unknown>> {
   }
 }
 
+test("plugin host discovery refuses a different runtime profile", async () => {
+  const module = await loadHostModule();
+  const runDir = await mkdtemp(join(tmpdir(), "clash-plugin-profile-"));
+  await writeFile(join(runDir, "host.json"), JSON.stringify({
+    ...existingHost,
+    profile: "prod",
+  }), "utf8");
+
+  const read = module.readActivePluginHost as (
+    runDir: string,
+    profile: "dev" | "prod",
+  ) => Promise<HostRecord | undefined>;
+  assert.equal(await read(runDir, "dev"), undefined);
+});
+
 test("plugin host manager reuses an active host without taking ownership", async () => {
   const module = await loadHostModule();
   assert.equal(typeof module.createPluginHostManager, "function");
@@ -63,6 +78,47 @@ test("plugin host manager reuses an active host without taking ownership", async
   await manager.close();
   assert.equal(starts, 0);
   assert.equal(closes, 0);
+});
+
+test("plugin host manager reuses the ambient Desktop API without starting a second local-api", async () => {
+  const module = await loadHostModule();
+  assert.equal(typeof module.createPluginHostManager, "function");
+  let starts = 0;
+  const manager = (module.createPluginHostManager as (options: Record<string, unknown>) => {
+    ensureHost(): Promise<HostRecord>;
+    ownsHost(): boolean;
+    close(): Promise<void>;
+  })({
+    env: {
+      CLASH_API_URL: "http://127.0.0.1:54201",
+      CLASH_CLI_ENTRY_PATH: "/tmp/clash-cli.cjs",
+    },
+    readHost: async () => undefined,
+    startHost: async () => {
+      starts += 1;
+      return {
+        record: {
+          ...existingHost,
+          hostId: "unexpected-plugin-host",
+          launchMode: "plugin",
+          startedBy: "plugin",
+          ownerClientId: "plugin-ambient",
+        },
+        close: async () => undefined,
+      };
+    },
+    ownerClientId: "plugin-ambient",
+  });
+
+  const host = await manager.ensureHost();
+
+  assert.equal(host.endpoint, "http://127.0.0.1:54201");
+  assert.equal(host.agentCliPath, "/tmp/clash-cli.cjs");
+  assert.equal(host.launchMode, "desktop");
+  assert.equal(host.startedBy, "desktop");
+  assert.equal(starts, 0);
+  assert.equal(manager.ownsHost(), false);
+  await manager.close();
 });
 
 test("plugin host manager starts once under concurrent demand and closes only its host", async () => {

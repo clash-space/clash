@@ -12,9 +12,11 @@ export default defineConfig({
   outDir: "runtime",
   clean: true,
   bundle: true,
+  treeshake: true,
   splitting: false,
   dts: true,
   noExternal: [
+    "@clash/shared-types",
     "@modelcontextprotocol/ext-apps",
     "@modelcontextprotocol/sdk",
     "zod",

@@ -1,19 +1,26 @@
 
 import { forwardRef, useState, useRef, useCallback, useEffect, useImperativeHandle, type ForwardedRef, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, Plus, Microphone, X, Check, CircleNotch } from '@phosphor-icons/react';
+import { ArrowUp, Plus, Microphone, CircleNotch } from '@phosphor-icons/react';
 import { lazy } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDropzone, type Accept } from 'react-dropzone';
-import { Link } from 'react-router';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { runtimeApiUrl } from '@clash/web-ui/lib/runtimeConfig';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Input } from '../ui/input';
+import {
+    SpeechInputRecording,
+    type SpeechInputCompletionIntent,
+} from '../ai-elements/speech-input';
 import type { AgentAnnotationDraft } from '@clash/shared-types';
 import type { MilkdownEditorHandle, MentionableNode } from '../MilkdownEditor';
 import { AgentAnnotationTray } from './AgentAnnotationBlock';
+import {
+    VoiceInputSetupPopover,
+    type VoiceInputNotice,
+} from './VoiceInputSetupPopover';
 
 // Lazy load MilkdownEditor to avoid SSR issues
 const MilkdownEditor = lazy(() => import('../MilkdownEditor'));
@@ -78,30 +85,35 @@ interface LocalAudioConfig {
     asr: {
         enabled: boolean;
         ready: boolean;
-        provider: 'builtin-funasr';
+        provider: string;
         base_url: string | null;
         model: string;
         setup?: {
-            provider: 'funasr';
-            runtime?: 'builtin-rpc';
+            provider: string;
+            runtime?: 'builtin-rpc' | 'provider-route';
             status: 'disabled' | 'needs-install' | 'ready';
         };
     };
 }
 
-interface VoiceNotice {
-    message: string;
-    action?: {
-        label: string;
-        href: string;
-    };
+interface VoiceConfigCacheEntry {
+    promise: Promise<LocalAudioConfig>;
+    expiresAt: number;
+    value?: LocalAudioConfig;
 }
 
-function voiceConfigNotice(config?: LocalAudioConfig): VoiceNotice {
+const voiceConfigCacheByFetch = new WeakMap<
+    typeof fetch,
+    Map<string, VoiceConfigCacheEntry>
+>();
+const VOICE_CONFIG_READY_CACHE_TTL_MS = 30_000;
+const VOICE_CONFIG_UNAVAILABLE_CACHE_TTL_MS = 1_000;
+
+function voiceConfigNotice(config?: LocalAudioConfig): VoiceInputNotice {
     if (!config || !config.asr.enabled) {
         return {
-            message: 'Enable voice input in Audio settings first.',
-            action: { label: 'Open Audio', href: '/settings?section=audio' },
+            message: 'Enable voice input in Voice input settings first.',
+            action: { label: 'Open Voice input', href: '/settings?section=audio' },
         };
     }
     return {
@@ -110,7 +122,7 @@ function voiceConfigNotice(config?: LocalAudioConfig): VoiceNotice {
     };
 }
 
-function voiceTranscriptionNotice(error: unknown): VoiceNotice {
+function voiceTranscriptionNotice(error: unknown): VoiceInputNotice {
     const message = error instanceof Error ? error.message : String(error);
     if (/Local ASR is not enabled/i.test(message)) return voiceConfigNotice();
     if (/Selected ASR model is not deployed/i.test(message)) return voiceConfigNotice({
@@ -126,9 +138,50 @@ function voiceTranscriptionNotice(error: unknown): VoiceNotice {
 }
 
 async function loadLocalAudioConfig(): Promise<LocalAudioConfig> {
-    const res = await fetch(runtimeApiUrl('/api/v1/local/audio'), { credentials: 'include' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return (await res.json()) as LocalAudioConfig;
+    const fetchImpl = globalThis.fetch;
+    const url = runtimeApiUrl('/api/v1/local/audio/voice-input');
+    let cache = voiceConfigCacheByFetch.get(fetchImpl);
+    if (!cache) {
+        cache = new Map();
+        voiceConfigCacheByFetch.set(fetchImpl, cache);
+    }
+
+    const cached = cache.get(url);
+    if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+    const request = fetchImpl(url, { credentials: 'include' }).then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as LocalAudioConfig;
+    });
+    const entry: VoiceConfigCacheEntry = {
+        promise: request,
+        expiresAt: Number.POSITIVE_INFINITY,
+    };
+    cache.set(url, entry);
+    void request.then(
+        (config) => {
+            if (cache?.get(url) === entry) {
+                entry.value = config;
+                entry.expiresAt = Date.now() + (
+                    config.asr.enabled && config.asr.ready
+                        ? VOICE_CONFIG_READY_CACHE_TTL_MS
+                        : VOICE_CONFIG_UNAVAILABLE_CACHE_TTL_MS
+                );
+            }
+        },
+        () => {
+            if (cache?.get(url) === entry) cache.delete(url);
+        },
+    );
+    return request;
+}
+
+function peekLocalAudioConfig(): LocalAudioConfig | undefined {
+    const fetchImpl = globalThis.fetch;
+    const url = runtimeApiUrl('/api/v1/local/audio/voice-input');
+    const cached = voiceConfigCacheByFetch.get(fetchImpl)?.get(url);
+    if (!cached || cached.expiresAt <= Date.now()) return undefined;
+    return cached.value;
 }
 
 async function transcribeLocalAudio(blob: Blob): Promise<string> {
@@ -144,6 +197,14 @@ async function transcribeLocalAudio(blob: Blob): Promise<string> {
     if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
     if (!json?.text) throw new Error('Local ASR returned no transcript');
     return json.text;
+}
+
+async function warmupLocalVoiceInput(): Promise<void> {
+    const res = await fetch(runtimeApiUrl('/api/v1/local/audio/voice-input/warmup'), {
+        method: 'POST',
+        credentials: 'include',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -486,54 +547,23 @@ function ChatInputInner({
     // ─── ASR ─────────────────────────────────────────────────
     const [isListening, setIsListening] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
-    const [voiceNotice, setVoiceNotice] = useState<VoiceNotice | null>(null);
-    const [audioLevels, setAudioLevels] = useState<number[]>(new Array(24).fill(0));
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const recordedChunksRef = useRef<Blob[]>([]);
-    const audioContextRef = useRef<AudioContext | null>(null);
-    const animFrameRef = useRef<number>(0);
-    const streamRef = useRef<MediaStream | null>(null);
+    const [isCheckingVoice, setIsCheckingVoice] = useState(false);
+    const [voiceNotice, setVoiceNotice] = useState<VoiceInputNotice | null>(null);
+    const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState(0);
+    const [voiceCompletionIntent, setVoiceCompletionIntent] = useState<SpeechInputCompletionIntent | null>(null);
+    const voiceAttemptRef = useRef(0);
+    const getLocalAudioConfig = useCallback(() => loadLocalAudioConfig(), []);
 
-    const cleanup = useCallback(() => {
-        const recorder = mediaRecorderRef.current;
-        if (recorder && recorder.state !== 'inactive') {
-            try {
-                recorder.stop();
-            } catch {
-                // The recorder can already be stopping after a permission or device error.
-            }
-        }
-        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-        streamRef.current?.getTracks().forEach(t => t.stop());
-        audioContextRef.current?.close().catch(() => {});
-        audioContextRef.current = null;
-        streamRef.current = null;
-        mediaRecorderRef.current = null;
-        recordedChunksRef.current = [];
-        setAudioLevels(new Array(24).fill(0));
-        setIsListening(false);
-    }, []);
+    useEffect(() => {
+        void getLocalAudioConfig().catch(() => undefined);
+    }, [getLocalAudioConfig]);
 
-    const stopRecorder = useCallback(async (): Promise<Blob[]> => {
-        const recorder = mediaRecorderRef.current;
-        if (!recorder || recorder.state === 'inactive') return [...recordedChunksRef.current];
-        await new Promise<void>((resolve) => {
-            recorder.addEventListener('stop', () => resolve(), { once: true });
-            recorder.stop();
-        });
-        return [...recordedChunksRef.current];
-    }, []);
-
-    const startListening = useCallback(async () => {
+    const startListening = useCallback(() => {
+        if (isCheckingVoice || isListening) return;
         setVoiceNotice(null);
-        try {
-            const audioConfig = await loadLocalAudioConfig();
-            if (!audioConfig.asr.enabled || !audioConfig.asr.ready) {
-                setVoiceNotice(voiceConfigNotice(audioConfig));
-                return;
-            }
-        } catch {
-            setVoiceNotice(voiceConfigNotice());
+        const cachedConfig = peekLocalAudioConfig();
+        if (cachedConfig && (!cachedConfig.asr.enabled || !cachedConfig.asr.ready)) {
+            setVoiceNotice(voiceConfigNotice(cachedConfig));
             return;
         }
 
@@ -542,68 +572,98 @@ function ChatInputInner({
             return;
         }
 
-        try {
-            recordedChunksRef.current = [];
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            streamRef.current = stream;
-            const recorder = new MediaRecorder(stream);
-            recorder.ondataavailable = (event) => {
-                if (event.data.size > 0) recordedChunksRef.current.push(event.data);
-            };
-            recorder.onerror = () => {
-                setVoiceNotice({ message: 'Local microphone recording failed.' });
-                cleanup();
-            };
-            mediaRecorderRef.current = recorder;
-            recorder.start();
+        const attempt = voiceAttemptRef.current + 1;
+        voiceAttemptRef.current = attempt;
+        setRecordingElapsedSeconds(0);
+        setVoiceCompletionIntent(null);
+        setIsListening(true);
+        setIsCheckingVoice(true);
 
-            const ctx = new AudioContext();
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 64;
-            analyser.smoothingTimeConstant = 0.7;
-            ctx.createMediaStreamSource(stream).connect(analyser);
-            audioContextRef.current = ctx;
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            const tick = () => {
-                analyser.getByteFrequencyData(data);
-                const bars: number[] = [];
-                const step = Math.max(1, Math.floor(data.length / 24));
-                for (let i = 0; i < 24; i++) bars.push(data[i * step] / 255);
-                setAudioLevels(bars);
-                animFrameRef.current = requestAnimationFrame(tick);
-            };
-            tick();
-            setIsListening(true);
-        } catch {
-            setVoiceNotice({ message: 'Microphone permission is required for local ASR.' });
-            cleanup();
-        }
-    }, [cleanup]);
+        // Readiness was prefetched when the composer mounted. A cold or slow
+        // request must not sit in front of microphone startup, so validate it
+        // in parallel and only interrupt this exact attempt if it is unusable.
+        void getLocalAudioConfig().then(
+            (audioConfig) => {
+                if (voiceAttemptRef.current !== attempt) return;
+                if (!audioConfig.asr.enabled || !audioConfig.asr.ready) {
+                    setIsCheckingVoice(false);
+                    voiceAttemptRef.current += 1;
+                    setIsListening(false);
+                    setVoiceNotice(voiceConfigNotice(audioConfig));
+                    return;
+                }
+                if (audioConfig.asr.setup?.runtime === 'builtin-rpc') {
+                    void warmupLocalVoiceInput().catch(() => undefined);
+                }
+            },
+            () => {
+                if (voiceAttemptRef.current !== attempt) return;
+                setIsCheckingVoice(false);
+                voiceAttemptRef.current += 1;
+                setIsListening(false);
+                setVoiceNotice(voiceConfigNotice());
+            },
+        ).finally(() => {
+            if (voiceAttemptRef.current === attempt) setIsCheckingVoice(false);
+        });
+    }, [getLocalAudioConfig, isCheckingVoice, isListening]);
 
-    const confirmVoice = useCallback(async () => {
+    const finishVoice = useCallback(async (blob: Blob, intent: SpeechInputCompletionIntent) => {
         if (isTranscribing) return;
+        voiceAttemptRef.current += 1;
+        setVoiceCompletionIntent(intent);
         setIsTranscribing(true);
+        setIsListening(false);
+        setIsCheckingVoice(false);
         setVoiceNotice(null);
         try {
-            const chunks = await stopRecorder();
-            const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-            const blob = new Blob(chunks, { type: mimeType });
-            cleanup();
             if (!blob.size) {
                 setVoiceNotice({ message: 'No microphone audio was captured.' });
                 return;
             }
             const text = (await transcribeLocalAudio(blob)).trim();
-            if (text) onInputChange(input ? `${input} ${text}` : text);
+            if (!text) return;
+            const combinedText = input.trim() ? `${input.trim()} ${text}` : text;
+            if (intent === 'send') {
+                const submittedText = restoreMentions(combinedText);
+                onInputChange('');
+                editorRef.current?.clear();
+                onCaretTargetChange?.(null);
+                onSubmit(
+                    submittedText,
+                    extractAssetKeys(submittedText),
+                    annotationBlocks,
+                );
+            } else {
+                onInputChange(combinedText);
+            }
         } catch (err) {
             setVoiceNotice(voiceTranscriptionNotice(err));
-            cleanup();
         } finally {
             setIsTranscribing(false);
+            setVoiceCompletionIntent(null);
         }
-    }, [cleanup, input, isTranscribing, onInputChange, stopRecorder]);
+    }, [
+        annotationBlocks,
+        input,
+        isTranscribing,
+        onCaretTargetChange,
+        onInputChange,
+        onSubmit,
+    ]);
 
-    useEffect(() => () => cleanup(), [cleanup]);
+    const handleRecordingError = useCallback((error: unknown) => {
+        voiceAttemptRef.current += 1;
+        setIsListening(false);
+        setIsCheckingVoice(false);
+        setVoiceCompletionIntent(null);
+        const message = error instanceof Error ? error.message : String(error);
+        setVoiceNotice({
+            message: /permission|denied|notallowed/i.test(message)
+                ? 'Microphone permission is required for local ASR.'
+                : 'Local microphone recording failed.',
+        });
+    }, []);
 
     const handleDropAccepted = useCallback((files: File[]) => {
         if (files.length > 0) handleFiles(files);
@@ -629,50 +689,26 @@ function ChatInputInner({
             />
 
             {/* Error banner */}
-            {!isHero && (
-                <AnimatePresence>
-                    {error && (
-                        <motion.div
-                            role="alert"
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 4 }}
-                            className="mb-2"
+            <AnimatePresence>
+                {!isHero && error && (
+                    <motion.div
+                        role="alert"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 4 }}
+                        className="mb-2"
+                    >
+                        <Button
+                            onClick={onDismissError}
+                            size="sm"
+                            shape="rounded"
+                            className="clash-chat-input-alert-error min-h-0 w-full justify-center rounded-lg border-transparent px-3 py-1.5 text-center text-xs font-normal shadow-none focus-visible:ring-brand focus-visible:ring-offset-1"
                         >
-                            <Button
-                                onClick={onDismissError}
-                                size="sm"
-                                shape="rounded"
-                                className="clash-chat-input-alert-error min-h-0 w-full justify-center rounded-lg border-transparent px-3 py-1.5 text-center text-xs font-normal shadow-none focus-visible:ring-brand focus-visible:ring-offset-1"
-                            >
-                                {error}
-                            </Button>
-                        </motion.div>
-                    )}
-                    {voiceNotice && (
-                        <motion.div
-                            role="alert"
-                            initial={{ opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 4 }}
-                            className="clash-chat-input-alert-error mb-2 px-3 py-1.5 text-xs rounded-lg text-center"
-                        >
-                            <span>{voiceNotice.message}</span>
-                            {voiceNotice.action ? (
-                                <>
-                                    {' '}
-                                    <Link
-                                        to={voiceNotice.action.href}
-                                        className="font-semibold underline underline-offset-2"
-                                    >
-                                        {voiceNotice.action.label}
-                                    </Link>
-                                </>
-                            ) : null}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            )}
+                            {error}
+                        </Button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Main input card */}
             <div
@@ -680,42 +716,7 @@ function ChatInputInner({
                     className: `clash-chat-input-surface ${isHero ? 'p-2' : ''} ${isDragActive ? 'ring-2 ring-brand/40 ring-offset-2 ring-offset-warm-surface' : ''}`,
                 })}
             >
-                {isListening ? (
-                    /* ─── Voice recording ─── */
-                    <div className="px-4 py-3" role="region" aria-label={t('copilot.chatInput.voice')}>
-                        <div
-                            className="flex items-center justify-center gap-[2px] h-10 my-1"
-                            role="status"
-                            aria-live="polite"
-                            aria-label={t('copilot.chatInput.voice')}
-                        >
-                            {audioLevels.map((level, i) => (
-                                <div
-                                    key={i}
-                                    aria-hidden="true"
-                                    className="w-[3px] rounded-full bg-slate-800 dark:bg-slate-200 transition-all duration-75 motion-reduce:transition-none"
-                                    style={{ height: `${Math.max(3, level * 32)}px` }}
-                                />
-                            ))}
-                        </div>
-                        <div className="clash-chat-input-actions flex items-center justify-end gap-2 pt-2">
-                            <IconButton
-                                onClick={cleanup}
-                                label={t('copilot.chatInput.cancelVoice')}
-                                disabled={isTranscribing}
-                                icon={<X className="w-4 h-4" weight="bold" />}
-                            />
-                            <IconButton
-                                onClick={confirmVoice}
-                                label={t('copilot.chatInput.confirmVoice')}
-                                disabled={isTranscribing}
-                                icon={isTranscribing ? <CircleNotch className="w-4 h-4 animate-spin motion-reduce:animate-none" weight="bold" /> : <Check className="w-4 h-4" weight="bold" />}
-                            />
-                        </div>
-                    </div>
-                ) : (
-                    /* ─── Rich text input ─── */
-                    <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
+                <div className={isHero ? 'flex min-h-[142px] flex-col' : ''}>
                         <AgentAnnotationTray
                             annotations={annotationBlocks}
                             disabled={actionLocked}
@@ -768,7 +769,32 @@ function ChatInputInner({
                         )}
 
                         {/* Bottom toolbar */}
-                        <div className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
+                        {isListening || isTranscribing ? (
+                            <SpeechInputRecording
+                                elapsedSeconds={recordingElapsedSeconds}
+                                processingIntent={voiceCompletionIntent}
+                                regionLabel={t('copilot.chatInput.voice')}
+                                recordingDurationLabel={t('copilot.chatInput.recordingDuration')}
+                                stopAndTranscribeLabel={t('copilot.chatInput.stopAndTranscribe')}
+                                stopTranscribeAndSendLabel={t('copilot.chatInput.stopTranscribeAndSend')}
+                                onCompletionIntentChange={setVoiceCompletionIntent}
+                                onRecordingProgress={setRecordingElapsedSeconds}
+                                onRecordingComplete={(blob, intent) => void finishVoice(blob, intent)}
+                                onRecordingError={handleRecordingError}
+                                className={isHero ? 'px-5' : 'px-4'}
+                                leading={(
+                                    <IconButton
+                                        onClick={open}
+                                        disabled={actionLocked}
+                                        label={t('copilot.chatInput.attach')}
+                                        shape="rounded"
+                                        icon={<Plus className="h-4 w-4" weight="bold" />}
+                                        className="-ml-1.5 shrink-0"
+                                    />
+                                )}
+                            />
+                        ) : (
+                            <div className={`clash-chat-input-actions clash-chat-input-toolbar-row items-center pb-2.5 pt-1.5 ${isHero ? 'px-5' : 'px-4'}`}>
                             <div className="clash-chat-input-toolbar-start flex min-w-0 items-center gap-2">
                                 <IconButton
                                     onClick={open}
@@ -790,12 +816,29 @@ function ChatInputInner({
                                         {rightToolbarAccessory}
                                     </div>
                                 ) : null}
-                                <IconButton
-                                    onClick={startListening}
-                                    disabled={actionLocked}
-                                    label={t('copilot.chatInput.voice')}
-                                    shape="rounded"
-                                    icon={<Microphone className="w-4 h-4" weight="bold" />}
+                                <VoiceInputSetupPopover
+                                    open={Boolean(voiceNotice)}
+                                    onOpenChange={(open) => {
+                                        if (open) {
+                                            void startListening();
+                                        } else {
+                                            setVoiceNotice(null);
+                                        }
+                                    }}
+                                    notice={voiceNotice}
+                                    trigger={(
+                                        <IconButton
+                                            disabled={actionLocked || isCheckingVoice}
+                                            aria-busy={isCheckingVoice}
+                                            label={t('copilot.chatInput.voice')}
+                                            shape="rounded"
+                                            icon={isCheckingVoice ? (
+                                                <CircleNotch className="w-4 h-4 animate-spin motion-reduce:animate-none" weight="bold" />
+                                            ) : (
+                                                <Microphone className="w-4 h-4" weight="bold" />
+                                            )}
+                                        />
+                                    )}
                                 />
                                 {showQueuedSend ? (
                                     <IconButton
@@ -839,9 +882,9 @@ function ChatInputInner({
                                     />
                                 )}
                             </div>
-                        </div>
+                            </div>
+                        )}
                     </div>
-                )}
             </div>
         </div>
     );

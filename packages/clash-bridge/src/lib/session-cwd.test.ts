@@ -191,9 +191,10 @@ it("ensureAgentCwd links the canonical Clash skill into a declared native cwd pa
     expect(agents).toContain("timelines/");
     expect(agents).toContain("projections/timelines/");
     expect(agents).toContain("clash_cli_timeline");
-    expect(agents).toContain("lock/read-proof sidecars");
-    expect(agents).toContain("Apply performs");
-    expect(agents).toContain("CAS");
+    expect(agents).toContain("CAS observation internally");
+    expect(agents).toContain("projection lock/revision sidecars");
+    expect(agents).toContain("stale");
+    expect(agents).not.toContain("lock/read-proof sidecars");
     expect(agents).toContain("assets/links");
     expect(agents).toContain("clash_cli_assets");
     expect(agents).toMatch(/Canvas copy-on-write tools/);

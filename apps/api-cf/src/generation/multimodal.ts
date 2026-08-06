@@ -50,13 +50,24 @@ export async function buildMultimodalUserMessage(
   params: GenerationParams,
 ): Promise<UserMessage> {
   const content: ContentPart[] = [];
-  const seen = new Set<string>();
+  const mentioned = new Set<string>();
+  const appendedGlobals = new Set<string>();
+  const mediaCache = new Map<string, Promise<{ bytes: Uint8Array; mediaType: string }>>();
 
   const fetchAndAppend = async (r2Key: string) => {
-    if (seen.has(r2Key)) return;
-    seen.add(r2Key);
-    const { bytes, mediaType } = await readBytes(ctx, r2Key);
+    let cached = mediaCache.get(r2Key);
+    if (!cached) {
+      cached = readBytes(ctx, r2Key);
+      mediaCache.set(r2Key, cached);
+    }
+    const { bytes, mediaType } = await cached;
     content.push(partForBytes(bytes, mediaType));
+  };
+
+  const appendGlobal = async (r2Key: string) => {
+    if (mentioned.has(r2Key) || appendedGlobals.has(r2Key)) return;
+    appendedGlobals.add(r2Key);
+    await fetchAndAppend(r2Key);
   };
 
   if (params.promptParts?.length) {
@@ -64,6 +75,7 @@ export async function buildMultimodalUserMessage(
       if (part.type === "text" && part.text) {
         content.push({ type: "text", text: part.text });
       } else if (part.type === "asset_ref" && part.r2Key) {
+        mentioned.add(part.r2Key);
         await fetchAndAppend(part.r2Key);
       }
     }
@@ -71,9 +83,9 @@ export async function buildMultimodalUserMessage(
     content.push({ type: "text", text: params.prompt });
   }
 
-  for (const k of params.referenceImageR2Keys ?? []) await fetchAndAppend(k);
-  for (const k of params.referenceVideoR2Keys ?? []) await fetchAndAppend(k);
-  for (const k of params.referenceAudioR2Keys ?? []) await fetchAndAppend(k);
+  for (const k of params.referenceImageR2Keys ?? []) await appendGlobal(k);
+  for (const k of params.referenceVideoR2Keys ?? []) await appendGlobal(k);
+  for (const k of params.referenceAudioR2Keys ?? []) await appendGlobal(k);
 
   if (content.length === 0) content.push({ type: "text", text: "" });
   return { role: "user", content };

@@ -127,6 +127,8 @@ async function main(): Promise<void> {
   installSignalHandler("SIGINT");
   installSignalHandler("SIGTERM");
 
+  await runCommand(["--filter", "@clash/shared-runtime", "build"], "Shared runtime build");
+  await runCommand(["--filter", "@clash-space/cli", "build"], "Development CLI build");
   await runCommand(["--filter", "@master-clash/local-api", "build"], "Local API build");
   await runCommand(["run", "build"], "Desktop build");
   await assertPortAvailable(rendererPort);
@@ -141,11 +143,16 @@ async function main(): Promise<void> {
     "--port",
     String(rendererPort),
     "--strictPort",
-  ]);
+  ], {
+    ...process.env,
+    CLASH_WEB_E2E_NO_CLOUDFLARE: "1",
+  });
   await waitForHttp(rendererUrl, renderer);
 
   const electron = spawnManaged(["exec", "electron", "."], {
     ...process.env,
+    CLASH_APP_NAME: "Clash Dev",
+    CLASH_PROFILE: "dev",
     CLASH_WEB_URL: rendererUrl,
   });
 

@@ -12,6 +12,7 @@ import {
   canvasEdgeReadToken,
   canvasEdgesReadToken,
   canvasNodeReadToken,
+  MODEL_CARDS,
   type Asset,
 } from "@clash/shared-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +21,7 @@ import { createLocalAudioConfigStore } from "./audio-config";
 import { createMockFalQueueService } from "./fal-mock";
 import { FileReplicaStore } from "./loro/file-replica-store";
 import { createLocalSyncConfigStore } from "./sync-config";
+import { createLocalProviderStore } from "./local-provider-store";
 
 let dataDir = "";
 
@@ -93,20 +95,57 @@ afterEach(async () => {
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
 
-async function createTestPrivateKeyPem(): Promise<string> {
-  const keyPair = await crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["sign", "verify"],
-  );
-  const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
-  const body = Buffer.from(pkcs8).toString("base64").match(/.{1,64}/g)?.join("\n") ?? "";
-  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+it("lists provider usage audit events for the local user", async () => {
+  const store = createLocalProviderStore(dataDir);
+  await store.appendProviderUsageEvent({
+    id: "task-usage:pika:req-usage:completed",
+    userId: "local-user",
+    providerId: "pika",
+    modelId: "nano-banana-2",
+    operation: "google/gemini-3.1-flash-image/text-to-image",
+    taskId: "task-usage",
+    providerRequestId: "req-usage",
+    idempotencyKey: "task-usage",
+    status: "completed",
+    estimatedCostMicroUsd: 25_000,
+    estimateComplete: true,
+    currency: "USD",
+    pricingSource: "pika-catalog",
+    billingBasis: { resolution: "2K", num_images: 1 },
+    occurredAt: "2026-08-05T10:00:00.000Z",
+  });
+
+  const response = await createLocalApiApp({ dataDir, userId: "local-user" })
+    .request("/api/v1/provider-usage?limit=10");
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({
+    events: [expect.objectContaining({
+      id: "task-usage:pika:req-usage:completed",
+      estimatedCostMicroUsd: 25_000,
+      status: "completed",
+    })],
+  });
+});
+
+let testPrivateKeyPemPromise: Promise<string> | undefined;
+
+function createTestPrivateKeyPem(): Promise<string> {
+  testPrivateKeyPemPromise ??= (async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 1024,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"],
+    );
+    const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+    const body = Buffer.from(pkcs8).toString("base64").match(/.{1,64}/g)?.join("\n") ?? "";
+    return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+  })();
+  return testPrivateKeyPemPromise;
 }
 
 async function expectSingleMutationAudit(
@@ -167,6 +206,81 @@ describe("local API app", () => {
     });
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({ id: "local-user" });
+  });
+
+  it("accepts plugin broker calls only from the 0600 discovery capability", async () => {
+    const executablePluginBroker = vi.fn().mockResolvedValue({ handle: "clash-secret://opaque" });
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      pluginBrokerToken: "b".repeat(64),
+      executablePluginBroker,
+    });
+    const invocation = {
+      protocol: "clash.plugin.invoke/v1",
+      invocationId: "invocation-1",
+      taskId: "task-1",
+      projectId: "project-1",
+      target: {
+        pluginId: "acme.media",
+        version: "1.2.3",
+        exportId: "render",
+        schemaHash: `sha256:${"a".repeat(64)}`,
+        kind: "action",
+      },
+      input: { values: {}, references: [] },
+      actor: { kind: "user", id: "local-user" },
+    };
+    const manifest = {
+      apiVersion: "clash.plugin/v1",
+      id: "acme.media",
+      version: "1.2.3",
+      name: "Acme Media",
+      runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+      exports: { cards: [], functions: [{ id: "render", kind: "action", handler: "render" }] },
+      permissions: {
+        network: { domains: [] },
+        secrets: ["provider:fal"],
+        assets: [],
+        filesystem: { read: [], write: [] },
+        externalWrites: false,
+      },
+    };
+    const request = {
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "request-1",
+      invocationId: "invocation-1",
+      operation: { kind: "credential.handle", secretId: "provider:fal" },
+    };
+    const unauthorized = await app.request("/api/v1/local/plugin-broker", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request, manifest, invocation }),
+    });
+    expect(unauthorized.status).toBe(401);
+
+    const response = await app.request("/api/v1/local/plugin-broker", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-clash-local-plugin-broker-token": "b".repeat(64),
+      },
+      body: JSON.stringify({ request, manifest, invocation }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      protocol: "clash.plugin.broker-response/v1",
+      requestId: "request-1",
+      status: "ok",
+      result: { handle: "clash-secret://opaque" },
+    });
+    expect(executablePluginBroker).toHaveBeenCalledWith(
+      expect.objectContaining({ requestId: "request-1" }),
+      expect.objectContaining({
+        manifest: expect.objectContaining({ id: "acme.media" }),
+        invocation: expect.objectContaining({ invocationId: "invocation-1" }),
+      }),
+    );
   });
 
   it("persists local cloud sync configuration without exposing the token", async () => {
@@ -421,6 +535,16 @@ describe("local API app", () => {
         }),
       }),
       readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
+    });
+
+    const voiceInput = await app.request("/api/v1/local/audio/voice-input");
+    expect(voiceInput.status).toBe(200);
+    expect(await voiceInput.json()).toMatchObject({
+      asr: {
+        enabled: false,
+        ready: false,
+        setup: { status: "disabled" },
+      },
     });
 
     const updated = await app.request("/api/v1/local/audio", {
@@ -694,7 +818,10 @@ describe("local API app", () => {
         resultEntityId: "audio",
       },
     });
-    expect(builtinInstall).toHaveBeenCalledWith({ model: "iic/SenseVoiceSmall", pythonBinary: "python3" });
+    expect(builtinInstall).toHaveBeenCalledWith({
+      model: "iic/SenseVoiceSmall",
+      pythonBinary: join(dataDir, "runtimes", "python", "local-models", "venv", "bin", "python"),
+    });
   });
 
   it("installs, synthesizes by node-selected model, and removes local TTS through the generalized speech API", async () => {
@@ -983,6 +1110,7 @@ describe("local API app", () => {
       };
     });
     const audioConfig = createLocalAudioConfigStore({ dataDir, builtinTranscribe });
+    const warmupVoiceInput = vi.spyOn(audioConfig, "warmupVoiceInput");
     const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
 
     await app.request("/api/v1/local/audio", {
@@ -994,6 +1122,18 @@ describe("local API app", () => {
         asr_model: "iic/SenseVoiceSmall",
       }),
     });
+    const warmup = await app.request("/api/v1/local/audio/voice-input/warmup", {
+      method: "POST",
+    });
+    expect(warmup.status).toBe(202);
+    expect(await warmup.json()).toMatchObject({
+      status: "warming",
+      runtime: "builtin-rpc",
+      model: "iic/SenseVoiceSmall",
+    });
+    await vi.waitFor(() => expect(warmupVoiceInput).toHaveBeenCalledWith({
+      model: "iic/SenseVoiceSmall",
+    }));
     const form = new FormData();
     form.append("file", new File(["voice-bytes"], "voice.webm", { type: "audio/webm" }));
 
@@ -1053,6 +1193,111 @@ describe("local API app", () => {
     expect(auditJson.records[0].mutation.afterReadToken).toBeUndefined();
   });
 
+  it("transcribes through an enabled global cloud model route", async () => {
+    const privateKey = await createTestPrivateKeyPem();
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const audioConfig = createLocalAudioConfigStore({ dataDir });
+    const warmupVoiceInput = vi.spyOn(audioConfig, "warmupVoiceInput");
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      audioConfig,
+      voiceInputFetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        calls.push({ url, init });
+        if (url === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "vertex-access-token", expires_in: 3600 });
+        }
+        if (url === "https://aiplatform.googleapis.com/v1/projects/vertex-project/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent") {
+          return Response.json({
+            candidates: [{ content: { parts: [{ text: "云端转写结果" }] } }],
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    await app.request("/api/v1/model-providers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providers: [{
+          id: "google-agent-platform-voice",
+          providerId: "official",
+          upstreamId: "google-agent-platform",
+          region: "global",
+          enabled: true,
+          priority: 1,
+          credentials: {
+            vertexCredentials: JSON.stringify({
+              project_id: "vertex-project",
+              client_email: "svc@vertex-project.iam.gserviceaccount.com",
+              private_key: privateKey,
+            }),
+          },
+        }],
+      }),
+    });
+    await app.request("/api/v1/local/audio", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        asr_enabled: true,
+        asr_model: "gemini-3-flash",
+      }),
+    });
+    const voiceInputState = await app.request("/api/v1/local/audio/voice-input?probe=false");
+    expect(voiceInputState.status).toBe(200);
+    expect(await voiceInputState.json()).toMatchObject({
+      asr: {
+        enabled: true,
+        model: "gemini-3-flash",
+        ready: true,
+        setup: {
+          runtime: "provider-route",
+          status: "ready",
+        },
+      },
+    });
+    const warmup = await app.request("/api/v1/local/audio/voice-input/warmup", {
+      method: "POST",
+    });
+    expect(warmup.status).toBe(200);
+    expect(await warmup.json()).toEqual({
+      status: "not-needed",
+      runtime: "provider-route",
+    });
+    expect(warmupVoiceInput).not.toHaveBeenCalled();
+
+    const form = new FormData();
+    form.append("file", new File(["voice-bytes"], "voice.webm", { type: "audio/webm" }));
+    const res = await app.request("/api/v1/local/audio/transcriptions", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      text: "云端转写结果",
+      backendId: "google-agent-platform",
+      modelId: "gemini-3-flash",
+    });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toMatchObject({
+      contents: [{
+        role: "user",
+        parts: [
+          { text: expect.stringContaining("Transcribe") },
+          {
+            inlineData: {
+              mimeType: "audio/webm",
+              data: Buffer.from("voice-bytes").toString("base64"),
+            },
+          },
+        ],
+      }],
+    });
+  }, 10_000);
+
   it("records rejected mutation envelopes for local ASR transcription failures", async () => {
     const audioConfig = createLocalAudioConfigStore({
       dataDir,
@@ -1069,12 +1314,12 @@ describe("local API app", () => {
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: "Local ASR is not enabled. Open Settings > Audio and enable voice input.",
+      error: "Voice input is not enabled. Open Settings > Voice input and enable it.",
       mutation: {
         operation: "local_audio_transcription",
         entity: { kind: "local-action", id: "audio-transcription" },
         accepted: false,
-        error: "Local ASR is not enabled. Open Settings > Audio and enable voice input.",
+        error: "Voice input is not enabled. Open Settings > Voice input and enable it.",
       },
     });
   });
@@ -1200,6 +1445,82 @@ describe("local API app", () => {
       });
       expect(res.status).toBe(404);
     }
+  });
+
+  it("exposes installable local action packages through the desktop marketplace", async () => {
+    const installMarketplaceAction = vi.fn(async (packageId: string) => ({
+      actionId: "codex-imagegen",
+      packageId,
+      installed: true,
+    }));
+    const uninstallMarketplaceAction = vi.fn(async () => undefined);
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      marketplaceActions: [{
+        id: "codex-imagegen",
+        name: "Codex ImageGen",
+        type: "action",
+        runtime: "local",
+        outputType: "image",
+        packageId: "clash-codex-imagegen",
+      }],
+      listInstalledMarketplaceActions: async () => [{
+        actionId: "codex-imagegen",
+        name: "Codex ImageGen",
+        runtime: "local",
+      }],
+      installMarketplaceAction,
+      uninstallMarketplaceAction,
+    } as any);
+
+    await expect((await app.request("/api/marketplace/registry")).json()).resolves.toEqual({
+      version: 1,
+      actions: [expect.objectContaining({
+        id: "codex-imagegen",
+        packageId: "clash-codex-imagegen",
+      })],
+      skills: [],
+    });
+    await expect((await app.request("/api/settings/actions")).json()).resolves.toEqual([
+      expect.objectContaining({ actionId: "codex-imagegen" }),
+    ]);
+
+    const installed = await app.request("/api/settings/actions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        manifest: {
+          id: "codex-imagegen",
+          name: "Codex ImageGen",
+          runtime: "local",
+          outputType: "image",
+          packageId: "clash-codex-imagegen",
+        },
+      }),
+    });
+    expect(installed.status).toBe(200);
+    expect(installMarketplaceAction).toHaveBeenCalledWith("clash-codex-imagegen");
+
+    const marketplaceInstalled = await app.request(
+      "/api/marketplace/actions/clash-codex-imagegen/install",
+      { method: "POST" },
+    );
+    expect(marketplaceInstalled.status).toBe(200);
+    expect(installMarketplaceAction).toHaveBeenLastCalledWith("clash-codex-imagegen");
+
+    const uninstalled = await app.request("/api/settings/actions/codex-imagegen", {
+      method: "DELETE",
+    });
+    expect(uninstalled.status).toBe(204);
+    expect(uninstallMarketplaceAction).toHaveBeenCalledWith("codex-imagegen");
+
+    const marketplaceUninstalled = await app.request(
+      "/api/marketplace/actions/clash-codex-imagegen/install",
+      { method: "DELETE" },
+    );
+    expect(marketplaceUninstalled.status).toBe(204);
+    expect(uninstallMarketplaceAction).toHaveBeenLastCalledWith("codex-imagegen");
   });
 
   it("persists local project metadata in SQLite", async () => {
@@ -4495,7 +4816,58 @@ describe("local API app", () => {
       }),
     ]));
 
-    const reopened = createLocalApiApp({ dataDir, userId: "local-user" });
+    const projectorBinding = {
+      pluginId: "clash-first-party-media",
+      version: "1.0.0",
+      exportId: "fal-h3",
+      schemaHash: `sha256:${"a".repeat(64)}` as const,
+    };
+    const resolvePluginBinding = vi.fn(async (
+      pluginId: string,
+      exportId: string,
+      _kind: "action" | "provider-projector",
+    ) => ({ ...projectorBinding, pluginId, exportId }));
+    const pluginH3 = MODEL_CARDS.find((model) => model.id === "minimax-h3")!;
+    const listPluginCards = vi.fn(async () => [
+      {
+        pluginId: "clash-first-party-media",
+        version: "1.0.0",
+        schemaHash: projectorBinding.schemaHash,
+        runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
+        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+        document: {
+          apiVersion: "clash.card/v1" as const,
+          kind: "model-card" as const,
+          spec: {
+            ...pluginH3,
+            name: "Agent-edited MiniMax H3",
+          },
+        },
+      },
+      {
+        pluginId: "agent-provider-models",
+        version: "1.0.0",
+        schemaHash: `sha256:${"b".repeat(64)}` as const,
+        runtime: { kind: "local" as const, transport: "stdio" as const, entrypoint: "handler.mjs", args: [] },
+        permissions: { network: { domains: [] }, secrets: [], assets: [], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+        document: {
+          apiVersion: "clash.card/v1" as const,
+          kind: "model-card" as const,
+          spec: {
+            ...pluginH3,
+            id: "agent-h3",
+            aliases: [],
+            name: "Agent H3",
+          },
+        },
+      },
+    ]);
+    const reopened = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      resolvePluginBinding,
+      listPluginCards,
+    });
     const providers = await reopened.request("/api/v1/model-providers");
     expect(await providers.json()).toEqual({
       providers: savedJson.providers,
@@ -4505,9 +4877,13 @@ describe("local API app", () => {
     const catalog = await reopened.request("/api/v1/models/catalog");
     const catalogJson = (await catalog.json()) as {
       models: Array<{
-        model: { id: string };
+        model: { id: string; name: string };
         tier: string;
-        selectedRoute?: { providerId?: string; upstreamId?: string };
+        selectedRoute?: {
+          providerId?: string;
+          upstreamId?: string;
+          projectorBinding?: typeof projectorBinding;
+        };
         candidateProviders: string[];
         missingCredentials: string[];
       }>;
@@ -4523,6 +4899,81 @@ describe("local API app", () => {
       selectedRoute: { providerId: "fal", upstreamId: "fal" },
       candidateProviders: ["fal", "official"],
       missingCredentials: ["apiKey"],
+    });
+    const h3 = catalogJson.models.find((entry) => entry.model.id === "minimax-h3");
+    expect(h3?.model.name).toBe("Agent-edited MiniMax H3");
+    expect(h3?.selectedRoute?.projectorBinding).toEqual(projectorBinding);
+    expect(listPluginCards).toHaveBeenCalledOnce();
+    expect(resolvePluginBinding).toHaveBeenCalledWith(
+      "clash-first-party-media",
+      "fal-h3",
+      "provider-projector",
+    );
+
+    const pluginCardConfig = await reopened.request("/api/v1/model-cards/agent-h3", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ description: "Agent override" }),
+    });
+    expect(pluginCardConfig.status).toBe(200);
+    expect(await pluginCardConfig.json()).toMatchObject({
+      config: { modelId: "agent-h3", custom: false, description: "Agent override" },
+    });
+  });
+
+  it("projects activated executable action Cards into product custom-action definitions", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      listPluginCards: async () => [{
+        pluginId: "agent-caption-actions",
+        version: "1.2.0",
+        schemaHash: `sha256:${"c".repeat(64)}`,
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs", args: [] },
+        permissions: { network: { domains: [] }, secrets: [], assets: ["read", "write"], hostTools: [], filesystem: { read: [], write: [] }, externalWrites: false },
+        document: {
+          apiVersion: "clash.card/v1",
+          kind: "action-card",
+          spec: {
+            id: "caption-helper",
+            name: "Caption Helper",
+            outputType: "text",
+            parameters: [{ id: "tone", label: "Tone", type: "text", required: false, defaultValue: "concise" }],
+            input: { requiresPrompt: true, inputMode: { images: { max: 2 } }, promptModalities: ["text", "image"] },
+            constraints: [{ type: "max-length", field: "prompt", max: 500 }],
+            presentation: { type: "form" },
+            functionExportId: "run-caption-helper",
+            maxRuntimeMs: 120_000,
+          },
+        },
+      }],
+    });
+
+    const response = await app.request("/api/v1/plugin-actions");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      actions: [expect.objectContaining({
+        id: "caption-helper",
+        name: "Caption Helper",
+        outputType: "text",
+        runtime: "local",
+        parameters: [expect.objectContaining({ id: "tone", defaultValue: "concise" })],
+        input: {
+          requiresPrompt: true,
+          inputMode: { images: { max: 2 } },
+          promptModalities: ["text", "image"],
+        },
+        constraints: [{ type: "max-length", field: "prompt", max: 500 }],
+        presentation: { type: "form" },
+        maxRuntimeMs: 120_000,
+        pluginBinding: {
+          pluginId: "agent-caption-actions",
+          version: "1.2.0",
+          exportId: "run-caption-helper",
+          schemaHash: `sha256:${"c".repeat(64)}`,
+        },
+        pluginPermissions: expect.objectContaining({ assets: ["read", "write"] }),
+      })],
     });
   });
 
@@ -5398,7 +5849,7 @@ describe("local API app", () => {
     });
   });
 
-  it("tests OAuth-backed provider configs against only their own authorization", async () => {
+  it("shares the single global Dreamina CLI authorization across provider configs", async () => {
     const oauth = {
       dreamina: {
         start: vi.fn(async () => ({
@@ -5407,6 +5858,7 @@ describe("local API app", () => {
           deviceCode: "device-code-primary",
           expiresAt: "2026-06-26T03:00:00.000Z",
           intervalSeconds: 5,
+          oauthState: "dreamina-pending-oauth-state",
         })),
         complete: vi.fn(async () => ({
           accessToken: "access-token-primary",
@@ -5446,8 +5898,8 @@ describe("local API app", () => {
       ok: true,
       providerId: "jimeng",
       upstreamId: "jimeng",
-      modelId: "seedance-2-text",
-      message: "Dreamina configuration is ready for Seedance 2.0 (Text).",
+      modelId: "seedance-2-ref",
+      message: "Dreamina configuration is ready for Seedance 2.0 (全能参考).",
     });
 
     const secondary = await app.request("/api/v1/model-providers/test", {
@@ -5459,14 +5911,12 @@ describe("local API app", () => {
       }),
     });
     expect(secondary.status).toBe(200);
-    expect(await secondary.json()).toEqual({
-      ok: false,
+    expect(await secondary.json()).toMatchObject({
+      ok: true,
       providerId: "jimeng",
       upstreamId: "jimeng",
-      modelId: "seedance-2-text",
-      mutation: providerModelTestMutation("jimeng", "seedance-2-text"),
-      missingOAuth: ["dreamina"],
-      message: "Dreamina needs authorization before testing Seedance 2.0 (Text).",
+      modelId: "seedance-2-ref",
+      message: "Dreamina configuration is ready for Seedance 2.0 (全能参考).",
     });
   });
 
@@ -5981,29 +6431,12 @@ describe("local API app", () => {
     expect(start.status).toBe(200);
     expect(await start.json()).toMatchObject({
       providerId: "dreamina",
-      accountId: "jimeng-primary",
       status: "pending",
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
-        resultEntityId: "dreamina:jimeng-primary",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        resultEntityId: "dreamina",
         accepted: true,
-      },
-    });
-
-    const missingDeviceCode = await app.request("/api/v1/provider-oauth/dreamina/complete", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-missing" }),
-    });
-    expect(missingDeviceCode.status).toBe(400);
-    expect(await missingDeviceCode.json()).toEqual({
-      error: "deviceCode is required",
-      mutation: {
-        operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-missing" },
-        accepted: false,
-        error: "deviceCode is required",
       },
     });
 
@@ -6015,12 +6448,11 @@ describe("local API app", () => {
     expect(complete.status).toBe(200);
     expect(await complete.json()).toMatchObject({
       providerId: "dreamina",
-      accountId: "jimeng-primary",
       status: "authorized",
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
-        resultEntityId: "dreamina:jimeng-primary",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        resultEntityId: "dreamina",
         accepted: true,
       },
     });
@@ -6033,8 +6465,8 @@ describe("local API app", () => {
       ok: true,
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
-        resultEntityId: "dreamina:jimeng-primary",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        resultEntityId: "dreamina",
         accepted: true,
       },
     });
@@ -6075,9 +6507,7 @@ describe("local API app", () => {
     const listedPendingJson = await listedPending.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const pending = listedPendingJson.providers.find((provider) =>
-      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
-    );
+    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "dreamina");
     expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
     const missingDelete = await app.request("/api/v1/provider-oauth/dreamina?accountId=jimeng-primary", {
@@ -6088,7 +6518,7 @@ describe("local API app", () => {
     expect(await missingDelete.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         accepted: false,
       },
     });
@@ -6127,9 +6557,7 @@ describe("local API app", () => {
     const listedAuthorizedJson = await listedAuthorized.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const authorized = listedAuthorizedJson.providers.find((provider) =>
-      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
-    );
+    const authorized = listedAuthorizedJson.providers.find((provider) => provider.providerId === "dreamina");
     expect(authorized?.status).toBe("authorized");
     expect(authorized?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
@@ -6145,20 +6573,20 @@ describe("local API app", () => {
       ok: true,
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         expectedReadToken: authorized!.readToken,
         beforeReadToken: baseReadToken(authorized!.readToken!),
-        resultEntityId: "dreamina:jimeng-primary",
+        resultEntityId: "dreamina",
         accepted: true,
       },
     });
-    const audit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=dreamina%3Ajimeng-primary");
+    const audit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_delete&entityId=dreamina");
     expect(audit.status).toBe(200);
     const auditJson = await audit.json() as { records: Array<any> };
     expect(auditJson.records).toHaveLength(1);
     expect(auditJson.records[0]).toMatchObject({
       operation: "provider_oauth_delete",
-      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      entity: { kind: "provider-oauth", id: "dreamina" },
       accepted: true,
       actorClientType: "agent",
       reason: "provider OAuth delete",
@@ -6180,7 +6608,7 @@ describe("local API app", () => {
       error: expect.stringContaining("Provider OAuth record not found"),
       mutation: {
         operation: "provider_oauth_delete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         accepted: false,
       },
     });
@@ -6221,9 +6649,7 @@ describe("local API app", () => {
     const listedPendingJson = await listedPending.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const pending = listedPendingJson.providers.find((provider) =>
-      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
-    );
+    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "dreamina");
     expect(pending?.status).toBe("pending");
     expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
@@ -6239,7 +6665,7 @@ describe("local API app", () => {
     expect(await missingStart.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         accepted: false,
       },
     });
@@ -6275,15 +6701,15 @@ describe("local API app", () => {
     expect(acceptedStartJson.readToken).not.toBe(pending!.readToken);
     expect(acceptedStartJson.mutation).toMatchObject({
       operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      entity: { kind: "provider-oauth", id: "dreamina" },
       expectedReadToken: pending!.readToken,
       beforeReadToken: baseReadToken(pending!.readToken!),
       afterReadToken: acceptedStartJson.readToken,
       accepted: true,
-      resultEntityId: "dreamina:jimeng-primary",
+      resultEntityId: "dreamina",
     });
     expect(oauth.dreamina.start).toHaveBeenCalledTimes(1);
-    const startAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=dreamina%3Ajimeng-primary");
+    const startAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_start&entityId=dreamina");
     expect(startAudit.status).toBe(200);
     const startAuditJson = await startAudit.json() as { records: Array<any> };
     expect(startAuditJson.records).toHaveLength(2);
@@ -6291,19 +6717,19 @@ describe("local API app", () => {
     const agentStartAuditRecord = startAuditJson.records.find((record) => record.actorClientType === "agent");
     expect(humanStartAuditRecord).toMatchObject({
       operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      entity: { kind: "provider-oauth", id: "dreamina" },
       actorClientType: null,
       accepted: true,
       reason: "provider OAuth start",
-      resultEntityId: "dreamina:jimeng-primary",
+      resultEntityId: "dreamina",
     });
     expect(agentStartAuditRecord).toMatchObject({
       operation: "provider_oauth_start",
-      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      entity: { kind: "provider-oauth", id: "dreamina" },
       actorClientType: "agent",
       accepted: true,
       reason: "provider OAuth start",
-      resultEntityId: "dreamina:jimeng-primary",
+      resultEntityId: "dreamina",
     });
     for (const record of startAuditJson.records) {
       expect(JSON.stringify(record.mutation ?? {})).not.toContain("receipt");
@@ -6345,7 +6771,7 @@ describe("local API app", () => {
     expect(await missingAfterDeleteStart.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_start",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         expectedReadToken: acceptedStartJson.readToken,
         accepted: false,
       },
@@ -6387,9 +6813,7 @@ describe("local API app", () => {
     const listedPendingJson = await listedPending.json() as {
       providers: Array<{ providerId: string; accountId?: string; status: string; readToken?: string }>;
     };
-    const pending = listedPendingJson.providers.find((provider) =>
-      provider.providerId === "dreamina" && provider.accountId === "jimeng-primary"
-    );
+    const pending = listedPendingJson.providers.find((provider) => provider.providerId === "dreamina");
     expect(pending?.readToken).toMatch(PROVIDER_OAUTH_RECEIPT_READ_TOKEN_RE);
 
     const missingComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
@@ -6404,7 +6828,7 @@ describe("local API app", () => {
     expect(await missingComplete.json()).toMatchObject({
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         accepted: false,
       },
     });
@@ -6440,25 +6864,25 @@ describe("local API app", () => {
     expect(acceptedCompleteJson.readToken).not.toBe(pending!.readToken);
     expect(acceptedCompleteJson.mutation).toMatchObject({
       operation: "provider_oauth_complete",
-      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      entity: { kind: "provider-oauth", id: "dreamina" },
       expectedReadToken: pending!.readToken,
       beforeReadToken: baseReadToken(pending!.readToken!),
       afterReadToken: acceptedCompleteJson.readToken,
       accepted: true,
-      resultEntityId: "dreamina:jimeng-primary",
+      resultEntityId: "dreamina",
     });
     expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
-    const completeAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=dreamina%3Ajimeng-primary");
+    const completeAudit = await app.request("/api/v1/mutation-audit?operation=provider_oauth_complete&entityId=dreamina");
     expect(completeAudit.status).toBe(200);
     const completeAuditJson = await completeAudit.json() as { records: Array<any> };
     expect(completeAuditJson.records).toHaveLength(1);
     expect(completeAuditJson.records[0]).toMatchObject({
       operation: "provider_oauth_complete",
-      entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+      entity: { kind: "provider-oauth", id: "dreamina" },
       actorClientType: "agent",
       accepted: true,
       reason: "provider OAuth complete",
-      resultEntityId: "dreamina:jimeng-primary",
+      resultEntityId: "dreamina",
     });
     expect(JSON.stringify(completeAuditJson.records[0].mutation ?? {})).not.toContain("receipt");
     expect(completeAuditJson.records[0].mutation.expectedReadToken).toBeUndefined();
@@ -6498,7 +6922,7 @@ describe("local API app", () => {
       error: expect.stringContaining("Provider OAuth record not found"),
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
+        entity: { kind: "provider-oauth", id: "dreamina" },
         expectedReadToken: acceptedCompleteJson.readToken,
         accepted: false,
       },
@@ -6515,6 +6939,7 @@ describe("local API app", () => {
           deviceCode: "device-code-1",
           expiresAt: "2026-06-26T03:00:00.000Z",
           intervalSeconds: 5,
+          oauthState: "dreamina-pending-oauth-state",
         })),
         complete: vi.fn(async () => ({
           accessToken: "access-token-1",
@@ -6569,6 +6994,9 @@ describe("local API app", () => {
       expect(pending?.device_code).not.toBe("device-code-1");
       expect(String(pending?.user_code)).toMatch(/^enc:v1:/);
       expect(String(pending?.device_code)).toMatch(/^enc:v1:/);
+      const pendingState = sqlite.prepare("select oauth_state from provider_oauth").get();
+      expect(pendingState?.oauth_state).not.toBe("dreamina-pending-oauth-state");
+      expect(String(pendingState?.oauth_state)).toMatch(/^enc:v1:/);
     } finally {
       sqlite.close();
     }
@@ -6579,6 +7007,10 @@ describe("local API app", () => {
       body: JSON.stringify({ deviceCode: "device-code-1" }),
     });
     expect(complete.status).toBe(200);
+    expect(oauth.dreamina.complete).toHaveBeenCalledWith({
+      deviceCode: "device-code-1",
+      oauthState: "dreamina-pending-oauth-state",
+    });
     expect(await complete.json()).toEqual({
       providerId: "dreamina",
       status: "authorized",
@@ -6618,7 +7050,7 @@ describe("local API app", () => {
     }
   });
 
-  it("keeps provider OAuth device flows scoped to individual provider configs", async () => {
+  it("collapses provider config account IDs into one Clash-global Dreamina OAuth flow", async () => {
     const oauth = {
       dreamina: {
         start: vi
@@ -6659,7 +7091,6 @@ describe("local API app", () => {
     expect(primaryStart.status).toBe(200);
     expect(await primaryStart.json()).toMatchObject({
       providerId: "dreamina",
-      accountId: "jimeng-primary",
       status: "pending",
       deviceCode: "device-code-primary",
     });
@@ -6672,23 +7103,8 @@ describe("local API app", () => {
     expect(secondaryStart.status).toBe(200);
     expect(await secondaryStart.json()).toMatchObject({
       providerId: "dreamina",
-      accountId: "jimeng-secondary",
       status: "pending",
       deviceCode: "device-code-secondary",
-    });
-
-    const primaryComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "jimeng-primary", deviceCode: "device-code-primary" }),
-    });
-    expect(primaryComplete.status).toBe(200);
-    expect(await primaryComplete.json()).toMatchObject({
-      providerId: "dreamina",
-      accountId: "jimeng-primary",
-      accountLabel: "Primary Dreamina",
-      status: "authorized",
-      hasAccessToken: true,
     });
 
     const secondaryComplete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
@@ -6699,7 +7115,6 @@ describe("local API app", () => {
     expect(secondaryComplete.status).toBe(200);
     expect(await secondaryComplete.json()).toMatchObject({
       providerId: "dreamina",
-      accountId: "jimeng-secondary",
       accountLabel: "Secondary Dreamina",
       status: "authorized",
       hasAccessToken: true,
@@ -6710,40 +7125,16 @@ describe("local API app", () => {
       providers: [
         expect.objectContaining({
           providerId: "dreamina",
-          accountId: "jimeng-primary",
-          accountLabel: "Primary Dreamina",
-          status: "authorized",
-        }),
-        expect.objectContaining({
-          providerId: "dreamina",
-          accountId: "jimeng-secondary",
           accountLabel: "Secondary Dreamina",
           status: "authorized",
         }),
       ],
     });
-
-    const providers = await app.request("/api/v1/model-providers");
-    expect(await providers.json()).toEqual({
-      providers: [
-        expect.objectContaining({
-          id: "jimeng-primary",
-          label: "Primary Dreamina",
-          providerId: "jimeng",
-          availableOAuth: ["dreamina"],
-        }),
-        expect.objectContaining({
-          id: "jimeng-secondary",
-          label: "Secondary Dreamina",
-          providerId: "jimeng",
-          availableOAuth: ["dreamina"],
-        }),
-      ],
-      readToken: expect.stringMatching(PROVIDER_ACCOUNTS_RECEIPT_READ_TOKEN_RE),
-    });
+    expect(oauth.dreamina.start).toHaveBeenCalledTimes(2);
+    expect(oauth.dreamina.complete).toHaveBeenCalledTimes(1);
   });
 
-  it("records provider OAuth completion failures on the scoped account", async () => {
+  it("records provider OAuth completion failures on the global Dreamina authorization", async () => {
     const oauth = {
       dreamina: {
         start: vi.fn(async () => ({
@@ -6781,8 +7172,8 @@ describe("local API app", () => {
       error: "Dreamina device code expired",
       mutation: {
         operation: "provider_oauth_complete",
-        entity: { kind: "provider-oauth", id: "dreamina:jimeng-primary" },
-        resultEntityId: "dreamina:jimeng-primary",
+        entity: { kind: "provider-oauth", id: "dreamina" },
+        resultEntityId: "dreamina",
         accepted: true,
       },
     });
@@ -6792,7 +7183,6 @@ describe("local API app", () => {
       providers: [
         expect.objectContaining({
           providerId: "dreamina",
-          accountId: "jimeng-primary",
           accountLabel: "Primary Dreamina",
           status: "error",
           error: "Dreamina device code expired",
@@ -6800,6 +7190,48 @@ describe("local API app", () => {
         }),
       ],
     });
+  });
+
+  it("encrypts authorized Dreamina OAuth even when membership makes the provider unavailable", async () => {
+    const app = createLocalApiApp({
+      dataDir,
+      userId: "local-user",
+      providerOAuth: {
+        dreamina: {
+          start: vi.fn(),
+          complete: vi.fn(async () => ({
+            accessToken: "dreamina-oauth-envelope",
+            tokenType: "DREAMINA_KEYRING_V1",
+            accountLabel: "Dreamina CLI",
+            availabilityError: "仅限高级或高级以上的会员等级",
+          })),
+        },
+      },
+    } as any);
+
+    const complete = await app.request("/api/v1/provider-oauth/dreamina/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ deviceCode: "authorized-device" }),
+    });
+    expect(complete.status).toBe(200);
+    expect(await complete.json()).toMatchObject({
+      providerId: "dreamina",
+      status: "error",
+      error: "仅限高级或高级以上的会员等级",
+      hasAccessToken: true,
+    });
+
+    const sqlite = openSqlite();
+    try {
+      const stored = sqlite.prepare("select access_token from provider_oauth where provider_id = 'dreamina'").get();
+      expect(stored?.access_token).not.toBe("dreamina-oauth-envelope");
+      expect(String(stored?.access_token)).toMatch(/^enc:v1:/);
+    } finally {
+      sqlite.close();
+    }
+    const providers = await app.request("/api/v1/model-providers");
+    expect(JSON.stringify(await providers.json())).not.toContain('"availableOAuth":["dreamina"]');
   });
 
   it("allows browser requests from the local web runtime", async () => {
@@ -7170,6 +7602,10 @@ describe("local API app", () => {
       },
     ]);
     expect(starts[0]).toEqual(expect.objectContaining({
+      configValues: {
+        model: "gpt-5.6-sol",
+        effort: "high",
+      },
       onReady: expect.any(Function),
       onError: expect.any(Function),
     }));

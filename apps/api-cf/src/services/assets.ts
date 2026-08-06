@@ -29,6 +29,10 @@ export interface AssetMetadata {
   height?: number;
   durationMs?: number;
   bytes?: number;
+  contentType?: string;
+  frameRate?: number;
+  videoCodec?: string;
+  audioCodec?: string;
   waveform?: number[];
   originalName?: string;
   editParams?: unknown;

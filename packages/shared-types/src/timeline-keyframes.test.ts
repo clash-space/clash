@@ -65,6 +65,19 @@ describe("Timeline item keyframe contract", () => {
       scale: [{ frame: 0, value: [1, 1], interpolation: "linear" }],
       rotation: [{ frame: 15, value: 45, interpolation: "linear" }],
       opacity: [{ frame: 0, value: 0, interpolation: "linear" }],
+      maskPosition: [{ frame: 10, value: [25, 75], interpolation: "linear" }],
+      maskSize: [{ frame: 10, value: [60, 40], interpolation: "linear" }],
+      maskRotation: [{ frame: 10, value: 15, interpolation: "hold" }],
+      maskFeather: [{ frame: 10, value: 30, interpolation: "linear" }],
     }, 60)).toBeNull();
+  });
+
+  it("validates mask-specific ranges", () => {
+    expect(validateTimelineItemKeyframes({
+      maskSize: [{ frame: 0, value: [50, -1], interpolation: "linear" }],
+    }, 60)).toBe("keyframes.maskSize value must be a non-negative finite [width, height] tuple");
+    expect(validateTimelineItemKeyframes({
+      maskFeather: [{ frame: 0, value: 101, interpolation: "linear" }],
+    }, 60)).toBe("keyframes.maskFeather value must be between 0 and 100");
   });
 });

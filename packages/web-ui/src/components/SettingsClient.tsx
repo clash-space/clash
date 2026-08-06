@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Key, Plus, Trash, Copy, Check, ArrowLeft, ArrowUp, ArrowDown, Lock, Eye, EyeSlash, PuzzlePiece, BookOpen, Terminal, Plug, CloudArrowUp, MagnifyingGlass, CaretDown, CaretRight, Microphone, X, ImageSquare, VideoCamera, SpeakerHigh, TextT, Desktop, Moon, Sun } from '@phosphor-icons/react';
 import { useClashRuntime } from '@clash/web-ui/hooks/useClashRuntime';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
+import { ACTION_PROVIDER_PRESETS, CustomActionDefinitionSchema, MODEL_CARDS, listModelCatalogEntries, listProviderModelSupport, normalizeActionProviderId, type ProviderCredentialRequirements, type ProviderOAuthId, type UserModelCardConfig } from '@clash/shared-types';
 import {
     createApiToken, revokeApiToken, type ApiTokenInfo,
     setVariable, deleteVariable, type VariableInfo,
@@ -786,10 +786,50 @@ export default function SettingsClient({
             ? modelCatalog
             : listModelCatalogEntries({ configuredProviders: modelCatalogProviderInputs })
     ), [modelCatalog, modelCatalogProviderInputs]);
-    const asrModelEntries = useMemo(
-        () => effectiveModelCatalog.filter((entry) => (entry.model.kind as string) === 'asr'),
+    const voiceInputModelEntries = useMemo(
+        () => effectiveModelCatalog.filter(isVoiceInputModelEntry),
         [effectiveModelCatalog],
     );
+    const [localSpeechModelStatuses, setLocalSpeechModelStatuses] = useState<Record<string, boolean>>({});
+    const localSpeechModelStatusesRef = useRef<Record<string, boolean>>({});
+    const localSpeechProbeVersionRef = useRef(0);
+
+    useEffect(() => {
+        localSpeechModelStatusesRef.current = localSpeechModelStatuses;
+    }, [localSpeechModelStatuses]);
+
+    useEffect(() => {
+        if (!(showAll || activeSection === 'audio' || activeSection === 'models')) return;
+        const localModels = effectiveModelCatalog.filter((entry) => (
+            isLocalSpeechModelEntry(entry) &&
+            localSpeechModelStatusesRef.current[entry.model.id] === undefined
+        ));
+        if (localModels.length === 0) return;
+
+        let cancelled = false;
+        const version = ++localSpeechProbeVersionRef.current;
+        void Promise.all(localModels.map(async (entry) => {
+            const capability = localSpeechCapability(entry);
+            if (!capability) return null;
+            const available = await fetchLocalSpeechModelStatus(
+                capability,
+                localSpeechModelValue(entry),
+            ).catch(() => false);
+            return [entry.model.id, available] as const;
+        })).then((statuses) => {
+            if (cancelled || localSpeechProbeVersionRef.current !== version) return;
+            setLocalSpeechModelStatuses((current) => ({
+                ...current,
+                ...Object.fromEntries(
+                    statuses.filter((status): status is readonly [string, boolean] => status !== null),
+                ),
+            }));
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeSection, effectiveModelCatalog, showAll]);
 
     const handleCreate = useCallback(async () => {
         if (!newTokenName.trim()) return;
@@ -1095,7 +1135,12 @@ export default function SettingsClient({
                 {showAll && <hr className="border-warm-border" />}
 
                 {/* ── Audio ── */}
-                {showSection('audio') && <AudioSection asrModels={asrModelEntries} />}
+                {showSection('audio') && (
+                    <AudioSection
+                        voiceInputModels={voiceInputModelEntries}
+                        localSpeechModelStatuses={localSpeechModelStatuses}
+                    />
+                )}
 
                 {showAll && <hr className="border-warm-border" />}
 
@@ -1216,6 +1261,8 @@ export default function SettingsClient({
                     onDeleteModelCard={handleDeleteModelCard}
                     saving={isSavingModelProviders || isSavingModelCard}
                     error={modelProviderError}
+                    localSpeechModelStatuses={localSpeechModelStatuses}
+                    onLocalSpeechModelStatusesChange={setLocalSpeechModelStatuses}
                 />
                 )}
 
@@ -1347,6 +1394,8 @@ export default function SettingsClient({
                     onDeleteModelCard={handleDeleteModelCard}
                     saving={isSavingModelProviders || isSavingModelCard}
                     error={modelProviderError}
+                    localSpeechModelStatuses={localSpeechModelStatuses}
+                    onLocalSpeechModelStatusesChange={setLocalSpeechModelStatuses}
                 />
                 )}
 
@@ -1532,7 +1581,9 @@ const MODEL_PROVIDER_PRESETS: ModelProviderAccountInfo[] = [
     { providerId: 'official', upstreamId: 'anthropic', region: 'global', enabled: false, priority: 15 },
     { providerId: 'official', upstreamId: 'google-ai-studio', region: 'global', enabled: false, priority: 20 },
     { providerId: 'official', upstreamId: 'google-agent-platform', region: 'global', enabled: false, priority: 25 },
+    { providerId: 'official', upstreamId: 'bfl', region: 'global', enabled: false, priority: 27 },
     { providerId: 'fal', upstreamId: 'fal', enabled: false, priority: 30 },
+    { providerId: 'pika', upstreamId: 'pika', enabled: false, priority: 35 },
     { providerId: 'kie', upstreamId: 'kie', enabled: false, priority: 40 },
     { providerId: 'replicate', upstreamId: 'replicate', enabled: false, priority: 50 },
     { providerId: 'kling', upstreamId: 'kling', enabled: false, priority: 60 },
@@ -1571,6 +1622,7 @@ function isGoogleAiStudio(provider: Pick<ModelProviderAccountInfo, 'providerId' 
 function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region'>): string[] {
     if (provider.providerId === 'custom') return ['apiKey', 'baseUrl'];
     if (provider.providerId === 'fal') return ['apiKey'];
+    if (provider.providerId === 'pika') return ['apiKey'];
     if (provider.providerId === 'kie') return ['apiKey'];
     if (provider.providerId === 'replicate') return ['apiKey'];
     if (provider.providerId === 'kling') return ['accessKey', 'secretKey'];
@@ -1581,7 +1633,8 @@ function requiredModelProviderCredentials(provider: Pick<ModelProviderAccountInf
     if (provider.providerId === 'suno') return ['apiKey', 'callbackUrl'];
     if (provider.providerId === 'official' && provider.upstreamId === 'openai') return ['apiKey'];
     if (provider.providerId === 'official' && provider.upstreamId === 'anthropic') return ['apiKey'];
-    if (isGoogleAiStudio(provider)) return ['apiKey'];
+    if (provider.providerId === 'official' && provider.upstreamId === 'bfl') return ['apiKey'];
+    if (isGoogleAiStudio(provider)) return ['apiKey', 'gatewayToken'];
     if (isGoogleCloudAgentPlatform(provider)) return ['vertexCredentials'];
     return [];
 }
@@ -1601,6 +1654,7 @@ type ModelProviderSetup = {
     credentials?: ModelProviderCredentialField[];
     oauthProviderId?: ProviderOAuthId;
     requiresAllCredentials?: boolean;
+    credentialRequirements?: ProviderCredentialRequirements;
     baseUrlKey?: string;
     baseUrlPlaceholder?: string;
 };
@@ -1614,6 +1668,54 @@ function modelProviderCredentialFields(setup: ModelProviderSetup): ModelProvider
             allowMultiple: true,
         },
     ];
+}
+
+function providerCredentialRequirementState(
+    setup: ModelProviderSetup,
+    configuredKeys: ReadonlySet<string>,
+    draftedBaseUrl: string | undefined,
+): { valid: boolean; message?: string } {
+    const requirements = setup.credentialRequirements;
+    if (!requirements) return { valid: true };
+    const satisfied = requirements.anyOf.filter((credentials) =>
+        credentials.every((credential) => configuredKeys.has(credential)),
+    );
+    if (requirements.exclusive && satisfied.length > 1) {
+        return {
+            valid: false,
+            message: 'Choose either direct Google API key or Cloudflare Gateway for one account.',
+        };
+    }
+    if (configuredKeys.has('gatewayToken')) {
+        if (!configuredKeys.has('baseUrl')) {
+            return {
+                valid: false,
+                message: 'Gateway token requires a Cloudflare Google AI Studio Gateway Base URL.',
+            };
+        }
+        if (draftedBaseUrl) {
+            try {
+                const url = new URL(draftedBaseUrl);
+                if (
+                    url.hostname !== 'gateway.ai.cloudflare.com'
+                    || !/\/google-ai-studio(?:\/v\d+(?:beta\d*)?)?\/?$/.test(url.pathname)
+                ) {
+                    return {
+                        valid: false,
+                        message: 'Gateway Base URL must be a Cloudflare Google AI Studio provider endpoint.',
+                    };
+                }
+            } catch {
+                return {
+                    valid: false,
+                    message: 'Gateway Base URL must be a valid URL.',
+                };
+            }
+        }
+    }
+    return satisfied.length > 0
+        ? { valid: true }
+        : { valid: false, message: 'Complete one provider credential option before saving.' };
 }
 
 function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId' | 'upstreamId' | 'region' | 'label' | 'apiShape'>): ModelProviderSetup | null {
@@ -1645,6 +1747,22 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
         return {
             title: 'fal.ai',
             description: 'Image, video, and audio models served through fal.ai endpoints.',
+            apiKey: 'apiKey',
+        };
+    }
+    if (provider.providerId === 'official' && provider.upstreamId === 'bfl') {
+        return {
+            title: 'Black Forest Labs',
+            description: 'Official FLUX API for FLUX 3 video generation.',
+            apiKey: 'apiKey',
+            baseUrlKey: 'baseUrl',
+            baseUrlPlaceholder: 'https://api.bfl.ai',
+        };
+    }
+    if (provider.providerId === 'pika') {
+        return {
+            title: 'Pika API Club',
+            description: 'Image, video, and audio models served through the unified Pika media API.',
             apiKey: 'apiKey',
         };
     }
@@ -1765,7 +1883,7 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
     if (isGoogleAiStudio(provider)) {
         return {
             title: 'Google AI Studio',
-            description: 'Gemini API models through an AI Studio API key.',
+            description: 'Gemini API models through a direct API key or an authenticated Cloudflare AI Gateway.',
             apiKey: 'apiKey',
             credentials: [
                 {
@@ -1775,7 +1893,20 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
                     placeholder: 'Paste API key',
                     allowMultiple: false,
                 },
+                {
+                    key: 'gatewayToken',
+                    label: 'Cloudflare AI Gateway token',
+                    ariaLabel: 'Cloudflare AI Gateway token',
+                    placeholder: 'Paste authenticated Gateway token',
+                    allowMultiple: false,
+                },
             ],
+            credentialRequirements: {
+                anyOf: [['apiKey'], ['gatewayToken', 'baseUrl']],
+                exclusive: true,
+            },
+            baseUrlKey: 'baseUrl',
+            baseUrlPlaceholder: 'https://gateway.ai.cloudflare.com/v1/{account}/{gateway}/google-ai-studio',
         };
     }
     if (isGoogleCloudAgentPlatform(provider)) {
@@ -2191,9 +2322,21 @@ function providerSettingsHref(providerKey: string): string {
     return `/settings?section=providers&provider=${encodeURIComponent(providerKey)}`;
 }
 
-function modelKindLabel(kind: string): string {
-    if (kind === 'asr') return 'ASR';
-    return `${kind.slice(0, 1).toUpperCase()}${kind.slice(1)}`;
+const DECLARED_MODEL_TASK_BY_ID = new Map(
+    MODEL_CARDS.flatMap((model) => model.task ? [[model.id, model.task] as const] : []),
+);
+
+function modelTaskKey(entry: ModelCatalogEntryInfo): string {
+    return entry.model.task
+        ?? DECLARED_MODEL_TASK_BY_ID.get(entry.model.id)
+        ?? entry.model.kind;
+}
+
+function modelTaskLabel(task: string): string {
+    if (task === 'speech-to-text' || task === 'asr') return 'ASR';
+    if (task === 'text-to-speech') return 'TTS';
+    if (task === 'music-generation') return 'Music';
+    return `${task.slice(0, 1).toUpperCase()}${task.slice(1)}`;
 }
 
 function supportForProvider(
@@ -2213,12 +2356,14 @@ function providerIdForModelRoute(route: NonNullable<ModelCatalogEntryInfo['selec
         route.upstreamId === 'openai' ||
         route.upstreamId === 'google-ai-studio' ||
         route.upstreamId === 'google-agent-platform' ||
-        route.upstreamId === 'anthropic'
+        route.upstreamId === 'anthropic' ||
+        route.upstreamId === 'bfl'
     ) return 'official';
     if (
         route.upstreamId === 'local' ||
         route.upstreamId === 'mock' ||
         route.upstreamId === 'fal' ||
+        route.upstreamId === 'pika' ||
         route.upstreamId === 'kie' ||
         route.upstreamId === 'replicate' ||
         route.upstreamId === 'kling' ||
@@ -2247,6 +2392,7 @@ type ModelProviderLogoId =
     | 'anthropic'
     | 'google'
     | 'fal'
+    | 'flux'
     | 'kie'
     | 'replicate'
     | 'kling'
@@ -2273,6 +2419,9 @@ function modelProviderLogo(provider: Pick<ModelProviderAccountInfo, 'providerId'
     }
     if (provider.providerId === 'fal') {
         return { id: 'fal', src: '/brand/providers/fal.svg' };
+    }
+    if (provider.providerId === 'official' && provider.upstreamId === 'bfl') {
+        return { id: 'flux', src: '/brand/models/flux.svg' };
     }
     if (provider.providerId === 'kie') {
         return { id: 'kie', src: '/brand/providers/kie.png' };
@@ -2304,6 +2453,8 @@ function modelProviderFilterLabel(id: string, fallback?: string): string {
         anthropic: 'Anthropic',
         google: 'Google',
         fal: 'fal.ai',
+        bfl: 'Black Forest Labs',
+        flux: 'Black Forest Labs',
         kie: 'KIE',
         replicate: 'Replicate',
         kling: 'Kling',
@@ -2499,6 +2650,10 @@ interface ModelRoutingSectionProps {
     onDeleteModelCard: (modelId: string) => Promise<void>;
     saving: boolean;
     error: string | null;
+    localSpeechModelStatuses: Record<string, boolean>;
+    onLocalSpeechModelStatusesChange: (
+        updater: (current: Record<string, boolean>) => Record<string, boolean>,
+    ) => void;
 }
 
 function ModelRoutingSection({
@@ -2517,6 +2672,8 @@ function ModelRoutingSection({
     onDeleteModelCard,
     saving,
     error,
+    localSpeechModelStatuses,
+    onLocalSpeechModelStatusesChange,
 }: ModelRoutingSectionProps) {
     const feedback = useAppFeedback();
     const navigate = useNavigate();
@@ -2532,7 +2689,7 @@ function ModelRoutingSection({
     const [addingProviderKey, setAddingProviderKey] = useState<string | null>(null);
     const [editingProviderAccountKey, setEditingProviderAccountKey] = useState<{ providerKey: string; accountKey: string } | null>(null);
     const [modelQuery, setModelQuery] = useState('');
-    const [modelKindFilter, setModelKindFilter] = useState<'all' | string>('all');
+    const [modelTaskFilter, setModelTaskFilter] = useState<'all' | string>('all');
     const [modelAvailabilityFilter, setModelAvailabilityFilter] = useState<'all' | 'enabled' | 'unavailable'>('all');
     const [modelServingProviderFilter, setModelServingProviderFilter] = useState('all');
     const [modelInputFilter, setModelInputFilter] = useState<'all' | 'text-only' | 'image' | 'video' | 'audio'>('all');
@@ -2557,13 +2714,11 @@ function ModelRoutingSection({
         promptGuidance: '',
         providerBindings: [],
     });
-    const [localSpeechModelStatuses, setLocalSpeechModelStatuses] = useState<Record<string, boolean>>({});
     const [localSpeechBusy, setLocalSpeechBusy] = useState<{
         modelId: string;
         action: 'install' | 'remove';
     } | null>(null);
     const providerKeyInputRef = useRef<HTMLInputElement | null>(null);
-    const localSpeechConfigVersionRef = useRef(0);
     const providerSupports = useMemo(() => listProviderModelSupport({ includeMock: true }), []);
     const showProviders = mode === 'providers';
     const showModels = mode === 'models';
@@ -2719,6 +2874,12 @@ function ModelRoutingSection({
                 : false;
             const hasRequiredCredentials = credentialFields.length === 0
                 ? accountRows.length > 0
+                : setup?.credentialRequirements
+                    ? accountRows.some((account) => providerCredentialRequirementState(
+                        setup,
+                        new Set(account.configuredCredentials ?? []),
+                        undefined,
+                    ).valid)
                 : setup?.requiresAllCredentials
                     ? accountRows.some((account) => credentialFields.every((credential) =>
                         account.configuredCredentials?.includes(credential.key),
@@ -2786,38 +2947,13 @@ function ModelRoutingSection({
             () => new Set(focusedProviderRow?.support?.models.map((model) => model.id) ?? []),
             [focusedProviderRow],
         );
-    useEffect(() => {
-        if (!showModels || !catalog.some(isLocalSpeechModelEntry)) return;
-        let cancelled = false;
-        const version = ++localSpeechConfigVersionRef.current;
-        const localModels = catalog.filter(isLocalSpeechModelEntry);
-        Promise.all(localModels.map(async (entry) => {
-            const capability = localSpeechCapability(entry);
-            if (!capability) return null;
-            const available = await fetchLocalSpeechModelStatus(
-                capability,
-                localSpeechModelValue(entry),
-            ).catch(() => false);
-            return [entry.model.id, available] as const;
-        }))
-            .then((statuses) => {
-                if (cancelled || localSpeechConfigVersionRef.current !== version) return;
-                setLocalSpeechModelStatuses(Object.fromEntries(
-                    statuses.filter((status): status is readonly [string, boolean] => status !== null),
-                ));
-            })
-            .catch(() => undefined);
-        return () => {
-            cancelled = true;
-        };
-    }, [catalog, showModels]);
-    const modelKindOptions = useMemo(() => [...new Set(catalog.map((entry) => entry.model.kind))].sort(), [catalog]);
-    const modelKindSelectOptions = useMemo<SelectOption<string>[]>(
+    const modelTaskOptions = useMemo(() => [...new Set(catalog.map(modelTaskKey))].sort(), [catalog]);
+    const modelTaskSelectOptions = useMemo<SelectOption<string>[]>(
         () => [
-            { value: 'all', label: 'All modalities' },
-            ...modelKindOptions.map((kind) => ({ value: kind, label: kind })),
+            { value: 'all', label: 'All model types' },
+            ...modelTaskOptions.map((task) => ({ value: task, label: modelTaskLabel(task) })),
         ],
-        [modelKindOptions],
+        [modelTaskOptions],
     );
     const modelSupportedProviderLogos = useMemo(() => new Map(
         catalog.map((entry) => [entry.model.id, modelCardProviderLogos(entry, providerSupports)] as const),
@@ -2859,7 +2995,7 @@ function ModelRoutingSection({
             ].join(' ').toLowerCase();
             return text.includes(modelQuery.trim().toLowerCase());
         })
-        .filter((entry) => modelKindFilter === 'all' || entry.model.kind === modelKindFilter)
+        .filter((entry) => modelTaskFilter === 'all' || modelTaskKey(entry) === modelTaskFilter)
         .filter((entry) => {
             if (modelAvailabilityFilter === 'enabled') return modelIsEnabled(entry);
             if (modelAvailabilityFilter === 'unavailable') return !modelIsEnabled(entry);
@@ -2874,18 +3010,19 @@ function ModelRoutingSection({
             if (modelOriginFilter === 'custom') return entry.model.custom === true;
             if (modelOriginFilter === 'built-in') return entry.model.custom !== true;
             return true;
-        }), [catalog, focusedProviderModelIds, focusedProviderRow, modelAvailabilityFilter, modelInputFilter, modelIsEnabled, modelKindFilter, modelOriginFilter, modelQuery, modelServingProviderFilter, modelSupportedProviderLogos]);
-    const enabledModelCatalog = filteredModelCatalog.filter(modelIsEnabled);
-    const unavailableModelCatalog = filteredModelCatalog.filter((entry) => !modelIsEnabled(entry));
+        }), [catalog, focusedProviderModelIds, focusedProviderRow, modelAvailabilityFilter, modelInputFilter, modelIsEnabled, modelOriginFilter, modelQuery, modelServingProviderFilter, modelSupportedProviderLogos, modelTaskFilter]);
+    const visibleFilteredModelCatalog = filteredModelCatalog;
+    const enabledModelCatalog = visibleFilteredModelCatalog.filter(modelIsEnabled);
+    const unavailableModelCatalog = visibleFilteredModelCatalog.filter((entry) => !modelIsEnabled(entry));
     const hasActiveModelFilters = !!modelQuery.trim()
-        || modelKindFilter !== 'all'
+        || modelTaskFilter !== 'all'
         || modelAvailabilityFilter !== 'all'
         || modelServingProviderFilter !== 'all'
         || modelInputFilter !== 'all'
         || modelOriginFilter !== 'all';
     const clearModelFilters = () => {
         setModelQuery('');
-        setModelKindFilter('all');
+        setModelTaskFilter('all');
         setModelAvailabilityFilter('all');
         setModelServingProviderFilter('all');
         setModelInputFilter('all');
@@ -2909,7 +3046,6 @@ function ModelRoutingSection({
         const actionLabel = action === 'install'
             ? capability === 'speech-to-text' ? 'deploy' : 'download'
             : 'remove';
-        localSpeechConfigVersionRef.current += 1;
         setLocalSpeechBusy({ modelId: entry.model.id, action });
         try {
             const res = await fetch(runtimeApiUrl(`/api/v1/local/audio/${action}`), {
@@ -2927,7 +3063,7 @@ function ModelRoutingSection({
             if (action === 'install' && !available) {
                 throw new Error(`The local ${label} runtime did not report this model as ready after ${actionLabel}.`);
             }
-            setLocalSpeechModelStatuses((current) => ({
+            onLocalSpeechModelStatusesChange((current) => ({
                 ...current,
                 [entry.model.id]: available,
             }));
@@ -2946,7 +3082,7 @@ function ModelRoutingSection({
         } finally {
             setLocalSpeechBusy(null);
         }
-    }, [feedback]);
+    }, [feedback, onLocalSpeechModelStatusesChange]);
     const renderModelCard = (entry: ModelCatalogEntryInfo) => {
         const needsProvider = !modelIsEnabled(entry);
         const focused = focusedModelId === entry.model.id;
@@ -2957,7 +3093,10 @@ function ModelRoutingSection({
         const localSpeechInstalled = !!localSpeechCapabilityValue &&
             localSpeechModelStatuses[entry.model.id] === true;
         const localSpeechIsAsr = localSpeechCapabilityValue === 'speech-to-text';
-        const KindIcon = entry.model.kind === 'image'
+        const task = modelTaskKey(entry);
+        const KindIcon = task === 'speech-to-text'
+            ? Microphone
+            : entry.model.kind === 'image'
             ? ImageSquare
             : entry.model.kind === 'video'
                 ? VideoCamera
@@ -3060,7 +3199,7 @@ function ModelRoutingSection({
                             )}
                             <span className="flex items-center gap-1.5 rounded-full bg-warm-muted px-2 py-1 text-[10px] font-medium capitalize text-stone-600 dark:text-stone-300">
                                 <KindIcon className="h-3 w-3" aria-hidden="true" />
-                                {entry.model.kind}
+                                {modelTaskLabel(task)}
                             </span>
                         </span>
                     </div>
@@ -3226,6 +3365,17 @@ function ModelRoutingSection({
         const isAddingPrioritizedKey = addingProviderKey === row.key;
         const newKeyNumber = savedAccounts.length + 1;
         const hasCredentialDraft = credentialFields.some((credential) => draft.apiKeys?.[credential.key]?.trim()) || !!draft.baseUrl?.trim();
+        const effectiveCredentialKeys = new Set(editingAccount?.configuredCredentials ?? []);
+        for (const credential of credentialFields) {
+            if (draft.apiKeys?.[credential.key]?.trim()) effectiveCredentialKeys.add(credential.key);
+        }
+        if (setup.baseUrlKey && draft.baseUrl?.trim()) effectiveCredentialKeys.add(setup.baseUrlKey);
+        const credentialRequirementState = providerCredentialRequirementState(
+            setup,
+            effectiveCredentialKeys,
+            draft.baseUrl?.trim(),
+        );
+        const credentialConfigurationInvalid = !credentialRequirementState.valid;
         const editingSupportedModelIds = editingAccount?.supportedModelIds ?? [];
         const editingModelAccessMode: 'all' | 'specific' = editingSupportedModelIds.length > 0 ? 'specific' : 'all';
         const draftSupportedModelIds = draft.supportedModelIds ?? editingSupportedModelIds;
@@ -3291,7 +3441,7 @@ function ModelRoutingSection({
             if (!setup || !hasProviderDraft) return false;
             const createAccount = isAddingPrioritizedKey;
             if (isAddingPrioritizedKey && !hasCredentialDraft && !oauthProviderId) return false;
-            if (modelAccessInvalid) return false;
+            if (modelAccessInvalid || credentialConfigurationInvalid) return false;
             const saved = await commitProviderDraft(row.key, setup, {
                 createAccount,
                 accountId: draft.accountId,
@@ -3482,6 +3632,11 @@ function ModelRoutingSection({
                                 className={settingsFieldClass}
                             />
                         </label>
+                    )}
+                    {hasCredentialDraft && credentialRequirementState.message && (
+                        <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                            {credentialRequirementState.message}
+                        </p>
                     )}
                     {oauthProviderId && editingAccount?.id && (
                         <div className="rounded-xl border border-warm-border bg-warm-muted/20 p-3">
@@ -3695,7 +3850,7 @@ function ModelRoutingSection({
                                 {(hasProviderDraft || savingProviderKey === row.key) && (
                                     <Button
                                         type="submit"
-                                        disabled={modelAccessInvalid || savingProviderKey === row.key || saving}
+                                        disabled={modelAccessInvalid || credentialConfigurationInvalid || savingProviderKey === row.key || saving}
                                         className={settingsSmallPrimaryButtonClass}
                                     >
                                         {savingProviderKey === row.key ? 'Saving...' : 'Save'}
@@ -4152,7 +4307,7 @@ function ModelRoutingSection({
                     )}
                     <div className="min-w-0 flex-1">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand">
-                            {creating ? 'Text model' : `${modelKindLabel(entry!.model.kind)} model`}
+                            {creating ? 'Text model' : `${modelTaskLabel(modelTaskKey(entry!))} model`}
                         </p>
                         <h2 className="mt-1 font-display text-xl font-bold text-slate-900 dark:text-slate-50">
                             {creating ? 'New text model' : entry!.model.name}
@@ -4420,33 +4575,35 @@ function ModelRoutingSection({
 
     return (
         <section>
-            {showModels && !focusedModelId && <div className="flex items-center gap-3 mb-5">
+            {showModels && !focusedModelId && <div className="mb-5 flex items-start gap-3">
                 <Plug className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
-                <div className="flex-1">
-                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Models</h2>
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Models</h2>
+                        {focusedProviderRow && (
+                            <Link
+                                to="/settings?section=models"
+                                className="text-sm font-medium text-stone-600 transition-colors hover:text-brand dark:text-stone-300 dark:hover:text-brand"
+                            >
+                                Show all
+                            </Link>
+                        )}
+                        {!focusedProviderRow && (
+                            <Link
+                                to="/settings?section=models&model=new"
+                                className={`${settingsCompactSecondaryButtonClass} gap-1.5`}
+                            >
+                                <Plus className="h-3.5 w-3.5" />
+                                Add text model
+                            </Link>
+                        )}
+                    </div>
                     <p className="text-sm text-stone-600 dark:text-stone-300">
                         {focusedProviderRow
                             ? `Models supported by ${focusedProviderRow.title}`
                             : 'Supported models and available providers'}
                     </p>
                 </div>
-                {focusedProviderRow && (
-                    <Link
-                        to="/settings?section=models"
-                        className="text-sm font-medium text-stone-600 transition-colors hover:text-brand dark:text-stone-300 dark:hover:text-brand"
-                    >
-                        Show all
-                    </Link>
-                )}
-                {!focusedProviderRow && (
-                    <Link
-                        to="/settings?section=models&model=new"
-                        className={`${settingsSmallPrimaryButtonClass} shrink-0`}
-                    >
-                        <Plus className="h-4 w-4" />
-                        Add text model
-                    </Link>
-                )}
             </div>}
 
             {showModels && !focusedModelId && <div role="group" aria-label="Model availability summary" className="mb-6 grid grid-cols-3 gap-2">
@@ -4551,10 +4708,10 @@ function ModelRoutingSection({
                                 />
                             </label>
                             <SelectMenu
-                                value={modelKindFilter}
-                                options={modelKindSelectOptions}
-                                onValueChange={(next) => setModelKindFilter(String(next))}
-                                ariaLabel="Modality"
+                                value={modelTaskFilter}
+                                options={modelTaskSelectOptions}
+                                onValueChange={(next) => setModelTaskFilter(String(next))}
+                                ariaLabel="Model type"
                                 variant="field"
                                 menuWidth="trigger"
                                 className="w-full"
@@ -4616,7 +4773,7 @@ function ModelRoutingSection({
                     </div>
 
                     <div className="space-y-8">
-                        {filteredModelCatalog.length === 0 ? (
+                        {visibleFilteredModelCatalog.length === 0 ? (
                             <div className="rounded-xl border border-dashed border-warm-border py-8 text-center text-sm text-stone-600 dark:text-stone-300">
                                 No model cards match these filters.
                             </div>
@@ -5055,12 +5212,12 @@ interface LocalAudioConfig {
     asr: {
         capability?: 'speech-to-text';
         enabled: boolean;
-        provider: 'builtin-funasr';
+        provider: string;
         base_url: string | null;
         model: string;
         has_api_key: boolean;
         ready: boolean;
-        setup: LocalSpeechSetup & { provider: 'funasr' };
+        setup: LocalSpeechSetup & { provider: string };
     };
     tts?: {
         capability?: 'text-to-speech';
@@ -5088,6 +5245,23 @@ function isLocalTtsModelEntry(entry: ModelCatalogEntryInfo): boolean {
 
 function isLocalSpeechModelEntry(entry: ModelCatalogEntryInfo): boolean {
     return isLocalAsrModelEntry(entry) || isLocalTtsModelEntry(entry);
+}
+
+function isVoiceInputModelEntry(entry: ModelCatalogEntryInfo): boolean {
+    if (isLocalAsrModelEntry(entry)) return true;
+    return (entry.model.kind as string) === 'text' && modelAcceptsInput(entry, 'audio');
+}
+
+function isGlobalModelEnabled(
+    entry: ModelCatalogEntryInfo,
+    localSpeechModelStatuses: Record<string, boolean>,
+): boolean {
+    if (isLocalSpeechModelEntry(entry)) {
+        return localSpeechModelStatuses[entry.model.id] === true;
+    }
+    return !!entry.selectedRoute &&
+        entry.missingCredentials.length === 0 &&
+        entry.tier === 'available';
 }
 
 function localSpeechCapability(entry: ModelCatalogEntryInfo): LocalSpeechCapability | null {
@@ -5119,7 +5293,9 @@ function localSpeechModelValue(entry: ModelCatalogEntryInfo): string {
 }
 
 async function fetchLocalAudioConfig(): Promise<LocalAudioConfig> {
-    const res = await fetch(runtimeApiUrl('/api/v1/local/audio'), { credentials: 'include' });
+    const res = await fetch(runtimeApiUrl('/api/v1/local/audio/voice-input?probe=false'), {
+        credentials: 'include',
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as LocalAudioConfig;
 }
@@ -5173,7 +5349,7 @@ function LocalSpeechSettingsCard({
     onModelChange,
     onConfigure,
 }: LocalSpeechSettingsCardProps) {
-    const switchDisabledReason = saving ? 'Saving audio settings.' : blockingReason;
+    const switchDisabledReason = saving ? 'Saving voice input settings.' : blockingReason;
     const switchReasonId = switchDisabledReason
         ? `audio-${modelLabel.toLowerCase().replaceAll(' ', '-')}-switch-reason`
         : undefined;
@@ -5243,30 +5419,40 @@ function LocalSpeechSettingsCard({
 }
 
 function AudioSection({
-    asrModels,
+    voiceInputModels,
+    localSpeechModelStatuses,
 }: {
-    asrModels: ModelCatalogEntryInfo[];
+    voiceInputModels: ModelCatalogEntryInfo[];
+    localSpeechModelStatuses: Record<string, boolean>;
 }) {
     const feedback = useAppFeedback();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dirty, setDirty] = useState(false);
     const [asrEnabled, setAsrEnabled] = useState(false);
-    const [asrModel, setAsrModel] = useState('iic/SenseVoiceSmall');
-    const [asrSetupAvailable, setAsrSetupAvailable] = useState(false);
+    const [asrModel, setAsrModel] = useState('');
     const [setupDialog, setSetupDialog] = useState<{
         title: string;
         message: string;
     } | null>(null);
     const audioVersionRef = useRef(0);
     const asrModelOptions = useMemo<SelectOption<string>[]>(
-        () => asrModels.map((entry) => ({
-            value: asrModelValue(entry),
-            label: entry.model.name,
-        })),
-        [asrModels],
+        () => voiceInputModels
+            .filter((entry) => isGlobalModelEnabled(entry, localSpeechModelStatuses))
+            .map((entry) => ({
+                value: entry.model.id,
+                label: entry.model.name,
+            })),
+        [localSpeechModelStatuses, voiceInputModels],
     );
-    const hasSelectedAsrModel = asrModelOptions.length > 0;
+    const hasAvailableVoiceInputModel = asrModelOptions.length > 0;
+    const voiceInputAvailabilityResolved = useMemo(
+        () => voiceInputModels.every((entry) => (
+            !isLocalSpeechModelEntry(entry) ||
+            localSpeechModelStatuses[entry.model.id] !== undefined
+        )),
+        [localSpeechModelStatuses, voiceInputModels],
+    );
 
     const markDirty = useCallback(() => {
         audioVersionRef.current += 1;
@@ -5275,14 +5461,16 @@ function AudioSection({
 
     const applyConfig = useCallback((config: LocalAudioConfig) => {
         setAsrEnabled(config.asr.enabled);
-        setAsrModel(config.asr.model);
-        setAsrSetupAvailable(config.asr.setup.available);
-    }, []);
+        const configuredEntry = voiceInputModels.find((entry) => (
+            entry.model.id === config.asr.model || asrModelValue(entry) === config.asr.model
+        ));
+        setAsrModel(configuredEntry?.model.id ?? config.asr.model);
+    }, [voiceInputModels]);
 
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        fetchLocalAudioConfig()
+        void fetchLocalAudioConfig()
             .then((config) => {
                 if (cancelled) return;
                 applyConfig(config);
@@ -5291,7 +5479,7 @@ function AudioSection({
                 if (cancelled) return;
                 feedback.notify({
                     variant: 'error',
-                    title: 'Could not load audio settings',
+                    title: 'Could not load voice input settings',
                     message: displayErrorMessage(err),
                 });
             })
@@ -5304,21 +5492,33 @@ function AudioSection({
     }, [applyConfig, feedback]);
 
     useEffect(() => {
-        if (loading || !hasSelectedAsrModel) return;
+        if (loading || !voiceInputAvailabilityResolved) return;
         if (asrModelOptions.some((option) => option.value === asrModel)) return;
-        setAsrModel(asrModelOptions[0].value);
+        if (asrModelOptions.length > 0) {
+            setAsrModel(asrModelOptions[0]!.value);
+        } else if (asrEnabled) {
+            setAsrEnabled(false);
+        } else {
+            return;
+        }
         markDirty();
-    }, [asrModel, asrModelOptions, hasSelectedAsrModel, loading, markDirty]);
+    }, [
+        asrEnabled,
+        asrModel,
+        asrModelOptions,
+        loading,
+        markDirty,
+        voiceInputAvailabilityResolved,
+    ]);
 
     useEffect(() => {
-        if (loading || !dirty || !hasSelectedAsrModel) return;
+        if (loading || !dirty) return;
         const version = audioVersionRef.current;
         const timer = window.setTimeout(() => {
             setSaving(true);
             const body: Record<string, unknown> = {
                 asr_enabled: asrEnabled,
-                asr_provider: 'builtin-funasr',
-                asr_model: asrModel.trim() || 'iic/SenseVoiceSmall',
+                asr_model: asrModel.trim(),
             };
             void fetch(runtimeApiUrl('/api/v1/local/audio'), {
                 method: 'PATCH',
@@ -5339,14 +5539,14 @@ function AudioSection({
                     applyConfig(config);
                     feedback.notify({
                         variant: 'success',
-                        title: 'Audio settings saved',
+                        title: 'Voice input settings saved',
                     });
                 })
                 .catch((err) => {
                     if (audioVersionRef.current !== version) return;
                     feedback.notify({
                         variant: 'error',
-                        title: 'Could not save audio settings',
+                        title: 'Could not save voice input settings',
                         message: displayErrorMessage(err),
                     });
                 })
@@ -5361,26 +5561,18 @@ function AudioSection({
         asrModel,
         dirty,
         feedback,
-        hasSelectedAsrModel,
         loading,
     ]);
 
-    const asrBlockingReason = !hasSelectedAsrModel
-        ? 'Select an ASR model in Models before enabling voice input.'
-        : !asrEnabled && !asrSetupAvailable
-            ? 'Deploy the selected ASR model from Models before enabling voice input.'
-            : undefined;
+    const asrBlockingReason = !hasAvailableVoiceInputModel
+        ? 'Enable an audio-capable model in Models before enabling voice input.'
+        : undefined;
     const openAsrSetupDialog = useCallback(() => {
-        setSetupDialog(!hasSelectedAsrModel
-            ? {
-                title: 'Configure ASR model',
-                message: 'Voice input needs a local ASR model before it can transcribe microphone clips.',
-            }
-            : {
-                title: 'Deploy ASR model',
-                message: 'The selected ASR model must be deployed before voice input can run locally.',
-            });
-    }, [hasSelectedAsrModel]);
+        setSetupDialog({
+            title: 'Configure voice input model',
+            message: 'Enable a model that accepts audio and returns text. Local and cloud routes are both supported.',
+        });
+    }, []);
     const handleAsrEnabledChange = useCallback((next: boolean) => {
         if (next && asrBlockingReason) {
             openAsrSetupDialog();
@@ -5394,9 +5586,9 @@ function AudioSection({
             <div className="mb-5 flex items-center gap-3">
                 <Microphone className="h-5 w-5 text-stone-600 dark:text-stone-300" weight="bold" />
                 <div className="flex-1">
-                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Audio</h2>
+                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-50">Microphone transcription</h2>
                     <p className="text-sm text-stone-600 dark:text-stone-300">
-                        Local voice input for chat.
+                        Transcribe with any enabled audio-capable model.
                     </p>
                 </div>
             </div>

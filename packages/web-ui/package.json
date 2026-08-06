@@ -22,8 +22,8 @@
   "dependencies": {
     "@ai-sdk/react": "^3.0.140",
     "@ariakit/react": "^0.4.31",
-    "@clash/shared-layout": "workspace:^",
     "@clash/director-ui": "workspace:*",
+    "@clash/shared-layout": "workspace:^",
     "@clash/shared-runtime": "workspace:*",
     "@clash/shared-types": "workspace:*",
     "@cloudflare/ai-chat": "^0.2.5",
@@ -73,6 +73,7 @@
     "remotion": "4.0.370",
     "streamdown": "^2.5.0",
     "tailwind-merge": "^3.6.0",
+    "wavesurfer.js": "^7.12.11",
     "zod": "^4.1.13"
   },
   "peerDependencies": {

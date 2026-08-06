@@ -75,11 +75,14 @@ export function useRuntimes(): UseRuntimesReturn {
  * the hook and treat unknown as online until the first response.
  */
 export function isCustomActionRuntimeOnline(
-  action: Pick<CustomActionDefinition, 'runtime' | 'registeredByRuntime'> | undefined,
+  action: Pick<CustomActionDefinition, 'runtime' | 'registeredByRuntime' | 'pluginBinding'> | undefined,
   runtimes: Runtime[],
 ): boolean {
   if (!action) return true;
   if (action.runtime === 'worker') return true;
+  // Executable actions are discovered from the live Bridge plugin host and
+  // invoked through its exact binding, not assigned to a legacy WS runtime.
+  if (action.pluginBinding) return true;
   if (!action.registeredByRuntime) return false;
   const row = runtimes.find((r) => r.id === action.registeredByRuntime);
   return row?.status === 'online';

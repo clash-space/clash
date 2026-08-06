@@ -535,12 +535,14 @@ export async function startElectron({
   captureDir,
   logs,
   env = {},
+  electronArgs = [],
 }) {
   const electronBin = require("electron");
   await mkdir(electronUserDataDir, { recursive: true });
   const electron = spawn(electronBin, [
     `--remote-debugging-port=${cdpPort}`,
     `--user-data-dir=${electronUserDataDir}`,
+    ...electronArgs,
     desktopDir,
   ], {
     cwd: repoRoot,

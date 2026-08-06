@@ -32,7 +32,7 @@ const CATEGORIES: Array<[string, RegExp]> = [
   ["r2_put", /readable stream must have a known length/i],
   ["asset_not_found", /R2 object not found|Asset(?:\s|.+?)not found/i],
   ["remotion_bundle", /Remotion entry point not found/i],
-  ["provider_api", /\b(Vertex|fal|OpenAI|Kling|Gemini)\b.*\b[45]\d\d\b/i],
+  ["provider_api", /\b(Vertex|fal|OpenAI|Kling|Gemini|Pika)\b.*\b[45]\d\d\b/i],
   ["timeout", /\btimeout|timed out|deadline exceeded\b/i],
 ];
 

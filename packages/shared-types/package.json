@@ -21,28 +21,41 @@
       "types": "./dist/timeline-library.d.ts",
       "import": "./dist/timeline-library.js",
       "default": "./dist/timeline-library.js"
+    },
+    "./timeline-contract": {
+      "types": "./dist/timeline-contract.d.ts",
+      "import": "./dist/timeline-contract.js",
+      "default": "./dist/timeline-contract.js"
+    },
+    "./executable-plugin": {
+      "types": "./dist/executable-plugin.d.ts",
+      "import": "./dist/executable-plugin.js",
+      "default": "./dist/executable-plugin.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/assets.ts src/timeline-library.ts --format esm --dts --clean --target es2020",
+    "build": "tsup src/index.ts src/assets.ts src/timeline-library.ts src/timeline-contract.ts src/executable-plugin.ts --format esm --dts --clean --target es2020",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:json-schema": "ts-node scripts/generate-json-schema.ts",
-    "generate:python": "ts-node scripts/generate-python.ts"
+    "generate:python": "ts-node scripts/generate-python.ts",
+    "generate:timeline-dsl-docs": "tsx scripts/generate-timeline-dsl-docs.ts",
+    "prepack": "pnpm generate:timeline-dsl-docs && pnpm build"
   },
   "dependencies": {
     "@clash/shared-layout": "workspace:^",
     "loro-crdt": "^1.10.3",
     "yaml": "^2.6.0",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "3.24.6"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.2",
-    "zod-to-json-schema": "^3.23.0"
+    "vitest": "^4.1.2"
   },
   "files": [
     "dist",

@@ -35,3 +35,10 @@ export { thumbnailCache, generateVideoThumbnail, generateVideoThumbnailAtTime } 
 
 // Re-export core for convenience
 export * from '@master-clash/remotion-core';
+
+export {
+  TIMELINE_EDITOR_FIELD_CONSUMERS,
+  TIMELINE_EDITOR_ROOT_TRACK_FIELD_CONSUMERS,
+  TIMELINE_EDITOR_DEFAULT_COVERAGE,
+  TIMELINE_MG_EDITOR_FIELD_CONSUMERS,
+} from './timeline-editor-field-consumers';

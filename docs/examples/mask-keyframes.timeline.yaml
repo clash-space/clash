@@ -1,0 +1,62 @@
+compositionWidth: 1920
+compositionHeight: 1080
+fps: 30
+durationInFrames: 60
+tracks:
+  - id: visual-overlays
+    name: Visual overlays
+    category: visual
+    items:
+      - id: masked-image
+        type: image
+        from: 0
+        durationInFrames: 60
+        sourceNodeId: source-image-node
+        mask:
+          shape: ellipse
+          position:
+            - 50
+            - 50
+          size:
+            - 70
+            - 70
+          rotation: 0
+          feather: 8
+          inverted: false
+        keyframes:
+          maskPosition:
+            - frame: 0
+              value:
+                - 30
+                - 50
+              interpolation: linear
+            - frame: 59
+              value:
+                - 70
+                - 50
+              interpolation: hold
+          maskSize:
+            - frame: 0
+              value:
+                - 70
+                - 70
+              interpolation: linear
+            - frame: 59
+              value:
+                - 35
+                - 35
+              interpolation: linear
+          maskRotation:
+            - frame: 0
+              value: 0
+              interpolation: linear
+            - frame: 59
+              value: 25
+              interpolation: linear
+          maskFeather:
+            - frame: 0
+              value: 0
+              interpolation: linear
+            - frame: 59
+              value: 30
+              interpolation: linear

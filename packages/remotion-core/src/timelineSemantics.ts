@@ -1,25 +1,17 @@
 import type {
   AudioItem,
-  CompositionItem,
-  DerivedOverlayItem,
-  EffectInstanceRef,
   ImageItem,
   Item,
   TimelineDsl,
   Track,
-  TrackRole,
-  TransitionItem,
-  SubtitleTextItem,
   TextItem,
   VideoItem,
 } from './types';
-import { isSubtitleTextItem } from './types';
 import {
-  canTrackAcceptItem,
-  inferTrackCategory,
-  itemTrackCategory,
-  TRACK_CATEGORY_ORDER,
-} from './trackCategories';
+  validateTimelineDsl as validateCanonicalTimelineDsl,
+  type TimelineDslValidationIssue as CanonicalTimelineIssue,
+} from '@clash/shared-types';
+import { isSubtitleTextItem } from './types';
 
 export type { TimelineDsl, TrackRole } from './types';
 
@@ -27,6 +19,8 @@ export type TimelineIssueSeverity = 'error' | 'warning';
 
 export type TimelineIssue = {
   severity: TimelineIssueSeverity;
+  /** Canonical @clash/shared-types rule id when this issue comes from the public DSL contract. */
+  ruleId?: string;
   code:
     | 'timeline.invalid_fps'
     | 'timeline.invalid_size'
@@ -97,21 +91,13 @@ export type TimelineCommandResult =
   | { ok: true; dsl: TimelineDsl; issues: TimelineIssue[] }
   | { ok: false; dsl: TimelineDsl; issues: TimelineIssue[] };
 
-const ROLE_ALLOWED_TYPES: Record<TrackRole, ReadonlySet<Item['type']>> = {
-  'primary-video': new Set(['video', 'image', 'solid']),
-  'b-roll': new Set(['video', 'image', 'solid']),
-  overlay: new Set(['video', 'image', 'solid', 'text', 'sticker', 'composition', 'derived-overlay']),
-  subtitle: new Set(['text']),
-  narration: new Set(['audio', 'video']),
-  dialogue: new Set(['audio', 'video']),
-  music: new Set(['audio']),
-  sfx: new Set(['audio']),
-  transition: new Set(['transition']),
-  mixed: new Set(['video', 'audio', 'image', 'solid', 'text', 'sticker', 'composition', 'derived-overlay', 'transition']),
-};
-
-function issue(code: TimelineIssue['code'], message: string, path: string): TimelineIssue {
-  return { severity: 'error', code, message, path };
+function issue(
+  code: TimelineIssue['code'],
+  message: string,
+  path: string,
+  ruleId?: string,
+): TimelineIssue {
+  return { severity: 'error', code, message, path, ...(ruleId ? { ruleId } : {}) };
 }
 
 function isMediaItem(item: Item): item is VideoItem | AudioItem | ImageItem {
@@ -156,206 +142,179 @@ function isResolved(item: Item, context: TimelineValidationContext): boolean {
   return false;
 }
 
-function validateEffectRef(ref: EffectInstanceRef): string | null {
-  if (!/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(ref.effectId)) {
-    return 'Effect id must be a namespaced lower-case identifier.';
-  }
-  if (!Number.isInteger(ref.effectVersion) || ref.effectVersion < 1) {
-    return 'Effect version must be a positive integer.';
-  }
-  if (ref.params == null) return null;
-  if (typeof ref.params !== 'object' || Array.isArray(ref.params)) {
-    return 'Effect params must be an object.';
-  }
-  for (const [name, value] of Object.entries(ref.params)) {
-    const validScalar =
-      typeof value === 'string' ||
-      typeof value === 'boolean' ||
-      (typeof value === 'number' && Number.isFinite(value));
-    const validVector =
-      Array.isArray(value) &&
-      value.length > 0 &&
-      value.every((component) => typeof component === 'number' && Number.isFinite(component));
-    if (!validScalar && !validVector) {
-      return `Effect parameter "${name}" must be a finite JSON scalar or numeric vector.`;
-    }
-  }
-  return null;
+const CANONICAL_RULE_TO_LEGACY_CODE: Readonly<Record<string, TimelineIssue['code']>> = {
+  'timeline.track.duplicate-id': 'track.duplicate_id',
+  'timeline.item.duplicate-id': 'item.duplicate_id',
+  'timeline.track.category-item-mismatch': 'track.category_item_mismatch',
+  'timeline.track.role-item-mismatch': 'track.role_item_mismatch',
+  'timeline.track.category-order': 'track.category_order_mismatch',
+  'timeline.track.mixed-categories': 'track.mixed_item_categories',
+  'timeline.item.from-expression': 'item.invalid_from',
+  'timeline.item.frame-integer': 'item.invalid_from',
+  'timeline.item.from-reference': 'item.invalid_from',
+  'timeline.item.from-cycle': 'item.invalid_from',
+  'timeline.item.source-required': 'item.unresolved_source',
+  'timeline.audio.ducking-track-role': 'track.role_item_mismatch',
+  'timeline.composition.local-path': 'item.invalid_composition',
+  'timeline.composition.preview-contract': 'item.invalid_composition',
+  'timeline.composition.mg-spec': 'item.invalid_composition',
+  'timeline.caption.lineage': 'item.invalid_caption',
+  'timeline.derived-overlay.local-path': 'item.invalid_derived_overlay',
+  'timeline.derived-overlay.copy-on-write': 'item.invalid_derived_overlay',
+  'timeline.transition.reference': 'item.transition_missing_ref',
+  'timeline.transition.continuity': 'item.transition_non_continuous',
+  'timeline.transition.centered-range': 'item.transition_detached_range',
+  'timeline.transition.duration-handles': 'item.transition_duration_exceeds_handles',
+};
+
+function formatCanonicalPath(path: readonly (string | number)[]): string {
+  return path.reduce<string>((formatted, segment) => {
+    if (typeof segment === 'number') return `${formatted}[${segment}]`;
+    return formatted ? `${formatted}.${segment}` : segment;
+  }, '');
 }
 
-function isLocalProjectPath(value: unknown): boolean {
-  if (typeof value !== 'string' || !value.trim()) return false;
-  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(value);
-}
-
-function validateCompositionItem(item: CompositionItem, path: string, issues: TimelineIssue[]) {
-  if (item.runtime !== 'html' && item.runtime !== 'react' && item.runtime !== 'remotion') {
-    issues.push(issue('item.invalid_composition', 'Composition item runtime must be html, react, or remotion.', `${path}.runtime`));
-  }
-  if (!item.compositionId || typeof item.compositionId !== 'string') {
-    issues.push(issue('item.invalid_composition', 'Composition item must have a compositionId.', `${path}.compositionId`));
-  }
-  if (!isLocalProjectPath(item.sourcePath)) {
-    issues.push(issue('item.invalid_composition', 'Composition sourcePath must be a local project path, not a remote URL.', `${path}.sourcePath`));
-  }
-  if (item.runtime === 'html' && item.compositionKind === 'motion-graphics' && !item.spec) {
-    issues.push(issue('item.invalid_composition', 'HTML motion-graphics composition items must include a first-party spec for preview.', `${path}.spec`));
-  }
-  if (item.renderedAssetPath !== undefined && !isLocalProjectPath(item.renderedAssetPath)) {
-    issues.push(issue('item.invalid_composition', 'Composition renderedAssetPath must be a local project path, not a remote URL.', `${path}.renderedAssetPath`));
-  }
-  if (item.runtime !== 'html' && !isLocalProjectPath(item.renderedAssetPath)) {
-    issues.push(issue('item.invalid_composition', 'React/Remotion composition items must include a local renderedAssetPath for timeline preview.', `${path}.renderedAssetPath`));
-  }
-}
-
-function validateCaptionItem(item: SubtitleTextItem, path: string, issues: TimelineIssue[]) {
-  const wordRefs = Array.isArray(item.wordRefs) ? item.wordRefs : [];
-  const wordRefById = new Map<string, { sourceStartFrame: number; sourceEndFrame: number }>();
-  const sourceToOutputMap = Array.isArray(item.sourceToOutputMap) ? item.sourceToOutputMap : [];
-
-  if (wordRefs.length === 0) {
-    issues.push(issue('item.invalid_caption', 'Caption item must include source word references.', `${path}.wordRefs`));
-  }
-  wordRefs.forEach((word, wordIndex) => {
-    const wordPath = `${path}.wordRefs[${wordIndex}]`;
-    if (!word.id || typeof word.id !== 'string') {
-      issues.push(issue('item.invalid_caption', 'Caption word reference must have an id.', `${wordPath}.id`));
-    }
-    if (typeof word.text !== 'string') {
-      issues.push(issue('item.invalid_caption', 'Caption word reference text must be a string.', `${wordPath}.text`));
-    }
-    if (!isValidFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
-      issues.push(issue('item.invalid_caption', 'Caption word reference must include a valid source frame range.', wordPath));
-    }
-    if (word.id && typeof word.id === 'string' && isValidFrameRange(word.sourceStartFrame, word.sourceEndFrame)) {
-      wordRefById.set(word.id, {
-        sourceStartFrame: word.sourceStartFrame,
-        sourceEndFrame: word.sourceEndFrame,
-      });
-    }
-  });
-
-  if (sourceToOutputMap.length === 0) {
-    issues.push(issue('item.invalid_caption', 'Caption item must include a source-to-output frame map.', `${path}.sourceToOutputMap`));
-  }
-  sourceToOutputMap.forEach((entry, mapIndex) => {
-    const mapPath = `${path}.sourceToOutputMap[${mapIndex}]`;
-    if (!isValidFrameRange(entry.sourceStartFrame, entry.sourceEndFrame)) {
-      issues.push(issue('item.invalid_caption', 'Caption source-to-output map must include a valid source frame range.', mapPath));
-    }
-    if (!isValidFrameRange(entry.outputStartFrame, entry.outputEndFrame)) {
-      issues.push(issue('item.invalid_caption', 'Caption source-to-output map must include a valid output frame range.', mapPath));
-    }
-  });
-
-  if (!Array.isArray(item.cues) || item.cues.length === 0) {
-    issues.push(issue('item.invalid_caption', 'Caption item must contain at least one cue.', `${path}.cues`));
-    return;
-  }
-  item.cues.forEach((cue, cueIndex) => {
-    const cuePath = `${path}.cues[${cueIndex}]`;
-    if (!cue.id || typeof cue.id !== 'string') {
-      issues.push(issue('item.invalid_caption', 'Caption cue must have an id.', `${cuePath}.id`));
-    }
-    if (!Number.isInteger(cue.startFrame) || cue.startFrame < 0) {
-      issues.push(issue('item.invalid_caption', 'Caption cue startFrame must be a non-negative integer.', `${cuePath}.startFrame`));
-    }
-    if (!Number.isInteger(cue.durationInFrames) || cue.durationInFrames <= 0) {
-      issues.push(issue('item.invalid_caption', 'Caption cue durationInFrames must be a positive integer.', `${cuePath}.durationInFrames`));
-    }
-    if (typeof cue.text !== 'string' || cue.text.trim().length === 0) {
-      issues.push(issue('item.invalid_caption', 'Caption cue text must be non-empty.', `${cuePath}.text`));
-    }
-    if (
-      Number.isInteger(cue.startFrame) &&
-      Number.isInteger(cue.durationInFrames) &&
-      cue.durationInFrames > 0 &&
-      cue.startFrame + cue.durationInFrames > item.durationInFrames
-    ) {
-      issues.push(issue('item.invalid_caption', 'Caption cue must fit inside the caption item duration.', cuePath));
-    }
-    if (!Array.isArray(cue.wordIds) || cue.wordIds.length === 0) {
-      issues.push(issue('item.invalid_caption', 'Caption cue must reference source word ids.', `${cuePath}.wordIds`));
-    } else {
-      for (const wordId of cue.wordIds) {
-        if (!wordRefById.has(wordId)) {
-          issues.push(issue('item.invalid_caption', `Caption cue references unknown word id "${wordId}".`, `${cuePath}.wordIds`));
-        }
-      }
-    }
-
-    if (!isValidFrameRange(cue.sourceStartFrame, cue.sourceEndFrame)) {
-      issues.push(issue('item.invalid_caption', 'Caption cue must include a valid source frame range.', cuePath));
-      return;
-    }
-
-    const cueEndFrame = cue.startFrame + cue.durationInFrames;
-    const matchingMap = sourceToOutputMap.find((entry) =>
-      isValidFrameRange(entry.sourceStartFrame, entry.sourceEndFrame) &&
-      isValidFrameRange(entry.outputStartFrame, entry.outputEndFrame) &&
-      cue.sourceStartFrame! >= entry.sourceStartFrame &&
-      cue.sourceEndFrame! <= entry.sourceEndFrame &&
-      cue.startFrame >= entry.outputStartFrame &&
-      cueEndFrame <= entry.outputEndFrame
-    );
-    if (!matchingMap) {
-      issues.push(issue('item.invalid_caption', 'Caption cue must be covered by source-to-output map.', cuePath));
-    }
-  });
-}
-
-function isValidFrameRange(startFrame: unknown, endFrame: unknown): boolean {
-  return typeof startFrame === 'number' &&
-    typeof endFrame === 'number' &&
-    Number.isInteger(startFrame) &&
-    Number.isInteger(endFrame) &&
-    startFrame >= 0 &&
-    endFrame > startFrame;
-}
-
-function validateDerivedOverlayItem(item: DerivedOverlayItem, path: string, issues: TimelineIssue[]) {
-  if (item.mediaType !== 'image' && item.mediaType !== 'video') {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay mediaType must be image or video.', `${path}.mediaType`));
-  }
-  if (!isLocalProjectPath(item.src)) {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay src must be a local project/asset path, not a remote URL.', `${path}.src`));
-  }
-  if (!item.sourceAssetId || typeof item.sourceAssetId !== 'string') {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must record sourceAssetId.', `${path}.sourceAssetId`));
-  }
-  if (!item.derivedAssetId || typeof item.derivedAssetId !== 'string') {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must record derivedAssetId.', `${path}.derivedAssetId`));
-  }
-  if (item.assetId && item.derivedAssetId && item.assetId !== item.derivedAssetId) {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay assetId must match derivedAssetId when present.', `${path}.assetId`));
-  }
-  if (item.sourceAssetId && item.derivedAssetId && item.sourceAssetId === item.derivedAssetId) {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must be copy-on-write: sourceAssetId and derivedAssetId cannot match.', path));
-  }
-  if (!item.derivation || typeof item.derivation.kind !== 'string') {
-    issues.push(issue('item.invalid_derived_overlay', 'Derived overlay must record derivation.kind.', `${path}.derivation`));
-  }
-}
-
-const TRANSITION_CLIP_TYPES = new Set<Item['type']>(['video', 'image', 'solid']);
-
-function resolveContinuousTransitionBoundary(
+function itemAtCanonicalPath(
   dsl: TimelineDsl,
-  transition: TransitionItem,
-): { fromItem: Item; toItem: Item; frame: number } | null {
-  if (!transition.fromItemId || !transition.toItemId) return null;
-  for (const track of dsl.tracks) {
-    const fromItem = track.items.find((item) => item.id === transition.fromItemId);
-    const toItem = track.items.find((item) => item.id === transition.toItemId);
-    if (!fromItem || !toItem) continue;
-    if (!TRANSITION_CLIP_TYPES.has(fromItem.type) || !TRANSITION_CLIP_TYPES.has(toItem.type)) {
-      return null;
-    }
-    const frame = fromItem.from + fromItem.durationInFrames;
-    return frame === toItem.from ? { fromItem, toItem, frame } : null;
+  path: readonly (string | number)[],
+): Item | undefined {
+  if (path[0] !== 'tracks' || typeof path[1] !== 'number') return undefined;
+  if (path[2] !== 'items' || typeof path[3] !== 'number') return undefined;
+  return dsl.tracks[path[1]]?.items[path[3]];
+}
+
+function structuralLegacyCode(
+  dsl: TimelineDsl,
+  canonical: CanonicalTimelineIssue,
+): TimelineIssue['code'] {
+  const { path } = canonical;
+  if (path[0] === 'fps') return 'timeline.invalid_fps';
+  if (path[0] === 'compositionWidth' || path[0] === 'compositionHeight') {
+    return 'timeline.invalid_size';
   }
-  return null;
+  if (path[0] === 'tracks' && typeof path[1] === 'number' && path[2] === 'id') {
+    return 'track.missing_id';
+  }
+  if (path[0] === 'tracks' && typeof path[1] === 'number' && path[2] === 'role') {
+    return 'track.role_item_mismatch';
+  }
+  if (path[0] === 'tracks' && typeof path[1] === 'number' && path[2] === 'category') {
+    return 'track.category_item_mismatch';
+  }
+
+  const item = itemAtCanonicalPath(dsl, path);
+  if (!item) return 'command.invalid_input';
+  const itemField = path[4];
+  if (itemField === 'id') return 'item.missing_id';
+  if (itemField === 'from') return 'item.invalid_from';
+  if (itemField === 'durationInFrames') return 'item.invalid_duration';
+  if (itemField === 'effects' || itemField === 'effect') return 'item.invalid_effect_ref';
+  if (item.type === 'composition') return 'item.invalid_composition';
+  if (item.type === 'derived-overlay') return 'item.invalid_derived_overlay';
+  if (item.type === 'transition' && (itemField === 'fromItemId' || itemField === 'toItemId')) {
+    return 'item.transition_missing_ref';
+  }
+  if (
+    item.type === 'text'
+    && ['cues', 'wordRefs', 'sourceToOutputMap'].includes(String(itemField))
+  ) {
+    return 'item.invalid_caption';
+  }
+  return 'command.invalid_input';
+}
+
+function legacyCodeForCanonicalIssue(
+  dsl: TimelineDsl,
+  canonical: CanonicalTimelineIssue,
+): TimelineIssue['code'] {
+  if (canonical.ruleId === 'timeline.caption.structured') {
+    const item = itemAtCanonicalPath(dsl, canonical.path);
+    return item && !isSubtitleTextItem(item)
+      ? 'track.role_item_mismatch'
+      : 'item.invalid_caption';
+  }
+  return CANONICAL_RULE_TO_LEGACY_CODE[canonical.ruleId]
+    ?? structuralLegacyCode(dsl, canonical);
+}
+
+function legacyPathForCanonicalIssue(
+  dsl: TimelineDsl,
+  canonical: CanonicalTimelineIssue,
+  code: TimelineIssue['code'],
+): string {
+  const path = formatCanonicalPath(canonical.path);
+  const item = itemAtCanonicalPath(dsl, canonical.path);
+  if (
+    code === 'item.invalid_derived_overlay'
+    && canonical.ruleId === 'timeline.derived-overlay.copy-on-write'
+    && item?.type === 'derived-overlay'
+    && item.assetId
+    && item.assetId !== item.derivedAssetId
+  ) {
+    return `${path}.assetId`;
+  }
+  return path;
+}
+
+function canonicalIssueDedupeKey(
+  canonical: CanonicalTimelineIssue,
+  code: TimelineIssue['code'],
+): string {
+  if (code !== 'item.invalid_effect_ref') {
+    return `${canonical.ruleId}:${formatCanonicalPath(canonical.path)}`;
+  }
+  const effectsIndex = canonical.path.indexOf('effects');
+  if (effectsIndex >= 0) {
+    return `${code}:${formatCanonicalPath(canonical.path.slice(0, effectsIndex + 2))}`;
+  }
+  const effectIndex = canonical.path.indexOf('effect');
+  return `${code}:${formatCanonicalPath(
+    effectIndex >= 0 ? canonical.path.slice(0, effectIndex + 1) : canonical.path,
+  )}`;
+}
+
+function canonicalTimelineIssues(dsl: TimelineDsl): TimelineIssue[] {
+  const validation = validateCanonicalTimelineDsl(dsl);
+  if (validation.ok) return [];
+  const seen = new Set<string>();
+  const issues: TimelineIssue[] = [];
+  for (const canonical of validation.issues) {
+    const code = legacyCodeForCanonicalIssue(dsl, canonical);
+    const dedupeKey = canonicalIssueDedupeKey(canonical, code);
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    issues.push(issue(
+      code,
+      canonical.message,
+      legacyPathForCanonicalIssue(dsl, canonical, code),
+      canonical.ruleId,
+    ));
+  }
+  return issues;
+}
+
+function appendContextResolutionIssues(
+  dsl: TimelineDsl,
+  context: TimelineValidationContext,
+  issues: TimelineIssue[],
+): void {
+  if (!context.resolvableSourceNodeIds && !context.resolvableAssetIds) return;
+  dsl.tracks.forEach((track, trackIndex) => {
+    track.items.forEach((item, itemIndex) => {
+      const hasDeclaredSource = Boolean(
+        itemSourceNodeId(item)
+        || itemAssetId(item)
+        || ('src' in item && typeof item.src === 'string' && item.src.trim()),
+      );
+      if (!hasDeclaredSource) return;
+      if (isResolved(item, context)) return;
+      issues.push(issue(
+        'item.unresolved_source',
+        `Timeline item "${item.id}" does not resolve to a known source.`,
+        `tracks[${trackIndex}].items[${itemIndex}]`,
+      ));
+    });
+  });
 }
 
 export function validateTimelineDsl(
@@ -363,147 +322,8 @@ export function validateTimelineDsl(
   context: TimelineValidationContext = {},
 ): TimelineValidationResult {
   const issues: TimelineIssue[] = [];
-  const trackIds = new Set<string>();
-  const itemIds = new Set<string>();
-
-  if (!Number.isFinite(dsl.fps) || dsl.fps <= 0) {
-    issues.push(issue('timeline.invalid_fps', 'Timeline fps must be a positive number.', 'fps'));
-  }
-  if (!Number.isFinite(dsl.compositionWidth) || dsl.compositionWidth <= 0 || !Number.isFinite(dsl.compositionHeight) || dsl.compositionHeight <= 0) {
-    issues.push(issue('timeline.invalid_size', 'Timeline composition size must be positive.', 'composition'));
-  }
-
-  dsl.tracks.forEach((track, trackIndex) => {
-    const trackPath = `tracks[${trackIndex}]`;
-    if (!track.id) {
-      issues.push(issue('track.missing_id', 'Track is missing an id.', `${trackPath}.id`));
-    } else if (trackIds.has(track.id)) {
-      issues.push(issue('track.duplicate_id', `Track id "${track.id}" is duplicated.`, `${trackPath}.id`));
-    } else {
-      trackIds.add(track.id);
-    }
-
-    const allowedTypes = track.role ? ROLE_ALLOWED_TYPES[track.role] : undefined;
-    const structuralCategories = new Set(track.items.map(itemTrackCategory));
-    if (
-      !track.category &&
-      structuralCategories.size > 1 &&
-      inferTrackCategory(track, dsl.primaryTrackId) === null
-    ) {
-      issues.push(issue(
-        'track.mixed_item_categories',
-        `Track "${track.id}" mixes incompatible structural item categories.`,
-        `${trackPath}.items`,
-      ));
-    }
-    track.items.forEach((item, itemIndex) => {
-      const itemPath = `${trackPath}.items[${itemIndex}]`;
-      if (!item.id) {
-        issues.push(issue('item.missing_id', 'Timeline item is missing an id.', `${itemPath}.id`));
-      } else if (itemIds.has(item.id)) {
-        issues.push(issue('item.duplicate_id', `Timeline item id "${item.id}" is duplicated.`, `${itemPath}.id`));
-      } else {
-        itemIds.add(item.id);
-      }
-
-      if (!isResolved(item, context)) {
-        issues.push(issue('item.unresolved_source', `Timeline item "${item.id}" does not resolve to a known source.`, itemPath));
-      }
-      if (!Number.isInteger(item.from) || item.from < 0) {
-        issues.push(issue('item.invalid_from', 'Timeline item from must be a non-negative integer frame.', `${itemPath}.from`));
-      }
-      if (!Number.isInteger(item.durationInFrames) || item.durationInFrames <= 0) {
-        issues.push(issue('item.invalid_duration', 'Timeline item durationInFrames must be a positive integer.', `${itemPath}.durationInFrames`));
-      }
-      if (allowedTypes && !allowedTypes.has(item.type)) {
-        issues.push(issue('track.role_item_mismatch', `Track role "${track.role}" cannot contain "${item.type}" items.`, itemPath));
-      }
-      if (track.role === 'subtitle' && !isSubtitleTextItem(item)) {
-        issues.push(issue(
-          'track.role_item_mismatch',
-          'Subtitle tracks require structured text items with cues and source lineage.',
-          itemPath,
-        ));
-      }
-      if (track.category && !canTrackAcceptItem(track, item, dsl.primaryTrackId)) {
-        issues.push(issue('track.category_item_mismatch', `Track category "${track.category}" cannot contain "${item.type}" items.`, itemPath));
-      }
-      for (const [effectIndex, effectRef] of (item.effects ?? []).entries()) {
-        const effectError = validateEffectRef(effectRef);
-        if (effectError) {
-          issues.push(issue('item.invalid_effect_ref', effectError, `${itemPath}.effects.${effectIndex}`));
-        }
-      }
-      if (item.type === 'transition') {
-        const transition = item as TransitionItem;
-        if (!transition.fromItemId || !transition.toItemId) {
-          issues.push(issue('item.transition_missing_ref', 'Transition item must reference both source clips.', itemPath));
-        } else {
-          const boundary = resolveContinuousTransitionBoundary(dsl, transition);
-          if (!boundary) {
-            issues.push(issue(
-              'item.transition_non_continuous',
-              'Transition source clips must be visual clips that touch exactly on the same track.',
-              itemPath,
-            ));
-          } else {
-            const expectedFrom = boundary.frame - Math.floor(transition.durationInFrames / 2);
-            if (transition.from !== expectedFrom) {
-              issues.push(issue(
-                'item.transition_detached_range',
-                `Transition range must stay centered on frame ${boundary.frame}.`,
-                `${itemPath}.from`,
-              ));
-            }
-            const maxDurationInFrames = Math.max(
-              1,
-              Math.min(
-                boundary.fromItem.durationInFrames,
-                boundary.toItem.durationInFrames,
-              ) * 2,
-            );
-            if (transition.durationInFrames > maxDurationInFrames) {
-              issues.push(issue(
-                'item.transition_duration_exceeds_handles',
-                `Transition duration cannot exceed ${maxDurationInFrames} frames for these clips.`,
-                `${itemPath}.durationInFrames`,
-              ));
-            }
-          }
-        }
-        if (transition.effect) {
-          const effectError = validateEffectRef(transition.effect);
-          if (effectError) {
-            issues.push(issue('item.invalid_effect_ref', effectError, `${itemPath}.effect`));
-          }
-        }
-      }
-      if (item.type === 'composition') {
-        validateCompositionItem(item as CompositionItem, itemPath, issues);
-      }
-      if (isSubtitleTextItem(item)) {
-        validateCaptionItem(item, itemPath, issues);
-      }
-      if (item.type === 'derived-overlay') {
-        validateDerivedOverlayItem(item as DerivedOverlayItem, itemPath, issues);
-      }
-    });
-  });
-
-  let previousCategoryRank = -1;
-  dsl.tracks.forEach((track, trackIndex) => {
-    if (!track.category) return;
-    const rank = TRACK_CATEGORY_ORDER.indexOf(track.category);
-    if (rank < previousCategoryRank) {
-      issues.push(issue(
-        'track.category_order_mismatch',
-        `Track category "${track.category}" is outside the canonical effect, text, visual, primary, audio order.`,
-        `tracks[${trackIndex}].category`,
-      ));
-    }
-    previousCategoryRank = Math.max(previousCategoryRank, rank);
-  });
-
+  appendContextResolutionIssues(dsl, context, issues);
+  issues.push(...canonicalTimelineIssues(dsl));
   return {
     ok: issues.every((entry) => entry.severity !== 'error'),
     issues,
@@ -525,6 +345,11 @@ function commandError(dsl: TimelineDsl, code: TimelineIssue['code'], message: st
   return { ok: false, dsl, issues: [issue(code, message, path)] };
 }
 
+function unhandledTimelineCommand(command: never): never {
+  const type = (command as { type?: unknown }).type;
+  throw new Error(`Unhandled Timeline semantic command: ${String(type)}`);
+}
+
 function makeClip(command: Extract<TimelineCommand, { type: 'add_clip' }>): Item {
   const base = {
     id: command.id ?? `${command.itemType}-${Date.now()}`,
@@ -533,7 +358,6 @@ function makeClip(command: Extract<TimelineCommand, { type: 'add_clip' }>): Item
     durationInFrames: command.durationInFrames,
     sourceNodeId: command.sourceNodeId,
     assetId: command.assetId,
-    src: '',
   };
   if (command.itemType === 'image') return base as ImageItem;
   if (command.itemType === 'audio') return { ...base, audioGainDb: 0 } as AudioItem;
@@ -561,57 +385,62 @@ export function applyTimelineCommand(dsl: TimelineDsl, command: TimelineCommand)
     return commandError(next, 'command.track_not_found', `Track "${command.trackId}" was not found.`, 'trackId');
   }
 
-  if (command.type === 'add_clip') {
-    if (command.from < 0 || command.durationInFrames <= 0) {
-      return commandError(next, 'command.invalid_input', 'add_clip requires non-negative from and positive durationInFrames.', 'command');
+  switch (command.type) {
+    case 'add_clip': {
+      if (command.from < 0 || command.durationInFrames <= 0) {
+        return commandError(next, 'command.invalid_input', 'add_clip requires non-negative from and positive durationInFrames.', 'command');
+      }
+      track.items.push(makeClip(command));
+      break;
     }
-    track.items.push(makeClip(command));
-  }
-
-  if (command.type === 'trim_clip') {
-    const item = track.items.find((candidate) => candidate.id === command.itemId);
-    if (!item) {
-      return commandError(next, 'command.item_not_found', `Item "${command.itemId}" was not found.`, 'itemId');
+    case 'trim_clip': {
+      const item = track.items.find((candidate) => candidate.id === command.itemId);
+      if (!item) {
+        return commandError(next, 'command.item_not_found', `Item "${command.itemId}" was not found.`, 'itemId');
+      }
+      if (command.from < 0 || command.durationInFrames <= 0) {
+        return commandError(next, 'command.invalid_input', 'trim_clip requires non-negative from and positive durationInFrames.', 'command');
+      }
+      const consumedFrames = command.from - item.from;
+      const sourceStartInFrames =
+        (item.type === 'video' || item.type === 'audio')
+          ? Math.max(0, ((item as VideoItem | AudioItem).sourceStartInFrames ?? 0) + consumedFrames)
+          : undefined;
+      Object.assign(item, {
+        from: command.from,
+        durationInFrames: command.durationInFrames,
+        ...(sourceStartInFrames === undefined ? {} : { sourceStartInFrames }),
+      });
+      break;
     }
-    if (command.from < 0 || command.durationInFrames <= 0) {
-      return commandError(next, 'command.invalid_input', 'trim_clip requires non-negative from and positive durationInFrames.', 'command');
+    case 'split_clip': {
+      const itemIndex = track.items.findIndex((candidate) => candidate.id === command.itemId);
+      if (itemIndex < 0) {
+        return commandError(next, 'command.item_not_found', `Item "${command.itemId}" was not found.`, 'itemId');
+      }
+      const item = track.items[itemIndex];
+      const end = item.from + item.durationInFrames;
+      if (command.splitFrame <= item.from || command.splitFrame >= end) {
+        return commandError(next, 'command.invalid_input', 'split_clip splitFrame must be inside the item bounds.', 'splitFrame');
+      }
+      const consumedFrames = command.splitFrame - item.from;
+      const first = { ...item, durationInFrames: consumedFrames } as Item;
+      const second = {
+        ...item,
+        id: `${item.id}-split-${Date.now()}`,
+        from: command.splitFrame,
+        durationInFrames: end - command.splitFrame,
+      } as Item;
+      if (item.type === 'video' || item.type === 'audio') {
+        (first as VideoItem | AudioItem).sourceStartInFrames = (item as VideoItem | AudioItem).sourceStartInFrames ?? 0;
+        (second as VideoItem | AudioItem).sourceStartInFrames =
+          ((item as VideoItem | AudioItem).sourceStartInFrames ?? 0) + consumedFrames;
+      }
+      track.items.splice(itemIndex, 1, first, second);
+      break;
     }
-    const consumedFrames = command.from - item.from;
-    const sourceStartInFrames =
-      (item.type === 'video' || item.type === 'audio')
-        ? Math.max(0, ((item as VideoItem | AudioItem).sourceStartInFrames ?? 0) + consumedFrames)
-        : undefined;
-    Object.assign(item, {
-      from: command.from,
-      durationInFrames: command.durationInFrames,
-      ...(sourceStartInFrames === undefined ? {} : { sourceStartInFrames }),
-    });
-  }
-
-  if (command.type === 'split_clip') {
-    const itemIndex = track.items.findIndex((candidate) => candidate.id === command.itemId);
-    if (itemIndex < 0) {
-      return commandError(next, 'command.item_not_found', `Item "${command.itemId}" was not found.`, 'itemId');
-    }
-    const item = track.items[itemIndex];
-    const end = item.from + item.durationInFrames;
-    if (command.splitFrame <= item.from || command.splitFrame >= end) {
-      return commandError(next, 'command.invalid_input', 'split_clip splitFrame must be inside the item bounds.', 'splitFrame');
-    }
-    const consumedFrames = command.splitFrame - item.from;
-    const first = { ...item, durationInFrames: consumedFrames } as Item;
-    const second = {
-      ...item,
-      id: `${item.id}-split-${Date.now()}`,
-      from: command.splitFrame,
-      durationInFrames: end - command.splitFrame,
-    } as Item;
-    if (item.type === 'video' || item.type === 'audio') {
-      (first as VideoItem | AudioItem).sourceStartInFrames = (item as VideoItem | AudioItem).sourceStartInFrames ?? 0;
-      (second as VideoItem | AudioItem).sourceStartInFrames =
-        ((item as VideoItem | AudioItem).sourceStartInFrames ?? 0) + consumedFrames;
-    }
-    track.items.splice(itemIndex, 1, first, second);
+    default:
+      return unhandledTimelineCommand(command);
   }
 
   next.durationInFrames = timelineEnd(next.tracks);

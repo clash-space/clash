@@ -102,6 +102,7 @@ const LOCAL_ASR_MODEL_CATALOG = [
       name: "SenseVoice Small",
       provider: "Local",
       kind: "asr",
+      task: "speech-to-text",
       defaultAspectRatio: "1:1",
       description: "Local microphone transcription.",
       parameters: [],
@@ -140,6 +141,76 @@ const LOCAL_ASR_MODEL_CATALOG = [
   },
 ] as any;
 
+const LOCAL_ASR_MODEL_CATALOG_WITH_WHISPER = [
+  ...LOCAL_ASR_MODEL_CATALOG,
+  {
+    model: {
+      ...LOCAL_ASR_MODEL_CATALOG[0].model,
+      id: "whisper-small-asr",
+      name: "Whisper Small",
+      provider: "OpenAI",
+      defaultParams: { asr_model: "mlx-community/whisper-small-mlx" },
+    },
+    routes: [{
+      ...LOCAL_ASR_MODEL_CATALOG[0].routes[0],
+      modelCode: "whisper-small-asr",
+      upstreamModel: "mlx-community/whisper-small-mlx",
+    }],
+    selectedRoute: {
+      ...LOCAL_ASR_MODEL_CATALOG[0].selectedRoute,
+      modelCode: "whisper-small-asr",
+      upstreamModel: "mlx-community/whisper-small-mlx",
+    },
+  },
+] as any;
+
+const GLOBAL_VOICE_INPUT_MODEL_CATALOG = [
+  ...LOCAL_ASR_MODEL_CATALOG,
+  {
+    model: {
+      id: "gemini-3-flash",
+      name: "Gemini 3 Flash",
+      provider: "Google",
+      kind: "text",
+      task: "text-generation",
+      defaultAspectRatio: "1:1",
+      description: "Cloud multimodal text model with audio input.",
+      parameters: [],
+      defaultParams: {},
+      input: {
+        requiresPrompt: true,
+        inputMode: { audios: { min: 1, max: 1 } },
+        promptModalities: ["text", "audio"],
+      },
+      maxRuntimeMs: 120_000,
+    },
+    tier: "available",
+    routes: [{
+      modelCode: "gemini-3-flash",
+      kind: "text",
+      providerId: "official",
+      accountId: "google-account",
+      upstreamId: "google-ai-studio",
+      upstreamModel: "gemini-3-flash",
+      apiShape: "google-ai-studio",
+      priority: 1,
+    }],
+    selectedRoute: {
+      modelCode: "gemini-3-flash",
+      kind: "text",
+      providerId: "official",
+      accountId: "google-account",
+      upstreamId: "google-ai-studio",
+      upstreamModel: "gemini-3-flash",
+      apiShape: "google-ai-studio",
+      priority: 1,
+    },
+    candidateProviders: ["official"],
+    missingCredentials: [],
+    missingOAuth: [],
+  },
+] as any;
+
 const LOCAL_SPEECH_MODEL_CATALOG = [
   ...LOCAL_ASR_MODEL_CATALOG,
   {
@@ -148,6 +219,7 @@ const LOCAL_SPEECH_MODEL_CATALOG = [
       name: "Piper Huayan",
       provider: "Local",
       kind: "audio",
+      task: "text-to-speech",
       defaultAspectRatio: "1:1",
       description: "Downloadable Mandarin voice running fully on-device.",
       parameters: [],
@@ -265,7 +337,18 @@ describe("SettingsSurface tab state", () => {
     expect(readLastSettingsSection()).toBeNull();
   });
 
-  it("renders the hosted API tokens sidebar tab as a clear brand state", () => {
+  it("names the local speech settings for the user-facing capability", () => {
+    render(
+      <MemoryRouter>
+        <SettingsSurface active="audio" onActiveChange={vi.fn()} variant="page" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("tab", { name: "Voice input" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Audio" })).toBeNull();
+  });
+
+  it("renders the hosted API tokens sidebar tab with neutral chrome and a brand marker", () => {
     render(
       <MemoryRouter>
         <SettingsSurface active="tokens" onActiveChange={vi.fn()} variant="page" />
@@ -274,8 +357,9 @@ describe("SettingsSurface tab state", () => {
 
     const activeTab = screen.getByRole("tab", { name: "API Tokens" });
     expect(activeTab.getAttribute("aria-selected")).toBe("true");
-    expect(activeTab.className).toContain("border-brand");
-    expect(activeTab.className).toContain("bg-brand-light");
+    expect(activeTab.className).toContain("border-warm-border");
+    expect(activeTab.className).toContain("bg-warm-hover");
+    expect(activeTab.querySelector(".bg-brand")).toBeTruthy();
   });
 
   it("does not load or expose hosted API tokens in desktop local settings", async () => {
@@ -909,7 +993,7 @@ describe("SettingsClient audio section", () => {
     );
 
     expect(screen.getByText("SenseVoice Small")).toBeTruthy();
-    expect(screen.getByText("asr")).toBeTruthy();
+    expect(screen.getByText("ASR")).toBeTruthy();
     const getModelCard = () => screen.getByText("sensevoice-small-asr").closest(".rounded-xl") as HTMLElement;
     const modelCard = getModelCard();
     expect(modelCard).toBeTruthy();
@@ -1215,11 +1299,190 @@ describe("SettingsClient audio section", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("heading", { name: "Audio" });
+    await screen.findByRole("heading", { name: "Voice input" });
     expect(screen.getByRole("combobox", { name: "ASR model" }).textContent).toContain("SenseVoice Small");
     expect(screen.queryByRole("combobox", { name: "TTS model" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Enable local voice generation" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Voice generation" })).toBeNull();
+  });
+
+  it("offers enabled cloud models that accept audio from the global model catalog", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/models/status")) {
+        return new Response(JSON.stringify({ available: false }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: true,
+            provider: "global-model",
+            base_url: null,
+            model: "gemini-3-flash",
+            has_api_key: true,
+            ready: true,
+            setup: {
+              provider: "google-ai-studio",
+              runtime: "provider-route",
+              status: "ready",
+              available: true,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={GLOBAL_VOICE_INPUT_MODEL_CATALOG}
+            activeSection={"audio" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    const modelSelect = await screen.findByRole("combobox", { name: "ASR model" });
+    expect(modelSelect.textContent).toContain("Gemini 3 Flash");
+    fireEvent.click(modelSelect);
+    expect(screen.getByRole("option", { name: "Gemini 3 Flash" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "SenseVoice Small" })).toBeNull();
+  });
+
+  it("renders voice input without waiting for background local-model probes", async () => {
+    let releaseStatus: ((response: Response) => void) | undefined;
+    const pendingStatus = new Promise<Response>((resolve) => {
+      releaseStatus = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/models/status")) return pendingStatus;
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: true,
+            provider: "global-model",
+            base_url: null,
+            model: "gemini-3-flash",
+            has_api_key: true,
+            ready: true,
+            setup: {
+              provider: "google-ai-studio",
+              runtime: "provider-route",
+              status: "ready",
+              available: true,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={GLOBAL_VOICE_INPUT_MODEL_CATALOG}
+            activeSection={"audio" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => (
+      String(input).includes("/api/v1/local/audio") &&
+      !String(input).includes("/models/status")
+    ))).toBe(true));
+    expect(screen.getByRole("heading", { name: "Voice input" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "ASR model" }).textContent).toContain("Gemini 3 Flash");
+
+    await act(async () => {
+      releaseStatus?.(new Response(JSON.stringify({ available: false }), {
+        headers: { "content-type": "application/json" },
+      }));
+      await pendingStatus;
+    });
+  });
+
+  it("reuses global local-model availability when moving between Voice input and Models", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/models/status")) {
+        return Response.json({ available: true });
+      }
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return Response.json({
+          asr: {
+            enabled: true,
+            provider: "global-model",
+            base_url: null,
+            model: "sensevoice-small-asr",
+            has_api_key: false,
+            ready: true,
+            setup: {
+              provider: "funasr",
+              runtime: "builtin-rpc",
+              status: "ready",
+              available: true,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const renderSettings = (activeSection: "audio" | "models") => (
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={GLOBAL_VOICE_INPUT_MODEL_CATALOG}
+            activeSection={activeSection as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>
+    );
+    const rendered = render(renderSettings("audio"));
+
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => (
+      String(input).includes("/api/v1/local/audio/models/status")
+    ))).toHaveLength(1));
+
+    rendered.rerender(renderSettings("models"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(fetchMock.mock.calls.filter(([input]) => (
+      String(input).includes("/api/v1/local/audio/models/status")
+    ))).toHaveLength(1);
   });
 
   it("loads and saves local ASR using catalog model cards", async () => {
@@ -1239,6 +1502,106 @@ describe("SettingsClient audio section", () => {
               runtime: "builtin-rpc",
               status: "disabled",
               available: true,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/local/audio") && init?.method === "PATCH") {
+        expect(JSON.parse(String(init.body))).toEqual({
+          asr_enabled: true,
+          asr_model: "sensevoice-small-asr",
+        });
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: true,
+            provider: "builtin-funasr",
+            base_url: null,
+            model: "sensevoice-small-asr",
+            has_api_key: false,
+            ready: true,
+            setup: {
+              provider: "funasr",
+              runtime: "builtin-rpc",
+              status: "ready",
+              available: true,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={LOCAL_ASR_MODEL_CATALOG}
+            activeSection={"audio" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "Voice input" });
+    expect(screen.getByText("Voice input")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Install local speech recognition" })).toBeNull();
+    expect(screen.queryByText("Built-in FunASR setup")).toBeNull();
+    expect(screen.queryByText("FunASR is not installed")).toBeNull();
+    expect(screen.queryByText("Needs install")).toBeNull();
+    expect(screen.queryByLabelText("ASR engine")).toBeNull();
+    expect(screen.queryByLabelText("Endpoint URL")).toBeNull();
+    expect(screen.queryByLabelText("ASR API key")).toBeNull();
+    expect(screen.queryByText("Advanced")).toBeNull();
+    expect(screen.queryByText(/FunASR/i)).toBeNull();
+    expect(screen.queryByText("python3 -m pip install -U funasr modelscope torch torchaudio")).toBeNull();
+
+    const modelSelect = screen.getByRole("combobox", { name: "ASR model" });
+    expect(modelSelect.className).toContain("clash-settings-select-trigger");
+    expect(modelSelect.textContent).toContain("SenseVoice Small");
+    expect((screen.getByRole("switch", { name: "Enable voice input" }) as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Enable voice input" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => (
+      String(input).includes("/api/v1/local/audio") && init?.method === "PATCH"
+    ))).toBe(true));
+    expect(screen.queryByText("Ready")).toBeNull();
+    expect(document.querySelector(".clash-settings-alert-error")).toBeNull();
+    expect(screen.queryByText("Audio settings saved.")).toBeNull();
+  });
+
+  it("reconciles stale voice input config to the deployed ASR model", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/models/status")) {
+        return new Response(JSON.stringify({
+          available: url.includes(encodeURIComponent("iic/SenseVoiceSmall")),
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: true,
+            provider: "builtin-funasr",
+            base_url: null,
+            model: "mlx-community/whisper-small-mlx",
+            has_api_key: false,
+            ready: false,
+            setup: {
+              provider: "mlx-whisper",
+              runtime: "builtin-rpc",
+              status: "needs-install",
+              available: false,
               default_base_url: null,
               commands: [],
             },
@@ -1282,7 +1645,7 @@ describe("SettingsClient audio section", () => {
             initialVariables={[]}
             initialActions={[]}
             initialSkills={[]}
-            initialModelCatalog={LOCAL_ASR_MODEL_CATALOG}
+            initialModelCatalog={LOCAL_ASR_MODEL_CATALOG_WITH_WHISPER}
             activeSection={"audio" as any}
             embedded
           />
@@ -1290,32 +1653,102 @@ describe("SettingsClient audio section", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("heading", { name: "Audio" });
-    expect(screen.getByText("Voice input")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Install local speech recognition" })).toBeNull();
-    expect(screen.queryByText("Built-in FunASR setup")).toBeNull();
-    expect(screen.queryByText("FunASR is not installed")).toBeNull();
-    expect(screen.queryByText("Needs install")).toBeNull();
-    expect(screen.queryByLabelText("ASR engine")).toBeNull();
-    expect(screen.queryByLabelText("Endpoint URL")).toBeNull();
-    expect(screen.queryByLabelText("ASR API key")).toBeNull();
-    expect(screen.queryByText("Advanced")).toBeNull();
-    expect(screen.queryByText(/FunASR/i)).toBeNull();
-    expect(screen.queryByText("python3 -m pip install -U funasr modelscope torch torchaudio")).toBeNull();
-
-    const modelSelect = screen.getByRole("combobox", { name: "ASR model" });
-    expect(modelSelect.className).toContain("clash-settings-select-trigger");
+    const modelSelect = await screen.findByRole("combobox", { name: "ASR model" });
     expect(modelSelect.textContent).toContain("SenseVoice Small");
-    expect((screen.getByRole("switch", { name: "Enable voice input" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("switch", { name: "Enable voice input" }) as HTMLElement).getAttribute("aria-checked")).toBe("true");
 
-    fireEvent.click(screen.getByRole("switch", { name: "Enable voice input" }));
+    fireEvent.click(modelSelect);
+    expect(screen.getByRole("option", { name: "SenseVoice Small" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Whisper Small" })).toBeNull();
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => (
-      String(input).includes("/api/v1/local/audio") && init?.method === "PATCH"
+      String(input).includes("/api/v1/local/audio") &&
+      !String(input).includes("/models/status") &&
+      init?.method === "PATCH"
     ))).toBe(true));
-    expect(screen.queryByText("Ready")).toBeNull();
-    expect(document.querySelector(".clash-settings-alert-error")).toBeNull();
-    expect(screen.queryByText("Audio settings saved.")).toBeNull();
+  });
+
+  it("turns off stale voice input config when no ASR model is deployed", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/v1/local/audio/models/status")) {
+        return new Response(JSON.stringify({ available: false }), {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/v1/local/audio") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: true,
+            provider: "builtin-funasr",
+            base_url: null,
+            model: "mlx-community/whisper-small-mlx",
+            has_api_key: false,
+            ready: false,
+            setup: {
+              provider: "mlx-whisper",
+              runtime: "builtin-rpc",
+              status: "needs-install",
+              available: false,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/local/audio") && init?.method === "PATCH") {
+        expect(JSON.parse(String(init.body))).toEqual({
+          asr_enabled: false,
+          asr_model: "mlx-community/whisper-small-mlx",
+        });
+        return new Response(JSON.stringify({
+          asr: {
+            enabled: false,
+            provider: "builtin-funasr",
+            base_url: null,
+            model: "mlx-community/whisper-small-mlx",
+            has_api_key: false,
+            ready: false,
+            setup: {
+              provider: "mlx-whisper",
+              runtime: "builtin-rpc",
+              status: "needs-install",
+              available: false,
+              default_base_url: null,
+              commands: [],
+            },
+          },
+        }), { headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter>
+        <AppFeedbackProvider>
+          <SettingsClient
+            initialTokens={[]}
+            initialVariables={[]}
+            initialActions={[]}
+            initialSkills={[]}
+            initialModelCatalog={LOCAL_ASR_MODEL_CATALOG_WITH_WHISPER}
+            activeSection={"audio" as any}
+            embedded
+          />
+        </AppFeedbackProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "Voice input" });
+    expect((screen.getByRole("switch", { name: "Enable voice input" }) as HTMLElement).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getAllByText("Enable an audio-capable model in Models before enabling voice input.").length).toBeGreaterThan(0);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => (
+      String(input).includes("/api/v1/local/audio") &&
+      !String(input).includes("/models/status") &&
+      init?.method === "PATCH"
+    ))).toBe(true));
   });
 
   it("explains missing ASR deployment instead of disabling audio controls", async () => {
@@ -1361,7 +1794,7 @@ describe("SettingsClient audio section", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("heading", { name: "Audio" });
+    await screen.findByRole("heading", { name: "Voice input" });
     const switchButton = screen.getByRole("switch", { name: "Enable voice input" }) as HTMLButtonElement;
     expect(switchButton.disabled).toBe(false);
     const modelButton = screen.getByRole("button", { name: "ASR model" }) as HTMLButtonElement;
@@ -1369,8 +1802,8 @@ describe("SettingsClient audio section", () => {
 
     fireEvent.click(switchButton);
 
-    const dialog = await screen.findByRole("dialog", { name: "Deploy ASR model" });
-    expect(within(dialog).getByText("The selected ASR model must be deployed before voice input can run locally.")).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "Configure voice input model" });
+    expect(within(dialog).getByText("Enable a model that accepts audio and returns text. Local and cloud routes are both supported.")).toBeTruthy();
     const openModels = within(dialog).getByRole("link", { name: "Open Models" });
     expect(openModels.getAttribute("href")).toBe("/settings?section=models");
     expect(fetchMock.mock.calls.some(([input, init]) => (
@@ -1378,10 +1811,10 @@ describe("SettingsClient audio section", () => {
     ))).toBe(false);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Deploy ASR model" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Configure voice input model" })).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "ASR model" }));
 
-    expect(await screen.findByRole("dialog", { name: "Deploy ASR model" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Configure voice input model" })).toBeTruthy();
   });
 
   it("shows local ASR deploy failures through global feedback instead of an inline alert", async () => {
@@ -1467,7 +1900,7 @@ describe("SettingsClient audio section", () => {
     );
 
     const toast = await screen.findByRole("alert");
-    expect(toast.textContent).toContain("Could not load audio settings");
+    expect(toast.textContent).toContain("Could not load voice input settings");
     expect(toast.textContent).toContain("HTTP 404");
     expect(document.querySelector(".clash-settings-alert-error")).toBeNull();
   });
@@ -3309,6 +3742,7 @@ describe("SettingsClient model routing", () => {
       anthropic: "/brand/providers/anthropic.svg",
       google: "/brand/providers/google.svg",
       fal: "/brand/providers/fal.svg",
+      flux: "/brand/models/flux.svg",
       kie: "/brand/providers/kie.png",
       replicate: "/brand/providers/replicate.svg",
       kling: "/brand/providers/kling.svg",
@@ -3423,6 +3857,119 @@ describe("SettingsClient model routing", () => {
     expect(screen.queryByText(/MaaS/i)).toBeNull();
   });
 
+  it("renders the official Black Forest Labs FLUX provider setup", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[{
+            id: "bfl-primary",
+            label: "BFL primary",
+            providerId: "official",
+            upstreamId: "bfl",
+            apiShape: "bfl",
+            region: "global",
+            enabled: true,
+            configuredCredentials: ["apiKey"],
+          }]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
+    expect(within(configuredProviders).getByText("Black Forest Labs")).toBeTruthy();
+    expect(configuredProviders.querySelector('[data-provider-logo="flux"]')?.getAttribute("src"))
+      .toBe("/brand/models/flux.svg");
+    fireEvent.click(screen.getByRole("button", { name: "Open Black Forest Labs BYOK settings" }));
+    expect(screen.getByRole("heading", { name: "Black Forest Labs" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View supported models" }).getAttribute("href"))
+      .toBe("/settings?section=models&provider=official%3Abfl%3Aglobal");
+    fireEvent.click(screen.getByText("BFL primary"));
+    expect(screen.getByLabelText("Black Forest Labs API key")).toBeTruthy();
+    expect(screen.getByLabelText("Black Forest Labs base URL").getAttribute("placeholder"))
+      .toBe("https://api.bfl.ai");
+  });
+
+  it("configures Cloudflare AI Gateway as a Google AI Studio provider transport", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[
+            {
+              id: "google-ai-studio-gateway",
+              label: "Cloudflare Gateway",
+              providerId: "official",
+              upstreamId: "google-ai-studio",
+              region: "global",
+              enabled: true,
+              configuredCredentials: ["gatewayToken", "baseUrl"],
+            },
+          ]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    const configuredProviders = screen.getByRole("list", { name: "Configured BYOK providers" });
+    expect(within(configuredProviders).getByText("Google AI Studio")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Google AI Studio BYOK settings" }));
+    fireEvent.click(screen.getByText("Cloudflare Gateway"));
+
+    expect(screen.getByLabelText("Google AI Studio API key")).toBeTruthy();
+    expect(screen.getByLabelText("Cloudflare AI Gateway token")).toBeTruthy();
+    expect(screen.getByLabelText("Google AI Studio base URL")).toBeTruthy();
+  });
+
+  it("requires a complete and exclusive Google direct or Gateway credential mode", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Google AI Studio BYOK settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add prioritized Google AI Studio key" }));
+
+    fireEvent.change(screen.getByLabelText("Cloudflare AI Gateway token"), {
+      target: { value: "gateway-token" },
+    });
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Gateway token requires a Cloudflare Google AI Studio Gateway Base URL.")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Google AI Studio base URL"), {
+      target: { value: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio/v1beta" },
+    });
+    expect(save.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Google AI Studio API key"), {
+      target: { value: "google-api-key" },
+    });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Choose either direct Google API key or Cloudflare Gateway for one account.")).toBeTruthy();
+  });
+
   it("renders providers as a compact directory before revealing setup forms", () => {
     render(
       <MemoryRouter>
@@ -3524,6 +4071,29 @@ describe("SettingsClient model routing", () => {
 
     expect(screen.getByRole("list", { name: "Configured BYOK providers" })).toBeTruthy();
     expect(screen.queryByLabelText("Replicate API key")).toBeNull();
+  });
+
+  it("offers Pika API Club as a BYOK provider without a fake OAuth control", () => {
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="providers"
+          embedded
+          initialModelProviders={[]}
+          initialModelCatalog={[]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: "Open Pika API Club BYOK settings" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Pika API Club BYOK settings" }));
+    expect(screen.getByRole("heading", { name: "Pika API Club" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add prioritized Pika API Club key" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /authorize pika/i })).toBeNull();
   });
 
   it("counts multiple credentialless provider accounts in the directory summary", () => {
@@ -5013,7 +5583,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByText("Nano Banana 2")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Enabled" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Unavailable" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Modality" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Model type" })).toBeTruthy();
     expect(screen.queryByLabelText("OpenAI API key")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
@@ -5026,6 +5596,59 @@ describe("SettingsClient model routing", () => {
     expect(document.querySelector('[data-model-provider-logo="google"]')).toBeTruthy();
     expect(document.querySelector('[data-model-provider-logo="replicate"]')).toBeTruthy();
     expect(document.querySelector('[data-model-provider-logo="openai"]')).toBeTruthy();
+  });
+
+  it("labels legacy speech catalog entries as ASR and TTS from the built-in model spec", () => {
+    const catalogEntry = (
+      id: string,
+      name: string,
+      kind: "asr" | "audio",
+      task?: "speech-to-text" | "text-to-speech" | "music-generation",
+    ) => ({
+      model: {
+        id,
+        aliases: [],
+        name,
+        provider: "Example",
+        kind,
+        ...(task ? { task } : {}),
+        parameters: [],
+        defaultParams: {},
+        defaultAspectRatio: "1:1",
+        input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+      },
+      tier: "available",
+      selectedRoute: null,
+      routes: [],
+      candidateProviders: ["official"],
+      missingCredentials: [],
+      missingOAuth: [],
+    });
+
+    render(
+      <MemoryRouter>
+        <SettingsClient
+          initialTokens={[]}
+          initialVariables={[]}
+          initialActions={[]}
+          initialSkills={[]}
+          activeSection="models"
+          embedded
+          initialModelCatalog={[
+            catalogEntry("sensevoice-small-asr", "SenseVoice Small", "asr"),
+            catalogEntry("piper-huayan-tts", "Piper Huayan", "audio"),
+            catalogEntry("suno-v5.5", "Suno V5.5", "audio"),
+          ] as any}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Model type" }));
+    expect(screen.getByRole("option", { name: "ASR" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "TTS" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Music" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "Audio" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "Asr" })).toBeNull();
   });
 
   it("opens a model card second-level page for description, prompt guidance, and provider order", () => {
@@ -5113,7 +5736,7 @@ describe("SettingsClient model routing", () => {
     expect(screen.getByRole("list", { name: "GPT-5.4 Text provider order" })).toBeTruthy();
   });
 
-  it("labels an audio model correctly and separates configured from unconfigured supported providers", () => {
+  it("labels a text-to-speech model correctly and separates configured from unconfigured supported providers", () => {
     render(
       <MemoryRouter initialEntries={["/settings?section=models&model=minimax-tts"]}>
         <SettingsClient
@@ -5137,6 +5760,7 @@ describe("SettingsClient model routing", () => {
               name: "MiniMax TTS",
               provider: "MiniMax",
               kind: "audio",
+              task: "text-to-speech",
               description: "High-quality Chinese and English text-to-speech.",
               parameters: [],
               defaultParams: {},
@@ -5181,7 +5805,7 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Audio model")).toBeTruthy();
+    expect(screen.getByText("TTS model")).toBeTruthy();
     const configured = screen.getByRole("region", { name: "Configured for this model" });
     const unconfigured = screen.getByRole("region", { name: "Supported, not configured" });
     expect(within(configured).getByRole("link", { name: "Configure MiniMax" }).getAttribute("href")).toContain("section=providers");
@@ -5417,7 +6041,7 @@ describe("SettingsClient model routing", () => {
       </MemoryRouter>,
     );
 
-    const modality = screen.getByRole("combobox", { name: "Modality" });
+    const modality = screen.getByRole("combobox", { name: "Model type" });
     const availability = screen.getByRole("combobox", { name: "Availability" });
 
     expect(modality.className).toContain("clash-select-trigger");

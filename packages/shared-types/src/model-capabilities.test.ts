@@ -7,7 +7,8 @@
 import { describe, it, expect } from "vitest";
 import { MODEL_CARDS, ModelInputModeSchema, type ModelCard } from "./models";
 import * as modelCapabilities from "./model-capabilities";
-import { capability, validateRefs, partitionRefs, pickDefaultModel } from "./model-capabilities";
+import { capability, capabilityFromCustom, validateReferenceMedia, validateRefs, partitionRefs, pickDefaultModel } from "./model-capabilities";
+import { CustomActionDefinitionSchema } from "./canvas";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -66,6 +67,25 @@ const STRICT_SINGLE_IMAGE = card({
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("capability", () => {
+  it("derives exact input bounds from an executable custom Action Card", () => {
+    const action = CustomActionDefinitionSchema.parse({
+      id: "image-action",
+      name: "Image Action",
+      outputType: "image",
+      input: {
+        requiresPrompt: false,
+        inputMode: { images: { min: 1, max: 5 } },
+        promptModalities: ["image"],
+      },
+    });
+
+    const cap = capabilityFromCustom(action);
+
+    expect(cap.requiresPrompt).toBe(false);
+    expect(cap.ref.image).toMatchObject({ accepts: true, min: 1, max: 5 });
+    expect(cap.ref.video.accepts).toBe(false);
+  });
+
   it("preserves cross-modality requirements declared on a reference input", () => {
     expect(ModelInputModeSchema.parse({
       audios: { max: 3, requiresAnyOf: ["image", "video"] },
@@ -157,6 +177,29 @@ describe("Director shot reference selection", () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe("validateRefs", () => {
+  it("enforces a model-level one-of requirement across reference modalities", () => {
+    const omniReference = card({
+      id: "omni-reference",
+      kind: "video",
+      input: {
+        requiresPrompt: true,
+        inputMode: {
+          images: { max: 9 },
+          videos: { max: 3 },
+          audios: { max: 3, requiresAnyOf: ["image", "video"] },
+          requiresAnyOf: ["image", "video"],
+        },
+        promptModalities: ["text", "image", "video", "audio"],
+      },
+    } as never);
+
+    expect(validateRefs(omniReference, {}, { prompt: "go" })).toMatch(
+      /requires at least one reference image or video/i,
+    );
+    expect(validateRefs(omniReference, { image: 1 }, { prompt: "go" })).toBeNull();
+    expect(validateRefs(omniReference, { video: 1 }, { prompt: "go" })).toBeNull();
+  });
+
   it("rejects constrained reference audio unless a declared companion is attached", () => {
     expect(validateRefs(MULTIMODAL_REFERENCE_VIDEO, { audio: 1 }, { prompt: "go" })).toMatch(
       /requires at least one reference image or video/i,
@@ -345,5 +388,51 @@ describe("compatible model discovery", () => {
       "future-audio-video-a",
       "future-audio-video-b",
     ]);
+  });
+});
+
+describe("reference media constraints", () => {
+  const h3 = MODEL_CARDS.find((candidate) => candidate.id === "minimax-h3")!;
+
+  it("keeps MiniMax H3 media limits in the unified Model Card", () => {
+    const parsed = ModelInputModeSchema.parse(h3.input.inputMode);
+    expect(parsed.maxTotalReferences).toBe(12);
+    expect(parsed.maxEmbeddedRequestBytes).toBe(64 * 1024 * 1024);
+    expect(parsed.images?.constraints).toMatchObject({
+      maxBytes: 30 * 1024 * 1024,
+      minWidth: 256,
+      maxWidth: 5760,
+      minAspectRatio: 0.4,
+      maxAspectRatio: 2.5,
+    });
+    expect(parsed.videos?.constraints).toMatchObject({
+      maxBytes: 50 * 1024 * 1024,
+      minDurationMs: 2_000,
+      maxDurationMs: 15_000,
+      minFrameRate: 23.976,
+      maxFrameRate: 60,
+    });
+    expect(parsed.videos?.maxTotalDurationMs).toBe(15_000);
+    expect(parsed.audios?.maxTotalDurationMs).toBe(15_000);
+    expect(validateRefs(h3, { image: 9, video: 3, audio: 1 })).toMatch(/at most 12 total references/i);
+  });
+
+  it("validates known per-file and aggregate metadata without rejecting unknown metadata", () => {
+    expect(validateReferenceMedia(h3, [
+      { modality: "image", contentType: "image/gif", bytes: 100, width: 512, height: 512 },
+    ])).toMatch(/format/i);
+    expect(validateReferenceMedia(h3, [
+      { modality: "video", contentType: "video/mp4", durationMs: 16_000, width: 1920, height: 1080, frameRate: 30 },
+    ])).toMatch(/15 seconds/i);
+    expect(validateReferenceMedia(h3, [
+      { modality: "video", contentType: "video/mp4", durationMs: 8_000 },
+      { modality: "video", contentType: "video/quicktime", durationMs: 8_000 },
+    ])).toMatch(/total duration/i);
+    expect(validateReferenceMedia(h3, [
+      { modality: "audio", contentType: "audio/mpeg", bytes: 50 * 1024 * 1024, embedded: true },
+    ])).toMatch(/15 MB/i);
+    expect(validateReferenceMedia(h3, [
+      { modality: "image" },
+    ])).toBeNull();
   });
 });

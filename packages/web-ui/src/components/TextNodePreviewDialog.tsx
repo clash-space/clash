@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { ArrowSquareOut, TextT, X } from "@phosphor-icons/react";
 import type {
   AgentAnnotationDraft,
@@ -10,6 +10,7 @@ import {
   AgentSelectionAnnotationOverlay,
   type AgentSelectionAnnotationOverlayHandle,
 } from "./copilot/AgentSelectionAnnotationOverlay";
+import { handleSelectionAnnotationContextMenu } from "./copilot/selectionAnnotationContextMenu";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
 import { IconButton } from "./ui/icon-button";
@@ -47,7 +48,6 @@ export function TextNodePreviewDialog({
   onClose,
   onOpenEditor,
 }: TextNodePreviewDialogProps) {
-  const selectionRootRef = useRef<HTMLDivElement>(null);
   const annotationOverlayRef =
     useRef<AgentSelectionAnnotationOverlayHandle>(null);
   const textAnnotationTarget = useMemo<AgentAnnotationTarget | null>(() => {
@@ -60,12 +60,6 @@ export function TextNodePreviewDialog({
       objectPath: `canvases/${annotationTarget.surfaceId}/nodes/${nodeId}`,
     };
   }, [annotationTarget, label, nodeId]);
-  const captureSelection = useCallback(() => {
-    const root = selectionRootRef.current;
-    if (!root) return false;
-    return annotationOverlayRef.current?.captureSelection(root) ?? false;
-  }, []);
-
   return (
     <Dialog
       open={open}
@@ -109,7 +103,6 @@ export function TextNodePreviewDialog({
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
           <div
-            ref={selectionRootRef}
             data-agent-annotation-selection-root=""
             data-agent-annotation-object-id={nodeId}
             data-agent-annotation-object-type="canvas-text"
@@ -117,10 +110,7 @@ export function TextNodePreviewDialog({
             data-agent-annotation-object-path={textAnnotationTarget?.objectPath}
             className="relative mx-auto w-[min(100%,var(--clash-document-reading-width))] select-text"
             onContextMenu={(event) => {
-              if (captureSelection()) {
-                event.preventDefault();
-                event.stopPropagation();
-              }
+              handleSelectionAnnotationContextMenu(event, annotationOverlayRef);
             }}
           >
             <div className="prose max-w-none text-[length:var(--clash-document-body-size)] leading-[var(--clash-document-body-leading)] prose-slate prose-headings:font-display prose-headings:text-content-primary prose-p:leading-[var(--clash-document-body-leading)] prose-p:text-content-secondary prose-li:leading-[var(--clash-document-body-leading)] prose-li:text-content-secondary prose-a:text-content-primary prose-a:underline prose-code:rounded prose-code:bg-warm-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:text-content-secondary dark:prose-invert">

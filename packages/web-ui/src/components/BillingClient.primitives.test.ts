@@ -25,4 +25,14 @@ describe("BillingClient primitives", () => {
     expect(source).toMatch(/<Button[\s\S]*onClick=\{handle\}[\s\S]*free \? "Default plan"/);
     expect(source).not.toMatch(/<button[\s\S]*onClick=\{handle\}[\s\S]*free \? "Default plan"/);
   });
+
+  it("shows immutable provider usage independently of managed billing", () => {
+    const source = readFileSync(
+      join(process.cwd(), "packages/web-ui/src/components/BillingClient.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("Provider usage audit");
+    expect(source).toContain("estimatedCostMicroUsd");
+    expect(source).toContain("providerRequestId");
+  });
 });

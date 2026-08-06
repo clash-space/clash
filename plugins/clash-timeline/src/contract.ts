@@ -1,15 +1,13 @@
-export const TIMELINE_PLUGIN_TOOL_NAMES = [
-  "clash_timeline_open",
-  "clash_timeline_list",
-  "clash_timeline_get",
-  "clash_timeline_create",
-  "clash_timeline_save",
-  "clash_timeline_attach",
-  "clash_timeline_detach",
-  "clash_timeline_copy",
-] as const;
-
-export type TimelinePluginToolName = (typeof TIMELINE_PLUGIN_TOOL_NAMES)[number];
+export {
+  TIMELINE_PLUGIN_SURFACE_BINDINGS,
+  TIMELINE_PLUGIN_TOOL_NAMES,
+} from "./timeline-contract-adapter.js";
+export type {
+  TimelinePluginSurfaceToolName as TimelinePluginToolName,
+} from "./timeline-contract-adapter.js";
+import type {
+  TimelinePluginSurfaceToolName as TimelinePluginToolName,
+} from "./timeline-contract-adapter.js";
 
 export type TimelineEntity = {
   id: string;
@@ -26,12 +24,22 @@ export type TimelineEntity = {
 export type TimelineToolInput = {
   cwd?: string;
   projectId?: string;
+  standalone?: boolean;
+  id?: string;
   timelineId?: string;
+  sourceTimelineId?: string;
+  baseRevisionId?: string;
   name?: string;
   canvasId?: string;
+  targetCanvasId?: string;
   nodeId?: string;
+  actionNodeId?: string;
   newTimelineId?: string;
   newNodeId?: string;
+  newActionNodeId?: string;
+  position?: { x: number; y: number };
+  document?: string | Record<string, unknown>;
+  format?: "yaml" | "json" | "object";
   state?: Record<string, unknown>;
 };
 
@@ -48,14 +56,22 @@ function appendProject(args: string[], input: TimelineToolInput): void {
   args.push("--json");
 }
 
+function appendPosition(args: string[], input: TimelineToolInput): void {
+  if (!input.position) return;
+  args.push("--x", String(input.position.x), "--y", String(input.position.y));
+}
+
 export function buildTimelineCliArgs(
   name: string,
   input: TimelineToolInput,
 ): string[] {
   const args = ["timeline"];
   switch (name) {
+    case "clash_timeline_schema":
+      return ["timeline", "schema", "--json"];
     case "clash_timeline_list":
       args.push("list");
+      if (input.standalone) args.push("--standalone");
       break;
     case "clash_timeline_create":
       args.push(
@@ -75,6 +91,7 @@ export function buildTimelineCliArgs(
         required(input, "canvasId"),
       );
       if (input.nodeId?.trim()) args.push("--node", input.nodeId.trim());
+      appendPosition(args, input);
       break;
     case "clash_timeline_detach":
       args.push("detach", "--timeline", required(input, "timelineId"));
@@ -91,6 +108,7 @@ export function buildTimelineCliArgs(
         args.push("--new-timeline", input.newTimelineId.trim());
       }
       if (input.newNodeId?.trim()) args.push("--new-node", input.newNodeId.trim());
+      appendPosition(args, input);
       break;
     default:
       throw new Error(`Timeline operation ${name} is not exposed`);

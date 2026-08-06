@@ -72,6 +72,14 @@ describe("marketplace registry", () => {
     expect(body.actions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          id: "codex-imagegen",
+          name: "Codex ImageGen",
+          type: "action",
+          runtime: "local",
+          outputType: "image",
+          packageId: "clash-codex-imagegen",
+        }),
+        expect.objectContaining({
           id: "clash.action.production.render-mg",
         }),
         expect.objectContaining({
@@ -117,6 +125,10 @@ describe("marketplace registry", () => {
 
     expect(body.actions).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          id: "codex-imagegen",
+          packageId: "clash-codex-imagegen",
+        }),
         expect.objectContaining({
           id: "clash.action.production.analyze-audio-beats",
         }),

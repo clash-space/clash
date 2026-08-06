@@ -4,7 +4,12 @@
  * it actually needs.
  */
 
-import type { ModelUpstreamRoute } from "@clash/shared-types";
+import type {
+  ExecutablePluginBinding,
+  ExecutablePluginPermissions,
+  ExecutablePluginReference,
+  ModelUpstreamRoute,
+} from "@clash/shared-types";
 
 export interface GenerationParams {
   taskId: string;
@@ -51,8 +56,14 @@ export interface GenerationParams {
   /** Provider-account route resolved for this actor before execution. */
   selectedRoute?: ModelUpstreamRoute;
 
-  /** Ordered prompt parts preserving text + image_ref interleaving. */
-  promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
+  /** Ordered prompt parts preserving text + asset-ref interleaving. */
+  promptParts?: Array<{
+    type: string;
+    text?: string;
+    nodeId?: string;
+    r2Key?: string;
+    modality?: "image" | "video" | "audio";
+  }>;
 
   // ─── Input resources (4 orthogonal categories) ────────────────────
   // NodeProcessor maps Loro node ref arrays into these slots based purely
@@ -105,6 +116,12 @@ export interface GenerationParams {
     required?: boolean;
   }>;
   workerUrl?: string;
+  /** Immutable executable-plugin target copied from the author-time Canvas node. */
+  pluginBinding?: ExecutablePluginBinding;
+  /** User-approved capability set from the exact installed plugin version. */
+  pluginPermissions?: ExecutablePluginPermissions;
+  /** Opaque, project-scoped references for the executable-plugin invocation ABI. */
+  pluginReferences?: ExecutablePluginReference[];
 
   /**
    * Lineage — pre-built `assets.sources` rows describing which upstream

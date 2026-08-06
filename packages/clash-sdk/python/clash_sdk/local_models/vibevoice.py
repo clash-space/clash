@@ -76,6 +76,18 @@ class VibeVoiceLocalAsrRuntime:
 
     def __init__(self, whisper_runtime: Any | None = None):
         self.whisper_runtime = whisper_runtime or WhisperLocalAsrRuntime()
+        self._models: dict[str, Any] = {}
+
+    def _model(self, snapshot: Path) -> Any:
+        key = str(snapshot)
+        cached = self._models.get(key)
+        if cached is not None:
+            return cached
+        from mlx_audio.stt.utils import load
+
+        loaded = load(key)
+        self._models[key] = loaded
+        return loaded
 
     def status(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
         try:
@@ -120,7 +132,16 @@ class VibeVoiceLocalAsrRuntime:
 
     def remove(self, model: str, cache_dir: str | None = None) -> None:
         _ensure_supported_model(model)
+        self._models.clear()
         _remove_snapshot(model, cache_dir)
+
+    def warmup(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
+        _ensure_supported_model(model)
+        self._model(_require_cached_snapshot(model, cache_dir))
+        alignment_warmup = getattr(self.whisper_runtime, "warmup", None)
+        if callable(alignment_warmup):
+            return alignment_warmup(VIBEVOICE_ALIGNMENT_MODEL, cache_dir)
+        return self.whisper_runtime.status(VIBEVOICE_ALIGNMENT_MODEL, cache_dir)
 
     def transcribe(
         self,
@@ -131,9 +152,7 @@ class VibeVoiceLocalAsrRuntime:
     ) -> LocalAsrTranscription:
         _ensure_supported_model(model)
         snapshot = _require_cached_snapshot(model, cache_dir)
-        from mlx_audio.stt.utils import load
-
-        diarizer = load(str(snapshot))
+        diarizer = self._model(snapshot)
         diarized = diarizer.generate(audio=audio_path, max_tokens=8192, temperature=0.0)
         speaker_segments = _speaker_segments(diarized)
         aligned = self.whisper_runtime.transcribe(

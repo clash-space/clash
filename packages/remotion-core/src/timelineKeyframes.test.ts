@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { TimelineItemKeyframes } from "@clash/shared-types";
+import {
+  TIMELINE_MASK_ANIMATION_BINDINGS,
+  type TimelineItemKeyframes,
+} from "@clash/shared-types";
 import {
   findAdjacentTimelineKeyframes,
   removeTimelineKeyframe,
+  removeTimelineMaskKeyframes,
   rippleDeleteTimelineKeyframes,
   sampleTimelineKeyframes,
   sliceTimelineKeyframes,
@@ -45,6 +49,59 @@ describe("Timeline keyframe sampling", () => {
       opacity: 0.5,
     });
   });
+
+  it("samples mask channels without mixing item-local and composition frames", async () => {
+    const module = await import("./timelineKeyframes");
+    const sampleMask = (module as unknown as {
+      sampleTimelineMaskKeyframes?: (
+        keyframes: TimelineItemKeyframes,
+        frame: number,
+        fallback: {
+          position: readonly [number, number];
+          size: readonly [number, number];
+          rotation: number;
+          feather: number;
+        },
+      ) => unknown;
+    }).sampleTimelineMaskKeyframes;
+    expect(sampleMask).toBeTypeOf("function");
+    expect(sampleMask?.({
+      maskPosition: [
+        { frame: 0, value: [20, 50], interpolation: "linear" },
+        { frame: 20, value: [80, 50], interpolation: "linear" },
+      ],
+      maskSize: [
+        { frame: 0, value: [40, 40], interpolation: "linear" },
+        { frame: 20, value: [80, 60], interpolation: "linear" },
+      ],
+      maskRotation: [
+        { frame: 0, value: 0, interpolation: "linear" },
+        { frame: 20, value: 90, interpolation: "linear" },
+      ],
+      maskFeather: [
+        { frame: 0, value: 0, interpolation: "linear" },
+        { frame: 20, value: 40, interpolation: "linear" },
+      ],
+    }, 10, {
+      position: [50, 50],
+      size: [70, 70],
+      rotation: 0,
+      feather: 0,
+    })).toEqual({
+      position: [50, 50],
+      size: [60, 50],
+      rotation: 45,
+      feather: 20,
+    });
+    expect(Object.keys(sampleMask?.(undefined as any, 10, {
+      position: [50, 50],
+      size: [70, 70],
+      rotation: 0,
+      feather: 0,
+    }) as object).sort()).toEqual(
+      TIMELINE_MASK_ANIMATION_BINDINGS.map(({ field }) => field).sort(),
+    );
+  });
 });
 
 describe("Timeline keyframe editing", () => {
@@ -82,6 +139,16 @@ describe("Timeline keyframe editing", () => {
     expect(removeTimelineKeyframe({
       opacity: [{ frame: 5, value: 0.5, interpolation: "linear" }],
     }, "opacity", 5)).toBeUndefined();
+  });
+
+  it("removes only mask channels when a mask is deleted", () => {
+    expect(removeTimelineMaskKeyframes({
+      position: [{ frame: 0, value: [0, 0], interpolation: "linear" }],
+      maskPosition: [{ frame: 0, value: [50, 50], interpolation: "linear" }],
+      maskFeather: [{ frame: 0, value: 20, interpolation: "linear" }],
+    })).toEqual({
+      position: [{ frame: 0, value: [0, 0], interpolation: "linear" }],
+    });
   });
 
   it("finds previous, current, and next keyframe frames", () => {
@@ -148,6 +215,54 @@ describe("Timeline keyframe slicing", () => {
         { frame: 4, value: 4 / 19, interpolation: "linear" },
         { frame: 5, value: 15 / 19, interpolation: "linear" },
         { frame: 9, value: 1, interpolation: "linear" },
+      ],
+    });
+  });
+
+  it("slices vector and scalar mask channels with the same item-local rules", () => {
+    const keyframes = {
+      maskPosition: [
+        { frame: 0, value: [20, 50], interpolation: "linear" as const },
+        { frame: 20, value: [80, 50], interpolation: "linear" as const },
+      ],
+      maskFeather: [
+        { frame: 0, value: 0, interpolation: "linear" as const },
+        { frame: 20, value: 40, interpolation: "linear" as const },
+      ],
+    } as TimelineItemKeyframes;
+
+    expect(sliceTimelineKeyframes(keyframes, 5, 11)).toEqual({
+      maskPosition: [
+        { frame: 0, value: [35, 50], interpolation: "linear" },
+        { frame: 10, value: [65, 50], interpolation: "linear" },
+      ],
+      maskFeather: [
+        { frame: 0, value: 10, interpolation: "linear" },
+        { frame: 10, value: 30, interpolation: "linear" },
+      ],
+    });
+  });
+
+  it("re-samples mask channels after a ripple deletion", () => {
+    const keyframes = {
+      maskPosition: [
+        { frame: 0, value: [20, 50], interpolation: "linear" as const },
+        { frame: 20, value: [80, 50], interpolation: "linear" as const },
+      ],
+      maskFeather: [
+        { frame: 0, value: 0, interpolation: "linear" as const },
+        { frame: 20, value: 40, interpolation: "linear" as const },
+      ],
+    } as TimelineItemKeyframes;
+
+    expect(rippleDeleteTimelineKeyframes(keyframes, 0, 5, 21)).toEqual({
+      maskPosition: [
+        { frame: 0, value: [35, 50], interpolation: "linear" },
+        { frame: 15, value: [80, 50], interpolation: "linear" },
+      ],
+      maskFeather: [
+        { frame: 0, value: 10, interpolation: "linear" },
+        { frame: 15, value: 40, interpolation: "linear" },
       ],
     });
   });

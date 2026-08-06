@@ -19,11 +19,17 @@ import { loadSecrets } from '../services/user-variables';
 
 import {
   CustomActionDefinitionSchema,
+  ExecutablePluginBindingSchema,
   MODEL_CARDS,
+  normalizeModelId,
   parsePromptParts,
   extractPromptText,
+  validateRefs,
+  validateReferenceMedia,
   type CustomActionDefinition,
   type CustomActionSecret,
+  type ExecutablePluginReference,
+  type ReferenceMediaMetadata,
 } from '@clash/shared-types';
 import { deriveRuntimeStatus } from '../lib/runtime-status';
 
@@ -32,7 +38,10 @@ const defaultVideoModel = MODEL_CARDS.find((card) => card.kind === 'video')?.id 
 const defaultAudioModel = MODEL_CARDS.find((card) => card.kind === 'audio')?.id ?? 'gemini-3.1-flash-tts';
 const defaultTextModel = MODEL_CARDS.find((card) => card.kind === 'text')?.id ?? 'gpt-5.4';
 
-const getModelCard = (modelId?: string) => MODEL_CARDS.find((card) => card.id === modelId);
+const getModelCard = (modelId?: string) => {
+  const canonicalId = normalizeModelId(modelId) ?? modelId;
+  return MODEL_CARDS.find((card) => card.id === canonicalId);
+};
 
 async function loadInstalledCustomAction(
   env: Env,
@@ -712,6 +721,43 @@ export async function processPendingNodes(
           }
         }
 
+        const parsedPluginBinding = ExecutablePluginBindingSchema.safeParse(innerData.pluginBinding);
+        const pluginBinding = parsedPluginBinding.success ? parsedPluginBinding.data : undefined;
+        if (pluginBinding) {
+          const installedBinding = actionDef?.pluginBinding;
+          if (!installedBinding
+            || installedBinding.pluginId !== pluginBinding.pluginId
+            || installedBinding.version !== pluginBinding.version
+            || installedBinding.exportId !== pluginBinding.exportId
+            || installedBinding.schemaHash !== pluginBinding.schemaHash) {
+            const error = `Pinned plugin ${pluginBinding.pluginId}@${pluginBinding.version} is not installed with the exact schema.`;
+            appendNodeLog(doc, nodeId, `FAILED: ${error}`, broadcast);
+            updateNodeData(doc, nodeId, {
+              pendingTask: undefined,
+              status: Status.Failed,
+              error,
+            }, broadcast);
+            continue;
+          }
+        }
+        const pluginReferences: ExecutablePluginReference[] = [
+          ...customRefImageAssetIds.map((id, index) => ({
+            slot: 'image',
+            index,
+            asset: { assetId: id, uri: `clash-asset://${id}`, kind: 'image' as const },
+          })),
+          ...customRefVideoAssetIds.map((id, index) => ({
+            slot: 'video',
+            index,
+            asset: { assetId: id, uri: `clash-asset://${id}`, kind: 'video' as const },
+          })),
+          ...customRefAudioAssetIds.map((id, index) => ({
+            slot: 'audio',
+            index,
+            asset: { assetId: id, uri: `clash-asset://${id}`, kind: 'audio' as const },
+          })),
+        ];
+
         if (runtime === 'worker' && workerUrl) {
           // Route to CF Worker via GenerationWorkflow (retries + durability)
           const genParams: GenerationParams = {
@@ -725,6 +771,9 @@ export async function processPendingNodes(
             customActionModel: actionDef?.model,
             customActionSecrets: actionDef?.secrets,
             workerUrl,
+            pluginBinding,
+            pluginPermissions: pluginBinding ? actionDef?.pluginPermissions : undefined,
+            pluginReferences: pluginReferences.length > 0 ? pluginReferences : undefined,
             referenceImageR2Keys: customRefImageR2Keys.length > 0 ? customRefImageR2Keys : undefined,
             referenceVideoR2Keys: customRefVideoR2Keys.length > 0 ? customRefVideoR2Keys : undefined,
             referenceAudioR2Keys: customRefAudioR2Keys.length > 0 ? customRefAudioR2Keys : undefined,
@@ -859,24 +908,19 @@ export async function processPendingNodes(
           .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
         const modelCard = getModelCard(selectedModelId);
         const inputMode = modelCard?.input.inputMode ?? {};
+        const rawPrompt = innerData.prompt || innerData.label || '';
 
         const tag = { nodeId, taskId, projectId, type: taskType, model: selectedModelId, nodeType };
         log.info('gen.classify', { ...tag, refs: { images: referenceImageAssetIds.length, videos: referenceVideoAssetIds.length, audios: referenceAudioAssetIds.length }, prompt: (innerData.prompt || innerData.label || '').slice(0, 80) });
 
-        // Pre-flight: refuse to submit the workflow when image refs violate the inputMode.
-        // Only enforced for video gen (image gen is more forgiving).
-        if (nodeType === 'video') {
-          let msg: string | null = null;
-          if (inputMode.startEnd && referenceImageAssetIds.length < 1) {
-            msg = 'Start frame required for selected model';
-          } else if (inputMode.images) {
-            const min = inputMode.images.min ?? 0;
-            if (referenceImageAssetIds.length < min) {
-              msg = min === 1
-                ? 'Reference image required for selected model'
-                : `At least ${min} reference images required for selected model`;
-            }
-          }
+        // Count, companion-modality, total-reference, prompt, and start/end
+        // rules all come from the same Card capability contract used by UI.
+        if (modelCard) {
+          const msg = validateRefs(modelCard, {
+            image: referenceImageAssetIds.length,
+            video: referenceVideoAssetIds.length,
+            audio: referenceAudioAssetIds.length,
+          }, { prompt: rawPrompt });
           if (msg) {
             log.warn('gen.preflight_failed', { ...tag, reason: msg });
             updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: msg }, broadcast);
@@ -885,7 +929,6 @@ export async function processPendingNodes(
         }
 
         // Parse prompt for @-mention parts (mixed-modality)
-        const rawPrompt = innerData.prompt || innerData.label || '';
         const parts = parsePromptParts(rawPrompt);
         const cleanPrompt = extractPromptText(parts);
 
@@ -907,18 +950,55 @@ export async function processPendingNodes(
           ...mentionAssetIds,
         ];
 
-        let assetById = new Map<string, { srcR2Key: string; coverR2Key: string | null }>();
+        let assetById = new Map<string, {
+          srcR2Key: string;
+          coverR2Key: string | null;
+          metadata: Awaited<ReturnType<typeof getAssetsByIds>>[number]['metadata'];
+        }>();
         if (allAssetIds.length > 0) {
           // Resolve refs against the actor's assets, not the project
           // owner's. In single-user mode these are the same row;
           // multi-actor will diverge once Phase 1 lands project_member.
           const ownerId = nodeActorUserId;
           const assets = await getAssetsByIds(env.DB, allAssetIds, ownerId);
-          assetById = new Map(assets.map((a) => [a.id, { srcR2Key: a.srcR2Key, coverR2Key: a.coverR2Key }]));
+          assetById = new Map(assets.map((a) => [a.id, {
+            srcR2Key: a.srcR2Key,
+            coverR2Key: a.coverR2Key,
+            metadata: a.metadata,
+          }]));
 
           const missing = allAssetIds.filter((id) => !assetById.has(id));
           if (missing.length > 0) {
             log.warn('gen.assets_missing', { ...tag, missingCount: missing.length, missing: missing.slice(0, 5) });
+          }
+        }
+
+        if (modelCard) {
+          const mediaReferences: ReferenceMediaMetadata[] = [
+            ...referenceImageAssetIds.map((assetId) => ({ assetId, modality: 'image' as const })),
+            ...referenceVideoAssetIds.map((assetId) => ({ assetId, modality: 'video' as const })),
+            ...referenceAudioAssetIds.map((assetId) => ({ assetId, modality: 'audio' as const })),
+          ].flatMap(({ assetId, modality }) => {
+            const metadata = assetById.get(assetId)?.metadata;
+            if (!metadata) return [];
+            return [{
+              modality,
+              contentType: metadata.contentType,
+              fileName: metadata.originalName,
+              bytes: metadata.bytes,
+              width: metadata.width,
+              height: metadata.height,
+              durationMs: metadata.durationMs,
+              frameRate: metadata.frameRate,
+              videoCodec: metadata.videoCodec,
+              audioCodec: metadata.audioCodec,
+            }];
+          });
+          const mediaError = validateReferenceMedia(modelCard, mediaReferences);
+          if (mediaError) {
+            log.warn('gen.preflight_failed', { ...tag, reason: mediaError });
+            updateNodeData(doc, nodeId, { pendingTask: undefined, status: Status.Failed, error: mediaError }, broadcast);
+            continue;
           }
         }
 
@@ -931,8 +1011,17 @@ export async function processPendingNodes(
           if (part.type === 'asset_ref' && part.nodeId) {
             const refNode = nodesMap.get(part.nodeId) as Record<string, any> | undefined;
             const aid = typeof refNode?.data?.assetId === 'string' ? refNode.data.assetId : undefined;
-            const r2Key = aid ? resolveImageKey(aid) : undefined;
-            return { type: 'asset_ref', nodeId: part.nodeId, r2Key };
+            const modality = refNode?.type === 'image' || refNode?.type === 'video' || refNode?.type === 'audio'
+              ? refNode.type as 'image' | 'video' | 'audio'
+              : undefined;
+            const r2Key = aid
+              ? modality === 'video'
+                ? resolveVideoKey(aid)
+                : modality === 'audio'
+                  ? resolveAudioKey(aid)
+                  : resolveImageKey(aid)
+              : undefined;
+            return { type: 'asset_ref', nodeId: part.nodeId, r2Key, modality };
           }
           return { type: 'text', text: part.text || '' };
         });
@@ -1074,7 +1163,13 @@ async function submitGenTask(
   taskId: string,
   params: {
     prompt: string;
-    promptParts?: Array<{ type: string; text?: string; nodeId?: string; r2Key?: string }>;
+    promptParts?: Array<{
+      type: string;
+      text?: string;
+      nodeId?: string;
+      r2Key?: string;
+      modality?: 'image' | 'video' | 'audio';
+    }>;
     model: string;
     modelParams: Record<string, any>;
     /** Pre-resolved R2 keys (NodeProcessor turned assetIds into these). */

@@ -26,6 +26,7 @@
     "test:agent:real-codex": "pnpm prepare:harnesses && pnpm --filter @clash-space/bridge build && CLASH_E2E_REAL_CODEX=1 node e2e/real-codex-acp-backend.mjs",
     "test:e2e": "node e2e/smoke.mjs",
     "test:e2e:agent-browser": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/agent-browser-smoke.mjs",
+    "test:e2e:voice-input": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/voice-input-agent-browser.mjs",
     "test:e2e:timeline-keyframes": "pnpm --filter @clash/shared-types build && pnpm --filter @clash-space/cli build && pnpm --filter @master-clash/local-api build && pnpm build && node e2e/timeline-keyframes-agent-browser.mjs",
     "test:e2e:director-stage-webgl": "pnpm --filter @master-clash/local-api build && pnpm build && node e2e/director-stage-webgl-smoke.mjs",
     "test:e2e:agent-first-local-v1": "node e2e/agent-first-local-v1-gate.mjs",

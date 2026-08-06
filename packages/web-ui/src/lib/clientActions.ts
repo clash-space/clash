@@ -118,6 +118,7 @@ export interface RegistryItem {
   tags?: string[];
   secrets?: Array<{ id: string; label: string; required?: boolean }>;
   linkedActionId?: string;
+  packageId?: string;
 }
 
 // ───────── Helpers ─────────
@@ -379,6 +380,12 @@ export async function fetchRegistry(): Promise<RegistryData> {
 }
 
 export async function marketplaceInstallAction(item: RegistryItem): Promise<void> {
+  if (item.packageId) {
+    await jsonFetch(`/api/marketplace/actions/${encodeURIComponent(item.packageId)}/install`, {
+      method: "POST",
+    });
+    return;
+  }
   await installAction({
     id: item.id,
     name: item.name,
@@ -394,12 +401,19 @@ export async function marketplaceInstallAction(item: RegistryItem): Promise<void
     color: item.color,
     tags: item.tags,
     secrets: item.secrets,
+    packageId: item.packageId,
     parameters: [],
   });
 }
 
-export async function marketplaceUninstallAction(actionId: string): Promise<void> {
-  await uninstallAction(actionId);
+export async function marketplaceUninstallAction(item: RegistryItem): Promise<void> {
+  if (item.packageId) {
+    await jsonFetch(`/api/marketplace/actions/${encodeURIComponent(item.packageId)}/install`, {
+      method: "DELETE",
+    });
+    return;
+  }
+  await uninstallAction(item.id);
 }
 
 export async function marketplaceInstallSkill(item: RegistryItem): Promise<void> {

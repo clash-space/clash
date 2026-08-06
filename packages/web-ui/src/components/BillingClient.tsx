@@ -7,12 +7,13 @@
  */
 import { useCallback, useState } from "react";
 import { Link } from "react-router";
-import { ArrowLeft, CreditCard, Lightning, Lock, Sparkle, Star } from "@phosphor-icons/react";
+import { ArrowLeft, CreditCard, Lightning, ListMagnifyingGlass, Lock, Sparkle, Star } from "@phosphor-icons/react";
 import {
   type Balance,
   type LedgerEntry,
   type Plan,
   type TopupPack,
+  type ProviderUsageAuditEvent,
   createCheckout,
 } from "@clash/web-ui/lib/billingClient";
 import { Button } from "./ui/button";
@@ -24,10 +25,11 @@ interface Props {
   ledger: LedgerEntry[];
   /** True when /api/v1/billing/* returned 404 — billing isn't installed. */
   notEnabled: boolean;
+  providerUsage?: ProviderUsageAuditEvent[];
 }
 
-export default function BillingClient({ balance, plans, packs, ledger, notEnabled }: Props) {
-  if (notEnabled) {
+export default function BillingClient({ balance, plans, packs, ledger, notEnabled, providerUsage = [] }: Props) {
+  if (notEnabled && providerUsage.length === 0) {
     return <NotEnabledState />;
   }
 
@@ -35,12 +37,60 @@ export default function BillingClient({ balance, plans, packs, ledger, notEnable
     <div className="min-h-screen bg-warm-page text-slate-950 dark:text-slate-50">
       <Header />
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-10">
-        <BalanceCard balance={balance} />
-        <TopupSection packs={packs} />
-        <PlansSection plans={plans} />
-        {ledger.length > 0 && <LedgerSection entries={ledger} />}
+        {notEnabled ? <ManagedBillingNotice /> : <>
+          <BalanceCard balance={balance} />
+          <TopupSection packs={packs} />
+          <PlansSection plans={plans} />
+          {ledger.length > 0 && <LedgerSection entries={ledger} />}
+        </>}
+        {providerUsage.length > 0 && <ProviderUsageSection entries={providerUsage} />}
       </div>
     </div>
+  );
+}
+
+function ProviderUsageSection({ entries }: { entries: ProviderUsageAuditEvent[] }) {
+  return (
+    <section>
+      <SectionHeader
+        icon={<ListMagnifyingGlass size={20} />}
+        title="Provider usage audit"
+        subtitle="Immutable provider request lifecycle and catalog-price estimates. Prompts and credentials are excluded."
+      />
+      <div className="overflow-hidden rounded-xl border border-warm-border bg-warm-surface/80">
+        <div className="divide-y divide-warm-border">
+          {entries.map((entry) => (
+            <div key={entry.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_auto]">
+              <div className="min-w-0">
+                <div className="font-medium">{entry.modelId} · {entry.status}</div>
+                <div className="truncate text-xs text-stone-500">
+                  {new Date(entry.occurredAt).toLocaleString()} · {entry.operation}
+                </div>
+                {entry.providerRequestId && (
+                  <div className="truncate text-xs text-stone-500">request {entry.providerRequestId}</div>
+                )}
+              </div>
+              <div className="text-right tabular-nums">
+                <div className="font-medium">
+                  {entry.estimatedCostMicroUsd === undefined
+                    ? "Estimate unavailable"
+                    : `${entry.estimateComplete ? "≈" : "≥"}$${(entry.estimatedCostMicroUsd / 1_000_000).toFixed(4)}`}
+                </div>
+                <div className="text-xs text-stone-500">{entry.pricingSource}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ManagedBillingNotice() {
+  return (
+    <section className="rounded-xl border border-warm-border bg-warm-surface/80 p-5 text-sm text-stone-600 dark:text-stone-300">
+      Managed credits are not enabled. Provider usage below comes from your BYOK requests and is not an invoice.
+    </section>
   );
 }
 

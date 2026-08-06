@@ -1,7 +1,7 @@
 
 import { memo, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { ArrowBendDownRight, BookOpen, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning, SlidersHorizontal, Lightbulb, Lightning, Target, X, Play, Pause } from '@phosphor-icons/react';
+import { ArrowBendDownRight, BookOpen, CaretDown, CaretRight, Crosshair, DotsSixVertical, DotsThree, PencilSimple, Plus, ClockCounterClockwise, Trash, Plug, ShieldWarning, SlidersHorizontal, Lightbulb, Lightning, Target, X, Play, Pause } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { UserMessage } from './copilot/UserMessage';
 import { AgentCard, type AgentLog } from './copilot/AgentCard';
@@ -10,6 +10,10 @@ import { ApprovalCard } from './copilot/ApprovalCard';
 import { ThinkingProcess } from './copilot/ThinkingProcess';
 import { ChatInput } from './copilot/ChatInput';
 import { AgentAnnotationInspector } from './copilot/AgentAnnotationBlock';
+import {
+    parseRuntimePromptQueueContent,
+    RuntimePromptQueueContent,
+} from './copilot/RuntimePromptQueueContent';
 import { TodoList, TodoItem } from './copilot/TodoList';
 import { ThinkingIndicator } from './copilot/ThinkingIndicator';
 import {
@@ -1796,6 +1800,7 @@ function ChatbotCopilot({
     const [isCreatingSession, setIsCreatingSession] = useState(false);
     const [sessionError, setSessionError] = useState<string | null>(null);
     const [editingQueuedTurnId, setEditingQueuedTurnId] = useState<string | null>(null);
+    const [editingQueuedAnnotations, setEditingQueuedAnnotations] = useState<AgentAnnotationDraft[]>([]);
     const agentMotionState: AgentMotionState =
         runtimeAlertMessage || desktopLocalSetupIssue || sessionError
             ? 'failed'
@@ -1815,12 +1820,19 @@ function ChatbotCopilot({
         annotations: AgentAnnotationDraft[] = [],
     ) => {
         const rawValue = text.trim();
-        const value = rawValue || annotationOnlyPrompt(annotations);
+        const effectiveAnnotations = editingQueuedTurnId && annotations.length === 0
+            ? editingQueuedAnnotations
+            : annotations;
+        const value = rawValue || annotationOnlyPrompt(effectiveAnnotations);
         if (!value && attachments.length === 0) return;
         if ((chatMode !== 'runtime' && isProcessing) || isCreatingSession) return;
         if (chatMode === 'runtime' && editingQueuedTurnId) {
-            clashRt.updateQueuedPrompt(editingQueuedTurnId, value);
+            clashRt.updateQueuedPrompt(
+                editingQueuedTurnId,
+                buildCopilotPrompt(value, workspaceContext, mentionableNodes, effectiveAnnotations),
+            );
             setEditingQueuedTurnId(null);
+            setEditingQueuedAnnotations([]);
             setInput('');
             return;
         }
@@ -2427,11 +2439,7 @@ function ChatbotCopilot({
                                         />
                                     </motion.div>
                                 )}
-                                <AcpPermissionCard
-                                    request={clashRt.permissionRequests[0] ?? null}
-                                    onRespond={clashRt.respondPermission}
-                                />
-                                {slashCommandQuery !== null && (
+                                {clashRt.permissionRequests.length === 0 && slashCommandQuery !== null && (
                                     <SlashCommandPalette
                                         commands={slashCommandOptions}
                                         onPick={handlePickSlashCommand}
@@ -2447,8 +2455,10 @@ function ChatbotCopilot({
                                         items={visibleRuntimePromptQueue}
                                         onSteer={clashRt.steerQueuedPrompt}
                                         onEdit={(item) => {
+                                            const content = parseRuntimePromptQueueContent(item.text);
                                             setEditingQueuedTurnId(item.turnId);
-                                            setInput(item.text);
+                                            setEditingQueuedAnnotations(content.annotations);
+                                            setInput(content.text);
                                         }}
                                         onRemove={clashRt.removeQueuedPrompt}
                                         onReorder={clashRt.reorderPromptQueue}
@@ -2472,6 +2482,12 @@ function ChatbotCopilot({
                                         className="clash-copilot-composer-bottom-fade"
                                     />
                                     <div className="relative z-10">
+                                        {clashRt.permissionRequests[0] ? (
+                                            <AcpPermissionComposer
+                                                request={clashRt.permissionRequests[0]}
+                                                onRespond={clashRt.respondPermission}
+                                            />
+                                        ) : (
                                         <ChatInput
                                             input={input}
                                             onInputChange={setInput}
@@ -2545,6 +2561,7 @@ function ChatbotCopilot({
                                                 />
                                             )}
                                         />
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -2649,54 +2666,106 @@ function ChatbotCopilot({
     );
 }
 
-function AcpPermissionCard({
+function AcpPermissionComposer({
     request,
     onRespond,
 }: {
-    request: ReturnType<typeof useClashRuntime>['permissionRequests'][number] | null;
+    request: ReturnType<typeof useClashRuntime>['permissionRequests'][number];
     onRespond: (requestId: string, optionId: string | null) => void;
 }) {
-    if (!request) return null;
     const toolTitle = typeof request.toolCall.title === 'string'
         ? request.toolCall.title
         : 'The agent wants to run a tool';
+    const allowOptions = request.options.filter((option) => !option.kind.startsWith('reject'));
+    const rejectOptions = request.options.filter((option) => option.kind.startsWith('reject'));
+    const primaryAllow = allowOptions[0] ?? null;
+    const secondaryAllows = allowOptions.slice(1);
+    const primaryReject = rejectOptions[0] ?? null;
+
+    const respond = (optionId: string) => onRespond(request.requestId, optionId);
     return (
-        <div
-            role="group"
-            aria-label="Approval required"
-            data-testid="acp-permission-card"
-            className={`${COPILOT_COMPOSER_RAIL_WIDTH_CLASS} relative z-30 mb-2 overflow-hidden rounded-xl border border-warm-border bg-warm-surface/95 p-3 shadow-lg backdrop-blur`}
-        >
-            <div className="mb-2 flex min-w-0 items-start gap-2">
-                <ShieldWarning
-                    className="mt-0.5 h-4 w-4 shrink-0 text-status-attention"
-                    weight="duotone"
-                    aria-hidden="true"
-                />
-                <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-content-primary">
-                        Approval required
+        <div className="px-4 pb-4">
+            <div
+                role="group"
+                aria-label="Approval required"
+                data-testid="acp-permission-card"
+                className="clash-chat-input-surface flex min-h-[152px] flex-col justify-between gap-5 px-5 py-4"
+            >
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-content-secondary">
+                        <ShieldWarning
+                            className="h-4 w-4 shrink-0"
+                            weight="regular"
+                            aria-hidden="true"
+                        />
+                        <span>Permissions</span>
                     </div>
-                    <div className="truncate text-xs text-content-secondary" title={toolTitle}>
+                    <div className="mt-3 text-base font-semibold leading-6 text-content-primary" title={toolTitle}>
                         {toolTitle}
                     </div>
                 </div>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {request.options.map((option) => (
-                    <Button
-                        key={option.optionId}
-                        type="button"
-                        onClick={() => onRespond(request.requestId, option.optionId)}
-                        className={`min-h-9 justify-start rounded-lg border border-warm-border bg-warm-muted px-3 text-left text-xs font-medium shadow-none hover:bg-warm-hover ${
-                            option.kind.startsWith('reject')
-                                ? 'text-status-down'
-                                : 'text-content-primary'
-                        }`}
-                    >
-                        {option.name}
-                    </Button>
-                ))}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    {primaryReject ? (
+                        <Button
+                            type="button"
+                            onClick={() => respond(primaryReject.optionId)}
+                            size="sm"
+                            className="min-w-[5.5rem]"
+                        >
+                            {primaryReject.name}
+                        </Button>
+                    ) : null}
+                    {primaryAllow ? (
+                        <div className="flex items-stretch">
+                            <Button
+                                type="button"
+                                variant="primary"
+                                size="sm"
+                                onClick={() => respond(primaryAllow.optionId)}
+                                className={secondaryAllows.length > 0
+                                    ? 'min-w-[7rem] rounded-r-none pr-3'
+                                    : 'min-w-[7rem]'}
+                            >
+                                {primaryAllow.name}
+                            </Button>
+                            {secondaryAllows.length > 0 ? (
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="primary"
+                                            size="sm"
+                                            aria-label="More approval options"
+                                            className="min-w-9 rounded-l-none border-l border-white/20 px-2"
+                                        >
+                                            <CaretDown className="h-3.5 w-3.5" weight="bold" aria-hidden="true" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent side="top" align="end" className="w-64">
+                                        {secondaryAllows.map((option) => (
+                                            <DropdownMenuItem
+                                                key={option.optionId}
+                                                onSelect={() => respond(option.optionId)}
+                                            >
+                                                {option.name}
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            ) : null}
+                        </div>
+                    ) : null}
+                    {!primaryAllow && request.options.map((option) => (
+                        <Button
+                            key={option.optionId}
+                            type="button"
+                            onClick={() => respond(option.optionId)}
+                            size="sm"
+                        >
+                            {option.name}
+                        </Button>
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -3240,7 +3309,7 @@ export function HarnessPermissionSelector({
     return (
         <SelectMenu
             className="relative flex shrink-0 justify-start"
-            triggerClassName="clash-session-permission-trigger shrink-0 text-left text-status-down"
+            triggerClassName="clash-session-permission-trigger shrink-0 text-left text-status-down focus-visible:bg-warm-muted focus-visible:ring-0 focus-visible:ring-offset-0"
             triggerTestId="session-permission-mode-trigger"
             value={selectedMode.value}
             sections={sections}
@@ -3758,7 +3827,6 @@ function RuntimePromptQueueItem({
     onRemove: (turnId: string) => void;
 }) {
     const { setNodeRef, style, isDragging, dragHandleProps } = useSortableItem(item.turnId, { draggingZIndex: 30 });
-
     return (
         <div
             ref={setNodeRef}
@@ -3773,9 +3841,7 @@ function RuntimePromptQueueItem({
                 {...dragHandleProps}
             />
             <ArrowBendDownRight className="h-3.5 w-3.5 shrink-0 text-stone-500/70 dark:text-stone-400/70" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-stone-700 dark:text-stone-200">
-                {item.text}
-            </span>
+            <RuntimePromptQueueContent content={item.text} />
             <Button
                 aria-label={`Steer queued message ${index + 1}`}
                 onClick={() => onSteer(item.turnId)}

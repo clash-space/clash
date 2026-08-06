@@ -14,6 +14,8 @@ import {
 import {
   clashHomeForLocalDataDir,
   defaultLocalApiDataDir,
+  resolveClashProfile,
+  type ClashRuntimeProfile,
 } from "./local-paths.js";
 
 export type HostDiscoveryState =
@@ -46,8 +48,10 @@ export function createHostDiscoveryRecord(options: {
   endpoint: string;
   launchMode: HostLaunchMode;
   startedBy: HostStartedBy;
+  profile?: ClashRuntimeProfile;
   agentCliPath?: string;
   ownerClientId?: string;
+  pluginBrokerToken?: string;
   pid?: number;
   hostId?: string;
   now?: Date;
@@ -62,8 +66,10 @@ export function createHostDiscoveryRecord(options: {
     pid: options.pid ?? process.pid,
     launchMode: options.launchMode,
     startedBy: options.startedBy,
+    profile: options.profile ?? resolveClashProfile(),
     agentCliPath: options.agentCliPath,
     ownerClientId: options.ownerClientId,
+    pluginBrokerToken: options.pluginBrokerToken,
     startedAt: now,
     updatedAt: now,
   };

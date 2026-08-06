@@ -494,6 +494,57 @@ describe("modelProviderRoutes", () => {
     });
   });
 
+  it("requires the complete Cloudflare Gateway credential alternative for Gemini Omni", async () => {
+    const app = makeApp();
+    const env = {
+      DB: new MemoryD1() as unknown as D1Database,
+      ACTION_SECRET_KEY: "secret-key",
+    } as Env;
+
+    const incomplete = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: {
+          id: "google-gateway",
+          providerId: "official",
+          upstreamId: "google-ai-studio",
+          region: "global",
+          enabled: true,
+          credentials: { gatewayToken: "cloudflare-token" },
+        },
+        modelId: "gemini-omni-flash",
+      }),
+    }, env);
+    expect(await incomplete.json()).toMatchObject({
+      ok: false,
+      missingCredentials: ["baseUrl"],
+    });
+
+    const ready = await app.request("/api/v1/model-providers/test", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-user-id": "user-1" },
+      body: JSON.stringify({
+        provider: {
+          id: "google-gateway",
+          providerId: "official",
+          upstreamId: "google-ai-studio",
+          region: "global",
+          enabled: true,
+          credentials: {
+            gatewayToken: "cloudflare-token",
+            baseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
+          },
+        },
+        modelId: "gemini-omni-flash",
+      }),
+    }, env);
+    expect(await ready.json()).toMatchObject({
+      ok: true,
+      modelId: "gemini-omni-flash",
+    });
+  });
+
   it("tests Google Cloud Agent Platform models with only service account credentials", async () => {
     const app = makeApp();
     const env = {
@@ -873,8 +924,8 @@ describe("modelProviderRoutes", () => {
       ok: true,
       providerId: "jimeng",
       upstreamId: "jimeng",
-      modelId: "seedance-2-text",
-      message: "Dreamina configuration is ready for Seedance 2.0 (Text).",
+      modelId: "seedance-2-ref",
+      message: "Dreamina configuration is ready for Seedance 2.0 (全能参考).",
     });
 
     const secondary = await app.request("/api/v1/model-providers/test", {
@@ -890,9 +941,9 @@ describe("modelProviderRoutes", () => {
       ok: false,
       providerId: "jimeng",
       upstreamId: "jimeng",
-      modelId: "seedance-2-text",
+      modelId: "seedance-2-ref",
       missingOAuth: ["dreamina"],
-      message: "Dreamina needs authorization before testing Seedance 2.0 (Text).",
+      message: "Dreamina needs authorization before testing Seedance 2.0 (全能参考).",
     });
 
     const catalog = await app.request("/api/v1/models/catalog", {
@@ -905,7 +956,7 @@ describe("modelProviderRoutes", () => {
         selectedRoute?: { providerId?: string; upstreamId?: string } | null;
       }>;
     };
-    expect(catalogJson.models.find((entry) => entry.model.id === "seedance-2-text")).toMatchObject({
+    expect(catalogJson.models.find((entry) => entry.model.id === "seedance-2-ref")).toMatchObject({
       selectedRoute: expect.objectContaining({
         providerId: "jimeng",
         upstreamId: "jimeng",

@@ -6,6 +6,10 @@ import {
   LoroSyncClient, DEFAULT_CANVAS_ID,
   parsePromptParts, extractAssetRefs,
   createMediaAssetCowNodeData,
+  ExecutablePluginBindingSchema,
+  MODEL_CARDS,
+  coerceModelParameterInput,
+  normalizeModelId,
   isMediaNodeType,
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
@@ -51,6 +55,46 @@ export type CanvasActor = {
   actorUserId: string;
   actorAgentId?: string;
 };
+
+export async function resolveInstalledPluginAction(options: {
+  actionId: string;
+  serverUrl?: string;
+  apiKey?: string;
+  request?: typeof fetch;
+}): Promise<{
+  id: string;
+  outputType?: "image" | "video" | "audio" | "text";
+  pluginBinding: ReturnType<typeof ExecutablePluginBindingSchema.parse>;
+  pluginPermissions?: unknown;
+  definition: Record<string, unknown>;
+} | null> {
+  const serverUrl = options.serverUrl ?? getServerUrl();
+  const apiKey = options.apiKey ?? requireApiKey(serverUrl);
+  const response = await (options.request ?? fetch)(`${serverUrl}/api/v1/plugin-actions`, {
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+  });
+  if (!response.ok) return null;
+  const body = await response.json() as { actions?: unknown[] };
+  for (const value of body.actions ?? []) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const action = value as Record<string, unknown>;
+    if (action.id !== options.actionId) continue;
+    const binding = ExecutablePluginBindingSchema.safeParse(action.pluginBinding);
+    if (!binding.success) continue;
+    const outputType = action.outputType === "image" || action.outputType === "video"
+      || action.outputType === "audio" || action.outputType === "text"
+      ? action.outputType
+      : undefined;
+    return {
+      id: options.actionId,
+      ...(outputType ? { outputType } : {}),
+      pluginBinding: binding.data,
+      ...(action.pluginPermissions ? { pluginPermissions: action.pluginPermissions } : {}),
+      definition: action,
+    };
+  }
+  return null;
+}
 
 let activeCanvasId = DEFAULT_CANVAS_ID;
 
@@ -219,6 +263,20 @@ async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   await client.connect();
   client.selectCanvas(activeCanvasId);
   return client;
+}
+
+async function registerInstalledPluginAction(
+  projectId: string,
+  action: { id: string; definition: Record<string, unknown> },
+): Promise<void> {
+  const client = await connectToProject(projectId);
+  try {
+    client.doc.getMap("customActions").set(action.id, action.definition);
+    client.doc.commit({ origin: "cli:install-plugin-action" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    await client.disconnect();
+  }
 }
 
 /**
@@ -770,6 +828,20 @@ function coerceParamValue(raw: string): string | number | boolean {
   return raw;
 }
 
+export function modelParamsFromEntries(
+  modelId: string | undefined,
+  entries: Array<[string, string]>,
+): Record<string, string | number | boolean> {
+  const normalizedModelId = normalizeModelId(modelId) ?? modelId;
+  const card = MODEL_CARDS.find((candidate) => candidate.id === normalizedModelId);
+  const params: Record<string, string | number | boolean> = {};
+  for (const [key, raw] of entries) {
+    const value = coerceParamValue(raw);
+    params[key] = card ? coerceModelParameterInput(card, key, value) : value;
+  }
+  return params;
+}
+
 /**
  * Resolve a list of `(nodeOrAssetIds)` to canvas node ids. References
  * on the canvas are expressed as **edges** — the web UI's ActionBadge
@@ -882,6 +954,12 @@ canvasCommand
     const isGenNode = !!ACTION_TYPE_BY_NODE_TYPE[options.type];
 
     const isCustomAction = isGenNode && typeof options.action === "string" && options.action.length > 0;
+    const installedPluginAction = isCustomAction
+      ? await resolveInstalledPluginAction({ actionId: options.action })
+      : null;
+    if (installedPluginAction) {
+      await registerInstalledPluginAction(projectId, installedPluginAction);
+    }
 
     if (isGenNode) {
       if (isCustomAction) {
@@ -892,11 +970,18 @@ canvasCommand
         // image-kinded pending child.
         extraData.actionType = `custom:${options.action}`;
         extraData.customActionId = options.action;
-        const outputType =
+        const outputType = installedPluginAction?.outputType ?? (
           options.type === "video_gen" ? "video" :
           options.type === "audio_gen" ? "audio" :
-          options.type === "text_gen"  ? "text"  : "image";
+          options.type === "text_gen"  ? "text"  : "image"
+        );
         extraData.outputType = outputType;
+        if (installedPluginAction) {
+          extraData.pluginBinding = installedPluginAction.pluginBinding;
+          if (installedPluginAction.pluginPermissions) {
+            extraData.pluginPermissions = installedPluginAction.pluginPermissions;
+          }
+        }
       } else {
         extraData.actionType = ACTION_TYPE_BY_NODE_TYPE[options.type];
         extraData.modelId = options.model ?? DEFAULT_MODEL_BY_NODE_TYPE[options.type];
@@ -909,8 +994,7 @@ canvasCommand
     // under data.customActionParams for custom actions. Both shapes are
     // `Record<string, string | number | boolean>`.
     if ((options.param ?? []).length > 0) {
-      const params: Record<string, string | number | boolean> = {};
-      for (const [k, v] of options.param) params[k] = coerceParamValue(v);
+      const params = modelParamsFromEntries(options.model, options.param);
       if (isCustomAction) extraData.customActionParams = params;
       else extraData.modelParams = params;
     }

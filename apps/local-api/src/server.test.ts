@@ -13,6 +13,11 @@ import {
   defaultLocalApiDataDir,
   startLocalApiServer,
 } from "./server";
+import * as serverModule from "./server";
+import { createLocalAudioConfigStore } from "./audio-config";
+import { createLocalMetadataStore } from "./local-metadata-store";
+import { createLocalProviderStore } from "./local-provider-store";
+import { createClashUserConfigStore } from "./user-config";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,6 +64,149 @@ async function listenOnLoopback(server: ReturnType<typeof createServer>, port = 
 }
 
 describe("local API server configuration", () => {
+  it("wires encrypted provider accounts and SQLite audit into the local plugin broker", async () => {
+    const createBroker = (serverModule as Record<string, unknown>)
+      .createLocalPluginBrokerServices as
+      | ((options: { dataDir: string; fetch: typeof fetch }) => any)
+      | undefined;
+    expect(createBroker).toBeDefined();
+    if (!createBroker) return;
+
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-broker-"));
+    await createLocalProviderStore(dataDir).saveProviderAccounts([{
+      id: "fal-primary",
+      providerId: "fal",
+      upstreamId: "fal",
+      enabled: true,
+      credentials: { apiKey: "fal-encrypted-key" },
+    }]);
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("authorization")).toBe("Key fal-encrypted-key");
+      return Response.json({ ok: true });
+    });
+    const broker = createBroker({ dataDir, fetch });
+    const context = {
+      manifest: {
+        apiVersion: "clash.plugin/v1",
+        id: "server-broker-plugin",
+        version: "1.0.0",
+        name: "Server Broker Plugin",
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+        exports: { cards: [], functions: [] },
+        permissions: {
+          secrets: ["provider:fal"],
+          network: { domains: ["queue.fal.run"] },
+        },
+      },
+      invocation: {
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: "invocation-server-1",
+        taskId: "task-1",
+        projectId: "project-1",
+        target: {
+          pluginId: "server-broker-plugin",
+          version: "1.0.0",
+          exportId: "project",
+          schemaHash: `sha256:${"b".repeat(64)}`,
+          kind: "provider-projector",
+        },
+        input: { values: {}, references: [] },
+        actor: { kind: "agent", id: "agent-1" },
+      },
+    };
+    const credential = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "credential-server-1",
+      invocationId: "invocation-server-1",
+      operation: { kind: "credential.handle", secretId: "provider:fal" },
+    }, context) as { handle: string };
+    await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "network-server-1",
+      invocationId: "invocation-server-1",
+      operation: {
+        kind: "network.fetch",
+        url: "https://queue.fal.run/models/test",
+        method: "GET",
+        headers: {},
+        credentialHandle: credential.handle,
+      },
+    }, context);
+
+    const audit = await createLocalMetadataStore(dataDir).listPluginBrokerAudit({
+      pluginId: "server-broker-plugin",
+    });
+    expect(audit.map((record) => record.operation)).toEqual([
+      "network.fetch",
+      "credential.handle",
+    ]);
+    expect(JSON.stringify(audit)).not.toContain("fal-encrypted-key");
+  });
+
+  it("persists plugin asset writes as immutable project-scoped Clash assets", async () => {
+    const createBroker = (serverModule as Record<string, unknown>)
+      .createLocalPluginBrokerServices as
+      | ((options: { dataDir: string; fetch: typeof fetch }) => any)
+      | undefined;
+    expect(createBroker).toBeDefined();
+    if (!createBroker) return;
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-plugin-output-"));
+    const broker = createBroker({ dataDir, fetch: vi.fn() as any });
+    const context = {
+      manifest: {
+        apiVersion: "clash.plugin/v1",
+        id: "asset-writer-plugin",
+        version: "1.0.0",
+        name: "Asset Writer Plugin",
+        runtime: { kind: "local", transport: "stdio", entrypoint: "handler.mjs" },
+        exports: { cards: [], functions: [] },
+        permissions: { assets: ["write"] },
+      },
+      invocation: {
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: "invocation-output-1",
+        taskId: "task-output-1",
+        projectId: "project-output-1",
+        target: {
+          pluginId: "asset-writer-plugin",
+          version: "1.0.0",
+          exportId: "write",
+          schemaHash: `sha256:${"c".repeat(64)}`,
+          kind: "action",
+        },
+        input: { values: {}, references: [] },
+        actor: { kind: "agent", id: "agent-1" },
+      },
+    };
+    const output = await broker({
+      protocol: "clash.plugin.broker-request/v1",
+      requestId: "asset-output-1",
+      invocationId: "invocation-output-1",
+      operation: {
+        kind: "asset.write",
+        slot: "image",
+        assetKind: "image",
+        mediaType: "image/png",
+        dataBase64: "AQID",
+      },
+    }, context) as { assetId: string; uri: string };
+
+    expect(output.uri).toBe(`clash-asset://${output.assetId}`);
+    const metadata = await createLocalMetadataStore(dataDir).load();
+    const asset = metadata.assets.find((candidate) => candidate.id === output.assetId);
+    expect(asset).toMatchObject({
+      projectId: "project-output-1",
+      kind: "image",
+      sourceModel: "plugin:asset-writer-plugin@1.0.0",
+      sourceTaskId: "task-output-1",
+      metadata: { contentType: "image/png", bytes: 3 },
+    });
+    expect(metadata.assetRefs).toContainEqual(expect.objectContaining({
+      assetId: output.assetId,
+      projectId: "project-output-1",
+    }));
+  });
+
   it("keeps local package scripts reproducible without pnpm install checks", async () => {
     const packageJson = JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -68,9 +216,10 @@ describe("local API server configuration", () => {
     expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/shared-types run build");
     expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/cli run build");
     expect(scripts["build:deps"]).toContain("npm --prefix ../../packages/clash-bridge run build");
-    expect(scripts.build).toBe("npm run build:deps && tsc");
+    expect(scripts.build).toBe("tsc");
+    expect(scripts["build:with-deps"]).toBe("npm run build:deps && tsc");
     expect(scripts.test).toBe("npm run build:deps && vitest run src");
-    expect(scripts["test:e2e"]).toBe("npm run build && node e2e/daemon-smoke.mjs");
+    expect(scripts["test:e2e"]).toBe("npm run build:with-deps && node e2e/daemon-smoke.mjs");
     expect(`${scripts.build} ${scripts.test} ${scripts["test:e2e"]}`).not.toContain("pnpm");
   });
 
@@ -175,6 +324,45 @@ describe("local API server configuration", () => {
     });
 
     await expect(readHostDiscovery({ runDir })).resolves.toEqual({ status: "inactive" });
+  });
+
+  it("starts the configured voice readiness probe without blocking server listen", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "clash-local-api-voice-warmup-"));
+    await createClashUserConfigStore(dataDir).setSection("audio", {
+      asr: {
+        enabled: true,
+        provider: "builtin-funasr",
+        model: "iic/SenseVoiceSmall",
+      },
+      tts: {
+        enabled: false,
+        provider: "builtin-piper",
+        model: "zh_CN-huayan-medium",
+      },
+    });
+
+    let resolveStatus!: (status: { available: boolean }) => void;
+    const builtinStatus = vi.fn(() => new Promise<{ available: boolean }>((resolve) => {
+      resolveStatus = resolve;
+    }));
+    const audioConfig = createLocalAudioConfigStore({ dataDir, builtinStatus });
+    let server: Awaited<ReturnType<typeof startLocalApiServer>> | undefined;
+
+    try {
+      server = await startLocalApiServer({
+        dataDir,
+        port: 0,
+        remotePersistence: null,
+        audioConfig,
+        localAcp: createConfiguredLocalAcpAdapter({ CLASH_E2E_STUB_ACP: "1" }),
+      });
+      await vi.waitFor(() => expect(builtinStatus).toHaveBeenCalledTimes(1));
+    } finally {
+      resolveStatus?.({ available: true });
+      if (server) {
+        await new Promise<void>((resolveClose) => server!.close(() => resolveClose()));
+      }
+    }
   });
 
   it("keeps default host discovery beside the configured local-api data directory", async () => {
@@ -337,11 +525,13 @@ describe("local API server configuration", () => {
       dataDir,
       apiBaseUrl: "http://127.0.0.1:49397",
       env: {
+        CLASH_PROFILE: "dev",
         PATH: "/usr/bin:/bin",
       },
     });
 
     expect(env.CLASH_API_URL).toBe("http://127.0.0.1:49397");
+    expect(env.CLASH_PROFILE).toBe("dev");
     expect(env).not.toHaveProperty("CLASH_API_KEY");
     expect(env.PATH?.split(":")[0]).toBe(join(dataDir, "agent-bin"));
 
@@ -349,6 +539,7 @@ describe("local API server configuration", () => {
     await expect(stat(shim)).resolves.toMatchObject({ mode: expect.any(Number) });
     const shimText = await readFile(shim, "utf8");
     expect(shimText).toContain("CLASH_API_URL");
+    expect(shimText).toContain("CLASH_PROFILE='dev'");
     expect(shimText).not.toContain("CLASH_API_KEY");
     expect(shimText).toContain("command -v node");
     expect(shimText).toContain("ELECTRON_RUN_AS_NODE=1");

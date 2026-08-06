@@ -8,6 +8,7 @@ import {
     type GenerationConfig,
     type ModelCard,
     type CustomActionDefinition,
+    type ExecutablePluginBinding,
 } from '@clash/shared-types';
 import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -26,7 +27,9 @@ export interface UseSpawnPendingAssetInput {
     modelParams: ModelParams;
     selectedModel: ModelCard | undefined;
     content: string;
+    lyrics: string;
     dataPrompt: string | undefined;
+    pluginBinding?: ExecutablePluginBinding;
     projectId: string;
     refNodeIds: string[];
     getNodes: () => RFNode[];
@@ -102,7 +105,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
         modelParams,
         selectedModel,
         content,
+        lyrics,
         dataPrompt,
+        pluginBinding,
         projectId,
         refNodeIds,
         getNodes,
@@ -173,7 +178,6 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                         : node,
                 )
                 : refNodes;
-
             const rawPrompt = (content && content.trim() !== '' ? content : '') || dataPrompt || '';
 
             // Same `GenerationConfig` discriminator used server-side:
@@ -189,8 +193,9 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
 
             const configId = config.kind === 'custom' ? config.customDef.id : modelId;
 
-            const { pendingInput, validationError, cleanedPrompt } = buildGenerationPayload({
+            const { pendingInput, validationError } = buildGenerationPayload({
                 prompt: rawPrompt,
+                lyrics,
                 refNodes: scopedRefNodes,
                 configId,
                 config,
@@ -201,12 +206,10 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
                     | typeof ACTION_TYPE.TextGen
                     | `custom:${string}`,
                 label: opts?.labelOverride,
+                pluginBinding: pluginBinding ?? (config.kind === 'custom' ? config.customDef.pluginBinding : undefined),
             });
 
             if (status === 'pending') {
-                if (!cleanedPrompt || cleanedPrompt.trim() === '') {
-                    throw new Error('No prompt provided. Please edit the node or connect a text/prompt node.');
-                }
                 if (validationError) throw new Error(validationError);
             }
 
@@ -248,6 +251,7 @@ export function useSpawnPendingAsset(input: UseSpawnPendingAssetInput): UseSpawn
             modelParams,
             selectedModel,
             content,
+            lyrics,
             dataPrompt,
             refNodeIds,
             getNodes,

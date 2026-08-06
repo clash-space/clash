@@ -22,6 +22,9 @@
     "dist",
     "src"
   ],
+  "dependencies": {
+    "@clash/shared-types": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.0.0"
   }

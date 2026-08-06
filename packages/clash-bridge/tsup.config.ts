@@ -7,6 +7,8 @@ export default defineConfig({
     "cc-sessions": "src/lib/cc-sessions.ts",
     platform: "src/lib/platform.ts",
     "session-manager": "src/lib/session-manager.ts",
+    "plugin-host": "src/lib/plugin-host-ipc.ts",
+    "actions-host": "src/lib/actions-loader.ts",
   },
   format: ["esm"],
   outDir: "dist",

@@ -1,8 +1,17 @@
 import type {
   TimelineItemKeyframes,
   TimelineKeyframeChannel,
+  TimelineMaskKeyframeSample,
   TimelineScalarKeyframe,
   TimelineVectorKeyframe,
+} from "@clash/shared-types";
+import {
+  DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+  sampleTimelineKeyframeChannel,
+  TIMELINE_KEYFRAME_CHANNEL_ANNOTATIONS,
+  TIMELINE_MASK_KEYFRAME_CHANNELS,
+  TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS,
+  TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS,
 } from "@clash/shared-types";
 
 export type TimelineKeyframeSample = {
@@ -12,24 +21,25 @@ export type TimelineKeyframeSample = {
   opacity: number;
 };
 
+export type { TimelineMaskKeyframeSample } from "@clash/shared-types";
+
+const VECTOR_KEYFRAME_CHANNELS = new Set<TimelineKeyframeChannel>(
+  Object.entries(TIMELINE_KEYFRAME_CHANNEL_ANNOTATIONS)
+    .filter(([, annotation]) => annotation.valueKind === "vector")
+    .map(([channel]) => channel as TimelineKeyframeChannel),
+);
+
 function sampleScalar(
   keyframes: readonly TimelineScalarKeyframe[] | undefined,
   frame: number,
   fallback: number,
 ): number {
-  if (!keyframes || keyframes.length === 0) return fallback;
-  const sorted = [...keyframes].sort((left, right) => left.frame - right.frame);
-  const first = sorted[0]!;
-  const last = sorted[sorted.length - 1]!;
-  if (frame <= first.frame) return first.value;
-  if (frame >= last.frame) return last.value;
-  const rightIndex = sorted.findIndex((keyframe) => keyframe.frame >= frame);
-  const right = sorted[rightIndex]!;
-  if (right.frame === frame) return right.value;
-  const left = sorted[rightIndex - 1]!;
-  if (left.interpolation === "hold") return left.value;
-  const progress = (frame - left.frame) / (right.frame - left.frame);
-  return left.value + ((right.value - left.value) * progress);
+  return sampleTimelineKeyframeChannel(
+    keyframes,
+    frame,
+    fallback,
+    (left, right, progress) => left + ((right - left) * progress),
+  );
 }
 
 function sampleVector(
@@ -37,22 +47,15 @@ function sampleVector(
   frame: number,
   fallback: readonly [number, number],
 ): readonly [number, number] {
-  if (!keyframes || keyframes.length === 0) return fallback;
-  const sorted = [...keyframes].sort((left, right) => left.frame - right.frame);
-  const first = sorted[0]!;
-  const last = sorted[sorted.length - 1]!;
-  if (frame <= first.frame) return first.value;
-  if (frame >= last.frame) return last.value;
-  const rightIndex = sorted.findIndex((keyframe) => keyframe.frame >= frame);
-  const right = sorted[rightIndex]!;
-  if (right.frame === frame) return right.value;
-  const left = sorted[rightIndex - 1]!;
-  if (left.interpolation === "hold") return left.value;
-  const progress = (frame - left.frame) / (right.frame - left.frame);
-  return [
-    left.value[0] + ((right.value[0] - left.value[0]) * progress),
-    left.value[1] + ((right.value[1] - left.value[1]) * progress),
-  ];
+  return sampleTimelineKeyframeChannel(
+    keyframes,
+    frame,
+    fallback,
+    (left, right, progress) => [
+      left[0] + ((right[0] - left[0]) * progress),
+      left[1] + ((right[1] - left[1]) * progress),
+    ],
+  );
 }
 
 export function sampleTimelineKeyframes(
@@ -66,6 +69,31 @@ export function sampleTimelineKeyframes(
     rotation: sampleScalar(keyframes?.rotation, itemLocalFrame, fallback.rotation),
     opacity: sampleScalar(keyframes?.opacity, itemLocalFrame, fallback.opacity),
   };
+}
+
+export function sampleTimelineMaskKeyframes(
+  keyframes: TimelineItemKeyframes | undefined,
+  itemLocalFrame: number,
+  fallback: TimelineMaskKeyframeSample,
+): TimelineMaskKeyframeSample {
+  const sampled = { ...fallback } as Record<string, number | readonly [number, number]>;
+  for (const binding of TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS) {
+    const channel = keyframes?.[binding.channel];
+    sampled[binding.field] = sampleVector(
+      channel as readonly TimelineVectorKeyframe[] | undefined,
+      itemLocalFrame,
+      fallback[binding.field] as readonly [number, number],
+    );
+  }
+  for (const binding of TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS) {
+    const channel = keyframes?.[binding.channel];
+    sampled[binding.field] = sampleScalar(
+      channel as readonly TimelineScalarKeyframe[] | undefined,
+      itemLocalFrame,
+      fallback[binding.field] as number,
+    );
+  }
+  return sampled as TimelineMaskKeyframeSample;
 }
 
 type TimelineKeyframe = TimelineScalarKeyframe | TimelineVectorKeyframe;
@@ -109,6 +137,17 @@ export function removeTimelineKeyframe(
   return Object.keys(next).length > 0 ? next as TimelineItemKeyframes : undefined;
 }
 
+export function removeTimelineMaskKeyframes(
+  keyframes: TimelineItemKeyframes | undefined,
+): TimelineItemKeyframes | undefined {
+  if (!keyframes) return undefined;
+  const maskChannels = new Set<string>(TIMELINE_MASK_KEYFRAME_CHANNELS);
+  const remaining = Object.fromEntries(
+    Object.entries(keyframes).filter(([channel]) => !maskChannels.has(channel)),
+  ) as TimelineItemKeyframes;
+  return Object.keys(remaining).length > 0 ? remaining : undefined;
+}
+
 export type AdjacentTimelineKeyframes = {
   previousFrame: number | null;
   hasCurrent: boolean;
@@ -137,7 +176,7 @@ function interpolationAtFrame(
   const sorted = [...keyframes].sort((left, right) => left.frame - right.frame);
   return [...sorted].reverse().find((keyframe) => keyframe.frame <= frame)?.interpolation
     ?? sorted[0]?.interpolation
-    ?? "linear";
+    ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION;
 }
 
 function sampleChannelValue(
@@ -146,7 +185,7 @@ function sampleChannelValue(
   frame: number,
 ): TimelineKeyframe["value"] {
   const first = keyframes[0]!;
-  if (channel === "position" || channel === "scale") {
+  if (VECTOR_KEYFRAME_CHANNELS.has(channel)) {
     return sampleVector(
       keyframes as readonly TimelineVectorKeyframe[],
       frame,
@@ -180,7 +219,7 @@ function sliceChannel(
   const end: TimelineKeyframe = {
     frame: durationInFrames - 1,
     value: sampleChannelValue(channel, keyframes, endFrame),
-    interpolation: "linear",
+    interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
   } as TimelineKeyframe;
   return [start, ...middle, end];
 }

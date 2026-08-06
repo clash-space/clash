@@ -5,6 +5,7 @@ import subprocess
 import sys
 import wave
 from pathlib import Path
+from typing import Any
 
 from . import LocalModelKind, LocalModelStatus, LocalTtsSynthesis
 
@@ -18,6 +19,20 @@ def _model_paths(model: str, cache_dir: str | None) -> tuple[Path, Path]:
 
 class PiperLocalTtsRuntime:
     """Piper adapter behind the generic local speech runtime contract."""
+
+    def __init__(self) -> None:
+        self._voices: dict[str, Any] = {}
+
+    def _voice(self, model_path: Path) -> Any:
+        key = str(model_path)
+        cached = self._voices.get(key)
+        if cached is not None:
+            return cached
+        from piper import PiperVoice
+
+        loaded = PiperVoice.load(key)
+        self._voices[key] = loaded
+        return loaded
 
     def status(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
         if importlib.util.find_spec("piper") is None:
@@ -56,12 +71,21 @@ class PiperLocalTtsRuntime:
 
     def remove(self, model: str, cache_dir: str | None = None) -> None:
         model_path, config_path = _model_paths(model, cache_dir)
+        self._voices.pop(str(model_path), None)
         for path in (model_path, config_path):
             if path.exists():
                 path.unlink()
         model_card = model_path.parent / "MODEL_CARD"
         if model_card.exists() and model_card.is_file():
             model_card.unlink()
+
+    def warmup(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
+        status = self.status(model, cache_dir)
+        if not status.available:
+            return status
+        model_path, _ = _model_paths(model, cache_dir)
+        self._voice(model_path)
+        return LocalModelStatus(available=True)
 
     def synthesize(
         self,
@@ -78,13 +102,13 @@ class PiperLocalTtsRuntime:
         if not status.available:
             raise RuntimeError(status.message or f"Piper voice {model} is unavailable")
 
-        from piper import PiperVoice, SynthesisConfig
+        from piper import SynthesisConfig
 
         model_path, _ = _model_paths(model, cache_dir)
         output = Path(output_path).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
         syn_config = SynthesisConfig(length_scale=1.0 / speed) if speed else None
-        piper_voice = PiperVoice.load(str(model_path))
+        piper_voice = self._voice(model_path)
         with wave.open(str(output), "wb") as wav_file:
             piper_voice.synthesize_wav(text.strip(), wav_file, syn_config=syn_config)
 

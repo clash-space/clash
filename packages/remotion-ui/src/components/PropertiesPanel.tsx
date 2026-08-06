@@ -10,7 +10,11 @@ import {
   resolveAudioFadeOutFrames,
   resolveAudioGainDb,
   removeTimelineKeyframe,
+  removeTimelineMaskKeyframes,
   sampleTimelineKeyframes,
+  sampleTimelineMaskKeyframes,
+  TIMELINE_CAPTION_STYLE_DEFAULTS,
+  TIMELINE_SHARED_DEFAULTS,
   upsertTimelineKeyframe,
   useEditorDispatch,
   useEditorPlayback,
@@ -36,9 +40,20 @@ import {
   type EffectParamDefinition,
 } from '@master-clash/remotion-effects';
 import {
+  DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+  createDefaultTimelineItemMask,
   MgCompositionSpecSchema,
+  TIMELINE_MASK_APPLIES_TO_ITEM_TYPES,
+  TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS,
+  TIMELINE_MASK_STATIC_CONTROL_BINDINGS,
+  TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS,
+  TIMELINE_KEYFRAME_INTERPOLATIONS,
   type MgCompositionLayer,
   type MgCompositionSpec,
+  type TimelineMaskNumberInputAnnotation,
+  type TimelineMaskScalarAnimationBinding,
+  type TimelineMaskStaticControlBinding,
+  type TimelineMaskVectorAnimationBinding,
 } from '@clash/shared-types';
 import {
   RemotionButton,
@@ -164,6 +179,16 @@ const resolveEffectDefinition = (effectId: string, version: number) => {
   } catch {
     return null;
   }
+};
+
+const resolveEffectParameterValue = (
+  value: EffectParamValue | undefined,
+  definition: EffectParamDefinition,
+): EffectParamValue => {
+  if (value !== undefined) return value;
+  return definition.type === 'vec2'
+    ? [...definition.default] as [number, number]
+    : definition.default;
 };
 
 const EffectParameterControl: React.FC<{
@@ -303,7 +328,7 @@ const SplitButton: React.FC<{
 });
 
 type KeyframeControlHeaderProps = {
-  label: 'Position' | 'Scale' | 'Rotation' | 'Opacity';
+  label: string;
   active: boolean;
   itemFrom: number;
   itemLocalFrame: number;
@@ -381,8 +406,11 @@ const KeyframeControlHeader: React.FC<KeyframeControlHeaderProps> = ({
             onChange={(event) => onInterpolationChange(event.target.value as 'hold' | 'linear')}
             className={`h-6 min-w-0 flex-1 ${controlRadiusClassName} border border-warm-border bg-warm-page/40 px-1 text-stone-600 ${editorTypeClassName.caption}`}
           >
-            <option value="linear">Linear</option>
-            <option value="hold">Hold</option>
+            {TIMELINE_KEYFRAME_INTERPOLATIONS.map((interpolation) => (
+              <option key={interpolation} value={interpolation}>
+                {interpolation === 'linear' ? 'Linear' : 'Hold'}
+              </option>
+            ))}
           </RemotionSelect>
         )}
       </div>
@@ -401,14 +429,7 @@ const PositionKeyframeControl: React.FC<{
     0,
     Math.min(item.durationInFrames - 1, currentFrame - item.from),
   );
-  const properties = item.properties ?? {
-    x: 0,
-    y: 0,
-    width: 1,
-    height: 1,
-    rotation: 0,
-    opacity: 1,
-  };
+  const properties = item.properties ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties;
   const sampled = sampleTimelineKeyframes(item.keyframes, itemLocalFrame, {
     position: [properties.x, properties.y],
     scale: [1, 1],
@@ -437,7 +458,7 @@ const PositionKeyframeControl: React.FC<{
         : upsertTimelineKeyframe(item.keyframes, 'position', {
             frame: itemLocalFrame,
             value: sampled.position,
-            interpolation: 'linear',
+            interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
           }),
     } as Partial<Item>);
   };
@@ -449,7 +470,7 @@ const PositionKeyframeControl: React.FC<{
         keyframes: upsertTimelineKeyframe(item.keyframes, 'position', {
           frame: itemLocalFrame,
           value: nextValue,
-          interpolation: currentKey?.interpolation ?? 'linear',
+          interpolation: currentKey?.interpolation ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
         }),
       } as Partial<Item>);
       return;
@@ -518,12 +539,12 @@ const ScaleKeyframeControl: React.FC<{
     Math.min(item.durationInFrames - 1, currentFrame - item.from),
   );
   const properties = {
-    x: item.properties?.x ?? 0,
-    y: item.properties?.y ?? 0,
-    width: item.properties?.width ?? 1,
-    height: item.properties?.height ?? 1,
-    rotation: item.properties?.rotation ?? 0,
-    opacity: item.properties?.opacity ?? 1,
+    x: item.properties?.x ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.x,
+    y: item.properties?.y ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.y,
+    width: item.properties?.width ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.width,
+    height: item.properties?.height ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.height,
+    rotation: item.properties?.rotation ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.rotation,
+    opacity: item.properties?.opacity ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.opacity,
   };
   const sampled = sampleTimelineKeyframes(item.keyframes, itemLocalFrame, {
     position: [properties.x, properties.y],
@@ -546,7 +567,7 @@ const ScaleKeyframeControl: React.FC<{
       : upsertTimelineKeyframe(item.keyframes, 'scale', {
           frame: itemLocalFrame,
           value: sampled.scale,
-          interpolation: 'linear',
+          interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
         }),
   } as Partial<Item>);
   const updateAxis = (axis: 0 | 1, value: number) => {
@@ -556,7 +577,7 @@ const ScaleKeyframeControl: React.FC<{
       keyframes: upsertTimelineKeyframe(item.keyframes, 'scale', {
         frame: itemLocalFrame,
         value: nextValue,
-        interpolation: currentKey?.interpolation ?? 'linear',
+        interpolation: currentKey?.interpolation ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
       }),
     } as Partial<Item>);
   };
@@ -635,12 +656,12 @@ const ScalarKeyframeControl: React.FC<ScalarKeyframeControlProps> = React.memo((
     Math.min(item.durationInFrames - 1, currentFrame - item.from),
   );
   const properties = {
-    x: item.properties?.x ?? 0,
-    y: item.properties?.y ?? 0,
-    width: item.properties?.width ?? 1,
-    height: item.properties?.height ?? 1,
-    rotation: item.properties?.rotation ?? 0,
-    opacity: item.properties?.opacity ?? 1,
+    x: item.properties?.x ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.x,
+    y: item.properties?.y ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.y,
+    width: item.properties?.width ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.width,
+    height: item.properties?.height ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.height,
+    rotation: item.properties?.rotation ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.rotation,
+    opacity: item.properties?.opacity ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.opacity,
   };
   const sampled = sampleTimelineKeyframes(item.keyframes, itemLocalFrame, {
     position: [properties.x, properties.y],
@@ -663,7 +684,7 @@ const ScalarKeyframeControl: React.FC<ScalarKeyframeControlProps> = React.memo((
       : upsertTimelineKeyframe(item.keyframes, channel, {
           frame: itemLocalFrame,
           value,
-          interpolation: 'linear',
+          interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
         }),
   } as Partial<Item>);
   const updateValue = (nextValue: number) => {
@@ -672,7 +693,7 @@ const ScalarKeyframeControl: React.FC<ScalarKeyframeControlProps> = React.memo((
         keyframes: upsertTimelineKeyframe(item.keyframes, channel, {
           frame: itemLocalFrame,
           value: channel === 'opacity' ? Math.max(0, Math.min(1, nextValue)) : nextValue,
-          interpolation: currentKey?.interpolation ?? 'linear',
+          interpolation: currentKey?.interpolation ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
         }),
       } as Partial<Item>);
       return;
@@ -717,6 +738,332 @@ const ScalarKeyframeControl: React.FC<ScalarKeyframeControlProps> = React.memo((
         onChange={(event) => updateValue(parseFloat(event.target.value) || 0)}
         className={fieldClassName}
       />
+    </div>
+  );
+});
+
+const constrainTimelineMaskNumber = (
+  value: number,
+  input: TimelineMaskNumberInputAnnotation,
+): number => Math.min(
+  input.max ?? Number.POSITIVE_INFINITY,
+  Math.max(input.min ?? Number.NEGATIVE_INFINITY, value),
+);
+
+const MaskVectorKeyframeControl: React.FC<{
+  trackId: string;
+  item: Item;
+  binding: TimelineMaskVectorAnimationBinding;
+}> = React.memo(({ trackId, item, binding }) => {
+  const dispatch = useEditorDispatch();
+  const { currentFrame } = useEditorPlayback();
+  if (!item.mask) return null;
+  const { channel, field, label, axisLabels, axisAriaLabels, axisInputs } = binding;
+  const itemLocalFrame = Math.max(
+    0,
+    Math.min(item.durationInFrames - 1, currentFrame - item.from),
+  );
+  const sampled = sampleTimelineMaskKeyframes(item.keyframes, itemLocalFrame, item.mask);
+  const channelKeys = item.keyframes?.[channel];
+  const active = (channelKeys?.length ?? 0) > 0;
+  const currentKey = channelKeys?.find((keyframe) => keyframe.frame === itemLocalFrame);
+  const adjacent = findAdjacentTimelineKeyframes(item.keyframes, channel, itemLocalFrame);
+  const value = sampled[field];
+  const updateItem = (updates: Partial<Item>) => dispatch({
+    type: 'UPDATE_ITEM',
+    payload: { trackId, itemId: item.id, updates },
+  });
+  const toggleCurrentKeyframe = () => updateItem({
+    keyframes: currentKey
+      ? removeTimelineKeyframe(item.keyframes, channel, itemLocalFrame)
+      : upsertTimelineKeyframe(item.keyframes, channel, {
+          frame: itemLocalFrame,
+          value,
+          interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+        }),
+  } as Partial<Item>);
+  const updateAxis = (axis: 0 | 1, nextComponent: number) => {
+    const nextValue = [...value] as [number, number];
+    nextValue[axis] = constrainTimelineMaskNumber(nextComponent, axisInputs[axis]);
+    if (active) {
+      updateItem({
+        keyframes: upsertTimelineKeyframe(item.keyframes, channel, {
+          frame: itemLocalFrame,
+          value: nextValue,
+          interpolation: currentKey?.interpolation ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+        }),
+      } as Partial<Item>);
+      return;
+    }
+    updateItem({
+      mask: {
+        ...item.mask,
+        [field]: nextValue,
+      },
+    } as Partial<Item>);
+  };
+  const updateInterpolation = (interpolation: 'hold' | 'linear') => {
+    if (!currentKey) return;
+    updateItem({
+      keyframes: upsertTimelineKeyframe(item.keyframes, channel, {
+        ...currentKey,
+        interpolation,
+      }),
+    } as Partial<Item>);
+  };
+
+  return (
+    <div>
+      <KeyframeControlHeader
+        label={label}
+        active={active}
+        itemFrom={item.from}
+        itemLocalFrame={itemLocalFrame}
+        currentKey={currentKey}
+        previousFrame={adjacent.previousFrame}
+        nextFrame={adjacent.nextFrame}
+        onToggle={toggleCurrentKeyframe}
+        onInterpolationChange={updateInterpolation}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        {axisLabels.map((axisLabel, axis) => (
+          <label
+            key={axisLabel}
+            className={`grid grid-cols-[18px_minmax(0,1fr)] items-center ${controlRadiusClassName} border border-warm-border bg-warm-page/40 pl-2 text-stone-400`}
+          >
+            <span className={editorTypeClassName.caption}>{axisLabel}</span>
+            <RemotionInput
+              aria-label={axisAriaLabels[axis]}
+              type="number"
+              step={axisInputs[axis].step}
+              min={axisInputs[axis].min}
+              max={axisInputs[axis].max}
+              value={value[axis]}
+              onChange={(event) => updateAxis(
+                axis as 0 | 1,
+                Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0,
+              )}
+              className={`${fieldClassName} border-0 bg-transparent pl-0 focus:ring-0`}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const MaskScalarKeyframeControl: React.FC<{
+  trackId: string;
+  item: Item;
+  binding: TimelineMaskScalarAnimationBinding;
+}> = React.memo(({ trackId, item, binding }) => {
+  const dispatch = useEditorDispatch();
+  const { currentFrame } = useEditorPlayback();
+  if (!item.mask) return null;
+  const { channel, field, label, ariaLabel, input } = binding;
+  const itemLocalFrame = Math.max(
+    0,
+    Math.min(item.durationInFrames - 1, currentFrame - item.from),
+  );
+  const sampled = sampleTimelineMaskKeyframes(item.keyframes, itemLocalFrame, item.mask);
+  const channelKeys = item.keyframes?.[channel];
+  const active = (channelKeys?.length ?? 0) > 0;
+  const currentKey = channelKeys?.find((keyframe) => keyframe.frame === itemLocalFrame);
+  const adjacent = findAdjacentTimelineKeyframes(item.keyframes, channel, itemLocalFrame);
+  const value = sampled[field];
+  const updateItem = (updates: Partial<Item>) => dispatch({
+    type: 'UPDATE_ITEM',
+    payload: { trackId, itemId: item.id, updates },
+  });
+  const toggleCurrentKeyframe = () => updateItem({
+    keyframes: currentKey
+      ? removeTimelineKeyframe(item.keyframes, channel, itemLocalFrame)
+      : upsertTimelineKeyframe(item.keyframes, channel, {
+          frame: itemLocalFrame,
+          value,
+          interpolation: DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+        }),
+  } as Partial<Item>);
+  const updateValue = (nextValue: number) => {
+    const constrained = constrainTimelineMaskNumber(nextValue, input);
+    if (active) {
+      updateItem({
+        keyframes: upsertTimelineKeyframe(item.keyframes, channel, {
+          frame: itemLocalFrame,
+          value: constrained,
+          interpolation: currentKey?.interpolation ?? DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+        }),
+      } as Partial<Item>);
+      return;
+    }
+    updateItem({
+      mask: {
+        ...item.mask,
+        [field]: constrained,
+      },
+    } as Partial<Item>);
+  };
+  const updateInterpolation = (interpolation: 'hold' | 'linear') => {
+    if (!currentKey) return;
+    updateItem({
+      keyframes: upsertTimelineKeyframe(item.keyframes, channel, {
+        ...currentKey,
+        interpolation,
+      }),
+    } as Partial<Item>);
+  };
+
+  return (
+    <div>
+      <KeyframeControlHeader
+        label={label}
+        active={active}
+        itemFrom={item.from}
+        itemLocalFrame={itemLocalFrame}
+        currentKey={currentKey}
+        previousFrame={adjacent.previousFrame}
+        nextFrame={adjacent.nextFrame}
+        onToggle={toggleCurrentKeyframe}
+        onInterpolationChange={updateInterpolation}
+      />
+      <RemotionInput
+        aria-label={ariaLabel}
+        type="number"
+        step={input.step}
+        min={input.min}
+        max={input.max}
+        value={value}
+        onChange={(event) => updateValue(
+          Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0,
+        )}
+        className={fieldClassName}
+      />
+    </div>
+  );
+});
+
+const MaskStaticFieldControl: React.FC<{
+  item: Item & { mask: NonNullable<Item['mask']> };
+  binding: TimelineMaskStaticControlBinding;
+  onChange: (field: TimelineMaskStaticControlBinding['field'], value: unknown) => void;
+}> = React.memo(({ item, binding, onChange }) => {
+  const { field, control } = binding;
+  switch (control.kind) {
+    case 'select':
+      return (
+        <div>
+          <label className={labelClassName}>{control.label}</label>
+          <RemotionSelect
+            aria-label={control.ariaLabel}
+            value={String(item.mask[field])}
+            onChange={(event) => onChange(field, event.target.value)}
+            className={fieldClassName}
+          >
+            {Object.entries(control.options).map(([value, option]) => (
+              <option key={value} value={value}>{option.label}</option>
+            ))}
+          </RemotionSelect>
+        </div>
+      );
+    case 'toggle': {
+      const active = Boolean(item.mask[field]);
+      return (
+        <RemotionButton
+          type="button"
+          aria-label={control.ariaLabel}
+          aria-pressed={active}
+          onClick={() => onChange(field, !active)}
+          className={`${controlRadiusClassName} border px-3 py-1.5 font-medium transition-colors ${editorTypeClassName.control} ${
+            active
+              ? 'border-brand/50 bg-brand-light text-brand'
+              : 'border-warm-border bg-warm-page/40 text-stone-600 dark:text-stone-300'
+          }`}
+        >
+          {control.label}
+        </RemotionButton>
+      );
+    }
+    default: {
+      const unsupported: never = control;
+      throw new Error(`Unsupported Timeline mask control: ${String(unsupported)}`);
+    }
+  }
+});
+
+const MaskControls: React.FC<{
+  trackId: string;
+  item: Item;
+}> = React.memo(({ trackId, item }) => {
+  const dispatch = useEditorDispatch();
+  const updateItem = (updates: Partial<Item>) => dispatch({
+    type: 'UPDATE_ITEM',
+    payload: { trackId, itemId: item.id, updates },
+  });
+  if (!item.mask) {
+    return (
+      <RemotionButton
+        type="button"
+        aria-label="Add mask"
+        onClick={() => updateItem({
+          mask: createDefaultTimelineItemMask(),
+        } as Partial<Item>)}
+        className={`${controlRadiusClassName} border border-warm-border bg-warm-page/40 px-3 py-1.5 font-medium text-slate-700 transition-colors hover:border-brand/40 hover:bg-brand-light dark:text-stone-200 ${editorTypeClassName.control}`}
+      >
+        Add mask
+      </RemotionButton>
+    );
+  }
+
+  const maskedItem = item as Item & { mask: NonNullable<Item['mask']> };
+  const updateMaskField = (
+    field: TimelineMaskStaticControlBinding['field'],
+    value: unknown,
+  ) => updateItem({
+    mask: { ...maskedItem.mask, [field]: value },
+  } as Partial<Item>);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <RemotionButton
+          type="button"
+          aria-label="Remove mask"
+          onClick={() => updateItem({
+            mask: undefined,
+            keyframes: removeTimelineMaskKeyframes(item.keyframes),
+          } as Partial<Item>)}
+          className={`${controlRadiusClassName} border border-warm-border bg-warm-surface px-2.5 py-1.5 text-stone-500 transition-colors hover:border-red-300 hover:text-red-600 ${editorTypeClassName.control}`}
+        >
+          Remove
+        </RemotionButton>
+      </div>
+      {TIMELINE_MASK_STATIC_CONTROL_BINDINGS.map((binding) => (
+        <MaskStaticFieldControl
+          key={binding.field}
+          item={maskedItem}
+          binding={binding}
+          onChange={updateMaskField}
+        />
+      ))}
+      {TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS.map((binding) => (
+        <MaskVectorKeyframeControl
+          key={binding.channel}
+          trackId={trackId}
+          item={maskedItem}
+          binding={binding}
+        />
+      ))}
+      {TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS.map((binding) => (
+        <MaskScalarKeyframeControl
+          key={binding.channel}
+          trackId={trackId}
+          item={maskedItem}
+          binding={binding}
+        />
+      ))}
+      <p className={`m-0 text-stone-400 ${editorTypeClassName.caption}`}>
+        Mask coordinates are relative to this clip.
+      </p>
     </div>
   );
 });
@@ -903,6 +1250,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     )
     : Math.max(1, item.durationInFrames);
   const supportsVisualTransform = item.type !== 'transition' && item.type !== 'audio';
+  const supportsMask = (TIMELINE_MASK_APPLIES_TO_ITEM_TYPES as readonly string[])
+    .includes(item.type);
   const subtitleItem = isSubtitleTextItem(item) ? item : null;
   const parsedMgSpec = item.type === 'composition'
     ? MgCompositionSpecSchema.safeParse((item as CompositionItem).spec)
@@ -1001,14 +1350,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    value={item.properties?.width ?? 1}
+                    value={item.properties?.width ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.width}
                     onChange={(e) => updateItem({
                       properties: {
                         ...item.properties,
-                        x: item.properties?.x ?? 0,
-                        y: item.properties?.y ?? 0,
+                        x: item.properties?.x ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.x,
+                        y: item.properties?.y ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.y,
                         width: parseFloat(e.target.value) || 0,
-                        height: item.properties?.height ?? 1,
+                        height: item.properties?.height ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.height,
                       }
                     })}
                     className={`${fieldClassName} border-0 bg-transparent pl-0 focus:ring-0`}
@@ -1021,13 +1370,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    value={item.properties?.height ?? 1}
+                    value={item.properties?.height ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.height}
                     onChange={(e) => updateItem({
                       properties: {
                         ...item.properties,
-                        x: item.properties?.x ?? 0,
-                        y: item.properties?.y ?? 0,
-                        width: item.properties?.width ?? 1,
+                        x: item.properties?.x ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.x,
+                        y: item.properties?.y ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.y,
+                        width: item.properties?.width ?? TIMELINE_SHARED_DEFAULTS.itemBase.properties.width,
                         height: parseFloat(e.target.value) || 0,
                       }
                     })}
@@ -1061,6 +1410,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               Layer order follows the track stack.
             </p>
           </div>
+        </div>
+        )}
+
+        {supportsMask && (
+        <div className={inspectorSectionClassName}>
+          <h3 className={sectionTitleClassName}>Mask</h3>
+          <MaskControls trackId={trackId} item={item} />
         </div>
         )}
 
@@ -1141,9 +1497,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     type="number"
                     min={0}
                     step={1}
-                    value={item.sourceStartInFrames ?? 0}
+                    value={item.sourceStartInFrames ?? TIMELINE_SHARED_DEFAULTS[item.type].sourceStartInFrames}
                     onChange={(event) => updateItem({
-                      sourceStartInFrames: Math.max(0, parseInt(event.target.value, 10) || 0),
+                      sourceStartInFrames: Math.max(
+                        0,
+                        parseInt(event.target.value, 10)
+                          || TIMELINE_SHARED_DEFAULTS[item.type].sourceStartInFrames,
+                      ),
                     } as Partial<typeof item>)}
                     className={fieldClassName}
                   />
@@ -1161,7 +1521,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             <h3 className={sectionTitleClassName}>Layout</h3>
             <MediaFitControl
               value={item.mediaFit}
-              fallback={item.type === 'sticker' ? 'contain' : 'fill'}
+              fallback={TIMELINE_SHARED_DEFAULTS[item.type].mediaFit}
               onChange={(mediaFit) => updateItem({ mediaFit } as Partial<typeof item>)}
             />
           </div>
@@ -1296,7 +1656,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                             effectName={displayName}
                             name={name}
                             definition={parameter}
-                            value={effect.params?.[name] ?? parameter.default}
+                            value={resolveEffectParameterValue(effect.params?.[name], parameter)}
                             onChange={(value) => updateItem({
                               effects: item.effects?.map((candidate, index) => index === effectIndex
                                 ? { ...candidate, params: { ...(candidate.params ?? {}), [name]: value } }
@@ -1524,9 +1884,15 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       aria-label="Image fade in frames"
                       type="number"
                       min={0}
-                      value={item.imageFadeIn ?? 0}
+                      value={item.imageFadeIn ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeIn}
                       onChange={(e) =>
-                        updateItem({ imageFadeIn: Math.max(0, parseInt(e.target.value, 10) || 0) } as Partial<typeof item>)
+                        updateItem({
+                          imageFadeIn: Math.max(
+                            0,
+                            parseInt(e.target.value, 10)
+                              || TIMELINE_SHARED_DEFAULTS.image.imageFadeIn,
+                          ),
+                        } as Partial<typeof item>)
                       }
                       className={fieldClassName}
                     />
@@ -1537,9 +1903,15 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       aria-label="Image fade out frames"
                       type="number"
                       min={0}
-                      value={item.imageFadeOut ?? 0}
+                      value={item.imageFadeOut ?? TIMELINE_SHARED_DEFAULTS.image.imageFadeOut}
                       onChange={(e) =>
-                        updateItem({ imageFadeOut: Math.max(0, parseInt(e.target.value, 10) || 0) } as Partial<typeof item>)
+                        updateItem({
+                          imageFadeOut: Math.max(
+                            0,
+                            parseInt(e.target.value, 10)
+                              || TIMELINE_SHARED_DEFAULTS.image.imageFadeOut,
+                          ),
+                        } as Partial<typeof item>)
                       }
                       className={fieldClassName}
                     />
@@ -1616,9 +1988,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   aria-label="Text font size"
                   type="number"
                   min={1}
-                  value={(item as TextItem).fontSize || 60}
+                  value={(item as TextItem).fontSize || TIMELINE_SHARED_DEFAULTS.text.fontSize}
                   onChange={(e) =>
-                    updateItem({ fontSize: Math.max(1, parseInt(e.target.value, 10) || 60) })
+                    updateItem({
+                      fontSize: Math.max(
+                        1,
+                        parseInt(e.target.value, 10) || TIMELINE_SHARED_DEFAULTS.text.fontSize,
+                      ),
+                    })
                   }
                   className={fieldClassName}
                 />
@@ -1627,7 +2004,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <span className={labelClassName}>Alignment</span>
                 <RemotionSelect
                   aria-label="Text alignment"
-                  value={(item as TextItem).textAlign ?? 'center'}
+                  value={(item as TextItem).textAlign ?? TIMELINE_SHARED_DEFAULTS.text.textAlign}
                   onChange={(event) => updateItem({
                     textAlign: event.target.value as TextItem['textAlign'],
                   })}
@@ -1646,9 +2023,10 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   aria-label="Text letter spacing in pixels"
                   type="number"
                   step={0.1}
-                  value={(item as TextItem).letterSpacingPx ?? 0}
+                  value={(item as TextItem).letterSpacingPx ?? TIMELINE_SHARED_DEFAULTS.text.letterSpacingPx}
                   onChange={(event) => updateItem({
-                    letterSpacingPx: Number(event.target.value) || 0,
+                    letterSpacingPx: Number(event.target.value)
+                      || TIMELINE_SHARED_DEFAULTS.text.letterSpacingPx,
                   })}
                   className={fieldClassName}
                 />
@@ -1660,9 +2038,12 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   type="number"
                   min={0.5}
                   step={0.05}
-                  value={(item as TextItem).lineHeight ?? 1.1}
+                  value={(item as TextItem).lineHeight ?? TIMELINE_SHARED_DEFAULTS.text.lineHeight}
                   onChange={(event) => updateItem({
-                    lineHeight: Math.max(0.5, Number(event.target.value) || 1.1),
+                    lineHeight: Math.max(
+                      0.5,
+                      Number(event.target.value) || TIMELINE_SHARED_DEFAULTS.text.lineHeight,
+                    ),
                   })}
                   className={fieldClassName}
                 />
@@ -1671,7 +2052,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             <label className="mb-3 block">
               <span className={labelClassName}>Font family</span>
               <RemotionSelect
-                value={(item as TextItem).fontFamily || 'Arial'}
+                value={(item as TextItem).fontFamily || TIMELINE_SHARED_DEFAULTS.text.fontFamily}
                 onChange={(e) => updateItem({ fontFamily: e.target.value })}
                 className={fieldClassName}
               >
@@ -1686,7 +2067,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             <label className="block">
               <span className={labelClassName}>Font weight</span>
               <RemotionSelect
-                value={(item as TextItem).fontWeight || 'bold'}
+                value={(item as TextItem).fontWeight || TIMELINE_SHARED_DEFAULTS.text.fontWeight}
                 onChange={(e) => updateItem({ fontWeight: e.target.value })}
                 className={fieldClassName}
               >
@@ -1717,7 +2098,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <span className={labelClassName}>Position</span>
                 <RemotionSelect
                   aria-label="Caption position"
-                  value={subtitleItem.style?.position ?? 'bottom'}
+                  value={subtitleItem.style?.position ?? TIMELINE_CAPTION_STYLE_DEFAULTS.position}
                   onChange={(event) => updateItem({
                     style: {
                       ...subtitleItem.style,
@@ -1737,11 +2118,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   aria-label="Caption font size"
                   type="number"
                   min={1}
-                  value={subtitleItem.style?.fontSize ?? 48}
+                  value={subtitleItem.style?.fontSize ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontSize}
                   onChange={(event) => updateItem({
                     style: {
                       ...subtitleItem.style,
-                      fontSize: Math.max(1, parseInt(event.target.value, 10) || 48),
+                      fontSize: Math.max(
+                        1,
+                        parseInt(event.target.value, 10) || TIMELINE_CAPTION_STYLE_DEFAULTS.fontSize,
+                      ),
                     },
                   })}
                   className={fieldClassName}
@@ -1754,7 +2138,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <RemotionInput
                   aria-label="Caption text color"
                   type="text"
-                  value={subtitleItem.style?.color ?? subtitleItem.color}
+                  value={subtitleItem.style?.color ?? TIMELINE_CAPTION_STYLE_DEFAULTS.color}
                   onChange={(event) => updateItem({
                     style: { ...subtitleItem.style, color: event.target.value },
                   })}
@@ -1766,7 +2150,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <RemotionInput
                   aria-label="Caption background color"
                   type="text"
-                  value={subtitleItem.style?.backgroundColor ?? 'transparent'}
+                  value={subtitleItem.style?.backgroundColor ?? TIMELINE_CAPTION_STYLE_DEFAULTS.backgroundColor}
                   onChange={(event) => updateItem({
                     style: { ...subtitleItem.style, backgroundColor: event.target.value },
                   })}
@@ -1779,7 +2163,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <RemotionInput
                 aria-label="Caption font family"
                 type="text"
-                value={subtitleItem.style?.fontFamily ?? 'Arial'}
+                value={subtitleItem.style?.fontFamily ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontFamily}
                 onChange={(event) => updateItem({
                   style: { ...subtitleItem.style, fontFamily: event.target.value },
                 })}
@@ -1790,7 +2174,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <span className={labelClassName}>Font weight</span>
               <RemotionSelect
                 aria-label="Caption font weight"
-                value={String(subtitleItem.style?.fontWeight ?? 700)}
+                value={String(subtitleItem.style?.fontWeight ?? TIMELINE_CAPTION_STYLE_DEFAULTS.fontWeight)}
                 onChange={(event) => updateItem({
                   style: {
                     ...subtitleItem.style,

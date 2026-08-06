@@ -21,6 +21,67 @@ export interface PromptPart {
   label?: string;
 }
 
+/** Provider-ready prompt sequence for models that consume an ordered
+ * multimodal context instead of a text prompt plus grouped reference lists. */
+export type OrderedPromptContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image' | 'video' | 'audio'; url: string };
+
+/** Preserve authored inline order, then append global references that were not
+ * already mentioned. The caller (a model/provider adapter) decides whether
+ * this composition applies; the helper does not select models or wire shapes. */
+export function appendUnmentionedGlobalReferences(
+  inlineParts: ReadonlyArray<OrderedPromptContentPart>,
+  globalReferences: ReadonlyArray<Exclude<OrderedPromptContentPart, { type: 'text' }>>,
+): OrderedPromptContentPart[] {
+  const seenUrls = new Set(
+    inlineParts.flatMap((part) => part.type === 'text' ? [] : [part.url]),
+  );
+  const result = [...inlineParts];
+  for (const reference of globalReferences) {
+    if (seenUrls.has(reference.url)) continue;
+    seenUrls.add(reference.url);
+    result.push(reference);
+  }
+  return result;
+}
+
+export function composeOrderedPromptContent(input: {
+  prompt: string;
+  inlineParts: ReadonlyArray<OrderedPromptContentPart>;
+  globalReferences: ReadonlyArray<Exclude<OrderedPromptContentPart, { type: 'text' }>>;
+}): OrderedPromptContentPart[] {
+  const result = appendUnmentionedGlobalReferences(input.inlineParts, input.globalReferences);
+  if (!result.some((part) => part.type === 'text') && input.prompt) {
+    result.unshift({ type: 'text', text: input.prompt });
+  }
+  return result;
+}
+
+export interface PositionalReferencePromptInput {
+  parts: ReadonlyArray<OrderedPromptContentPart>;
+  references: Partial<Record<'image' | 'video' | 'audio', ReadonlyArray<string>>>;
+  tokens: Partial<Record<'image' | 'video' | 'audio', string>>;
+}
+
+/** Render an authored multimodal sequence into a provider's numbered-token
+ * prompt dialect. Indexes are one-based and scoped independently per modality. */
+export function renderPositionalReferencePrompt(input: PositionalReferencePromptInput): string {
+  return input.parts.map((part) => {
+    if (part.type === 'text') return part.text;
+    const references = input.references[part.type] ?? [];
+    const index = references.indexOf(part.url);
+    if (index < 0) {
+      throw new Error(`Inline ${part.type} reference is missing from the provider reference list.`);
+    }
+    const template = input.tokens[part.type];
+    if (!template) {
+      throw new Error(`Provider token template is missing for inline ${part.type} references.`);
+    }
+    return template.split('{n}').join(String(index + 1));
+  }).join('');
+}
+
 /** An extracted asset reference from a prompt */
 export interface AssetRef {
   nodeId: string;

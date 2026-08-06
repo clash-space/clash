@@ -6,6 +6,8 @@ import { dirname, join } from "node:path";
 import {
   clashHomeForLocalDataDir,
   defaultLocalApiDataDir,
+  resolveClashProfile,
+  type ClashRuntimeProfile,
 } from "@clash/shared-runtime/local-paths";
 import {
   LOCAL_HOST_PROTOCOL_VERSION,
@@ -44,14 +46,49 @@ function processExists(pid: number): boolean {
   }
 }
 
-function isUsableHost(value: unknown): value is PluginHostRecord {
+function isUsableHost(value: unknown, profile: ClashRuntimeProfile): value is PluginHostRecord {
   return isLocalHostDiscoveryRecord(value)
+    && (value.profile ?? "prod") === profile
     && isCompatibleHost(value, LOCAL_HOST_PROTOCOL_VERSION)
     && processExists(value.pid)
     && Boolean(value.agentCliPath?.trim());
 }
 
-export async function readActivePluginHost(runDir: string): Promise<PluginHostRecord | undefined> {
+function ambientDesktopHost(
+  env: NodeJS.ProcessEnv,
+  profile: ClashRuntimeProfile,
+): PluginHostRecord | undefined {
+  const endpoint = env.CLASH_API_URL?.trim();
+  if (!endpoint) return undefined;
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+  } catch {
+    return undefined;
+  }
+  const agentCliPath = env.CLASH_CLI_ENTRY_PATH?.trim()
+    || fileURLToPath(new URL("./clash-cli.cjs", import.meta.url));
+  const now = new Date().toISOString();
+  return {
+    schemaVersion: 1,
+    protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+    dataSchemaVersion: 1,
+    hostId: "ambient-desktop-host",
+    endpoint,
+    pid: process.pid,
+    launchMode: "desktop",
+    startedBy: "desktop",
+    profile,
+    agentCliPath,
+    startedAt: now,
+    updatedAt: now,
+  };
+}
+
+export async function readActivePluginHost(
+  runDir: string,
+  profile: ClashRuntimeProfile = resolveClashProfile(),
+): Promise<PluginHostRecord | undefined> {
   let value: unknown;
   try {
     value = JSON.parse(await readFile(join(runDir, "host.json"), "utf8"));
@@ -61,7 +98,7 @@ export async function readActivePluginHost(runDir: string): Promise<PluginHostRe
     }
     throw error;
   }
-  return isUsableHost(value) ? value : undefined;
+  return isUsableHost(value, profile) ? value : undefined;
 }
 
 function delay(ms: number): Promise<void> {
@@ -122,6 +159,7 @@ async function waitForOwnedHost(options: {
   child: ChildProcess;
   ownerClientId: string;
   runDir: string;
+  profile: ClashRuntimeProfile;
   stderr: () => string;
 }): Promise<PluginHostRecord> {
   const deadline = Date.now() + 10_000;
@@ -129,7 +167,7 @@ async function waitForOwnedHost(options: {
     if (options.child.exitCode !== null) {
       throw new Error(`Bundled Clash local-api exited before startup.${options.stderr()}`);
     }
-    const host = await readActivePluginHost(options.runDir);
+    const host = await readActivePluginHost(options.runDir, options.profile);
     if (host?.ownerClientId === options.ownerClientId
       && host.launchMode === "plugin"
       && host.startedBy === "plugin") {
@@ -171,6 +209,7 @@ async function startBundledHost(context: Parameters<StartHost>[0]): Promise<Owne
   const localApiEntry = fileURLToPath(new URL("./local-api.cjs", import.meta.url));
   const cliEntry = fileURLToPath(new URL("./clash-cli.cjs", import.meta.url));
   const pluginRoot = dirname(dirname(localApiEntry));
+  const profile = resolveClashProfile(context.env);
   let stderr = "";
   const child = spawn(process.execPath, [localApiEntry], {
     env: {
@@ -197,6 +236,7 @@ async function startBundledHost(context: Parameters<StartHost>[0]): Promise<Owne
       child,
       ownerClientId: context.ownerClientId,
       runDir: context.runDir,
+      profile,
       stderr: () => stderr ? `\n${stderr}` : "",
     });
   } catch (error) {
@@ -229,11 +269,12 @@ export function createPluginHostManager(options: {
   startHost?: StartHost;
 } = {}): PluginHostManager {
   const env = options.env ?? process.env;
+  const profile = resolveClashProfile(env);
   const dataDir = options.dataDir ?? defaultLocalApiDataDir(env);
   const clashHome = clashHomeForLocalDataDir(dataDir);
   const runDir = options.runDir ?? join(clashHome, "run");
   const ownerClientId = options.ownerClientId ?? `codex-plugin-${randomUUID()}`;
-  const readHost = options.readHost ?? (() => readActivePluginHost(runDir));
+  const readHost = options.readHost ?? (() => readActivePluginHost(runDir, profile));
   const startHost = options.startHost ?? startBundledHost;
   let owned: OwnedPluginHost | undefined;
   let ensuring: Promise<PluginHostRecord> | undefined;
@@ -241,6 +282,8 @@ export function createPluginHostManager(options: {
 
   const establish = async (): Promise<PluginHostRecord> => {
     if (closed) throw new Error("Clash plugin host manager is closed");
+    const ambient = ambientDesktopHost(env, profile);
+    if (ambient) return ambient;
     const active = await readHost();
     if (active) return active;
     const releaseStartupLock = await acquireStartupLock(runDir);

@@ -27,6 +27,15 @@ const makeState = (): EditorState => ({
 });
 
 describe('Timeline editor history', () => {
+  it('fails closed when an editor action has no reducer executor', () => {
+    const initial = createEditorHistoryState(makeState());
+
+    expect(() => editorHistoryReducer(
+      initial,
+      { type: 'FUTURE_UNHANDLED_ACTION' } as never,
+    )).toThrow(/Unhandled Timeline editor action/);
+  });
+
   it('undoes and redoes a Timeline document edit', () => {
     const initial = createEditorHistoryState(makeState());
     const edited = editorHistoryReducer(initial, {
@@ -47,6 +56,35 @@ describe('Timeline editor history', () => {
     expect(redone.present.tracks[0].items[0].from).toBe(45);
     expect(redone.past).toHaveLength(1);
     expect(redone.future).toHaveLength(0);
+  });
+
+  it('undoes and redoes clip-local mask keyframes with the item edit', () => {
+    const initial = createEditorHistoryState(makeState());
+    const mask = {
+      shape: 'ellipse' as const,
+      position: [50, 50] as const,
+      size: [70, 70] as const,
+      rotation: 0,
+      feather: 0,
+      inverted: false,
+    };
+    const keyframes = {
+      maskPosition: [
+        { frame: 0, value: [50, 50] as const, interpolation: 'linear' as const },
+        { frame: 20, value: [75, 50] as const, interpolation: 'linear' as const },
+      ],
+    };
+    const edited = editorHistoryReducer(initial, {
+      type: 'UPDATE_ITEM',
+      payload: { trackId: 'primary', itemId: 'clip', updates: { mask, keyframes } },
+    });
+
+    expect(edited.present.tracks[0].items[0]).toMatchObject({ mask, keyframes });
+    const undone = editorHistoryReducer(edited, { type: 'UNDO' });
+    expect(undone.present.tracks[0].items[0].mask).toBeUndefined();
+    expect(undone.present.tracks[0].items[0].keyframes).toBeUndefined();
+    const redone = editorHistoryReducer(undone, { type: 'REDO' });
+    expect(redone.present.tracks[0].items[0]).toMatchObject({ mask, keyframes });
   });
 
   it('does not record playback, selection, or zoom as Timeline edits', () => {

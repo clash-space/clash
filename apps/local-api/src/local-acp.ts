@@ -57,6 +57,7 @@ export interface SessionStartParamsLike {
     args?: string[];
     env?: Record<string, string>;
   };
+  config_options?: Record<string, string | boolean>;
   permission_mode?: string;
   agent_member_id?: string;
   project_id?: string;
@@ -2247,6 +2248,9 @@ export class LocalAcpRuntimeAdapter implements LocalAcpAdapter {
       agent_template_id: params.agentTemplateId,
       agent_id: agent.id,
       agent_spec: agent.spec,
+      ...(params.configValues && Object.keys(params.configValues).length > 0
+        ? { config_options: params.configValues }
+        : {}),
       ...(params.permissionMode ? { permission_mode: params.permissionMode } : {}),
       ...(params.agentMemberId ? { agent_member_id: params.agentMemberId } : {}),
       ...(params.projectId ? { project_id: params.projectId } : {}),

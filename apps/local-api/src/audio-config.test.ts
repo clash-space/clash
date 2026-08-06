@@ -16,6 +16,196 @@ afterEach(async () => {
 });
 
 describe("local audio config", () => {
+  it("returns a disabled voice-input gate without probing either speech runtime", async () => {
+    const asrRuntime: LocalAsrRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      transcribe: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const ttsRuntime: LocalTtsRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      synthesize: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const store = createLocalAudioConfigStore({ dataDir, asrRuntime, ttsRuntime });
+
+    await expect(store.getVoiceInputConfig()).resolves.toMatchObject({
+      asr: {
+        enabled: false,
+        ready: false,
+        setup: { status: "disabled" },
+      },
+    });
+    expect(asrRuntime.status).not.toHaveBeenCalled();
+    expect(ttsRuntime.status).not.toHaveBeenCalled();
+  });
+
+  it("coalesces adjacent runtime status probes for the same model", async () => {
+    const asrRuntime: LocalAsrRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      transcribe: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const ttsRuntime: LocalTtsRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      synthesize: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const store = createLocalAudioConfigStore({ dataDir, asrRuntime, ttsRuntime });
+
+    await Promise.all([
+      store.getPublicConfig(),
+      store.getReadState?.(),
+      store.getModelStatus({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" }),
+    ]);
+
+    expect(asrRuntime.status).toHaveBeenCalledTimes(1);
+    expect(ttsRuntime.status).toHaveBeenCalledTimes(1);
+
+    await store.getModelStatus({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+    expect(asrRuntime.status).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces concurrent voice-input warmups through the selected ASR runtime", async () => {
+    let releaseWarmup!: () => void;
+    const warmupGate = new Promise<void>((resolve) => {
+      releaseWarmup = resolve;
+    });
+    const asrRuntime: LocalAsrRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      warmup: vi.fn(async () => {
+        await warmupGate;
+        return { available: true };
+      }),
+      transcribe: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const ttsRuntime: LocalTtsRuntime = {
+      status: vi.fn(async () => ({ available: false })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      synthesize: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const store = createLocalAudioConfigStore({ dataDir, asrRuntime, ttsRuntime });
+    await store.updateFromRequest({
+      asr_enabled: true,
+      asr_model: "iic/SenseVoiceSmall",
+    });
+
+    const first = store.warmupVoiceInput?.();
+    const second = store.warmupVoiceInput?.();
+    await vi.waitFor(() => expect(asrRuntime.warmup).toHaveBeenCalledTimes(1));
+    releaseWarmup();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { available: true },
+      { available: true },
+    ]);
+    expect(asrRuntime.warmup).toHaveBeenCalledWith({
+      model: "iic/SenseVoiceSmall",
+      cacheDir: join(dataDir, "models", "speech", "asr"),
+    });
+  });
+
+  it("refreshes a cached runtime status after its bounded TTL", async () => {
+    vi.useFakeTimers();
+    try {
+      const asrRuntime: LocalAsrRuntime = {
+        status: vi.fn(async () => ({ available: true })),
+        deploy: vi.fn(async () => undefined),
+        transcribe: vi.fn(async () => {
+          throw new Error("not used");
+        }),
+      };
+      const store = createLocalAudioConfigStore({ dataDir, asrRuntime });
+
+      await store.getModelStatus({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+      await store.getModelStatus({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+      expect(asrRuntime.status).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(30_001);
+      await store.getModelStatus({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+      expect(asrRuntime.status).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("invalidates cached ASR status after config updates, installs, and removals", async () => {
+    const asrRuntime: LocalAsrRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      transcribe: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const ttsRuntime: LocalTtsRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      synthesize: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const store = createLocalAudioConfigStore({ dataDir, asrRuntime, ttsRuntime });
+
+    await store.getModelStatus({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+    expect(asrRuntime.status).toHaveBeenCalledTimes(1);
+
+    await store.updateFromRequest({ asr_enabled: true });
+    expect(asrRuntime.status).toHaveBeenCalledTimes(2);
+
+    await store.installBuiltin({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+    expect(asrRuntime.status).toHaveBeenCalledTimes(3);
+
+    await store.removeBuiltin({ capability: "speech-to-text", model: "iic/SenseVoiceSmall" });
+    expect(asrRuntime.status).toHaveBeenCalledTimes(4);
+  });
+
+  it("invalidates the selected TTS model cache after installation and removal", async () => {
+    const asrRuntime: LocalAsrRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      transcribe: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const ttsRuntime: LocalTtsRuntime = {
+      status: vi.fn(async () => ({ available: true })),
+      deploy: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      synthesize: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    };
+    const store = createLocalAudioConfigStore({ dataDir, asrRuntime, ttsRuntime });
+    const model = "zh_CN-huayan-medium";
+
+    await store.getModelStatus({ capability: "text-to-speech", model });
+    expect(ttsRuntime.status).toHaveBeenCalledTimes(1);
+
+    await store.installBuiltin({ capability: "text-to-speech", model });
+    expect(ttsRuntime.status).toHaveBeenCalledTimes(2);
+
+    await store.removeBuiltin({ capability: "text-to-speech", model });
+    expect(ttsRuntime.status).toHaveBeenCalledTimes(3);
+  });
+
   it("depends on an injected local ASR runtime for status, deploy, and transcription", async () => {
     const removedAudioSidecar = String.fromCharCode(97, 117, 100, 105, 111, 46, 106, 115, 111, 110);
     const runtime: LocalAsrRuntime = {

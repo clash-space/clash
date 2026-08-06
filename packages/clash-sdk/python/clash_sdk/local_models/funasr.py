@@ -134,6 +134,19 @@ def _normalize_transcription(
 class FunAsrLocalAsrRuntime:
     """FunASR adapter behind the generic local ASR runtime contract."""
 
+    def __init__(self) -> None:
+        self._models: dict[str, Any] = {}
+
+    def _model(self, model: str) -> Any:
+        cached = self._models.get(model)
+        if cached is not None:
+            return cached
+        from funasr import AutoModel
+
+        loaded = AutoModel(model=model, trust_remote_code=True)
+        self._models[model] = loaded
+        return loaded
+
     def status(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
         if importlib.util.find_spec("funasr") is None:
             return LocalModelStatus(
@@ -174,6 +187,7 @@ class FunAsrLocalAsrRuntime:
         AutoModel(model=model, trust_remote_code=True)
 
     def remove(self, model: str, cache_dir: str | None = None) -> None:
+        self._models.pop(model, None)
         explicit_path = Path(model).expanduser()
         if explicit_path.exists():
             raise ValueError("Refusing to remove an explicit local ASR model path")
@@ -190,10 +204,12 @@ class FunAsrLocalAsrRuntime:
         if cached_path.exists():
             shutil.rmtree(cached_path)
 
-    def transcribe(self, model: str, audio_path: str, language: str | None = None) -> LocalAsrTranscription:
-        from funasr import AutoModel
+    def warmup(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
+        self._model(model)
+        return LocalModelStatus(available=True)
 
-        asr_model = AutoModel(model=model, trust_remote_code=True)
+    def transcribe(self, model: str, audio_path: str, language: str | None = None) -> LocalAsrTranscription:
+        asr_model = self._model(model)
         kwargs: dict[str, Any] = {"input": audio_path}
         if language:
             kwargs["language"] = language

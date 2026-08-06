@@ -146,8 +146,9 @@ import { PresenceAwarenessProvider } from "./PresenceAwarenessContext";
 import { usePresenceAwareness } from "@clash/web-ui/hooks/usePresenceAwareness";
 import type { AwarenessBroadcastMessage } from "@clash/shared-types";
 import { CascadeRunnerMount } from "@clash/web-ui/hooks/useCascadeRunner";
-import { CustomActionDefinitionSchema, MODEL_CARDS } from "@clash/shared-types";
+import { CustomActionDefinitionSchema, MODEL_CARDS, customActionDefaultParams } from "@clash/shared-types";
 import { useCustomActions } from "@clash/web-ui/hooks/useCustomActions";
+import { useExecutablePluginActions } from "@clash/web-ui/hooks/useExecutablePluginActions";
 import { CustomActionsProvider } from "./CustomActionsContext";
 import {
   applyLayoutPatchesToLoro,
@@ -261,6 +262,7 @@ import {
   AgentSelectionAnnotationOverlay,
   type AgentSelectionAnnotationOverlayHandle,
 } from "./copilot/AgentSelectionAnnotationOverlay";
+import { handleSelectionAnnotationContextMenu } from "./copilot/selectionAnnotationContextMenu";
 
 const CHILD_NODE_Z_INDEX_BASE = 1000;
 const EMPTY_COPILOT_MESSAGES: [] = [];
@@ -2440,6 +2442,7 @@ export default function ProjectEditor({
 
   // Merge local (Loro) + global (D1) custom actions, deduplicate by ID
   const loroActions = useCustomActions(loroSync.doc);
+  const executablePluginActions = useExecutablePluginActions();
   const customActions = useMemo(() => {
     const merged = new Map<string, (typeof loroActions)[number]>();
     // Global actions first (from D1)
@@ -2462,12 +2465,16 @@ export default function ProjectEditor({
         /* skip invalid manifest */
       }
     }
+    // Activated Executable Plugin Cards override marketplace definitions.
+    for (const pluginAction of executablePluginActions) {
+      merged.set(pluginAction.id, pluginAction);
+    }
     // Loro actions override (local registrations take precedence)
     for (const la of loroActions) {
       merged.set(la.id, la);
     }
     return Array.from(merged.values());
-  }, [loroActions, globalActions]);
+  }, [loroActions, globalActions, executablePluginActions]);
 
   const toolbarMenu = [
     {
@@ -2484,7 +2491,7 @@ export default function ProjectEditor({
         { id: "action-badge-video", label: "Video Gen", icon: FilmSlate },
         { id: "action-badge-audio", label: "Audio Gen", icon: SpeakerHigh },
         { id: "action-badge-text", label: "Text Gen", icon: TextT },
-        ...customActions.map((a) => ({
+        ...customActions.filter((a) => a.presentation.type === "form").map((a) => ({
           id: `action-badge-custom-${a.id}`,
           label: `${a.runtime === "worker" ? "☁️ " : ""}${a.name}`,
           icon: PuzzlePiece,
@@ -2623,7 +2630,7 @@ export default function ProjectEditor({
           label: def?.name || "Custom Action",
           actionType: `custom:${customId}`,
           customActionId: customId,
-          customActionParams: {},
+          customActionParams: def ? customActionDefaultParams(def) : {},
           content: "# Prompt\nEnter your prompt here...",
           ...nodeData,
         };
@@ -6221,14 +6228,10 @@ export default function ProjectEditor({
                                       className="relative min-h-0 min-w-0 overflow-hidden"
                                       onContextMenuCapture={(event) => {
                                         clearAnnotationContextTarget();
-                                        const captured =
-                                          selectionAnnotationOverlayRef.current?.captureSelection(
-                                            event.currentTarget,
-                                          ) ?? false;
-                                        if (captured) {
-                                          event.preventDefault();
-                                          event.stopPropagation();
-                                        }
+                                        handleSelectionAnnotationContextMenu(
+                                          event,
+                                          selectionAnnotationOverlayRef,
+                                        );
                                       }}
                                     >
                                       {workspaceSurface.kind !==
@@ -7303,9 +7306,7 @@ export default function ProjectEditor({
                                           pendingAgentAnnotations
                                         }
                                         activeAnnotationId={activeAnnotationId}
-                                        onAnnotationOpen={
-                                          openAgentAnnotation
-                                        }
+                                        onAnnotationOpen={openAgentAnnotation}
                                         onAnnotationClose={() =>
                                           setActiveAnnotationId(null)
                                         }

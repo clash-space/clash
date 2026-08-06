@@ -48,6 +48,17 @@ describe("local host discovery file", () => {
     expect(record.agentCliPath).toBe("/tmp/clash-host/agent-bin/clash");
   });
 
+  it("publishes the runtime profile so clients cannot confuse dev and prod", () => {
+    const record = createHostDiscoveryRecord({
+      endpoint: "http://127.0.0.1:49321",
+      launchMode: "desktop",
+      startedBy: "desktop",
+      profile: "dev",
+    });
+
+    expect(record.profile).toBe("dev");
+  });
+
   it("honors CLASH_HOME for the default run directory", async () => {
     const previous = process.env.CLASH_HOME;
     const clashHome = await mkdtemp(join(tmpdir(), "clash-home-"));

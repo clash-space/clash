@@ -4201,7 +4201,7 @@ html.dark .clash-download-card {
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
-.clash-chat-input-surface:focus-within {
+.clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
   border-color: rgba(255, 107, 80, 0.38);
   background: linear-gradient(
     180deg,
@@ -4345,7 +4345,7 @@ html.dark .clash-download-card {
 
 .clash-auth-input:focus,
 .clash-input-surface:focus-within,
-.clash-chat-input-surface:focus-within {
+.clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
   border-color: color-mix(in srgb, var(--clash-accent) 46%, transparent);
 }
 
@@ -4399,7 +4399,7 @@ html.dark .clash-download-card {
 }
 
 .dark .clash-input-surface:focus-within,
-.dark .clash-chat-input-surface:focus-within {
+.dark .clash-chat-input-surface:has(.clash-chat-input-editor:focus-within) {
   border-color: color-mix(in srgb, var(--clash-accent) 54%, transparent);
   background: linear-gradient(
     180deg,

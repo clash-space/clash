@@ -3,6 +3,10 @@ import { createRequire } from "node:module";
 import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  ProviderUsageAuditEventSchema,
+  type ProviderUsageAuditEvent,
+} from "@clash/shared-types";
+import {
   providerAccountKey,
   type LocalProviderAccountConfig,
   type LocalProviderOAuthRecord,
@@ -138,6 +142,7 @@ function applySchema(db: SqliteDatabase): void {
       verification_uri TEXT,
       user_code TEXT,
       device_code TEXT,
+      oauth_state TEXT,
       interval_seconds INTEGER,
       account_label TEXT,
       expires_at TEXT,
@@ -146,6 +151,36 @@ function applySchema(db: SqliteDatabase): void {
       updated_at TEXT,
       PRIMARY KEY (user_id, provider_id, account_id)
     );
+
+    CREATE TABLE IF NOT EXISTS provider_usage_audit (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      provider_account_id TEXT,
+      model_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      project_id TEXT,
+      node_id TEXT,
+      actor_type TEXT,
+      actor_user_id TEXT,
+      actor_agent_id TEXT,
+      provider_request_id TEXT,
+      idempotency_key TEXT NOT NULL,
+      status TEXT NOT NULL,
+      estimated_cost_micro_usd INTEGER,
+      estimate_complete INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      pricing_source TEXT NOT NULL,
+      billing_basis TEXT NOT NULL,
+      error_code TEXT,
+      error_message TEXT,
+      occurred_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS provider_usage_audit_user_time_idx
+      ON provider_usage_audit (user_id, occurred_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS provider_usage_audit_task_idx
+      ON provider_usage_audit (user_id, task_id, occurred_at ASC);
   `);
   try {
     ensureLocalProviderSqliteColumns(db);
@@ -275,6 +310,7 @@ function providerOAuthTableSql(tableName: string): string {
       verification_uri TEXT,
       user_code TEXT,
       device_code TEXT,
+      oauth_state TEXT,
       interval_seconds INTEGER,
       account_label TEXT,
       expires_at TEXT,
@@ -341,6 +377,7 @@ function ensureLocalProviderSqliteColumns(db: SqliteDatabase): void {
     "verification_uri TEXT",
     "user_code TEXT",
     "device_code TEXT",
+    "oauth_state TEXT",
     "interval_seconds INTEGER",
     "account_label TEXT",
     "expires_at TEXT",
@@ -397,6 +434,7 @@ function ensureLocalProviderSqliteColumns(db: SqliteDatabase): void {
     "verification_uri",
     "user_code",
     "device_code",
+    "oauth_state",
     "interval_seconds",
     "account_label",
     "expires_at",
@@ -558,6 +596,7 @@ function hasPlaintextProviderOAuthSecrets(db: SqliteDatabase): boolean {
         OR (refresh_token IS NOT NULL AND refresh_token != '' AND refresh_token NOT LIKE '${SECRET_PREFIX}%')
         OR (user_code IS NOT NULL AND user_code != '' AND user_code NOT LIKE '${SECRET_PREFIX}%')
         OR (device_code IS NOT NULL AND device_code != '' AND device_code NOT LIKE '${SECRET_PREFIX}%')
+        OR (oauth_state IS NOT NULL AND oauth_state != '' AND oauth_state NOT LIKE '${SECRET_PREFIX}%')
   `) > 0;
 }
 
@@ -626,9 +665,9 @@ function replaceProviderOAuthUnsafe(db: SqliteDatabase, records: LocalProviderOA
   const insert = db.prepare(`
     INSERT INTO provider_oauth (
       user_id, provider_id, account_id, status, access_token, refresh_token,
-      token_type, verification_uri, user_code, device_code, interval_seconds,
+      token_type, verification_uri, user_code, device_code, oauth_state, interval_seconds,
       account_label, expires_at, error, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const record of records) {
     const userId = record.userId ?? "local-user";
@@ -651,6 +690,9 @@ function replaceProviderOAuthUnsafe(db: SqliteDatabase, records: LocalProviderOA
         : null,
       record.deviceCode
         ? encryptSecret(record.deviceCode, secretKey, providerOAuthAad(userId, record.providerId, accountId, "device_code"))
+        : null,
+      record.oauthState
+        ? encryptSecret(record.oauthState, secretKey, providerOAuthAad(userId, record.providerId, accountId, "oauth_state"))
         : null,
       record.intervalSeconds ?? null,
       record.accountLabel ?? null,
@@ -831,7 +873,7 @@ function replaceModelCardConfigsUnsafe(
 function decryptOAuthField(
   row: Record<string, unknown>,
   secretKey: Buffer,
-  field: "access_token" | "refresh_token" | "user_code" | "device_code",
+  field: "access_token" | "refresh_token" | "user_code" | "device_code" | "oauth_state",
 ): string | undefined {
   const value = rowOptionalString(row, field);
   if (!value) return undefined;
@@ -850,7 +892,7 @@ function decryptOAuthField(
 function readProviderOAuthUnsafe(db: SqliteDatabase, secretKey: Buffer): LocalProviderOAuthRecord[] {
   return db.prepare(`
     SELECT user_id, provider_id, account_id, status, access_token, refresh_token,
-           token_type, verification_uri, user_code, device_code, interval_seconds,
+           token_type, verification_uri, user_code, device_code, oauth_state, interval_seconds,
            account_label, expires_at, error, created_at, updated_at
       FROM provider_oauth
      ORDER BY user_id, provider_id, account_id
@@ -859,6 +901,7 @@ function readProviderOAuthUnsafe(db: SqliteDatabase, secretKey: Buffer): LocalPr
     const refreshToken = decryptOAuthField(row, secretKey, "refresh_token");
     const userCode = decryptOAuthField(row, secretKey, "user_code");
     const deviceCode = decryptOAuthField(row, secretKey, "device_code");
+    const oauthState = decryptOAuthField(row, secretKey, "oauth_state");
     return {
       userId: rowString(row, "user_id"),
       providerId: rowString(row, "provider_id") as LocalProviderOAuthRecord["providerId"],
@@ -870,6 +913,7 @@ function readProviderOAuthUnsafe(db: SqliteDatabase, secretKey: Buffer): LocalPr
       ...(rowOptionalString(row, "verification_uri") ? { verificationUri: rowOptionalString(row, "verification_uri") } : {}),
       ...(userCode ? { userCode } : {}),
       ...(deviceCode ? { deviceCode } : {}),
+      ...(oauthState ? { oauthState } : {}),
       ...(rowOptionalNumber(row, "interval_seconds") !== undefined ? { intervalSeconds: rowOptionalNumber(row, "interval_seconds") } : {}),
       ...(rowOptionalString(row, "account_label") ? { accountLabel: rowOptionalString(row, "account_label") } : {}),
       ...(rowOptionalString(row, "expires_at") ? { expiresAt: rowOptionalString(row, "expires_at") } : {}),
@@ -1055,6 +1099,82 @@ export function createLocalProviderStore(dataDir: string) {
     });
   }
 
+  async function appendProviderUsageEvent(input: ProviderUsageAuditEvent): Promise<void> {
+    const event = ProviderUsageAuditEventSchema.parse(input);
+    await withDb((db) => {
+      db.prepare(`
+        INSERT OR IGNORE INTO provider_usage_audit (
+          id, user_id, provider_id, provider_account_id, model_id, operation,
+          task_id, project_id, node_id, actor_type, actor_user_id, actor_agent_id,
+          provider_request_id, idempotency_key, status, estimated_cost_micro_usd,
+          estimate_complete, currency, pricing_source, billing_basis,
+          error_code, error_message, occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        event.id,
+        event.userId,
+        event.providerId,
+        event.providerAccountId ?? null,
+        event.modelId,
+        event.operation,
+        event.taskId,
+        event.projectId ?? null,
+        event.nodeId ?? null,
+        event.actorType ?? null,
+        event.actorUserId ?? null,
+        event.actorAgentId ?? null,
+        event.providerRequestId ?? null,
+        event.idempotencyKey,
+        event.status,
+        event.estimatedCostMicroUsd ?? null,
+        event.estimateComplete ? 1 : 0,
+        event.currency,
+        event.pricingSource,
+        JSON.stringify(event.billingBasis),
+        event.errorCode ?? null,
+        event.errorMessage ?? null,
+        event.occurredAt,
+      );
+    });
+  }
+
+  async function listProviderUsageEvents(userId: string, limit = 100): Promise<ProviderUsageAuditEvent[]> {
+    const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    if (!(await exists())) return [];
+    return withDb((db) => db.prepare(`
+      SELECT * FROM provider_usage_audit
+       WHERE user_id = ?
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT ?
+    `).all(userId, safeLimit).map((row) => ProviderUsageAuditEventSchema.parse({
+      id: rowString(row, "id"),
+      userId: rowString(row, "user_id"),
+      providerId: rowString(row, "provider_id"),
+      ...(rowOptionalString(row, "provider_account_id") ? { providerAccountId: rowOptionalString(row, "provider_account_id") } : {}),
+      modelId: rowString(row, "model_id"),
+      operation: rowString(row, "operation"),
+      taskId: rowString(row, "task_id"),
+      ...(rowOptionalString(row, "project_id") ? { projectId: rowOptionalString(row, "project_id") } : {}),
+      ...(rowOptionalString(row, "node_id") ? { nodeId: rowOptionalString(row, "node_id") } : {}),
+      ...(rowOptionalString(row, "actor_type") ? { actorType: rowOptionalString(row, "actor_type") } : {}),
+      ...(rowOptionalString(row, "actor_user_id") ? { actorUserId: rowOptionalString(row, "actor_user_id") } : {}),
+      ...(rowOptionalString(row, "actor_agent_id") ? { actorAgentId: rowOptionalString(row, "actor_agent_id") } : {}),
+      ...(rowOptionalString(row, "provider_request_id") ? { providerRequestId: rowOptionalString(row, "provider_request_id") } : {}),
+      idempotencyKey: rowString(row, "idempotency_key"),
+      status: rowString(row, "status"),
+      ...(rowOptionalNumber(row, "estimated_cost_micro_usd") !== undefined
+        ? { estimatedCostMicroUsd: rowOptionalNumber(row, "estimated_cost_micro_usd") }
+        : {}),
+      estimateComplete: row.estimate_complete === 1,
+      currency: rowString(row, "currency"),
+      pricingSource: rowString(row, "pricing_source"),
+      billingBasis: JSON.parse(rowString(row, "billing_basis")) as Record<string, unknown>,
+      ...(rowOptionalString(row, "error_code") ? { errorCode: rowOptionalString(row, "error_code") } : {}),
+      ...(rowOptionalString(row, "error_message") ? { errorMessage: rowOptionalString(row, "error_message") } : {}),
+      occurredAt: rowString(row, "occurred_at"),
+    })));
+  }
+
   return {
     path,
     exists,
@@ -1064,5 +1184,7 @@ export function createLocalProviderStore(dataDir: string) {
     saveProviderOAuth,
     loadModelCardConfigs,
     saveModelCardConfigs,
+    appendProviderUsageEvent,
+    listProviderUsageEvents,
   };
 }

@@ -29,6 +29,11 @@ export type ClashPluginServerOptions = {
   appBundles?: ClashPluginAppBundles;
 };
 
+// Temporary quarantine: keep the MCP App implementations in-tree, but do not
+// register any App-opening tools or ui:// resources until the surfaces are
+// ready to return as a coherent product experience.
+const MCP_APP_SURFACES_ENABLED = false;
+
 function composeClashPluginServer(
   runner: HostCliRunner,
   bundles: ClashPluginAppBundles,
@@ -37,17 +42,20 @@ function composeClashPluginServer(
     runner,
     bundledAppJavascript: bundles.canvas,
     bundledStudioAppJavascript: bundles.studio,
+    appSurfaces: MCP_APP_SURFACES_ENABLED,
   });
   const projectionRunner = (args: string[], cwd: string) => runner(args, cwd);
   registerTimelinePluginMcp(
     server,
     createTimelineAdapter({ run: projectionRunner }),
     bundles.timeline,
+    { appSurfaces: MCP_APP_SURFACES_ENABLED },
   );
   registerDirectorPluginMcp(
     server,
     createDirectorAdapter({ run: projectionRunner }),
     bundles.director,
+    { appSurfaces: MCP_APP_SURFACES_ENABLED },
   );
   return server;
 }

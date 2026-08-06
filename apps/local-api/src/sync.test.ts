@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LoroDoc } from "loro-crdt";
-import { Canvas } from "@clash/shared-types";
+import { Canvas, MODEL_CARDS } from "@clash/shared-types";
 import WebSocket from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -53,7 +53,437 @@ function countUpdateLogRecords(log: Buffer): number {
   return count;
 }
 
+function updateId(update: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of update) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${update.byteLength}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 describe("LocalLoroRoom", () => {
+  it("acknowledges a peer update after persisting it", async () => {
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/sync-ack",
+      workflowProcessor: null,
+    });
+    const sideband: Record<string, unknown>[] = [];
+    const peer = room.addPeer(() => {}, {
+      sendJson: (message) => sideband.push(message),
+    });
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("pending-node", {
+      id: "pending-node",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: { status: "pending" },
+    });
+
+    const update = clientDoc.export({ mode: "snapshot" });
+    await room.receive(peer, update);
+
+    expect(sideband).toContainEqual({ type: "sync_ack", updateId: updateId(update) });
+    expect(countUpdateLogRecords(await readFile(join(
+      dataDir,
+      "projects",
+      encodeURIComponent("project/sync-ack"),
+      "loro",
+      "updates.log",
+    )))).toBe(1);
+  });
+
+  it("serializes concurrent pending-work scans so one Canvas execute submits once", async () => {
+    let releaseGeneration!: () => void;
+    let markStarted!: () => void;
+    const generationStarted = new Promise<void>((resolve) => { markStarted = resolve; });
+    const generationGate = new Promise<void>((resolve) => { releaseGeneration = resolve; });
+    const generateVideo = vi.fn(async () => {
+      markStarted();
+      await generationGate;
+      return {
+        bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+        contentType: "video/mp4",
+        provider: "google",
+        modelEndpoint: "gemini-omni-flash-preview",
+      };
+    });
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/concurrent-provider-submit",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        aigc: {
+          generateVideo,
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const firstPeer = room.addPeer(() => {});
+    const secondPeer = room.addPeer(() => {});
+    const executeDoc = new LoroDoc();
+    executeDoc.getMap("nodes").set("gemini-output", {
+      id: "gemini-output",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "video-gen",
+        prompt: "text @[Image](node:image-ref) text",
+        modelId: "gemini-omni-flash",
+        duration: 3,
+        aspectRatio: "16:9",
+      },
+    });
+
+    const firstReceive = room.receive(firstPeer, executeDoc.export({ mode: "snapshot" }));
+    await generationStarted;
+
+    const concurrentDoc = new LoroDoc();
+    concurrentDoc.import(room.snapshot());
+    concurrentDoc.getMap("e2e").set("heartbeat", Date.now());
+    const secondReceive = room.receive(secondPeer, concurrentDoc.export({ mode: "snapshot" }));
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    expect(generateVideo).toHaveBeenCalledTimes(1);
+    releaseGeneration();
+    await Promise.all([firstReceive, secondReceive]);
+    expect(generateVideo).toHaveBeenCalledTimes(1);
+  });
+
+  it("flattens authored inline references only at the local provider boundary", async () => {
+    const generateText = vi.fn(async () => ({ text: "Compared", provider: "mock" }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/local-interleaved-text",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        aigc: {
+          generateText,
+          generateVideo: vi.fn(),
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("text-node", {
+      id: "text-node",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "text-gen",
+        prompt: "Compare @[First](node:image-a), then @[Second](node:image-b).",
+        modelId: "gpt-5.4",
+        modelParams: {},
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "Compare First, then Second.",
+    }));
+  });
+
+  it("maps the unified H3 start/end card slots before calling the desktop provider", async () => {
+    const generateVideo = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      contentType: "video/mp4",
+      provider: "minimax",
+      modelEndpoint: "MiniMax-H3",
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/h3-startend",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        aigc: {
+          generateVideo,
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("h3-startend-node", {
+      id: "h3-startend-node",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "video-gen",
+        prompt: "transition between frames",
+        modelId: "minimax-h3-startend",
+        referenceImageUrls: [
+          "https://media.clash.test/start.png",
+          "https://media.clash.test/end.png",
+        ],
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
+      model: "minimax-h3-startend",
+      startFrameUrl: "https://media.clash.test/start.png",
+      endFrameUrl: "https://media.clash.test/end.png",
+    }));
+    expect(generateVideo).toHaveBeenCalledWith(expect.not.objectContaining({
+      referenceImageUrls: expect.anything(),
+    }));
+  });
+
+  it("uses a hot-loaded plugin model Card when interpreting pending Canvas inputs", async () => {
+    const generateVideo = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      contentType: "video/mp4",
+      provider: "agent-provider",
+      modelEndpoint: "agent/start-end",
+    }));
+    const baseStartEnd = MODEL_CARDS.find((model) => model.id === "minimax-h3-startend")!;
+    const pluginCard = {
+      ...baseStartEnd,
+      id: "agent-start-end",
+      aliases: [],
+      name: "Agent Start End",
+    };
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/plugin-card-startend",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        modelCards: async () => [...MODEL_CARDS, pluginCard],
+        aigc: {
+          generateVideo,
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("plugin-startend-node", {
+      id: "plugin-startend-node",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "video-gen",
+        prompt: "transition",
+        modelId: "agent-start-end",
+        referenceImageUrls: [
+          "https://media.clash.test/start.png",
+          "https://media.clash.test/end.png",
+        ],
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
+      model: "agent-start-end",
+      startFrameUrl: "https://media.clash.test/start.png",
+      endFrameUrl: "https://media.clash.test/end.png",
+    }));
+  });
+
+  it("executes a pinned local action plugin directly without legacy runtime registration", async () => {
+    const binding = {
+      pluginId: "agent-caption-actions",
+      version: "1.2.0",
+      exportId: "run-caption-helper",
+      schemaHash: `sha256:${"c".repeat(64)}`,
+    } as const;
+    const executablePluginAction = vi.fn(async () => ({
+      protocol: "clash.plugin.result/v1" as const,
+      invocationId: "result-action-1",
+      status: "completed" as const,
+      outputs: [{ slot: "result", kind: "value" as const, value: { text: "Done" } }],
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/plugin-action",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        executablePluginAction,
+        aigc: {
+          generateVideo: vi.fn(),
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("plugin-action-node", {
+      id: "plugin-action-node",
+      type: "text",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "custom:caption-helper",
+        customActionId: "caption-helper",
+        customActionParams: { tone: "concise" },
+        outputType: "text",
+        prompt: "Caption this",
+        pluginBinding: binding,
+        actorType: "user",
+        actorUserId: "local-user",
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(executablePluginAction).toHaveBeenCalledWith(expect.objectContaining({
+      binding,
+      taskId: "local-custom-plugin-action-node",
+      projectId: "project/plugin-action",
+      nodeId: "plugin-action-node",
+      input: {
+        values: { prompt: "Caption this", tone: "concise" },
+        references: [],
+      },
+      actor: { kind: "user", id: "local-user" },
+    }));
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    expect(finalDoc.getMap("nodes").get("plugin-action-node")).toMatchObject({
+      data: { status: "completed", content: "Done", pluginBinding: binding },
+    });
+  });
+
+  it("pins the exact executable provider plugin binding on the generated Canvas node", async () => {
+    const authoredBinding = {
+      pluginId: "clash-first-party-media",
+      version: "0.1.0",
+      exportId: "fal-h3",
+      schemaHash: `sha256:${"b".repeat(64)}`,
+    } as const;
+    const generateVideo = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      contentType: "video/mp4",
+      provider: "fal",
+      modelEndpoint: "minimax/h3/text-to-video",
+      pluginBinding: authoredBinding,
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/plugin-binding",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        aigc: {
+          generateVideo,
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("h3-plugin-node", {
+      id: "h3-plugin-node",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "video-gen",
+        prompt: "paper city",
+        modelId: "minimax-h3",
+        pluginBinding: authoredBinding,
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project/plugin-binding",
+      nodeId: "h3-plugin-node",
+      pluginBinding: authoredBinding,
+    }));
+    const finalDoc = new LoroDoc();
+    finalDoc.import(room.snapshot());
+    expect(finalDoc.getMap("nodes").get("h3-plugin-node")).toMatchObject({
+      data: { pluginBinding: authoredBinding },
+    });
+  });
+
+  it("carries authored H3 reference badges to the desktop provider in order", async () => {
+    const generateVideo = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112]),
+      contentType: "video/mp4",
+      provider: "minimax",
+      modelEndpoint: "MiniMax-H3",
+    }));
+    const room = await LocalLoroRoom.open({
+      dataDir,
+      projectId: "project/h3-ordered",
+      workflowProcessor: createLocalWorkflowProcessor({
+        dataDir,
+        aigc: {
+          generateVideo,
+          generateImage: vi.fn(),
+          generateAudio: vi.fn(),
+          generateText: vi.fn(),
+        },
+      }),
+    });
+    const peer = room.addPeer(() => {});
+    const clientDoc = new LoroDoc();
+    clientDoc.getMap("nodes").set("image-ref", {
+      id: "image-ref",
+      type: "image",
+      position: { x: 0, y: 0 },
+      data: { status: "completed", assetId: "asset-image" },
+    });
+    clientDoc.getMap("nodes").set("video-ref", {
+      id: "video-ref",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: { status: "completed", assetId: "asset-video" },
+    });
+    clientDoc.getMap("nodes").set("h3-ref-node", {
+      id: "h3-ref-node",
+      type: "video",
+      position: { x: 0, y: 0 },
+      data: {
+        status: "pending",
+        actionType: "video-gen",
+        prompt: "Use @[Subject](node:image-ref), then @[Motion](node:video-ref).",
+        modelId: "minimax-h3-ref",
+        referenceImageAssetIds: ["asset-image"],
+        referenceVideoAssetIds: ["asset-video"],
+        referenceAudioAssetIds: ["asset-audio"],
+        referenceImageUrls: ["https://media.clash.test/subject.png"],
+        referenceVideoUrls: ["https://media.clash.test/motion.mp4"],
+        referenceAudioUrls: ["https://media.clash.test/ambience.mp3"],
+      },
+    });
+
+    await room.receive(peer, clientDoc.export({ mode: "snapshot" }));
+
+    expect(generateVideo).toHaveBeenCalledWith(expect.objectContaining({
+      orderedContentParts: [
+        { type: "text", text: "Use " },
+        { type: "image", url: "https://media.clash.test/subject.png" },
+        { type: "text", text: ", then " },
+        { type: "video", url: "https://media.clash.test/motion.mp4" },
+        { type: "text", text: "." },
+        { type: "audio", url: "https://media.clash.test/ambience.mp3" },
+      ],
+    }));
+  });
+
   it("broadcasts structured agent node add and update activity with its Canvas target", async () => {
     const room = await LocalLoroRoom.open({
       dataDir,

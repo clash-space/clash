@@ -4,10 +4,15 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
+  TIMELINE_DSL_DEFINITION,
+  TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,
+  TIMELINE_OPERATION_CATALOG,
   LoroSyncClient,
   projectTimelineReadToken,
   timelineDslToYaml,
+  type TimelineAgentOperationId,
   type ProjectTimeline,
+  type ResolvedTimelineDsl,
 } from "@clash/shared-types";
 import { requireApiKey, getServerUrl } from "../lib/config";
 import { isJsonMode, printJson, printTable } from "../lib/output";
@@ -95,6 +100,43 @@ type TimelineWorkspaceResult = {
   code?: string;
 };
 
+timelineCommand
+  .command("schema")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.schema"].description)
+  .option("--json", "Output the schema contract as JSON")
+  .action((options) => {
+    const example = structuredClone(
+      TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,
+    ) as unknown as ResolvedTimelineDsl;
+    const payload = {
+      ...TIMELINE_DSL_DEFINITION,
+      examples: {
+        ...TIMELINE_DSL_DEFINITION.examples,
+        maskKeyframesYaml: timelineDslToYaml(example),
+      },
+    };
+    if (isJsonMode(options)) printJson(payload);
+    else console.log(JSON.stringify(payload, null, 2));
+  });
+
+timelineCommand
+  .command("validate")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.validate"].description)
+  .requiredOption("--file <path>", "Timeline YAML or JSON projection to validate")
+  .option("--json", "Output the validation result as JSON")
+  .action((options) => {
+    const filePath = String(options.file);
+    const parsed = parseTimelineFileForApply(readFileSync(filePath, "utf8"));
+    if (!parsed.ok) throw new Error(`TIMELINE_DSL_INVALID: ${parsed.error}`);
+    const result = {
+      ok: true,
+      contractFingerprint: TIMELINE_DSL_DEFINITION.contractFingerprint,
+      sources: parsed.sources,
+    };
+    if (isJsonMode(options)) printJson(result);
+    else console.log(`Timeline DSL is valid (${result.contractFingerprint})`);
+  });
+
 function timelinePosition(value: unknown, option: string): number {
   const parsed = Number(value ?? 0);
   if (!Number.isFinite(parsed)) throw new Error(`${option} must be a finite number`);
@@ -160,7 +202,7 @@ function assertTimelineEntityHostWrite(operation: string): void {
 
 timelineCommand
   .command("list")
-  .description("List Project Timelines and their current owners")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.list"].description)
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--standalone", "Show only standalone Project Timelines")
   .option("--json", "Output result as JSON")
@@ -192,7 +234,7 @@ timelineCommand
 
 timelineCommand
   .command("create")
-  .description("Create a standalone Project Timeline")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.create"].description)
   .requiredOption("--id <id>", "Project-scoped Timeline ID")
   .requiredOption("--name <name>", "Timeline name")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
@@ -234,7 +276,7 @@ timelineCommand
 
 timelineCommand
   .command("attach")
-  .description("Move a standalone Timeline into one Canvas as a Timeline Action")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.attach"].description)
   .requiredOption("--timeline <id>", "Standalone Timeline ID")
   .requiredOption("--canvas <id>", "Owning Canvas ID")
   .option("--node <id>", "Timeline Action node ID (defaults to a generated ID)")
@@ -294,7 +336,7 @@ timelineCommand
 
 timelineCommand
   .command("detach")
-  .description("Move a Canvas-owned Timeline back to the Project root")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.detach"].description)
   .requiredOption("--timeline <id>", "Canvas-owned Timeline ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--json", "Output result as JSON")
@@ -335,7 +377,7 @@ timelineCommand
 
 timelineCommand
   .command("copy")
-  .description("Copy a Canvas-owned Timeline Action into another Canvas")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.copy"].description)
   .requiredOption("--timeline <id>", "Source Timeline ID")
   .requiredOption("--canvas <id>", "Target Canvas ID")
   .option("--new-timeline <id>", "New Timeline ID (defaults to a generated ID)")
@@ -402,7 +444,7 @@ timelineCommand
 
 timelineCommand
   .command("pull")
-  .description("Export a Project Timeline's current revision to a YAML file")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.pull"].description)
   .requiredOption("--timeline <id>", "Timeline ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--file <path>", "Timeline YAML path (default: timelines/<timeline-id>.timeline.yaml)")
@@ -456,7 +498,7 @@ timelineCommand
 
 timelineCommand
   .command("apply")
-  .description("Validate a timeline YAML file and advance the Project Timeline revision")
+  .description(TIMELINE_OPERATION_CATALOG.agent["timeline.apply"].description)
   .requiredOption("--timeline <id>", "Timeline ID")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
   .option("--file <path>", "Timeline YAML path (default: timelines/<timeline-id>.timeline.yaml)")
@@ -520,6 +562,68 @@ timelineCommand
     if (isJsonMode(options)) printJson(payload);
     else process.stderr.write(`applied ${filePath} to Timeline ${timelineId}\n`);
   });
+
+type TimelineCliOperationExecutor = Readonly<{
+  binding: `cli:timeline ${string}`;
+  command: Command;
+}>;
+
+function registeredTimelineCommand(commandName: string): Command {
+  const command = timelineCommand.commands.find(
+    (candidate) => candidate.name() === commandName,
+  );
+  if (!command) {
+    throw new Error(`Timeline CLI executor is not registered: ${commandName}`);
+  }
+  return command;
+}
+
+/**
+ * Transport adapter from the canonical Timeline operation id to the concrete
+ * Commander command which owns its action handler.
+ *
+ * Keep this literal explicit: the contract test compares its keys and bindings
+ * against every `cli:timeline` binding in TIMELINE_OPERATION_REGISTRY, so a new
+ * public CLI annotation cannot silently ship without a real executor.
+ */
+export const TIMELINE_CLI_OPERATION_EXECUTORS = Object.freeze({
+  "timeline.schema": {
+    binding: "cli:timeline schema",
+    command: registeredTimelineCommand("schema"),
+  },
+  "timeline.validate": {
+    binding: "cli:timeline validate",
+    command: registeredTimelineCommand("validate"),
+  },
+  "timeline.list": {
+    binding: "cli:timeline list",
+    command: registeredTimelineCommand("list"),
+  },
+  "timeline.create": {
+    binding: "cli:timeline create",
+    command: registeredTimelineCommand("create"),
+  },
+  "timeline.attach": {
+    binding: "cli:timeline attach",
+    command: registeredTimelineCommand("attach"),
+  },
+  "timeline.detach": {
+    binding: "cli:timeline detach",
+    command: registeredTimelineCommand("detach"),
+  },
+  "timeline.copy": {
+    binding: "cli:timeline copy",
+    command: registeredTimelineCommand("copy"),
+  },
+  "timeline.pull": {
+    binding: "cli:timeline pull",
+    command: registeredTimelineCommand("pull"),
+  },
+  "timeline.apply": {
+    binding: "cli:timeline apply",
+    command: registeredTimelineCommand("apply"),
+  },
+} satisfies Partial<Record<TimelineAgentOperationId, TimelineCliOperationExecutor>>);
 
 async function connectToProject(projectId: string): Promise<LoroSyncClient> {
   const apiKey = requireApiKey();

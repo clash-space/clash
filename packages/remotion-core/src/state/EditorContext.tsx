@@ -20,6 +20,10 @@ import {
   rippleDeleteTimelineKeyframes,
   sliceTimelineKeyframes,
 } from '../timelineKeyframes';
+import {
+  TIMELINE_EDITOR_ROOT_DEFAULT_OVERRIDES,
+  TIMELINE_SHARED_DEFAULTS,
+} from '../timelineFieldConsumers';
 
 function choosePrimaryTrackId(tracks: Track[], preferredId?: string | null): string | null {
   const preferred = preferredId ? tracks.find((track) => track.id === preferredId) : undefined;
@@ -450,19 +454,24 @@ function sliceSubtitleSticker(
 // Initial state (also exported for unit tests)
 export const editorInitialState: EditorState = {
   tracks: [],
-  primaryTrackId: null,
+  primaryTrackId: TIMELINE_SHARED_DEFAULTS.root.primaryTrackId,
   selectedItemId: null,
   selectedTrackId: null,
   currentFrame: 0,
   playing: false,
   zoom: 1,
   assets: [],
-  assetTranscripts: {},
-  compositionWidth: 1920,
-  compositionHeight: 1080,
-  fps: 30,
-  durationInFrames: 1500, // 50 seconds at 30fps
+  assetTranscripts: { ...TIMELINE_SHARED_DEFAULTS.root.assetTranscripts },
+  compositionWidth: TIMELINE_SHARED_DEFAULTS.root.compositionWidth,
+  compositionHeight: TIMELINE_SHARED_DEFAULTS.root.compositionHeight,
+  fps: TIMELINE_SHARED_DEFAULTS.root.fps,
+  durationInFrames: TIMELINE_EDITOR_ROOT_DEFAULT_OVERRIDES.durationInFrames,
 };
+
+function unhandledEditorAction(action: never): never {
+  const type = (action as { type?: unknown }).type;
+  throw new Error(`Unhandled Timeline editor action: ${String(type)}`);
+}
 
 // Reducer function — exported for unit tests; in app code consumers should
 // dispatch through useEditorDispatch and let the provider drive it.
@@ -901,7 +910,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, durationInFrames: action.payload };
 
     default:
-      return state;
+      return unhandledEditorAction(action);
   }
 }
 

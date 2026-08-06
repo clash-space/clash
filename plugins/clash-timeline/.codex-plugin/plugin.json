@@ -1,7 +1,7 @@
 {
   "name": "clash-timeline",
   "version": "0.1.0+codex.20260716034048",
-  "description": "Inspect and edit Clash Timelines through a focused Codex GUI and typed MCP tools.",
+  "description": "Inspect and edit Clash Timelines through typed MCP tools.",
   "author": {
     "name": "Clash Space"
   },
@@ -10,23 +10,23 @@
     "timeline",
     "video-editing",
     "codex",
-    "mcp-app"
+    "local-first"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Clash Timeline",
-    "shortDescription": "Edit project timelines in a focused Codex GUI",
-    "longDescription": "Open, inspect, create, and save Clash Project Timelines through an embedded MCP App while preserving the CLI read-proof and apply contract.",
+    "shortDescription": "Edit project timelines through typed tools",
+    "longDescription": "Inspect, create, and save Clash Project Timelines through typed MCP tools while preserving the CLI read-proof and apply contract. The embedded MCP App is temporarily unavailable.",
     "developerName": "Clash Space",
     "category": "Productivity",
     "capabilities": [
-      "Interactive",
+      "Read",
       "Write"
     ],
     "defaultPrompt": [
-      "Open the current project timeline GUI.",
+      "Inspect the current project timelines.",
       "Inspect the active timeline and summarize its tracks.",
-      "Create a new project timeline and open it."
+      "Create a new project timeline."
     ],
     "brandColor": "#E65F48"
   },

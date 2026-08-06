@@ -2,8 +2,11 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   timelineDslCanonicalJson,
   timelineDslFromYaml,
+  TIMELINE_DSL_FIELD_ANNOTATIONS,
+  validateTimelineDsl,
   type ResolvedTimelineDsl,
 } from "@clash/shared-types";
+import { parse as parseYaml } from "yaml";
 import {
   hashProjectionContent,
   resolveProjectionFilePathInsideCwd,
@@ -40,6 +43,44 @@ export type TimelineProjectionCasApply = {
   pullArgs: string[];
   applyArgs: string[];
 };
+
+const OMIT_TIMELINE_FIELD = Symbol("omit-timeline-field");
+
+type TimelineFieldNormalizer = (
+  value: unknown,
+) => unknown | typeof OMIT_TIMELINE_FIELD;
+
+function normalizeAnnotatedTimelineFields<
+  Fields extends Record<string, unknown>,
+>(
+  source: Record<string, unknown>,
+  fields: Fields,
+  normalizers: Partial<Record<keyof Fields & string, TimelineFieldNormalizer>>,
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const fieldName of Object.keys(fields)) {
+    const normalizer = normalizers[fieldName];
+    const value = normalizer
+      ? normalizer(source[fieldName])
+      : source[fieldName];
+    if (value !== undefined && value !== OMIT_TIMELINE_FIELD) {
+      normalized[fieldName] = value;
+    }
+  }
+  return normalized;
+}
+
+function timelineExtensionFields(
+  source: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  const annotated = new Set(Object.keys(fields));
+  return Object.fromEntries(
+    Object.entries(source).filter(
+      ([fieldName, value]) => !annotated.has(fieldName) && value !== undefined,
+    ),
+  );
+}
 
 export function resolveTimelineFilePath(options: {
   cwd: string;
@@ -80,6 +121,25 @@ export function timelineProjectionCasApply(options: {
 }
 
 export function parseTimelineFileForApply(raw: string): ParseTimelineApplyResult {
+  let authoredState: unknown;
+  try {
+    authoredState = parseYaml(raw);
+  } catch (error) {
+    return {
+      ok: false,
+      error: `YAML parse error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const contract = validateTimelineDsl(authoredState);
+  if (!contract.ok) {
+    return {
+      ok: false,
+      error: contract.issues.map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join(".") : "<root>";
+        return `${issue.ruleId} at ${path}: ${issue.message}`;
+      }).join("; "),
+    };
+  }
   const result = timelineDslFromYaml(raw);
   if (!result.ok) return result;
   return {
@@ -141,12 +201,34 @@ export function normalizeTimelineDslForYaml(raw: unknown): ResolvedTimelineDsl {
   const input = raw as Record<string, unknown>;
   const tracks = Array.isArray(input.tracks) ? input.tracks : [];
   return {
-    tracks: tracks.map((track, index) => normalizeTrackForYaml(track, index)),
-    compositionWidth: typeof input.compositionWidth === "number" ? input.compositionWidth : skeleton.compositionWidth,
-    compositionHeight: typeof input.compositionHeight === "number" ? input.compositionHeight : skeleton.compositionHeight,
-    fps: typeof input.fps === "number" ? input.fps : skeleton.fps,
-    durationInFrames: typeof input.durationInFrames === "number" ? input.durationInFrames : skeleton.durationInFrames,
-  };
+    ...timelineExtensionFields(input, TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+    ...normalizeAnnotatedTimelineFields(
+      input,
+      TIMELINE_DSL_FIELD_ANNOTATIONS.root,
+      {
+        compositionWidth: (value) =>
+          typeof value === "number" ? value : skeleton.compositionWidth,
+        compositionHeight: (value) =>
+          typeof value === "number" ? value : skeleton.compositionHeight,
+        fps: (value) => typeof value === "number" ? value : skeleton.fps,
+        durationInFrames: (value) =>
+          typeof value === "number" ? value : skeleton.durationInFrames,
+        primaryTrackId: (value) =>
+          value === null
+            ? null
+            : typeof value === "string" && value.length > 0
+              ? value
+              : OMIT_TIMELINE_FIELD,
+        tracks: () => tracks.map((track, index) => normalizeTrackForYaml(track, index)),
+        assetTranscripts: (value) =>
+          value && typeof value === "object" && !Array.isArray(value)
+            ? value
+            : OMIT_TIMELINE_FIELD,
+        mediaAssetRefs: (value) =>
+          Array.isArray(value) ? value : OMIT_TIMELINE_FIELD,
+      },
+    ),
+  } as ResolvedTimelineDsl;
 }
 
 export function sourceNodeIdsFromResolved(dsl: ResolvedTimelineDsl): string[] {
@@ -186,16 +268,36 @@ function normalizeTrackForYaml(raw: unknown, index: number): ResolvedTimelineDsl
   const id = typeof track.id === "string" && track.id.length > 0 ? track.id : `track-${index}`;
   const name = typeof track.name === "string" ? track.name : undefined;
   const role = typeof track.role === "string" && track.role.length > 0 ? track.role : undefined;
+  const category =
+    track.category === "effect"
+    || track.category === "text"
+    || track.category === "visual"
+    || track.category === "primary"
+    || track.category === "audio"
+      ? track.category
+      : undefined;
   return {
-    id,
-    ...(name !== undefined ? { name } : {}),
-    ...(role !== undefined ? { role } : {}),
-    ...(track.hidden === true ? { hidden: true } : {}),
-    ...(track.locked === true ? { locked: true } : {}),
-    items: items
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-      .map((item, itemIndex) => normalizeItemForYaml(item, id, itemIndex)),
-  };
+    ...timelineExtensionFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+    ...normalizeAnnotatedTimelineFields(
+      track,
+      TIMELINE_DSL_FIELD_ANNOTATIONS.track,
+      {
+        id: () => id,
+        name: () => name ?? OMIT_TIMELINE_FIELD,
+        role: () => role ?? OMIT_TIMELINE_FIELD,
+        category: () => category ?? OMIT_TIMELINE_FIELD,
+        items: () => items
+          .filter((item): item is Record<string, unknown> =>
+            Boolean(item) && typeof item === "object"
+          )
+          .map((item, itemIndex) => normalizeItemForYaml(item, id, itemIndex)),
+        hidden: (value) =>
+          typeof value === "boolean" ? value : OMIT_TIMELINE_FIELD,
+        locked: (value) =>
+          typeof value === "boolean" ? value : OMIT_TIMELINE_FIELD,
+      },
+    ),
+  } as ResolvedTimelineDsl["tracks"][number];
 }
 
 function normalizeItemForYaml(

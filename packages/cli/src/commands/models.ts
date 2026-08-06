@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { readFile } from "node:fs/promises";
 import { apiJson } from "../lib/api";
 import { isJsonMode, printJson } from "../lib/output";
 import {
@@ -14,6 +15,9 @@ interface ProviderAccountPayload {
   enabled: boolean;
   weight?: number;
   priority?: number;
+  credentials?: {
+    vertexCredentials?: string;
+  };
 }
 
 interface ModelProviderResponse {
@@ -59,6 +63,20 @@ export function providerPayloadFromOptions(providerId: string, options: Record<s
     ...(weight !== undefined ? { weight } : {}),
     ...(priority !== undefined ? { priority } : {}),
   };
+}
+
+export async function providerCredentialsFromOptions(
+  options: Record<string, unknown>,
+): Promise<ProviderAccountPayload["credentials"]> {
+  if (typeof options.vertexCredentialsFile !== "string" || !options.vertexCredentialsFile.trim()) {
+    return undefined;
+  }
+  const contents = await readFile(options.vertexCredentialsFile.trim(), "utf8");
+  const parsed = JSON.parse(contents) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Vertex credentials file must contain a JSON object");
+  }
+  return { vertexCredentials: JSON.stringify(parsed) };
 }
 
 export function providerWriteHeaders(
@@ -118,10 +136,15 @@ modelsCommand
   .option("--region <region>", "Provider region/channel, e.g. global or cn")
   .option("--weight <number>", "Higher weight wins during auto routing")
   .option("--priority <number>", "Lower priority wins within equal weights")
+  .option("--vertex-credentials-file <path>", "Read Google Vertex service-account JSON from a file")
   .option("--disable", "Disable this provider account")
   .option("--json", "Output as JSON")
   .action(async (providerId: string, options) => {
-    const provider = providerPayloadFromOptions(providerId, options);
+    const credentials = await providerCredentialsFromOptions(options);
+    const provider = {
+      ...providerPayloadFromOptions(providerId, options),
+      ...(credentials ? { credentials } : {}),
+    };
     const observedVersion = await requireAgentObservation({
       entityKind: "provider-accounts",
       entityId: "current",

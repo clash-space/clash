@@ -8,12 +8,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": ["dist", "src"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean --target node20 && tsc --emitDeclarationOnly --outDir dist",
+    "build": "tsup src/index.ts src/types.ts src/agent.ts src/local-models.ts --format esm --clean --target node20 && tsc --emitDeclarationOnly --outDir dist",
     "dev": "tsup src/index.ts --format esm --watch --target node20",
     "typecheck": "tsc --noEmit"
   },

@@ -1,0 +1,35 @@
+{
+  "apiVersion": "clash.plugin.contract-test/v1",
+  "id": "fal-h3-text-basic",
+  "target": {
+    "exportId": "fal-h3",
+    "kind": "provider-projector"
+  },
+  "input": {
+    "values": {
+      "prompt": "A dancer turns around",
+      "duration": 5,
+      "resolution": "768P",
+      "aspect_ratio": "16:9"
+    },
+    "references": []
+  },
+  "expect": {
+    "status": "completed",
+    "outputs": [
+      {
+        "slot": "projection",
+        "kind": "value",
+        "value": {
+          "endpoint": "minimax/h3/text-to-video",
+          "input": {
+            "prompt": "A dancer turns around",
+            "duration": 5,
+            "resolution": "768P",
+            "aspect_ratio": "16:9"
+          }
+        }
+      }
+    ]
+  }
+}

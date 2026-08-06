@@ -5,6 +5,10 @@ export interface Env {
   CF_AIG_TOKEN: string;
   /** AI Gateway base URL for OpenAI, e.g. https://gateway.ai.cloudflare.com/v1/{account}/{gw}/openai */
   CF_AIG_OPENAI_URL: string;
+  /** Optional direct Google AI Studio key. AI Gateway BYOK does not require it. */
+  GOOGLE_API_KEY?: string;
+  /** Provider-native Cloudflare Gateway base ending in /google-ai-studio. */
+  GOOGLE_AI_STUDIO_BASE_URL?: string;
   /** Model override, e.g. "claude-sonnet-4-20250514" or "gpt-5" */
   AI_MODEL?: string;
   R2_BUCKET: R2Bucket;
@@ -30,6 +34,8 @@ export interface Env {
   WORKER_PUBLIC_URL?: string;
   /** AES-GCM key for encrypting/decrypting user variables (action secrets) */
   ACTION_SECRET_KEY?: string;
+  /** HMAC key for short-lived hosted executable-plugin broker capabilities. */
+  PLUGIN_CAPABILITY_KEY?: string;
   // Better Auth — handler runs in this Worker now (apps/api-cf/src/auth.ts).
   KV?: KVNamespace<string>;
   /** Cloudflare Email Service binding — wrangler [[send_email]] name = "EMAIL". */

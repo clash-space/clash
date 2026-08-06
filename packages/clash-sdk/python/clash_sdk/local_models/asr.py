@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from .funasr import FunAsrLocalAsrRuntime
-from .parakeet import ParakeetLocalAsrRuntime
-from .vibevoice import VibeVoiceLocalAsrRuntime
-from .whisper import WhisperLocalAsrRuntime
-
 
 def _adapter_name(model: str) -> str:
     normalized = model.lower()
@@ -30,20 +25,46 @@ class RoutedLocalAsrRuntime:
         parakeet_runtime: Any | None = None,
         vibevoice_runtime: Any | None = None,
     ):
-        self.funasr_runtime = funasr_runtime or FunAsrLocalAsrRuntime()
-        self.whisper_runtime = whisper_runtime or WhisperLocalAsrRuntime()
-        self.parakeet_runtime = parakeet_runtime or ParakeetLocalAsrRuntime()
-        self.vibevoice_runtime = vibevoice_runtime or VibeVoiceLocalAsrRuntime(
-            whisper_runtime=self.whisper_runtime,
-        )
+        self._runtimes = {
+            name: runtime
+            for name, runtime in {
+                "funasr": funasr_runtime,
+                "whisper": whisper_runtime,
+                "parakeet": parakeet_runtime,
+                "vibevoice": vibevoice_runtime,
+            }.items()
+            if runtime is not None
+        }
+
+    def _named_runtime(self, name: str) -> Any:
+        cached = self._runtimes.get(name)
+        if cached is not None:
+            return cached
+        if name == "funasr":
+            from .funasr import FunAsrLocalAsrRuntime
+
+            runtime = FunAsrLocalAsrRuntime()
+        elif name == "whisper":
+            from .whisper import WhisperLocalAsrRuntime
+
+            runtime = WhisperLocalAsrRuntime()
+        elif name == "parakeet":
+            from .parakeet import ParakeetLocalAsrRuntime
+
+            runtime = ParakeetLocalAsrRuntime()
+        elif name == "vibevoice":
+            from .vibevoice import VibeVoiceLocalAsrRuntime
+
+            runtime = VibeVoiceLocalAsrRuntime(
+                whisper_runtime=self._named_runtime("whisper"),
+            )
+        else:
+            raise ValueError(f"Unsupported local ASR adapter: {name}")
+        self._runtimes[name] = runtime
+        return runtime
 
     def _runtime(self, model: str) -> Any:
-        return {
-            "funasr": self.funasr_runtime,
-            "whisper": self.whisper_runtime,
-            "parakeet": self.parakeet_runtime,
-            "vibevoice": self.vibevoice_runtime,
-        }[_adapter_name(model)]
+        return self._named_runtime(_adapter_name(model))
 
     def status(self, model: str, cache_dir: str | None = None):
         return self._runtime(model).status(model, cache_dir)
@@ -53,6 +74,11 @@ class RoutedLocalAsrRuntime:
 
     def remove(self, model: str, cache_dir: str | None = None):
         return self._runtime(model).remove(model, cache_dir)
+
+    def warmup(self, model: str, cache_dir: str | None = None):
+        runtime = self._runtime(model)
+        warmup = getattr(runtime, "warmup", runtime.status)
+        return warmup(model, cache_dir)
 
     def transcribe(self, model: str, audio_path: str, language: str | None = None, cache_dir: str | None = None):
         runtime = self._runtime(model)

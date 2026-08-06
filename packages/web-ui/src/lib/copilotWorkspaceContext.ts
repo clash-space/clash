@@ -164,41 +164,13 @@ export function buildProjectMentionSources(input: {
   ];
 }
 
-function mentionIds(prompt: string): Set<string> {
-  const ids = new Set<string>();
-  const pattern = /@\[[^\]]*\]\(node:([^\s)]+)(?:\s+"[^"]*")?\)/g;
-  for (const match of prompt.matchAll(pattern)) {
-    if (match[1]) ids.add(match[1]);
-  }
-  return ids;
-}
-
 export function buildCopilotPrompt(
   prompt: string,
-  context?: CopilotWorkspaceContext,
-  sources: CopilotMentionSource[] = [],
+  _context?: CopilotWorkspaceContext,
+  _sources: CopilotMentionSource[] = [],
   annotations: readonly AgentAnnotationDraft[] = [],
 ): string {
   const contextBlocks: string[] = [];
-  if (context) {
-    const ids = mentionIds(prompt);
-    const references = sources
-      .filter((source) => ids.has(source.id))
-      .map((source) => ({
-        id: source.id,
-        kind: source.kind,
-        ...(source.canvasId ? { canvasId: source.canvasId } : {}),
-        ...(source.canvasName ? { canvasName: source.canvasName } : {}),
-      }));
-    const payload = {
-      version: 1,
-      projectId: context.projectId,
-      projectName: context.projectName,
-      activeSurface: context.activeSurface,
-      ...(references.length > 0 ? { references } : {}),
-    };
-    contextBlocks.push(`<!-- clash-workspace-context ${JSON.stringify(payload)} -->`);
-  }
   const annotationBlock = serializeAgentAnnotationPromptBlock(annotations);
   if (annotationBlock) contextBlocks.push(annotationBlock);
   return contextBlocks.length > 0

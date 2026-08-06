@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  providerCredentialsFromOptions,
   providerPayloadFromOptions,
   providerWriteHeaders,
   publicProviderAccountsResult,
@@ -40,6 +44,27 @@ test("can disable a provider account from CLI options", () => {
     providerId: "fal",
     enabled: false,
   });
+});
+
+test("loads Vertex credentials from a JSON file without putting the secret on argv", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "clash-provider-credentials-"));
+  const credentialPath = join(directory, "service-account.json");
+  const serviceAccount = {
+    type: "service_account",
+    project_id: "demo-project",
+    client_email: "svc@demo-project.iam.gserviceaccount.com",
+    private_key: "private-key-value",
+  };
+  await writeFile(credentialPath, JSON.stringify(serviceAccount), "utf8");
+
+  try {
+    assert.deepEqual(
+      await providerCredentialsFromOptions({ vertexCredentialsFile: credentialPath }),
+      { vertexCredentials: JSON.stringify(serviceAccount) },
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("provider account writes use implicit cwd observation CAS", () => {

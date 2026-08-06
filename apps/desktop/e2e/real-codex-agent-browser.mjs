@@ -46,6 +46,7 @@ const historyScreenshot = path.join(captureDir, "history.png");
 const retryStatusScreenshot = path.join(captureDir, "retry-status.png");
 const coldStartScreenshot = path.join(captureDir, "cold-start-product-contract.png");
 const narrowPlanScreenshot = path.join(captureDir, "narrow-plan-composer.png");
+const permissionScreenshot = path.join(captureDir, "permission-composer.png");
 
 function currentClashHome() {
   return process.env.CLASH_HOME || path.join(homedir(), ".clash");
@@ -217,6 +218,68 @@ async function selectCodexHarness(agentBrowser) {
     "Codex harness selected",
     10000,
   );
+}
+
+async function selectPermissionMode(agentBrowser, label) {
+  if (!clickButtonByLabel(agentBrowser, "Harness permission mode")) {
+    throw new Error("Could not open the harness permission selector");
+  }
+  await waitForEval(
+    agentBrowser,
+    `document.body.innerText.includes(${JSON.stringify(label)})`,
+    `${label} permission option`,
+    10000,
+  );
+  const picked = evalJson(agentBrowser, `(() => {
+    const label = ${JSON.stringify(label)};
+    const candidates = [...document.querySelectorAll('[role="option"], [role="menuitemradio"], [role="menuitem"], button')]
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return rect.width > 0 && rect.height > 0 &&
+          style.display !== "none" && style.visibility !== "hidden" &&
+          !element.disabled;
+      });
+    const option = candidates.find((element) => {
+      const lines = (element.innerText || element.textContent || "")
+        .split("\\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      return lines[0] === label;
+    });
+    if (!option) return false;
+    option.scrollIntoView({ block: "center", inline: "center" });
+    option.click();
+    return true;
+  })()`);
+  if (!picked) {
+    throw new Error(`Could not select permission mode ${label}`);
+  }
+  await waitForEval(
+    agentBrowser,
+    `(() => {
+      const trigger = document.querySelector('[data-testid="session-permission-mode-trigger"]');
+      return (trigger?.innerText || trigger?.textContent || "").includes(${JSON.stringify(label)});
+    })()`,
+    `${label} permission mode selected`,
+    10000,
+  );
+}
+
+function readComposerDesignTokens(agentBrowser, selector) {
+  return evalJson(agentBrowser, `(() => {
+    const surface = document.querySelector(${JSON.stringify(selector)});
+    if (!surface) return null;
+    const style = getComputedStyle(surface);
+    return {
+      borderRadius: style.borderRadius,
+      borderColor: style.borderColor,
+      borderWidth: style.borderWidth,
+      backgroundColor: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
+      boxShadow: style.boxShadow,
+    };
+  })()`);
 }
 
 async function verifyPlanCommandResponsiveComposer(agentBrowser) {
@@ -694,6 +757,83 @@ async function main() {
       throw new Error("Codex transport retry/fallback was observed in logs, but no retry status appeared in the UI");
     }
 
+    evalJson(agentBrowser, `(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      return true;
+    })()`);
+    await sleep(50);
+    const composerDesignTokens = readComposerDesignTokens(
+      agentBrowser,
+      ".clash-chat-input-surface",
+    );
+    if (!composerDesignTokens) throw new Error("Could not read the composer design tokens");
+    await selectPermissionMode(agentBrowser, "Ask for approval");
+    const permissionPrompt = [
+      "Use the shell to write the word approved to drafts/e2e-permission-check.txt.",
+      "After the command finishes, reply exactly APPROVED.",
+    ].join(" ");
+    if (!typeComposer(agentBrowser, permissionPrompt)) {
+      throw new Error("Could not type the permission E2E prompt into composer");
+    }
+    if (!clickComposerSubmitButton(agentBrowser)) {
+      throw new Error("Could not submit the permission E2E prompt");
+    }
+    await waitForEval(
+      agentBrowser,
+      `(() => {
+        const approval = document.querySelector('[data-testid="acp-permission-card"]');
+        const editor = document.querySelector('.milkdown-chat-input');
+        const permissionTrigger = document.querySelector('[data-testid="session-permission-mode-trigger"]');
+        const runTrigger = document.querySelector('[data-testid="session-harness-config-trigger"]');
+        const rect = approval?.getBoundingClientRect();
+        return !!approval && !!rect && rect.width > 0 && rect.height > 0 &&
+          !editor && !permissionTrigger && !runTrigger;
+      })()`,
+      "blocking approval replacing the entire composer",
+      60000,
+    );
+    const permissionDesignTokens = readComposerDesignTokens(
+      agentBrowser,
+      "[data-testid='acp-permission-card']",
+    );
+    if (JSON.stringify(permissionDesignTokens) !== JSON.stringify(composerDesignTokens)) {
+      throw new Error(
+        `Approval surface drifted from composer design tokens: ${JSON.stringify({ composerDesignTokens, permissionDesignTokens })}`,
+      );
+    }
+    agentBrowser(["screenshot", permissionScreenshot]);
+    const approved = evalJson(agentBrowser, `(() => {
+      const approval = document.querySelector('[data-testid="acp-permission-card"]');
+      const button = [...(approval?.querySelectorAll('button') ?? [])].find((candidate) => {
+        const label = (candidate.innerText || candidate.textContent || "").trim().toLowerCase();
+        const rect = candidate.getBoundingClientRect();
+        const style = getComputedStyle(candidate);
+        return label.startsWith("allow") &&
+          rect.width > 0 && rect.height > 0 &&
+          style.display !== "none" && style.visibility !== "hidden" &&
+          !candidate.disabled;
+      });
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`);
+    if (!approved) {
+      throw new Error("Could not approve the blocking permission request");
+    }
+    await waitForEval(
+      agentBrowser,
+      `!document.querySelector('[data-testid="acp-permission-card"]') &&
+        !!document.querySelector('.milkdown-chat-input')`,
+      "composer restored after approval",
+      60000,
+    );
+    await waitForEval(
+      agentBrowser,
+      `!document.querySelector(".clash-chat-input-stop") && document.body.innerText.includes("APPROVED")`,
+      "permission turn completed",
+      240000,
+    );
+
     await verifyPlanCommandResponsiveComposer(agentBrowser);
 
     const mcpPrompt = [
@@ -791,6 +931,7 @@ async function main() {
       historyScreenshot,
       retryStatusScreenshot: retryStatus?.screenshot ?? null,
       coldStartScreenshot,
+      permissionScreenshot,
       coldStartProductContract,
       retryStatusText: retryStatus?.text ?? null,
       transportDiagnosticObserved,

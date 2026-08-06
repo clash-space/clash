@@ -43,6 +43,14 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
       "const captureDir = process.env.CLASH_E2E_PROMPT_CAPTURE_DIR;",
       "const captureJsonDir = process.env.CLASH_E2E_PROMPT_CAPTURE_JSON_DIR;",
       "let currentModeId = 'ask';",
+      "const currentConfigValues = { mode: 'read-only', model: 'gpt-5.5', effort: 'low' };",
+      "const configOptions = () => Object.entries(currentConfigValues).map(([id, currentValue]) => ({",
+      "  id,",
+      "  name: id[0].toUpperCase() + id.slice(1),",
+      "  type: 'select',",
+      "  currentValue,",
+      "  options: [{ value: currentValue, name: String(currentValue) }],",
+      "}));",
       "",
       "class FakeAcpHarness {",
       "  constructor(connection) { this.connection = connection; }",
@@ -56,7 +64,15 @@ async function writeFakeAcpHarness(binDir: string, captureDir: string): Promise<
       "    const modes = process.env.FAKE_SESSION_MODES === '1'",
       "      ? { currentModeId, availableModes: [{ id: 'ask', name: 'Ask' }, { id: 'code', name: 'Code' }] }",
       "      : undefined;",
-      "    return { sessionId: `fake-${harnessId}-${Date.now()}`, ...(modes ? { modes } : {}) };",
+      "    return {",
+      "      sessionId: `fake-${harnessId}-${Date.now()}`,",
+      "      ...(modes ? { modes } : {}),",
+      "      ...(process.env.FAKE_CONFIG_OPTIONS === '1' ? { configOptions: configOptions() } : {}),",
+      "    };",
+      "  }",
+      "  async setSessionConfigOption(params) {",
+      "    currentConfigValues[params.configId] = params.value;",
+      "    return { configOptions: configOptions() };",
       "  }",
       "  async setSessionMode(params) {",
       "    currentModeId = params.modeId;",
@@ -306,6 +322,63 @@ describe("SessionManager harness prompt contract", () => {
         },
       });
       await manager.dispose("session-modes");
+    } finally {
+      restoreEnv(previousEnv);
+    }
+  });
+
+  it("applies initial ACP config options before announcing the session ready", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-session-config-"));
+    const binDir = join(root, "bin");
+    const captureDir = join(root, "captures");
+    const home = join(root, "home");
+    await mkdir(binDir, { recursive: true });
+    await mkdir(captureDir, { recursive: true });
+    await mkdir(home, { recursive: true });
+    await writeFakeAcpHarness(binDir, captureDir);
+
+    const previousEnv = {
+      CLASH_ACP_BIN_DIR: process.env.CLASH_ACP_BIN_DIR,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+    };
+    process.env.CLASH_ACP_BIN_DIR = "";
+    process.env.PATH = "";
+    process.env.HOME = home;
+
+    try {
+      const sent: ManagerOut[] = [];
+      const manager = new SessionManager((msg) => sent.push(msg));
+      manager.setSpawnEnv({
+        CLASH_E2E_PROMPT_CAPTURE_DIR: captureDir,
+        FAKE_CONFIG_OPTIONS: "1",
+      });
+
+      await manager.start({
+        session_id: "session-initial-config",
+        agent_template_id: "master-clash",
+        agent_id: "registry-only-codex",
+        agent_spec: { command: join(binDir, "codex-acp") },
+        project_id: "project-initial-config",
+        config_options: {
+          mode: "agent",
+          model: "gpt-5.6-sol",
+          effort: "high",
+        },
+      });
+
+      const ready = sent.find((msg) => msg.type === "session.ready");
+      expect(ready).toMatchObject({
+        type: "session.ready",
+        session_id: "session-initial-config",
+        config_options: expect.arrayContaining([
+          expect.objectContaining({ id: "mode", currentValue: "agent" }),
+          expect.objectContaining({ id: "model", currentValue: "gpt-5.6-sol" }),
+          expect.objectContaining({ id: "effort", currentValue: "high" }),
+        ]),
+      });
+      expect(sent.some((msg) => msg.type === "session.error")).toBe(false);
+      await manager.dispose("session-initial-config");
     } finally {
       restoreEnv(previousEnv);
     }

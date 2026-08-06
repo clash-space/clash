@@ -73,6 +73,47 @@ vi.mock('remotion', () => ({
 }));
 
 describe('composition preview helpers', () => {
+  it('renders a keyframed clip mask at the item-local frame', () => {
+    mockedFrame = 10;
+    const markup = renderToStaticMarkup(
+      React.createElement(VideoComposition, {
+        tracks: [{
+          id: 'visuals',
+          name: 'Visuals',
+          category: 'visual',
+          items: [{
+            id: 'masked-image',
+            type: 'image',
+            src: 'image.png',
+            from: 30,
+            durationInFrames: 21,
+            mask: {
+              shape: 'ellipse',
+              position: [50, 50],
+              size: [70, 70],
+              rotation: 0,
+              feather: 0,
+              inverted: false,
+            },
+            keyframes: {
+              maskPosition: [
+                { frame: 0, value: [20, 50], interpolation: 'linear' },
+                { frame: 20, value: [80, 50], interpolation: 'linear' },
+              ],
+              maskRotation: [
+                { frame: 0, value: 0, interpolation: 'linear' },
+                { frame: 20, value: 90, interpolation: 'linear' },
+              ],
+            },
+          }],
+        }] as any,
+      }),
+    );
+
+    expect(markup).toContain('mask-image:url(');
+    expect(markup).toContain('matrix(0.7071%200.3977%20-1.2571%200.7071');
+  });
+
   it('applies keyframed opacity to visual item types that provide their own visibility opacity', () => {
     mockedFrame = 10;
     const markup = renderToStaticMarkup(
@@ -594,6 +635,14 @@ describe('composition preview helpers', () => {
                 color: '#F7F2EA',
                 from: 0,
                 durationInFrames: 9,
+                mask: {
+                  shape: 'rectangle',
+                  position: [50, 50],
+                  size: [80, 60],
+                  rotation: 0,
+                  feather: 10,
+                  inverted: false,
+                },
               },
               {
                 id: 'dark',
@@ -614,5 +663,6 @@ describe('composition preview helpers', () => {
     expect(fromLayer).toBeGreaterThan(-1);
     expect(toLayer).toBeGreaterThan(fromLayer);
     expect(markup).toContain('clip-path:circle(');
+    expect(markup).toContain('mask-image:url(');
   });
 });

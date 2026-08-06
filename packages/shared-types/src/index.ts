@@ -15,6 +15,63 @@
 
 // Canvas types + constants (single source of truth)
 export {
+  TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES,
+  TIMELINE_DSL_FIELD_ANNOTATIONS,
+  TIMELINE_DSL_FIELD_CATALOG,
+  TIMELINE_DSL_ROLE_ALLOWED_ITEM_TYPES,
+  TIMELINE_DSL_ROLE_CATEGORIES,
+  TIMELINE_DSL_RUNTIME_CONSUMERS,
+  TIMELINE_DSL_TRACK_ROLES,
+  TIMELINE_CLIP_ANIMATION_TYPES,
+  TIMELINE_CAPTION_POSITIONS,
+  TIMELINE_COMPOSITION_KINDS,
+  TIMELINE_COMPOSITION_RUNTIMES,
+  TIMELINE_DERIVED_MEDIA_TYPES,
+  TIMELINE_DERIVATION_KINDS,
+  TIMELINE_MEDIA_FITS,
+  TIMELINE_TEXT_ALIGNMENTS,
+  TIMELINE_TRANSITION_TYPES,
+  timelineDslAnnotatedObjectShape,
+  TimelineAudioDuckingSchema,
+  TimelineCaptionCueSchema,
+  TimelineCaptionWordReferenceSchema,
+  TimelineClipAnimationSchema,
+  TimelineDerivedAssetSchema,
+  TimelineEditorAssetTranscriptSchema,
+  TimelineEditorTranscriptWordSchema,
+  TimelineEffectInstanceRefSchema,
+  TimelineEffectParamValueSchema,
+  TimelineItemPropertiesSchema,
+  TimelineMediaAssetRefSchema,
+  TimelineMediaFitSchema,
+  TimelineSourceToOutputFrameMapSchema,
+  TimelineSequenceSchema,
+  TimelineTypographyStyleSchema,
+  type TimelineDslEditorSurface,
+  type TimelineDslFieldAnnotation,
+  type TimelineDslFieldRequiredness,
+  type TimelineDslItemType,
+  type TimelineDslRuntimeConsumer,
+  type TimelineDslTrackCategory,
+  type TimelineDslTrackRole,
+} from './timeline-field-annotations';
+
+export {
+  TIMELINE_OPERATION_CATALOG,
+  TIMELINE_OPERATION_REGISTRY,
+  type TimelineAgentOperationId,
+  type TimelineEditorActionId,
+  type TimelineEditorCommandId,
+  type TimelineOperationAccess,
+  type TimelineOperationAnnotation,
+  type TimelineOperationCas,
+  type TimelineOperationCatalogEntry,
+  type TimelineOperationId,
+  type TimelineOperationKind,
+  type TimelineOperationReadProof,
+} from './timeline-operation-annotations';
+
+export {
   AgentAnnotationDraftSchema,
   AgentAnnotationPromptPayloadSchema,
   AgentAnnotationSelectionSchema,
@@ -194,6 +251,7 @@ export {
   validateGenerationInput,
   buildPendingAssetNode,
   buildGenerationPayload,
+  customActionDefaultParams,
   extractLabelFromPrompt,
   type GenerationConfig,
   // TypeScript types
@@ -221,6 +279,61 @@ export {
   type ActionProviderId,
   type ActionProviderPreset,
 } from './canvas';
+
+export {
+  ExecutablePluginCardExportSchema,
+  ExecutablePluginActivationReceiptSchema,
+  ExecutableActionCardSchema,
+  ExecutableActionPresentationSchema,
+  ExecutablePluginCardDocumentSchema,
+  ExecutablePluginCardRegistrationSchema,
+  ExecutablePluginContractTestDocumentSchema,
+  ExecutablePluginBindingSchema,
+  ExecutablePluginAssetHandleSchema,
+  ExecutablePluginBrokerOperationSchema,
+  ExecutablePluginBrokerRequestSchema,
+  ExecutablePluginBrokerResponseSchema,
+  ExecutablePluginInvocationSchema,
+  HostedExecutablePluginCapabilitySchema,
+  ExecutablePluginJsonValueSchema,
+  ExecutablePluginOutputSchema,
+  ExecutablePluginReferenceSchema,
+  ExecutablePluginResultSchema,
+  ExecutablePluginFunctionExportSchema,
+  ExecutablePluginManifestSchema,
+  ExecutablePluginPermissionsSchema,
+  ExecutablePluginRuntimeSchema,
+  PluginRelativePathSchema,
+  diffExecutablePluginPermissions,
+  composeExecutablePluginModelCards,
+  executablePluginBrokerPermissionError,
+  isSafePluginRelativePath,
+  validateExecutablePluginPackage,
+  type ExecutablePluginCardExport,
+  type ExecutablePluginActivationReceipt,
+  type ExecutableActionCard,
+  type ExecutableActionPresentation,
+  type ExecutablePluginCardDocument,
+  type ExecutablePluginCardRegistration,
+  type ExecutablePluginContractTestDocument,
+  type ExecutablePluginBinding,
+  type ExecutablePluginAssetHandle,
+  type ExecutablePluginBrokerOperation,
+  type ExecutablePluginBrokerRequest,
+  type ExecutablePluginBrokerResponse,
+  type ExecutablePluginInvocation,
+  type HostedExecutablePluginCapability,
+  type ExecutablePluginJsonValue,
+  type ExecutablePluginOutput,
+  type ExecutablePluginReference,
+  type ExecutablePluginResult,
+  type ExecutablePluginFunctionExport,
+  type ExecutablePluginManifest,
+  type ExecutablePluginPermissions,
+  type ExecutablePluginPermissionDiff,
+  type ExecutablePluginRuntime,
+  type ValidatedExecutablePluginPackage,
+} from './executable-plugin';
 
 export {
   agentReadToken,
@@ -318,8 +431,10 @@ export {
 // returned profile. See model-capabilities.ts for the rationale.
 export {
   capability,
+  capabilityFromCustom,
   directorReferencePacket,
   directorReferencePackets,
+  validateReferenceMedia,
   validateRefs,
   partitionRefs,
   referenceAssetId,
@@ -328,6 +443,8 @@ export {
   pickDefaultModel,
   type Modality,
   type RefBound,
+  type ReferenceMediaConstraints,
+  type ReferenceMediaMetadata,
   type Capability,
   type RefNodeLike,
   type RefPartition,
@@ -336,10 +453,15 @@ export {
 // Model metadata
 export {
   ModelKindSchema,
+  ModelTaskSchema,
   ModelParameterTypeSchema,
   ModelParameterSchema,
+  ModelProviderImplementationSchema,
+  ProviderCredentialRequirementsSchema,
   ModelInputModeSchema,
+  ModelInputPresentationSchema,
   ModelInputRuleSchema,
+  MusicInputMappingSchema,
   ModelCardSchema,
   MODEL_CARDS,
   MOCK_MODEL_CARDS,
@@ -347,12 +469,30 @@ export {
   resolveAspectRatio,
   snapAspectRatio,
   type ModelInputMode,
+  type ModelInputPresentation,
   type ModelInputRule,
+  type MusicInputMapping,
   type ModelKind,
+  type ModelTask,
   type ModelParameterType,
   type ModelParameter,
+  type ModelProviderImplementation,
+  type ProviderCredentialRequirements,
   type ModelCard,
+  ModelConstraintRuleSchema,
+  type ModelConstraintRule,
 } from './models';
+
+export {
+  applyModelParameterChange,
+  coerceModelParameterInput,
+  normalizeModelParametersForCard,
+  validateModelCardConfiguration,
+  validateParameterContractConfiguration,
+  type ModelConfigurationInput,
+  type ModelConfigurationValidationOptions,
+  type ParameterConfigurationContract,
+} from './model-constraints';
 
 // Model routing: model-code-first upstream adapter selection.
 export {
@@ -362,6 +502,8 @@ export {
   MODEL_UPSTREAM_ROUTES,
   listModelUpstreamRoutes,
   resolveModelUpstreamRoute,
+  missingModelRouteCredentials,
+  modelRouteCredentialsSatisfied,
   ModelProviderIdSchema,
   ModelProviderApiShapeSchema,
   ProviderOAuthIdSchema,
@@ -370,6 +512,7 @@ export {
   listModelProviderRoutes,
   resolveModelProviderRoute,
   listModelCatalogEntries,
+  applyModelProviderImplementation,
   listDeclaredModelUpstreamRoutes,
   buildEffectiveModelCards,
   listUserEnabledCanvasModelIds,
@@ -659,7 +802,7 @@ export {
 } from "./node-upstreams";
 
 // Loro sync client
-export { LoroSyncClient } from './loro-client';
+export { LoroSyncClient, loroSyncUpdateId } from './loro-client';
 export type { LoroSyncClientOptions } from './loro-client';
 
 // Prompt parsing (mixed-modality @-mentions)
@@ -671,7 +814,12 @@ export {
   extractAssetRefs,
   buildMention,
   hasAssetMentions,
+  appendUnmentionedGlobalReferences,
+  composeOrderedPromptContent,
+  renderPositionalReferencePrompt,
   type PromptPart,
+  type OrderedPromptContentPart,
+  type PositionalReferencePromptInput,
   type AssetRef,
 } from './prompt';
 
@@ -684,25 +832,95 @@ export {
   timelineDslFromYaml,
   timelineDslCanonicalJson,
   timelineDslHash,
-  parseFromExpression,
   resolveFromExpression,
 } from './timeline-yaml';
 export type {
   ResolvedTimelineDsl,
   ResolvedItem,
   ResolvedTrack,
-  FromExpression,
   FromYamlResult,
 } from './timeline-yaml';
 export {
+  parseFromExpression,
+  type FromExpression,
+} from './timeline-from-expression';
+export {
+  DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
+  sampleTimelineKeyframeChannel,
+  TIMELINE_KEYFRAME_CHANNEL_ANNOTATIONS,
   TIMELINE_KEYFRAME_CHANNELS,
+  TIMELINE_KEYFRAME_INTERPOLATIONS,
+  TIMELINE_KEYFRAME_SAMPLING_POLICY,
+  TimelineItemKeyframesSchema,
+  TimelineScalarKeyframeSchema,
+  TimelineVectorKeyframeSchema,
+  timelineKeyframeFrameIssues,
   validateTimelineItemKeyframes,
   type TimelineItemKeyframes,
   type TimelineKeyframeChannel,
   type TimelineKeyframeInterpolation,
+  type TimelineKeyframeSampleEntry,
   type TimelineScalarKeyframe,
   type TimelineVectorKeyframe,
 } from './timeline-keyframes';
+export {
+  canMergeTimelineItemsAcrossMaskBoundary,
+  createDefaultTimelineItemMask,
+  DEFAULT_TIMELINE_ITEM_MASK,
+  TIMELINE_MASK_ANIMATION_BINDINGS,
+  TIMELINE_MASK_APPLIES_TO_ITEM_TYPES,
+  TIMELINE_MASK_CAPABILITY_ANNOTATION,
+  TIMELINE_MASK_EXCLUDED_ITEM_TYPES,
+  TIMELINE_MASK_FEATHER_BLUR_DIVISOR,
+  TIMELINE_MASK_FIELD_ANNOTATIONS,
+  TIMELINE_MASK_FIELDS,
+  TIMELINE_MASK_KEYFRAME_CHANNELS,
+  TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS,
+  TIMELINE_MASK_SHAPE_ANNOTATIONS,
+  TIMELINE_MASK_SHAPES,
+  TIMELINE_MASK_STATIC_CONTROL_BINDINGS,
+  TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS,
+  TimelineItemMaskSchema,
+  validateTimelineItemMask,
+  type TimelineItemMask,
+  type TimelineMaskAnimationBinding,
+  type TimelineMaskAnimatedField,
+  type TimelineMaskAnimatedValueKind,
+  type TimelineMaskField,
+  type TimelineMaskKeyframeSample,
+  type TimelineMaskKeyframeChannel,
+  type TimelineMaskNumberInputAnnotation,
+  type TimelineMaskRenderPrimitive,
+  type TimelineMaskScalarAnimatedField,
+  type TimelineMaskScalarAnimationBinding,
+  type TimelineMaskShape,
+  type TimelineMaskStaticControlAnnotation,
+  type TimelineMaskStaticControlBinding,
+  type TimelineMaskVectorAnimatedField,
+  type TimelineMaskVectorAnimationBinding,
+} from './timeline-mask';
+export {
+  TIMELINE_DSL_DEFINITION,
+  TIMELINE_DSL_ITEM_TYPES,
+  TIMELINE_DSL_TRACK_CATEGORIES,
+  TIMELINE_MASK_KEYFRAMES_DSL_EXAMPLE,
+  TimelineDslItemSchema,
+  TimelineDslSchema,
+  TimelineDslTrackSchema,
+  TIMELINE_DSL_SEMANTIC_RULES,
+  timelineMaskKeyframeSemanticIssues,
+  validateTimelineDsl,
+  type TimelineDslDefinition,
+  type TimelineDslValidationIssue,
+  type TimelineDslValidationResult,
+  type TimelineMaskKeyframeSemanticIssue,
+} from './timeline-dsl-schema';
+export {
+  renderTimelineAgentWorkflowReference,
+  renderTimelineDslMarkdown,
+  renderTimelineMaskSkillReference,
+  renderTimelineMaskKeyframesExampleYaml,
+} from './timeline-dsl-docs';
 
 // Asset metadata (D1 assets + asset_refs tables)
 export * from './asset-scope-cascade';
@@ -786,3 +1004,12 @@ export {
   type TaskRuntimeState,
   type PipelineRuntimeState,
 } from './pipeline';
+
+export {
+  ProviderUsageAuditEventSchema,
+  ProviderUsagePricingSourceSchema,
+  ProviderUsageStatusSchema,
+  type ProviderUsageAuditEvent,
+  type ProviderUsagePricingSource,
+  type ProviderUsageStatus,
+} from './provider-usage';

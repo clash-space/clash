@@ -14,7 +14,7 @@ import {
   getCustomActionId,
 } from "./canvas";
 import { Canvas } from "./canvas-ops";
-import { MODEL_CARDS } from "./models";
+import { MODEL_CARDS, ModelCardSchema } from "./models";
 
 describe("ACTION_TYPE", () => {
   it("has Custom type", () => {
@@ -28,6 +28,197 @@ describe("ACTION_TYPE", () => {
 });
 
 describe("buildGenerationPayload", () => {
+  it("rejects undeclared built-in model parameters before creating a pending asset", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "nano-banana-2-lite");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "A paper city at night",
+      refNodes: [],
+      configId: modelCard!.id,
+      config: {
+        kind: "model",
+        modelCard,
+        modelParams: { aspect_ratio: "16:9", unsupported_knob: 1 },
+      },
+      actionType: "image-gen",
+    });
+
+    expect(result.validationError).toMatch(/unsupported_knob.*not declared/i);
+  });
+
+  it("validates executable custom-action parameters and declarative constraints", () => {
+    const customDef = CustomActionDefinitionSchema.parse({
+      id: "custom-image",
+      name: "Custom Image",
+      outputType: "image",
+      parameters: [{
+        id: "quality",
+        label: "Quality",
+        type: "select",
+        required: true,
+        options: [{ label: "High", value: "high" }],
+        defaultValue: "high",
+      }],
+      input: {
+        requiresPrompt: true,
+        inputMode: { images: { max: 1 } },
+        promptModalities: ["text", "image"],
+      },
+      constraints: [{ type: "max-length", field: "prompt", max: 8, message: "Prompt too long." }],
+    });
+
+    const invalidCandidate = buildGenerationPayload({
+      prompt: "short",
+      refNodes: [],
+      configId: customDef.id,
+      config: { kind: "custom", customDef, customActionParams: { quality: "draft" } },
+      actionType: "custom:custom-image",
+    });
+    const invalidConstraint = buildGenerationPayload({
+      prompt: "longer than eight",
+      refNodes: [],
+      configId: customDef.id,
+      config: { kind: "custom", customDef, customActionParams: { quality: "high" } },
+      actionType: "custom:custom-image",
+    });
+
+    expect(invalidCandidate.validationError).toMatch(/configured candidates/i);
+    expect(invalidConstraint.validationError).toBe("Prompt too long.");
+  });
+
+  it("preserves authored inline reference order in the pending prompt", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "gpt-5.4");
+    expect(modelCard).toBeDefined();
+    const authoredPrompt = "Compare @[First](node:image-a), then explain @[Second](node:image-b).";
+
+    const result = buildGenerationPayload({
+      prompt: authoredPrompt,
+      refNodes: [
+        { type: "image", data: { assetId: "asset-a" } },
+        { type: "image", data: { assetId: "asset-b" } },
+      ],
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "text-gen",
+    });
+
+    expect(result.cleanedPrompt).toBe("Compare First, then explain Second.");
+    expect(result.pendingInput.prompt).toBe(authoredPrompt);
+    expect(result.pendingInput.referenceImageAssetIds).toEqual(["asset-a", "asset-b"]);
+  });
+
+  it("ignores legacy lyrics references and only sends directly entered Lyrics", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "minimax-music-3");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Dreamy synth pop with a restrained vocal",
+      refNodes: [{
+        type: "text",
+        data: { content: "Keep the production intimate" },
+      }],
+      lyrics: "[Verse]\nNeon rain on the window",
+      lyricsRefNodes: [{
+        type: "text",
+        data: { content: "[Chorus]\nStay until the morning" },
+      }],
+      configId: modelCard!.id,
+      config: {
+        kind: "model",
+        modelCard,
+        modelParams: { lyrics_optimizer: false, is_instrumental: false },
+      },
+      actionType: "audio-gen",
+    } as any);
+
+    expect(result.validationError).toBeNull();
+    expect(result.cleanedPrompt).toBe(
+      "Dreamy synth pop with a restrained vocal\n\nKeep the production intimate",
+    );
+    expect(result.pendingInput.prompt).toBe(result.cleanedPrompt);
+    expect(result.pendingInput.modelParams).toMatchObject({
+      lyrics: "[Verse]\nNeon rain on the window",
+      lyrics_optimizer: false,
+      is_instrumental: false,
+    });
+  });
+
+  it("validates the MiniMax Music 3 lyrics limit on connected Text nodes", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "minimax-music-3");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Dreamy synth pop",
+      refNodes: [],
+      lyrics: "L".repeat(3501),
+      configId: modelCard!.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "audio-gen",
+    });
+
+    expect(result.validationError).toBe("Lyrics accept at most 3500 characters.");
+  });
+
+  it("maps Suno text references into custom-mode lyrics while using the prompt as style", () => {
+    const modelCard = MODEL_CARDS.find((card) => card.id === "suno-v5.5");
+    expect(modelCard).toBeDefined();
+
+    const result = buildGenerationPayload({
+      prompt: "Nocturnal synth-pop with warm analog pads",
+      refNodes: [],
+      lyrics: "[Verse]\nLast train through the rain",
+      configId: modelCard!.id,
+      config: {
+        kind: "model",
+        modelCard,
+        modelParams: { instrumental: false },
+      },
+      actionType: "audio-gen",
+      label: "Night Train",
+    });
+
+    expect(result.validationError).toBeNull();
+    expect(result.cleanedPrompt).toBe("[Verse]\nLast train through the rain");
+    expect(result.pendingInput.modelParams).toMatchObject({
+      style: "Nocturnal synth-pop with warm analog pads",
+      title: "Night Train",
+      instrumental: false,
+    });
+  });
+
+  it("supports fal-style prompt plus dedicated lyrics through the declarative music shape", () => {
+    const modelCard = ModelCardSchema.parse({
+      id: "test-fal-music",
+      name: "Test fal Music",
+      provider: "fal.ai",
+      kind: "audio",
+      task: "music-generation",
+      parameters: [],
+      defaultParams: {},
+      defaultAspectRatio: "1:1",
+      input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text"] },
+      musicInput: {
+        lyricsTarget: "modelParam",
+        lyricsParam: "lyrics",
+      },
+    });
+
+    const result = buildGenerationPayload({
+      prompt: "lofi, jazz, warm vinyl",
+      refNodes: [],
+      lyrics: "[chorus]\nStay awhile",
+      configId: modelCard.id,
+      config: { kind: "model", modelCard, modelParams: {} },
+      actionType: "audio-gen",
+    });
+
+    expect(result.cleanedPrompt).toBe("lofi, jazz, warm vinyl");
+    expect(result.pendingInput.modelParams).toMatchObject({
+      lyrics: "[chorus]\nStay awhile",
+    });
+  });
+
   it("rejects attached modalities before partitioning unsupported refs away", () => {
     const modelCard = MODEL_CARDS.find((card) => card.id === "gemini-3.1-flash-tts");
     expect(modelCard).toBeDefined();
@@ -382,9 +573,41 @@ describe("NodeDataSchema", () => {
     const data = NodeDataSchema.parse({ actionType: "image-gen" });
     expect(data.actionType).toBe("image-gen");
   });
+
+  it("persists an exact Executable Plugin binding", () => {
+    const pluginBinding = {
+      pluginId: "first-party-media",
+      version: "1.2.0",
+      exportId: "fal-h3",
+      schemaHash: `sha256:${"c".repeat(64)}`,
+    };
+    expect(NodeDataSchema.parse({ pluginBinding }).pluginBinding).toEqual(pluginBinding);
+    expect(NodeDataSchema.safeParse({
+      pluginBinding: { ...pluginBinding, version: "latest" },
+    }).success).toBe(false);
+  });
 });
 
 describe("buildPendingAssetNode", () => {
+  it("copies the exact plugin binding onto the pending child", () => {
+    const pluginBinding = {
+      pluginId: "first-party-media",
+      version: "1.2.0",
+      exportId: "fal-h3",
+      schemaHash: `sha256:${"c".repeat(64)}`,
+    };
+    const node = (buildPendingAssetNode as (input: any) => any)({
+      nodeId: "vid-plugin-1",
+      prompt: "Turn around",
+      modelId: "minimax-h3",
+      modelParams: {},
+      actionType: ACTION_TYPE.VideoGen,
+      pluginBinding,
+    });
+
+    expect(node.data.pluginBinding).toEqual(pluginBinding);
+  });
+
   it("builds a pending audio node for audio generation", () => {
     const node = buildPendingAssetNode({
       nodeId: "aud-1",
@@ -504,6 +727,52 @@ describe("Canvas.execute", () => {
       prompt: "",
       referenceImageAssetIds: ["asset-grid"],
       status: "pending",
+    });
+  });
+
+  it("keeps Prompt and Lyrics Text references separate during Canvas execution", () => {
+    const doc = new LoroDoc();
+    const canvas = new Canvas(doc, () => {});
+
+    canvas.insertNode(
+      "style-notes",
+      RF_NODE_TYPE.Text,
+      { label: "Style notes", content: "Keep the production intimate" },
+      null,
+      { x: 0, y: 0 },
+    );
+    canvas.insertNode(
+      "chorus-draft",
+      RF_NODE_TYPE.Text,
+      { label: "Chorus draft", content: "[Chorus]\nStay until morning" },
+      null,
+      { x: 0, y: 120 },
+    );
+    canvas.insertNode(
+      "music-action",
+      RF_NODE_TYPE.ActionBadge,
+      {
+        actionType: ACTION_TYPE.AudioGen,
+        modelId: "minimax-music-3",
+        content: "Dreamy synth pop",
+        lyrics: "[Verse]\nNeon rain",
+        referenceImageOrder: ["style-notes", "chorus-draft"],
+      },
+      null,
+      { x: 160, y: 0 },
+    );
+    canvas.insertEdge("style-notes-music-action", "style-notes", "music-action");
+    canvas.insertEdge("chorus-draft-music-action", "chorus-draft", "music-action");
+
+    const result = canvas.execute("music-action", () => "pending-song");
+
+    expect(result.error).toBeNull();
+    const pending = canvas.readNode("pending-song");
+    expect(pending?.data.prompt).toBe(
+      "Dreamy synth pop\n\nKeep the production intimate\n\n[Chorus]\nStay until morning",
+    );
+    expect(pending?.data.modelParams).toMatchObject({
+      lyrics: "[Verse]\nNeon rain",
     });
   });
 
@@ -643,6 +912,13 @@ describe("CustomActionDefinitionSchema", () => {
       repository: "github:user/repo",
       workerUrl: "https://style.workers.dev",
       promptModalities: ["text", "image"],
+      input: {
+        requiresPrompt: true,
+        inputMode: { images: { min: 1, max: 2 } },
+        promptModalities: ["text", "image"],
+      },
+      constraints: [{ type: "max-length", field: "prompt", max: 500 }],
+      maxRuntimeMs: 120_000,
       secrets: [{ id: "FAL_API_KEY", label: "FAL Key" }],
       tags: ["image", "style"],
     });
@@ -650,6 +926,9 @@ describe("CustomActionDefinitionSchema", () => {
     expect(def.promptModalities).toEqual(["text", "image"]);
     expect(def.secrets).toHaveLength(1);
     expect(def.tags).toEqual(["image", "style"]);
+    expect(def.input.inputMode.images).toMatchObject({ min: 1, max: 2 });
+    expect(def.constraints).toEqual([{ type: "max-length", field: "prompt", max: 500 }]);
+    expect(def.maxRuntimeMs).toBe(120_000);
   });
 
   it("defaults promptModalities to ['text']", () => {

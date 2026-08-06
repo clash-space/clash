@@ -1,7 +1,7 @@
 {
   "name": "@clash-space/director-plugin",
   "version": "0.1.0",
-  "description": "Installable Codex plugin exposing Clash Director Stage tools and an MCP App GUI",
+  "description": "Installable Codex plugin exposing Clash Director Stage MCP tools",
   "type": "module",
   "bin": { "clash-director-plugin": "./runtime/index.js" },
   "main": "./runtime/index.js",

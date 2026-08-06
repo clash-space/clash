@@ -8,7 +8,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
@@ -39,6 +39,8 @@ import {
   canvasNodeReadToken,
   createMediaAssetCowNodeData,
   buildEffectiveModelCards,
+  composeExecutablePluginModelCards,
+  CustomActionDefinitionSchema,
   hostMutationRejected,
   hostMutationSucceeded,
   isMediaNodeType,
@@ -63,6 +65,10 @@ import {
   sessionReadToken,
   TextAppliedRevisionSchema,
   UserModelCardConfigSchema,
+  ExecutablePluginBrokerRequestSchema,
+  ExecutablePluginBrokerResponseSchema,
+  ExecutablePluginInvocationSchema,
+  ExecutablePluginManifestSchema,
   validateCanvasBatchDelete,
   validateCanvasBatchDeleteReadProof,
   validateCanvasEdgeAdd,
@@ -89,6 +95,12 @@ import {
   type HostMutationRecord,
   type TextAppliedRevision,
   type UserModelCardConfig,
+  type ExecutablePluginBinding,
+  type ExecutablePluginCardRegistration,
+  type ExecutablePluginBrokerRequest,
+  type ExecutablePluginInvocation,
+  type ExecutablePluginJsonValue,
+  type ExecutablePluginManifest,
 } from "@clash/shared-types";
 import type {
   Asset,
@@ -154,6 +166,7 @@ import {
 } from "./fal-mock.js";
 import {
   createMockExternalAigcService,
+  localExecutableModelCards,
   type MockMediaGenerationInput,
   type MockMediaGenerationResult,
 } from "./local-aigc.js";
@@ -219,6 +232,7 @@ export interface ProviderOAuthDeviceFlowStart {
   deviceCode: string;
   expiresAt?: string;
   intervalSeconds?: number;
+  oauthState?: string;
 }
 
 export interface ProviderOAuthTokenResult {
@@ -227,11 +241,12 @@ export interface ProviderOAuthTokenResult {
   tokenType?: string;
   expiresAt?: string;
   accountLabel?: string;
+  availabilityError?: string;
 }
 
 export interface ProviderOAuthDriver {
   start(): Promise<ProviderOAuthDeviceFlowStart>;
-  complete(input: { deviceCode: string }): Promise<ProviderOAuthTokenResult>;
+  complete(input: { deviceCode: string; oauthState?: string }): Promise<ProviderOAuthTokenResult>;
 }
 
 export interface LocalApiOptions {
@@ -253,12 +268,36 @@ export interface LocalApiOptions {
   providerTestAnthropicBaseUrl?: string;
   providerTestFalQueueBaseUrl?: string;
   providerTestGoogleAiStudioBaseUrl?: string;
+  providerTestPikaBaseUrl?: string;
   providerTestKieBaseUrl?: string;
   providerTestReplicateBaseUrl?: string;
+  voiceInputFetch?: typeof fetch;
+  voiceInputGoogleAiStudioBaseUrl?: string;
   directorModelGenerationFetch?: typeof fetch;
   directorModelFalQueueBaseUrl?: string;
   directorModelPollIntervalMs?: number;
   assetProbe?: LocalAssetProbe;
+  resolvePluginBinding?: (
+    pluginId: string,
+    exportId: string,
+    kind: "action" | "provider-projector",
+  ) => Promise<ExecutablePluginBinding>;
+  listPluginCards?: () => Promise<ExecutablePluginCardRegistration[]>;
+  pluginBrokerToken?: string;
+  executablePluginBroker?: (
+    request: ExecutablePluginBrokerRequest,
+    context: {
+      manifest: ExecutablePluginManifest;
+      invocation: ExecutablePluginInvocation;
+    },
+  ) => Promise<ExecutablePluginJsonValue>;
+  marketplaceActions?: Array<Record<string, unknown> & {
+    id: string;
+    packageId: string;
+  }>;
+  listInstalledMarketplaceActions?: () => Promise<Array<Record<string, unknown>>>;
+  installMarketplaceAction?: (packageId: string) => Promise<Record<string, unknown>>;
+  uninstallMarketplaceAction?: (actionId: string) => Promise<void>;
 }
 
 export interface LocalAssetProbeInput {
@@ -311,9 +350,11 @@ async function probeLocalAsset(
   const parsed = JSON.parse(stdout) as {
     streams?: Array<{
       codec_type?: string;
+      codec_name?: string;
       width?: number;
       height?: number;
       duration?: string | number;
+      avg_frame_rate?: string;
     }>;
     format?: { duration?: string | number };
   };
@@ -325,6 +366,11 @@ async function probeLocalAsset(
       parsed.streams?.find((stream) => stream.codec_type === "audio")?.duration ??
       visualStream?.duration,
   );
+  const audioStream = parsed.streams?.find((stream) => stream.codec_type === "audio");
+  const frameRateParts = visualStream?.avg_frame_rate?.split("/").map(Number);
+  const frameRate = frameRateParts?.length === 2 && frameRateParts[1]
+    ? finitePositiveNumber(frameRateParts[0] / frameRateParts[1])
+    : finitePositiveNumber(visualStream?.avg_frame_rate);
   const metadata: AssetMetadata = {
     ...baseMetadata,
     ...(finitePositiveNumber(visualStream?.width)
@@ -336,6 +382,9 @@ async function probeLocalAsset(
     ...(durationSeconds
       ? { durationMs: Math.round(durationSeconds * 1000) }
       : {}),
+    ...(frameRate ? { frameRate } : {}),
+    ...(visualStream?.codec_name ? { videoCodec: visualStream.codec_name } : {}),
+    ...(audioStream?.codec_name ? { audioCodec: audioStream.codec_name } : {}),
   };
 
   if (
@@ -527,6 +576,7 @@ export interface LocalAcpCreateSessionParams {
   agentTemplateId?: string;
   agentMemberId?: string;
   agentId?: string;
+  configValues?: Record<string, string | boolean>;
   permissionMode?: string;
   projectId?: string;
   resumeAcpSessionId?: string;
@@ -1094,6 +1144,11 @@ function createDb(dataDir: string) {
     return metadataStore.getTextRevision(projectId, revisionId);
   }
 
+  async function listProviderUsageEvents(userId: string, limit?: number) {
+    await writeQueue.catch(() => undefined);
+    return providerStore.listProviderUsageEvents(userId, limit);
+  }
+
   return {
     load,
     update,
@@ -1102,6 +1157,7 @@ function createDb(dataDir: string) {
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,
+    listProviderUsageEvents,
   };
 }
 
@@ -3015,6 +3071,7 @@ function publicProviderOAuth(record: LocalProviderOAuthRecord) {
 }
 
 function providerOAuthEntityId(providerId: string, accountId?: string): string {
+  if (providerId === "dreamina") return providerId;
   return accountId ? `${providerId}:${accountId}` : providerId;
 }
 
@@ -3025,15 +3082,19 @@ function upsertProviderOAuth(
   patch: Partial<LocalProviderOAuthRecord>,
 ): LocalProviderOAuthRecord {
   const now = nowIso();
-  const accountId = patch.accountId;
+  const accountId = providerId === "dreamina" ? undefined : patch.accountId;
   const existing = state.providerOAuth.find(
     (record) =>
       record.userId === userId &&
       record.providerId === providerId &&
-      (record.accountId ?? "") === (accountId ?? ""),
+      (providerId === "dreamina" || (record.accountId ?? "") === (accountId ?? "")),
   );
+  const normalizedPatch = providerId === "dreamina"
+    ? Object.fromEntries(Object.entries(patch).filter(([key]) => key !== "accountId"))
+    : patch;
   if (existing) {
-    Object.assign(existing, patch, { updatedAt: now });
+    Object.assign(existing, normalizedPatch, { updatedAt: now });
+    if (providerId === "dreamina") delete existing.accountId;
     return existing;
   }
   const record: LocalProviderOAuthRecord = {
@@ -3042,7 +3103,7 @@ function upsertProviderOAuth(
     status: patch.status ?? "pending",
     createdAt: now,
     updatedAt: now,
-    ...patch,
+    ...normalizedPatch,
   };
   state.providerOAuth.unshift(record);
   return record;
@@ -3061,7 +3122,7 @@ function providerOAuthMatches(
   return (
     record.userId === userId &&
     record.providerId === providerId &&
-    (record.accountId ?? "") === (accountId ?? "")
+    (providerId === "dreamina" || (record.accountId ?? "") === (accountId ?? ""))
   );
 }
 
@@ -3247,29 +3308,82 @@ function userModelCardConfigs(
     .map(({ userId: _userId, ...config }) => config);
 }
 
-function effectiveModelCards(
+async function effectiveModelCards(
   state: Pick<LocalDb, "modelCardConfigs" | "providerAccounts" | "providerOAuth">,
   userId: string,
-) {
+  listPluginCards?: () => Promise<ExecutablePluginCardRegistration[]>,
+): Promise<ModelCard[]> {
   const providers = publicProviderAccounts(
     state.providerAccounts,
     userId,
     state.providerOAuth,
   );
+  const pluginCards = listPluginCards ? await listPluginCards() : [];
   return buildEffectiveModelCards({
     configs: userModelCardConfigs(state, userId),
     providers,
+    baseModels: localExecutableModelCards(composeExecutablePluginModelCards(MODEL_CARDS, pluginCards)),
   });
+}
+
+function executablePluginActionDefinitions(
+  registrations: readonly ExecutablePluginCardRegistration[],
+) {
+  const definitions = new Map<string, { pluginId: string; definition: unknown }>();
+  for (const registration of registrations) {
+    if (registration.document.kind !== "action-card") continue;
+    const card = registration.document.spec;
+    const existing = definitions.get(card.id);
+    if (existing) {
+      throw new Error(
+        `Plugins ${existing.pluginId} and ${registration.pluginId} both export action Card ${card.id}.`,
+      );
+    }
+    const definition = CustomActionDefinitionSchema.parse({
+      id: card.id,
+      name: card.name,
+      ...(card.description ? { description: card.description } : {}),
+      parameters: card.parameters,
+      outputType: card.outputType,
+      input: card.input,
+      constraints: card.constraints ?? [],
+      presentation: card.presentation,
+      ...(card.maxRuntimeMs ? { maxRuntimeMs: card.maxRuntimeMs } : {}),
+      runtime: registration.runtime.kind === "hosted" ? "worker" : "local",
+      version: registration.version,
+      ...(registration.runtime.kind === "hosted"
+        ? { workerUrl: registration.runtime.endpoint }
+        : {}),
+      pluginBinding: {
+        pluginId: registration.pluginId,
+        version: registration.version,
+        exportId: card.functionExportId,
+        schemaHash: registration.schemaHash,
+      },
+      pluginPermissions: registration.permissions,
+      promptModalities: card.input.promptModalities,
+      tags: ["executable-plugin", registration.pluginId],
+    });
+    definitions.set(card.id, { pluginId: registration.pluginId, definition });
+  }
+  return [...definitions.values()]
+    .map((entry) => entry.definition)
+    .sort((left, right) => {
+      const leftId = (left as { id: string }).id;
+      const rightId = (right as { id: string }).id;
+      return leftId.localeCompare(rightId);
+    });
 }
 
 function normalizeModelCardConfigInput(
   modelId: string,
   value: unknown,
   accounts: LocalProviderAccountConfig[],
+  builtInModelIds: ReadonlySet<string> = new Set(MODEL_CARDS.map((model) => model.id)),
 ): UserModelCardConfig | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
-  const builtIn = MODEL_CARDS.some((model) => model.id === modelId);
+  const builtIn = builtInModelIds.has(modelId);
   const parsed = UserModelCardConfigSchema.safeParse({
     ...raw,
     modelId,
@@ -3307,6 +3421,7 @@ function displayProviderName(
   if (account.providerId === "official" && account.upstreamId) {
     if (account.upstreamId === "openai") return "OpenAI";
     if (account.upstreamId === "anthropic") return "Anthropic";
+    if (account.upstreamId === "bfl") return "Black Forest Labs";
     if (account.upstreamId === "google-ai-studio") return "Google AI Studio";
     if (account.upstreamId === "google-agent-platform")
       return "Google Cloud Agent Platform";
@@ -3314,6 +3429,7 @@ function displayProviderName(
   }
   const names: Record<string, string> = {
     fal: "fal.ai",
+    pika: "Pika API Club",
     kie: "KIE",
     replicate: "Replicate",
     kling: "Kling",
@@ -3349,11 +3465,13 @@ function routeProviderId(route: ModelUpstreamRoute): string {
     route.upstreamId === "google-ai-studio" ||
     route.upstreamId === "google-agent-platform" ||
     route.upstreamId === "anthropic"
+    || route.upstreamId === "bfl"
   ) {
     return "official";
   }
   if (
     route.upstreamId === "fal" ||
+    route.upstreamId === "pika" ||
     route.upstreamId === "kie" ||
     route.upstreamId === "replicate" ||
     route.upstreamId === "mock"
@@ -3402,6 +3520,12 @@ function providerTestStubForAccount(
   );
 }
 
+function sameLocalBrokerToken(left: string, right: string): boolean {
+  const leftDigest = createHash("sha256").update(left).digest();
+  const rightDigest = createHash("sha256").update(right).digest();
+  return timingSafeEqual(leftDigest, rightDigest);
+}
+
 export function createLocalApiApp(options: LocalApiOptions): Hono {
   const userId = options.userId ?? "local-user";
   const db = createDb(options.dataDir);
@@ -3421,6 +3545,22 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     fal: falMock,
     origin: "http://local-provider-test",
     localTts,
+  });
+  const voiceInputAigc = createMockExternalAigcService({
+    providerAccounts: async () => {
+      const state = await db.load();
+      return providerAccountsForRuntime(
+        state.providerAccounts,
+        userId,
+        state.providerOAuth,
+      );
+    },
+    modelCards: async () => {
+      const state = await db.load();
+      return effectiveModelCards(state, userId, options.listPluginCards);
+    },
+    fetch: options.voiceInputFetch,
+    googleAiStudioBaseUrl: options.voiceInputGoogleAiStudioBaseUrl,
   });
   const syncConfig =
     options.syncConfig ??
@@ -3463,6 +3603,47 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }),
   );
 
+  app.post("/api/v1/local/plugin-broker", async (c) => {
+    if (!options.executablePluginBroker || !options.pluginBrokerToken) {
+      return c.json({ error: "local plugin broker unavailable" }, 404);
+    }
+    const token = c.req.header("x-clash-local-plugin-broker-token") ?? "";
+    if (!token || !sameLocalBrokerToken(token, options.pluginBrokerToken)) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    let requestId = "unknown";
+    try {
+      const body = await c.req.json() as Record<string, unknown>;
+      const request = ExecutablePluginBrokerRequestSchema.parse(body.request);
+      requestId = request.requestId;
+      const manifest = ExecutablePluginManifestSchema.parse(body.manifest);
+      const invocation = ExecutablePluginInvocationSchema.parse(body.invocation);
+      if (request.invocationId !== invocation.invocationId) {
+        throw new Error("Broker envelope invocation does not match request.");
+      }
+      if (invocation.target.pluginId !== manifest.id || invocation.target.version !== manifest.version) {
+        throw new Error("Broker envelope manifest does not match invocation target.");
+      }
+      const result = await options.executablePluginBroker(request, { manifest, invocation });
+      return c.json(ExecutablePluginBrokerResponseSchema.parse({
+        protocol: "clash.plugin.broker-response/v1",
+        requestId,
+        status: "ok",
+        result,
+      }));
+    } catch (error) {
+      return c.json(ExecutablePluginBrokerResponseSchema.parse({
+        protocol: "clash.plugin.broker-response/v1",
+        requestId,
+        status: "error",
+        error: {
+          code: "local_broker_error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }));
+    }
+  });
+
   app.get("/api/better-auth/get-session", (c) =>
     c.json({
       user: { id: userId, name: "Local User", email: "local@clash.local" },
@@ -3470,7 +3651,33 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   );
   app.get("/api/v1/me", (c) => c.json({ id: userId }));
 
-  app.get("/api/settings/actions", (c) => c.json([]));
+  app.get("/api/settings/actions", async (c) => c.json(
+    options.listInstalledMarketplaceActions
+      ? await options.listInstalledMarketplaceActions()
+      : [],
+  ));
+  if (options.installMarketplaceAction) {
+    app.post("/api/settings/actions", async (c) => {
+      const body = await c.req.json().catch(() => null) as {
+        manifest?: { id?: unknown; packageId?: unknown };
+      } | null;
+      const id = typeof body?.manifest?.id === "string" ? body.manifest.id : "";
+      const packageId = typeof body?.manifest?.packageId === "string"
+        ? body.manifest.packageId
+        : "";
+      const item = options.marketplaceActions?.find((candidate) =>
+        candidate.id === id && candidate.packageId === packageId
+      );
+      if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
+      return c.json(await options.installMarketplaceAction!(packageId));
+    });
+  }
+  if (options.uninstallMarketplaceAction) {
+    app.delete("/api/settings/actions/:id", async (c) => {
+      await options.uninstallMarketplaceAction!(c.req.param("id"));
+      return new Response(null, { status: 204 });
+    });
+  }
   app.get("/api/settings/skills", (c) => c.json([]));
   app.get("/api/settings/tokens", (c) => c.json([]));
   app.get("/api/v1/model-providers", async (c) => {
@@ -3782,7 +3989,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       },
       userId,
     };
-    const effectiveModels = effectiveModelCards(state, userId);
+    const effectiveModels = await effectiveModelCards(state, userId, options.listPluginCards);
     const providerTestModels = account.providerId === "mock"
       ? [...effectiveModels, ...MOCK_MODEL_CARDS]
       : effectiveModels;
@@ -4009,6 +4216,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
                 options.providerTestFalQueueBaseUrl ??
                 process.env.CLASH_FAL_QUEUE_URL,
               googleAiStudioBaseUrl: options.providerTestGoogleAiStudioBaseUrl,
+              pikaBaseUrl: options.providerTestPikaBaseUrl,
               kieBaseUrl: options.providerTestKieBaseUrl,
               replicateBaseUrl: options.providerTestReplicateBaseUrl,
               localTts,
@@ -4098,6 +4306,11 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       ...baseResult,
       message: `${providerName} configuration is ready for ${modelName}.`,
     } satisfies ModelProviderTestResult);
+  });
+  app.get("/api/v1/provider-usage", async (c) => {
+    const parsedLimit = Number.parseInt(c.req.query("limit") ?? "100", 10);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 100;
+    return c.json({ events: await db.listProviderUsageEvents(userId, limit) });
   });
   app.get("/api/v1/provider-oauth", async (c) => {
     const state = await db.load();
@@ -4211,6 +4424,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         verificationUri: started.verificationUri,
         userCode: started.userCode,
         deviceCode: started.deviceCode,
+        oauthState: started.oauthState,
         expiresAt: started.expiresAt,
         intervalSeconds: started.intervalSeconds,
         accessToken: undefined,
@@ -4361,7 +4575,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     let completed: ProviderOAuthTokenResult;
     try {
-      completed = await driver.complete({ deviceCode });
+      completed = await driver.complete({
+        deviceCode,
+        ...(existing?.oauthState ? { oauthState: existing.oauthState } : {}),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const record = await db.update((state) => {
@@ -4407,7 +4624,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     const record = await db.update((state) => {
       return upsertProviderOAuth(state, userId, providerId, {
         ...(accountId ? { accountId } : {}),
-        status: "authorized",
+        status: completed.availabilityError ? "error" : "authorized",
         accessToken: completed.accessToken,
         refreshToken: completed.refreshToken,
         tokenType: completed.tokenType,
@@ -4416,8 +4633,9 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         verificationUri: undefined,
         userCode: undefined,
         deviceCode: undefined,
+        oauthState: undefined,
         intervalSeconds: undefined,
-        error: undefined,
+        error: completed.availabilityError,
       });
     });
     const readToken = providerOAuthReceiptReadToken(record);
@@ -4544,6 +4762,10 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       mutation,
     });
   });
+  app.get("/api/v1/plugin-actions", async (c) => {
+    const registrations = options.listPluginCards ? await options.listPluginCards() : [];
+    return c.json({ actions: executablePluginActionDefinitions(registrations) });
+  });
   app.get("/api/v1/models/catalog", async (c) => {
     const state = await db.load();
     const configuredProviders = publicProviderAccounts(
@@ -4551,21 +4773,46 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
       userId,
       state.providerOAuth,
     );
-    return c.json({
-      models: listModelCatalogEntries({
-        models: effectiveModelCards(state, userId),
-        configuredProviders,
-      }),
+    const entries = listModelCatalogEntries({
+      models: await effectiveModelCards(state, userId, options.listPluginCards),
+      configuredProviders,
     });
+    const models = await Promise.all(entries.map(async (entry) => {
+      const route = entry.selectedRoute;
+      if (!route?.projectorPluginId || !route.projectorExportId || !options.resolvePluginBinding) {
+        return entry;
+      }
+      const projectorBinding = await options.resolvePluginBinding(
+        route.projectorPluginId,
+        route.projectorExportId,
+        "provider-projector",
+      );
+      return {
+        ...entry,
+        selectedRoute: { ...route, projectorBinding },
+        routes: entry.routes.map((candidate) =>
+          candidate.projectorPluginId === route.projectorPluginId
+            && candidate.projectorExportId === route.projectorExportId
+            ? { ...candidate, projectorBinding }
+            : candidate
+        ),
+      };
+    }));
+    return c.json({ models });
   });
   app.put("/api/v1/model-cards/:modelId", async (c) => {
     const modelId = c.req.param("modelId").trim();
     const body = await c.req.json().catch(() => null);
     const state = await db.load();
+    const builtInModelIds = new Set(
+      (await effectiveModelCards(state, userId, options.listPluginCards))
+        .map((model) => model.id),
+    );
     const config = normalizeModelCardConfigInput(
       modelId,
       body,
       state.providerAccounts.filter((account) => (account.userId ?? userId) === userId),
+      builtInModelIds,
     );
     if (!config) return c.json({ error: "Invalid model card config" }, 400);
     const now = nowIso();
@@ -4613,8 +4860,28 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     return new Response(null, { status: 204 });
   });
   app.get("/api/marketplace/registry", (c) =>
-    c.json({ version: 1, actions: [], skills: [] }),
+    c.json({ version: 1, actions: options.marketplaceActions ?? [], skills: [] }),
   );
+  if (options.installMarketplaceAction) {
+    app.post("/api/marketplace/actions/:packageId/install", async (c) => {
+      const packageId = c.req.param("packageId");
+      const item = options.marketplaceActions?.find(
+        (candidate) => candidate.packageId === packageId,
+      );
+      if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
+      return c.json(await options.installMarketplaceAction!(packageId));
+    });
+  }
+  if (options.uninstallMarketplaceAction) {
+    app.delete("/api/marketplace/actions/:packageId/install", async (c) => {
+      const item = options.marketplaceActions?.find(
+        (candidate) => candidate.packageId === c.req.param("packageId"),
+      );
+      if (!item) return c.json({ error: "Unknown local marketplace action package" }, 404);
+      await options.uninstallMarketplaceAction!(item.id);
+      return new Response(null, { status: 204 });
+    });
+  }
   app.get("/api/v1/local/sync", async (c) =>
     c.json(publicLocalSyncConfig(await localSyncReadState(syncConfig))),
   );
@@ -4694,6 +4961,114 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   app.get("/api/v1/local/audio", async (c) =>
     c.json(publicLocalAudioConfig(await localAudioReadState(audioConfig))),
   );
+  const resolveVoiceInputRoute = async () => {
+    const resolvedSelection = audioConfig.getVoiceInputSelection
+      ? await audioConfig.getVoiceInputSelection()
+      : await audioConfig.getPublicConfig().then(({ asr }) => ({
+          enabled: asr.enabled,
+          model: asr.model,
+        }));
+    if (!resolvedSelection.enabled) return { resolvedSelection };
+    const state = await db.load();
+    const configuredProviders = publicProviderAccounts(
+      state.providerAccounts,
+      userId,
+      state.providerOAuth,
+    );
+    const entry = listModelCatalogEntries({
+      models: await effectiveModelCards(state, userId, options.listPluginCards),
+      configuredProviders,
+    }).find((candidate) => candidate.model.id === resolvedSelection.model);
+    const route = entry?.selectedRoute ?? entry?.routes.find((candidate) => candidate.apiShape === "local-asr");
+    const isCloudReady = !!entry &&
+      entry.model.kind === "text" &&
+      (entry.model.input.promptModalities.includes("audio") || !!entry.model.input.inputMode.audios) &&
+      !!entry.selectedRoute &&
+      entry.missingCredentials.length === 0 &&
+      entry.tier === "available";
+    return { resolvedSelection, entry, route, isCloudReady };
+  };
+  app.get("/api/v1/local/audio/voice-input", async (c) => {
+    const { resolvedSelection, route, isCloudReady } = await resolveVoiceInputRoute();
+    if (!resolvedSelection.enabled) {
+      return c.json({
+        asr: {
+          enabled: false,
+          provider: "global-model",
+          model: resolvedSelection.model,
+          ready: false,
+          setup: {
+            provider: "global-model",
+            runtime: "provider-route",
+            status: "disabled",
+            available: false,
+            default_base_url: null,
+            commands: [],
+          },
+        },
+      });
+    }
+    if (isCloudReady) {
+      return c.json({
+        asr: {
+          enabled: true,
+          provider: route?.upstreamId ?? "global-model",
+          model: resolvedSelection.model,
+          ready: true,
+          setup: {
+            provider: route?.upstreamId ?? "global-model",
+            runtime: "provider-route",
+            status: "ready",
+            available: true,
+            default_base_url: null,
+            commands: [],
+          },
+        },
+      });
+    }
+    if (c.req.query("probe") === "false") {
+      return c.json({
+        asr: {
+          enabled: true,
+          provider: "local",
+          model: resolvedSelection.model,
+          ready: false,
+          setup: {
+            provider: "local",
+            runtime: "builtin-rpc",
+            status: "needs-install",
+            available: false,
+            default_base_url: null,
+            commands: [],
+          },
+        },
+      });
+    }
+    if (audioConfig.getVoiceInputConfig) {
+      return c.json(await audioConfig.getVoiceInputConfig());
+    }
+    const { asr } = await audioConfig.getPublicConfig();
+    return c.json({ asr });
+  });
+  app.post("/api/v1/local/audio/voice-input/warmup", async (c) => {
+    const { resolvedSelection, route, isCloudReady } = await resolveVoiceInputRoute();
+    if (!resolvedSelection.enabled) {
+      return c.json({ status: "disabled", runtime: "provider-route" }, 409);
+    }
+    if (isCloudReady) {
+      return c.json({ status: "not-needed", runtime: "provider-route" });
+    }
+    if (!audioConfig.warmupVoiceInput) {
+      return c.json({ status: "unsupported", runtime: "builtin-rpc" }, 501);
+    }
+    const model = route?.apiShape === "local-asr" && route.upstreamModel
+      ? route.upstreamModel
+      : resolvedSelection.model;
+    void audioConfig.warmupVoiceInput({ model }).catch((error) => {
+      console.warn("[local-api] Voice input warmup degraded:", errorMessage(error));
+    });
+    return c.json({ status: "warming", runtime: "builtin-rpc", model }, 202);
+  });
   app.get("/api/v1/local/audio/models/status", async (c) => {
     try {
       return c.json(await audioConfig.getModelStatus({
@@ -4935,10 +5310,81 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     }
     const language = form.get("language");
     try {
-      const result = await audioConfig.transcribe({
-        file,
-        language: typeof language === "string" ? language : null,
+      const selection = audioConfig.getVoiceInputSelection
+        ? await audioConfig.getVoiceInputSelection()
+        : await audioConfig.getPublicConfig().then(({ asr }) => ({
+            enabled: asr.enabled,
+            model: asr.model,
+          }));
+      if (!selection.enabled) {
+        throw new LocalAudioConfigError(
+          "Voice input is not enabled. Open Settings > Voice input and enable it.",
+          409,
+        );
+      }
+      const state = await db.load();
+      const catalog = listModelCatalogEntries({
+        models: await effectiveModelCards(state, userId, options.listPluginCards),
+        configuredProviders: publicProviderAccounts(
+          state.providerAccounts,
+          userId,
+          state.providerOAuth,
+        ),
       });
+      const entry = catalog.find((candidate) => candidate.model.id === selection.model);
+      const localRoute = entry?.routes.find((route) => route.apiShape === "local-asr");
+      const acceptsAudio = !!entry && (
+        entry.model.input.promptModalities.includes("audio") ||
+        !!entry.model.input.inputMode.audios
+      );
+
+      const result = entry?.model.kind === "text" && acceptsAudio
+        ? await (async () => {
+            if (!entry.selectedRoute || entry.missingCredentials.length > 0 || entry.tier !== "available") {
+              throw new LocalAudioConfigError(
+                "The selected voice input model is not configured. Open Settings > Models and configure a provider.",
+                409,
+              );
+            }
+            const generated = await voiceInputAigc.generateText({
+              taskId: randomUUID(),
+              prompt: typeof language === "string" && language.trim()
+                ? `Transcribe the attached audio verbatim in ${language.trim()}. Return only the transcript.`
+                : "Transcribe the attached audio verbatim. Return only the transcript.",
+              model: entry.model.id,
+              modelParams: { require_real_provider: true },
+              referenceAudio: {
+                bytes: new Uint8Array(await file.arrayBuffer()),
+                contentType: file.type || "application/octet-stream",
+              },
+            });
+            const text = generated.text.trim();
+            if (!text) throw new LocalAudioConfigError("The selected voice input model returned an empty transcript.", 502);
+            return {
+              schemaVersion: 1 as const,
+              kind: "clash.asr.timed-transcript" as const,
+              timebase: "milliseconds" as const,
+              alignment: "word" as const,
+              text,
+              backendId: generated.provider ?? entry.selectedRoute.upstreamId,
+              modelId: entry.model.id,
+              ...(typeof language === "string" && language.trim() ? { language: language.trim() } : {}),
+              durationMs: 1,
+              words: [{ id: "word-000001", text, startMs: 0, endMs: 1 }],
+              segments: [{
+                id: "segment-000001",
+                text,
+                startMs: 0,
+                endMs: 1,
+                wordIds: ["word-000001"],
+              }],
+            };
+          })()
+        : await audioConfig.transcribe({
+            file,
+            language: typeof language === "string" ? language : null,
+            ...(localRoute?.upstreamModel ? { model: localRoute.upstreamModel } : {}),
+          });
       const mutation = hostMutationSucceeded(envelope, {
         resultEntityId: "audio-transcription",
       });
@@ -5869,6 +6315,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         agentTemplateId: sessionContextId,
         ...(agentMemberId ? { agentMemberId } : {}),
         ...(agentId ? { agentId } : {}),
+        ...(configValues ? { configValues } : {}),
         ...(permissionMode ? { permissionMode } : {}),
         ...(body.project_id ? { projectId: body.project_id } : {}),
         ...(body.resume_session_id

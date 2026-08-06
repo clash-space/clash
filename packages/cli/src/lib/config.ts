@@ -12,7 +12,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { parseDocument } from "yaml";
+import { isLocalHostDiscoveryRecord } from "@clash/shared-runtime";
+import { resolveClashProfile } from "@clash/shared-runtime/local-paths";
 import { resolveClashRoot } from "./clash-home";
+import { getHostDiscoveryPath } from "./host-discovery";
 
 export function configDir(env: Record<string, string | undefined> = process.env): string {
   return resolveClashRoot(env);
@@ -182,12 +185,31 @@ export function getApiKey(): string | undefined {
   return process.env.CLASH_API_KEY || loadConfig().apiKey;
 }
 
+function discoveredServerUrl(): string | undefined {
+  try {
+    const value = JSON.parse(readFileSync(getHostDiscoveryPath(), "utf8")) as unknown;
+    if (!isLocalHostDiscoveryRecord(value)) return undefined;
+    if ((value.profile ?? "prod") !== resolveClashProfile()) return undefined;
+    try {
+      process.kill(value.pid, 0);
+    } catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "EPERM")) {
+        return undefined;
+      }
+    }
+    return value.endpoint;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Get server URL from env var or config file. Defaults to localhost for dev.
  */
 export function getServerUrl(): string {
   return (
     process.env.CLASH_API_URL ||
+    discoveredServerUrl() ||
     loadConfig().serverUrl ||
     "http://localhost:8788"
   );

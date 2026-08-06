@@ -157,7 +157,7 @@ describe("NodeProcessor - processPendingNodes", () => {
         data: {
           status: "pending",
           prompt: "a sunset",
-          referenceImageUrls: ["projects/proj-1/assets/ref.png"],
+          modelId: "pika-2.5",
           actorType: "user",
           actorUserId: "u-test",
         },
@@ -178,7 +178,101 @@ describe("NodeProcessor - processPendingNodes", () => {
     expect(triggerPolling).toHaveBeenCalled();
   });
 
+  it("resolves hosted H3 prompt badges with their original modalities and order", async () => {
+    const doc = makeDoc([
+      {
+        id: "image-ref",
+        type: "image",
+        data: { status: "completed", assetId: "asset-image", description: "Subject source" },
+      },
+      {
+        id: "video-ref",
+        type: "video",
+        data: { status: "completed", assetId: "asset-video", description: "Motion source" },
+      },
+      {
+        id: "h3-ref-node",
+        type: "video",
+        data: {
+          status: "pending",
+          prompt: "Use @[Subject](node:image-ref), then @[Motion](node:video-ref).",
+          modelId: "minimax-h3-ref",
+          referenceImageAssetIds: ["asset-image"],
+          referenceVideoAssetIds: ["asset-video"],
+          actorType: "user",
+          actorUserId: "u-test",
+        },
+      },
+    ]);
+    const assets = [{
+      id: "asset-image",
+      userId: "u-test",
+      kind: "image",
+      srcR2Key: "images/subject.png",
+      coverR2Key: null,
+      metadata: null,
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }, {
+      id: "asset-video",
+      userId: "u-test",
+      kind: "video",
+      srcR2Key: "videos/motion.mp4",
+      coverR2Key: null,
+      metadata: null,
+      sourceModel: null,
+      sourcePrompt: null,
+      sourceTaskId: null,
+      sources: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }];
+    const env = makeEnv({
+      DB: {
+        prepare: vi.fn().mockReturnValue({
+          bind: vi.fn().mockReturnValue({
+            all: vi.fn().mockResolvedValue({ results: assets }),
+          }),
+        }),
+      } as any,
+    });
+
+    await processPendingNodes(doc, env, "proj-1", broadcast, triggerPolling);
+
+    expect(env.GENERATION_WORKFLOW.create).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        promptParts: [
+          { type: "text", text: "Use " },
+          {
+            type: "asset_ref",
+            nodeId: "image-ref",
+            r2Key: "images/subject.png",
+            modality: "image",
+          },
+          { type: "text", text: ", then " },
+          {
+            type: "asset_ref",
+            nodeId: "video-ref",
+            r2Key: "videos/motion.mp4",
+            modality: "video",
+          },
+          { type: "text", text: "." },
+        ],
+      }),
+    }));
+  });
+
   it("submits installed worker custom actions with model and secret metadata", async () => {
+    const pluginBinding = {
+      pluginId: "acme.media",
+      version: "1.2.3",
+      exportId: "render",
+      schemaHash: `sha256:${"a".repeat(64)}`,
+    };
     const doc = makeDoc([
       {
         id: "custom-worker-node",
@@ -189,6 +283,7 @@ describe("NodeProcessor - processPendingNodes", () => {
           customActionId: "fal-render",
           customActionParams: { size: "1024x1024" },
           prompt: "city at night",
+          pluginBinding,
           actorType: "user",
           actorUserId: "u-test",
         },
@@ -204,6 +299,14 @@ describe("NodeProcessor - processPendingNodes", () => {
         model: {
           provider: "fal",
           id: "fal-ai/flux-pro",
+        },
+        pluginBinding,
+        pluginPermissions: {
+          network: { domains: ["queue.fal.run"] },
+          secrets: ["provider:fal"],
+          assets: ["read", "write"],
+          filesystem: { read: [], write: [] },
+          externalWrites: true,
         },
       }),
     });
@@ -236,6 +339,15 @@ describe("NodeProcessor - processPendingNodes", () => {
               required: true,
             }),
           ],
+          pluginBinding,
+          pluginPermissions: {
+            network: { domains: ["queue.fal.run"] },
+            secrets: ["provider:fal"],
+            assets: ["read", "write"],
+            hostTools: [],
+            filesystem: { read: [], write: [] },
+            externalWrites: true,
+          },
         }),
       }),
     );

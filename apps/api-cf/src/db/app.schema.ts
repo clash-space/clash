@@ -122,6 +122,40 @@ export const providerAccounts = sqliteTable(
     })
 )
 
+/** Immutable per-request provider usage and estimated-cost audit events. */
+export const providerUsageAudit = sqliteTable(
+    "provider_usage_audit",
+    {
+        id: text("id").primaryKey(),
+        userId: text("user_id").notNull(),
+        providerId: text("provider_id").notNull(),
+        providerAccountId: text("provider_account_id"),
+        modelId: text("model_id").notNull(),
+        operation: text("operation").notNull(),
+        taskId: text("task_id").notNull(),
+        projectId: text("project_id"),
+        nodeId: text("node_id"),
+        actorType: text("actor_type"),
+        actorUserId: text("actor_user_id"),
+        actorAgentId: text("actor_agent_id"),
+        providerRequestId: text("provider_request_id"),
+        idempotencyKey: text("idempotency_key").notNull(),
+        status: text("status").notNull(),
+        estimatedCostMicroUsd: integer("estimated_cost_micro_usd"),
+        estimateComplete: integer("estimate_complete").notNull().default(0),
+        currency: text("currency").notNull().default("USD"),
+        pricingSource: text("pricing_source").notNull(),
+        billingBasis: text("billing_basis").notNull().default("{}"),
+        errorCode: text("error_code"),
+        errorMessage: text("error_message"),
+        occurredAt: integer("occurred_at").notNull(),
+    },
+    (table) => ({
+        providerUsageAuditUserTimeIdx: index("provider_usage_audit_user_time_idx").on(table.userId, table.occurredAt),
+        providerUsageAuditUserTaskIdx: index("provider_usage_audit_user_task_idx").on(table.userId, table.taskId),
+    })
+)
+
 export const modelCardConfigs = sqliteTable(
     "model_card_config",
     {
@@ -256,6 +290,29 @@ export const assets = sqliteTable(
     (table) => ({
         assetsUserIdx: index("assets_user_idx").on(table.userId, table.createdAt),
         assetsTaskIdx: index("assets_task_idx").on(table.sourceTaskId),
+    })
+)
+
+/** Capability-broker audit log. Never stores credential values or payload bodies. */
+export const pluginBrokerAudit = sqliteTable(
+    "plugin_broker_audit",
+    {
+        id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+        capabilityId: text("capability_id").notNull(),
+        pluginId: text("plugin_id").notNull(),
+        pluginVersion: text("plugin_version").notNull(),
+        projectId: text("project_id").notNull(),
+        invocationId: text("invocation_id").notNull(),
+        requestId: text("request_id").notNull(),
+        operation: text("operation").notNull(),
+        target: text("target").notNull(),
+        status: text("status").notNull(),
+        error: text("error"),
+        occurredAt: integer("occurred_at").notNull(),
+    },
+    (table) => ({
+        pluginBrokerAuditPluginIdx: index("plugin_broker_audit_plugin_idx").on(table.pluginId, table.occurredAt),
+        pluginBrokerAuditInvocationIdx: index("plugin_broker_audit_invocation_idx").on(table.invocationId, table.occurredAt),
     })
 )
 

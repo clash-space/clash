@@ -60,6 +60,36 @@ function createPartialProviderSqlite(dataDir: string): void {
 }
 
 describe("provider accounts", () => {
+  it("appends immutable provider usage events without overwriting a replayed event id", async () => {
+    const dataDir = await tempProviderDir();
+    const store = createLocalProviderStore(dataDir);
+    const original = {
+      id: "usage-task-1-submitted",
+      userId: "local-user",
+      providerId: "pika",
+      providerAccountId: "pika-primary",
+      modelId: "pika-2.5",
+      operation: "pika/pika-2.5/text-to-video",
+      taskId: "task-1",
+      projectId: "project-1",
+      nodeId: "node-1",
+      providerRequestId: "media-1",
+      idempotencyKey: "task-1",
+      status: "submitted" as const,
+      estimatedCostMicroUsd: 200_000,
+      estimateComplete: true,
+      currency: "USD" as const,
+      pricingSource: "pika-catalog" as const,
+      billingBasis: { resolution: "720p", duration_s: 5 },
+      occurredAt: "2026-08-05T12:00:00.000Z",
+    };
+
+    await store.appendProviderUsageEvent(original);
+    await store.appendProviderUsageEvent({ ...original, status: "failed", estimatedCostMicroUsd: 999_999 });
+
+    await expect(store.listProviderUsageEvents("local-user", 20)).resolves.toEqual([original]);
+  });
+
   it("does not initialize secret storage when provider tables are empty", async () => {
     const dataDir = await tempProviderDir();
     createPartialProviderSqlite(dataDir);
@@ -412,7 +442,7 @@ describe("provider accounts", () => {
     ]);
   });
 
-  it("keeps Dreamina OAuth availability scoped to the matching provider account config", () => {
+  it("shares global Dreamina OAuth availability across matching provider account configs", () => {
     const providers = publicProviderAccounts(
       [
         {
@@ -451,12 +481,12 @@ describe("provider accounts", () => {
       }),
       expect.objectContaining({
         id: "jimeng-secondary",
-        availableOAuth: [],
+        availableOAuth: ["dreamina"],
       }),
     ]);
   });
 
-  it("creates one Dreamina-backed Jimeng provider account for each authorized OAuth config", () => {
+  it("collapses legacy account-scoped Dreamina OAuth records into one global provider", () => {
     const providers = publicProviderAccounts(
       [],
       "user-1",
@@ -480,19 +510,10 @@ describe("provider accounts", () => {
       ] as any,
     );
 
-    expect(providers).toHaveLength(2);
+    expect(providers).toHaveLength(1);
     expect(providers).toEqual([
       expect.objectContaining({
-        id: "jimeng-production",
         label: "Production Dreamina",
-        providerId: "jimeng",
-        upstreamId: "jimeng",
-        enabled: true,
-        availableOAuth: ["dreamina"],
-      }),
-      expect.objectContaining({
-        id: "jimeng-team",
-        label: "Team Dreamina",
         providerId: "jimeng",
         upstreamId: "jimeng",
         enabled: true,

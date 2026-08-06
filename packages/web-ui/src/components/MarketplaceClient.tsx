@@ -64,7 +64,7 @@ export default function MarketplaceClient({ items, installedActionIds, installed
             try {
                 if (isInstalled(item)) {
                     if (item.type === 'action') {
-                        await marketplaceUninstallAction(item.id);
+                        await marketplaceUninstallAction(item);
                         setInstalledActions((prev) => { const s = new Set(prev); s.delete(item.id); return s; });
                     } else {
                         await marketplaceUninstallSkill(item.id);

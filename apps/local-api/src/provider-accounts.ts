@@ -46,6 +46,8 @@ export interface LocalProviderOAuthRecord {
   verificationUri?: string;
   userCode?: string;
   deviceCode?: string;
+  /** Encrypted-at-rest CLI continuation state required to finish device OAuth. */
+  oauthState?: string;
   intervalSeconds?: number;
   accountLabel?: string;
   expiresAt?: string;
@@ -81,6 +83,7 @@ const UPSTREAM_IDS = new Set<ModelUpstreamId>([
   "local",
   "mock",
   "fal",
+  "bfl",
   "google-ai-studio",
   "google-agent-platform",
   "openai",
@@ -99,8 +102,10 @@ const API_SHAPES = new Set<ModelUpstreamApiShape>([
   "local-asr",
   "local-tts",
   "fal",
+  "bfl",
   "google-agent-platform",
   "google-ai-studio",
+  "google-ai-studio-interactions",
   "openai-images",
   "openai-compatible",
   "anthropic-compatible",
@@ -171,6 +176,7 @@ export function providerAccountKey(account: Pick<LocalProviderAccountConfig, "id
 function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undefined {
   if (
     providerId === "fal" ||
+    providerId === "pika" ||
     providerId === "local" ||
     providerId === "kie" ||
     providerId === "replicate" ||
@@ -240,31 +246,21 @@ function authorizedOAuthRecords(records: LocalProviderOAuthRecord[], userId: str
 }
 
 function oauthAccounts(records: LocalProviderOAuthRecord[], userId: string): LocalProviderAccountConfig[] {
-  const accounts: LocalProviderAccountConfig[] = [];
-  const seen = new Set<string>();
-  for (const record of authorizedOAuthRecords(records, userId)) {
-    if (record.providerId !== "dreamina") continue;
-    const account: LocalProviderAccountConfig = {
-      ...(record.accountId ? { id: record.accountId } : {}),
-      providerId: "jimeng",
-      upstreamId: "jimeng",
-      ...(record.accountLabel ? { label: record.accountLabel } : {}),
-      enabled: true,
-    };
-    const key = providerAccountKey(account);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    accounts.push(account);
-  }
-  return accounts;
+  const record = authorizedOAuthRecords(records, userId)
+    .find((candidate) => candidate.providerId === "dreamina");
+  if (!record) return [];
+  return [{
+    providerId: "jimeng",
+    upstreamId: "jimeng",
+    ...(record.accountLabel ? { label: record.accountLabel } : {}),
+    enabled: true,
+  }];
 }
 
 function oauthForAccount(account: Pick<LocalProviderAccountConfig, "id" | "providerId">, records: LocalProviderOAuthRecord[]): ProviderOAuthId[] {
   if (account.providerId !== "jimeng") return [];
   const hasDreamina = records.some((record) => {
-    if (record.providerId !== "dreamina") return false;
-    if (!record.accountId) return true;
-    return account.id === record.accountId;
+    return record.providerId === "dreamina";
   });
   return hasDreamina ? ["dreamina"] : [];
 }
@@ -292,11 +288,13 @@ export function providerAccountsForRuntime(
 ): RuntimeProviderAccountAvailability[] {
   const connectedOAuth = authorizedOAuthRecords(oauthRecords, userId);
   const merged = new Map<string, LocalProviderAccountConfig>();
-  for (const account of oauthAccounts(oauthRecords, userId)) merged.set(providerAccountKey(account), account);
   for (const account of stored) {
     if ((account.userId ?? userId) !== userId) continue;
     if (!isRuntimeProviderAccount(account)) continue;
     merged.set(providerAccountKey(account), account);
+  }
+  if (![...merged.values()].some((account) => account.providerId === "jimeng")) {
+    for (const account of oauthAccounts(oauthRecords, userId)) merged.set(providerAccountKey(account), account);
   }
   return [...merged.values()]
     .sort((a, b) => {

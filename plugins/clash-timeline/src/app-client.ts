@@ -32,6 +32,30 @@ type WorkspacePayload = {
   timeline?: TimelineEntity;
 };
 
+type TimelineInspectorField = "from" | "durationInFrames";
+
+type TimelineAppContract = {
+  contractFingerprint: string;
+  trackCategories: Array<{ id: string; label: string }>;
+  defaultTrackCategory: string;
+  inspector: {
+    scope: "timing-only";
+    editableItemFields: TimelineInspectorField[];
+  };
+};
+
+declare global {
+  interface Window {
+    __CLASH_TIMELINE_APP_CONTRACT__?: TimelineAppContract;
+  }
+}
+
+const injectedTimelineAppContract = window.__CLASH_TIMELINE_APP_CONTRACT__;
+if (!injectedTimelineAppContract?.trackCategories.length) {
+  throw new Error("Clash Timeline App contract was not injected by the MCP resource");
+}
+const timelineAppContract: TimelineAppContract = injectedTimelineAppContract;
+
 const app = new App({ name: "Clash Timeline", version: "0.1.0" });
 const shell = document.querySelector<HTMLElement>("[data-app-shell]")!;
 const cwdInput = document.querySelector<HTMLInputElement>("[data-workspace-cwd]")!;
@@ -52,13 +76,14 @@ let selected: TimelineEntity | null = null;
 let draftState: Record<string, unknown> | null = null;
 let selectedItem: { trackId: string; itemId: string } | null = null;
 
-const categoryOrder = ["effect", "text", "visual", "primary", "audio"];
-const categoryLabels: Record<string, string> = {
-  effect: "Effects",
-  text: "Text / subtitle",
-  visual: "Video / image",
-  primary: "Video / image",
-  audio: "Audio",
+const categoryOrder = timelineAppContract.trackCategories.map((category) => category.id);
+const categoryLabels: Record<string, string> = Object.fromEntries(
+  timelineAppContract.trackCategories.map((category) => [category.id, category.label]),
+);
+const defaultTrackCategory = timelineAppContract.defaultTrackCategory;
+const inspectorFieldLabels: Record<TimelineInspectorField, string> = {
+  from: "Start frame",
+  durationInFrames: "Duration",
 };
 
 function setStatus(message: string, state: "idle" | "error" | "success" = "idle"): void {
@@ -174,9 +199,9 @@ function renderInspector(): void {
   const fields = document.createElement("div");
   fields.dataset.itemFields = "";
 
-  const numberField = (labelText: string, key: "from" | "durationInFrames"): HTMLLabelElement => {
+  const numberField = (key: TimelineInspectorField): HTMLLabelElement => {
     const label = document.createElement("label");
-    label.textContent = labelText;
+    label.textContent = inspectorFieldLabels[key];
     const input = document.createElement("input");
     input.type = "number";
     input.min = key === "from" ? "0" : "1";
@@ -193,7 +218,7 @@ function renderInspector(): void {
     return label;
   };
 
-  fields.append(numberField("Start frame", "from"), numberField("Duration", "durationInFrames"));
+  fields.append(...timelineAppContract.inspector.editableItemFields.map(numberField));
   inspector.append(heading, meta, fields);
 }
 
@@ -209,7 +234,7 @@ function renderTracks(): void {
   const total = durationInFrames();
   for (const track of stateTracks) {
     const lane = document.createElement("section");
-    const category = track.category ?? "visual";
+    const category = track.category ?? defaultTrackCategory;
     lane.dataset.trackLane = track.id;
     lane.dataset.category = category;
 
@@ -319,7 +344,7 @@ createForm.addEventListener("submit", async (event) => {
   if (!timelineId || !name) return;
   setStatus(`Creating ${name}…`);
   try {
-    await callTool("clash_timeline_create", { cwd: currentCwd(), timelineId, name });
+    await callTool("clash_timeline_create", { cwd: currentCwd(), id: timelineId, name });
     createForm.reset();
     await refresh();
     await openTimeline(timelineId);
@@ -333,13 +358,13 @@ trackForm.addEventListener("submit", (event) => {
   if (!draftState) return;
   const data = new FormData(trackForm);
   const trackId = String(data.get("trackId") ?? "").trim();
-  const category = String(data.get("category") ?? "visual");
+  const category = String(data.get("category") ?? defaultTrackCategory);
   if (!trackId || tracks().some((track) => track.id === trackId)) {
     setStatus(trackId ? `Track ${trackId} already exists.` : "Track ID is required.", "error");
     return;
   }
   const nextTracks = [...tracks(), { id: trackId, category, items: [] }]
-    .sort((left, right) => categoryOrder.indexOf(left.category ?? "visual") - categoryOrder.indexOf(right.category ?? "visual"));
+    .sort((left, right) => categoryOrder.indexOf(left.category ?? defaultTrackCategory) - categoryOrder.indexOf(right.category ?? defaultTrackCategory));
   draftState.tracks = nextTracks;
   trackForm.reset();
   markDirty();
@@ -349,12 +374,24 @@ trackForm.addEventListener("submit", (event) => {
 
 saveButton.addEventListener("click", async () => {
   if (!selected || !draftState) return;
+  if (!selected.revisionId) {
+    markDirty();
+    setStatus("This Timeline has no revision id. Reload it before saving.", "error");
+    return;
+  }
   saveButton.disabled = true;
-  setStatus(`Saving ${selected.name}…`);
+  setStatus(`Validating ${selected.name}…`);
   try {
+    await callTool("clash_timeline_validate", {
+      cwd: currentCwd(),
+      document: draftState,
+      format: "object",
+    });
+    setStatus(`Saving ${selected.name}…`);
     await callTool("clash_timeline_save", {
       cwd: currentCwd(),
       timelineId: selected.id,
+      baseRevisionId: selected.revisionId,
       state: draftState,
     });
     await openTimeline(selected.id);

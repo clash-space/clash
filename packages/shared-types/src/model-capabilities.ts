@@ -14,7 +14,7 @@
  * sprawling utils module.
  */
 
-import type { ModelCard } from "./models";
+import type { ModelCard, ModelInputMode } from "./models";
 import { normalizePromptInput } from "./prompt";
 import type { CustomActionDefinition } from "./canvas";
 import {
@@ -37,6 +37,8 @@ export interface RefBound {
   max: number;
   /** If this ref is present, at least one listed companion modality is required. */
   requiresAnyOf?: ReadonlyArray<Modality>;
+  constraints?: ReferenceMediaConstraints;
+  maxTotalDurationMs?: number;
   /** True iff the image bucket is satisfied via the start/end frame
    *  convention (start required, end optional). */
   isStartEnd?: boolean;
@@ -50,8 +52,33 @@ export interface Capability {
   /** Per-modality reference bounds. All four keys always present —
    *  unaccepted modalities have `accepts: false, min: 0, max: 0`. */
   ref: Record<Modality, RefBound>;
+  /** At least one reference from these modalities must be attached. */
+  requiresAnyReferenceOf?: ReadonlyArray<Exclude<Modality, "text">>;
+  maxTotalReferences?: number;
+  maxEmbeddedRequestBytes?: number;
   /** Modalities that can be inline @-mentioned in the prompt editor. */
   promptModalities: ReadonlyArray<Modality>;
+  /** Provider binding used when serializing inline references. */
+  referenceBinding?: ModelCard["input"]["referenceBinding"];
+}
+
+export type ReferenceMediaConstraints = NonNullable<
+  NonNullable<ModelInputMode["images"]>["constraints"]
+>;
+
+export interface ReferenceMediaMetadata {
+  modality: Exclude<Modality, "text">;
+  contentType?: string;
+  fileName?: string;
+  bytes?: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  frameRate?: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  /** True when the adapter will embed this file as a Base64 Data URI. */
+  embedded?: boolean;
 }
 
 const NO_BOUND: RefBound = { accepts: false, min: 0, max: 0 };
@@ -74,13 +101,15 @@ export function capability(card: ModelCard): Capability {
   // the other, never both — schema doesn't enforce, so we pick a winner).
   let image: RefBound;
   if (im.startEnd) {
-    image = { accepts: true, min: 1, max: 2, isStartEnd: true };
+    image = { accepts: true, min: 1, max: 2, isStartEnd: true, constraints: im.startEnd.constraints };
   } else if (im.images) {
     image = {
       accepts: true,
       min: im.images.min ?? 0,
       max: im.images.max,
       requiresAnyOf: im.images.requiresAnyOf,
+      constraints: im.images.constraints,
+      maxTotalDurationMs: im.images.maxTotalDurationMs,
     };
   } else {
     image = NO_BOUND;
@@ -92,6 +121,8 @@ export function capability(card: ModelCard): Capability {
         min: im.videos.min ?? 0,
         max: im.videos.max,
         requiresAnyOf: im.videos.requiresAnyOf,
+        constraints: im.videos.constraints,
+        maxTotalDurationMs: im.videos.maxTotalDurationMs,
       }
     : NO_BOUND;
 
@@ -101,6 +132,8 @@ export function capability(card: ModelCard): Capability {
         min: im.audios.min ?? 0,
         max: im.audios.max,
         requiresAnyOf: im.audios.requiresAnyOf,
+        constraints: im.audios.constraints,
+        maxTotalDurationMs: im.audios.maxTotalDurationMs,
       }
     : NO_BOUND;
   const text: RefBound = promptModalities.includes("text")
@@ -111,46 +144,143 @@ export function capability(card: ModelCard): Capability {
     outputKind: card.kind as "image" | "video" | "audio" | "text",
     requiresPrompt,
     ref: { text, image, video, audio },
+    requiresAnyReferenceOf: im.requiresAnyOf,
+    maxTotalReferences: im.maxTotalReferences,
+    maxEmbeddedRequestBytes: im.maxEmbeddedRequestBytes,
     promptModalities,
+    referenceBinding: card.input.referenceBinding,
   };
 }
 
+function mediaLabel(modality: ReferenceMediaMetadata["modality"]): string {
+  return `Reference ${modality}`;
+}
+
+function megabytes(bytes: number): string {
+  return `${Math.round(bytes / (1024 * 1024))} MB`;
+}
+
+function normalizedExtension(fileName: string | undefined): string | undefined {
+  const match = fileName?.toLowerCase().match(/\.([a-z0-9]+)(?:[?#].*)?$/);
+  return match?.[1];
+}
+
+/** Validate metadata that is already known. Missing probe fields are left to
+ * the provider, so legacy/public-URL references remain usable. */
+export function validateReferenceMedia(
+  cardOrCap: ModelCard | Capability,
+  references: ReadonlyArray<ReferenceMediaMetadata>,
+): string | null {
+  const cap: Capability =
+    typeof (cardOrCap as Capability).requiresPrompt === "boolean"
+      ? (cardOrCap as Capability)
+      : capability(cardOrCap as ModelCard);
+
+  for (const reference of references) {
+    const constraints = cap.ref[reference.modality].constraints;
+    if (!constraints) continue;
+    const label = mediaLabel(reference.modality);
+    const contentType = reference.contentType?.toLowerCase().split(";", 1)[0]?.trim();
+    const extension = normalizedExtension(reference.fileName);
+    const hasFormatEvidence = !!contentType || !!extension;
+    const mimeMatches = !!contentType && !!constraints.mimeTypes?.includes(contentType);
+    const extensionMatches = !!extension && !!constraints.fileExtensions?.includes(extension);
+    if (hasFormatEvidence && (constraints.mimeTypes?.length || constraints.fileExtensions?.length) && !mimeMatches && !extensionMatches) {
+      return `${label} format is not supported by the selected model.`;
+    }
+    if (reference.bytes != null && constraints.maxBytes != null && reference.bytes > constraints.maxBytes) {
+      return `${label} must be no larger than ${megabytes(constraints.maxBytes)}.`;
+    }
+    if (reference.width != null && constraints.minWidth != null && reference.width < constraints.minWidth) {
+      return `${label} width must be at least ${constraints.minWidth}px.`;
+    }
+    if (reference.width != null && constraints.maxWidth != null && reference.width > constraints.maxWidth) {
+      return `${label} width must be at most ${constraints.maxWidth}px.`;
+    }
+    if (reference.height != null && constraints.minHeight != null && reference.height < constraints.minHeight) {
+      return `${label} height must be at least ${constraints.minHeight}px.`;
+    }
+    if (reference.height != null && constraints.maxHeight != null && reference.height > constraints.maxHeight) {
+      return `${label} height must be at most ${constraints.maxHeight}px.`;
+    }
+    if (reference.width != null && reference.height != null && reference.height > 0) {
+      const ratio = reference.width / reference.height;
+      if (constraints.minAspectRatio != null && ratio < constraints.minAspectRatio) {
+        return `${label} aspect ratio must be at least ${constraints.minAspectRatio}.`;
+      }
+      if (constraints.maxAspectRatio != null && ratio > constraints.maxAspectRatio) {
+        return `${label} aspect ratio must be at most ${constraints.maxAspectRatio}.`;
+      }
+    }
+    if (reference.durationMs != null && constraints.minDurationMs != null && reference.durationMs < constraints.minDurationMs) {
+      return `${label} duration must be at least ${constraints.minDurationMs / 1000} seconds.`;
+    }
+    if (reference.durationMs != null && constraints.maxDurationMs != null && reference.durationMs > constraints.maxDurationMs) {
+      return `${label} duration must be at most ${constraints.maxDurationMs / 1000} seconds.`;
+    }
+    if (reference.frameRate != null && constraints.minFrameRate != null && reference.frameRate < constraints.minFrameRate) {
+      return `${label} frame rate must be at least ${constraints.minFrameRate} fps.`;
+    }
+    if (reference.frameRate != null && constraints.maxFrameRate != null && reference.frameRate > constraints.maxFrameRate) {
+      return `${label} frame rate must be at most ${constraints.maxFrameRate} fps.`;
+    }
+    const videoCodec = reference.videoCodec?.toLowerCase();
+    if (videoCodec && constraints.videoCodecs?.length && !constraints.videoCodecs.includes(videoCodec)) {
+      return `${label} video codec is not supported by the selected model.`;
+    }
+    const audioCodec = reference.audioCodec?.toLowerCase();
+    if (audioCodec && constraints.audioCodecs?.length && !constraints.audioCodecs.includes(audioCodec)) {
+      return `${label} audio codec is not supported by the selected model.`;
+    }
+  }
+
+  for (const modality of ["image", "video", "audio"] as const) {
+    const maxTotalDurationMs = cap.ref[modality].maxTotalDurationMs;
+    if (maxTotalDurationMs == null) continue;
+    const knownTotal = references
+      .filter((reference) => reference.modality === modality)
+      .reduce((total, reference) => total + (reference.durationMs ?? 0), 0);
+    if (knownTotal > maxTotalDurationMs) {
+      return `Reference ${modality} total duration must be at most ${maxTotalDurationMs / 1000} seconds.`;
+    }
+  }
+
+  if (cap.maxEmbeddedRequestBytes != null) {
+    const embeddedBytes = references.reduce((total, reference) => {
+      if (!reference.embedded || reference.bytes == null) return total;
+      return total + Math.ceil(reference.bytes / 3) * 4;
+    }, 0);
+    if (embeddedBytes > cap.maxEmbeddedRequestBytes) {
+      return `Embedded reference media must keep the request body within ${megabytes(cap.maxEmbeddedRequestBytes)}.`;
+    }
+  }
+  return null;
+}
+
 /**
- * Derive a `Capability` from a custom action definition. The mapping
- * mirrors what marketplace actions actually express today:
- *
- *   - `outputKind` from `customDef.outputType` (image / video / audio / text)
- *   - `requiresPrompt` follows the declared text modality. Image-only
- *      / video-only actions can run from canvas refs and parameters
- *      without fabricating a text prompt.
- *   - `ref.X.accepts` from `customDef.promptModalities` (a custom
- *      action declares which asset kinds its prompt editor allows;
- *      same idea as the model card's `inputMode` switches)
- *   - `max` is unbounded — custom action definitions don't carry
- *      per-modality count caps today. If a specific action wants
- *      N=1 image refs, it should validate that itself; the
- *      capability layer just says "yes you can attach images".
- *
- * Keeps shape-parity with `capability(card)` so partitionRefs /
- * validateRefs / buildGenerationPayload can take either without
- * branching.
+ * Action Cards reuse the Model Card input contract, so custom actions derive
+ * their capability through the exact same normalization path and preserve
+ * counts, start/end semantics, media constraints, and reference binding.
  */
 export function capabilityFromCustom(def: CustomActionDefinition): Capability {
-  const accepts = (m: Modality) => def.promptModalities.includes(m);
-  const unboundedIf = (ok: boolean): RefBound =>
-    ok ? { accepts: true, min: 0, max: Number.MAX_SAFE_INTEGER } : NO_BOUND;
-
-  return {
-    outputKind: def.outputType,
-    requiresPrompt: def.promptModalities.includes("text"),
-    ref: {
-      text: unboundedIf(accepts("text")),
-      image: unboundedIf(accepts("image")),
-      video: unboundedIf(accepts("video")),
-      audio: unboundedIf(accepts("audio")),
-    },
-    promptModalities: def.promptModalities,
+  // Canvas documents created before Action Cards adopted the full Model Card
+  // input contract can still contain the legacy promptModalities-only shape.
+  // Normalize it at the read boundary so old projects keep executing while
+  // newly installed actions retain their exact declared bounds.
+  const promptModalities = def.input?.promptModalities ?? def.promptModalities ?? ["text"];
+  const input = def.input ?? {
+    requiresPrompt: promptModalities.includes("text"),
+    inputMode: Object.fromEntries(
+      (["image", "video", "audio"] as const)
+        .filter((modality) => promptModalities.includes(modality))
+        .map((modality) => [
+          modality === "image" ? "images" : modality === "video" ? "videos" : "audios",
+          { max: Number.MAX_SAFE_INTEGER },
+        ]),
+    ),
+    promptModalities,
   };
+  return capability({ kind: def.outputType, input } as ModelCard);
 }
 
 /**
@@ -187,6 +317,20 @@ export function validateRefs(
     video: vidCount,
     audio: audCount,
   };
+
+  const totalMediaReferences = imgCount + vidCount + audCount;
+  if (cap.maxTotalReferences != null && totalMediaReferences > cap.maxTotalReferences) {
+    return `Selected model accepts at most ${cap.maxTotalReferences} total references (got ${totalMediaReferences}).`;
+  }
+
+  const requiredReferenceModalities = cap.requiresAnyReferenceOf;
+  if (requiredReferenceModalities?.length &&
+      !requiredReferenceModalities.some((modality) => countsByModality[modality] > 0)) {
+    const requirement = requiredReferenceModalities.length === 1
+      ? `reference ${requiredReferenceModalities[0]}`
+      : `reference ${requiredReferenceModalities.slice(0, -1).join(", ")} or ${requiredReferenceModalities[requiredReferenceModalities.length - 1]}`;
+    return `Selected model requires at least one ${requirement}.`;
+  }
 
   if (textCount > 0 && !cap.ref.text.accepts) {
     return "Selected model does not accept reference text.";
@@ -463,5 +607,12 @@ export function pickDefaultModel(opts: {
   enforceMinimums?: boolean;
   cards: ReadonlyArray<ModelCard>;
 }): ModelCard | undefined {
-  return findCompatibleModels(opts)[0];
+  const compatible = findCompatibleModels(opts);
+  if (opts.outputKind === "audio") {
+    const textToSpeech = compatible.filter((card) => card.task === "text-to-speech");
+    return textToSpeech.find((card) => card.availableProviders?.includes("official"))
+      ?? textToSpeech[0]
+      ?? compatible[0];
+  }
+  return compatible[0];
 }

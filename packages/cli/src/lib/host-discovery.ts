@@ -5,6 +5,7 @@ import {
   type LocalHostDiscoveryRecord,
 } from "@clash/shared-runtime";
 import { resolveClashRoot } from "./clash-home";
+import { resolveClashProfile, type ClashRuntimeProfile } from "@clash/shared-runtime/local-paths";
 
 export type HostDiscoveryStatus =
   | { status: "active"; record: LocalHostDiscoveryRecord }
@@ -12,6 +13,7 @@ export type HostDiscoveryStatus =
 
 export interface HostDiscoveryStatusOptions {
   runDir?: string;
+  profile?: ClashRuntimeProfile;
   pidExists?: (pid: number) => boolean;
 }
 
@@ -38,6 +40,8 @@ export async function getHostDiscoveryStatus(
   if (!isLocalHostDiscoveryRecord(parsed)) {
     return { status: "inactive" };
   }
+  const profile = options.profile ?? resolveClashProfile();
+  if ((parsed.profile ?? "prod") !== profile) return { status: "inactive" };
 
   const pidExists = options.pidExists ?? defaultPidExists;
   if (!pidExists(parsed.pid)) {

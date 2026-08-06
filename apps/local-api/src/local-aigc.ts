@@ -1,12 +1,42 @@
 import {
   normalizeModelId,
+  applyModelProviderImplementation,
+  MODEL_CARDS,
+  modelRouteCredentialsSatisfied,
   resolveModelUpstreamRoute,
+  validateModelCardConfiguration,
+  coerceModelParameterInput,
+  renderPositionalReferencePrompt,
   type ModelCard,
   type ModelKind,
   type ModelUpstreamRoute,
+  type OrderedPromptContentPart,
   type ProviderAccountAvailability,
+  type ProviderUsageAuditEvent,
+  type ExecutablePluginBinding,
+  type ExecutablePluginReference,
 } from "@clash/shared-types";
-import { generateTextCompletion } from "@clash/shared-runtime";
+import {
+  buildMiniMaxH3Content,
+  generateBflFlux3Video,
+  resolveFlux3KeyframeIndices,
+  generatePikaChat,
+  createGeminiOmniInteraction,
+  createPikaMediaJob,
+  fetchPikaCatalogQuote,
+  downloadGeminiOmniVideo,
+  extractGeminiOmniVideo,
+  geminiOmniInteractionId,
+  geminiOmniInteractionStatus,
+  generateTextCompletion,
+  getPikaMediaContent,
+  getGeminiOmniInteraction,
+  uploadPikaMedia,
+  pikaBillingBasis,
+  waitForPikaMediaJob,
+  type GeminiOmniInputPart,
+  type TextContentPart,
+} from "@clash/shared-runtime";
 
 import {
   createMockFalQueueService,
@@ -17,15 +47,116 @@ import {
   type FalVideoResult,
 } from "./fal-mock.js";
 import { generateDreaminaCliVideoMedia, type DreaminaCliRun } from "./dreamina-cli.js";
+import {
+  createProviderConformanceStubs,
+  createProviderTestRecordingFetch,
+  createProviderTestReplayFetch,
+  filterProviderTestReplayFixturesForStub,
+  type ProviderTestRecorder,
+  type ProviderTestReplayFixture,
+} from "./provider-test-recorder.js";
+
+const LOCAL_EXECUTABLE_MODEL_API_SHAPES = new Set([
+  "anthropic-compatible",
+  "bfl",
+  "dreamina-cli",
+  "fal",
+  "google-agent-platform",
+  "google-ai-studio",
+  "google-ai-studio-interactions",
+  "kie",
+  "local-asr",
+  "local-tts",
+  "minimax",
+  "openai-compatible",
+  "openai-images",
+  "pika",
+  "pika-chat",
+  "replicate",
+  "suno",
+]);
+
+export function localExecutableModelCards(models: readonly ModelCard[]): ModelCard[] {
+  return models.map((model) => ({
+    ...model,
+    providerImplementations: (model.providerImplementations ?? [])
+      .filter((implementation) => LOCAL_EXECUTABLE_MODEL_API_SHAPES.has(implementation.apiShape)),
+  }));
+}
 
 export interface MockMediaGenerationInput {
   taskId: string;
+  projectId?: string;
+  nodeId?: string;
+  actorType?: "user" | "agent";
+  actorUserId?: string;
+  actorAgentId?: string;
   prompt: string;
   model: string;
   aspectRatio?: string;
   duration?: number;
   modelParams?: Record<string, unknown>;
+  startFrameUrl?: string;
+  endFrameUrl?: string;
   referenceImageUrls?: string[];
+  referenceVideoUrls?: string[];
+  referenceAudioUrls?: string[];
+  orderedContentParts?: OrderedPromptContentPart[];
+  referenceAudio?: {
+    bytes: Uint8Array;
+    contentType: string;
+  };
+  /** Exact plugin contract selected when the node was authored. */
+  pluginBinding?: ExecutablePluginBinding;
+}
+
+function promptForRoute(input: MockMediaGenerationInput, route: ModelUpstreamRoute): string {
+  const binding = route.referenceBinding;
+  if (binding?.type !== "positional-tokens" || !input.orderedContentParts?.some((part) => part.type !== "text")) {
+    return input.prompt;
+  }
+  return renderPositionalReferencePrompt({
+    parts: input.orderedContentParts,
+    references: {
+      image: input.referenceImageUrls ?? [],
+      video: input.referenceVideoUrls ?? [],
+      audio: input.referenceAudioUrls ?? [],
+    },
+    tokens: binding.tokens ?? {},
+  });
+}
+
+async function loadReferenceData(fetchImpl: typeof fetch, mediaUrl: string): Promise<{ data: Uint8Array; mediaType: string }> {
+  const dataUri = /^data:([^;,]+);base64,(.*)$/s.exec(mediaUrl);
+  if (dataUri) {
+    return { data: new Uint8Array(Buffer.from(dataUri[2] ?? "", "base64")), mediaType: dataUri[1] ?? "application/octet-stream" };
+  }
+  const response = await fetchImpl(mediaUrl);
+  if (!response.ok) throw new Error(`Multimodal reference read failed: ${response.status}`);
+  return {
+    data: new Uint8Array(await response.arrayBuffer()),
+    mediaType: (response.headers.get("content-type") || "application/octet-stream").split(";", 1)[0],
+  };
+}
+
+async function orderedTextCompletionContent(
+  input: MockMediaGenerationInput,
+  fetchImpl: typeof fetch,
+): Promise<string | TextContentPart[]> {
+  if (!input.orderedContentParts?.length) return input.prompt;
+  const content: TextContentPart[] = [];
+  for (const part of input.orderedContentParts) {
+    if (part.type === "text") {
+      content.push(part);
+      continue;
+    }
+    if (part.type !== "image") {
+      throw new Error(`The selected text provider does not support inline ${part.type} references.`);
+    }
+    const reference = await loadReferenceData(fetchImpl, part.url);
+    content.push({ type: "image", ...reference });
+  }
+  return content;
 }
 
 export interface MockMediaGenerationResult {
@@ -40,6 +171,7 @@ export interface MockMediaGenerationResult {
   provider?: string;
   modelEndpoint?: string;
   remoteUrl?: string;
+  pluginBinding?: ExecutablePluginBinding;
 }
 
 export interface MockTextGenerationResult {
@@ -65,16 +197,113 @@ export interface MockFalExternalAigcServiceOptions {
   anthropicBaseUrl?: string;
   falQueueBaseUrl?: string;
   googleAiStudioBaseUrl?: string;
+  googleAiStudioApiKey?: string;
+  googleAiStudioGatewayToken?: string;
+  providerTraffic?:
+    | {
+        mode: "record";
+        recorder: () => Promise<ProviderTestRecorder>;
+      }
+    | {
+        mode: "replay";
+        fixtures: () => Promise<readonly ProviderTestReplayFixture[]>;
+      };
   kieBaseUrl?: string;
   sunoBaseUrl?: string;
+  minimaxBaseUrl?: string;
+  pikaBaseUrl?: string;
+  providerUsageAudit?: (event: ProviderUsageAuditEvent) => Promise<void>;
   replicateBaseUrl?: string;
+  bflBaseUrl?: string;
   dreaminaRun?: DreaminaCliRun;
   localTts?: (input: MockMediaGenerationInput) => Promise<MockMediaGenerationResult>;
+  /** Kernel-owned adapter for the Bridge executable-plugin host. */
+  providerPluginProjector?: ProviderPluginProjector;
+}
+
+export interface ProviderPluginProjectorRequest {
+  pluginId: string;
+  exportId: string;
+  kind: ModelKind;
+  taskId: string;
+  projectId: string;
+  nodeId?: string;
+  binding?: ExecutablePluginBinding;
+  input: {
+    values: Record<string, unknown>;
+    references: ExecutablePluginReference[];
+  };
+}
+
+export interface ProviderPluginProjection {
+  endpoint: string;
+  input: Record<string, unknown>;
+}
+
+export interface ProviderPluginProjectorResponse {
+  binding: ExecutablePluginBinding;
+  projection: ProviderPluginProjection;
+}
+
+export type ProviderPluginProjector = (
+  request: ProviderPluginProjectorRequest,
+) => Promise<ProviderPluginProjectorResponse>;
+
+/** Only transport/host absence may use the temporary built-in compatibility projector. */
+export class ProviderPluginHostUnavailableError extends Error {
+  override name = "ProviderPluginHostUnavailableError";
 }
 
 type RuntimeProviderAccountAvailability = ProviderAccountAvailability & {
   credentials?: Record<string, string>;
 };
+
+function cloudflareGoogleEnvironmentAccount(
+  options: Pick<
+    MockFalExternalAigcServiceOptions,
+    "googleAiStudioApiKey" | "googleAiStudioBaseUrl" | "googleAiStudioGatewayToken"
+  >,
+): RuntimeProviderAccountAvailability | undefined {
+  const baseUrl = options.googleAiStudioBaseUrl?.trim();
+  const gatewayToken = options.googleAiStudioGatewayToken?.trim();
+  let isCloudflareGateway = false;
+  try {
+    isCloudflareGateway = !!baseUrl && new URL(baseUrl).hostname === "gateway.ai.cloudflare.com";
+  } catch {
+    isCloudflareGateway = false;
+  }
+  const apiKey = options.googleAiStudioApiKey?.trim();
+  if (apiKey && gatewayToken) {
+    throw new Error(
+      "Choose either Google API key or Cloudflare AI Gateway token for Gemini Omni.",
+    );
+  }
+  if (!apiKey && !gatewayToken) return undefined;
+  if (gatewayToken && !isCloudflareGateway) {
+    throw new Error(
+      "Cloudflare AI Gateway token requires a Cloudflare Google AI Studio Gateway base URL.",
+    );
+  }
+  const configuredCredentials = [
+    ...(apiKey ? ["apiKey"] : []),
+    ...(gatewayToken ? ["gatewayToken"] : []),
+    ...(baseUrl ? ["baseUrl"] : []),
+  ];
+  return {
+    id: "google-ai-studio-environment",
+    providerId: "official",
+    upstreamId: "google-ai-studio",
+    region: "global",
+    enabled: true,
+    priority: 10_000,
+    configuredCredentials,
+    credentials: {
+      ...(apiKey ? { apiKey } : {}),
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(gatewayToken ? { gatewayToken } : {}),
+    },
+  };
+}
 
 function resolveMockFalModelId(model: string, kind: ModelKind, fallback: string): string {
   const route = resolveModelUpstreamRoute({
@@ -172,6 +401,14 @@ function base64ToBytes(data: string): Uint8Array {
   return new Uint8Array(Buffer.from(data, "base64"));
 }
 
+function hexToBytes(data: string): Uint8Array {
+  const clean = data.trim();
+  if (!clean || clean.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(clean)) {
+    throw new Error("MiniMax response returned invalid hex media.");
+  }
+  return new Uint8Array(Buffer.from(clean, "hex"));
+}
+
 async function responseJson(response: Response): Promise<any> {
   const raw = await response.text();
   try {
@@ -230,8 +467,17 @@ async function generateOpenAiImage(
 
 function googleAiStudioBody(input: MockMediaGenerationInput, kind: ModelKind): Record<string, unknown> {
   const params = input.modelParams ?? {};
+  const parts: Array<Record<string, unknown>> = [{ text: input.prompt }];
+  if (input.referenceAudio) {
+    parts.push({
+      inlineData: {
+        mimeType: input.referenceAudio.contentType,
+        data: Buffer.from(input.referenceAudio.bytes).toString("base64"),
+      },
+    });
+  }
   const body: Record<string, unknown> = {
-    contents: [{ parts: [{ text: input.prompt }] }],
+    contents: [{ parts }],
   };
   if (kind === "image") {
     body.generationConfig = {
@@ -284,7 +530,7 @@ async function generateGoogleAiStudioMedia(
     Pick<MockFalExternalAigcServiceOptions, "googleAiStudioBaseUrl">,
   apiKey: string,
 ): Promise<MockMediaGenerationResult> {
-  if (kind !== "image" && kind !== "audio") throw missingAdapter(route);
+  if (kind !== "image" && kind !== "audio" && kind !== "text") throw missingAdapter(route);
   const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
   const response = await options.fetch(`${baseUrl}/models/${route.upstreamModel}:generateContent`, {
     method: "POST",
@@ -298,6 +544,19 @@ async function generateGoogleAiStudioMedia(
   if (!response.ok) {
     throw new Error(`Google AI Studio request failed: ${json?.error?.message ?? response.statusText}`);
   }
+  if (kind === "text") {
+    const text = googleText(json);
+    if (!text) {
+      throw new Error(`Google AI Studio response returned no text for ${route.upstreamModel}`);
+    }
+    return {
+      bytes: new TextEncoder().encode(text),
+      contentType: "text/plain; charset=utf-8",
+      requestId: input.taskId,
+      provider: "google",
+      modelEndpoint: route.upstreamModel,
+    };
+  }
   const inlineData = googleInlineData(json);
   if (!inlineData) {
     throw new Error(`Google AI Studio response returned no inline media for ${route.upstreamModel}`);
@@ -306,6 +565,107 @@ async function generateGoogleAiStudioMedia(
     bytes: base64ToBytes(inlineData.data),
     contentType: inlineData.mimeType,
     requestId: input.taskId,
+    provider: "google",
+    modelEndpoint: route.upstreamModel,
+  };
+}
+
+async function geminiOmniInput(
+  input: MockMediaGenerationInput,
+  fetchImpl: typeof fetch,
+): Promise<GeminiOmniInputPart[]> {
+  const result: GeminiOmniInputPart[] = [];
+  const mentionedUrls = new Set<string>();
+  for (const part of input.orderedContentParts ?? []) {
+    if (part.type === "text") {
+      if (part.text) result.push(part);
+      continue;
+    }
+    if (part.type !== "image") {
+      throw new Error(`Gemini Omni currently accepts inline image references, not ${part.type}.`);
+    }
+    const reference = await loadReferenceData(fetchImpl, part.url);
+    result.push({
+      type: "image",
+      data: Buffer.from(reference.data).toString("base64"),
+      mimeType: reference.mediaType,
+    });
+    mentionedUrls.add(part.url);
+  }
+  if (!result.some((part) => part.type === "text") && input.prompt) {
+    result.unshift({ type: "text", text: input.prompt });
+  }
+  for (const url of input.referenceImageUrls ?? []) {
+    if (mentionedUrls.has(url)) continue;
+    const reference = await loadReferenceData(fetchImpl, url);
+    result.push({
+      type: "image",
+      data: Buffer.from(reference.data).toString("base64"),
+      mimeType: reference.mediaType,
+    });
+  }
+  if (!result.length) throw new Error("Gemini Omni requires a prompt or at least one reference image.");
+  return result;
+}
+
+async function generateGeminiOmniVideo(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "googleAiStudioBaseUrl"> & {
+      providerFetch?: typeof fetch;
+    },
+  auth: { apiKey?: string; gatewayToken?: string },
+): Promise<MockMediaGenerationResult> {
+  const baseUrl = normalizeBaseUrl(options.googleAiStudioBaseUrl, "https://generativelanguage.googleapis.com/v1beta");
+  const providerFetch = options.providerFetch ?? options.fetch;
+  let interaction = await createGeminiOmniInteraction({
+    apiKey: auth.apiKey,
+    gatewayToken: auth.gatewayToken,
+    baseUrl,
+    model: route.upstreamModel,
+    input: await geminiOmniInput(input, options.fetch),
+    aspectRatio: input.aspectRatio === "9:16" ? "9:16" : "16:9",
+    duration: input.duration ?? numberParam(input.modelParams, "duration", 5),
+    fetch: providerFetch,
+  });
+  const interactionId = geminiOmniInteractionId(interaction);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const status = geminiOmniInteractionStatus(interaction);
+    if (["completed", "succeeded", "success"].includes(status)) break;
+    if (["failed", "cancelled", "canceled", "error", "incomplete"].includes(status)) {
+      throw new Error(`Gemini Omni interaction ${status}: ${interaction.error?.message ?? "unknown failure"}`);
+    }
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 5_000));
+    interaction = await getGeminiOmniInteraction({
+      apiKey: auth.apiKey,
+      gatewayToken: auth.gatewayToken,
+      baseUrl,
+      interactionId,
+      fetch: providerFetch,
+    });
+  }
+  if (!["completed", "succeeded", "success"].includes(geminiOmniInteractionStatus(interaction))) {
+    throw new Error("Gemini Omni interaction timed out after 10 minutes.");
+  }
+  const output = extractGeminiOmniVideo(interaction);
+  if (!output) throw new Error("Gemini Omni completed without a video output.");
+  const media = output.data
+    ? { bytes: base64ToBytes(output.data), mimeType: output.mimeType }
+    : output.uri
+      ? await downloadGeminiOmniVideo({
+          apiKey: auth.apiKey,
+          gatewayToken: auth.gatewayToken,
+          baseUrl,
+          uri: output.uri,
+          fetch: providerFetch,
+        })
+      : null;
+  if (!media) throw new Error("Gemini Omni video output did not include data or a URI.");
+  return {
+    bytes: new Uint8Array(media.bytes),
+    contentType: media.mimeType,
+    requestId: interactionId,
     provider: "google",
     modelEndpoint: route.upstreamModel,
   };
@@ -415,9 +775,35 @@ function googleAgentPlatformModelUrl(
   return `https://${vertexBaseHost(location)}/v1/projects/${credentials.project}/locations/${location}/publishers/google/models/${route.upstreamModel}:${action}`;
 }
 
-function googleAgentPlatformTextBody(input: MockMediaGenerationInput): Record<string, unknown> {
+async function googleAgentPlatformTextBody(input: MockMediaGenerationInput, fetchImpl: typeof fetch): Promise<Record<string, unknown>> {
+  const parts: Array<Record<string, unknown>> = [];
+  if (input.orderedContentParts?.length) {
+    for (const part of input.orderedContentParts) {
+      if (part.type === "text") {
+        parts.push({ text: part.text });
+        continue;
+      }
+      const reference = await loadReferenceData(fetchImpl, part.url);
+      parts.push({
+        inlineData: {
+          mimeType: reference.mediaType,
+          data: Buffer.from(reference.data).toString("base64"),
+        },
+      });
+    }
+  } else {
+    parts.push({ text: input.prompt });
+  }
+  if (input.referenceAudio) {
+    parts.push({
+      inlineData: {
+        mimeType: input.referenceAudio.contentType,
+        data: Buffer.from(input.referenceAudio.bytes).toString("base64"),
+      },
+    });
+  }
   const body: Record<string, unknown> = {
-    contents: [{ role: "user", parts: [{ text: input.prompt }] }],
+    contents: [{ role: "user", parts }],
   };
   const systemPrompt = stringParam(input.modelParams, "system_prompt");
   if (systemPrompt) body.systemInstruction = { parts: [{ text: systemPrompt }] };
@@ -513,7 +899,7 @@ async function generateGoogleAgentPlatformText(
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify(googleAgentPlatformTextBody(input)),
+    body: JSON.stringify(await googleAgentPlatformTextBody(input, fetchImpl)),
   });
   const json = await responseJson(response);
   if (!response.ok) {
@@ -681,12 +1067,108 @@ function falInput(
   }
   if (kind === "video") {
     const params = input.modelParams ?? {};
+    if (route.modelCode.startsWith("flux-3-video")) {
+      const common = {
+        prompt: promptForRoute(input, route),
+        duration: input.duration ?? params.duration ?? "auto",
+        aspect_ratio: input.aspectRatio || stringParam(params, "aspect_ratio") || "auto",
+        resolution: stringParam(params, "resolution") || "720p",
+        generate_audio: params.generate_audio ?? true,
+        safety_tolerance: params.safety_tolerance ?? 2,
+      };
+      if (route.modelCode === "flux-3-video-continue") {
+        const videoUrl = input.referenceVideoUrls?.[0];
+        if (!videoUrl) throw new Error("FLUX 3 continuation requires one source video.");
+        return { ...common, video_url: videoUrl };
+      }
+      if (route.modelCode === "flux-3-video-keyframes") {
+        const images = input.referenceImageUrls ?? [];
+        if (images.length === 0) throw new Error("FLUX 3 keyframe generation requires at least one image.");
+        if (images.length === 1) return { ...common, image_url: images[0] };
+        if (images.length === 2) return { ...common, start_image_url: images[0], end_image_url: images[1] };
+        const duration = typeof common.duration === "number"
+          ? common.duration
+          : Number.parseInt(String(common.duration), 10);
+        if (!Number.isFinite(duration)) {
+          throw new Error("FLUX 3 multi-keyframe generation requires an explicit duration.");
+        }
+        const frameIndices = resolveFlux3KeyframeIndices(params, images.length, duration);
+        return {
+          ...common,
+          keyframes: images.map((imageUrl, index) => ({
+            image_url: imageUrl,
+            frame_index: frameIndices[index],
+          })),
+        };
+      }
+      return common;
+    }
+    if (route.modelCode === "minimax-h3-startend") {
+      if (!input.startFrameUrl) {
+        throw new Error("MiniMax H3 start/end generation requires a start frame");
+      }
+      return {
+        prompt: promptForRoute(input, route),
+        duration: input.duration ?? params.duration ?? 5,
+        resolution: stringParam(params, "resolution") || "768P",
+        image_url: input.startFrameUrl,
+        ...(input.endFrameUrl ? { end_image_url: input.endFrameUrl } : {}),
+      };
+    }
+    if (route.modelCode === "minimax-h3") {
+      const hasReferences = !!(
+        input.referenceImageUrls?.length
+        || input.referenceVideoUrls?.length
+        || input.referenceAudioUrls?.length
+      );
+      if (!hasReferences && input.aspectRatio === "adaptive") {
+        throw new Error("MiniMax H3 Auto aspect ratio on fal requires at least one reference");
+      }
+      return {
+        prompt: promptForRoute(input, route),
+        aspect_ratio: input.aspectRatio || stringParam(params, "aspect_ratio") || "16:9",
+        duration: input.duration ?? params.duration ?? 5,
+        resolution: stringParam(params, "resolution") || "768P",
+        ...(input.referenceImageUrls?.length ? { reference_image_urls: input.referenceImageUrls } : {}),
+        ...(input.referenceVideoUrls?.length ? { reference_video_urls: input.referenceVideoUrls } : {}),
+        ...(input.referenceAudioUrls?.length ? { reference_audio_urls: input.referenceAudioUrls } : {}),
+      };
+    }
+    if (route.modelCode === "kling-3") {
+      if (!input.startFrameUrl) {
+        throw new Error("Kling 3 generation requires a start frame");
+      }
+      return {
+        prompt: promptForRoute(input, route),
+        duration: String(input.duration ?? params.duration ?? "5"),
+        generate_audio: params.generate_audio ?? true,
+        start_image_url: input.startFrameUrl,
+        ...(input.endFrameUrl ? { end_image_url: input.endFrameUrl } : {}),
+      };
+    }
     return {
-      prompt: input.prompt,
+      prompt: promptForRoute(input, route),
       aspect_ratio: input.aspectRatio || stringParam(params, "aspect_ratio") || "16:9",
       duration: input.duration ?? params.duration ?? 4,
       ...(params.resolution ? { resolution: params.resolution } : {}),
       ...(params.generate_audio !== undefined ? { generate_audio: params.generate_audio } : {}),
+      ...(input.referenceImageUrls?.length ? { image_urls: input.referenceImageUrls } : {}),
+      ...(input.referenceVideoUrls?.length ? { video_urls: input.referenceVideoUrls } : {}),
+      ...(input.referenceAudioUrls?.length ? { audio_urls: input.referenceAudioUrls } : {}),
+    };
+  }
+  if (kind === "audio" && route.modelCode === "minimax-music-3") {
+    const params = input.modelParams ?? {};
+    return {
+      prompt: input.prompt,
+      lyrics: stringParam(params, "lyrics") ?? "",
+      lyrics_optimizer: params.lyrics_optimizer === true,
+      is_instrumental: params.is_instrumental === true,
+      audio_setting: {
+        sample_rate: numberParam(params, "sample_rate", 44100),
+        bitrate: numberParam(params, "bitrate", 256000),
+        format: stringParam(params, "format") || "mp3",
+      },
     };
   }
   return {
@@ -703,6 +1185,35 @@ const FAL_IMAGE_EDIT_ENDPOINTS: Record<string, string> = {
 };
 
 function falEndpoint(input: MockMediaGenerationInput, kind: ModelKind, route: ModelUpstreamRoute): string {
+  if (kind === "video" && route.modelCode === "flux-3-video-keyframes") {
+    const imageCount = input.referenceImageUrls?.length ?? 0;
+    if (imageCount === 1) return "blackforestlabs/flux-3/image-to-video";
+    if (imageCount === 2) return "blackforestlabs/flux-3/first-last-frame-to-video";
+    return "blackforestlabs/flux-3/keyframes-to-video";
+  }
+  if (kind === "video" && route.modelCode === "minimax-h3") {
+    const hasReferences = !!(
+      input.referenceImageUrls?.length
+      || input.referenceVideoUrls?.length
+      || input.referenceAudioUrls?.length
+    );
+    return hasReferences
+      ? "minimax/h3/reference-to-video"
+      : "minimax/h3/text-to-video";
+  }
+  if (kind === "video" && route.modelCode === "minimax-h3-startend") {
+    return "minimax/h3/image-to-video";
+  }
+  if (kind === "video" && route.modelCode === "seedance-2-ref") {
+    const hasReferences = !!(
+      input.referenceImageUrls?.length
+      || input.referenceVideoUrls?.length
+      || input.referenceAudioUrls?.length
+    );
+    return hasReferences
+      ? "bytedance/seedance-2.0/reference-to-video"
+      : "bytedance/seedance-2.0/text-to-video";
+  }
   if (kind !== "image" || !input.referenceImageUrls?.length) return route.upstreamModel;
   const editEndpoint = FAL_IMAGE_EDIT_ENDPOINTS[route.upstreamModel];
   if (!editEndpoint) {
@@ -738,19 +1249,147 @@ function falMedia(result: any, kind: ModelKind): { url: string; width?: number; 
   };
 }
 
+function providerPluginProjectionRequest(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+): {
+  request: ProviderPluginProjectorRequest;
+  assetUrls: Map<string, string>;
+} {
+  if (!route.projectorPluginId || !route.projectorExportId) {
+    throw new Error(`Route ${route.modelCode} has no executable provider projector.`);
+  }
+  if (input.pluginBinding && (
+    input.pluginBinding.pluginId !== route.projectorPluginId
+    || input.pluginBinding.exportId !== route.projectorExportId
+  )) {
+    throw new Error(
+      `Pinned plugin ${input.pluginBinding.pluginId}/${input.pluginBinding.exportId} does not match `
+        + `route projector ${route.projectorPluginId}/${route.projectorExportId}.`,
+    );
+  }
+
+  const references: ExecutablePluginReference[] = [];
+  const assetUrls = new Map<string, string>();
+  const addReference = (
+    slot: string,
+    index: number,
+    kind: "image" | "video" | "audio",
+    url: string | undefined,
+  ) => {
+    if (!url) return;
+    const uri = `clash-asset://provider-projector/${encodeURIComponent(input.taskId)}/${slot}/${index}`;
+    assetUrls.set(uri, url);
+    references.push({
+      slot,
+      index,
+      asset: {
+        assetId: `${input.taskId}:${slot}:${index}`,
+        uri,
+        kind,
+      },
+    });
+  };
+  addReference("startFrame", 0, "image", input.startFrameUrl);
+  addReference("endFrame", 0, "image", input.endFrameUrl);
+  input.referenceImageUrls?.forEach((url, index) => addReference("image", index, "image", url));
+  input.referenceVideoUrls?.forEach((url, index) => addReference("video", index, "video", url));
+  input.referenceAudioUrls?.forEach((url, index) => addReference("audio", index, "audio", url));
+
+  const params = input.modelParams ?? {};
+  const values: Record<string, unknown> = {
+    ...params,
+    prompt: promptForRoute(input, route),
+    ...(input.aspectRatio !== undefined ? { aspectRatio: input.aspectRatio } : {}),
+    ...(input.duration !== undefined ? { duration: input.duration } : {}),
+  };
+  return {
+    request: {
+      pluginId: route.projectorPluginId,
+      exportId: route.projectorExportId,
+      kind,
+      taskId: input.taskId,
+      projectId: input.projectId ?? "local",
+      ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+      ...(input.pluginBinding ? { binding: input.pluginBinding } : {}),
+      input: { values, references },
+    },
+    assetUrls,
+  };
+}
+
+function materializeProviderPluginAssets(value: unknown, assetUrls: ReadonlyMap<string, string>): unknown {
+  if (typeof value === "string") {
+    if (!value.startsWith("clash-asset://")) return value;
+    const url = assetUrls.get(value);
+    if (!url) throw new Error(`Provider plugin returned an unknown asset handle: ${value}`);
+    return url;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => materializeProviderPluginAssets(entry, assetUrls));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+      key,
+      materializeProviderPluginAssets(entry, assetUrls),
+    ]));
+  }
+  return value;
+}
+
 async function generateFalMedia(
   input: MockMediaGenerationInput,
   kind: ModelKind,
   route: ModelUpstreamRoute,
   options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
-    Pick<MockFalExternalAigcServiceOptions, "falQueueBaseUrl">,
+    Pick<MockFalExternalAigcServiceOptions, "falQueueBaseUrl" | "providerPluginProjector">,
   apiKey: string,
 ): Promise<MockMediaGenerationResult> {
   const queueBaseUrl = normalizeBaseUrl(options.falQueueBaseUrl, "https://queue.fal.run");
-  const endpoint = falEndpoint(input, kind, route).replace(/^\/+/, "");
-  const executionRoute = endpoint === route.upstreamModel
-    ? route
-    : { ...route, upstreamModel: endpoint };
+  let pluginBinding: ExecutablePluginBinding | undefined;
+  let endpoint = "";
+  let requestBody: Record<string, unknown> = {};
+  let pluginProjected = false;
+  if (route.projectorPluginId && route.projectorExportId && options.providerPluginProjector) {
+    try {
+      const { request, assetUrls } = providerPluginProjectionRequest(input, kind, route);
+      const response = await options.providerPluginProjector(request);
+      if (response.binding.pluginId !== route.projectorPluginId
+        || response.binding.exportId !== route.projectorExportId) {
+        throw new Error(
+          `Provider plugin resolved ${response.binding.pluginId}/${response.binding.exportId}, expected `
+            + `${route.projectorPluginId}/${route.projectorExportId}.`,
+        );
+      }
+      if (input.pluginBinding && (
+        response.binding.version !== input.pluginBinding.version
+        || response.binding.schemaHash !== input.pluginBinding.schemaHash
+      )) {
+        throw new Error(
+          `Provider plugin binding drifted from ${input.pluginBinding.version}/${input.pluginBinding.schemaHash}.`,
+        );
+      }
+      pluginBinding = response.binding;
+      endpoint = response.projection.endpoint.replace(/^\/+/, "");
+      requestBody = materializeProviderPluginAssets(
+        response.projection.input,
+        assetUrls,
+      ) as Record<string, unknown>;
+      pluginProjected = true;
+    } catch (error) {
+      // Existing unpinned nodes retain their legacy adapter while the Bridge
+      // daemon is absent. Pinned nodes must never silently change semantics.
+      if (!(error instanceof ProviderPluginHostUnavailableError) || input.pluginBinding) throw error;
+    }
+  }
+  if (!pluginProjected) {
+    endpoint = falEndpoint(input, kind, route).replace(/^\/+/, "");
+    const executionRoute = endpoint === route.upstreamModel
+      ? route
+      : { ...route, upstreamModel: endpoint };
+    requestBody = falInput(input, kind, executionRoute);
+  }
   const headers = {
     authorization: `Key ${apiKey}`,
     "content-type": "application/json",
@@ -758,7 +1397,7 @@ async function generateFalMedia(
   const submittedResponse = await options.fetch(`${queueBaseUrl}/${endpoint}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(falInput(input, kind, executionRoute)),
+    body: JSON.stringify(requestBody),
   });
   const submitted = await responseJson(submittedResponse);
   if (!submittedResponse.ok) {
@@ -809,18 +1448,29 @@ async function generateFalMedia(
     provider: "fal",
     modelEndpoint: endpoint,
     remoteUrl: media.url,
+    ...(pluginBinding ? { pluginBinding } : {}),
   };
 }
 
-function providerInput(input: MockMediaGenerationInput, kind: ModelKind): Record<string, unknown> {
+function providerInput(input: MockMediaGenerationInput, kind: ModelKind, route?: ModelUpstreamRoute): Record<string, unknown> {
   const params = input.modelParams ?? {};
   const body: Record<string, unknown> = {
-    prompt: input.prompt,
+    prompt: route ? promptForRoute(input, route) : input.prompt,
     ...params,
   };
   if (input.aspectRatio) body.aspect_ratio = input.aspectRatio;
   if (kind === "video") {
     body.duration = input.duration ?? params.duration ?? 5;
+    if (route?.modelCode === "seedance-2-ref" && route.apiShape === "kie") {
+      if (input.referenceImageUrls?.length) body.reference_image_urls = input.referenceImageUrls;
+      if (input.referenceVideoUrls?.length) body.reference_video_urls = input.referenceVideoUrls;
+      if (input.referenceAudioUrls?.length) body.reference_audio_urls = input.referenceAudioUrls;
+    }
+    if (route?.modelCode === "seedance-2-ref" && route.apiShape === "replicate") {
+      if (input.referenceImageUrls?.length) body.reference_images = input.referenceImageUrls;
+      if (input.referenceVideoUrls?.length) body.reference_videos = input.referenceVideoUrls;
+      if (input.referenceAudioUrls?.length) body.reference_audios = input.referenceAudioUrls;
+    }
   }
   return body;
 }
@@ -880,6 +1530,64 @@ async function downloadProviderMedia(
   };
 }
 
+async function inlineLoopbackReference(fetchImpl: typeof fetch, mediaUrl: string): Promise<string> {
+  let url: URL;
+  try {
+    url = new URL(mediaUrl);
+  } catch {
+    return mediaUrl;
+  }
+  if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost" && url.hostname !== "::1") {
+    return mediaUrl;
+  }
+  const response = await fetchImpl(mediaUrl);
+  if (!response.ok) {
+    throw new Error(`Local MiniMax reference read failed: ${response.status}`);
+  }
+  const contentType = (response.headers.get("content-type") || "application/octet-stream")
+    .split(";", 1)[0]
+    .toLowerCase();
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return `data:${contentType};base64,${bytes.toString("base64")}`;
+}
+
+async function generateBflVideoMedia(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "bflBaseUrl">,
+  apiKey: string,
+  accountBaseUrl?: string,
+): Promise<MockMediaGenerationResult> {
+  const [referenceImageUrls, referenceVideoUrls] = await Promise.all([
+    Promise.all((input.referenceImageUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
+    Promise.all((input.referenceVideoUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
+  ]);
+  const result = await generateBflFlux3Video({
+    apiKey,
+    baseUrl: accountBaseUrl || options.bflBaseUrl,
+    fetch: options.fetch,
+    pollIntervalMs: 0,
+    input: {
+      prompt: promptForRoute(input, route),
+      duration: input.duration,
+      aspectRatio: input.aspectRatio,
+      modelParams: input.modelParams,
+      referenceImageUrls,
+      referenceVideoUrls,
+    },
+  });
+  const media = await downloadProviderMedia(options.fetch, result.url, "video");
+  const duration = input.duration ?? numberParam(input.modelParams, "duration", Number.NaN);
+  return {
+    ...media,
+    requestId: result.requestId,
+    provider: "bfl",
+    modelEndpoint: route.upstreamModel,
+    ...(typeof duration === "number" && Number.isFinite(duration) ? { durationMs: duration * 1000 } : {}),
+  };
+}
+
 function kieTaskState(data: any): "pending" | "success" | "failed" {
   const task = data?.data ?? data;
   const flag = task?.successFlag;
@@ -909,7 +1617,7 @@ async function generateKieMedia(
     headers,
     body: JSON.stringify({
       model: route.upstreamModel,
-      input: providerInput(input, kind),
+      input: providerInput(input, kind, route),
     }),
   });
   const created = await responseJson(createResponse);
@@ -1033,6 +1741,175 @@ async function generateSunoMedia(
   };
 }
 
+async function generateMiniMaxMedia(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> &
+    Pick<MockFalExternalAigcServiceOptions, "minimaxBaseUrl">,
+  apiKey: string,
+  accountBaseUrl?: string,
+): Promise<MockMediaGenerationResult> {
+  const baseUrl = normalizeBaseUrl(accountBaseUrl || options.minimaxBaseUrl, "https://api.minimax.io");
+  const headers = {
+    authorization: `Bearer ${apiKey}`,
+    "content-type": "application/json",
+  };
+
+  if (kind === "audio") {
+    const format = stringParam(input.modelParams, "format") || "mp3";
+    const isMusic = route.upstreamModel.startsWith("music-");
+    const body = isMusic
+      ? {
+          model: route.upstreamModel,
+          prompt: input.prompt,
+          lyrics: stringParam(input.modelParams, "lyrics") || "",
+          stream: false,
+          output_format: "hex",
+          lyrics_optimizer: input.modelParams?.lyrics_optimizer === true,
+          is_instrumental: input.modelParams?.is_instrumental === true,
+          aigc_watermark: input.modelParams?.aigc_watermark === true,
+          audio_setting: {
+            sample_rate: numberParam(input.modelParams, "sample_rate", 44100),
+            bitrate: numberParam(input.modelParams, "bitrate", 256000),
+            format,
+          },
+        }
+      : {
+          model: route.upstreamModel,
+          text: input.prompt,
+          stream: false,
+          output_format: "hex",
+          voice_setting: {
+            voice_id: stringParam(input.modelParams, "voice_id") || "female-warm",
+            speed: Number(input.modelParams?.speed ?? 1),
+            pitch: Number(input.modelParams?.pitch ?? 0),
+          },
+          audio_setting: {
+            sample_rate: numberParam(input.modelParams, "sample_rate", 32000),
+            bitrate: numberParam(input.modelParams, "bitrate", 128000),
+            format,
+            channel: numberParam(input.modelParams, "channel", 1),
+          },
+        };
+    const response = await options.fetch(
+      `${baseUrl}${isMusic ? "/v1/music_generation" : "/v1/t2a_v2"}`,
+      { method: "POST", headers, body: JSON.stringify(body) },
+    );
+    const json = await responseJson(response);
+    if (!response.ok || json?.base_resp?.status_code !== 0) {
+      throw new Error(`MiniMax ${isMusic ? "music" : "TTS"} request failed: ${json?.base_resp?.status_msg ?? response.statusText}`);
+    }
+    const audio = json?.data?.audio;
+    if (typeof audio !== "string" || !audio) {
+      throw new Error(`MiniMax ${isMusic ? "music" : "TTS"} response returned no audio.`);
+    }
+    return {
+      bytes: hexToBytes(audio),
+      contentType: format === "wav" ? "audio/wav" : format === "pcm" ? "audio/L16" : "audio/mpeg",
+      requestId: input.taskId,
+      provider: "minimax",
+      modelEndpoint: route.upstreamModel,
+      ...(typeof json?.extra_info?.music_duration === "number"
+        ? { durationMs: json.extra_info.music_duration }
+        : {}),
+    };
+  }
+
+  if (kind !== "video") throw missingAdapter(route);
+  const orderedContentParts = await Promise.all((input.orderedContentParts ?? []).map(async (part) =>
+    part.type === "text"
+      ? part
+      : { ...part, url: await inlineLoopbackReference(options.fetch, part.url) },
+  ));
+  const [startFrame, endFrame, referenceImages, referenceVideos, referenceAudios] = await Promise.all([
+    input.startFrameUrl ? inlineLoopbackReference(options.fetch, input.startFrameUrl) : Promise.resolve(undefined),
+    input.endFrameUrl ? inlineLoopbackReference(options.fetch, input.endFrameUrl) : Promise.resolve(undefined),
+    Promise.all((input.referenceImageUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
+    Promise.all((input.referenceVideoUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
+    Promise.all((input.referenceAudioUrls ?? []).map((url) => inlineLoopbackReference(options.fetch, url))),
+  ]);
+  if (endFrame && !startFrame) {
+    throw new Error("MiniMax H3 end frame requires a start frame.");
+  }
+  const orderedMediaTypes = new Set(
+    orderedContentParts.filter((part) => part.type !== "text").map((part) => part.type),
+  );
+  if (startFrame && (
+    referenceImages.length || referenceVideos.length || referenceAudios.length || orderedMediaTypes.size
+  )) {
+    throw new Error("MiniMax H3 start/end frames cannot be mixed with omni references.");
+  }
+  const hasReferenceAudio = referenceAudios.length > 0 || orderedMediaTypes.has("audio");
+  const hasReferenceVisual = referenceImages.length > 0 || referenceVideos.length > 0 ||
+    orderedMediaTypes.has("image") || orderedMediaTypes.has("video");
+  if (hasReferenceAudio && !hasReferenceVisual) {
+    throw new Error("MiniMax H3 reference audio requires at least one reference image or video.");
+  }
+  const content = buildMiniMaxH3Content({
+    prompt: input.prompt,
+    orderedContentParts,
+    startFrame,
+    endFrame,
+    referenceImages,
+    referenceVideos,
+    referenceAudios,
+  });
+  const createResponse = await options.fetch(`${baseUrl}/v2/video_generation`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: route.upstreamModel,
+      content,
+      resolution: stringParam(input.modelParams, "resolution") || "2K",
+      duration: input.duration ?? numberParam(input.modelParams, "duration", 5),
+      ratio: startFrame ? "adaptive" : input.aspectRatio || stringParam(input.modelParams, "aspect_ratio") || "16:9",
+    }),
+  });
+  const created = await responseJson(createResponse);
+  if (!createResponse.ok) {
+    throw new Error(`MiniMax H3 request failed: ${created?.error?.message ?? created?.message ?? createResponse.statusText}`);
+  }
+  const taskId = created?.task_id;
+  if (typeof taskId !== "string" || !taskId) {
+    throw new Error("MiniMax H3 response returned no task_id.");
+  }
+
+  let task: any;
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    const statusResponse = await options.fetch(
+      `${baseUrl}/v2/query/video_generation/${encodeURIComponent(taskId)}`,
+      { headers: { authorization: `Bearer ${apiKey}` } },
+    );
+    const json = await responseJson(statusResponse);
+    if (!statusResponse.ok) {
+      throw new Error(`MiniMax H3 status failed: ${json?.error?.message ?? json?.message ?? statusResponse.statusText}`);
+    }
+    task = json?.task;
+    const status = String(task?.status ?? "queued").toLowerCase();
+    if (status === "succeeded") break;
+    if (status === "failed" || status === "cancelled") {
+      throw new Error(`MiniMax H3 generation failed: ${task?.error?.message ?? task?.message ?? status}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  if (String(task?.status ?? "").toLowerCase() !== "succeeded") {
+    throw new Error(`MiniMax H3 generation timed out: ${taskId}`);
+  }
+  const mediaUrl = task?.content?.url;
+  if (typeof mediaUrl !== "string" || !mediaUrl) {
+    throw new Error(`MiniMax H3 response returned no video URL for ${taskId}`);
+  }
+  const media = await downloadProviderMedia(options.fetch, mediaUrl, "video");
+  return {
+    ...media,
+    requestId: taskId,
+    provider: "minimax",
+    modelEndpoint: route.upstreamModel,
+    ...(typeof task.duration === "number" ? { durationMs: task.duration * 1000 } : {}),
+  };
+}
+
 function replicatePredictionUrl(baseUrl: string, upstreamModel: string): string {
   const [owner, model] = upstreamModel.split("/", 2);
   if (!owner || !model) {
@@ -1065,7 +1942,7 @@ async function generateReplicateMedia(
     method: "POST",
     headers,
     body: JSON.stringify({
-      input: providerInput(input, kind),
+      input: providerInput(input, kind, route),
     }),
   });
   let prediction = await responseJson(createResponse);
@@ -1103,6 +1980,281 @@ async function generateReplicateMedia(
     requestId: predictionId,
     provider: "replicate",
     modelEndpoint: route.upstreamModel,
+  };
+}
+
+function compactRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+}
+
+function pikaOperation(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  references: { images: string[]; videos: string[]; audios: string[] },
+): string {
+  if (route.modelCode === "pika-2.5") {
+    return references.images.length || input.startFrameUrl
+      ? "pika/pika-2.5/image-to-video"
+      : "pika/pika-2.5/text-to-video";
+  }
+  if (route.modelCode === "flux-3-video") {
+    return references.images.length || input.startFrameUrl
+      ? "black-forest-labs/flux-3-video/image-to-video"
+      : "black-forest-labs/flux-3-video/text-to-video";
+  }
+  if (route.modelCode === "kling-3") {
+    return references.images.length || input.startFrameUrl
+      ? "kling/kling-3.0/image-to-video"
+      : "kling/kling-3.0/text-to-video";
+  }
+  if (kind === "image") {
+    return references.images.length
+      ? route.upstreamModel.replace(/\/text-to-image$/, "/image-to-image")
+      : route.upstreamModel;
+  }
+  if (route.modelCode === "minimax-h3" && !references.images.length && !references.videos.length && !references.audios.length) {
+    return "minimax/h3/text-to-video";
+  }
+  return route.upstreamModel;
+}
+
+async function pikaReferenceUrl(
+  mediaUrl: string | undefined,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> & Pick<MockFalExternalAigcServiceOptions, "pikaBaseUrl">,
+  apiKey: string,
+): Promise<string | undefined> {
+  if (!mediaUrl) return undefined;
+  const reference = await loadReferenceData(options.fetch, mediaUrl);
+  return uploadPikaMedia({
+    apiKey,
+    bytes: reference.data,
+    contentType: reference.mediaType,
+    baseUrl: options.pikaBaseUrl,
+    fetch: options.fetch,
+  });
+}
+
+function pikaInput(
+  input: MockMediaGenerationInput,
+  route: ModelUpstreamRoute,
+  operation: string,
+  references: {
+    start?: string;
+    end?: string;
+    images: string[];
+    videos: string[];
+    audios: string[];
+  },
+): Record<string, unknown> {
+  const params = input.modelParams ?? {};
+  const prompt = promptForRoute(input, route);
+  if (route.modelCode === "nano-banana-2") {
+    return compactRecord({
+      prompt,
+      num_images: params.count ?? 1,
+      aspect_ratio: input.aspectRatio ?? params.aspect_ratio ?? "1:1",
+      output_format: params.output_format ?? "png",
+      resolution: params.resolution ?? "1K",
+      image_urls: references.images.length ? references.images : undefined,
+    });
+  }
+  if (route.modelCode === "gpt-image-2") {
+    return compactRecord({
+      prompt,
+      num_images: params.count ?? 1,
+      aspect_ratio: input.aspectRatio,
+      output_format: params.output_format ?? "png",
+      resolution: params.resolution,
+      quality: params.quality,
+      background: params.background,
+      size: params.size,
+      image_urls: references.images.length ? references.images : undefined,
+    });
+  }
+  if (route.modelCode === "seedream-5-pro" || route.modelCode === "recraft-v4") {
+    return compactRecord({ prompt, num_images: params.count ?? 1, size: params.size, image_urls: references.images.length ? references.images : undefined });
+  }
+  if (route.modelCode === "grok-imagine-quality") {
+    return compactRecord({ prompt, num_images: params.count ?? 1, resolution: params.resolution ?? "2K", aspect_ratio: input.aspectRatio ?? "1:1", image_url: references.images[0] });
+  }
+  if (route.modelCode === "pika-2.5") {
+    return compactRecord({
+      prompt,
+      resolution: params.resolution ?? "720p",
+      duration_s: input.duration ?? params.duration ?? 5,
+      negative_prompt: params.negative_prompt,
+      seed: params.seed,
+      image: references.start ?? references.images[0],
+    });
+  }
+  if (route.modelCode === "flux-3-video") {
+    return compactRecord({ prompt, duration: input.duration ?? params.duration ?? "auto", resolution: params.resolution ?? "720p", aspect_ratio: input.aspectRatio ?? params.aspect_ratio ?? "auto", draft: params.mode === "draft", generate_audio: params.generate_audio ?? true, image_url: references.start ?? references.images[0] });
+  }
+  if (route.modelCode === "kling-3") {
+    return compactRecord({ prompt, duration: Number(input.duration ?? params.duration ?? 5), resolution: params.resolution ?? "720p", aspect_ratio: input.aspectRatio ?? "16:9", audio: params.generate_audio === false ? "off" : "native", image_url: references.start ?? references.images[0], last_frame_url: references.end });
+  }
+  if (route.modelCode === "grok-imagine-video-1.5") {
+    return compactRecord({ prompt, duration: input.duration ?? params.duration ?? 6, image_url: references.start ?? references.images[0], aspect_ratio: input.aspectRatio, resolution: params.resolution ?? "720p" });
+  }
+  if (route.modelCode === "seedance-2-startend") {
+    return compactRecord({
+      prompt,
+      duration: input.duration ?? params.duration ?? "auto",
+      ratio: input.aspectRatio ?? params.aspect_ratio,
+      generate_audio: params.generate_audio,
+      watermark: false,
+      image_url: references.start ?? references.images[0],
+      end_image_url: references.end,
+      resolution: params.resolution ?? "720p",
+    });
+  }
+  if (route.modelCode === "seedance-2-ref") {
+    return compactRecord({
+      prompt,
+      duration: input.duration ?? params.duration ?? "auto",
+      ratio: input.aspectRatio ?? params.aspect_ratio,
+      generate_audio: params.generate_audio,
+      watermark: false,
+      image_urls: references.images.length ? references.images : undefined,
+      video_urls: references.videos.length ? references.videos : undefined,
+      audio_urls: references.audios.length ? references.audios : undefined,
+      resolution: params.resolution ?? "720p",
+    });
+  }
+  if (route.modelCode === "minimax-h3" || route.modelCode === "minimax-h3-startend") {
+    return compactRecord({
+      prompt,
+      duration: input.duration ?? params.duration ?? 5,
+      resolution: params.resolution ?? "2K",
+      seed: params.seed,
+      aigc_watermark: params.aigc_watermark,
+      ratio: operation.endsWith("text-to-video") || operation.endsWith("reference-to-video")
+        ? input.aspectRatio ?? params.aspect_ratio ?? (operation.endsWith("reference-to-video") ? "adaptive" : "16:9")
+        : undefined,
+      first_frame_image: references.start,
+      last_frame_image: references.end,
+      image_urls: references.images.length ? references.images : undefined,
+      video_urls: references.videos.length ? references.videos : undefined,
+      audio_urls: references.audios.length ? references.audios : undefined,
+    });
+  }
+  if (route.modelCode === "minimax-music-3") {
+    return compactRecord({
+      prompt,
+      lyrics: params.lyrics,
+      lyrics_optimizer: params.lyrics_optimizer ?? false,
+      is_instrumental: params.is_instrumental ?? false,
+      audio_setting: compactRecord({
+        sample_rate: params.sample_rate,
+        bitrate: params.bitrate,
+        format: params.format,
+      }),
+    });
+  }
+  if (route.modelCode === "lyria-3-pro") return { prompt };
+  if (route.modelCode === "minimax-speech-2.8-hd") {
+    return compactRecord({ text: prompt, voice_id: params.voice_id ?? "English_Graceful_Lady", speed: params.speed, vol: params.vol, pitch: params.pitch, emotion: params.emotion, sample_rate: params.sample_rate, bitrate: params.bitrate, format: params.format, channel: params.channel, language_boost: params.language_boost });
+  }
+  throw new Error(`Pika API Club does not implement ${route.modelCode}`);
+}
+
+async function generatePikaMedia(
+  input: MockMediaGenerationInput,
+  kind: ModelKind,
+  route: ModelUpstreamRoute,
+  options: Required<Pick<MockFalExternalAigcServiceOptions, "fetch">> & Pick<MockFalExternalAigcServiceOptions, "pikaBaseUrl" | "providerUsageAudit">,
+  apiKey: string,
+): Promise<MockMediaGenerationResult> {
+  const [start, end, images, videos, audios] = await Promise.all([
+    pikaReferenceUrl(input.startFrameUrl, options, apiKey),
+    pikaReferenceUrl(input.endFrameUrl, options, apiKey),
+    Promise.all((input.referenceImageUrls ?? []).map((url) => pikaReferenceUrl(url, options, apiKey) as Promise<string>)),
+    Promise.all((input.referenceVideoUrls ?? []).map((url) => pikaReferenceUrl(url, options, apiKey) as Promise<string>)),
+    Promise.all((input.referenceAudioUrls ?? []).map((url) => pikaReferenceUrl(url, options, apiKey) as Promise<string>)),
+  ]);
+  const references = { start, end, images, videos, audios };
+  const operation = pikaOperation(input, kind, route, references);
+  const body = pikaInput(input, route, operation, references);
+  const quote = await fetchPikaCatalogQuote({
+    operation,
+    input: body,
+    baseUrl: options.pikaBaseUrl,
+    fetch: options.fetch,
+  });
+  const billingBasis = pikaBillingBasis(body);
+  const emit = async (
+    status: "submitted" | "completed" | "failed",
+    providerRequestId?: string,
+    error?: unknown,
+  ) => options.providerUsageAudit?.({
+    id: `${input.taskId}:pika:${providerRequestId ?? "submit"}:${status}`,
+    userId: input.actorUserId ?? "local-user",
+    providerId: "pika",
+    ...(route.accountId ? { providerAccountId: route.accountId } : {}),
+    modelId: route.modelCode,
+    operation,
+    taskId: input.taskId,
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+    actorType: input.actorType ?? "user",
+    actorUserId: input.actorUserId ?? "local-user",
+    ...(input.actorAgentId ? { actorAgentId: input.actorAgentId } : {}),
+    ...(providerRequestId ? { providerRequestId } : {}),
+    idempotencyKey: input.taskId,
+    status,
+    ...(quote.estimatedCostMicroUsd !== undefined
+      ? { estimatedCostMicroUsd: quote.estimatedCostMicroUsd }
+      : {}),
+    estimateComplete: quote.complete,
+    currency: "USD",
+    pricingSource: quote.pricingSource,
+    billingBasis,
+    ...(error ? { errorMessage: error instanceof Error ? error.message : String(error) } : {}),
+    occurredAt: new Date().toISOString(),
+  });
+  let created;
+  try {
+    created = await createPikaMediaJob({
+      apiKey,
+      operation,
+      input: body,
+      idempotencyKey: input.taskId,
+      baseUrl: options.pikaBaseUrl,
+      fetch: options.fetch,
+    });
+  } catch (error) {
+    await emit("failed", undefined, error);
+    throw error;
+  }
+  await emit("submitted", created.id);
+  let completed;
+  try {
+    completed = created.status === "completed"
+      ? created
+      : await waitForPikaMediaJob({
+          apiKey,
+          jobId: created.id,
+          baseUrl: options.pikaBaseUrl,
+          fetch: options.fetch,
+        });
+    await emit("completed", completed.id);
+  } catch (error) {
+    await emit("failed", created.id, error);
+    throw error;
+  }
+  const content = await getPikaMediaContent({
+    apiKey,
+    jobId: completed.id,
+    baseUrl: options.pikaBaseUrl,
+    fetch: options.fetch,
+  });
+  const media = await downloadProviderMedia(options.fetch, content.url, kind);
+  return {
+    ...media,
+    requestId: completed.id,
+    provider: "pika",
+    modelEndpoint: operation,
   };
 }
 
@@ -1152,7 +2304,8 @@ export function createMockExternalAigcService(
       route.upstreamId === "openai" ||
       route.upstreamId === "google-ai-studio" ||
       route.upstreamId === "google-agent-platform" ||
-      route.upstreamId === "anthropic"
+      route.upstreamId === "anthropic" ||
+      route.upstreamId === "bfl"
     ) return "official";
     return route.upstreamId;
   };
@@ -1191,7 +2344,17 @@ export function createMockExternalAigcService(
       });
 
     const hasRequiredCredentials = (account: RuntimeProviderAccountAvailability) =>
-      (route.requiredCredentials ?? []).every((key) => account.credentials?.[key]?.trim());
+      modelRouteCredentialsSatisfied(route, {
+        ...account,
+        configuredCredentials: [
+          ...new Set([
+            ...(account.configuredCredentials ?? []),
+            ...Object.entries(account.credentials ?? {})
+              .filter(([, value]) => typeof value === "string" && value.trim())
+              .map(([key]) => key),
+          ]),
+        ],
+      });
     const hasRequiredOAuth = (account: RuntimeProviderAccountAvailability) =>
       (route.requiredOAuth ?? []).every((provider) => account.availableOAuth?.includes(provider));
     return candidates.find(({ account }) =>
@@ -1207,12 +2370,83 @@ export function createMockExternalAigcService(
     key: string,
   ) => accountForRoute(route, accounts)?.credentials?.[key]?.trim();
 
+  const providerFetchForRoute = async (route: ModelUpstreamRoute): Promise<typeof fetch> => {
+    const traffic = options.providerTraffic;
+    if (!traffic) return fetchImpl;
+    const stub = createProviderConformanceStubs({ includeMock: route.upstreamId === "mock" })
+      .find((candidate) =>
+        candidate.providerId === providerIdForRoute(route)
+        && candidate.upstreamId === route.upstreamId
+        && (candidate.region ?? "") === (route.region ?? "")
+        && candidate.modelId === route.modelCode
+        && candidate.apiShape === route.apiShape
+      );
+    if (!stub) {
+      throw new Error(`Provider traffic ${traffic.mode} has no conformance stub for ${route.modelCode}/${route.apiShape}.`);
+    }
+    if (traffic.mode === "record") {
+      return createProviderTestRecordingFetch({
+        fetch: fetchImpl,
+        recorder: await traffic.recorder(),
+        stub,
+      });
+    }
+    const fixtures = filterProviderTestReplayFixturesForStub(await traffic.fixtures(), stub.id);
+    if (!fixtures.length) {
+      throw new Error(`Provider traffic replay has no fixtures for ${stub.id}.`);
+    }
+    return createProviderTestReplayFetch(fixtures);
+  };
+
+  const googleAiStudioReplayAccount = async (
+    input: MockMediaGenerationInput,
+    kind: ModelKind,
+  ): Promise<RuntimeProviderAccountAvailability | undefined> => {
+    const traffic = options.providerTraffic;
+    if (traffic?.mode !== "replay") return undefined;
+    const modelId = normalizeModelId(input.model) ?? input.model.trim();
+    const fixture = (await traffic.fixtures()).find((candidate) =>
+      candidate.stub.providerId === "official"
+      && candidate.stub.upstreamId === "google-ai-studio"
+      && candidate.stub.apiShape === "google-ai-studio-interactions"
+      && candidate.stub.modelId === modelId
+      && candidate.stub.shape === kind
+      && /\/v\d+(?:beta\d*)?\/interactions\/?$/.test(new URL(candidate.request.url).pathname)
+    );
+    if (!fixture) return undefined;
+    const url = new URL(fixture.request.url);
+    url.pathname = url.pathname.replace(/\/v\d+(?:beta\d*)?\/interactions\/?$/, "");
+    url.search = "";
+    url.hash = "";
+    const baseUrl = url.toString().replace(/\/$/, "");
+    return {
+      id: "google-ai-studio-provider-traffic-replay",
+      providerId: "official",
+      upstreamId: "google-ai-studio",
+      region: fixture.stub.region ?? "global",
+      enabled: true,
+      priority: -10_000,
+      configuredCredentials: ["apiKey", "baseUrl"],
+      credentials: {
+        apiKey: "provider-traffic-replay-placeholder",
+        baseUrl,
+      },
+    };
+  };
+
   async function generateWithRoute(
     input: MockMediaGenerationInput,
     kind: ModelKind,
     fallback: () => Promise<MockMediaGenerationResult>,
   ): Promise<MockMediaGenerationResult> {
-    const providerAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
+    const loadedProviderAccounts = loadProviderAccounts ? await loadProviderAccounts() : undefined;
+    const environmentGoogleAccount = cloudflareGoogleEnvironmentAccount(options);
+    const replayGoogleAccount = await googleAiStudioReplayAccount(input, kind);
+    const additionalAccounts = [environmentGoogleAccount, replayGoogleAccount]
+      .filter((account): account is RuntimeProviderAccountAvailability => !!account);
+    const providerAccounts = additionalAccounts.length
+      ? [...(loadedProviderAccounts ?? []), ...additionalAccounts]
+      : loadedProviderAccounts;
     const modelCards = loadModelCards ? await loadModelCards() : undefined;
     const preferredProviderId = stringParam(input.modelParams, "provider_id");
     const requireRealProvider = input.modelParams?.require_real_provider === true;
@@ -1230,6 +2464,40 @@ export function createMockExternalAigcService(
     };
     const route = resolveLocalRoute(input.model, kind, providerAccounts, preferredProviderId, modelCards);
     if (!route || route.upstreamId === "mock") return fallbackOrThrow();
+    const baseCard = (modelCards ?? MODEL_CARDS).find((card) => card.id === (normalizeModelId(input.model) ?? input.model));
+    if (baseCard) {
+      const effectiveCard = applyModelProviderImplementation(baseCard, route);
+      const lyricsParam = effectiveCard.musicInput?.lyricsParam;
+      const durationParam = input.duration !== undefined
+        ? coerceModelParameterInput(effectiveCard, "duration", input.duration)
+        : undefined;
+      const effectiveModelParams: Record<string, string | number | boolean | undefined> = {
+        ...(input.modelParams as Record<string, string | number | boolean | undefined> | undefined),
+        ...(durationParam !== undefined ? { duration: durationParam } : {}),
+        ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
+      };
+      const validationError = validateModelCardConfiguration(effectiveCard, {
+        prompt: input.prompt,
+        lyrics: lyricsParam && typeof effectiveModelParams[lyricsParam] === "string"
+          ? effectiveModelParams[lyricsParam] as string
+          : undefined,
+        modelParams: effectiveModelParams,
+      }, {
+        rejectUnknownParameters: true,
+        allowedParameterIds: [
+          "aspect_ratio",
+          "count",
+          "height",
+          "keyframe_frame_indices",
+          "keyframe_timing_customized",
+          "provider_id",
+          "require_real_provider",
+          "width",
+          ...(lyricsParam ? [lyricsParam] : []),
+        ],
+      });
+      if (validationError) throw new Error(validationError);
+    }
 
     if (route.apiShape === "openai-images") {
       const apiKey = credential(route, providerAccounts, "apiKey");
@@ -1250,7 +2518,7 @@ export function createMockExternalAigcService(
         baseUrl: credential(route, providerAccounts, "baseUrl") || options.openAiBaseUrl,
         model,
         systemPrompt: stringParam(input.modelParams, "system_prompt"),
-        messages: [{ role: "user", content: input.prompt }],
+        messages: [{ role: "user", content: await orderedTextCompletionContent(input, fetchImpl) }],
         fetch: fetchImpl,
       });
       return {
@@ -1272,7 +2540,7 @@ export function createMockExternalAigcService(
         baseUrl: credential(route, providerAccounts, "baseUrl") || options.anthropicBaseUrl,
         model,
         systemPrompt: stringParam(input.modelParams, "system_prompt"),
-        messages: [{ role: "user", content: input.prompt }],
+        messages: [{ role: "user", content: await orderedTextCompletionContent(input, fetchImpl) }],
         fetch: fetchImpl,
       });
       return {
@@ -1282,6 +2550,22 @@ export function createMockExternalAigcService(
         provider: "anthropic-compatible",
         modelEndpoint: result.model,
       };
+    }
+
+    if (route.apiShape === "google-ai-studio-interactions") {
+      const gatewayToken = credential(route, providerAccounts, "gatewayToken")
+        || options.googleAiStudioGatewayToken;
+      const apiKey = gatewayToken
+        ? undefined
+        : credential(route, providerAccounts, "apiKey") || options.googleAiStudioApiKey;
+      if (!apiKey && !gatewayToken) return fallbackOrThrow();
+      if (kind !== "video") throw missingAdapter(route);
+      const providerFetch = await providerFetchForRoute(route);
+      return generateGeminiOmniVideo(input, route, {
+        fetch: fetchImpl,
+        providerFetch,
+        googleAiStudioBaseUrl: credential(route, providerAccounts, "baseUrl") || options.googleAiStudioBaseUrl,
+      }, { apiKey, gatewayToken });
     }
 
     if (route.apiShape === "google-ai-studio") {
@@ -1308,7 +2592,18 @@ export function createMockExternalAigcService(
       return generateFalMedia(input, kind, route, {
         fetch: fetchImpl,
         falQueueBaseUrl: options.falQueueBaseUrl,
+        providerPluginProjector: options.providerPluginProjector,
       }, apiKey);
+    }
+
+    if (route.apiShape === "bfl") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallbackOrThrow();
+      if (kind !== "video") throw missingAdapter(route);
+      return generateBflVideoMedia(input, route, {
+        fetch: fetchImpl,
+        bflBaseUrl: options.bflBaseUrl,
+      }, apiKey, credential(route, providerAccounts, "baseUrl"));
     }
 
     if (route.apiShape === "kie") {
@@ -1320,6 +2615,69 @@ export function createMockExternalAigcService(
       }, apiKey);
     }
 
+    if (route.apiShape === "pika") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallbackOrThrow();
+      return generatePikaMedia(input, kind, route, {
+        fetch: fetchImpl,
+        pikaBaseUrl: options.pikaBaseUrl,
+        providerUsageAudit: options.providerUsageAudit,
+      }, apiKey);
+    }
+
+    if (route.apiShape === "pika-chat") {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallbackOrThrow();
+      if (kind !== "text") throw missingAdapter(route);
+      let result;
+      try {
+        result = await generatePikaChat({
+          apiKey,
+          model: route.upstreamModel,
+          prompt: input.prompt,
+          systemPrompt: stringParam(input.modelParams, "system_prompt"),
+          baseUrl: credential(route, providerAccounts, "baseUrl") || options.pikaBaseUrl,
+          fetch: fetchImpl,
+        });
+        await options.providerUsageAudit?.({
+          id: `${input.taskId}:pika:${result.requestId ?? "sync"}:completed`,
+          userId: input.actorUserId ?? "local-user",
+          providerId: "pika",
+          ...(route.accountId ? { providerAccountId: route.accountId } : {}),
+          modelId: route.modelCode,
+          operation: route.upstreamModel,
+          taskId: input.taskId,
+          ...(input.projectId ? { projectId: input.projectId } : {}),
+          ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+          actorType: input.actorType ?? "user",
+          actorUserId: input.actorUserId ?? "local-user",
+          ...(result.requestId ? { providerRequestId: result.requestId } : {}),
+          idempotencyKey: input.taskId,
+          status: "completed",
+          estimateComplete: false,
+          currency: "USD",
+          pricingSource: "unavailable",
+          billingBasis: result.usage ?? {},
+          occurredAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        await options.providerUsageAudit?.({
+          id: `${input.taskId}:pika:sync:failed`, userId: input.actorUserId ?? "local-user", providerId: "pika",
+          modelId: route.modelCode, operation: route.upstreamModel, taskId: input.taskId, idempotencyKey: input.taskId,
+          status: "failed", estimateComplete: false, currency: "USD", pricingSource: "unavailable", billingBasis: {},
+          errorMessage: error instanceof Error ? error.message : String(error), occurredAt: new Date().toISOString(),
+        });
+        throw error;
+      }
+      return {
+        bytes: new TextEncoder().encode(result.text),
+        contentType: "text/plain; charset=utf-8",
+        requestId: result.requestId ?? input.taskId,
+        provider: "pika",
+        modelEndpoint: route.upstreamModel,
+      };
+    }
+
     if (route.apiShape === "suno" && kind === "audio") {
       const apiKey = credential(route, providerAccounts, "apiKey");
       if (!apiKey) return fallbackOrThrow();
@@ -1327,6 +2685,15 @@ export function createMockExternalAigcService(
         fetch: fetchImpl,
         sunoBaseUrl: options.sunoBaseUrl,
       }, apiKey, credential(route, providerAccounts, "callbackUrl"));
+    }
+
+    if (route.apiShape === "minimax" && (kind === "audio" || kind === "video")) {
+      const apiKey = credential(route, providerAccounts, "apiKey");
+      if (!apiKey) return fallbackOrThrow();
+      return generateMiniMaxMedia(input, kind, route, {
+        fetch: fetchImpl,
+        minimaxBaseUrl: options.minimaxBaseUrl,
+      }, apiKey, credential(route, providerAccounts, "baseUrl"));
     }
 
     if (route.apiShape === "replicate") {
@@ -1348,11 +2715,18 @@ export function createMockExternalAigcService(
 
     if (route.apiShape === "dreamina-cli" && kind === "video") {
       const result = await generateDreaminaCliVideoMedia({
-        prompt: input.prompt,
+        prompt: promptForRoute(input, route),
         modelName: input.model,
         upstreamModel: route.upstreamModel,
         duration: input.duration,
         aspectRatio: input.aspectRatio,
+        resolution: stringParam(input.modelParams ?? {}, "resolution"),
+        startFrameUrl: input.startFrameUrl,
+        endFrameUrl: input.endFrameUrl,
+        referenceImageUrls: input.referenceImageUrls,
+        referenceVideoUrls: input.referenceVideoUrls,
+        referenceAudioUrls: input.referenceAudioUrls,
+        fetch: fetchImpl,
         run: options.dreaminaRun,
       });
       return {

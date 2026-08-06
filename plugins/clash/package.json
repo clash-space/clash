@@ -1,6 +1,6 @@
 {
   "name": "@clash-space/codex-plugin",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Installable Codex plugin for the complete local Clash creative workspace",
   "type": "module",
   "bin": { "clash-codex-plugin": "./runtime/index.js" },
@@ -11,7 +11,7 @@
   },
   "files": [".codex-plugin", ".mcp.json", "README.md", "runtime", "skills"],
   "scripts": {
-    "build:deps": "pnpm --filter @master-clash/local-api build && pnpm --filter @clash-space/mcp-server build && pnpm --filter @clash-space/timeline-plugin build && pnpm --filter @clash-space/director-plugin build",
+    "build:deps": "pnpm --filter @master-clash/local-api build:with-deps && pnpm --filter @clash-space/mcp-server build && pnpm --filter @clash-space/timeline-plugin build && pnpm --filter @clash-space/director-plugin build",
     "build:host": "tsx scripts/build-host-runtime.ts",
     "build:core": "pnpm build:deps && tsup && pnpm build:host && tsx scripts/copy-app-bundles.ts",
     "bundle:agents": "tsx scripts/bundle-agent-runtime.ts",

@@ -4,6 +4,14 @@
  */
 import { log } from "../../logger";
 import { loadSecrets } from "../../services/user-variables";
+import {
+  ExecutablePluginInvocationSchema,
+  ExecutablePluginPermissionsSchema,
+  ExecutablePluginResultSchema,
+  type ExecutablePluginJsonValue,
+  type ExecutablePluginResult,
+} from "@clash/shared-types";
+import { signHostedExecutablePluginCapability } from "../../services/hosted-plugin-capabilities";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
 
@@ -16,11 +24,139 @@ type CustomActionResult = {
   [k: string]: unknown;
 };
 
+function outputValue(result: ExecutablePluginResult, slot: string): ExecutablePluginJsonValue | undefined {
+  if (result.status !== "completed") return undefined;
+  const output = result.outputs.find((candidate) => candidate.kind === "value" && candidate.slot === slot);
+  return output?.kind === "value" ? output.value : undefined;
+}
+
+function displayValue(value: ExecutablePluginJsonValue | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
 export const customActionProvider: GenerationProvider = {
   name: "custom-action",
 
   async execute(ctx) {
     const { params, env } = ctx;
+    if (params.pluginBinding) {
+      const invocation = ExecutablePluginInvocationSchema.parse({
+        protocol: "clash.plugin.invoke/v1",
+        invocationId: params.taskId,
+        taskId: params.taskId,
+        projectId: params.projectId,
+        ...(params.nodeId ? { nodeId: params.nodeId } : {}),
+        target: { ...params.pluginBinding, kind: "action" },
+        input: {
+          values: {
+            ...(params.customActionParams ?? {}),
+            prompt: params.prompt ?? "",
+          },
+          references: params.pluginReferences ?? [],
+        },
+        actor: {
+          kind: params.actorType,
+          id: params.actorType === "agent"
+            ? params.actorAgentId ?? params.actorUserId
+            : params.actorUserId,
+        },
+      });
+      const permissions = ExecutablePluginPermissionsSchema.parse(params.pluginPermissions ?? {});
+      const capabilityKey = env.PLUGIN_CAPABILITY_KEY ?? env.ACTION_SECRET_KEY;
+      const brokerBaseUrl = env.WORKER_PUBLIC_URL;
+      const needsBroker = permissions.network.domains.length > 0
+        || permissions.secrets.length > 0
+        || permissions.assets.length > 0
+        || permissions.externalWrites;
+      if (needsBroker && (!capabilityKey || !brokerBaseUrl)) {
+        throw new Error(
+          "Hosted executable plugin requests broker capabilities, but the hosted Kernel broker is not configured.",
+        );
+      }
+      const hostedHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Clash-Plugin-Protocol": invocation.protocol,
+      };
+      if (capabilityKey && brokerBaseUrl) {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const capabilityToken = await signHostedExecutablePluginCapability({
+          protocol: "clash.plugin.hosted-capability/v1",
+          capabilityId: crypto.randomUUID(),
+          issuedAt: nowSeconds,
+          expiresAt: nowSeconds + 15 * 60,
+          endpoint: params.workerUrl,
+          ownerUserId: params.actorUserId,
+          invocation: {
+            invocationId: invocation.invocationId,
+            taskId: invocation.taskId,
+            projectId: invocation.projectId,
+            ...(invocation.nodeId ? { nodeId: invocation.nodeId } : {}),
+            target: invocation.target,
+            actor: invocation.actor,
+          },
+          permissions,
+        }, capabilityKey);
+        hostedHeaders["X-Clash-Plugin-Broker"] = new URL(
+          "/api/v1/plugin-broker",
+          brokerBaseUrl,
+        ).toString();
+        hostedHeaders["X-Clash-Plugin-Capability"] = capabilityToken;
+      }
+
+      const result = await ctx.step<ExecutablePluginResult>(
+        "execute-plugin",
+        { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "5 minutes" },
+        async () => {
+          log.info("Calling hosted executable plugin", {
+            ...ctx.tag,
+            workerUrl: params.workerUrl,
+            pluginId: params.pluginBinding?.pluginId,
+            pluginVersion: params.pluginBinding?.version,
+          });
+          const response = await fetch(params.workerUrl!, {
+            method: "POST",
+            headers: hostedHeaders,
+            redirect: "manual",
+            body: JSON.stringify(invocation),
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Executable plugin error ${response.status}: ${errorText}`);
+          }
+          const parsed = ExecutablePluginResultSchema.parse(await response.json());
+          if (parsed.invocationId !== invocation.invocationId) {
+            throw new Error(
+              `Executable plugin returned invocationId=${parsed.invocationId}; expected ${invocation.invocationId}`,
+            );
+          }
+          if (parsed.status === "failed") {
+            const error = new Error(`${parsed.error.code}: ${parsed.error.message}`);
+            Object.assign(error, { code: parsed.error.code, retryable: parsed.error.retryable });
+            throw error;
+          }
+          return parsed;
+        },
+      );
+
+      const assetOutput = result.status === "completed"
+        ? result.outputs.find((output) => output.kind === "asset")
+        : undefined;
+      const firstValue = result.status === "completed"
+        ? result.outputs.find((output) => output.kind === "value")
+        : undefined;
+      await ctx.notifyCompleted({
+        ...(assetOutput?.kind === "asset" ? { assetId: assetOutput.asset.assetId } : {}),
+        ...(displayValue(outputValue(result, "content") ?? (firstValue?.kind === "value" ? firstValue.value : undefined)) !== undefined
+          ? { content: displayValue(outputValue(result, "content") ?? (firstValue?.kind === "value" ? firstValue.value : undefined)) }
+          : {}),
+        ...(displayValue(outputValue(result, "description")) !== undefined
+          ? { description: displayValue(outputValue(result, "description")) }
+          : {}),
+      });
+      return;
+    }
+
     const declaredSecrets = Array.isArray(params.customActionSecrets)
       ? params.customActionSecrets.filter((secret) => secret && typeof secret.id === "string" && secret.id.length > 0)
       : [];

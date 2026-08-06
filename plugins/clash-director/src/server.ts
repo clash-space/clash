@@ -184,8 +184,11 @@ export function registerDirectorPluginMcp(
   server: Pick<McpServer, "registerTool" | "registerResource">,
   adapter: DirectorAdapter,
   bundledAppJavascript: string,
+  options: { appSurfaces?: boolean } = {},
 ): void {
+  const appSurfaces = options.appSurfaces ?? false;
   for (const name of DIRECTOR_PLUGIN_TOOL_NAMES) {
+    if (!appSurfaces && name === "clash_director_open") continue;
     const definition = definitions[name];
     registerAppTool(server, name, {
       title: definition.title,
@@ -216,7 +219,7 @@ export function registerDirectorPluginMcp(
     });
   }
 
-  registerAppResource(server, "Clash Director", DIRECTOR_APP_RESOURCE_URI, {
+  if (appSurfaces) registerAppResource(server, "Clash Director", DIRECTOR_APP_RESOURCE_URI, {
     description: "Interactive Director Stage editor backed by Clash read-proof and projection apply behavior",
   }, async () => ({
     contents: [{

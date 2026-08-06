@@ -1,4 +1,8 @@
-import type { TimelineItemKeyframes } from '@clash/shared-types';
+import type {
+  MgCompositionSpec,
+  TimelineItemKeyframes,
+  TimelineItemMask,
+} from '@clash/shared-types';
 
 // Properties for positioning and transforming items on canvas
 export type ItemProperties = {
@@ -11,7 +15,7 @@ export type ItemProperties = {
   // Note: zIndex is determined by track order, not stored in properties
 };
 
-export type EffectParamValue = string | number | boolean | readonly [number, number];
+export type EffectParamValue = string | number | boolean | [number, number];
 
 /**
  * Stable reference to a versioned Effect SDK definition. Timeline documents
@@ -37,6 +41,8 @@ export type BaseItem = {
   properties?: ItemProperties; // Canvas positioning and transform properties
   /** Seek-safe item-local transform animation shared by GUI, agents, preview, and export. */
   keyframes?: TimelineItemKeyframes;
+  /** Resolution-independent clip-local mask shared by GUI, agents, preview, and export. */
+  mask?: TimelineItemMask;
   /** Ordered, version-pinned clip effect stack. */
   effects?: EffectInstanceRef[];
   /** Rendered replacement used when exporting effects to an external NLE. */
@@ -92,7 +98,7 @@ export type ClipAnimation = {
   durationInFrames: number;
 };
 
-export type TextItem = BaseItem & TypographyStyle<string> & {
+export type TextItem = BaseItem & TypographyStyle & {
   type: 'text';
   text: string;
   color: string;
@@ -233,7 +239,7 @@ export type CompositionItem = BaseItem & {
   /** Optional rendered preview/export asset path. */
   renderedAssetPath?: string;
   /** Agent-authored spec for first-party renderers such as MG HTML previews. */
-  spec?: unknown;
+  spec?: MgCompositionSpec | Record<string, unknown>;
 };
 
 export type CaptionCue = {
@@ -441,6 +447,10 @@ export type EditorState = {
   durationInFrames: number;
 };
 
+export type TimelineMediaAssetRef = {
+  assetId: string;
+};
+
 // Editor actions
 export type EditorAction =
   | { type: 'ADD_TRACK'; payload: Track }
@@ -471,4 +481,6 @@ export type EditorAction =
 export type TimelineDsl = Pick<
   EditorState,
   'tracks' | 'compositionWidth' | 'compositionHeight' | 'fps' | 'durationInFrames'
-> & Pick<Partial<EditorState>, 'primaryTrackId'>;
+> & Pick<Partial<EditorState>, 'primaryTrackId' | 'assetTranscripts'> & {
+  mediaAssetRefs?: TimelineMediaAssetRef[];
+};

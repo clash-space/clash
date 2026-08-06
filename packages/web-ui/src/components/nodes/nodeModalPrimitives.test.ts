@@ -101,7 +101,7 @@ describe("node modal primitives", () => {
     expect(textSource).toContain("absolute inset-0");
     expect(textSource).not.toContain("NodeModalDialog");
     expect(textSource).toContain("<AgentSelectionAnnotationOverlay");
-    expect(textSource).toContain("captureSelection");
+    expect(textSource).toContain("handleSelectionAnnotationContextMenu");
   });
 
   it("keeps the remaining node dialogs as framed overlays", () => {

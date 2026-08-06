@@ -163,8 +163,11 @@ export function registerClashCanvasMcp(
   runner: CanvasCliRunner,
   bundledAppJavascript: string,
   bundledStudioAppJavascript = bundledAppJavascript,
+  options: { appSurfaces?: boolean } = {},
 ): void {
+  const appSurfaces = options.appSurfaces ?? false;
   for (const name of CANVAS_MCP_TOOL_NAMES) {
+    if (!appSurfaces && (name === "clash_canvas_open" || name === "clash_canvas_snapshot")) continue;
     const definition = toolDefinitions[name];
     registerAppTool(server, name, {
       title: definition.title,
@@ -194,7 +197,7 @@ export function registerClashCanvasMcp(
     });
   }
 
-  registerAppTool(server, "clash_studio_open", {
+  if (appSurfaces) registerAppTool(server, "clash_studio_open", {
     title: "Open Clash Studio",
     description: "Open the local Clash host and project overview. Requires Clash Desktop or local-api to be running.",
     inputSchema: {
@@ -258,7 +261,7 @@ export function registerClashCanvasMcp(
     });
   }
 
-  registerAppResource(server, "Clash Canvas", CANVAS_APP_RESOURCE_URI, {
+  if (appSurfaces) registerAppResource(server, "Clash Canvas", CANVAS_APP_RESOURCE_URI, {
     description: "Interactive Clash node Canvas",
   }, async () => ({
     contents: [{
@@ -269,7 +272,7 @@ export function registerClashCanvasMcp(
     }],
   }));
 
-  registerAppResource(server, "Clash Studio", STUDIO_APP_RESOURCE_URI, {
+  if (appSurfaces) registerAppResource(server, "Clash Studio", STUDIO_APP_RESOURCE_URI, {
     description: "Local Clash host and project overview",
   }, async () => ({
     contents: [{
@@ -285,6 +288,7 @@ export function createClashMcpServer(options: {
   runner?: CanvasCliRunner;
   bundledAppJavascript?: string;
   bundledStudioAppJavascript?: string;
+  appSurfaces?: boolean;
 } = {}): McpServer {
   const server = new McpServer({ name: "clash", version: "0.1.0" });
   const bundledAppJavascript = options.bundledAppJavascript ?? readFileSync(
@@ -300,6 +304,7 @@ export function createClashMcpServer(options: {
     options.runner ?? createClashCliRunner(),
     bundledAppJavascript,
     bundledStudioAppJavascript,
+    { appSurfaces: options.appSurfaces },
   );
   return server;
 }

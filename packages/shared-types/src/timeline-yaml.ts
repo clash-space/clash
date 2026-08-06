@@ -14,17 +14,36 @@
  *   - parseFromExpression / resolveFromExpression (exposed for tests)
  */
 import { parse, stringify } from "yaml";
-import { validateTimelineItemKeyframes } from "./timeline-keyframes";
+import {
+  validateTimelineItemKeyframes,
+  type TimelineItemKeyframes,
+} from "./timeline-keyframes";
+import { validateTimelineItemMask } from "./timeline-mask";
+import { timelineMaskKeyframeSemanticIssues } from "./timeline-dsl-schema";
+import {
+  TIMELINE_CLIP_ANIMATION_TYPES,
+  TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES,
+  TIMELINE_DSL_FIELD_ANNOTATIONS,
+  TIMELINE_DSL_TRACK_CATEGORIES,
+  type TimelineDslFieldAnnotation,
+} from "./timeline-field-annotations";
+import {
+  parseFromExpression,
+  type FromExpression,
+} from "./timeline-from-expression";
+export {
+  parseFromExpression,
+  type FromExpression,
+} from "./timeline-from-expression";
 
-const TRACK_CATEGORIES = ["effect", "text", "visual", "primary", "audio"] as const;
+const TRACK_CATEGORIES = TIMELINE_DSL_TRACK_CATEGORIES;
 export type TimelineTrackCategory = (typeof TRACK_CATEGORIES)[number];
-const CATEGORY_ALLOWED_ITEM_TYPES: Record<TimelineTrackCategory, ReadonlySet<string>> = {
-  effect: new Set(["composition", "transition"]),
-  text: new Set(["text"]),
-  visual: new Set(["video", "image", "solid", "sticker", "derived-overlay"]),
-  primary: new Set(["video", "audio", "image", "solid"]),
-  audio: new Set(["audio"]),
-};
+const CATEGORY_ALLOWED_ITEM_TYPES = Object.fromEntries(
+  Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
+    category,
+    new Set<string>(itemTypes),
+  ]),
+) as unknown as Record<TimelineTrackCategory, ReadonlySet<string>>;
 
 function structuralItemCategory(type: unknown): Exclude<TimelineTrackCategory, "primary"> | null {
   if (type === "composition" || type === "transition") return "effect";
@@ -60,85 +79,45 @@ type RawTrack = {
 
 type RawTimelineDsl = {
   tracks?: RawTrack[];
-  primaryTrackId?: string;
+  primaryTrackId?: string | null;
   compositionWidth?: number;
   compositionHeight?: number;
   fps?: number;
   durationInFrames?: number;
+  assetTranscripts?: Record<string, unknown>;
+  mediaAssetRefs?: Array<{ assetId: string }>;
   [key: string]: unknown;
 };
 
 // The resolved DSL stored in Loro: from is a number, fromExpr optionally
 // preserved alongside.
 export type ResolvedItem = RawItem & { id: string; type: string; from: number; durationInFrames: number };
-export type ResolvedTrack = { id: string; name?: string; role?: string; category?: TimelineTrackCategory; items: ResolvedItem[]; hidden?: boolean; locked?: boolean };
+export type ResolvedTrack = {
+  id: string;
+  name?: string;
+  role?: string;
+  category?: TimelineTrackCategory;
+  items: ResolvedItem[];
+  hidden?: boolean;
+  locked?: boolean;
+  [key: string]: unknown;
+};
 export type ResolvedTimelineDsl = {
   tracks: ResolvedTrack[];
-  primaryTrackId?: string;
+  primaryTrackId?: string | null;
   compositionWidth?: number;
   compositionHeight?: number;
   fps?: number;
   durationInFrames?: number;
+  assetTranscripts?: Record<string, unknown>;
+  mediaAssetRefs?: Array<{ assetId: string }>;
+  [key: string]: unknown;
 };
 
 // ─── from-expression parser ──────────────────────────────────────────
 
-export type FromExpression =
-  | { kind: "absolute"; value: number }
-  | { kind: "reference"; refId: string; offset: number };
-
-// Two-step parse to avoid greedy-regex ambiguity. Naively allowing `-` in
-// ids and as a negative-offset operator means "clip-A-15" can mean either
-// "id literally `clip-A-15` with no offset" or "id `clip-A` minus 15". We
-// resolve in favor of the offset form (more agent-friendly): try to match
-// `<id><sign><number>$` non-greedy first, then fall back to a bare id.
-//
-// Convention agents must follow: don't end ids with `-<digits>`. Agents
-// already use names like "clip-A", "title", "intro-1" — a leading dash with
-// digits at the end is unambiguously an offset.
-const OFFSET_RE = /^(.+?)\s*([+-])\s*([0-9]+(?:\.[0-9]+)?)$/;
-const BARE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
 const SUBTITLE_ALLOWED_ITEM_TYPES = new Set(["text"]);
-const CLIP_ANIMATION_TYPES = new Set([
-  "fade",
-  "zoom-in",
-  "zoom-out",
-  "slide-left",
-  "slide-right",
-  "slide-up",
-  "slide-down",
-]);
-
-export function parseFromExpression(raw: unknown): FromExpression | null {
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    return { kind: "absolute", value: Math.max(0, raw) };
-  }
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (trimmed === "start") return { kind: "absolute", value: 0 };
-  // Numeric string ("30", "0", "30.5")
-  const numeric = Number(trimmed);
-  if (Number.isFinite(numeric)) {
-    return { kind: "absolute", value: Math.max(0, numeric) };
-  }
-  // <id><sign><number> form (preferred)
-  const m = trimmed.match(OFFSET_RE);
-  if (m) {
-    const refId = (m[1] ?? "").trim();
-    if (refId) {
-      const sign = m[2] ?? "+";
-      const offsetMag = parseFloat(m[3] ?? "0");
-      const offset = Number.isFinite(offsetMag) ? (sign === "-" ? -offsetMag : offsetMag) : 0;
-      return { kind: "reference", refId, offset };
-    }
-  }
-  // Bare id, no offset
-  if (BARE_ID_RE.test(trimmed)) {
-    return { kind: "reference", refId: trimmed, offset: 0 };
-  }
-  return null;
-}
+const CLIP_ANIMATION_TYPES = new Set<string>(TIMELINE_CLIP_ANIMATION_TYPES);
 
 type ResolutionTarget = {
   item: RawItem & { id: string; durationInFrames: number };
@@ -205,6 +184,36 @@ function resolveItemFrom(
 
 const ITEM_KEY_ORDER = ["id", "type", "from", "durationInFrames"];
 
+type TimelineFieldAnnotationRecord = Record<string, TimelineDslFieldAnnotation>;
+
+function annotatedYamlFields(
+  source: Record<string, unknown>,
+  annotations: TimelineFieldAnnotationRecord,
+  options: { validate?: boolean; exclude?: ReadonlySet<string> } = {},
+): Record<string, unknown> {
+  const projected: Record<string, unknown> = {};
+  for (const [fieldName, annotation] of Object.entries(annotations)) {
+    if (annotation.relation || options.exclude?.has(fieldName)) continue;
+    const value = source[fieldName];
+    if (value === undefined) continue;
+    if (options.validate && !annotation.schema.safeParse(value).success) continue;
+    projected[fieldName] = value;
+  }
+  return projected;
+}
+
+function extraYamlFields(
+  source: Record<string, unknown>,
+  annotations: TimelineFieldAnnotationRecord,
+): Record<string, unknown> {
+  const annotatedNames = new Set(Object.keys(annotations));
+  return Object.fromEntries(
+    Object.entries(source).filter(([fieldName, value]) => (
+      !annotatedNames.has(fieldName) && value !== undefined
+    )),
+  );
+}
+
 /**
  * Serialize an item with stable key order: id → type → from → durationInFrames
  * → everything else. If `fromExpr` is set, it's collapsed into the `from`
@@ -232,21 +241,18 @@ function itemToYamlObject(item: RawItem): Record<string, unknown> {
 }
 
 export function timelineDslToYaml(dsl: ResolvedTimelineDsl): string {
-  const projected: Record<string, unknown> = {};
-  if (dsl.compositionWidth !== undefined) projected.compositionWidth = dsl.compositionWidth;
-  if (dsl.compositionHeight !== undefined) projected.compositionHeight = dsl.compositionHeight;
-  if (dsl.fps !== undefined) projected.fps = dsl.fps;
-  if (dsl.durationInFrames !== undefined) projected.durationInFrames = dsl.durationInFrames;
-  if (dsl.primaryTrackId !== undefined) projected.primaryTrackId = dsl.primaryTrackId;
-  projected.tracks = (dsl.tracks ?? []).map((t) => ({
-    id: t.id,
-    name: t.name,
-    ...(t.role ? { role: t.role } : {}),
-    ...(t.category ? { category: t.category } : {}),
-    ...(t.locked ? { locked: true } : {}),
-    ...(t.hidden ? { hidden: true } : {}),
-    items: (t.items ?? []).map((it) => itemToYamlObject(it)),
-  }));
+  const projected: Record<string, unknown> = {
+    ...annotatedYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+    ...extraYamlFields(dsl, TIMELINE_DSL_FIELD_ANNOTATIONS.root),
+  };
+  projected.tracks = (dsl.tracks ?? []).map((track) => {
+    const projectedTrack: Record<string, unknown> = {
+      ...annotatedYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+      ...extraYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track),
+    };
+    projectedTrack.items = (track.items ?? []).map((item) => itemToYamlObject(item));
+    return projectedTrack;
+  });
   // lineWidth: 0 disables line wrapping so Edit-tool string matching is reliable.
   return stringify(projected, { lineWidth: 0 });
 }
@@ -387,39 +393,46 @@ export function timelineDslFromYaml(yamlText: string): FromYamlResult {
         return out;
       });
     void trackTargetsByTrack[trackIdx]; // ensure trackIdx referenced
+    const trackExtras = extraYamlFields(track, TIMELINE_DSL_FIELD_ANNOTATIONS.track);
+    const annotatedTrackFields = annotatedYamlFields(
+      track,
+      TIMELINE_DSL_FIELD_ANNOTATIONS.track,
+      { validate: true, exclude: new Set(["id"]) },
+    );
     return {
+      ...trackExtras,
+      ...annotatedTrackFields,
       id: typeof track.id === "string" ? track.id : `track-${trackIdx}`,
-      name: typeof track.name === "string" ? track.name : undefined,
-      role: typeof track.role === "string" ? track.role : undefined,
-      category: TRACK_CATEGORIES.includes(track.category as TimelineTrackCategory)
-        ? track.category as TimelineTrackCategory
-        : undefined,
       items,
-      hidden: track.hidden === true || undefined,
-      locked: track.locked === true || undefined,
     };
   });
 
+  const rootExtras = extraYamlFields(root, TIMELINE_DSL_FIELD_ANNOTATIONS.root);
+  const annotatedRootFields = annotatedYamlFields(
+    root,
+    TIMELINE_DSL_FIELD_ANNOTATIONS.root,
+    { validate: true, exclude: new Set(["primaryTrackId"]) },
+  );
   const out: ResolvedTimelineDsl = {
+    ...rootExtras,
+    ...annotatedRootFields,
     tracks: resolvedTracks,
   };
   if (root.primaryTrackId !== undefined) {
-    if (typeof root.primaryTrackId !== "string" || root.primaryTrackId.length === 0) {
+    if (root.primaryTrackId === null) {
+      out.primaryTrackId = null;
+    } else if (typeof root.primaryTrackId !== "string" || root.primaryTrackId.length === 0) {
       return { ok: false, error: "primaryTrackId must be a non-empty string" };
-    }
-    if (!resolvedTracks.some((track) => track.id === root.primaryTrackId)) {
+    } else if (!resolvedTracks.some((track) => track.id === root.primaryTrackId)) {
       return { ok: false, error: "primaryTrackId must reference an existing track" };
+    } else {
+      const primaryTrack = resolvedTracks.find((track) => track.id === root.primaryTrackId);
+      if (primaryTrack?.category !== undefined && primaryTrack.category !== "primary") {
+        return { ok: false, error: "primaryTrackId must reference the primary track category" };
+      }
+      out.primaryTrackId = root.primaryTrackId;
     }
-    const primaryTrack = resolvedTracks.find((track) => track.id === root.primaryTrackId);
-    if (primaryTrack?.category !== undefined && primaryTrack.category !== "primary") {
-      return { ok: false, error: "primaryTrackId must reference the primary track category" };
-    }
-    out.primaryTrackId = root.primaryTrackId;
   }
-  if (typeof root.compositionWidth === "number") out.compositionWidth = root.compositionWidth;
-  if (typeof root.compositionHeight === "number") out.compositionHeight = root.compositionHeight;
-  if (typeof root.fps === "number") out.fps = root.fps;
-  if (typeof root.durationInFrames === "number") out.durationInFrames = root.durationInFrames;
   return { ok: true, dsl: out };
 }
 
@@ -441,11 +454,18 @@ function validateSemanticTimelineItem(
     const subtitleError = validateSubtitleTextTimelineItem(item);
     if (subtitleError) return subtitleError;
   }
-  if (item.keyframes !== undefined && (item.type === "audio" || item.type === "transition")) {
-    return `Timeline item ${item.id} keyframes are only valid on visual transform items`;
-  }
+  const maskError = validateTimelineItemMask(item.mask);
+  if (maskError) return `Timeline item ${item.id} ${maskError}`;
   const keyframeError = validateTimelineItemKeyframes(item.keyframes, item.durationInFrames);
   if (keyframeError) return `Timeline item ${item.id} ${keyframeError}`;
+  const maskKeyframeIssue = timelineMaskKeyframeSemanticIssues({
+    ...item,
+    type: item.type,
+    durationInFrames: item.durationInFrames,
+    mask: item.mask,
+    keyframes: item.keyframes as TimelineItemKeyframes | undefined,
+  })[0];
+  if (maskKeyframeIssue) return `Timeline item ${item.id} ${maskKeyframeIssue.message}`;
   const clipAnimationError = validateClipAnimationFields(item);
   if (clipAnimationError) return clipAnimationError;
   const audioFieldError = validateAudioTimelineFields(item, track);

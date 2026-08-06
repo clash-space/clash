@@ -318,4 +318,44 @@ describe("local metadata store", () => {
     });
   });
 
+  it("persists plugin broker capability audit without credential material", async () => {
+    const dataDir = await tempDir();
+    const store = createLocalMetadataStore(dataDir) as ReturnType<typeof createLocalMetadataStore> & {
+      appendPluginBrokerAudit(record: Record<string, unknown>): Promise<void>;
+      listPluginBrokerAudit(filter?: { pluginId?: string; limit?: number }): Promise<Array<Record<string, unknown>>>;
+    };
+    expect(typeof store.appendPluginBrokerAudit).toBe("function");
+    expect(typeof store.listPluginBrokerAudit).toBe("function");
+    if (!store.appendPluginBrokerAudit || !store.listPluginBrokerAudit) return;
+
+    await store.appendPluginBrokerAudit({
+      id: "broker-audit-1",
+      occurredAt: "2026-08-04T12:00:00.000Z",
+      pluginId: "broker-plugin",
+      pluginVersion: "1.0.0",
+      projectId: "project-1",
+      invocationId: "invocation-1",
+      requestId: "network-1",
+      operation: "network.fetch",
+      target: "queue.fal.run",
+      status: "ok",
+    });
+
+    const records = await store.listPluginBrokerAudit({ pluginId: "broker-plugin", limit: 10 });
+    expect(records).toEqual([{
+      id: "broker-audit-1",
+      occurredAt: "2026-08-04T12:00:00.000Z",
+      pluginId: "broker-plugin",
+      pluginVersion: "1.0.0",
+      projectId: "project-1",
+      invocationId: "invocation-1",
+      requestId: "network-1",
+      operation: "network.fetch",
+      target: "queue.fal.run",
+      status: "ok",
+      error: null,
+    }]);
+    expect(JSON.stringify(records)).not.toContain("super-secret");
+  });
+
 });

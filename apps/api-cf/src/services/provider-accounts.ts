@@ -119,6 +119,7 @@ function configuredCredentialKeys(credentials: Record<string, string> | undefine
 function defaultUpstream(providerId: ProviderAccountId): ModelUpstreamId | undefined {
   if (
     providerId === "fal" ||
+    providerId === "pika" ||
     providerId === "local" ||
     providerId === "kie" ||
     providerId === "replicate" ||
@@ -499,4 +500,23 @@ export async function getProviderCredentials(
   throw new Error(
     `Provider credentials not configured for ${query.providerId}${query.upstreamId ? `/${query.upstreamId}` : ""}.${missing}`,
   );
+}
+
+/** Load one exact, enabled provider account for an opaque plugin capability. */
+export async function getProviderAccountCredentialsById(
+  env: { DB: D1Database; ACTION_SECRET_KEY?: string },
+  userId: string,
+  accountId: string,
+): Promise<{ providerId: ProviderAccountId; accountId: string; credentials: Record<string, string> }> {
+  const secret = requireCredentialSecret(env.ACTION_SECRET_KEY);
+  const row = await getAccountRow(env.DB, userId, accountId);
+  if (!row || row.enabled !== 1) {
+    throw new Error(`Provider account ${accountId} is not configured or enabled.`);
+  }
+  const providerId = ProviderAccountIdSchema.parse(row.provider_id);
+  return {
+    providerId,
+    accountId: row.id,
+    credentials: await decryptCredentials(row.encrypted_credentials, secret),
+  };
 }

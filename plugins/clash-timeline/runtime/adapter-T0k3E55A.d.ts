@@ -1,5 +1,3 @@
-declare const TIMELINE_PLUGIN_TOOL_NAMES: readonly ["clash_timeline_open", "clash_timeline_list", "clash_timeline_get", "clash_timeline_create", "clash_timeline_save", "clash_timeline_attach", "clash_timeline_detach", "clash_timeline_copy"];
-type TimelinePluginToolName = (typeof TIMELINE_PLUGIN_TOOL_NAMES)[number];
 type TimelineEntity = {
     id: string;
     name: string;
@@ -14,12 +12,25 @@ type TimelineEntity = {
 type TimelineToolInput = {
     cwd?: string;
     projectId?: string;
+    standalone?: boolean;
+    id?: string;
     timelineId?: string;
+    sourceTimelineId?: string;
+    baseRevisionId?: string;
     name?: string;
     canvasId?: string;
+    targetCanvasId?: string;
     nodeId?: string;
+    actionNodeId?: string;
     newTimelineId?: string;
     newNodeId?: string;
+    newActionNodeId?: string;
+    position?: {
+        x: number;
+        y: number;
+    };
+    document?: string | Record<string, unknown>;
+    format?: "yaml" | "json" | "object";
     state?: Record<string, unknown>;
 };
 declare function buildTimelineCliArgs(name: string, input: TimelineToolInput): string[];
@@ -27,6 +38,8 @@ declare function buildTimelineCliArgs(name: string, input: TimelineToolInput): s
 type TimelineCommandRunner = (args: string[], cwd: string) => Promise<unknown>;
 type TimelineProjectionWriter = (path: string, content: string) => Promise<void>;
 type TimelineAdapter = {
+    schema(input: TimelineToolInput): Promise<Record<string, unknown>>;
+    validate(input: TimelineToolInput): Promise<Record<string, unknown>>;
     list(input: TimelineToolInput): Promise<TimelineEntity[]>;
     get(input: TimelineToolInput): Promise<TimelineEntity>;
     create(input: TimelineToolInput): Promise<unknown>;
@@ -46,4 +59,4 @@ declare function createTimelineAdapter(options?: {
     writeProjection?: TimelineProjectionWriter;
 }): TimelineAdapter;
 
-export { TIMELINE_PLUGIN_TOOL_NAMES as T, type TimelineAdapter as a, type TimelineCommandRunner as b, type TimelineEntity as c, type TimelinePluginToolName as d, type TimelineProjectionWriter as e, type TimelineToolInput as f, buildTimelineCliArgs as g, createClashTimelineRunner as h, createTimelineAdapter as i, timelineWorkspaceCwd as t };
+export { type TimelineAdapter as T, type TimelineCommandRunner as a, type TimelineEntity as b, type TimelineProjectionWriter as c, type TimelineToolInput as d, buildTimelineCliArgs as e, createClashTimelineRunner as f, createTimelineAdapter as g, timelineWorkspaceCwd as t };

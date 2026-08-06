@@ -44,7 +44,7 @@ export const SETTINGS_NAV_ITEMS: NavItem[] = [
   { id: 'appearance', label: 'Appearance', icon: PaintBrush },
   { id: 'agents', label: 'Agents', icon: Plug },
   { id: 'sync', label: 'Sync', icon: CloudArrowUp },
-  { id: 'audio', label: 'Audio', icon: Microphone },
+  { id: 'audio', label: 'Voice input', icon: Microphone },
   { id: 'tokens', label: 'API Tokens', icon: Key },
   { id: 'providers', label: 'Providers', icon: Plug },
   { id: 'models', label: 'Models', icon: Plug },

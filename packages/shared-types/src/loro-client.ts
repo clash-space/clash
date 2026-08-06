@@ -83,6 +83,26 @@ export interface LoroSyncClientOptions {
   agentName?: string;
   /** WebSocket constructor override (e.g., `ws` package for Node.js) */
   WebSocket?: WSConstructor;
+  /** Wait for local server persistence acknowledgements before flushing. */
+  requireSyncAck?: boolean;
+}
+
+function isLoopbackServerUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname;
+    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+export function loroSyncUpdateId(update: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of update) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${update.byteLength}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 export class LoroSyncClient {
@@ -100,6 +120,8 @@ export class LoroSyncClient {
   private readonly userName?: string;
   private readonly agentName?: string;
   private readonly WS: WSConstructor;
+  private readonly requireSyncAck: boolean;
+  private readonly pendingSyncAcks = new Map<string, number>();
 
   constructor(options: LoroSyncClientOptions) {
     this.serverUrl = options.serverUrl.replace(/\/$/, "");
@@ -110,6 +132,7 @@ export class LoroSyncClient {
     this.userName = options.userName;
     this.agentName = options.agentName;
     this.WS = (options.WebSocket ?? globalThis.WebSocket) as unknown as WSConstructor;
+    this.requireSyncAck = options.requireSyncAck ?? isLoopbackServerUrl(this.serverUrl);
     this.activeCanvasId = options.canvasId?.trim() || DEFAULT_CANVAS_ID;
   }
 
@@ -272,7 +295,19 @@ export class LoroSyncClient {
       }, CONNECT_TIMEOUT_MS);
 
       ws.onmessage = (event) => {
-        if (typeof event.data === "string") return;
+        if (typeof event.data === "string") {
+          try {
+            const message = JSON.parse(event.data) as { type?: unknown; updateId?: unknown };
+            if (message.type === "sync_ack" && typeof message.updateId === "string") {
+              const pending = this.pendingSyncAcks.get(message.updateId) ?? 0;
+              if (pending <= 1) this.pendingSyncAcks.delete(message.updateId);
+              else this.pendingSyncAcks.set(message.updateId, pending - 1);
+            }
+          } catch {
+            // Ignore non-JSON sideband chatter.
+          }
+          return;
+        }
 
         const data = new Uint8Array(event.data as ArrayBuffer);
         if (!snapshotReceived) {
@@ -281,6 +316,10 @@ export class LoroSyncClient {
 
           this.unsubscribe = this.doc.subscribeLocalUpdates((update: Uint8Array) => {
             if (this.ws?.readyState === WS_OPEN) {
+              if (this.requireSyncAck) {
+                const updateId = loroSyncUpdateId(update);
+                this.pendingSyncAcks.set(updateId, (this.pendingSyncAcks.get(updateId) ?? 0) + 1);
+              }
               this.ws.send(update);
             }
           });
@@ -341,21 +380,37 @@ export class LoroSyncClient {
   }
 
   async flush(): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WS_OPEN) return;
+    if (!this.ws || this.ws.readyState !== WS_OPEN) {
+      if (this.requireSyncAck && this.pendingSyncAcks.size > 0) {
+        throw new Error("Connection closed before Clash acknowledged the Canvas update.");
+      }
+      return;
+    }
     const deadline = Date.now() + FLUSH_TIMEOUT_MS;
-    while (this.ws.bufferedAmount > 0 && Date.now() < deadline) {
+    while (
+      (this.ws.bufferedAmount > 0 || (this.requireSyncAck && this.pendingSyncAcks.size > 0)) &&
+      Date.now() < deadline
+    ) {
       await new Promise((r) => setTimeout(r, 50));
     }
     if (this.ws.bufferedAmount > 0) {
       console.warn("[LoroSyncClient] Warning: write buffer not fully flushed before disconnect");
     }
+    if (this.requireSyncAck && this.pendingSyncAcks.size > 0) {
+      throw new Error("Timed out waiting for Clash to acknowledge the Canvas update.");
+    }
   }
 
   async disconnect(): Promise<void> {
+    let flushError: unknown;
+    try {
+      await this.flush();
+    } catch (error) {
+      flushError = error;
+    }
+
     this.unsubscribe?.();
     this.unsubscribe = null;
-
-    await this.flush();
 
     if (this.ws && this.ws.readyState !== WS_CLOSED) {
       await new Promise<void>((resolve) => {
@@ -368,6 +423,7 @@ export class LoroSyncClient {
       });
     }
     this.ws = null;
+    if (flushError) throw flushError;
   }
 
   get connected(): boolean {

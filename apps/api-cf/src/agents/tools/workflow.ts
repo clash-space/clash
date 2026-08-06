@@ -284,7 +284,7 @@ export function computeAdoptionPayload(
       data: {
         label: extractLabelFromPrompt(promptText, "Generated Image"),
         status: "pending",
-        prompt: promptText,
+        prompt,
         referenceImageAssetIds: refImgAssetIds,
         aspectRatio: resolveAspectRatio(modelId, modelParams),
         model: modelId,
@@ -303,7 +303,7 @@ export function computeAdoptionPayload(
       data: {
         label: extractLabelFromPrompt(promptText, "Generated Video"),
         status: "pending",
-        prompt: promptText,
+        prompt,
         referenceImageAssetIds: refImgAssetIds,
         referenceVideoAssetIds: refVidAssetIds,
         referenceAudioAssetIds: refAudAssetIds,
@@ -323,7 +323,7 @@ export function computeAdoptionPayload(
       data: {
         label: extractLabelFromPrompt(promptText, "Generated Audio"),
         status: "pending",
-        prompt: promptText,
+        prompt,
         model: modelId,
         modelId,
         modelParams,
@@ -339,7 +339,7 @@ export function computeAdoptionPayload(
         label: extractLabelFromPrompt(promptText, "Generated Text"),
         content: "",
         status: "pending",
-        prompt: promptText,
+        prompt,
         referenceImageAssetIds: refImgAssetIds,
         referenceVideoAssetIds: refVidAssetIds,
         referenceAudioAssetIds: refAudAssetIds,

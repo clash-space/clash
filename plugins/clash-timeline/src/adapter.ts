@@ -1,12 +1,15 @@
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   buildTimelineCliArgs,
   type TimelineEntity,
   type TimelineToolInput,
 } from "./contract.js";
+import { assertTimelineState } from "./timeline-contract-adapter.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,6 +24,8 @@ export type TimelineProjectionWriter = (
 ) => Promise<void>;
 
 export type TimelineAdapter = {
+  schema(input: TimelineToolInput): Promise<Record<string, unknown>>;
+  validate(input: TimelineToolInput): Promise<Record<string, unknown>>;
   list(input: TimelineToolInput): Promise<TimelineEntity[]>;
   get(input: TimelineToolInput): Promise<TimelineEntity>;
   create(input: TimelineToolInput): Promise<unknown>;
@@ -70,8 +75,17 @@ export function createClashTimelineRunner(options: {
   argsPrefix?: string[];
   env?: NodeJS.ProcessEnv;
 } = {}): TimelineCommandRunner {
-  const command = options.command ?? process.env.CLASH_CLI_BIN ?? "clash";
-  const prefix = options.argsPrefix ?? [];
+  const configuredCommand = (
+    options.command
+    ?? options.env?.CLASH_CLI_BIN
+    ?? process.env.CLASH_CLI_BIN
+  )?.trim();
+  const command = configuredCommand || process.execPath;
+  const prefix = options.argsPrefix ?? (
+    configuredCommand
+      ? []
+      : [fileURLToPath(new URL("../runtime/clash-cli.cjs", import.meta.url))]
+  );
   return async (args, cwd) => {
     const { stdout } = await execFileAsync(command, [...prefix, ...args], {
       cwd,
@@ -121,6 +135,38 @@ export function createTimelineAdapter(options: {
   );
 
   return {
+    schema: async (input) => objectResult(await run(
+      buildTimelineCliArgs("clash_timeline_schema", input),
+      timelineWorkspaceCwd(input),
+    )),
+    async validate(input) {
+      const document = input.document ?? input.state;
+      if (typeof document !== "string"
+        && (!document || typeof document !== "object" || Array.isArray(document))) {
+        throw new Error("document must be Timeline YAML, JSON, or an object");
+      }
+      if (typeof document !== "string") assertTimelineState(document);
+      const cwd = timelineWorkspaceCwd(input);
+      const validationDirectory = await mkdtemp(join(tmpdir(), "clash-timeline-validate-"));
+      const filePath = join(
+        validationDirectory,
+        typeof document !== "string" || input.format === "json" || input.format === "object"
+          ? "timeline.json"
+          : "timeline.yaml",
+      );
+      try {
+        const content = typeof document === "string"
+          ? document
+          : JSON.stringify(document, null, 2);
+        await writeProjection(filePath, `${content}\n`);
+        return objectResult(await run(
+          ["timeline", "validate", "--file", filePath, "--json"],
+          cwd,
+        ));
+      } finally {
+        await rm(validationDirectory, { recursive: true, force: true });
+      }
+    },
     list,
     get,
     create: (input) => invoke("clash_timeline_create", input),
@@ -133,8 +179,21 @@ export function createTimelineAdapter(options: {
       if (!input.state || typeof input.state !== "object" || Array.isArray(input.state)) {
         throw new Error("state must be a Timeline object");
       }
+      assertTimelineState(input.state);
 
-      await get(input);
+      const current = await get(input);
+      const baseRevisionId = input.baseRevisionId?.trim();
+      if (!baseRevisionId) {
+        throw new Error("baseRevisionId is required; read the Timeline before saving");
+      }
+      if (!current.revisionId) {
+        throw new Error(`Timeline ${timelineId} did not expose a revisionId; read it again before saving`);
+      }
+      if (current.revisionId !== baseRevisionId) {
+        throw new Error(
+          `STALE_TIMELINE: save is based on ${baseRevisionId}, but Timeline ${timelineId} is now ${current.revisionId}. Read again and reapply the edit.`,
+        );
+      }
       const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
         cwd,

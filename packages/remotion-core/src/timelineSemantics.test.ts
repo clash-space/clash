@@ -250,6 +250,13 @@ describe('validateTimelineDsl', () => {
 });
 
 describe('applyTimelineCommand', () => {
+  it('fails closed when a semantic command has no executor', () => {
+    expect(() => applyTimelineCommand(
+      dsl([{ id: 'main', name: 'Main', role: 'primary-video', items: [] }]),
+      { type: 'future_unhandled_command', trackId: 'main' } as never,
+    )).toThrow(/Unhandled Timeline semantic command/);
+  });
+
   it('adds a referenced clip to a role-compatible track and extends duration', () => {
     const command: TimelineCommand = {
       type: 'add_clip',

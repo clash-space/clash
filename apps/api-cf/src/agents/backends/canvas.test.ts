@@ -489,7 +489,7 @@ describe("Canvas class", () => {
         content: "A flying bird",
         modelId: "sora-2",
         model: "sora-2",
-        modelParams: { duration: 5 },
+        modelParams: { duration: 4 },
         referenceMode: "none",
       }, null, { x: 0, y: 0 });
 
@@ -499,7 +499,7 @@ describe("Canvas class", () => {
 
       const pending = canvas.readNode("gen-1");
       expect(pending!.data.status).toBe("pending");
-      expect(pending!.data.duration).toBe(5);
+      expect(pending!.data.duration).toBe(4);
     });
   });
 

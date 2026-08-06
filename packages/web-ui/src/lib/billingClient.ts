@@ -6,6 +6,8 @@
  * render a graceful empty state.
  */
 import { runtimeApiUrl } from "./runtimeConfig";
+import type { ProviderUsageAuditEvent } from "@clash/shared-types";
+export type { ProviderUsageAuditEvent } from "@clash/shared-types";
 
 export interface PlanFeatures {
   storage_mb: number;
@@ -98,6 +100,14 @@ export function fetchBalance(): Promise<{ balance: Balance }> {
 
 export function fetchLedger(limit = 20): Promise<{ entries: LedgerEntry[] }> {
   return billingFetch<{ entries: LedgerEntry[] }>(`/ledger?limit=${limit}`);
+}
+
+export async function fetchProviderUsage(limit = 100): Promise<{ events: ProviderUsageAuditEvent[] }> {
+  const response = await fetch(runtimeApiUrl(`/api/v1/provider-usage?limit=${limit}`), {
+    credentials: "include",
+  });
+  if (!response.ok) throw new Error(`provider usage: ${response.status}`);
+  return response.json() as Promise<{ events: ProviderUsageAuditEvent[] }>;
 }
 
 export function createCheckout(opts: {

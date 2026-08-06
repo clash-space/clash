@@ -4,6 +4,18 @@ export const ModelKindSchema = z.enum(['image', 'video', 'audio', 'text', 'asr']
 export type ModelKind = z.infer<typeof ModelKindSchema>;
 
 /**
+ * The user-facing job a model performs. `kind` remains the output/storage
+ * shape (for example TTS and music both produce audio); `task` drives product
+ * discovery and labels without overloading that media contract.
+ */
+export const ModelTaskSchema = z.enum([
+  'speech-to-text',
+  'text-to-speech',
+  'music-generation',
+]);
+export type ModelTask = z.infer<typeof ModelTaskSchema>;
+
+/**
  * Nano Banana 2 aspect ratios (fal.ai)
  */
 export const NANO_BANANA_ASPECT_RATIOS = [
@@ -85,6 +97,14 @@ export const VEO3_ASPECT_RATIOS = [
   { label: '9:16', value: '9:16' },
 ] as const;
 
+const VEO3_DURATION_PARAMETER = {
+  id: 'duration',
+  label: 'Duration',
+  type: 'select',
+  options: [4, 6, 8].map(value => ({ label: `${value}s`, value })),
+  defaultValue: 4,
+} as const;
+
 /**
  * Imagen 4 aspect ratios (Google native)
  */
@@ -119,6 +139,76 @@ export const FLUX2_ASPECT_RATIOS = [
   { label: '3:4', value: 'portrait_4_3' },
   { label: '9:16', value: 'portrait_16_9' },
 ] as const;
+
+export const FLUX3_VIDEO_ASPECT_RATIOS = [
+  { label: 'Auto', value: 'auto' },
+  { label: '21:9', value: '21:9' },
+  { label: '2:1', value: '2:1' },
+  { label: '16:9', value: '16:9' },
+  { label: '4:3', value: '4:3' },
+  { label: '1:1', value: '1:1' },
+  { label: '3:4', value: '3:4' },
+  { label: '9:16', value: '9:16' },
+] as const;
+
+function flux3VideoParameters(options: { allowAutoDuration?: boolean } = {}) {
+  const allowAutoDuration = options.allowAutoDuration ?? true;
+  return [
+    {
+      id: 'duration',
+      label: 'Duration',
+      type: 'select' as const,
+      options: [
+        ...(allowAutoDuration ? [{ label: 'Auto', value: 'auto' }] : []),
+        ...Array.from({ length: 16 }, (_, index) => ({ label: `${index + 5}s`, value: index + 5 })),
+      ],
+      defaultValue: allowAutoDuration ? 'auto' : 5,
+    },
+    {
+      id: 'aspect_ratio',
+      label: 'Aspect Ratio',
+      type: 'select' as const,
+      options: FLUX3_VIDEO_ASPECT_RATIOS.map(({ label, value }) => ({ label, value })),
+      defaultValue: 'auto',
+    },
+    {
+      id: 'resolution',
+      label: 'Resolution',
+      type: 'select' as const,
+      options: [
+        { label: '720p', value: '720p' },
+        { label: '1080p', value: '1080p' },
+      ],
+      defaultValue: '720p',
+    },
+    {
+      id: 'generate_audio',
+      label: 'Native audio',
+      type: 'boolean' as const,
+      defaultValue: true,
+    },
+    {
+      id: 'safety_tolerance',
+      label: 'Safety tolerance',
+      type: 'select' as const,
+      options: Array.from({ length: 5 }, (_, value) => ({ label: String(value), value })),
+      defaultValue: 2,
+    },
+  ];
+}
+
+const FLUX3_VIDEO_DEFAULT_PARAMS = {
+  duration: 'auto',
+  aspect_ratio: 'auto',
+  resolution: '720p',
+  generate_audio: true,
+  safety_tolerance: 2,
+} as const;
+
+const FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS = {
+  ...FLUX3_VIDEO_DEFAULT_PARAMS,
+  duration: 5,
+} as const;
 
 export const GPT_IMAGE_SIZES = [
   { label: 'Auto', value: 'auto' },
@@ -183,6 +273,7 @@ export const ProviderSchema = z.enum([
   'local',
   'official',
   'fal',
+  'pika',
   'kie',
   'replicate',
   'kling',
@@ -196,6 +287,33 @@ export const ProviderSchema = z.enum([
 ]);
 export type Provider = z.infer<typeof ProviderSchema>;
 
+export const ReferenceBindingSchema = z.discriminatedUnion('type', [
+  z.object({
+    /** Provider receives the prompt and reference collections as separate fields. */
+    type: z.literal('grouped-references'),
+  }),
+  z.object({
+    /** Preserve text/reference order as native provider content parts. */
+    type: z.literal('ordered-content-parts'),
+    /** Provider content parts require an explicit semantic role per asset. */
+    usesRoles: z.boolean().default(false),
+    /** Image/video/audio references are numbered independently when named in text. */
+    modalityScopedIndexes: z.boolean().default(false),
+  }),
+  z.object({
+    /** References stay in provider arrays/content, while text addresses them by numbered tokens. */
+    type: z.literal('positional-tokens'),
+    modalityScopedIndexes: z.boolean().default(true),
+    /** Provider-specific token dialect. `{n}` is replaced with the one-based modality index. */
+    tokens: z.object({
+      image: z.string().min(1).optional(),
+      video: z.string().min(1).optional(),
+      audio: z.string().min(1).optional(),
+    }).optional(),
+  }),
+]);
+export type ReferenceBinding = z.infer<typeof ReferenceBindingSchema>;
+
 export const ModelProviderConfigSchema = z.object({
   model_id: z.string(),
   provider: ProviderSchema,
@@ -203,25 +321,14 @@ export const ModelProviderConfigSchema = z.object({
 });
 export type ModelProviderConfig = z.infer<typeof ModelProviderConfigSchema>;
 
-export const ModelProviderImplementationSchema = z.object({
-  providerId: ProviderSchema,
-  accountId: z.string().optional(),
-  upstreamId: z.string(),
-  region: z.string().optional(),
-  upstreamModel: z.string(),
-  apiShape: z.string(),
-  priority: z.number().optional(),
-  weight: z.number().optional(),
-  requiredCredentials: z.array(z.string()).optional(),
-  requiredOAuth: z.array(z.string()).optional(),
-});
-export type ModelProviderImplementation = z.infer<typeof ModelProviderImplementationSchema>;
-
 export const ModelParameterSchema = z.object({
   id: z.string(),
   label: z.string(),
   type: ModelParameterTypeSchema,
   description: z.string().optional(),
+  /** Provider-fixed output characteristic. It remains visible in the common
+   * parameter surface, but UI and external payloads cannot override it. */
+  readOnly: z.boolean().optional(),
   required: z.boolean().default(false),
   options: z
     .array(
@@ -257,22 +364,65 @@ export type ModelParameter = z.infer<typeof ModelParameterSchema>;
  * last frame optional. No real-world model breaks that pattern; if one
  * shows up, add a config field on the {} then.
  */
+const ReferenceMediaConstraintsSchema = z.object({
+  mimeTypes: z.array(z.string().min(1)).optional(),
+  fileExtensions: z.array(z.string().min(1)).optional(),
+  maxBytes: z.number().int().positive().optional(),
+  minWidth: z.number().int().positive().optional(),
+  maxWidth: z.number().int().positive().optional(),
+  minHeight: z.number().int().positive().optional(),
+  maxHeight: z.number().int().positive().optional(),
+  minAspectRatio: z.number().positive().optional(),
+  maxAspectRatio: z.number().positive().optional(),
+  minDurationMs: z.number().int().nonnegative().optional(),
+  maxDurationMs: z.number().int().positive().optional(),
+  minFrameRate: z.number().positive().optional(),
+  maxFrameRate: z.number().positive().optional(),
+  videoCodecs: z.array(z.string().min(1)).optional(),
+  audioCodecs: z.array(z.string().min(1)).optional(),
+});
+
 const RefSpecSchema = z.object({
   max: z.number().int().positive(),
   min: z.number().int().nonnegative().optional(),
   /** When this modality is present, at least one of these companion
    * modalities must also be present. */
   requiresAnyOf: z.array(z.enum(['image', 'video', 'audio'])).min(1).optional(),
+  constraints: ReferenceMediaConstraintsSchema.optional(),
+  maxTotalDurationMs: z.number().int().positive().optional(),
 });
 
 export const ModelInputModeSchema = z.object({
   images: RefSpecSchema.optional(),
   videos: RefSpecSchema.optional(),
   audios: RefSpecSchema.optional(),
+  /** At least one reference from these modalities must be attached. */
+  requiresAnyOf: z.array(z.enum(['image', 'video', 'audio'])).min(1).optional(),
+  /** Maximum total references across image, video, and audio buckets. */
+  maxTotalReferences: z.number().int().positive().optional(),
+  /** Maximum JSON request body when local media is represented as Base64 Data URIs. */
+  maxEmbeddedRequestBytes: z.number().int().positive().optional(),
   /** First / last frame reference pair. Start frame is required, end frame optional. */
-  startEnd: z.object({}).optional(),
+  startEnd: z.object({ constraints: ReferenceMediaConstraintsSchema.optional() }).optional(),
 });
 export type ModelInputMode = z.infer<typeof ModelInputModeSchema>;
+
+/** Optional Canvas presentation for model-specific input semantics. The
+ * presentation belongs to this Model Card; it does not group cards or create
+ * a second workflow-selection layer. */
+export const ModelInputPresentationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('keyframes'),
+    /** Provider frame positions are explicit; the Canvas may seed evenly
+     * spaced defaults, but users can edit every intermediate anchor. */
+    timing: z.literal('explicit'),
+    frameRate: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal('video-continuation'),
+  }),
+]);
+export type ModelInputPresentation = z.infer<typeof ModelInputPresentationSchema>;
 
 export const ModelInputRuleSchema = z.object({
   requiresPrompt: z.boolean().default(true),
@@ -280,8 +430,114 @@ export const ModelInputRuleSchema = z.object({
   /** Modalities that can be @-mentioned inline in the prompt editor.
    *  Does NOT affect form-field inputs (start/end frames, etc.) */
   promptModalities: z.array(z.enum(['text', 'image', 'video', 'audio'])).default(['text']),
+  /** How inline prompt references are represented on the provider wire. */
+  referenceBinding: ReferenceBindingSchema.optional(),
+  /** Specialized input surface owned by this Model Card. */
+  presentation: ModelInputPresentationSchema.optional(),
 });
 export type ModelInputRule = z.infer<typeof ModelInputRuleSchema>;
+
+/** Declarative translation for music models whose provider APIs disagree on
+ * whether lyrics live in `prompt` or in a dedicated model parameter. */
+export const MusicInputMappingSchema = z.object({
+  lyricsTarget: z.enum(['prompt', 'modelParam']),
+  lyricsParam: z.string().min(1).optional(),
+  descriptionParam: z.string().min(1).optional(),
+  titleParam: z.string().min(1).optional(),
+  maxLyricsCharacters: z.number().int().positive().optional(),
+  maxPromptCharacters: z.number().int().positive().optional(),
+}).superRefine((mapping, ctx) => {
+  if (mapping.lyricsTarget === 'modelParam' && !mapping.lyricsParam) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['lyricsParam'],
+      message: 'lyricsParam is required when lyricsTarget is modelParam.',
+    });
+  }
+});
+export type MusicInputMapping = z.infer<typeof MusicInputMappingSchema>;
+
+const ModelConstraintValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+const ModelConstraintFieldSchema = z.string().refine(
+  (field) => field === 'prompt' || field === 'lyrics' || field.startsWith('modelParams.'),
+  'Constraint fields must be prompt, lyrics, or modelParams.<id>.',
+);
+
+export const ModelConstraintRuleSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('required'),
+    field: ModelConstraintFieldSchema,
+    when: z.array(z.object({
+      field: ModelConstraintFieldSchema,
+      equals: ModelConstraintValueSchema,
+    })).default([]),
+    message: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('max-length'),
+    field: ModelConstraintFieldSchema,
+    max: z.number().int().positive(),
+    message: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('mutually-exclusive'),
+    fields: z.array(ModelConstraintFieldSchema).min(2),
+    activeValue: ModelConstraintValueSchema,
+    inactiveValue: ModelConstraintValueSchema,
+    message: z.string().min(1).optional(),
+  }),
+]);
+export type ModelConstraintRule = z.infer<typeof ModelConstraintRuleSchema>;
+
+export const ProviderCredentialRequirementsSchema = z.object({
+  /** Every entry is an all-of credential set; satisfying any one set enables the route. */
+  anyOf: z.array(z.array(z.string().min(1)).min(1)).min(1),
+  /** When true, one account must not configure more than one alternative set. */
+  exclusive: z.boolean().optional(),
+});
+export type ProviderCredentialRequirements = z.infer<typeof ProviderCredentialRequirementsSchema>;
+
+export const ModelProviderImplementationSchema = z.object({
+  providerId: ProviderSchema,
+  accountId: z.string().optional(),
+  upstreamId: z.string(),
+  region: z.string().optional(),
+  upstreamModel: z.string(),
+  apiShape: z.string(),
+  /** Function export in the owning Executable Plugin that translates the
+   * canonical Card invocation to this provider's wire shape. Legacy built-in
+   * routes may omit it until migrated. */
+  projectorExportId: z.string().min(1).optional(),
+  /** Plugin that owns projectorExportId. The resolver selects an installed
+   * exact version and persists it on the Canvas node. */
+  projectorPluginId: z.string().min(1).optional(),
+  priority: z.number().optional(),
+  weight: z.number().optional(),
+  requiredCredentials: z.array(z.string()).optional(),
+  credentialRequirements: ProviderCredentialRequirementsSchema.optional(),
+  requiredOAuth: z.array(z.string()).optional(),
+  /** Provider-specific override for how inline references bind to prompt text. */
+  referenceBinding: ReferenceBindingSchema.optional(),
+  /** Full replacements for parameters whose candidates or ranges differ on this provider.
+   * Parameters absent from this list are reused from the base model card. */
+  parameterOverrides: z.array(ModelParameterSchema).optional(),
+  /** Provider-specific defaults paired with parameterOverrides. */
+  defaultParamOverrides: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  /** Parameters implemented only by other providers. They are removed from
+   * the effective Card instead of being rendered and silently discarded. */
+  excludedParameterIds: z.array(z.string().min(1)).optional(),
+}).superRefine((implementation, ctx) => {
+  // A Card shipped inside the owning plugin may omit projectorPluginId; the
+  // package validator binds the export to manifest.id. An explicit external
+  // plugin id, however, is meaningless without its export id.
+  if (!implementation.projectorPluginId || implementation.projectorExportId) return;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['projectorExportId'],
+    message: 'projectorExportId is required when projectorPluginId is configured.',
+  });
+});
+export type ModelProviderImplementation = z.infer<typeof ModelProviderImplementationSchema>;
 
 export const ModelCardSchema = z.object({
   id: z.string(),
@@ -289,6 +545,7 @@ export const ModelCardSchema = z.object({
   name: z.string(),
   provider: z.string(),
   kind: ModelKindSchema,
+  task: ModelTaskSchema.optional(),
   custom: z.boolean().optional(),
   description: z.string().optional(),
   promptGuidance: z.string().optional(),
@@ -307,6 +564,10 @@ export const ModelCardSchema = z.object({
    */
   aspectRatioParam: z.string().optional(),
   input: ModelInputRuleSchema.default({ requiresPrompt: true, inputMode: {}, promptModalities: ['text'] }),
+  musicInput: MusicInputMappingSchema.optional(),
+  /** Shared UI/runtime constraints. Providers may still translate the final
+   * valid configuration into different wire shapes. */
+  constraints: z.array(ModelConstraintRuleSchema).optional(),
   availableProviders: z.array(ProviderSchema).optional(),
   defaultProvider: ProviderSchema.optional(),
   providerImplementations: z.array(ModelProviderImplementationSchema).optional(),
@@ -318,6 +579,107 @@ export const ModelCardSchema = z.object({
    */
   maxRuntimeMs: z.number().int().positive().optional(),
 }).superRefine((model, ctx) => {
+  const parameterIds = new Set<string>();
+  const sameCandidate = (left: unknown, right: unknown) => left === right;
+  for (const [index, parameter] of model.parameters.entries()) {
+    if (parameterIds.has(parameter.id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['parameters', index, 'id'],
+        message: 'Model parameter ids must be unique.',
+      });
+    }
+    parameterIds.add(parameter.id);
+
+    if (parameter.type === 'select') {
+      if (!parameter.options?.length) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['parameters', index, 'options'],
+          message: 'Select parameters require at least one candidate.',
+        });
+      }
+      const optionValues = parameter.options?.map((option) => option.value) ?? [];
+      if (new Set(optionValues.map((value) => `${typeof value}:${String(value)}`)).size !== optionValues.length) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['parameters', index, 'options'],
+          message: 'Select parameter candidate values must be unique.',
+        });
+      }
+      for (const [source, value] of [
+        ['defaultValue', parameter.defaultValue],
+        ['defaultParams', model.defaultParams[parameter.id]],
+      ] as const) {
+        if (value !== undefined && !optionValues.some((candidate) => sameCandidate(candidate, value))) {
+          ctx.addIssue({
+            code: 'custom',
+            path: source === 'defaultValue'
+              ? ['parameters', index, 'defaultValue']
+              : ['defaultParams', parameter.id],
+            message: `${parameter.label} ${source} must be one of its configured candidates.`,
+          });
+        }
+      }
+    }
+
+    const defaultValue = model.defaultParams[parameter.id] ?? parameter.defaultValue;
+    if (parameter.readOnly && defaultValue === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['parameters', index, 'defaultValue'],
+        message: `${parameter.label} is read-only and requires a fixed default.`,
+      });
+    }
+    if ((parameter.type === 'number' || parameter.type === 'slider') && defaultValue !== undefined) {
+      if (typeof defaultValue !== 'number' || !Number.isFinite(defaultValue)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['defaultParams', parameter.id],
+          message: `${parameter.label} default must be a finite number.`,
+        });
+      } else if (
+        (parameter.min !== undefined && defaultValue < parameter.min)
+        || (parameter.max !== undefined && defaultValue > parameter.max)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['defaultParams', parameter.id],
+          message: `${parameter.label} default must stay within its configured range.`,
+        });
+      }
+    }
+    if (parameter.type === 'boolean' && defaultValue !== undefined && typeof defaultValue !== 'boolean') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['defaultParams', parameter.id],
+        message: `${parameter.label} default must be a boolean.`,
+      });
+    }
+  }
+
+  const validateConstraintField = (field: string, path: Array<string | number>) => {
+    if (!field.startsWith('modelParams.')) return;
+    if (parameterIds.has(field.slice('modelParams.'.length))) return;
+    ctx.addIssue({
+      code: 'custom',
+      path,
+      message: `Model constraint ${field} must reference a declared parameter.`,
+    });
+  };
+  for (const [index, rule] of (model.constraints ?? []).entries()) {
+    if (rule.type === 'mutually-exclusive') {
+      rule.fields.forEach((field, fieldIndex) =>
+        validateConstraintField(field, ['constraints', index, 'fields', fieldIndex]));
+      continue;
+    }
+    validateConstraintField(rule.field, ['constraints', index, 'field']);
+    if (rule.type === 'required') {
+      rule.when.forEach((condition, conditionIndex) =>
+        validateConstraintField(condition.field, ['constraints', index, 'when', conditionIndex, 'field']));
+    }
+  }
+
   const providers = model.availableProviders ?? [];
   if (providers.length === 0) return;
   if (!model.defaultProvider) {
@@ -424,14 +786,167 @@ const GEMINI_TTS_PARAMETERS: ModelParameter[] = [
   },
 ];
 
+const MINIMAX_H3_IMAGE_CONSTRAINTS = {
+  mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+  fileExtensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'],
+  maxBytes: 30 * 1024 * 1024,
+  minWidth: 256,
+  maxWidth: 5760,
+  minHeight: 256,
+  maxHeight: 5760,
+  minAspectRatio: 0.4,
+  maxAspectRatio: 2.5,
+} as const;
+
+const MINIMAX_H3_VIDEO_CONSTRAINTS = {
+  mimeTypes: ['video/mp4', 'video/quicktime'],
+  fileExtensions: ['mp4', 'mov'],
+  maxBytes: 50 * 1024 * 1024,
+  minWidth: 256,
+  maxWidth: 5760,
+  minHeight: 256,
+  maxHeight: 5760,
+  minAspectRatio: 0.4,
+  maxAspectRatio: 2.5,
+  minDurationMs: 2_000,
+  maxDurationMs: 15_000,
+  minFrameRate: 23.976,
+  maxFrameRate: 60,
+  videoCodecs: ['h264', 'avc', 'h265', 'hevc'],
+  audioCodecs: ['aac', 'mp3'],
+} as const;
+
+const MINIMAX_H3_AUDIO_CONSTRAINTS = {
+  mimeTypes: ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3'],
+  fileExtensions: ['wav', 'mp3'],
+  maxBytes: 15 * 1024 * 1024,
+  minDurationMs: 2_000,
+  maxDurationMs: 15_000,
+} as const;
+
+const MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES = 64 * 1024 * 1024;
+
+const GROUPED_REFERENCE_BINDING = {
+  type: 'grouped-references',
+} as const;
+
+const ORDERED_REFERENCE_BINDING = {
+  type: 'ordered-content-parts',
+  usesRoles: false,
+  modalityScopedIndexes: false,
+} as const;
+
+const POSITIONAL_REFERENCE_BINDING = {
+  type: 'positional-tokens',
+  modalityScopedIndexes: true,
+} as const;
+
+const PIKA_2026_TEXT_MODEL_CARDS: any[] = [
+  ['gpt-5.6-sol', 'GPT-5.6 Sol', 'OpenAI'],
+  ['claude-sonnet-5', 'Claude Sonnet 5', 'Anthropic'],
+  ['gemini-3.6-flash', 'Gemini 3.6 Flash', 'Google'],
+  ['deepseek-v4-pro', 'DeepSeek V4 Pro', 'DeepSeek'],
+  ['kimi-k3', 'Kimi K3', 'Moonshot AI'],
+  ['glm-5.2', 'GLM-5.2', 'Z.ai'],
+].map(([id, name, provider]) => ({
+  id,
+  name,
+  provider,
+  availableProviders: ['pika'],
+  defaultProvider: 'pika',
+  kind: 'text',
+  defaultAspectRatio: '1:1',
+  description: `${name} through Pika API Club's current 2026 catalog.`,
+  parameters: [{
+    id: 'system_prompt',
+    label: 'System prompt',
+    type: 'text',
+    defaultValue: '',
+  }],
+  defaultParams: { system_prompt: '' },
+  input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+  maxRuntimeMs: 5 * 60 * 1000,
+}));
+
 const MODEL_CARD_DEFINITIONS = [
+  ...PIKA_2026_TEXT_MODEL_CARDS,
+  {
+    id: 'seedream-5-pro',
+    name: 'Seedream 5.0 Pro',
+    provider: 'ByteDance',
+    availableProviders: ['pika'],
+    defaultProvider: 'pika',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'Seedream 5.0 Pro image generation and editing from the current Pika catalog.',
+    parameters: [
+      { id: 'resolution', label: 'Resolution', type: 'select', options: ['2K', '4K'].map(value => ({ label: value, value })), defaultValue: '2K' },
+      { id: 'count', label: 'Count', type: 'number', min: 1, max: 4, step: 1, defaultValue: 1 },
+    ],
+    defaultParams: { resolution: '2K', count: 1 },
+    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
+  },
+  {
+    id: 'grok-imagine-quality',
+    name: 'Grok Imagine Image Quality',
+    provider: 'xAI',
+    availableProviders: ['pika'],
+    defaultProvider: 'pika',
+    kind: 'image',
+    defaultAspectRatio: '16:9',
+    description: 'High-quality Grok Imagine image generation and editing.',
+    parameters: [{ id: 'count', label: 'Count', type: 'number', min: 1, max: 4, step: 1, defaultValue: 1 }],
+    defaultParams: { count: 1 },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
+  },
+  {
+    id: 'grok-imagine-video-1.5',
+    name: 'Grok Imagine Video 1.5',
+    provider: 'xAI',
+    availableProviders: ['pika'],
+    defaultProvider: 'pika',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Grok Imagine 1.5 image-to-video from the current Pika catalog.',
+    parameters: [{ id: 'duration', label: 'Duration', type: 'select', options: [5, 10].map(value => ({ label: `${value}s`, value })), defaultValue: 5 }],
+    defaultParams: { duration: 5 },
+    input: { requiresPrompt: true, inputMode: { startEnd: {} }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
+  },
+  {
+    id: 'lyria-3-pro',
+    name: 'Lyria 3 Pro',
+    provider: 'Google',
+    availableProviders: ['pika'],
+    defaultProvider: 'pika',
+    kind: 'audio',
+    task: 'music-generation',
+    defaultAspectRatio: '1:1',
+    description: 'Google Lyria 3 Pro music generation from the current Pika catalog.',
+    parameters: [{ id: 'duration', label: 'Duration', type: 'number', min: 10, max: 180, step: 1, defaultValue: 30 }],
+    defaultParams: { duration: 30 },
+    input: { requiresPrompt: true, inputMode: {} },
+  },
+  {
+    id: 'minimax-speech-2.8-hd',
+    name: 'MiniMax Speech 2.8 HD',
+    provider: 'MiniMax',
+    availableProviders: ['pika'],
+    defaultProvider: 'pika',
+    kind: 'audio',
+    task: 'text-to-speech',
+    defaultAspectRatio: '1:1',
+    description: 'MiniMax Speech 2.8 HD text-to-speech from the current Pika catalog.',
+    parameters: [{ id: 'voice_id', label: 'Voice ID', type: 'text', defaultValue: 'English_Graceful_Lady' }],
+    defaultParams: { voice_id: 'English_Graceful_Lady' },
+    input: { requiresPrompt: true, inputMode: {} },
+  },
   // ─── Image: Nano Banana 2 (fal.ai) ──────────────────────────
   {
     id: 'nano-banana-2',
     name: 'Nano Banana 2',
     aliases: ['gemini-3.1-flash-image'],
     provider: 'Google',
-    availableProviders: ['official', 'fal', 'kie', 'replicate'],
+    availableProviders: ['official', 'fal', 'pika', 'kie', 'replicate'],
     defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '16:9',
@@ -467,7 +982,7 @@ const MODEL_CARD_DEFINITIONS = [
       resolution: '1K',
       count: 1,
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
   },
 
   // ─── Image: Nano Banana 2 Lite (Google) ────────────────────
@@ -494,7 +1009,7 @@ const MODEL_CARD_DEFINITIONS = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 14 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
   },
 
   // ─── Image: GPT Image 2 (OpenAI) ────────────────────────────
@@ -502,7 +1017,7 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'gpt-image-2',
     name: 'GPT Image 2',
     provider: 'OpenAI',
-    availableProviders: ['official', 'fal', 'kie', 'replicate'],
+    availableProviders: ['official', 'fal', 'pika', 'kie', 'replicate'],
     defaultProvider: 'official',
     kind: 'image',
     defaultAspectRatio: '1:1',
@@ -578,7 +1093,7 @@ const MODEL_CARD_DEFINITIONS = [
       moderation: 'auto',
       count: 1,
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 16 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
     maxRuntimeMs: 3 * 60 * 1000,
   },
 
@@ -633,7 +1148,7 @@ const MODEL_CARD_DEFINITIONS = [
       count: 1,
       max_images: 1,
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 10 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
     maxRuntimeMs: 4 * 60 * 1000,
   },
 
@@ -742,6 +1257,54 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: {} },
   },
 
+  // ─── Video: Pika 2.5 (Pika API Club) ───────────────────────
+  {
+    id: 'pika-2.5',
+    name: 'Pika 2.5',
+    provider: 'Pika',
+    availableProviders: ['pika'],
+    defaultProvider: 'pika',
+    kind: 'video',
+    defaultAspectRatio: '1:1',
+    description: 'Pika 2.5 text-to-video and image-to-video through the Pika API Club.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: [{ label: '5s', value: 5 }],
+        defaultValue: 5,
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '720p', value: '720p' },
+          { label: '1080p', value: '1080p' },
+        ],
+        defaultValue: '720p',
+      },
+      {
+        id: 'negative_prompt',
+        label: 'Negative prompt',
+        type: 'text',
+        required: false,
+      },
+      {
+        id: 'seed',
+        label: 'Seed',
+        type: 'number',
+        required: false,
+      },
+    ],
+    defaultParams: {
+      duration: 5,
+      resolution: '720p',
+    },
+    input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
+  },
+
   // ─── Video: Sora 2 (fal.ai) ─────────────────────────────────
   {
     // Single card — provider auto-routes to /text-to-video or /image-to-video.
@@ -793,66 +1356,6 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: { images: { max: 1 } } },
   },
 
-  // ─── Video: Seedance 2.0 text-to-video ─────────────────────
-  // Pure t2v (separate fal endpoint with separate pricing). Stays split from
-  // the i2v variant so UI/pricing stays honest per card.
-  {
-    id: 'seedance-2-text',
-    name: 'Seedance 2.0 (Text)',
-    provider: 'fal.ai',
-    availableProviders: ['jimeng', 'volcengine', 'fal', 'kie', 'replicate'],
-    defaultProvider: 'jimeng',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'ByteDance Seedance 2.0 — text-to-video with native audio.',
-    parameters: [
-      {
-        id: 'duration',
-        label: 'Duration',
-        type: 'select',
-        options: [
-          { label: 'Auto', value: 'auto' },
-          { label: '4s', value: 4 },
-          { label: '6s', value: 6 },
-          { label: '8s', value: 8 },
-          { label: '10s', value: 10 },
-          { label: '15s', value: 15 },
-        ],
-        defaultValue: 'auto',
-      },
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: SEEDANCE_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'resolution',
-        label: 'Resolution',
-        type: 'select',
-        options: [
-          { label: '480p', value: '480p' },
-          { label: '720p', value: '720p' },
-        ],
-        defaultValue: '720p',
-      },
-      {
-        id: 'generate_audio',
-        label: 'Native audio',
-        type: 'boolean',
-        defaultValue: true,
-      },
-    ],
-    defaultParams: {
-      duration: 'auto',
-      aspect_ratio: '16:9',
-      resolution: '720p',
-      generate_audio: true,
-    },
-    input: { requiresPrompt: true, inputMode: {} },
-  },
-
   // ─── Video: Seedance 2.0 image-to-video ────────────────────
   // Start frame required, end frame optional — the native shape of
   // bytedance/seedance-2.0/image-to-video (a single image is just the start
@@ -861,7 +1364,7 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'seedance-2-startend',
     name: 'Seedance 2.0 (Start/End)',
     provider: 'fal.ai',
-    availableProviders: ['jimeng', 'volcengine', 'fal', 'kie', 'replicate'],
+    availableProviders: ['jimeng', 'volcengine', 'fal', 'pika', 'kie', 'replicate'],
     defaultProvider: 'jimeng',
     kind: 'video',
     defaultAspectRatio: '16:9',
@@ -912,13 +1415,14 @@ const MODEL_CARD_DEFINITIONS = [
   // (@Image1, @Video2, @Audio1).
   {
     id: 'seedance-2-ref',
-    name: 'Seedance 2.0 (Reference)',
-    provider: 'fal.ai',
-    availableProviders: ['jimeng', 'volcengine', 'fal', 'kie', 'replicate'],
+    aliases: ['seedance-2-text'],
+    name: 'Seedance 2.0 (全能参考)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine', 'fal', 'pika', 'kie', 'replicate'],
     defaultProvider: 'jimeng',
     kind: 'video',
     defaultAspectRatio: '16:9',
-    description: 'Seedance 2.0 — multi-modal reference-to-video (images + videos + audios).',
+    description: 'Seedance 2.0 all-purpose generation with optional image, video, and audio references.',
     parameters: [
       {
         id: 'duration',
@@ -966,13 +1470,239 @@ const MODEL_CARD_DEFINITIONS = [
     },
     input: {
       requiresPrompt: true,
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
       inputMode: {
         images: { max: 9 },
         videos: { max: 3 },
         audios: { max: 3 },
+        maxTotalReferences: 12,
       },
       promptModalities: ['text', 'image', 'video', 'audio'],
     },
+  },
+
+  // ─── Video: Seedance 2.5 all-purpose reference ─────────────
+  {
+    id: 'seedance-2.5-ref',
+    aliases: ['seedance-2.5-text'],
+    name: 'Seedance 2.5 (全能参考)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Seedance 2.5 all-purpose generation with optional image, video, and audio references.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: Array.from({ length: 27 }, (_, index) => ({
+          label: `${index + 4}s`,
+          value: index + 4,
+        })),
+        defaultValue: 5,
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: ['1:1', '3:4', '16:9', '4:3', '9:16', '21:9'].map(value => ({ label: value, value })),
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '480p', value: '480p' },
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: '720p',
+      },
+    ],
+    defaultParams: {
+      duration: 5,
+      aspect_ratio: '16:9',
+      resolution: '720p',
+    },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: POSITIONAL_REFERENCE_BINDING,
+      inputMode: {
+        images: { max: 30 },
+        videos: {
+          max: 10,
+          constraints: { minDurationMs: 2_000, maxDurationMs: 30_000 },
+          maxTotalDurationMs: 30_000,
+        },
+        audios: {
+          max: 10,
+          constraints: { minDurationMs: 2_000, maxDurationMs: 30_000 },
+          maxTotalDurationMs: 30_000,
+        },
+        maxTotalReferences: 50,
+      },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+    maxRuntimeMs: 30 * 60 * 1000,
+  },
+
+  // ─── Video: Seedance 2.5 first / last frame ────────────────
+  {
+    id: 'seedance-2.5-startend',
+    name: 'Seedance 2.5 (Start / End Frame)',
+    provider: 'ByteDance',
+    availableProviders: ['jimeng', 'volcengine'],
+    defaultProvider: 'jimeng',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Animate from a required start frame toward an optional end frame with Seedance 2.5.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: Array.from({ length: 27 }, (_, index) => ({
+          label: `${index + 4}s`,
+          value: index + 4,
+        })),
+        defaultValue: 5,
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '480p', value: '480p' },
+          { label: '720p', value: '720p' },
+        ],
+        defaultValue: '720p',
+      },
+    ],
+    defaultParams: { duration: 5, resolution: '720p' },
+    input: {
+      requiresPrompt: true,
+      inputMode: { startEnd: {} },
+      promptModalities: ['text'],
+    },
+    maxRuntimeMs: 30 * 60 * 1000,
+  },
+
+  // ─── Video: MiniMax H3 all-purpose reference ───────────────
+  {
+    id: 'minimax-h3',
+    name: 'MiniMax H3 (全能参考)',
+    aliases: ['MiniMax-H3', 'hailuo-3', 'minimax-hailuo-3', 'minimax-h3-ref', 'minimax-h3-reference'],
+    provider: 'MiniMax',
+    availableProviders: ['minimax', 'fal', 'pika'],
+    defaultProvider: 'minimax',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'MiniMax H3 all-purpose generation with optional ordered image, video, and audio references.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: Array.from({ length: 12 }, (_, index) => ({
+          label: `${index + 4}s`,
+          value: index + 4,
+        })),
+        defaultValue: 5,
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: [
+          { label: 'Auto', value: 'adaptive' },
+          ...['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].map(value => ({ label: value, value })),
+        ],
+        defaultValue: 'adaptive',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '768p', value: '768P' },
+          { label: '2K', value: '2K' },
+        ],
+        defaultValue: '2K',
+      },
+    ],
+    defaultParams: {
+      duration: 5,
+      aspect_ratio: 'adaptive',
+      resolution: '2K',
+    },
+    input: {
+      requiresPrompt: true,
+      referenceBinding: {
+        type: 'ordered-content-parts',
+        usesRoles: true,
+        modalityScopedIndexes: true,
+      },
+      inputMode: {
+        images: { max: 9, constraints: MINIMAX_H3_IMAGE_CONSTRAINTS },
+        videos: { max: 3, constraints: MINIMAX_H3_VIDEO_CONSTRAINTS, maxTotalDurationMs: 15_000 },
+        audios: { max: 3, requiresAnyOf: ['image', 'video'], constraints: MINIMAX_H3_AUDIO_CONSTRAINTS, maxTotalDurationMs: 15_000 },
+        maxTotalReferences: 12,
+        maxEmbeddedRequestBytes: MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES,
+      },
+      promptModalities: ['text', 'image', 'video', 'audio'],
+    },
+    maxRuntimeMs: 15 * 60 * 1000,
+  },
+
+  // ─── Video: MiniMax H3 first / last frame ──────────────────
+  {
+    id: 'minimax-h3-startend',
+    name: 'MiniMax H3 (Start / End Frame)',
+    aliases: ['minimax-h3-start-end'],
+    provider: 'MiniMax',
+    availableProviders: ['minimax', 'fal', 'pika'],
+    defaultProvider: 'minimax',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Animate from a required start frame toward an optional end frame with MiniMax H3.',
+    promptGuidance: 'Use start and end frames with matching aspect ratios. The output ratio follows the input frames.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: Array.from({ length: 12 }, (_, index) => ({
+          label: `${index + 4}s`,
+          value: index + 4,
+        })),
+        defaultValue: 5,
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        options: [
+          { label: '768p', value: '768P' },
+          { label: '2K', value: '2K' },
+        ],
+        defaultValue: '2K',
+      },
+    ],
+    defaultParams: {
+      duration: 5,
+      resolution: '2K',
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        startEnd: { constraints: MINIMAX_H3_IMAGE_CONSTRAINTS },
+        maxEmbeddedRequestBytes: MINIMAX_H3_MAX_EMBEDDED_REQUEST_BYTES,
+      },
+      promptModalities: ['text'],
+    },
+    maxRuntimeMs: 15 * 60 * 1000,
   },
 
   // ─── Video: Kling 3 Pro (fal.ai) — first frame + optional end frame ────
@@ -980,7 +1710,7 @@ const MODEL_CARD_DEFINITIONS = [
     id: 'kling-3',
     name: 'Kling 3 Pro',
     provider: 'fal.ai',
-    availableProviders: ['kling', 'fal', 'kie'],
+    availableProviders: ['kling', 'fal', 'pika', 'kie'],
     defaultProvider: 'kling',
     kind: 'video',
     defaultAspectRatio: '16:9',
@@ -990,10 +1720,10 @@ const MODEL_CARD_DEFINITIONS = [
         id: 'duration',
         label: 'Duration',
         type: 'select',
-        options: [
-          { label: '5s', value: '5' },
-          { label: '10s', value: '10' },
-        ],
+        options: Array.from({ length: 13 }, (_, index) => ({
+          label: `${index + 3}s`,
+          value: String(index + 3),
+        })),
         defaultValue: '5',
       },
       {
@@ -1010,12 +1740,83 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: { startEnd: {} } },
   },
 
+  // ─── Video: FLUX 3 (BFL official + fal.ai) ─────────────────
+  {
+    id: 'flux-3-video',
+    aliases: ['flux3-video', 'flux-3'],
+    name: 'FLUX 3 Video',
+    provider: 'Black Forest Labs',
+    availableProviders: ['official', 'fal', 'pika'],
+    defaultProvider: 'official',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'FLUX 3 text-to-video with synchronized audio and clips up to 20 seconds.',
+    parameters: flux3VideoParameters(),
+    defaultParams: FLUX3_VIDEO_DEFAULT_PARAMS,
+    input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    maxRuntimeMs: 30 * 60 * 1000,
+  },
+  {
+    id: 'flux-3-video-keyframes',
+    aliases: ['flux3-keyframes', 'flux-3-image-to-video'],
+    name: 'FLUX 3 Video (Keyframes)',
+    provider: 'Black Forest Labs',
+    availableProviders: ['official', 'fal'],
+    defaultProvider: 'official',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Animate one image or connect up to ten ordered keyframes with FLUX 3.',
+    parameters: flux3VideoParameters({ allowAutoDuration: false }),
+    defaultParams: FLUX3_KEYFRAME_VIDEO_DEFAULT_PARAMS,
+    input: {
+      requiresPrompt: true,
+      inputMode: { images: { min: 1, max: 10 }, maxTotalReferences: 10 },
+      promptModalities: ['text', 'image'],
+      referenceBinding: { type: 'grouped-references' },
+      presentation: { type: 'keyframes', timing: 'explicit', frameRate: 24 },
+    },
+    maxRuntimeMs: 30 * 60 * 1000,
+  },
+  {
+    id: 'flux-3-video-continue',
+    aliases: ['flux3-continue', 'flux-3-extend-video'],
+    name: 'FLUX 3 Video (Continue)',
+    provider: 'Black Forest Labs',
+    availableProviders: ['official', 'fal'],
+    defaultProvider: 'official',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Continue one existing MP4 clip from its final frames with synchronized audio.',
+    parameters: flux3VideoParameters(),
+    defaultParams: FLUX3_VIDEO_DEFAULT_PARAMS,
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        videos: {
+          min: 1,
+          max: 1,
+          constraints: {
+            mimeTypes: ['video/mp4'],
+            fileExtensions: ['mp4'],
+            maxBytes: 50 * 1024 * 1024,
+            maxDurationMs: 15_000,
+          },
+        },
+        maxTotalReferences: 1,
+      },
+      promptModalities: ['text', 'video'],
+      referenceBinding: { type: 'grouped-references' },
+      presentation: { type: 'video-continuation' },
+    },
+    maxRuntimeMs: 30 * 60 * 1000,
+  },
+
   // ─── Image: Recraft V4 Pro (fal.ai) ──────────────────────────
   {
     id: 'recraft-v4',
     name: 'Recraft V4',
     provider: 'fal.ai',
-    availableProviders: ['fal'],
+    availableProviders: ['fal', 'pika'],
     defaultProvider: 'fal',
     kind: 'image',
     defaultAspectRatio: '16:9',
@@ -1073,7 +1874,7 @@ const MODEL_CARD_DEFINITIONS = [
       image_size: 'landscape_4_3',
       safety_tolerance: '2',
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
   },
 
   // ─── Image: Nano Banana Pro (Google) ────────────────────────
@@ -1099,7 +1900,7 @@ const MODEL_CARD_DEFINITIONS = [
     defaultParams: {
       aspect_ratio: '16:9',
     },
-    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'] },
+    input: { requiresPrompt: true, inputMode: { images: { max: 8 } }, promptModalities: ['text', 'image'], referenceBinding: GROUPED_REFERENCE_BINDING },
   },
 
   // ─── Video: Veo 3.1 (Google native via Vercel AI SDK) ──────
@@ -1114,9 +1915,8 @@ const MODEL_CARD_DEFINITIONS = [
   //     because the `startEnd` contract has a required slot that can't
   //     coexist with optional ref images in the same UI.
   //
-  // Lite variant is text-only: at this preview stage it doesn't support
-  // reference asset images, so the reference card is omitted to avoid
-  // runtime 4xx. startEnd is also preview on Lite — kept off for stability.
+  // Text-only video variants are intentionally not published as product
+  // cards. A video card must expose at least one meaningful reference input.
 
   {
     id: 'veo-3.1',
@@ -1128,6 +1928,7 @@ const MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: '16:9',
     description: 'Google Veo 3.1 — text-to-video, optionally with 1–3 reference subject images.',
     parameters: [
+      VEO3_DURATION_PARAMETER,
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
@@ -1144,6 +1945,7 @@ const MODEL_CARD_DEFINITIONS = [
       },
     ],
     defaultParams: {
+      duration: 4,
       aspect_ratio: '16:9',
       generate_audio: true,
     },
@@ -1159,6 +1961,7 @@ const MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: '16:9',
     description: 'Google Veo 3.1 — first-and-last-frame interpolation between two key frames.',
     parameters: [
+      VEO3_DURATION_PARAMETER,
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
@@ -1175,41 +1978,11 @@ const MODEL_CARD_DEFINITIONS = [
       },
     ],
     defaultParams: {
+      duration: 4,
       aspect_ratio: '16:9',
       generate_audio: true,
     },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } },
-  },
-  {
-    id: 'veo-3.1-lite',
-    name: 'Veo 3.1 Lite',
-    provider: 'Google',
-    availableProviders: ['official'],
-    defaultProvider: 'official',
-    kind: 'video',
-    defaultAspectRatio: '16:9',
-    description: 'Google Veo 3.1 Lite — cheapest tier, text-to-video only.',
-    parameters: [
-      {
-        id: 'aspect_ratio',
-        label: 'Aspect Ratio',
-        type: 'select',
-        options: VEO3_ASPECT_RATIOS.map(r => ({ label: r.label, value: r.value })),
-        defaultValue: '16:9',
-      },
-      {
-        id: 'generate_audio',
-        label: 'Generate Audio',
-        type: 'boolean',
-        defaultValue: true,
-        description: 'Include natively generated audio.',
-      },
-    ],
-    defaultParams: {
-      aspect_ratio: '16:9',
-      generate_audio: true,
-    },
-    input: { requiresPrompt: true, inputMode: {} },
   },
   {
     id: 'veo-3.1-fast',
@@ -1221,6 +1994,7 @@ const MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: '16:9',
     description: 'Google Veo 3.1 Fast — text-to-video, optionally with 1–3 reference subject images.',
     parameters: [
+      VEO3_DURATION_PARAMETER,
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
@@ -1237,6 +2011,7 @@ const MODEL_CARD_DEFINITIONS = [
       },
     ],
     defaultParams: {
+      duration: 4,
       aspect_ratio: '16:9',
       generate_audio: true,
     },
@@ -1252,6 +2027,7 @@ const MODEL_CARD_DEFINITIONS = [
     defaultAspectRatio: '16:9',
     description: 'Google Veo 3.1 Fast — first-and-last-frame interpolation between two key frames.',
     parameters: [
+      VEO3_DURATION_PARAMETER,
       {
         id: 'aspect_ratio',
         label: 'Aspect Ratio',
@@ -1268,10 +2044,95 @@ const MODEL_CARD_DEFINITIONS = [
       },
     ],
     defaultParams: {
+      duration: 4,
       aspect_ratio: '16:9',
       generate_audio: true,
     },
     input: { requiresPrompt: true, inputMode: { startEnd: {} } },
+  },
+  {
+    id: 'gemini-omni-flash',
+    name: 'Gemini Omni Flash',
+    aliases: ['gemini-omni-flash-preview'],
+    provider: 'Google',
+    availableProviders: ['official'],
+    defaultProvider: 'official',
+    kind: 'video',
+    defaultAspectRatio: '16:9',
+    description: 'Google Gemini Omni Flash preview — video generation with optional ordered image references and native audio output.',
+    promptGuidance: 'Describe scene, motion, camera, lighting, timing, and desired audio. Image references remain in authored prompt order.',
+    parameters: [
+      {
+        id: 'duration',
+        label: 'Duration',
+        type: 'select',
+        options: Array.from({ length: 8 }, (_, index) => ({
+          label: `${index + 3}s`,
+          value: index + 3,
+        })),
+        defaultValue: 5,
+      },
+      {
+        id: 'aspect_ratio',
+        label: 'Aspect Ratio',
+        type: 'select',
+        options: [
+          { label: '16:9', value: '16:9' },
+          { label: '9:16', value: '9:16' },
+        ],
+        defaultValue: '16:9',
+      },
+      {
+        id: 'resolution',
+        label: 'Resolution',
+        type: 'select',
+        readOnly: true,
+        options: [{ label: '720p', value: '720p' }],
+        defaultValue: '720p',
+        description: 'Gemini Omni Flash currently produces 720p video.',
+      },
+      {
+        id: 'frame_rate',
+        label: 'Frame Rate',
+        type: 'select',
+        readOnly: true,
+        options: [{ label: '24 fps', value: 24 }],
+        defaultValue: 24,
+      },
+      {
+        id: 'native_audio',
+        label: 'Native Audio',
+        type: 'boolean',
+        readOnly: true,
+        defaultValue: true,
+        description: 'Gemini Omni Flash always returns generated audio with the video.',
+      },
+    ],
+    defaultParams: {
+      duration: 5,
+      aspect_ratio: '16:9',
+      resolution: '720p',
+      frame_rate: 24,
+      native_audio: true,
+    },
+    input: {
+      requiresPrompt: true,
+      inputMode: {
+        // Google's guide demonstrates six independently addressed image refs.
+        // Video/audio refs are deliberately not exposed while the current API
+        // documents them as unsupported or incorrectly processed.
+        images: {
+          max: 6,
+          constraints: {
+            mimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+            fileExtensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'],
+          },
+        },
+      },
+      promptModalities: ['text', 'image'],
+      referenceBinding: ORDERED_REFERENCE_BINDING,
+    },
+    maxRuntimeMs: 15 * 60 * 1000,
   },
 
   // ─── Text ────────────────────────────────────────────────────
@@ -1299,6 +2160,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 10 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1335,6 +2197,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 10 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1363,6 +2226,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image', 'video', 'audio'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1391,6 +2255,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image', 'video', 'audio'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1419,6 +2284,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image', 'video', 'audio'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1447,6 +2313,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 16 }, videos: { max: 1 }, audios: { max: 1 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image', 'video', 'audio'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1475,6 +2342,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 20 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1511,6 +2379,7 @@ const MODEL_CARD_DEFINITIONS = [
     input: {
       requiresPrompt: true,
       inputMode: { images: { max: 20 } },
+      referenceBinding: ORDERED_REFERENCE_BINDING,
       promptModalities: ['text', 'image'],
     },
     maxRuntimeMs: 5 * 60 * 1000,
@@ -1521,8 +2390,10 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'SenseVoice Small',
     provider: 'Local',
     kind: 'asr',
+    task: 'speech-to-text',
     defaultAspectRatio: '1:1',
-    description: 'Local microphone transcription.',
+    description: 'Fast local transcription optimized for Mandarin and Chinese-English speech, with Cantonese, Japanese, and Korean support.',
+    promptGuidance: 'Recommended for Chinese voice input and mixed Chinese-English recordings. Use Whisper Large v3 Turbo when broader multilingual coverage matters more.',
     parameters: [],
     defaultParams: {
       asr_model: 'iic/SenseVoiceSmall',
@@ -1539,6 +2410,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'Whisper Large v3 Turbo',
     provider: 'OpenAI',
     kind: 'asr',
+    task: 'speech-to-text',
     defaultAspectRatio: '1:1',
     description: 'High-accuracy multilingual transcription optimized for Apple Silicon with MLX and word-level timestamps.',
     promptGuidance: 'Best for multilingual interviews, dialogue, and production audio where accurate word timing matters.',
@@ -1558,6 +2430,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'Whisper Small',
     provider: 'OpenAI',
     kind: 'asr',
+    task: 'speech-to-text',
     defaultAspectRatio: '1:1',
     description: 'A lighter multilingual Whisper model for lower-memory Macs, with real word-level timestamps.',
     promptGuidance: 'Choose this on 8 GB Macs or for faster drafts; use Whisper Large v3 Turbo when accuracy matters more.',
@@ -1577,6 +2450,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'Parakeet TDT 0.6B v3',
     provider: 'NVIDIA',
     kind: 'asr',
+    task: 'speech-to-text',
     defaultAspectRatio: '1:1',
     description: 'Fast local transcription for 25 European languages with real word-level timestamps. Approx. 2.5 GB download; does not support Chinese.',
     promptGuidance: 'Use for supported European-language audio on Apple Silicon. It does not support Chinese; choose SenseVoice or Whisper for Chinese recordings.',
@@ -1596,6 +2470,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'VibeVoice ASR',
     provider: 'Microsoft',
     kind: 'asr',
+    task: 'speech-to-text',
     defaultAspectRatio: '1:1',
     description: 'Advanced long-form transcription with speaker diarization, segment timestamps, and Whisper word alignment.',
     promptGuidance: 'Use for meetings, podcasts, and long multi-speaker recordings. This is a large download and also requires Whisper Small for word alignment.',
@@ -1620,6 +2495,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'Google Gemini TTS preview for low-latency controllable single-speaker audio.',
     parameters: GEMINI_TTS_PARAMETERS,
@@ -1634,6 +2510,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'Kokoro 82M',
     provider: 'Hexgrad',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'High-quality lightweight local speech with multilingual voices, accelerated by MLX on Apple Silicon.',
     promptGuidance: 'Choose a voice whose language prefix matches the script: a/b for English, z for Mandarin, and j for Japanese.',
@@ -1676,6 +2553,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'Piper Huayan',
     provider: 'Local',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'Downloadable Mandarin voice running fully on-device with Piper ONNX.',
     parameters: [
@@ -1702,6 +2580,7 @@ const MODEL_CARD_DEFINITIONS = [
     name: 'Piper Lessac',
     provider: 'Local',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'Downloadable English voice running fully on-device with Piper ONNX.',
     parameters: [
@@ -1730,6 +2609,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['official'],
     defaultProvider: 'official',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'Google Gemini TTS with higher control for scripts, narration, and structured speech.',
     parameters: GEMINI_TTS_PARAMETERS,
@@ -1746,6 +2626,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['minimax', 'fal'],
     defaultProvider: 'minimax',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'High-quality Chinese and English text-to-speech.',
     parameters: [
@@ -1790,14 +2671,134 @@ const MODEL_CARD_DEFINITIONS = [
     input: { requiresPrompt: true, inputMode: {} },
   },
   {
+    id: 'minimax-music-3',
+    name: 'MiniMax Music 3.0',
+    aliases: ['music-3.0', 'minimax-music-3.0'],
+    provider: 'MiniMax',
+    availableProviders: ['minimax', 'fal', 'pika'],
+    defaultProvider: 'minimax',
+    kind: 'audio',
+    task: 'music-generation',
+    defaultAspectRatio: '1:1',
+    description: 'Generate complete songs or instrumentals with MiniMax Music 3.0.',
+    promptGuidance: 'Describe the music in Prompt. Enter lyrics directly in Lyrics, or leave it empty to use automatic lyrics or instrumental mode.',
+    parameters: [
+      {
+        id: 'lyrics_optimizer',
+        label: 'Automatic lyrics',
+        type: 'boolean',
+        defaultValue: false,
+        description: 'Generate lyrics automatically from the prompt when no lyrics are provided.',
+      },
+      {
+        id: 'is_instrumental',
+        label: 'Instrumental',
+        type: 'boolean',
+        defaultValue: false,
+      },
+      {
+        id: 'sample_rate',
+        label: 'Sample Rate',
+        type: 'select',
+        options: [16000, 24000, 32000, 44100].map(value => ({
+          label: value === 44100 ? '44.1 kHz' : `${value / 1000} kHz`,
+          value,
+        })),
+        defaultValue: 44100,
+      },
+      {
+        id: 'bitrate',
+        label: 'Bitrate',
+        type: 'select',
+        options: [32000, 64000, 128000, 256000].map(value => ({
+          label: `${value / 1000} kbps`,
+          value,
+        })),
+        defaultValue: 256000,
+      },
+      {
+        id: 'format',
+        label: 'Audio Format',
+        type: 'select',
+        options: [
+          { label: 'MP3', value: 'mp3' },
+          { label: 'WAV', value: 'wav' },
+          { label: 'PCM', value: 'pcm' },
+        ],
+        defaultValue: 'mp3',
+      },
+      {
+        id: 'aigc_watermark',
+        label: 'Audible Watermark',
+        type: 'boolean',
+        defaultValue: false,
+        description: 'Append the provider AIGC watermark to the end of the generated audio.',
+      },
+    ],
+    defaultParams: {
+      lyrics_optimizer: false,
+      is_instrumental: false,
+      sample_rate: 44100,
+      bitrate: 256000,
+      format: 'mp3',
+      aigc_watermark: false,
+    },
+    input: { requiresPrompt: false, inputMode: {}, promptModalities: ['text'] },
+    musicInput: {
+      lyricsTarget: 'modelParam',
+      lyricsParam: 'lyrics',
+      maxLyricsCharacters: 3500,
+      maxPromptCharacters: 2000,
+    },
+    constraints: [
+      {
+        type: 'mutually-exclusive',
+        fields: ['modelParams.lyrics_optimizer', 'modelParams.is_instrumental'],
+        activeValue: true,
+        inactiveValue: false,
+        message: 'Automatic lyrics and Instrumental cannot be enabled together.',
+      },
+      {
+        type: 'required',
+        field: 'lyrics',
+        when: [
+          { field: 'modelParams.lyrics_optimizer', equals: false },
+          { field: 'modelParams.is_instrumental', equals: false },
+        ],
+        message: 'Lyrics are required unless Automatic lyrics or Instrumental is enabled.',
+      },
+      {
+        type: 'required',
+        field: 'prompt',
+        when: [{ field: 'modelParams.is_instrumental', equals: true }],
+        message: 'Prompt is required for instrumental music.',
+      },
+      {
+        type: 'max-length',
+        field: 'prompt',
+        max: 2000,
+        message: 'Prompt accepts at most 2000 characters.',
+      },
+      {
+        type: 'max-length',
+        field: 'lyrics',
+        max: 3500,
+        message: 'Lyrics accept at most 3500 characters.',
+      },
+    ],
+    maxRuntimeMs: 10 * 60 * 1000,
+  },
+  {
     id: 'suno-v5.5',
     name: 'Suno V5.5',
     provider: 'Suno API',
     availableProviders: ['suno'],
     defaultProvider: 'suno',
     kind: 'audio',
+    task: 'music-generation',
     defaultAspectRatio: '1:1',
     description: 'Generate complete songs with Suno V5.5 through SunoAPI.org.',
+    promptGuidance: 'Describe the musical style in Prompt. Enter lyrics directly in Lyrics; the action label is used as the song title.',
     parameters: [
       {
         id: 'instrumental',
@@ -1826,6 +2827,11 @@ const MODEL_CARD_DEFINITIONS = [
       title: '',
     },
     input: { requiresPrompt: true, inputMode: {}, promptModalities: ['text'] },
+    musicInput: {
+      lyricsTarget: 'prompt',
+      descriptionParam: 'style',
+      titleParam: 'title',
+    },
     maxRuntimeMs: 10 * 60 * 1000,
   },
   {
@@ -1835,6 +2841,7 @@ const MODEL_CARD_DEFINITIONS = [
     availableProviders: ['elevenlabs'],
     defaultProvider: 'elevenlabs',
     kind: 'audio',
+    task: 'text-to-speech',
     defaultAspectRatio: '1:1',
     description: 'Ultra-realistic voice synthesis with emotional range.',
     parameters: [
@@ -1902,7 +2909,82 @@ type ModelProviderImplementationRow = readonly [
   options?: {
     region?: string;
     credentials?: string[];
+    credentialRequirements?: ProviderCredentialRequirements;
     oauth?: string[];
+    referenceBinding?: ReferenceBinding;
+    parameterOverrides?: ModelParameter[];
+    defaultParamOverrides?: Record<string, string | number | boolean>;
+    excludedParameterIds?: string[];
+    projectorExportId?: string;
+    projectorPluginId?: string;
+  },
+];
+
+const SEEDANCE_2_FAL_PARAMETER_OVERRIDES: ModelParameter[] = [
+  {
+    id: 'duration',
+    label: 'Duration',
+    type: 'select',
+    required: false,
+    options: [
+      { label: 'Auto', value: 'auto' },
+      ...Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 })),
+    ],
+    defaultValue: 'auto',
+  },
+  {
+    id: 'seed',
+    label: 'Seed',
+    type: 'number',
+    required: false,
+    description: 'Optional deterministic seed. The same seed may still produce minor variations.',
+  },
+];
+
+const MINIMAX_H3_FAL_PARAMETER_OVERRIDES: ModelParameter[] = [{
+  id: 'duration',
+  label: 'Duration',
+  type: 'select',
+  required: false,
+  options: Array.from({ length: 11 }, (_, index) => ({
+    label: `${index + 5}s`,
+    value: index + 5,
+  })),
+  defaultValue: 5,
+}];
+
+const MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES: ModelParameter[] = [
+  ...MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
+  {
+    id: 'aspect_ratio',
+    label: 'Aspect Ratio',
+    type: 'select',
+    required: false,
+    description: 'Auto is supported when at least one image, video, or audio reference is attached.',
+    options: [
+      { label: 'Auto (with reference)', value: 'adaptive' },
+      ...['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'].map(value => ({ label: value, value })),
+    ],
+    defaultValue: '16:9',
+  },
+];
+
+const SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES: ModelParameter[] = [
+  {
+    id: 'duration',
+    label: 'Duration',
+    type: 'select',
+    required: false,
+    options: Array.from({ length: 12 }, (_, index) => ({ label: `${index + 4}s`, value: index + 4 })),
+    defaultValue: 5,
+  },
+  {
+    id: 'resolution',
+    label: 'Resolution',
+    type: 'select',
+    required: false,
+    options: ['480p', '720p', '1080p'].map(value => ({ label: value, value })),
+    defaultValue: '720p',
   },
 ];
 
@@ -1925,29 +3007,103 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['flux-2-pro', 'fal', 'fal', 'fal', 'fal-ai/flux-2-pro', 20, { credentials: ['apiKey'] }],
   ['sora-2', 'fal', 'fal', 'fal', 'fal-ai/sora-2/text-to-video', 20, { credentials: ['apiKey'] }],
   ['kling-3', 'fal', 'fal', 'fal', 'fal-ai/kling-video/v3/pro/image-to-video', 20, { credentials: ['apiKey'] }],
-  ['seedance-2-text', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/text-to-video', 20, { credentials: ['apiKey'] }],
-  ['seedance-2-startend', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/image-to-video', 20, { credentials: ['apiKey'] }],
-  ['seedance-2-ref', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/reference-to-video', 20, { credentials: ['apiKey'] }],
+  ['flux-3-video', 'fal', 'fal', 'fal', 'blackforestlabs/flux-3/text-to-video', 20, { credentials: ['apiKey'] }],
+  ['flux-3-video-keyframes', 'fal', 'fal', 'fal', 'blackforestlabs/flux-3/keyframes-to-video', 20, { credentials: ['apiKey'] }],
+  ['flux-3-video-continue', 'fal', 'fal', 'fal', 'blackforestlabs/flux-3/extend-video', 20, { credentials: ['apiKey'] }],
+  ['seedance-2-startend', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/image-to-video', 20, {
+    credentials: ['apiKey'],
+    projectorExportId: 'fal-seedance-2',
+    projectorPluginId: 'clash-first-party-media',
+    parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
+    defaultParamOverrides: { duration: 'auto' },
+  }],
+  ['seedance-2-ref', 'fal', 'fal', 'fal', 'bytedance/seedance-2.0/reference-to-video', 20, {
+    credentials: ['apiKey'],
+    projectorExportId: 'fal-seedance-2',
+    projectorPluginId: 'clash-first-party-media',
+    parameterOverrides: SEEDANCE_2_FAL_PARAMETER_OVERRIDES,
+    defaultParamOverrides: { duration: 'auto' },
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '@Image{n}', video: '@Video{n}', audio: '@Audio{n}' },
+    },
+  }],
   ['minimax-tts', 'fal', 'fal', 'fal', 'fal-ai/minimax/speech-02-hd', 20, { credentials: ['apiKey'] }],
+
+  ['pika-2.5', 'pika', 'pika', 'pika', 'pika/pika-2.5/image-to-video', 18, { credentials: ['apiKey'] }],
+  ['nano-banana-2', 'pika', 'pika', 'pika', 'google/gemini-3.1-flash-image/text-to-image', 18, { credentials: ['apiKey'] }],
+  ['gpt-image-2', 'pika', 'pika', 'pika', 'openai/gpt-image-2/text-to-image', 18, { credentials: ['apiKey'] }],
+  ['seedance-2-startend', 'pika', 'pika', 'pika', 'bytedance/seedance-2.0/image-to-video', 18, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'pika', 'pika', 'pika', 'bytedance/seedance-2.0/reference-to-video', 18, {
+    credentials: ['apiKey'],
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '@Image{n}', video: '@Video{n}', audio: '@Audio{n}' },
+    },
+  }],
+  ['minimax-h3', 'pika', 'pika', 'pika', 'minimax/h3/reference-to-video', 18, {
+    credentials: ['apiKey'],
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '@Image{n}', video: '@Video{n}', audio: '@Audio{n}' },
+    },
+  }],
+  ['minimax-h3-startend', 'pika', 'pika', 'pika', 'minimax/h3/image-to-video', 18, { credentials: ['apiKey'] }],
+  ['minimax-music-3', 'pika', 'pika', 'pika', 'minimax/minimax-music-3.0/text-to-audio', 18, {
+    credentials: ['apiKey'],
+    excludedParameterIds: ['aigc_watermark'],
+  }],
+  ['gpt-5.6-sol', 'pika', 'pika', 'pika-chat', 'openai/gpt-5.6-sol', 18, { credentials: ['apiKey'] }],
+  ['claude-sonnet-5', 'pika', 'pika', 'pika-chat', 'anthropic/claude-sonnet-5', 18, { credentials: ['apiKey'] }],
+  ['gemini-3.6-flash', 'pika', 'pika', 'pika-chat', 'google/gemini-3.6-flash', 18, { credentials: ['apiKey'] }],
+  ['deepseek-v4-pro', 'pika', 'pika', 'pika-chat', 'deepseek/deepseek-v4-pro', 18, { credentials: ['apiKey'] }],
+  ['kimi-k3', 'pika', 'pika', 'pika-chat', 'moonshotai/kimi-k3', 18, { credentials: ['apiKey'] }],
+  ['glm-5.2', 'pika', 'pika', 'pika-chat', 'z-ai/glm-5.2', 18, { credentials: ['apiKey'] }],
+  ['seedream-5-pro', 'pika', 'pika', 'pika', 'bytedance/seedream-5.0-pro/text-to-image', 18, { credentials: ['apiKey'] }],
+  ['grok-imagine-quality', 'pika', 'pika', 'pika', 'x-ai/grok-imagine-image-quality/text-to-image', 18, { credentials: ['apiKey'] }],
+  ['grok-imagine-video-1.5', 'pika', 'pika', 'pika', 'x-ai/grok-imagine-video-1.5/image-to-video', 18, { credentials: ['apiKey'] }],
+  ['flux-3-video', 'pika', 'pika', 'pika', 'black-forest-labs/flux-3-video/text-to-video', 18, { credentials: ['apiKey'] }],
+  ['kling-3', 'pika', 'pika', 'pika', 'kling/kling-3.0/text-to-video', 18, { credentials: ['apiKey'] }],
+  ['recraft-v4', 'pika', 'pika', 'pika', 'recraft/recraft-4.1/text-to-image', 22, { credentials: ['apiKey'] }],
+  ['lyria-3-pro', 'pika', 'pika', 'pika', 'google/lyria-3-pro/text-to-audio', 18, { credentials: ['apiKey'] }],
+  ['minimax-speech-2.8-hd', 'pika', 'pika', 'pika', 'minimax/minimax-speech-2.8-hd/text-to-speech', 18, { credentials: ['apiKey'] }],
 
   ['nano-banana-2', 'kie', 'kie', 'kie', 'nano-banana-2', 25, { credentials: ['apiKey'] }],
   ['gpt-image-2', 'kie', 'kie', 'kie', 'gpt-image-2-text-to-image', 25, { credentials: ['apiKey'] }],
   ['flux-schnell', 'kie', 'kie', 'kie', 'flux-2/flex-text-to-image', 25, { credentials: ['apiKey'] }],
   ['flux-dev', 'kie', 'kie', 'kie', 'flux-2/flex-text-to-image', 25, { credentials: ['apiKey'] }],
   ['flux-2-pro', 'kie', 'kie', 'kie', 'flux-2/pro-text-to-image', 25, { credentials: ['apiKey'] }],
-  ['seedance-2-text', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, { credentials: ['apiKey'] }],
   ['seedance-2-startend', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, { credentials: ['apiKey'] }],
-  ['seedance-2-ref', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'kie', 'kie', 'kie', 'bytedance/seedance-2', 25, {
+    credentials: ['apiKey'],
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '[Image{n}]', video: '[Video{n}]', audio: '[Audio{n}]' },
+    },
+  }],
   ['kling-3', 'kie', 'kie', 'kie', 'kling-3.0/video', 25, { credentials: ['apiKey'] }],
 
   ['nano-banana-2', 'replicate', 'replicate', 'replicate', 'google/nano-banana-2', 25, { credentials: ['apiKey'] }],
   ['gpt-image-2', 'replicate', 'replicate', 'replicate', 'openai/gpt-image-2', 25, { credentials: ['apiKey'] }],
   ['flux-schnell', 'replicate', 'replicate', 'replicate', 'black-forest-labs/flux-schnell', 25, { credentials: ['apiKey'] }],
-  ['seedance-2-text', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
   ['seedance-2-startend', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
-  ['seedance-2-ref', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'replicate', 'replicate', 'replicate', 'bytedance/seedance-2.0', 25, {
+    credentials: ['apiKey'],
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '[Image{n}]', video: '[Video{n}]', audio: '[Audio{n}]' },
+    },
+  }],
 
   ['nano-banana-2', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3.1-flash-image', 12, { region: 'global', credentials: ['apiKey'] }],
+  ['flux-3-video', 'official', 'bfl', 'bfl', 'flux-3-video', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['flux-3-video-keyframes', 'official', 'bfl', 'bfl', 'flux-3-video', 10, { region: 'global', credentials: ['apiKey'] }],
+  ['flux-3-video-continue', 'official', 'bfl', 'bfl', 'flux-3-video', 10, { region: 'global', credentials: ['apiKey'] }],
   ['nano-banana-pro', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3-pro-image', 12, { region: 'global', credentials: ['apiKey'] }],
   ['gemini-3.1-flash-tts', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-3.1-flash-tts-preview', 10, { region: 'global', credentials: ['apiKey'] }],
   ['gemini-2.5-pro-tts', 'official', 'google-ai-studio', 'google-ai-studio', 'gemini-2.5-pro-tts', 10, { region: 'global', credentials: ['apiKey'] }],
@@ -1956,9 +3112,15 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['nano-banana-pro', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3-pro-image', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-startend', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
-  ['veo-3.1-lite', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-lite-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-fast', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-fast-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['veo-3.1-fast-startend', 'official', 'google-agent-platform', 'google-agent-platform', 'veo-3.1-fast-generate-001', 10, { region: 'global', credentials: ['vertexCredentials'] }],
+  ['gemini-omni-flash', 'official', 'google-ai-studio', 'google-ai-studio-interactions', 'gemini-omni-flash-preview', 10, {
+    region: 'global',
+    credentialRequirements: {
+      anyOf: [['apiKey'], ['gatewayToken', 'baseUrl']],
+      exclusive: true,
+    },
+  }],
   ['gemini-3.5-flash', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.5-flash', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['gemini-3.1-pro', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3.1-pro-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
   ['gemini-3-flash', 'official', 'google-agent-platform', 'google-agent-platform', 'gemini-3-flash-preview', 10, { region: 'global', credentials: ['vertexCredentials'] }],
@@ -1971,13 +3133,69 @@ const MODEL_PROVIDER_IMPLEMENTATION_ROWS: ModelProviderImplementationRow[] = [
   ['anthropic-compatible-text', 'official', 'anthropic', 'anthropic-compatible', 'claude-sonnet-4-20250514', 15, { region: 'global', credentials: ['apiKey'] }],
 
   ['kling-3', 'kling', 'kling', 'kling', 'kling-v3', 8, { credentials: ['accessKey', 'secretKey'] }],
-  ['seedance-2-text', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, { oauth: ['dreamina'] }],
   ['seedance-2-startend', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, { oauth: ['dreamina'] }],
-  ['seedance-2-ref', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, { oauth: ['dreamina'] }],
-  ['seedance-2-text', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
-  ['seedance-2-startend', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
-  ['seedance-2-ref', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, { credentials: ['apiKey'] }],
+  ['seedance-2-ref', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.0fast', 8, {
+    oauth: ['dreamina'],
+    referenceBinding: { type: 'grouped-references' },
+  }],
+  ['seedance-2-startend', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, {
+    credentials: ['apiKey'],
+    parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+    defaultParamOverrides: { duration: 5, resolution: '720p' },
+  }],
+  ['seedance-2-ref', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-0-pro', 9, {
+    credentials: ['apiKey'],
+    parameterOverrides: SEEDANCE_2_VOLCENGINE_PARAMETER_OVERRIDES,
+    defaultParamOverrides: { duration: 5, resolution: '720p' },
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '[Image {n}]', video: '[Video {n}]', audio: '[Audio {n}]' },
+    },
+  }],
+  ['seedance-2.5-ref', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.5', 8, {
+    oauth: ['dreamina'],
+    referenceBinding: { type: 'grouped-references' },
+  }],
+  ['seedance-2.5-startend', 'jimeng', 'jimeng', 'dreamina-cli', 'seedance2.5', 8, { oauth: ['dreamina'] }],
+  ['seedance-2.5-ref', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-5', 9, {
+    credentials: ['apiKey'],
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: '[Image {n}]', video: '[Video {n}]', audio: '[Audio {n}]' },
+    },
+  }],
+  ['seedance-2.5-startend', 'volcengine', 'volcengine', 'modelark', 'doubao-seedance-2-5', 9, { credentials: ['apiKey'] }],
   ['minimax-tts', 'minimax', 'minimax', 'minimax', 'speech-02-hd', 8, { credentials: ['apiKey'] }],
+  ['minimax-music-3', 'minimax', 'minimax', 'minimax', 'music-3.0', 8, { credentials: ['apiKey'] }],
+  ['minimax-h3', 'minimax', 'minimax', 'minimax', 'MiniMax-H3', 8, { credentials: ['apiKey'] }],
+  ['minimax-h3-startend', 'minimax', 'minimax', 'minimax', 'MiniMax-H3', 8, { credentials: ['apiKey'] }],
+  ['minimax-music-3', 'fal', 'fal', 'fal', 'fal-ai/minimax-music/v3', 9, {
+    credentials: ['apiKey'],
+    projectorExportId: 'fal-minimax-music-3',
+    projectorPluginId: 'clash-first-party-media',
+    excludedParameterIds: ['aigc_watermark'],
+  }],
+  ['minimax-h3', 'fal', 'fal', 'fal', 'minimax/h3/reference-to-video', 9, {
+    credentials: ['apiKey'],
+    projectorExportId: 'fal-h3',
+    projectorPluginId: 'clash-first-party-media',
+    referenceBinding: {
+      type: 'positional-tokens',
+      modalityScopedIndexes: true,
+      tokens: { image: 'Image {n}', video: 'Video {n}', audio: 'Audio {n}' },
+    },
+    parameterOverrides: MINIMAX_H3_FAL_OMNI_PARAMETER_OVERRIDES,
+    defaultParamOverrides: { duration: 5, aspect_ratio: '16:9' },
+  }],
+  ['minimax-h3-startend', 'fal', 'fal', 'fal', 'minimax/h3/image-to-video', 9, {
+    credentials: ['apiKey'],
+    projectorExportId: 'fal-h3',
+    projectorPluginId: 'clash-first-party-media',
+    parameterOverrides: MINIMAX_H3_FAL_PARAMETER_OVERRIDES,
+    defaultParamOverrides: { duration: 5 },
+  }],
   ['suno-v5.5', 'suno', 'suno', 'suno', 'V5_5', 8, { credentials: ['apiKey', 'callbackUrl'] }],
   ['elevenlabs-tts', 'elevenlabs', 'elevenlabs', 'elevenlabs', 'eleven_v3', 8, { credentials: ['apiKey'] }],
 ];
@@ -1992,7 +3210,19 @@ function implementationFromRow(row: ModelProviderImplementationRow): ModelProvid
     apiShape,
     priority,
     ...(options?.credentials?.length ? { requiredCredentials: [...options.credentials] } : {}),
+    ...(options?.credentialRequirements ? {
+      credentialRequirements: {
+        ...options.credentialRequirements,
+        anyOf: options.credentialRequirements.anyOf.map((credentials) => [...credentials]),
+      },
+    } : {}),
     ...(options?.oauth?.length ? { requiredOAuth: [...options.oauth] } : {}),
+    ...(options?.referenceBinding ? { referenceBinding: options.referenceBinding } : {}),
+    ...(options?.parameterOverrides?.length ? { parameterOverrides: options.parameterOverrides } : {}),
+    ...(options?.defaultParamOverrides ? { defaultParamOverrides: options.defaultParamOverrides } : {}),
+    ...(options?.excludedParameterIds?.length ? { excludedParameterIds: [...options.excludedParameterIds] } : {}),
+    ...(options?.projectorExportId ? { projectorExportId: options.projectorExportId } : {}),
+    ...(options?.projectorPluginId ? { projectorPluginId: options.projectorPluginId } : {}),
   };
 }
 
@@ -2009,6 +3239,7 @@ const MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID = modelProviderImplementationsById(MO
 
 const MODEL_CARD_DEFINITIONS_WITH_PROVIDER_IMPLEMENTATIONS = MODEL_CARD_DEFINITIONS.map((model) => ({
   ...model,
+  constraints: model.constraints ?? [],
   ...(MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID[model.id]
     ? { providerImplementations: MODEL_PROVIDER_IMPLEMENTATIONS_BY_ID[model.id] }
     : {}),

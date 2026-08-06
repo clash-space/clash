@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const pluginRoot = join(import.meta.dirname, "..");
@@ -21,18 +21,40 @@ test("ships as one installable Codex plugin package", () => {
   assert.equal(manifest.name, "clash-timeline");
   assert.equal(manifest.mcpServers, "./.mcp.json");
   assert.equal(manifest.skills, "./skills/");
-  assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Write"]);
+  assert.deepEqual(manifest.interface.capabilities, ["Read", "Write"]);
+  assert.equal(manifest.interface.defaultPrompt.some((prompt: string) => /\bopen\b/i.test(prompt)), false);
   assert.deepEqual(mcp, {
     mcpServers: {
       "clash-timeline": {
         command: "node",
         args: ["./runtime/index.js"],
         cwd: ".",
+        env: { CLASH_PROFILE: "prod" },
       },
     },
   });
   assert.equal(pkg.name, "@clash-space/timeline-plugin");
   assert.ok(pkg.files.includes("runtime"));
+  assert.equal(pkg.devDependencies?.["@clash/shared-types"], "workspace:*");
+  assert.match(pkg.scripts?.prebuild ?? "", /generate:timeline-dsl-docs/);
+  assert.equal(existsSync(join(pluginRoot, "runtime", "clash-cli.cjs")), true);
+  assert.equal(existsSync(join(pluginRoot, "runtime", "loro_wasm_bg.wasm")), true);
+});
+
+test("ships agent guidance for discovering the complete annotated Timeline contract", () => {
+  const skill = readFileSync(join(pluginRoot, "skills", "clash-timeline", "SKILL.md"), "utf8");
+
+  assert.match(skill, /clash_timeline_schema/);
+  assert.match(skill, /clash_timeline_validate/);
+  assert.match(skill, /every root, track, common\s+item, and type-specific item field/);
+  assert.match(skill, /operation catalog/);
+  assert.match(skill, /stable semantic\s+rule IDs/);
+  assert.match(skill, /maskPosition/);
+  assert.match(skill, /maskSize/);
+  assert.match(skill, /maskRotation/);
+  assert.match(skill, /maskFeather/);
+  assert.match(skill, /item-local/);
+  assert.match(skill, /baseRevisionId/);
 });
 
 test("keeps plugin source inside the package and does not import Canvas MCP internals", () => {
@@ -43,6 +65,10 @@ test("keeps plugin source inside the package and does not import Canvas MCP inte
 
   assert.doesNotMatch(source, /packages\/mcp-server|canvas-app|clash_canvas_/);
   assert.doesNotMatch(source, /from\s+["']\.\.\/\.\.\//);
+  assert.match(source, /@clash\/shared-types\/timeline-contract/);
+  assert.doesNotMatch(source, /from\s+["']@clash\/shared-types["']/);
+  const bundledServer = readFileSync(join(pluginRoot, "runtime", "server.js"), "utf8");
+  assert.doesNotMatch(bundledServer, /loro-crdt|loro_wasm/);
 });
 
 test("Canvas App does not embed Timeline while the shared plugin keeps a headless Timeline CLI", () => {
@@ -53,4 +79,19 @@ test("Canvas App does not embed Timeline while the shared plugin keeps a headles
   assert.doesNotMatch(canvasHtml, /data-surface="timeline"|data-timeline-list/);
   assert.doesNotMatch(canvasClient, /clash_cli_timeline|refreshTimelines|renderTimelines/);
   assert.match(cliContract, /^\s*["']timeline["'],?$/m);
+});
+
+test("built runtime preserves stale codes wrapped by CLI process errors", async () => {
+  const runtime = await import("../runtime/index.js");
+
+  assert.deepEqual(
+    runtime.timelineToolErrorPayload(new Error(
+      "Command failed: clash timeline apply --json\nError: STALE_READ: Timeline rough-cut changed after it was read",
+    )),
+    {
+      code: "STALE_READ",
+      message: "STALE_READ: Timeline rough-cut changed after it was read",
+      retryTool: "clash_timeline_get",
+    },
+  );
 });

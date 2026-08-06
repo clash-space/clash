@@ -25,16 +25,49 @@ from its installed package directory and must not be treated as the project.
 
 ## Tool workflow
 
+- Call `clash_timeline_schema` before authoring an unfamiliar Timeline field.
+  It returns the annotation-generated catalog for every root, track, common
+  item, and type-specific item field; the operation catalog; stable semantic
+  rule IDs; exact units and constraints; and executable examples. Do not guess
+  field names from UI labels.
+- Call `clash_timeline_validate` with the complete draft in `document` and
+  `format: "object"` (or authored YAML/JSON plus its matching format) to execute
+  both JSON Schema and cross-field semantic rules without mutating the Timeline.
+  Preserve the returned rule IDs when reporting or repairing invalid state.
 - Use `clash_timeline_list` or `clash_timeline_get` before describing current
   state. Never infer tracks or revisions from Canvas nodes.
-- Use `clash_timeline_create` for a standalone Project Timeline.
+- When calling `clash_timeline_save`, pass the `revisionId` returned by
+  `clash_timeline_get` as `baseRevisionId`. A stale full-state save must be
+  rejected and rebased, never silently retried over newer work.
+- Use `clash_timeline_create` with canonical `id`, `name`, and optional complete
+  `state` for a standalone Project Timeline.
 - Use `clash_timeline_attach`, `clash_timeline_detach`, and
-  `clash_timeline_copy` only when the user requests an ownership change.
+  `clash_timeline_copy` only when the user requests an ownership change. For
+  attach use `actionNodeId`; for copy use `sourceTimelineId`, `targetCanvasId`,
+  and optional `newActionNodeId`, exactly as published by the tool schema.
 - Treat failed saves as real validation or stale-read failures. Read the
   Timeline again, preserve the user's draft, and resolve the conflict instead
   of bypassing it.
-- Keep user-facing track labels explicit: video/image, text/subtitle, effects,
-  and audio. Do not introduce `Main Storyline` or `Set as main` wording.
+- Consume the track categories and ordering published by
+  `clash_timeline_schema` (`effect`, `text`, `visual`, `primary`, `audio`) rather
+  than maintaining a local list. Do not introduce `Main Storyline` or
+  `Set as main` wording.
+
+## Mask DSL
+
+<!-- BEGIN GENERATED TIMELINE MASK CONTRACT -->
+The implementation-side capability annotations define all required mask fields:
+`shape`, `position`, `size`, `rotation`, `feather`, `inverted`. The generated animated channels are `maskPosition`, `maskSize`, `maskRotation`, `maskFeather`.
+Coordinates use `percent-of-rendered-item-bounds`; frames are
+`item-local` in `0..durationInFrames-1`;
+and interpolation is `hold` or `linear`.
+The complete editor default is `{"shape":"rectangle","position":[50,50],"size":[70,70],"rotation":0,"feather":0,"inverted":false}`.
+
+Use `clash_timeline_schema` for the generated JSON Schema, field descriptions,
+runtime semantics, operations, and executable YAML example; validate edits with
+`clash_timeline_validate`. Remove a mask by
+removing both `item.mask` and every generated mask channel.
+<!-- END GENERATED TIMELINE MASK CONTRACT -->
 
 Do not use Canvas MCP tools as a fallback for Timeline operations. The Timeline
 plugin owns this interface; Canvas remains a separate work surface.

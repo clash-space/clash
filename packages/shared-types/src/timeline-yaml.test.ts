@@ -682,7 +682,7 @@ describe("YAML edge cases", () => {
     const t = r.dsl.tracks[0];
     expect(t.name).toBe("Main video");
     expect(t.locked).toBe(true);
-    expect(t.hidden).toBeUndefined();
+    expect(t.hidden).toBe(false);
   });
 
   it("preserves arbitrary item fields (volume, sourceStartInFrames, etc.) through round-trip", () => {
@@ -973,6 +973,131 @@ tracks:
     expect(parsed).toEqual({
       ok: false,
       error: "Timeline item subtitle keyframes.opacity frame must be an integer between 0 and 29",
+    });
+  });
+
+  it("round-trips a clip mask with item-local mask keyframes", () => {
+    const parsed = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    category: visual
+    items:
+      - id: masked-clip
+        type: video
+        from: 30
+        durationInFrames: 60
+        mask:
+          shape: ellipse
+          position: [50, 50]
+          size: [70, 70]
+          rotation: 0
+          feather: 12
+          inverted: false
+        keyframes:
+          maskPosition:
+            - frame: 0
+              value: [25, 50]
+              interpolation: linear
+            - frame: 59
+              value: [75, 50]
+              interpolation: linear
+          maskFeather:
+            - frame: 0
+              value: 0
+              interpolation: linear
+            - frame: 59
+              value: 40
+              interpolation: linear
+`);
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(timelineDslFromYaml(timelineDslToYaml(parsed.dsl))).toEqual(parsed);
+  });
+
+  it("rejects invalid masks and orphaned mask keyframes", () => {
+    const invalidMask = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    category: visual
+    items:
+      - id: masked-clip
+        type: image
+        from: 0
+        durationInFrames: 30
+        mask:
+          shape: triangle
+          position: [50, 50]
+          size: [70, 70]
+          rotation: 0
+          feather: 0
+          inverted: false
+`);
+    expect(invalidMask).toEqual({
+      ok: false,
+      error: "Timeline item masked-clip mask.shape must be rectangle or ellipse",
+    });
+
+    const orphanedKeys = timelineDslFromYaml(`
+tracks:
+  - id: overlays
+    category: visual
+    items:
+      - id: orphaned-mask-motion
+        type: image
+        from: 0
+        durationInFrames: 30
+        keyframes:
+          maskPosition:
+            - frame: 0
+              value: [50, 50]
+              interpolation: linear
+`);
+    expect(orphanedKeys).toEqual({
+      ok: false,
+      error: "Timeline item orphaned-mask-motion mask keyframes require a mask",
+    });
+  });
+
+  it("rejects masks on audio and transition items", () => {
+    const maskYaml = `
+        mask:
+          shape: rectangle
+          position: [50, 50]
+          size: [70, 70]
+          rotation: 0
+          feather: 0
+          inverted: false`;
+    expect(timelineDslFromYaml(`
+tracks:
+  - id: audio
+    category: audio
+    items:
+      - id: bed
+        type: audio
+        from: 0
+        durationInFrames: 30
+${maskYaml}
+`)).toEqual({
+      ok: false,
+      error: "Timeline item bed mask is only valid on visual items",
+    });
+    expect(timelineDslFromYaml(`
+tracks:
+  - id: effects
+    category: effect
+    items:
+      - id: wipe
+        type: transition
+        from: 0
+        durationInFrames: 15
+        transitionType: wipe-left
+        fromItemId: before
+        toItemId: after
+${maskYaml}
+`)).toEqual({
+      ok: false,
+      error: "Timeline item wipe mask is only valid on visual items",
     });
   });
 });

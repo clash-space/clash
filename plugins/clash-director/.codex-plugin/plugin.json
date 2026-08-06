@@ -1,20 +1,20 @@
 {
   "name": "clash-director",
   "version": "0.1.0+codex.20260716",
-  "description": "Compose Clash Director Stages through a focused Codex GUI and typed MCP tools.",
+  "description": "Compose Clash Director Stages through typed MCP tools.",
   "author": { "name": "Clash Space" },
   "license": "MIT",
-  "keywords": ["director", "3d", "blocking", "codex", "mcp-app"],
+  "keywords": ["director", "3d", "blocking", "codex", "local-first"],
   "skills": "./skills/",
   "interface": {
     "displayName": "Clash Director",
-    "shortDescription": "Compose agent-readable 3D blocking stages",
-    "longDescription": "Open, inspect, create, block, animate, and save Clash Project Director Stages through an embedded MCP App while preserving CLI read-proof and revision semantics.",
+    "shortDescription": "Author agent-readable 3D blocking stages",
+    "longDescription": "Inspect, create, block, animate, and save Clash Project Director Stages through typed MCP tools while preserving CLI read-proof and revision semantics. The embedded MCP App is temporarily unavailable.",
     "developerName": "Clash Space",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
+    "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Open the current project Director Stage GUI.",
+      "Inspect the current project Director Stages.",
       "Inspect the active Stage and summarize its objects and cameras.",
       "Create a blocking Stage and attach it to the current Canvas."
     ],

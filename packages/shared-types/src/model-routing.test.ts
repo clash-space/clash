@@ -13,8 +13,177 @@ import {
   type UpstreamAvailability,
 } from "./model-routing";
 import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard } from "./models";
+import { validateModelCardConfiguration } from "./model-constraints";
 
 describe("model upstream routing", () => {
+  it("exposes Pika API Club as a configured media provider", () => {
+    const configuredProviders: ProviderAccountAvailability[] = [{
+      id: "pika-primary",
+      providerId: "pika",
+      upstreamId: "pika",
+      enabled: true,
+      configuredCredentials: ["apiKey"],
+    }];
+
+    expect(resolveModelUpstreamRoute({
+      modelCode: "pika-2.5",
+      kind: "video",
+      configuredProviders,
+    })).toMatchObject({
+      accountId: "pika-primary",
+      providerId: "pika",
+      upstreamId: "pika",
+      apiShape: "pika",
+      upstreamModel: "pika/pika-2.5/image-to-video",
+      requiredCredentials: ["apiKey"],
+    });
+
+    const support = listProviderModelSupport().find((candidate) => candidate.providerId === "pika");
+    expect(support).toMatchObject({
+      upstreamId: "pika",
+      requiredCredentials: ["apiKey"],
+    });
+    expect(support?.models.map((model) => model.id)).toEqual(expect.arrayContaining([
+      "pika-2.5",
+      "nano-banana-2",
+      "gpt-image-2",
+      "seedance-2-startend",
+      "seedance-2-ref",
+      "minimax-h3",
+      "minimax-h3-startend",
+      "minimax-music-3",
+      "gpt-5.6-sol",
+      "claude-sonnet-5",
+      "gemini-3.6-flash",
+      "deepseek-v4-pro",
+      "kimi-k3",
+      "glm-5.2",
+      "seedream-5-pro",
+      "grok-imagine-quality",
+      "flux-3-video",
+      "kling-3",
+      "grok-imagine-video-1.5",
+      "recraft-v4",
+      "lyria-3-pro",
+      "minimax-speech-2.8-hd",
+    ]));
+  });
+
+  it("declares an explicit reference binding for every card with inline media", () => {
+    const inlineMediaCards = MODEL_CARDS.filter((model) =>
+      model.input.promptModalities.includes("text")
+      && model.input.promptModalities.some((modality) => modality !== "text"),
+    );
+
+    expect(inlineMediaCards).not.toHaveLength(0);
+    expect(inlineMediaCards.filter((model) => !model.input.referenceBinding).map((model) => model.id)).toEqual([]);
+    expect(MODEL_CARDS.find((model) => model.id === "nano-banana-2")?.input.referenceBinding).toEqual({
+      type: "grouped-references",
+    });
+    expect(MODEL_CARDS.find((model) => model.id === "gpt-5.4")?.input.referenceBinding).toEqual({
+      type: "ordered-content-parts",
+      usesRoles: false,
+      modalityScopedIndexes: false,
+    });
+    expect(MODEL_CARDS.find((model) => model.id === "seedance-2-ref")?.input.referenceBinding).toMatchObject({
+      type: "positional-tokens",
+      modalityScopedIndexes: true,
+    });
+  });
+
+  it("lets a provider implementation override the model reference binding dialect", () => {
+    const falRoute = listModelUpstreamRoutes({
+      modelCode: "seedance-2-ref",
+      kind: "video",
+      configuredProviders: [{
+        id: "fal-primary",
+        providerId: "fal",
+        upstreamId: "fal",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    })[0];
+    const volcengineRoute = listModelUpstreamRoutes({
+      modelCode: "seedance-2-ref",
+      kind: "video",
+      configuredProviders: [{
+        id: "volcengine-primary",
+        providerId: "volcengine",
+        upstreamId: "volcengine",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    })[0];
+
+    expect(falRoute?.referenceBinding).toEqual({
+      type: "positional-tokens",
+      modalityScopedIndexes: true,
+      tokens: { image: "@Image{n}", video: "@Video{n}", audio: "@Audio{n}" },
+    });
+    expect(volcengineRoute?.referenceBinding).toEqual({
+      type: "positional-tokens",
+      modalityScopedIndexes: true,
+      tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" },
+    });
+  });
+
+  it("composes provider-specific parameter candidates into the effective catalog card", () => {
+    const entryFor = (
+      providerId: "jimeng" | "fal" | "volcengine",
+      upstreamId: "jimeng" | "fal" | "volcengine",
+      credentials: Omit<ProviderAccountAvailability, "providerId">,
+    ) =>
+      listModelCatalogEntries({
+        configuredProviders: [{ providerId, upstreamId, enabled: true, ...credentials }],
+      }).find((entry) => entry.model.id === "seedance-2-ref");
+
+    const dreamina = entryFor("jimeng", "jimeng", { availableOAuth: ["dreamina"] });
+    const fal = entryFor("fal", "fal", { configuredCredentials: ["apiKey"] });
+    const volcengine = entryFor("volcengine", "volcengine", {
+      configuredCredentials: ["apiKey"],
+    });
+    const options = (entry: typeof fal, id: string) =>
+      entry?.model.parameters.find((parameter) => parameter.id === id)?.options?.map((option) => option.value);
+
+    expect(options(dreamina, "duration")).toEqual(["auto", 4, 6, 8, 10, 15]);
+    expect(options(fal, "duration")).toEqual(["auto", 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(fal?.model.parameters.some((parameter) => parameter.id === "seed")).toBe(true);
+    expect(options(volcengine, "duration")).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(options(volcengine, "resolution")).toEqual(["480p", "720p", "1080p"]);
+    expect(volcengine?.model.defaultParams).toMatchObject({ duration: 5, resolution: "720p" });
+    expect(validateModelCardConfiguration(volcengine!.model, {
+      prompt: "product reveal",
+      modelParams: { duration: "auto", resolution: "720p" },
+    })).toMatch(/duration.*candidate/i);
+  });
+
+  it("composes the fal Music 3 card without MiniMax-only parameters", () => {
+    const entry = listModelCatalogEntries({
+      configuredProviders: [{
+        providerId: "fal",
+        upstreamId: "fal",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    }).find((candidate) => candidate.model.id === "minimax-music-3");
+
+    expect(entry?.selectedRoute).toMatchObject({
+      providerId: "fal",
+      upstreamId: "fal",
+      apiShape: "fal",
+      upstreamModel: "fal-ai/minimax-music/v3",
+    });
+    expect(entry?.model.availableProviders).toEqual(["minimax", "fal", "pika"]);
+    expect(entry?.model.parameters.map((parameter) => parameter.id)).not.toContain("aigc_watermark");
+    expect(entry?.model.parameters.find((parameter) => parameter.id === "sample_rate")?.options?.map((option) => option.value))
+      .toEqual([16000, 24000, 32000, 44100]);
+    expect(entry?.model.musicInput).toMatchObject({
+      lyricsParam: "lyrics",
+      maxPromptCharacters: 2000,
+      maxLyricsCharacters: 3500,
+    });
+  });
+
   it("does not expose the local ACP agent as a model card", () => {
     expect(MODEL_CARDS.some((model) => model.id === "local-acp")).toBe(false);
   });
@@ -779,7 +948,7 @@ describe("model upstream routing", () => {
         oauth: ["dreamina"],
       },
       {
-        modelCode: "seedance-2-text",
+        modelCode: "seedance-2-ref",
         kind: "video" as const,
         providerId: "volcengine",
         upstreamId: "volcengine",
@@ -878,7 +1047,12 @@ describe("model upstream routing", () => {
     });
     expect(byProvider.get("minimax")).toMatchObject({
       providerId: "minimax",
-      models: [expect.objectContaining({ id: "minimax-tts", apiShape: "minimax" })],
+      models: expect.arrayContaining([
+        expect.objectContaining({ id: "minimax-tts", apiShape: "minimax" }),
+        expect.objectContaining({ id: "minimax-music-3", upstreamModel: "music-3.0" }),
+        expect.objectContaining({ id: "minimax-h3", upstreamModel: "MiniMax-H3" }),
+        expect.objectContaining({ id: "minimax-h3-startend", upstreamModel: "MiniMax-H3" }),
+      ]),
       requiredCredentials: ["apiKey"],
     });
     expect(byProvider.get("elevenlabs")).toMatchObject({
@@ -887,7 +1061,7 @@ describe("model upstream routing", () => {
       requiredCredentials: ["apiKey"],
     });
     expect(byProvider.get("jimeng")?.models.map((model) => model.id)).toContain("seedance-2-ref");
-    expect(byProvider.get("volcengine")?.models.map((model) => model.id)).toContain("seedance-2-text");
+    expect(byProvider.get("volcengine")?.models.map((model) => model.id)).toContain("seedance-2-ref");
     expect(byProvider.has("midjourney")).toBe(false);
   });
 
@@ -1649,7 +1823,7 @@ describe("model upstream routing", () => {
       ],
     });
 
-    expect(entries.find((entry) => entry.model.id === "seedance-2-text")).toMatchObject({
+    expect(entries.find((entry) => entry.model.id === "seedance-2-ref")).toMatchObject({
       tier: "configured-provider",
       selectedRoute: null,
       missingOAuth: ["dreamina"],
@@ -1702,6 +1876,7 @@ describe("model upstream routing", () => {
     const suno = MODEL_CARDS.find((model) => model.id === "suno-v5.5");
     expect(suno).toMatchObject({
       kind: "audio",
+      task: "music-generation",
       availableProviders: ["suno"],
       defaultProvider: "suno",
     });
@@ -1723,6 +1898,181 @@ describe("model upstream routing", () => {
       upstreamModel: "V5_5",
       apiShape: "suno",
     });
+  });
+
+  it("declares MiniMax Music 3 and both user-facing H3 modes as first-class MiniMax routes", () => {
+    expect(MODEL_CARDS.find((model) => model.id === "minimax-music-3")).toMatchObject({
+      name: "MiniMax Music 3.0",
+      kind: "audio",
+      task: "music-generation",
+      availableProviders: ["minimax", "fal", "pika"],
+      defaultProvider: "minimax",
+      musicInput: {
+        lyricsTarget: "modelParam",
+        lyricsParam: "lyrics",
+        maxLyricsCharacters: 3500,
+        maxPromptCharacters: 2000,
+      },
+      parameters: [
+        expect.objectContaining({ id: "lyrics_optimizer", type: "boolean" }),
+        expect.objectContaining({ id: "is_instrumental", type: "boolean" }),
+        expect.objectContaining({ id: "sample_rate", type: "select" }),
+        expect.objectContaining({ id: "bitrate", type: "select" }),
+        expect.objectContaining({ id: "format", type: "select" }),
+        expect.objectContaining({ id: "aigc_watermark", type: "boolean" }),
+      ],
+    });
+    expect(MODEL_CARDS.find((model) => model.id === "suno-v5.5")).toMatchObject({
+      task: "music-generation",
+      musicInput: {
+        lyricsTarget: "prompt",
+        descriptionParam: "style",
+        titleParam: "title",
+      },
+    });
+    expect(resolveModelUpstreamRoute({
+      modelCode: "minimax-music-3",
+      kind: "audio",
+      configuredProviders: [{
+        id: "minimax-primary",
+        providerId: "minimax",
+        upstreamId: "minimax",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    })).toMatchObject({
+      accountId: "minimax-primary",
+      upstreamModel: "music-3.0",
+      apiShape: "minimax",
+    });
+
+    expect(MODEL_CARDS.find((model) => model.id === "minimax-h3")).toMatchObject({
+      name: "MiniMax H3 (全能参考)",
+      kind: "video",
+      availableProviders: ["minimax", "fal", "pika"],
+      defaultProvider: "minimax",
+      input: {
+        referenceBinding: { type: "ordered-content-parts" },
+        inputMode: {
+          images: { max: 9 },
+          videos: { max: 3 },
+          audios: { max: 3, requiresAnyOf: ["image", "video"] },
+        },
+      },
+    });
+    expect(MODEL_CARDS.find((model) => model.id === "minimax-h3")?.parameters).toEqual([
+      expect.objectContaining({ id: "duration" }),
+      expect.objectContaining({
+        id: "aspect_ratio",
+        options: expect.arrayContaining([expect.objectContaining({ value: "adaptive" })]),
+      }),
+      expect.objectContaining({ id: "resolution" }),
+    ]);
+    expect(resolveModelUpstreamRoute({
+      modelCode: "minimax-h3",
+      kind: "video",
+      configuredProviders: [{
+        id: "minimax-primary",
+        providerId: "minimax",
+        upstreamId: "minimax",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    })).toMatchObject({
+      accountId: "minimax-primary",
+      upstreamModel: "MiniMax-H3",
+      apiShape: "minimax",
+    });
+
+    expect(MODEL_CARDS.find((model) => model.id === "minimax-h3-startend")).toMatchObject({
+      name: "MiniMax H3 (Start / End Frame)",
+      kind: "video",
+      availableProviders: ["minimax", "fal", "pika"],
+      defaultProvider: "minimax",
+      parameters: [
+        expect.objectContaining({ id: "duration" }),
+        expect.objectContaining({ id: "resolution" }),
+      ],
+      defaultParams: {
+        duration: 5,
+        resolution: "2K",
+      },
+      input: {
+        inputMode: { startEnd: {} },
+      },
+    });
+    expect(resolveModelUpstreamRoute({
+      modelCode: "minimax-h3-startend",
+      kind: "video",
+      configuredProviders: [{
+        id: "minimax-primary",
+        providerId: "minimax",
+        upstreamId: "minimax",
+        enabled: true,
+        configuredCredentials: ["apiKey"],
+      }],
+    })).toMatchObject({
+      accountId: "minimax-primary",
+      upstreamModel: "MiniMax-H3",
+      apiShape: "minimax",
+    });
+  });
+
+  it("separates speech and music tasks from their output media kind", () => {
+    expect(MODEL_CARDS.find((model) => model.id === "sensevoice-small-asr")).toMatchObject({
+      kind: "asr",
+      task: "speech-to-text",
+    });
+    expect(MODEL_CARDS.find((model) => model.id === "piper-huayan-tts")).toMatchObject({
+      kind: "audio",
+      task: "text-to-speech",
+    });
+  });
+
+  it("accepts either direct Google credentials or the complete Gateway credential set for Gemini Omni", () => {
+    const direct = resolveModelUpstreamRoute({
+      modelCode: "gemini-omni-flash",
+      kind: "video",
+      configuredProviders: [{
+        id: "google-direct",
+        providerId: "official",
+        upstreamId: "google-ai-studio",
+        region: "global",
+        configuredCredentials: ["apiKey"],
+      }],
+    });
+    const gateway = resolveModelUpstreamRoute({
+      modelCode: "gemini-omni-flash",
+      kind: "video",
+      configuredProviders: [{
+        id: "google-gateway",
+        providerId: "official",
+        upstreamId: "google-ai-studio",
+        region: "global",
+        configuredCredentials: ["gatewayToken", "baseUrl"],
+      }],
+    });
+    const incompleteGateway = resolveModelUpstreamRoute({
+      modelCode: "gemini-omni-flash",
+      kind: "video",
+      configuredProviders: [{
+        id: "google-gateway-incomplete",
+        providerId: "official",
+        upstreamId: "google-ai-studio",
+        region: "global",
+        configuredCredentials: ["gatewayToken"],
+      }],
+    });
+
+    expect(direct).toMatchObject({ accountId: "google-direct" });
+    expect(gateway).toMatchObject({
+      accountId: "google-gateway",
+      credentialRequirements: {
+        anyOf: [["apiKey"], ["gatewayToken", "baseUrl"]],
+        exclusive: true,
+      },
+    });
+    expect(incompleteGateway).toBeNull();
   });
 
   it("binds the selected provider account after applying per-model order", () => {

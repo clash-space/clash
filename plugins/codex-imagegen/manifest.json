@@ -1,0 +1,34 @@
+{
+  "apiVersion": "clash.plugin/v1",
+  "id": "clash-codex-imagegen",
+  "version": "0.1.0",
+  "name": "Codex ImageGen",
+  "description": "Generate or edit images with Codex's built-in image generation tool and the signed-in ChatGPT subscription.",
+  "author": "Clash",
+  "runtime": {
+    "kind": "local",
+    "transport": "stdio",
+    "entrypoint": "dist/stdio.mjs"
+  },
+  "exports": {
+    "cards": [
+      {
+        "id": "codex-imagegen",
+        "kind": "action-card",
+        "path": "cards/codex-imagegen.json"
+      }
+    ],
+    "functions": [
+      {
+        "id": "generate-image",
+        "kind": "action",
+        "handler": "generateImage"
+      }
+    ]
+  },
+  "permissions": {
+    "assets": ["read", "write"],
+    "hostTools": ["codex.imagegen"]
+  },
+  "contractTests": ["contract-tests/generate-image.json"]
+}

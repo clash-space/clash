@@ -115,12 +115,19 @@ describe("desktop startup test suite", () => {
     const source = existsSync(join(desktopPath, "src/dev.ts"))
       ? readText("src/dev.ts")
       : "";
+    const main = readText("src/main.ts");
 
     expect(pkg.scripts.dev).toBe("tsx src/dev.ts");
     expect(source).toContain('"--strictPort"');
     expect(source).toContain("waitForHttp");
     expect(source).toContain("assertPortAvailable");
     expect(source).toContain("CLASH_WEB_URL: rendererUrl");
+    expect(source).toContain('CLASH_PROFILE: "dev"');
+    expect(source).toContain('CLASH_APP_NAME: "Clash Dev"');
+    expect(main).toContain("app.setName(runtimeAppName)");
+    expect(source).toContain('"@clash/shared-runtime", "build"');
+    expect(source).toContain('"@clash-space/cli", "build"');
+    expect(source).toContain('CLASH_WEB_E2E_NO_CLOUDFLARE: "1"');
     expect(source).toContain("shutdownProcessTree");
     expect(source).not.toContain("shell: true");
   });

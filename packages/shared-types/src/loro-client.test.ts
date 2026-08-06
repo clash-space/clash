@@ -30,7 +30,55 @@ class CapturingWebSocket {
   }
 }
 
+function updateId(update: Uint8Array): string {
+  let hash = 0x811c9dc5;
+  for (const byte of update) {
+    hash ^= byte;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${update.byteLength}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 describe("LoroSyncClient", () => {
+  it("waits for a local server acknowledgement before flushing an update", async () => {
+    CapturingWebSocket.instances = [];
+    const client = new LoroSyncClient({
+      serverUrl: "ws://127.0.0.1:49321",
+      projectId: "project-sync-ack",
+      token: "local-test-key",
+      WebSocket: CapturingWebSocket as never,
+    });
+
+    const source = new LoroSyncClient({
+      serverUrl: "wss://example.invalid",
+      projectId: "project-sync-ack",
+      WebSocket: CapturingWebSocket as never,
+    });
+    source.createNode("existing-node", "text", { content: "Existing" });
+
+    const connected = client.connect();
+    const socket = CapturingWebSocket.instances[0];
+    socket.onmessage?.({ data: source.doc.export({ mode: "snapshot" }) });
+    await connected;
+
+    client.createNode("pending-node", "video", { status: "pending" });
+    const sentUpdates = socket.sent.filter((sent): sent is Uint8Array => sent instanceof Uint8Array);
+    expect(sentUpdates).toHaveLength(1);
+    let flushed = false;
+    const flush = client.flush().then(() => { flushed = true; });
+    await Promise.resolve();
+
+    expect(flushed).toBe(false);
+    socket.onmessage?.({ data: JSON.stringify({ type: "sync_ack", updateId: "wrong-update" }) });
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(flushed).toBe(false);
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "sync_ack", updateId: updateId(sentUpdates[0]) }),
+    });
+    await flush;
+    expect(flushed).toBe(true);
+  });
+
   it("scopes multiple Canvas clients over the same Project replica", () => {
     const client = new LoroSyncClient({
       serverUrl: "ws://127.0.0.1:49321",

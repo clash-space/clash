@@ -739,6 +739,8 @@ export class ProjectRoom extends DurableObject<Env> {
           promptModalities: def.promptModalities,
         };
         if (def.model) storedDef.model = def.model;
+        if (def.pluginBinding) storedDef.pluginBinding = def.pluginBinding;
+        if (def.pluginPermissions) storedDef.pluginPermissions = def.pluginPermissions;
         // Stamp the registering runtime so NodeProcessor can gate local
         // dispatch on runtime liveness. Worker actions are hosted remotely
         // and do not need a local runtime row.

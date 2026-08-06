@@ -16,6 +16,7 @@ import { auditCommand } from "./commands/audit";
 import { mcpCommand } from "./commands/mcp";
 import { effectCommand } from "./commands/effects";
 import { directorCommand } from "./commands/director";
+import { resolveClashProfile } from "@clash/shared-runtime/local-paths";
 
 const program = new Command();
 
@@ -34,13 +35,23 @@ Optional cloud sync: clash auth login
 Environment variables:
   CLASH_API_URL      Local or cloud API URL (default: http://localhost:8788)
   CLASH_HOME         Local Clash home (default: ~/.clash)
+  CLASH_PROFILE      Runtime profile: dev or prod (default: prod)
   CLASH_PROJECT_ID   Project override when no cwd marker is available
   CLASH_CANVAS_ID    Canvas scope for canvas node commands
   CLASH_API_KEY      Remote/cloud credential override (not needed for local-api)
 
 Project identity lives in .clash/project.toml. Collaborative state remains in
 the Project Loro replica; cwd files are editable projections and drafts.`)
+  .option("--profile <profile>", "Runtime profile: dev or prod")
   .version("0.1.0");
+
+program.hook("preAction", () => {
+  const requested = program.opts<{ profile?: string }>().profile;
+  process.env.CLASH_PROFILE = resolveClashProfile({
+    ...process.env,
+    ...(requested ? { CLASH_PROFILE: requested } : {}),
+  });
+});
 
 program.addCommand(authCommand);
 program.addCommand(initCommand);

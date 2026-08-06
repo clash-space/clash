@@ -21,6 +21,7 @@ import {
   AgentSelectionAnnotationOverlay,
   type AgentSelectionAnnotationOverlayHandle,
 } from "./copilot/AgentSelectionAnnotationOverlay";
+import { handleSelectionAnnotationContextMenu } from "./copilot/selectionAnnotationContextMenu";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
 
@@ -70,7 +71,6 @@ export function TextDocumentEditorSurface({
   const [content, setContent] = useState(sourceContent);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved">("saved");
   const editorRef = useRef<MilkdownEditorHandle>(null);
-  const editorSelectionRootRef = useRef<HTMLDivElement>(null);
   const selectionAnnotationOverlayRef =
     useRef<AgentSelectionAnnotationOverlayHandle>(null);
   const onSaveRef = useRef(onSave);
@@ -162,14 +162,6 @@ export function TextDocumentEditorSurface({
     };
   }, [annotationTarget, label, nodeId]);
 
-  const captureEditorSelection = useCallback(() => {
-    const root = editorSelectionRootRef.current;
-    if (!root) return false;
-    return (
-      selectionAnnotationOverlayRef.current?.captureSelection(root) ?? false
-    );
-  }, []);
-
   const handleFormat = useCallback((format: MilkdownFormat) => {
     editorRef.current?.formatSelection(format);
   }, []);
@@ -200,9 +192,9 @@ export function TextDocumentEditorSurface({
             onClick={handleClose}
             size="sm"
             shape="rounded"
-             className={workbenchIconButtonClass}
-             icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
-           />
+            className={workbenchIconButtonClass}
+            icon={<ArrowLeft className="h-4 w-4" weight="bold" />}
+          />
           <span
             className="mx-[var(--clash-control-gap,0.25rem)] h-4 w-px shrink-0 bg-warm-border"
             aria-hidden="true"
@@ -292,7 +284,6 @@ export function TextDocumentEditorSurface({
               />
             </div>
             <div
-              ref={editorSelectionRootRef}
               data-agent-annotation-selection-root=""
               data-agent-annotation-object-id={nodeId}
               data-agent-annotation-object-type="canvas-text"
@@ -302,10 +293,10 @@ export function TextDocumentEditorSurface({
               }
               className="relative mx-auto w-[min(100%,var(--clash-document-reading-width))]"
               onContextMenu={(event) => {
-                if (captureEditorSelection()) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }
+                handleSelectionAnnotationContextMenu(
+                  event,
+                  selectionAnnotationOverlayRef,
+                );
               }}
             >
               <MilkdownEditor

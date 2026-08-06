@@ -1,13 +1,29 @@
 import { createHash, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import type { LoroDoc } from "loro-crdt";
-import { hostMutationSucceeded } from "@clash/shared-types";
-import type { TextAppliedRevision } from "@clash/shared-types";
+import {
+  extractPromptText,
+  appendUnmentionedGlobalReferences,
+  ExecutablePluginBindingSchema,
+  hostMutationSucceeded,
+  MODEL_CARDS,
+  normalizeModelId,
+  parsePromptParts,
+  validateReferenceMedia,
+  validateRefs,
+} from "@clash/shared-types";
+import type {
+  OrderedPromptContentPart,
+  ModelCard,
+  ReferenceMediaMetadata,
+  TextAppliedRevision,
+} from "@clash/shared-types";
 import type { Asset, AssetKind } from "@clash/shared-types/assets";
 import { createMockExternalAigcService, type ExternalAigcService } from "./local-aigc.js";
 import { createLocalMetadataStore } from "./local-metadata-store.js";
 import { assetPathForWrite } from "./local-asset-paths.js";
 import { storeTextRevisionContentBlob } from "./text-revision-content.js";
+import type { ExecutablePluginActionInvoker } from "./plugin-action-runtime.js";
 
 export interface LocalWorkflowProcessorInput {
   doc: LoroDoc;
@@ -25,6 +41,8 @@ export interface LocalWorkflowProcessorOptions {
   mediaBaseUrl?: string;
   timelineRenderer?: LocalTimelineRenderer;
   aigc?: ExternalAigcService;
+  modelCards?: () => Promise<ModelCard[]>;
+  executablePluginAction?: ExecutablePluginActionInvoker;
   textAgent?: {
     generate(input: {
       projectId: string;
@@ -79,12 +97,19 @@ function numberParam(data: Record<string, unknown>, key: string): number | undef
   return undefined;
 }
 
-function promptFromData(data: Record<string, unknown>, fallback: string): string {
+function authoredPromptFromData(data: Record<string, unknown>, fallback: string): string {
   return typeof data.prompt === "string" && data.prompt.trim()
     ? data.prompt
     : typeof data.label === "string" && data.label.trim()
       ? data.label
       : fallback;
+}
+
+/** Flat local adapters consume plain text plus separate reference arrays. Keep
+ * authored @-mentions on the node and collapse them only at this boundary. */
+function providerPromptFromData(data: Record<string, unknown>, fallback: string): string {
+  const authoredPrompt = authoredPromptFromData(data, fallback);
+  return extractPromptText(parsePromptParts(authoredPrompt));
 }
 
 function localAssetReferenceUrl(baseUrl: string, storageKey: string): string {
@@ -271,7 +296,7 @@ async function saveAsset(
   const now = Math.floor(Date.now() / 1000);
   const assetId = `local-asset-${sanitizeStorageSegment(options.taskId)}`;
   const model = modelFromData(options.nodeData, `mock-${options.kind}`);
-  const prompt = promptFromData(options.nodeData, `Mock ${options.kind}`);
+  const prompt = providerPromptFromData(options.nodeData, `Mock ${options.kind}`);
   const asset: Asset & { projectId?: string } = {
     id: assetId,
     userId: typeof options.nodeData.actorUserId === "string" && options.nodeData.actorUserId
@@ -402,6 +427,7 @@ export function createLocalWorkflowProcessor(
       const { doc, projectId } = input;
       const nodes = doc.getMap("nodes");
       const tasks = doc.getMap("tasks");
+      const modelCards = options.modelCards ? await options.modelCards() : MODEL_CARDS;
       let changed = false;
 
       for (const [nodeId, rawNode] of nodes.entries()) {
@@ -409,6 +435,107 @@ export function createLocalWorkflowProcessor(
         const custom = pendingCustomNode(node);
         if (custom) {
           const data = node.data as Record<string, unknown>;
+          const parsedBinding = ExecutablePluginBindingSchema.safeParse(data.pluginBinding);
+          if (parsedBinding.success && options.executablePluginAction) {
+            try {
+              const references = [
+                ...stringList(data.referenceImageAssetIds).map((assetId, index) => ({
+                  slot: "image",
+                  index,
+                  asset: { assetId, uri: `clash-asset://${assetId}`, kind: "image" as const },
+                })),
+                ...stringList(data.referenceVideoAssetIds).map((assetId, index) => ({
+                  slot: "video",
+                  index,
+                  asset: { assetId, uri: `clash-asset://${assetId}`, kind: "video" as const },
+                })),
+                ...stringList(data.referenceAudioAssetIds).map((assetId, index) => ({
+                  slot: "audio",
+                  index,
+                  asset: { assetId, uri: `clash-asset://${assetId}`, kind: "audio" as const },
+                })),
+              ];
+              const prompt = extractPromptText(parsePromptParts(
+                typeof data.prompt === "string"
+                  ? data.prompt
+                  : typeof data.content === "string"
+                    ? data.content
+                    : "",
+              ));
+              const params = data.customActionParams && typeof data.customActionParams === "object"
+                && !Array.isArray(data.customActionParams)
+                ? data.customActionParams as Record<string, any>
+                : {};
+              const taskId = `local-custom-${sanitizeStorageSegment(nodeId)}`;
+              const result = await options.executablePluginAction({
+                binding: parsedBinding.data,
+                taskId,
+                projectId,
+                nodeId,
+                input: {
+                  values: { prompt, ...params },
+                  references,
+                },
+                actor: data.actorType === "agent"
+                  ? {
+                      kind: "agent",
+                      ...(typeof data.actorAgentId === "string" ? { id: data.actorAgentId } : {}),
+                    }
+                  : {
+                      kind: "user",
+                      ...(typeof data.actorUserId === "string" ? { id: data.actorUserId } : {}),
+                    },
+              });
+              if (result.status === "failed") {
+                throw new Error(`Plugin action failed (${result.error.code}): ${result.error.message}`);
+              }
+              const assetOutput = result.outputs.find((output) => output.kind === "asset");
+              const valueOutput = result.outputs.find((output) => output.kind === "value");
+              const nextData: Record<string, unknown> = { ...data, status: "completed" };
+              if (assetOutput?.kind === "asset") {
+                nextData.assetId = assetOutput.asset.assetId;
+              } else if (custom.outputType === "text" && valueOutput?.kind === "value") {
+                const value = valueOutput.value;
+                const text = typeof value === "string"
+                  ? value
+                  : value && typeof value === "object" && !Array.isArray(value)
+                      && typeof value.text === "string"
+                    ? value.text
+                    : value && typeof value === "object" && !Array.isArray(value)
+                        && typeof value.content === "string"
+                      ? value.content
+                      : JSON.stringify(value);
+                await recordGeneratedTextRevision({
+                  dataDir: options.dataDir,
+                  userId,
+                  projectId,
+                  nodeId,
+                  nodeData: data,
+                  content: text,
+                });
+                nextData.content = text;
+              } else {
+                throw new Error(
+                  `Plugin action ${custom.actionId} returned no ${custom.outputType} output.`,
+                );
+              }
+              delete nextData.pendingTask;
+              delete nextData.pendingTaskAt;
+              delete nextData.error;
+              nodes.set(nodeId, { ...node, data: nextData });
+            } catch (error) {
+              const nextData: Record<string, unknown> = {
+                ...data,
+                status: "failed",
+                error: error instanceof Error ? error.message : String(error),
+              };
+              delete nextData.pendingTask;
+              delete nextData.pendingTaskAt;
+              nodes.set(nodeId, { ...node, data: nextData });
+            }
+            changed = true;
+            continue;
+          }
           const actionDef = doc.getMap("customActions").get(custom.actionId) as Record<string, unknown> | undefined;
           if (!actionDef) {
             nodes.set(nodeId, {
@@ -448,11 +575,13 @@ export function createLocalWorkflowProcessor(
             params: data.customActionParams && typeof data.customActionParams === "object"
               ? data.customActionParams
               : {},
-            prompt: typeof data.prompt === "string"
-              ? data.prompt
-              : typeof data.content === "string"
-                ? data.content
-                : "",
+            prompt: extractPromptText(parsePromptParts(
+              typeof data.prompt === "string"
+                ? data.prompt
+                : typeof data.content === "string"
+                  ? data.content
+                  : "",
+            )),
             outputType: custom.outputType,
             refs,
             referenceImageR2Keys,
@@ -554,28 +683,162 @@ export function createLocalWorkflowProcessor(
         const taskId = `local-gen-${sanitizeStorageSegment(nodeId)}`;
         const data = node.data as Record<string, unknown>;
         try {
-          const prompt = promptFromData(data, `Mock ${kind}`);
+          const authoredPrompt = authoredPromptFromData(data, `Mock ${kind}`);
+          const parsedPromptParts = parsePromptParts(authoredPrompt);
+          const prompt = extractPromptText(parsedPromptParts);
           const model = modelFromData(data, `mock-${kind}`);
-          const directReferenceUrls = stringList(data.referenceImageUrls);
-          const referenceImageKeys = kind === "image"
-            ? [
-                ...stringList(data.referenceImageR2Keys),
-                ...await createLocalMetadataStore(options.dataDir)
-                  .resolveStorageKeys(projectId, stringList(data.referenceImageAssetIds)),
-              ]
-            : [];
+          const normalizedModel = normalizeModelId(model) ?? model;
+          const modelCard = modelCards.find((card) => card.id === normalizedModel);
+          const isStartEnd = !!modelCard?.input.inputMode.startEnd;
+          const metadataStore = createLocalMetadataStore(options.dataDir);
+          const referenceImageAssetIds = stringList(data.referenceImageAssetIds);
+          const referenceVideoAssetIds = stringList(data.referenceVideoAssetIds);
+          const referenceAudioAssetIds = stringList(data.referenceAudioAssetIds);
+          const directReferenceImageUrls = stringList(data.referenceImageUrls);
+          const directReferenceVideoUrls = stringList(data.referenceVideoUrls);
+          const directReferenceAudioUrls = stringList(data.referenceAudioUrls);
+          const directReferenceImageKeys = stringList(data.referenceImageR2Keys);
+          const directReferenceVideoKeys = stringList(data.referenceVideoR2Keys);
+          const directReferenceAudioKeys = stringList(data.referenceAudioR2Keys);
+          if (modelCard) {
+            const referenceError = validateRefs(modelCard, {
+              image: Math.max(
+                referenceImageAssetIds.length,
+                directReferenceImageUrls.length,
+                directReferenceImageKeys.length,
+              ),
+              video: Math.max(
+                referenceVideoAssetIds.length,
+                directReferenceVideoUrls.length,
+                directReferenceVideoKeys.length,
+              ),
+              audio: Math.max(
+                referenceAudioAssetIds.length,
+                directReferenceAudioUrls.length,
+                directReferenceAudioKeys.length,
+              ),
+            }, { prompt });
+            if (referenceError) throw new Error(referenceError);
+          }
+          const [referenceImageKeys, referenceVideoKeys, referenceAudioKeys] = await Promise.all([
+            metadataStore.resolveStorageKeys(projectId, referenceImageAssetIds),
+            metadataStore.resolveStorageKeys(projectId, referenceVideoAssetIds),
+            metadataStore.resolveStorageKeys(projectId, referenceAudioAssetIds),
+          ]);
+          if (modelCard) {
+            const localMetadata = await metadataStore.load();
+            const assetById = new Map(localMetadata.assets.map((asset) => [asset.id, asset]));
+            const mediaReferences: ReferenceMediaMetadata[] = [
+              ...referenceImageAssetIds.map((assetId) => ({ assetId, modality: "image" as const })),
+              ...referenceVideoAssetIds.map((assetId) => ({ assetId, modality: "video" as const })),
+              ...referenceAudioAssetIds.map((assetId) => ({ assetId, modality: "audio" as const })),
+            ].flatMap(({ assetId, modality }) => {
+              const metadata = assetById.get(assetId)?.metadata;
+              if (!metadata) return [];
+              return [{
+                modality,
+                contentType: metadata.contentType,
+                fileName: metadata.originalName,
+                bytes: metadata.bytes,
+                width: metadata.width,
+                height: metadata.height,
+                durationMs: metadata.durationMs,
+                frameRate: metadata.frameRate,
+                videoCodec: metadata.videoCodec,
+                audioCodec: metadata.audioCodec,
+                embedded: !!options.mediaBaseUrl,
+              }];
+            });
+            const mediaError = validateReferenceMedia(modelCard, mediaReferences);
+            if (mediaError) throw new Error(mediaError);
+          }
+          referenceImageKeys.unshift(...directReferenceImageKeys);
+          referenceVideoKeys.unshift(...directReferenceVideoKeys);
+          referenceAudioKeys.unshift(...directReferenceAudioKeys);
           const referenceImageUrls = [
-            ...directReferenceUrls,
+            ...directReferenceImageUrls,
             ...(options.mediaBaseUrl
               ? referenceImageKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
               : []),
           ];
+          const referenceVideoUrls = [
+            ...directReferenceVideoUrls,
+            ...(options.mediaBaseUrl
+              ? referenceVideoKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
+              : []),
+          ];
+          const referenceAudioUrls = [
+            ...directReferenceAudioUrls,
+            ...(options.mediaBaseUrl
+              ? referenceAudioKeys.map((key) => localAssetReferenceUrl(options.mediaBaseUrl!, key))
+              : []),
+          ];
+          let orderedContentParts: OrderedPromptContentPart[] = [];
+          const referenceBindingType = modelCard?.input.referenceBinding?.type;
+          if (referenceBindingType === "ordered-content-parts" || referenceBindingType === "positional-tokens") {
+            const imageUrlByAssetId = new Map(referenceImageAssetIds.flatMap((assetId, index) =>
+              referenceImageUrls[index] ? [[assetId, referenceImageUrls[index]] as const] : []));
+            const videoUrlByAssetId = new Map(referenceVideoAssetIds.flatMap((assetId, index) =>
+              referenceVideoUrls[index] ? [[assetId, referenceVideoUrls[index]] as const] : []));
+            const audioUrlByAssetId = new Map(referenceAudioAssetIds.flatMap((assetId, index) =>
+              referenceAudioUrls[index] ? [[assetId, referenceAudioUrls[index]] as const] : []));
+            const inlineParts: OrderedPromptContentPart[] = [];
+
+            for (const part of parsedPromptParts) {
+              if (part.type === "text") {
+                if (part.text) inlineParts.push({ type: "text", text: part.text });
+                continue;
+              }
+              if (!part.nodeId) continue;
+              const referencedNode = nodes.get(part.nodeId) as Record<string, any> | undefined;
+              const assetId = typeof referencedNode?.data?.assetId === "string"
+                ? referencedNode.data.assetId
+                : undefined;
+              const modality = referencedNode?.type;
+              const url = assetId
+                ? modality === "image"
+                  ? imageUrlByAssetId.get(assetId)
+                  : modality === "video"
+                    ? videoUrlByAssetId.get(assetId)
+                    : modality === "audio"
+                      ? audioUrlByAssetId.get(assetId)
+                      : undefined
+                : undefined;
+              if (!url || (modality !== "image" && modality !== "video" && modality !== "audio")) continue;
+              inlineParts.push({ type: modality, url });
+            }
+
+            orderedContentParts = appendUnmentionedGlobalReferences(
+              inlineParts,
+              [
+                ...referenceImageUrls.map((url) => ({ type: "image" as const, url })),
+                ...referenceVideoUrls.map((url) => ({ type: "video" as const, url })),
+                ...referenceAudioUrls.map((url) => ({ type: "audio" as const, url })),
+              ],
+            );
+            if (!orderedContentParts.some((part) => part.type === "text") && prompt) {
+              orderedContentParts.unshift({ type: "text", text: prompt });
+            }
+          }
           const common = {
             taskId,
+            projectId,
+            nodeId,
+            actorType: data.actorType === "agent" ? "agent" as const : "user" as const,
+            actorUserId: typeof data.actorUserId === "string" ? data.actorUserId : userId,
+            ...(typeof data.actorAgentId === "string" ? { actorAgentId: data.actorAgentId } : {}),
             prompt,
             model,
             modelParams: modelParams(data),
-            ...(referenceImageUrls.length ? { referenceImageUrls } : {}),
+            ...(ExecutablePluginBindingSchema.safeParse(data.pluginBinding).success
+              ? { pluginBinding: ExecutablePluginBindingSchema.parse(data.pluginBinding) }
+              : {}),
+            ...(isStartEnd && referenceImageUrls[0] ? { startFrameUrl: referenceImageUrls[0] } : {}),
+            ...(isStartEnd && referenceImageUrls[1] ? { endFrameUrl: referenceImageUrls[1] } : {}),
+            ...(!isStartEnd && referenceImageUrls.length ? { referenceImageUrls } : {}),
+            ...(referenceVideoUrls.length ? { referenceVideoUrls } : {}),
+            ...(referenceAudioUrls.length ? { referenceAudioUrls } : {}),
+            ...(orderedContentParts.length ? { orderedContentParts } : {}),
           };
           if (kind === "text") {
             let generated;
@@ -653,6 +916,7 @@ export function createLocalWorkflowProcessor(
             ...data,
             status: "completed",
             assetId: asset.id,
+            ...(generated.pluginBinding ? { pluginBinding: generated.pluginBinding } : {}),
           };
           delete (nextData as Record<string, unknown>).pendingTask;
           delete (nextData as Record<string, unknown>).pendingTaskAt;

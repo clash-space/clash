@@ -43,6 +43,18 @@ it("reports inactive when no local host record exists", async () => {
   });
 });
 
+it("reports inactive instead of crossing a mismatched runtime profile", async () => {
+  const runDir = await mkdtemp(join(tmpdir(), "clash-cli-host-"));
+  await writeFile(join(runDir, "host.json"), JSON.stringify({
+    ...record(),
+    profile: "prod",
+  }), "utf8");
+
+  expect(await getHostDiscoveryStatus({ runDir, profile: "dev" })).toEqual({
+    status: "inactive",
+  });
+});
+
 it("removes only the matching local host discovery record", async () => {
   const runDir = await mkdtemp(join(tmpdir(), "clash-cli-host-"));
   await writeFile(join(runDir, "host.json"), JSON.stringify(record()), "utf8");

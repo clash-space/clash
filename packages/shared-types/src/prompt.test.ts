@@ -6,7 +6,42 @@ import {
   extractAssetRefs,
   buildMention,
   hasAssetMentions,
+  renderPositionalReferencePrompt,
+  composeOrderedPromptContent,
 } from "./prompt";
+
+describe("composeOrderedPromptContent", () => {
+  it("preserves inline order and appends every unmentioned global reference at the end", () => {
+    expect(composeOrderedPromptContent({
+      prompt: "fallback prompt",
+      inlineParts: [
+        { type: "text", text: "Use " },
+        { type: "image", url: "https://media.test/inline.png" },
+      ],
+      globalReferences: [
+        { type: "image", url: "https://media.test/inline.png" },
+        { type: "video", url: "https://media.test/global.mp4" },
+        { type: "audio", url: "https://media.test/global.wav" },
+      ],
+    })).toEqual([
+      { type: "text", text: "Use " },
+      { type: "image", url: "https://media.test/inline.png" },
+      { type: "video", url: "https://media.test/global.mp4" },
+      { type: "audio", url: "https://media.test/global.wav" },
+    ]);
+  });
+
+  it("retains the authored prompt when references are only global", () => {
+    expect(composeOrderedPromptContent({
+      prompt: "Keep the subject",
+      inlineParts: [],
+      globalReferences: [{ type: "image", url: "https://media.test/global.png" }],
+    })).toEqual([
+      { type: "text", text: "Keep the subject" },
+      { type: "image", url: "https://media.test/global.png" },
+    ]);
+  });
+});
 
 describe("parsePromptParts", () => {
   it("parses plain text as single text part", () => {
@@ -203,5 +238,26 @@ describe("hasAssetMentions", () => {
 
   it("returns false for regular @ signs", () => {
     expect(hasAssetMentions("email@example.com")).toBe(false);
+  });
+});
+
+describe("renderPositionalReferencePrompt", () => {
+  it("renders provider tokens with modality-scoped indexes and preserves repeated inline references", () => {
+    expect(renderPositionalReferencePrompt({
+      parts: [
+        { type: "text", text: "Use " },
+        { type: "image", url: "image-b" },
+        { type: "text", text: " then " },
+        { type: "video", url: "video-a" },
+        { type: "text", text: " and return to " },
+        { type: "image", url: "image-b" },
+      ],
+      references: {
+        image: ["image-a", "image-b"],
+        video: ["video-a"],
+        audio: [],
+      },
+      tokens: { image: "[Image{n}]", video: "[Video{n}]", audio: "[Audio{n}]" },
+    })).toBe("Use [Image2] then [Video1] and return to [Image2]");
   });
 });

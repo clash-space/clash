@@ -1,6 +1,7 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createPythonLocalAsrRuntime,
@@ -17,6 +18,13 @@ import {
   createClashUserConfigStore,
   type ClashUserConfigStore,
 } from "./user-config.js";
+import { clashHomeForLocalDataDir } from "./local-paths.js";
+import {
+  createManagedLocalModelPythonEnvironment,
+  type ManagedLocalModelPythonEnvironment,
+  withManagedPythonAsrRuntime,
+  withManagedPythonTtsRuntime,
+} from "./managed-local-model-python.js";
 
 export type LocalAsrProvider = "builtin-funasr";
 export type LocalTtsProvider = "builtin-piper";
@@ -66,6 +74,13 @@ export type LocalAudioConfigReadState = PublicLocalAudioConfig & {
   updated_at: string;
 };
 
+export type PublicLocalVoiceInputConfig = Pick<PublicLocalAudioConfig, "asr">;
+
+export interface LocalVoiceInputSelection {
+  enabled: boolean;
+  model: string;
+}
+
 export interface PublicLocalSpeechModelStatus {
   capability: LocalSpeechCapability;
   model: string;
@@ -82,11 +97,18 @@ export interface BuiltinFunAsrTranscribeInput {
 export interface LocalAudioConfigStore {
   getPublicConfig(): Promise<PublicLocalAudioConfig>;
   getReadState?(): Promise<LocalAudioConfigReadState>;
+  getVoiceInputConfig?(): Promise<PublicLocalVoiceInputConfig>;
+  getVoiceInputSelection?(): Promise<LocalVoiceInputSelection>;
   getModelStatus(input: { capability?: unknown; model?: unknown }): Promise<PublicLocalSpeechModelStatus>;
   updateFromRequest(input: Record<string, unknown>): Promise<PublicLocalAudioConfig>;
   installBuiltin(input?: { capability?: unknown; model?: unknown }): Promise<PublicLocalAudioConfig>;
   removeBuiltin(input: { capability?: unknown; model?: unknown }): Promise<PublicLocalAudioConfig>;
-  transcribe(input: { file: File; language?: string | null }): Promise<LocalAsrTranscription>;
+  warmupVoiceInput?(input?: { model?: string }): Promise<LocalModelStatus>;
+  transcribe(input: {
+    file: File;
+    language?: string | null;
+    model?: string;
+  }): Promise<LocalAsrTranscription>;
   synthesize(input: {
     model: string;
     text: string;
@@ -125,6 +147,9 @@ interface BuiltinFunAsrStatus {
 interface LocalAudioConfigStoreOptions {
   dataDir: string;
   pythonBinary?: string;
+  pythonSdkPath?: string;
+  clashHome?: string;
+  managedPythonEnvironment?: ManagedLocalModelPythonEnvironment;
   asrRuntime?: LocalAsrRuntimePort;
   ttsRuntime?: LocalTtsRuntimePort;
   builtinStatus?: () => Promise<BuiltinFunAsrStatus>;
@@ -138,6 +163,12 @@ const DEFAULT_TTS_PROVIDER: LocalTtsProvider = "builtin-piper";
 const DEFAULT_TTS_MODEL = "zh_CN-huayan-medium";
 const DEFAULT_PYTHON_BINARY = "python3";
 const LOCAL_AUDIO_CONFIG_KEY = "local-audio-config";
+const RUNTIME_STATUS_CACHE_TTL_MS = 30_000;
+
+interface CachedRuntimeStatus {
+  value: LocalModelStatus;
+  expiresAt: number;
+}
 
 function normalizeProvider(value: unknown): LocalAsrProvider {
   if (value === undefined || value === null || value === "") {
@@ -315,6 +346,12 @@ async function writeConfig(store: ClashUserConfigStore, config: LocalAudioConfig
 }
 
 function defaultClashSdkPythonPath(): string {
+  const explicit = process.env.CLASH_PYTHON_SDK_PATH?.trim();
+  if (explicit) return resolve(explicit);
+  const inherited = process.env.PYTHONPATH
+    ?.split(delimiter)
+    .find((entry) => entry && existsSync(join(entry, "clash_sdk", "local_models", "rpc.py")));
+  if (inherited) return resolve(inherited);
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..", "packages", "clash-sdk", "python");
 }
 
@@ -322,15 +359,61 @@ function displayErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function createRuntimeStatusCache() {
+  const cached = new Map<string, CachedRuntimeStatus>();
+  const inFlight = new Map<string, Promise<LocalModelStatus>>();
+  let generation = 0;
+
+  return {
+    read(model: string, load: () => Promise<LocalModelStatus>): Promise<LocalModelStatus> {
+      const now = Date.now();
+      const existing = cached.get(model);
+      if (existing && existing.expiresAt > now) return Promise.resolve(existing.value);
+
+      const pending = inFlight.get(model);
+      if (pending) return pending;
+
+      const requestGeneration = generation;
+      const request = Promise.resolve()
+        .then(load)
+        .catch((error: unknown): LocalModelStatus => ({
+          available: false,
+          message: displayErrorMessage(error),
+        }))
+        .then((status) => {
+          if (generation === requestGeneration) {
+            cached.set(model, {
+              value: status,
+              expiresAt: Date.now() + RUNTIME_STATUS_CACHE_TTL_MS,
+            });
+          }
+          return status;
+        })
+        .finally(() => {
+          if (inFlight.get(model) === request) inFlight.delete(model);
+        });
+      inFlight.set(model, request);
+      return request;
+    },
+
+    invalidate(): void {
+      generation += 1;
+      cached.clear();
+      inFlight.clear();
+    },
+  };
+}
+
 function createHookBackedRuntime(
   options: LocalAudioConfigStoreOptions,
   pythonBinary: string,
   cacheDir: string,
+  pythonPath: string,
 ): LocalAsrRuntimePort | null {
   if (!options.builtinStatus && !options.builtinInstall && !options.builtinTranscribe) return null;
   const fallback = createPythonLocalAsrRuntime({
     pythonBinary,
-    pythonPath: defaultClashSdkPythonPath(),
+    pythonPath,
     cacheDir,
   });
   return {
@@ -345,6 +428,10 @@ function createHookBackedRuntime(
         return;
       }
       await fallback.deploy(input);
+    },
+    async warmup({ model }) {
+      if (options.builtinTranscribe) return { available: true };
+      return fallback.warmup?.({ model }) ?? fallback.status({ model });
     },
     async transcribe(input) {
       if (!options.builtinTranscribe) return fallback.transcribe(input);
@@ -366,12 +453,13 @@ function createDefaultAsrRuntime(
   options: LocalAudioConfigStoreOptions,
   pythonBinary: string,
   cacheDir: string,
+  pythonPath: string,
 ): LocalAsrRuntimePort {
   return options.asrRuntime
-    ?? createHookBackedRuntime(options, pythonBinary, cacheDir)
+    ?? createHookBackedRuntime(options, pythonBinary, cacheDir, pythonPath)
     ?? createPythonLocalAsrRuntime({
       pythonBinary,
-      pythonPath: defaultClashSdkPythonPath(),
+      pythonPath,
       cacheDir,
     });
 }
@@ -380,11 +468,12 @@ function createDefaultTtsRuntime(
   options: LocalAudioConfigStoreOptions,
   pythonBinary: string,
   cacheDir: string,
+  pythonPath: string,
 ): LocalTtsRuntimePort {
   return options.ttsRuntime
     ?? createPythonLocalTtsRuntime({
       pythonBinary,
-      pythonPath: defaultClashSdkPythonPath(),
+      pythonPath,
       cacheDir,
     });
 }
@@ -414,14 +503,43 @@ async function transcribeWithRuntime(
 
 export function createLocalAudioConfigStore(
   options: LocalAudioConfigStoreOptions,
-): LocalAudioConfigStore {
+): LocalAudioConfigStore & {
+  getVoiceInputConfig(): Promise<PublicLocalVoiceInputConfig>;
+  getVoiceInputSelection(): Promise<LocalVoiceInputSelection>;
+  warmupVoiceInput(input?: { model?: string }): Promise<LocalModelStatus>;
+} {
   const configStore = createClashUserConfigStore(options.dataDir);
   const legacyStore = createSqliteLocalConfigStore(options.dataDir);
-  const pythonBinary = options.pythonBinary ?? DEFAULT_PYTHON_BINARY;
+  const explicitPythonBinary = options.pythonBinary?.trim()
+    || process.env.CLASH_LOCAL_MODELS_PYTHON?.trim();
+  const pythonSdkPath = options.pythonSdkPath ?? defaultClashSdkPythonPath();
+  const usesManagedPython = !explicitPythonBinary;
+  const managedPythonEnvironment = usesManagedPython
+    ? options.managedPythonEnvironment ?? createManagedLocalModelPythonEnvironment({
+      clashHome: options.clashHome ?? clashHomeForLocalDataDir(options.dataDir),
+      sdkPythonPath: pythonSdkPath,
+    })
+    : null;
+  const pythonBinary = explicitPythonBinary
+    ?? managedPythonEnvironment?.pythonBinary
+    ?? DEFAULT_PYTHON_BINARY;
   const asrCacheDir = join(options.dataDir, "models", "speech", "asr");
-  const asrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir);
+  const defaultAsrRuntime = createDefaultAsrRuntime(options, pythonBinary, asrCacheDir, pythonSdkPath);
+  const asrRuntime = managedPythonEnvironment
+    && !options.asrRuntime
+    && !options.builtinStatus
+    && !options.builtinInstall
+    && !options.builtinTranscribe
+    ? withManagedPythonAsrRuntime(defaultAsrRuntime, managedPythonEnvironment)
+    : defaultAsrRuntime;
   const ttsCacheDir = join(options.dataDir, "models", "speech", "tts");
-  const ttsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir);
+  const defaultTtsRuntime = createDefaultTtsRuntime(options, pythonBinary, ttsCacheDir, pythonSdkPath);
+  const ttsRuntime = managedPythonEnvironment && !options.ttsRuntime
+    ? withManagedPythonTtsRuntime(defaultTtsRuntime, managedPythonEnvironment)
+    : defaultTtsRuntime;
+  const asrStatusCache = createRuntimeStatusCache();
+  const ttsStatusCache = createRuntimeStatusCache();
+  const asrWarmups = new Map<string, Promise<LocalModelStatus>>();
 
   let migration: Promise<void> | null = null;
   async function ensureMigrated(): Promise<void> {
@@ -441,19 +559,16 @@ export function createLocalAudioConfigStore(
   }
 
   async function currentAsrStatus(model: string): Promise<LocalModelStatus> {
-    try {
-      return await asrRuntime.status({ model, cacheDir: asrCacheDir });
-    } catch (error) {
-      return { available: false, message: displayErrorMessage(error) };
-    }
+    return asrStatusCache.read(model, () => asrRuntime.status({ model, cacheDir: asrCacheDir }));
   }
 
   async function currentTtsStatus(model: string): Promise<LocalModelStatus> {
-    try {
-      return await ttsRuntime.status({ model, cacheDir: ttsCacheDir });
-    } catch (error) {
-      return { available: false, message: displayErrorMessage(error) };
-    }
+    return ttsStatusCache.read(model, () => ttsRuntime.status({ model, cacheDir: ttsCacheDir }));
+  }
+
+  function invalidateRuntimeStatus(capability?: LocalSpeechCapability): void {
+    if (!capability || capability === "speech-to-text") asrStatusCache.invalidate();
+    if (!capability || capability === "text-to-speech") ttsStatusCache.invalidate();
   }
 
   async function currentPublicConfig(config: LocalAudioConfigFile): Promise<PublicLocalAudioConfig> {
@@ -483,6 +598,23 @@ export function createLocalAudioConfigStore(
       return currentReadState(config);
     },
 
+    async getVoiceInputConfig() {
+      const config = await current();
+      const asrStatus = config.asrEnabled
+        ? await currentAsrStatus(config.asrModel)
+        : { available: false };
+      const { asr } = await publicConfig(config, asrStatus, { available: false });
+      return { asr };
+    },
+
+    async getVoiceInputSelection() {
+      const config = await current();
+      return {
+        enabled: config.asrEnabled,
+        model: config.asrModel,
+      };
+    },
+
     async getModelStatus(input) {
       const capability = normalizeCapability(input.capability);
       const config = await current();
@@ -497,6 +629,27 @@ export function createLocalAudioConfigStore(
         available: status.available,
         ...(status.message ? { message: status.message } : {}),
       };
+    },
+
+    async warmupVoiceInput(input = {}) {
+      const config = await current();
+      if (!config.asrEnabled) {
+        throw new LocalAudioConfigError(
+          "Voice input is not enabled. Open Settings > Voice input and enable it.",
+          409,
+        );
+      }
+      const model = normalizeModel(input.model, config.asrModel);
+      const existing = asrWarmups.get(model);
+      if (existing) return existing;
+      const warming = (
+        asrRuntime.warmup?.({ model, cacheDir: asrCacheDir })
+        ?? currentAsrStatus(model)
+      ).finally(() => {
+        if (asrWarmups.get(model) === warming) asrWarmups.delete(model);
+      });
+      asrWarmups.set(model, warming);
+      return warming;
     },
 
     async updateFromRequest(input) {
@@ -533,6 +686,7 @@ export function createLocalAudioConfigStore(
         updatedAt: new Date().toISOString(),
       };
       await writeConfig(configStore, next);
+      invalidateRuntimeStatus();
       return currentPublicConfig(next);
     },
 
@@ -549,6 +703,7 @@ export function createLocalAudioConfigStore(
         } else {
           await asrRuntime.deploy({ model, kind: "asr", cacheDir: asrCacheDir });
         }
+        invalidateRuntimeStatus(capability);
         const deployedStatus = capability === "text-to-speech"
           ? await currentTtsStatus(model)
           : await currentAsrStatus(model);
@@ -597,6 +752,7 @@ export function createLocalAudioConfigStore(
         } else {
           throw new Error("Selected ASR runtime does not support removing cached models");
         }
+        invalidateRuntimeStatus(capability);
       } catch (error) {
         if (error instanceof LocalAudioConfigError) throw error;
         const label = capability === "text-to-speech" ? "TTS" : "ASR";
@@ -619,14 +775,15 @@ export function createLocalAudioConfigStore(
         );
       }
 
-      const status = await currentAsrStatus(config.asrModel);
+      const model = normalizeModel(input.model, config.asrModel);
+      const status = await currentAsrStatus(model);
       if (!status.available) {
         throw new LocalAudioConfigError(
           `Selected ASR model is not deployed. Open Settings > Models and deploy it.${status.message ? ` ${status.message}.` : ""}`,
           409,
         );
       }
-      return transcribeWithRuntime(asrRuntime, input, config.asrModel);
+      return transcribeWithRuntime(asrRuntime, input, model);
     },
 
     async synthesize(input) {

@@ -1,3 +1,4 @@
+import { ClashRuntimeProfile } from '@clash/shared-runtime/local-paths';
 import { LocalHostDiscoveryRecord } from '@clash/shared-runtime';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -19,7 +20,7 @@ type StartHost = (context: {
     dataDir: string;
     env: NodeJS.ProcessEnv;
 }) => Promise<OwnedPluginHost>;
-declare function readActivePluginHost(runDir: string): Promise<PluginHostRecord | undefined>;
+declare function readActivePluginHost(runDir: string, profile?: ClashRuntimeProfile): Promise<PluginHostRecord | undefined>;
 declare function createPluginHostManager(options?: {
     ownerClientId?: string;
     runDir?: string;

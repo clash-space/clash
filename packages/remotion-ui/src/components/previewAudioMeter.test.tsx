@@ -34,7 +34,7 @@ describe('preview audio meter', () => {
 
   it('uses theme surfaces and the custom accent instead of light and green literals', () => {
     const source = readFileSync(
-      resolve(process.cwd(), 'packages/remotion-ui/src/components/previewAudioMeter.tsx'),
+      resolve(process.cwd(), 'src/components/previewAudioMeter.tsx'),
       'utf8',
     );
 

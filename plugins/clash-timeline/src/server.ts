@@ -5,13 +5,12 @@ import {
   registerAppResource,
   registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
-import { z } from "zod";
 import {
   createTimelineAdapter,
-  timelineWorkspaceCwd,
   type TimelineAdapter,
 } from "./adapter.js";
 import {
+  TIMELINE_PLUGIN_SURFACE_BINDINGS,
   TIMELINE_PLUGIN_TOOL_NAMES,
   type TimelinePluginToolName,
   type TimelineToolInput,
@@ -21,81 +20,10 @@ import {
   TIMELINE_APP_MIME_TYPE,
   TIMELINE_APP_RESOURCE_URI,
 } from "./app.js";
-
-const scope = {
-  cwd: z.string().min(1).optional().describe("Absolute project workspace path containing .clash/project.toml"),
-  projectId: z.string().min(1).optional().describe("Project ID override; normally resolved from the workspace marker"),
-};
-
-const definitions: Record<TimelinePluginToolName, {
-  title: string;
-  description: string;
-  inputSchema: Record<string, z.ZodTypeAny>;
-  annotations?: Record<string, boolean>;
-}> = {
-  clash_timeline_open: {
-    title: "Open Clash Timeline",
-    description: "Open the interactive Timeline GUI. Pass the current task workspace cwd so the plugin resolves the real project.",
-    inputSchema: { ...scope, timelineId: z.string().min(1).optional() },
-    annotations: { readOnlyHint: true },
-  },
-  clash_timeline_list: {
-    title: "List timelines",
-    description: "List Project Timeline entities and their Project or Canvas ownership.",
-    inputSchema: scope,
-    annotations: { readOnlyHint: true },
-  },
-  clash_timeline_get: {
-    title: "Read timeline",
-    description: "Read one Timeline entity, its revision, ownership, tracks, and items.",
-    inputSchema: { ...scope, timelineId: z.string().min(1) },
-    annotations: { readOnlyHint: true },
-  },
-  clash_timeline_create: {
-    title: "Create timeline",
-    description: "Create a standalone Project Timeline through the Clash CLI contract.",
-    inputSchema: {
-      ...scope,
-      timelineId: z.string().min(1),
-      name: z.string().min(1),
-    },
-  },
-  clash_timeline_save: {
-    title: "Save timeline",
-    description: "Read the current Timeline, write its YAML projection, validate it, and apply it with read-proof semantics.",
-    inputSchema: {
-      ...scope,
-      timelineId: z.string().min(1),
-      state: z.record(z.string(), z.unknown()),
-    },
-  },
-  clash_timeline_attach: {
-    title: "Attach timeline to Canvas",
-    description: "Move a standalone Timeline into a Canvas as a Timeline Action.",
-    inputSchema: {
-      ...scope,
-      timelineId: z.string().min(1),
-      canvasId: z.string().min(1),
-      nodeId: z.string().min(1).optional(),
-    },
-  },
-  clash_timeline_detach: {
-    title: "Detach timeline",
-    description: "Move a Canvas-owned Timeline back to the Project root.",
-    inputSchema: { ...scope, timelineId: z.string().min(1) },
-  },
-  clash_timeline_copy: {
-    title: "Copy timeline",
-    description: "Copy a Canvas-owned Timeline Action into another Canvas.",
-    inputSchema: {
-      ...scope,
-      timelineId: z.string().min(1),
-      canvasId: z.string().min(1),
-      newTimelineId: z.string().min(1).optional(),
-      newNodeId: z.string().min(1).optional(),
-    },
-  },
-};
+import {
+  timelineOperationMetadata,
+} from "./timeline-contract-adapter.js";
+import { timelineMcpExecutor } from "./timeline-mcp-executors.js";
 
 function structured(value: unknown): Record<string, unknown> {
   if (Array.isArray(value)) return { items: value };
@@ -103,63 +31,73 @@ function structured(value: unknown): Record<string, unknown> {
   return { value };
 }
 
-function summary(name: TimelinePluginToolName, value: unknown): string {
-  if (name === "clash_timeline_open") {
-    const count = Array.isArray((value as { timelines?: unknown[] })?.timelines)
-      ? (value as { timelines: unknown[] }).timelines.length
-      : 0;
-    return `Opened Clash Timeline with ${count} timeline${count === 1 ? "" : "s"}.`;
-  }
-  if (name === "clash_timeline_save") return "Timeline projection validated and applied.";
-  return JSON.stringify(value);
-}
+export type TimelineToolErrorPayload = {
+  code: string;
+  message: string;
+  retryTool?: TimelinePluginToolName;
+  issues?: Array<{
+    ruleId: string;
+    path: Array<string | number>;
+    message: string;
+  }>;
+};
 
-async function invoke(
-  name: TimelinePluginToolName,
-  input: TimelineToolInput,
-  adapter: TimelineAdapter,
-): Promise<unknown> {
-  switch (name) {
-    case "clash_timeline_open": {
-      const timelines = await adapter.list(input);
-      const selected = input.timelineId
-        ? timelines.find((timeline) => timeline.id === input.timelineId)
-        : timelines[0];
-      if (input.timelineId && !selected) {
-        throw new Error(`Timeline ${input.timelineId} not found`);
-      }
-      return { cwd: timelineWorkspaceCwd(input), timelines, selected };
-    }
-    case "clash_timeline_list":
-      return adapter.list(input);
-    case "clash_timeline_get":
-      return { timeline: await adapter.get(input) };
-    case "clash_timeline_create":
-      return adapter.create(input);
-    case "clash_timeline_save":
-      return adapter.save(input);
-    case "clash_timeline_attach":
-      return adapter.attach(input);
-    case "clash_timeline_detach":
-      return adapter.detach(input);
-    case "clash_timeline_copy":
-      return adapter.copy(input);
-  }
+export function timelineToolErrorPayload(error: unknown): TimelineToolErrorPayload {
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  const explicitError = rawMessage.match(
+    /(?:^|[\r\n])\s*(?:Error:\s*)?([A-Z][A-Z0-9_]+:[^\r\n]*)/,
+  )?.[1]?.trim();
+  const message = explicitError ?? rawMessage;
+  const explicitCode = message.match(/^([A-Z][A-Z0-9_]+):/)?.[1];
+  const code = explicitCode
+    ?? (/baseRevisionId is required|read .* before saving/i.test(message)
+      ? "READ_REQUIRED"
+      : /not found/i.test(message)
+        ? "TIMELINE_NOT_FOUND"
+        : /validation|Timeline item|\berror:/i.test(message)
+          ? "TIMELINE_DSL_INVALID"
+          : "TIMELINE_OPERATION_FAILED");
+  const retryTool: TimelinePluginToolName | undefined =
+    code === "STALE_TIMELINE" || code === "STALE_READ" || code === "READ_REQUIRED"
+      ? "clash_timeline_get"
+      : code === "TIMELINE_DSL_INVALID"
+        ? "clash_timeline_schema"
+        : code === "TIMELINE_NOT_FOUND"
+          ? "clash_timeline_list"
+          : undefined;
+  const issues = error && typeof error === "object" && Array.isArray(
+    (error as { issues?: unknown }).issues,
+  )
+    ? (error as TimelineToolErrorPayload).issues
+    : undefined;
+  return {
+    code,
+    message,
+    ...(retryTool ? { retryTool } : {}),
+    ...(issues ? { issues } : {}),
+  };
 }
 
 export function registerTimelinePluginMcp(
   server: Pick<McpServer, "registerTool" | "registerResource">,
   adapter: TimelineAdapter,
   bundledAppJavascript: string,
+  options: { appSurfaces?: boolean } = {},
 ): void {
+  const appSurfaces = options.appSurfaces ?? false;
   for (const name of TIMELINE_PLUGIN_TOOL_NAMES) {
-    const definition = definitions[name];
+    if (!appSurfaces && name === "clash_timeline_open") continue;
+    const binding = TIMELINE_PLUGIN_SURFACE_BINDINGS[name];
+    const executor = timelineMcpExecutor(binding.operationId);
+    const operation = timelineOperationMetadata(name)!;
     registerAppTool(server, name, {
-      title: definition.title,
-      description: definition.description,
-      inputSchema: definition.inputSchema,
-      annotations: definition.annotations,
+      title: executor.title,
+      description: operation.description,
+      inputSchema: executor.inputSchema,
+      outputSchema: executor.outputSchema,
+      annotations: { readOnlyHint: operation.readOnly },
       _meta: {
+        "clash/timelineOperation": operation,
         ui: {
           ...(name === "clash_timeline_open"
             ? { resourceUri: TIMELINE_APP_RESOURCE_URI }
@@ -167,24 +105,25 @@ export function registerTimelinePluginMcp(
           visibility: ["model", "app"],
         },
       },
-    }, async (input) => {
+    }, async (input: unknown) => {
       try {
-        const value = await invoke(name, input as TimelineToolInput, adapter);
+        const value = await executor.execute(input as TimelineToolInput, adapter);
         return {
-          content: [{ type: "text" as const, text: summary(name, value) }],
+          content: [{ type: "text" as const, text: executor.summary(value) }],
           structuredContent: structured(value),
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const structuredError = timelineToolErrorPayload(error);
         return {
-          content: [{ type: "text" as const, text: message }],
+          content: [{ type: "text" as const, text: structuredError.message }],
+          structuredContent: { error: structuredError },
           isError: true,
         };
       }
     });
   }
 
-  registerAppResource(server, "Clash Timeline", TIMELINE_APP_RESOURCE_URI, {
+  if (appSurfaces) registerAppResource(server, "Clash Timeline", TIMELINE_APP_RESOURCE_URI, {
     description: "Interactive Timeline editor backed by Clash read-proof and apply behavior",
   }, async () => ({
     contents: [{

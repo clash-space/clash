@@ -16,6 +16,27 @@ interface RegistryData {
 
 const FIRST_PARTY = firstPartyRegistry as RegistryData;
 
+const CODEX_IMAGEGEN_MARKETPLACE_ITEM = {
+  id: "codex-imagegen",
+  name: "Codex ImageGen",
+  type: "action",
+  description:
+    "Generate or edit images with Codex's built-in image generation tool and your ChatGPT subscription.",
+  runtime: "local",
+  outputType: "image",
+  packageId: "clash-codex-imagegen",
+  version: "0.1.0",
+  author: "Clash",
+  icon: "✨",
+  color: "#57534e",
+  tags: ["image", "codex", "local", "chatgpt"],
+  promptModalities: ["text", "image"],
+} as const;
+
+function firstPartyActions(): Array<Record<string, unknown>> {
+  return [CODEX_IMAGEGEN_MARKETPLACE_ITEM, ...FIRST_PARTY.actions];
+}
+
 function isRegistryData(value: unknown): value is RegistryData {
   if (!value || typeof value !== "object") return false;
   const maybe = value as Partial<RegistryData>;
@@ -23,7 +44,7 @@ function isRegistryData(value: unknown): value is RegistryData {
 }
 
 function mergeRegistry(remote: RegistryData | null): RegistryData {
-  if (!remote) return FIRST_PARTY;
+  if (!remote) return { ...FIRST_PARTY, actions: firstPartyActions() };
 
   const seenSkillIds = new Set<string>();
   const skills = [...FIRST_PARTY.skills];
@@ -40,7 +61,7 @@ function mergeRegistry(remote: RegistryData | null): RegistryData {
   return {
     version: 1,
     marketplaceSemantics: FIRST_PARTY.marketplaceSemantics,
-    actions: [...FIRST_PARTY.actions, ...remote.actions],
+    actions: [...firstPartyActions(), ...remote.actions],
     skills,
     systemCapabilities: FIRST_PARTY.systemCapabilities,
     thirdPartyReferences: FIRST_PARTY.thirdPartyReferences,
@@ -52,10 +73,10 @@ export const marketplaceRoutes = new Hono<{ Bindings: Env }>();
 marketplaceRoutes.get("/registry", async (c) => {
   try {
     const res = await fetch(REGISTRY_URL);
-    if (!res.ok) return c.json(FIRST_PARTY);
+    if (!res.ok) return c.json(mergeRegistry(null));
     const remote = await res.json();
     return c.json(mergeRegistry(isRegistryData(remote) ? remote : null));
   } catch {
-    return c.json(FIRST_PARTY);
+    return c.json(mergeRegistry(null));
   }
 });

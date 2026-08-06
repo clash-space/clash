@@ -4,6 +4,7 @@ import {
   listModelCatalogEntries,
   listDeclaredModelUpstreamRoutes,
   listProviderModelSupport,
+  missingModelRouteCredentials,
   MODEL_CARDS,
   normalizeModelId,
   UserModelCardConfigSchema,
@@ -58,6 +59,7 @@ function displayProviderName(provider: Pick<ProviderAccountInput, "providerId" |
   if (provider.providerId === "official" && provider.upstreamId) {
     if (provider.upstreamId === "openai") return "OpenAI";
     if (provider.upstreamId === "anthropic") return "Anthropic";
+    if (provider.upstreamId === "bfl") return "Black Forest Labs";
     if (provider.upstreamId === "google-ai-studio") return "Google AI Studio";
     if (provider.upstreamId === "google-agent-platform") return "Google Cloud Agent Platform";
     return provider.upstreamId;
@@ -96,10 +98,11 @@ function routeProviderId(route: ModelUpstreamRoute): string {
     route.upstreamId === "google-ai-studio" ||
     route.upstreamId === "google-agent-platform" ||
     route.upstreamId === "anthropic"
+    || route.upstreamId === "bfl"
   ) {
     return "official";
   }
-  if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }
   return "custom";
@@ -298,15 +301,20 @@ modelProviderRoutes.post("/model-providers/test", async (c) => {
   const requirementCandidates = routeRequirements.length > 0
     ? routeRequirements.map((route) => ({
       requiredCredentials: route.requiredCredentials ?? [],
+      credentialRequirements: route.credentialRequirements,
       requiredOAuth: route.requiredOAuth ?? [],
     }))
     : supportedModelEntries.map((model) => ({
       requiredCredentials: "requiredCredentials" in model ? model.requiredCredentials : support.requiredCredentials,
+      credentialRequirements: undefined,
       requiredOAuth: "requiredOAuth" in model ? model.requiredOAuth : support.requiredOAuth,
     }));
   const credentialChecks = requirementCandidates.map((candidate) => ({
     candidate,
-    missingCredentials: candidate.requiredCredentials.filter((credential) => !configuredCredentials.has(credential)),
+    missingCredentials: missingModelRouteCredentials(candidate, {
+      providerId: provider.providerId,
+      configuredCredentials: [...configuredCredentials],
+    }),
   }));
   const credentialReadyChecks = credentialChecks.filter((check) => check.missingCredentials.length === 0);
   if (credentialReadyChecks.length === 0) {

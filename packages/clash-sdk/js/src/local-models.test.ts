@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   createPythonLocalAsrRuntime,
   createPythonLocalTtsRuntime,
@@ -84,6 +87,165 @@ describe('local model SDK', () => {
         },
       },
     ]);
+  });
+
+  it('reuses one lazily started Python worker across ASR transcriptions', async () => {
+    const fixtureDir = await mkdtemp(join(tmpdir(), 'clash-asr-rpc-'));
+    const executable = join(fixtureDir, 'fake-local-model-rpc.mjs');
+    await writeFile(executable, `#!/usr/bin/env node
+import readline from 'node:readline';
+
+const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+let handled = 0;
+setTimeout(() => process.exit(0), 250);
+lines.on('line', (line) => {
+  const request = JSON.parse(line);
+  const response = {
+    ...(request.id ? { id: request.id } : {}),
+    ok: true,
+    result: {
+      schemaVersion: 1,
+      kind: 'clash.asr.timed-transcript',
+      timebase: 'milliseconds',
+      alignment: 'word',
+      text: 'worker ' + process.pid,
+      backendId: String(process.pid),
+      modelId: request.params.model,
+      durationMs: 1,
+      words: [{ id: 'word-1', text: 'worker', startMs: 0, endMs: 1 }],
+      segments: [{ id: 'segment-1', text: 'worker', startMs: 0, endMs: 1, wordIds: ['word-1'] }],
+    },
+  };
+  process.stdout.write(JSON.stringify(response) + '\\n');
+  handled += 1;
+  if (handled === 2) setTimeout(() => process.exit(0), 0);
+});
+`);
+    await chmod(executable, 0o755);
+
+    try {
+      const runtime = createPythonLocalAsrRuntime({ pythonBinary: executable });
+      const first = await runtime.transcribe({
+        model: 'iic/SenseVoiceSmall',
+        audioPath: '/tmp/first.webm',
+      });
+      const second = await runtime.transcribe({
+        model: 'iic/SenseVoiceSmall',
+        audioPath: '/tmp/second.webm',
+      });
+
+      expect(first.backendId).toBe(second.backendId);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it('shares one lazily started Python worker across ASR and TTS runtimes', async () => {
+    const fixtureDir = await mkdtemp(join(tmpdir(), 'clash-local-model-router-'));
+    const executable = join(fixtureDir, 'fake-local-model-router.mjs');
+    await writeFile(executable, `#!/usr/bin/env node
+import readline from 'node:readline';
+
+const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+let handled = 0;
+lines.on('line', (line) => {
+  const request = JSON.parse(line);
+  const result = request.adapter === 'asr'
+    ? {
+        schemaVersion: 1,
+        kind: 'clash.asr.timed-transcript',
+        timebase: 'milliseconds',
+        alignment: 'word',
+        text: 'shared worker',
+        backendId: String(process.pid),
+        modelId: request.params.model,
+        durationMs: 1,
+        words: [{ id: 'word-1', text: 'shared', startMs: 0, endMs: 1 }],
+        segments: [{ id: 'segment-1', text: 'shared', startMs: 0, endMs: 1, wordIds: ['word-1'] }],
+      }
+    : {
+        schemaVersion: 1,
+        kind: 'clash.tts.audio',
+        backendId: String(process.pid),
+        modelId: request.params.model,
+        format: 'wav',
+        sampleRate: 24000,
+        durationMs: 1,
+        outputPath: request.params.output_path,
+      };
+  process.stdout.write(JSON.stringify({ id: request.id, ok: true, result }) + '\\n');
+  handled += 1;
+  if (handled === 2) setTimeout(() => process.exit(0), 0);
+});
+`);
+    await chmod(executable, 0o755);
+
+    try {
+      const asrRuntime = createPythonLocalAsrRuntime({ pythonBinary: executable });
+      const ttsRuntime = createPythonLocalTtsRuntime({ pythonBinary: executable });
+      const transcription = await asrRuntime.transcribe({
+        model: 'iic/SenseVoiceSmall',
+        audioPath: '/tmp/shared.webm',
+      });
+      const synthesis = await ttsRuntime.synthesize({
+        model: 'zh_CN-huayan-medium',
+        text: '共享进程',
+        outputPath: '/tmp/shared.wav',
+      });
+
+      expect(transcription.backendId).toBe(synthesis.backendId);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it('restarts the shared Python worker after it exits', async () => {
+    const fixtureDir = await mkdtemp(join(tmpdir(), 'clash-local-model-restart-'));
+    const executable = join(fixtureDir, 'fake-restarting-local-model-router.mjs');
+    const generationFile = join(fixtureDir, 'generation.txt');
+    await writeFile(generationFile, '0');
+    await writeFile(executable, `#!/usr/bin/env node
+import readline from 'node:readline';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const generationFile = ${JSON.stringify(generationFile)};
+const generation = Number(readFileSync(generationFile, 'utf8')) + 1;
+writeFileSync(generationFile, String(generation));
+const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+lines.once('line', (line) => {
+  const request = JSON.parse(line);
+  process.stdout.write(JSON.stringify({
+    id: request.id,
+    ok: true,
+    result: {
+      schemaVersion: 1,
+      kind: 'clash.asr.timed-transcript',
+      timebase: 'milliseconds',
+      alignment: 'word',
+      text: 'generation ' + generation,
+      backendId: String(generation),
+      modelId: request.params.model,
+      durationMs: 1,
+      words: [{ id: 'word-1', text: 'generation', startMs: 0, endMs: 1 }],
+      segments: [{ id: 'segment-1', text: 'generation', startMs: 0, endMs: 1, wordIds: ['word-1'] }],
+    },
+  }) + '\\n');
+  setTimeout(() => process.exit(0), 0);
+});
+`);
+    await chmod(executable, 0o755);
+
+    try {
+      const runtime = createPythonLocalAsrRuntime({ pythonBinary: executable });
+      const first = await runtime.transcribe({ model: 'fixture', audioPath: '/tmp/first.wav' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const second = await runtime.transcribe({ model: 'fixture', audioPath: '/tmp/second.wav' });
+
+      expect(first.backendId).toBe('1');
+      expect(second.backendId).toBe('2');
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
   });
 
   it('surfaces Python RPC errors without leaking transport details', async () => {

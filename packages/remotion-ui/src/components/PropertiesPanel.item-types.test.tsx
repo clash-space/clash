@@ -15,7 +15,10 @@ import {
   type VideoItem,
   type Asset,
 } from '@master-clash/remotion-core';
-import type { MgCompositionSpec } from '@clash/shared-types';
+import {
+  TIMELINE_MASK_ANIMATION_BINDINGS,
+  type MgCompositionSpec,
+} from '@clash/shared-types';
 import { PropertiesPanel } from './PropertiesPanel';
 
 afterEach(() => cleanup());
@@ -67,6 +70,69 @@ const latestItem = <T extends Item>(stateRef: { current: EditorState | null }): 
   ) as T;
 
 describe('PropertiesPanel item type coverage', () => {
+  it('adds a real clip mask and authors mask motion at the item-local playhead', () => {
+    const video: VideoItem = {
+      id: 'masked-video',
+      type: 'video',
+      src: 'video.mp4',
+      from: 30,
+      durationInFrames: 60,
+      keyframes: {
+        position: [{ frame: 0, value: [0, 0], interpolation: 'linear' }],
+      },
+    };
+    const stateRef = renderInspector(video, { currentFrame: 40 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add mask' }));
+    expect((latestItem<VideoItem>(stateRef) as any).mask).toEqual({
+      shape: 'rectangle',
+      position: [50, 50],
+      size: [70, 70],
+      rotation: 0,
+      feather: 0,
+      inverted: false,
+    });
+    for (const binding of TIMELINE_MASK_ANIMATION_BINDINGS) {
+      expect(screen.getByRole('button', {
+        name: `Add ${binding.label} keyframe at current frame`,
+      })).toBeTruthy();
+    }
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mask shape' }), {
+      target: { value: 'ellipse' },
+    });
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Add Mask position keyframe at current frame',
+    }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Mask center X percent' }), {
+      target: { value: '65' },
+    });
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Add Mask feather keyframe at current frame',
+    }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Mask feather percent' }), {
+      target: { value: '24' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Invert mask' }));
+
+    expect(latestItem<VideoItem>(stateRef)).toMatchObject({
+      mask: {
+        shape: 'ellipse',
+        inverted: true,
+      },
+      keyframes: {
+        maskPosition: [{ frame: 10, value: [65, 50], interpolation: 'linear' }],
+        maskFeather: [{ frame: 10, value: 24, interpolation: 'linear' }],
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove mask' }));
+    expect((latestItem<VideoItem>(stateRef) as any).mask).toBeUndefined();
+    expect(latestItem<VideoItem>(stateRef).keyframes).toEqual({
+      position: [{ frame: 0, value: [0, 0], interpolation: 'linear' }],
+    });
+  });
+
   it('adds and updates an item-local Position keyframe at the current playhead', () => {
     const video: VideoItem = {
       id: 'animated',
@@ -228,6 +294,7 @@ describe('PropertiesPanel item type coverage', () => {
     const stateRef = renderInspector(audio);
 
     expect(screen.queryByText('Transform')).toBeNull();
+    expect(screen.queryByText('Mask')).toBeNull();
     expect(screen.getByText('Audio')).toBeTruthy();
     const sourceStart = screen.getByRole('spinbutton', { name: 'Source start frame' });
     expect((sourceStart as HTMLInputElement).value).toBe('12');

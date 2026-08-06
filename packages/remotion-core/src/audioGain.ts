@@ -1,4 +1,5 @@
 import type { AudioDuckingSettings, Track } from './types';
+import { TIMELINE_SHARED_DEFAULTS } from './timelineFieldConsumers';
 
 export const AUDIO_GAIN_DB_MIN = -60;
 export const AUDIO_GAIN_DB_MAX = 12;
@@ -39,7 +40,9 @@ export const resolveAudioGainDb = (item: object): number => {
   if (canonical !== undefined) return clampAudioGainDb(canonical);
 
   const legacy = finiteNumber(fields.volume);
-  return legacy === undefined ? 0 : linearAudioGainToDb(legacy);
+  return legacy === undefined
+    ? TIMELINE_SHARED_DEFAULTS.audio.audioGainDb
+    : linearAudioGainToDb(legacy);
 };
 
 export const resolveLinearAudioGain = (item: object): number => {
@@ -48,21 +51,28 @@ export const resolveLinearAudioGain = (item: object): number => {
   if (canonical !== undefined) return audioGainDbToLinear(canonical);
 
   const legacy = finiteNumber(fields.volume);
-  return legacy === undefined ? 1 : Math.max(0, legacy);
+  return legacy === undefined
+    ? audioGainDbToLinear(TIMELINE_SHARED_DEFAULTS.audio.audioGainDb)
+    : Math.max(0, legacy);
 };
 
-const resolveFadeFrames = (canonical: unknown, legacy: unknown): number => {
+const resolveFadeFrames = (
+  canonical: unknown,
+  legacy: unknown,
+  defaultValue: number,
+): number => {
   const canonicalFrames = finiteNumber(canonical);
   if (canonicalFrames !== undefined) return Math.max(0, canonicalFrames);
 
   const legacyFrames = finiteNumber(legacy);
-  return legacyFrames === undefined ? 0 : Math.max(0, legacyFrames);
+  return legacyFrames === undefined ? defaultValue : Math.max(0, legacyFrames);
 };
 
 export const resolveAudioFadeInFrames = (item: object): number => (
   resolveFadeFrames(
     (item as AudioGainFields).audioFadeInFrames,
     (item as AudioGainFields).audioFadeIn,
+    TIMELINE_SHARED_DEFAULTS.audio.audioFadeInFrames,
   )
 );
 
@@ -70,6 +80,7 @@ export const resolveAudioFadeOutFrames = (item: object): number => (
   resolveFadeFrames(
     (item as AudioGainFields).audioFadeOutFrames,
     (item as AudioGainFields).audioFadeOut,
+    TIMELINE_SHARED_DEFAULTS.audio.audioFadeOutFrames,
   )
 );
 

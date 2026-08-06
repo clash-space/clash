@@ -65,6 +65,11 @@ export interface SessionStartParams {
    */
   agent_spec?: AgentSpec;
   /**
+   * ACP-native configuration selected before the session starts. Apply these
+   * before announcing readiness so the first prompt cannot observe defaults.
+   */
+  config_options?: Record<string, string | boolean>;
+  /**
    * Harness-specific permission mode chosen by the desktop composer.
    * The ACP harness owns how this maps to its own config surface; the
    * bridge only forwards the selected id as process env.
@@ -539,6 +544,13 @@ export class SessionManager {
           requestPermission: (params) => this.#requestPermission(p.session_id, params),
         },
       });
+      if (this.#cancelledStarts.has(p.session_id)) {
+        await session.dispose().catch(() => undefined);
+        return;
+      }
+      for (const [configId, value] of Object.entries(p.config_options ?? {})) {
+        await session.setConfigOption(configId, value);
+      }
       if (this.#cancelledStarts.has(p.session_id)) {
         await session.dispose().catch(() => undefined);
         return;

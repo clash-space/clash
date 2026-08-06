@@ -9,6 +9,8 @@ test("exposes one cohesive Timeline plugin tool contract", async () => {
   const module = await contract();
   assert.deepEqual(module.TIMELINE_PLUGIN_TOOL_NAMES, [
     "clash_timeline_open",
+    "clash_timeline_schema",
+    "clash_timeline_validate",
     "clash_timeline_list",
     "clash_timeline_get",
     "clash_timeline_create",
@@ -27,6 +29,12 @@ test("maps typed Timeline operations to exact shell-free Clash CLI argv", async 
   assert.deepEqual(build("clash_timeline_list", { projectId: "project-1" }), [
     "timeline", "list", "--project", "project-1", "--json",
   ]);
+  assert.deepEqual(build("clash_timeline_list", { standalone: true }), [
+    "timeline", "list", "--standalone", "--json",
+  ]);
+  assert.deepEqual(build("clash_timeline_schema", {}), [
+    "timeline", "schema", "--json",
+  ]);
   assert.deepEqual(build("clash_timeline_create", {
     timelineId: "social-cut",
     name: "Social Cut",
@@ -38,8 +46,11 @@ test("maps typed Timeline operations to exact shell-free Clash CLI argv", async 
   assert.deepEqual(build("clash_timeline_attach", {
     timelineId: "social-cut",
     canvasId: "main",
+    nodeId: "social-cut-action",
+    position: { x: 12, y: 34 },
   }), [
-    "timeline", "attach", "--timeline", "social-cut", "--canvas", "main", "--json",
+    "timeline", "attach", "--timeline", "social-cut", "--canvas", "main",
+    "--node", "social-cut-action", "--x", "12", "--y", "34", "--json",
   ]);
   assert.deepEqual(build("clash_timeline_detach", { timelineId: "social-cut" }), [
     "timeline", "detach", "--timeline", "social-cut", "--json",
@@ -48,9 +59,12 @@ test("maps typed Timeline operations to exact shell-free Clash CLI argv", async 
     timelineId: "social-cut",
     canvasId: "review",
     newTimelineId: "review-cut",
+    newNodeId: "review-action",
+    position: { x: 56, y: 78 },
   }), [
     "timeline", "copy", "--timeline", "social-cut", "--canvas", "review",
-    "--new-timeline", "review-cut", "--json",
+    "--new-timeline", "review-cut", "--new-node", "review-action",
+    "--x", "56", "--y", "78", "--json",
   ]);
 });
 

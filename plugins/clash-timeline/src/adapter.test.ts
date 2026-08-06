@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { access } from "node:fs/promises";
 import { join } from "node:path";
 
 async function adapterModule(): Promise<Record<string, any>> {
@@ -22,6 +23,74 @@ test("lists and reads Timeline entities through an injected host adapter", async
   assert.deepEqual(calls, [{ args: ["timeline", "list", "--json"], cwd: "/workspace" }]);
 });
 
+test("validates a complete Timeline state without reading or mutating an entity", async () => {
+  const module = await adapterModule();
+  const events: Array<Record<string, unknown>> = [];
+  let validationPath = "";
+  const adapter = module.createTimelineAdapter({
+    run: async (args: string[], cwd: string) => {
+      events.push({ kind: "run", args, cwd });
+      return { ok: true, contractFingerprint: "fnv1a32:test" };
+    },
+    writeProjection: async (path: string, content: string) => {
+      validationPath = path;
+      events.push({ kind: "write", path, content: JSON.parse(content) });
+    },
+  });
+  const state = { tracks: [{ id: "visual", items: [] }] };
+
+  const result = await adapter.validate({ cwd: "/workspace", state });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(events[0], {
+    kind: "write",
+    path: validationPath,
+    content: state,
+  });
+  assert.deepEqual(events[1], {
+    kind: "run",
+    args: ["timeline", "validate", "--file", validationPath, "--json"],
+    cwd: "/workspace",
+  });
+  await assert.rejects(access(validationPath));
+});
+
+test("rejects invalid Timeline state locally with shared rule ids before invoking the CLI", async () => {
+  const module = await adapterModule();
+  let runs = 0;
+  let writes = 0;
+  const adapter = module.createTimelineAdapter({
+    run: async () => {
+      runs += 1;
+      return { ok: true };
+    },
+    writeProjection: async () => {
+      writes += 1;
+    },
+  });
+
+  await assert.rejects(
+    adapter.validate({
+      cwd: "/workspace",
+      state: {
+        tracks: [{
+          id: "visual",
+          items: [{
+            id: "missing-source",
+            type: "video",
+            from: 0,
+            durationInFrames: 10,
+          }],
+        }],
+      },
+    }),
+    (error: any) => error?.code === "TIMELINE_DSL_INVALID"
+      && error?.issues?.some((issue: any) => issue.ruleId === "timeline.item.source-required"),
+  );
+  assert.equal(runs, 0);
+  assert.equal(writes, 0);
+});
+
 test("saves through read proof, a project projection, and Timeline apply", async () => {
   const module = await adapterModule();
   assert.equal(typeof module.createTimelineAdapter, "function");
@@ -30,7 +99,7 @@ test("saves through read proof, a project projection, and Timeline apply", async
     run: async (args: string[], cwd: string) => {
       events.push({ kind: "run", args, cwd });
       if (args[1] === "list") {
-        return [{ id: "rough-cut", name: "Rough Cut", owner: { kind: "project" }, state: { tracks: [] } }];
+        return [{ id: "rough-cut", name: "Rough Cut", revisionId: "revision-1", owner: { kind: "project" }, state: { tracks: [] } }];
       }
       return { applied: true, timelineId: "rough-cut", revisionId: "revision-2" };
     },
@@ -42,9 +111,14 @@ test("saves through read proof, a project projection, and Timeline apply", async
   const state = {
     fps: 30,
     durationInFrames: 90,
-    tracks: [{ id: "video", category: "video-image", items: [] }],
+    tracks: [{ id: "video", category: "visual", items: [] }],
   };
-  const result = await adapter.save({ cwd: "/workspace", timelineId: "rough-cut", state });
+  const result = await adapter.save({
+    cwd: "/workspace",
+    timelineId: "rough-cut",
+    baseRevisionId: "revision-1",
+    state,
+  });
 
   assert.equal(result.revisionId, "revision-2");
   assert.deepEqual(events, [
@@ -63,6 +137,37 @@ test("saves through read proof, a project projection, and Timeline apply", async
       cwd: "/workspace",
     },
   ]);
+});
+
+test("rejects a stale full-state save before writing the projection", async () => {
+  const module = await adapterModule();
+  let writes = 0;
+  const calls: string[][] = [];
+  const adapter = module.createTimelineAdapter({
+    run: async (args: string[]) => {
+      calls.push(args);
+      return [{
+        id: "rough-cut",
+        name: "Rough Cut",
+        revisionId: "revision-2",
+        owner: { kind: "project" },
+        state: { tracks: [] },
+      }];
+    },
+    writeProjection: async () => { writes += 1; },
+  });
+
+  await assert.rejects(
+    adapter.save({
+      cwd: "/workspace",
+      timelineId: "rough-cut",
+      baseRevisionId: "revision-1",
+      state: { tracks: [] },
+    }),
+    /STALE_TIMELINE.*revision-1.*revision-2/i,
+  );
+  assert.equal(writes, 0);
+  assert.deepEqual(calls, [["timeline", "list", "--json"]]);
 });
 
 test("does not write when the Timeline has not been read or does not exist", async () => {

@@ -157,7 +157,7 @@ importers:
     devDependencies:
       '@agentclientprotocol/claude-agent-acp':
         specifier: ^0.47.0
-        version: 0.47.0(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))
+        version: 0.47.0(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))
       '@agentclientprotocol/codex-acp':
         specifier: ^1.1.7
         version: 1.1.7
@@ -188,6 +188,12 @@ importers:
 
   apps/local-api:
     dependencies:
+      '@clash-plugin/codex-imagegen':
+        specifier: workspace:*
+        version: link:../../plugins/codex-imagegen
+      '@clash-plugin/first-party-media':
+        specifier: workspace:*
+        version: link:../../plugins/first-party-media
       '@clash-space/bridge':
         specifier: workspace:*
         version: link:../../packages/clash-bridge
@@ -508,6 +514,10 @@ importers:
         version: 4.107.0(@cloudflare/workers-types@4.20260702.1)
 
   packages/action-sdk:
+    dependencies:
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
     devDependencies:
       typescript:
         specifier: ^5.0.0
@@ -524,6 +534,9 @@ importers:
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../shared-runtime
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
       '@openma/common':
         specifier: github:openma-ai/openma-common#codex/acp-lifecycle-v05
         version: https://codeload.github.com/openma-ai/openma-common/tar.gz/28d93020c85c2dddbddcb8231f784d768fb88e69(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
@@ -571,6 +584,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@clash-space/bridge':
+        specifier: workspace:*
+        version: link:../clash-bridge
       '@clash-space/mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
@@ -930,6 +946,9 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.24.4
+      zod-to-json-schema:
+        specifier: 3.24.6
+        version: 3.24.6(zod@3.24.4)
     devDependencies:
       ts-node:
         specifier: ^10.9.2
@@ -937,15 +956,15 @@ importers:
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
       vitest:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
-      zod-to-json-schema:
-        specifier: ^3.23.0
-        version: 3.25.2(zod@3.24.4)
 
   packages/web-ui:
     dependencies:
@@ -1117,6 +1136,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      wavesurfer.js:
+        specifier: ^7.12.11
+        version: 7.12.11
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -1226,6 +1248,9 @@ importers:
         specifier: ^4.1.13
         version: 4.4.3
     devDependencies:
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.2
@@ -1241,6 +1266,44 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
+
+  plugins/codex-imagegen:
+    dependencies:
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.0
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  plugins/first-party-media:
+    dependencies:
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.0
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
 packages:
 
@@ -9864,6 +9927,9 @@ packages:
     resolution: {integrity: sha512-6i/00NBjP4yGPs+caKSyRfpTF/8Torsu0MOW3mMzIbhgISFder8i7xbqgHlLMwJrdiN8ndBV3UA1/AfzPSr+jg==}
     engines: {node: '>=10.13.0'}
 
+  wavesurfer.js@7.12.11:
+    resolution: {integrity: sha512-Sx0yZIz7jRJ9J9p7UL+pl9y0UQBB6UN/XNo+R7Gy4tCR5xZI9jMyA0dnt1R8TMVSQ4LZ10SeB2HJYQ+dV2dPSA==}
+
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
 
@@ -10080,6 +10146,11 @@ packages:
   youch@4.1.0-beta.10:
     resolution: {integrity: sha512-rLfVLB4FgQneDr0dv1oddCVZmKjcJ6yX6mS4pU82Mq/Dt9a3cLZQ62pDBL4AUO+uVrCvtWz3ZFUL2HFAFJ/BXQ==}
 
+  zod-to-json-schema@3.24.6:
+    resolution: {integrity: sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg==}
+    peerDependencies:
+      zod: ^3.24.1
+
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
@@ -10136,6 +10207,15 @@ packages:
 snapshots:
 
   '@adobe/css-tools@4.5.0': {}
+
+  '@agentclientprotocol/claude-agent-acp@0.47.0(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))':
+    dependencies:
+      '@agentclientprotocol/sdk': 0.26.0(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk': 0.3.179(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+      - '@modelcontextprotocol/sdk'
 
   '@agentclientprotocol/claude-agent-acp@0.47.0(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))':
     dependencies:
@@ -10281,6 +10361,21 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.179':
     optional: true
 
+  '@anthropic-ai/claude-agent-sdk@0.3.179(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))(zod@4.4.3)':
+    dependencies:
+      '@anthropic-ai/sdk': 0.110.0(zod@3.22.3)
+      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3)
+      zod: 4.4.3
+    optionalDependencies:
+      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.179
+      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.179
+
   '@anthropic-ai/claude-agent-sdk@0.3.179(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.110.0(zod@4.4.3)
@@ -10295,6 +10390,13 @@ snapshots:
       '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.179
       '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.179
       '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.179
+
+  '@anthropic-ai/sdk@0.110.0(zod@3.22.3)':
+    dependencies:
+      json-schema-to-ts: 3.1.1
+      standardwebhooks: 1.0.0
+    optionalDependencies:
+      zod: 3.22.3
 
   '@anthropic-ai/sdk@0.110.0(zod@4.4.3)':
     dependencies:
@@ -10922,7 +11024,7 @@ snapshots:
   '@cloudflare/ai-chat@0.2.6(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(agents@0.8.7)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(zod@4.4.3)':
     dependencies:
       '@ai-sdk/react': 3.0.221(react@19.2.5)(zod@4.4.3)
-      agents: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
+      agents: 0.8.7(@ai-sdk/openai@3.0.80(zod@4.4.3))(@ai-sdk/react@3.0.221(react@19.2.5)(zod@4.4.3))(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/ai-chat@0.2.6)(@cloudflare/workers-types@4.20260702.1)(ai@6.0.219(zod@4.4.3))(react@19.2.5)(rolldown@1.1.4)(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))(zod@4.4.3)
       ai: 6.0.219(zod@4.4.3)
       react: 19.2.5
       zod: 4.4.3
@@ -12659,6 +12761,30 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3)':
+    dependencies:
+      '@hono/node-server': 1.19.14(hono@4.12.27)
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      content-type: 1.0.5
+      cors: 2.8.6
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.0
+      express: 5.2.1
+      express-rate-limit: 8.5.2(express@5.2.1)
+      hono: 4.12.27
+      jose: 6.2.3
+      json-schema-typed: 8.0.2
+      pkce-challenge: 5.0.0
+      raw-body: 3.0.2
+      zod: 3.22.3
+      zod-to-json-schema: 3.25.2(zod@3.22.3)
+    optionalDependencies:
+      '@cfworker/json-schema': 4.1.1
+    transitivePeerDependencies:
+      - supports-color
+
   '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.27)
@@ -13610,7 +13736,7 @@ snapshots:
       remotion: 4.0.370(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       source-map: 0.7.3
       style-loader: 4.0.0(webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16))
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
     transitivePeerDependencies:
       - '@minify-html/node'
       - '@swc/core'
@@ -15502,7 +15628,7 @@ snapshots:
       postcss-value-parser: 4.2.0
       schema-utils: 3.3.0
       semver: 7.8.5
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
 
   css-selector-parser@3.3.0: {}
 
@@ -19102,7 +19228,7 @@ snapshots:
 
   style-loader@4.0.0(webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)):
     dependencies:
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
 
   style-mod@4.1.3: {}
 
@@ -19186,7 +19312,7 @@ snapshots:
       jest-worker: 27.4.5
       schema-utils: 4.3.3
       terser: 5.48.0
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
     optionalDependencies:
       '@swc/core': 1.15.43
       esbuild: 0.25.0
@@ -19723,6 +19849,8 @@ snapshots:
     dependencies:
       graceful-fs: 4.2.11
 
+  wavesurfer.js@7.12.11: {}
+
   web-namespaces@2.0.1: {}
 
   web-streams-polyfill@3.0.3: {}
@@ -19745,7 +19873,7 @@ snapshots:
 
   webpack-sources@3.5.0: {}
 
-  webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16):
+  webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16):
     dependencies:
       '@types/eslint-scope': 3.7.7
       '@types/estree': 1.0.9
@@ -19955,9 +20083,13 @@ snapshots:
       cookie: 1.0.2
       youch-core: 0.3.3
 
-  zod-to-json-schema@3.25.2(zod@3.24.4):
+  zod-to-json-schema@3.24.6(zod@3.24.4):
     dependencies:
       zod: 3.24.4
+
+  zod-to-json-schema@3.25.2(zod@3.22.3):
+    dependencies:
+      zod: 3.22.3
 
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:

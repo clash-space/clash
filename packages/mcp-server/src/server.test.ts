@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-test("server registers Studio and Canvas as separate real App surfaces", async () => {
+test("server keeps Studio and Canvas App surfaces quarantined", async () => {
   const { registerClashCanvasMcp } = await import("./server");
   const { CANVAS_MCP_TOOL_NAMES } = await import("./canvas-contract");
   const cliContract = await import("./cli-contract") as Record<string, unknown>;
@@ -32,18 +32,17 @@ test("server registers Studio and Canvas as separate real App surfaces", async (
     return { ok: true };
   }, "window.__CLASH_CANVAS__ = true;", "window.__CLASH_STUDIO__ = true;");
 
-  assert.ok(tools.has("clash_studio_open"));
-  assert.deepEqual([...tools.keys()].slice(0, CANVAS_MCP_TOOL_NAMES.length), CANVAS_MCP_TOOL_NAMES);
+  assert.equal(tools.has("clash_studio_open"), false);
+  assert.equal(tools.has("clash_canvas_open"), false);
+  assert.equal(tools.has("clash_canvas_snapshot"), false);
+  for (const name of CANVAS_MCP_TOOL_NAMES.filter((name) => (
+    name !== "clash_canvas_open" && name !== "clash_canvas_snapshot"
+  ))) assert.ok(tools.has(name));
   for (const namespace of cliContract.CLASH_CLI_NAMESPACES as string[]) {
     assert.ok(tools.has(`clash_cli_${namespace}`));
   }
-  assert.equal(resources.get("Clash Canvas")?.uri, "ui://clash/canvas");
-  assert.equal(resources.get("Clash Studio")?.uri, "ui://clash/studio");
-  assert.deepEqual(tools.get("clash_canvas_snapshot")?.config._meta.ui.visibility, ["app"]);
-  assert.equal(tools.get("clash_canvas_open")?.config._meta.ui.resourceUri, "ui://clash/canvas");
-  assert.equal(tools.get("clash_studio_open")?.config._meta.ui.resourceUri, "ui://clash/studio");
+  assert.equal(resources.size, 0);
   for (const name of [
-    "clash_canvas_snapshot",
     "clash_canvas_list",
     "clash_canvas_move",
     "clash_cli_projects",
@@ -60,29 +59,6 @@ test("server registers Studio and Canvas as separate real App surfaces", async (
     );
   }
 
-  const openResult = await tools.get("clash_canvas_open")!.callback({ canvasId: "main" });
-  assert.deepEqual(openResult.structuredContent, {
-    projectId: undefined,
-    canvasId: "main",
-    nodes: [],
-    edges: [],
-  });
-  assert.match(openResult.content[0].text, /Opened Clash Canvas/);
-
-  const studioResult = await tools.get("clash_studio_open")!.callback({ cwd: "/tmp/workspace" });
-  assert.deepEqual(studioResult.structuredContent, {
-    cwd: "/tmp/workspace",
-    host: { status: "active", endpoint: "http://127.0.0.1:49321" },
-    projects: [{ id: "project-1", name: "Studio Project" }],
-  });
-
-  const resource = await resources.get("Clash Canvas")!.callback();
-  assert.equal(resource.contents[0].mimeType, "text/html;profile=mcp-app");
-  assert.match(resource.contents[0].text, /window\.__CLASH_CANVAS__ = true/);
-
-  const studioResource = await resources.get("Clash Studio")!.callback();
-  assert.equal(studioResource.contents[0].mimeType, "text/html;profile=mcp-app");
-  assert.match(studioResource.contents[0].text, /window\.__CLASH_STUDIO__ = true/);
 });
 
 test("HTTP server exposes stateful Streamable HTTP MCP and health endpoints", async (t) => {

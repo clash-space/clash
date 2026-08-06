@@ -1,0 +1,74 @@
+{
+  "apiVersion": "clash.plugin/v1",
+  "id": "clash-first-party-media",
+  "version": "0.3.0",
+  "name": "Clash First-party Media Projectors",
+  "description": "Pure provider request projectors for first-party media Model Cards.",
+  "runtime": {
+    "kind": "local",
+    "transport": "stdio",
+    "entrypoint": "dist/stdio.mjs"
+  },
+  "exports": {
+    "cards": [
+      {
+        "id": "minimax-h3",
+        "kind": "model-card",
+        "path": "cards/minimax-h3.json"
+      },
+      {
+        "id": "minimax-h3-startend",
+        "kind": "model-card",
+        "path": "cards/minimax-h3-startend.json"
+      },
+      {
+        "id": "minimax-music-3",
+        "kind": "model-card",
+        "path": "cards/minimax-music-3.json"
+      },
+      {
+        "id": "seedance-2-ref",
+        "kind": "model-card",
+        "path": "cards/seedance-2-ref.json"
+      },
+      {
+        "id": "seedance-2-startend",
+        "kind": "model-card",
+        "path": "cards/seedance-2-startend.json"
+      },
+      {
+        "id": "seedance-2.5-ref",
+        "kind": "model-card",
+        "path": "cards/seedance-2.5-ref.json"
+      },
+      {
+        "id": "seedance-2.5-startend",
+        "kind": "model-card",
+        "path": "cards/seedance-2.5-startend.json"
+      }
+    ],
+    "functions": [
+      {
+        "id": "fal-h3",
+        "kind": "provider-projector",
+        "handler": "projectFalH3"
+      },
+      {
+        "id": "fal-seedance-2",
+        "kind": "provider-projector",
+        "handler": "projectFalSeedance2"
+      },
+      {
+        "id": "fal-minimax-music-3",
+        "kind": "provider-projector",
+        "handler": "projectFalMiniMaxMusic3"
+      }
+    ]
+  },
+  "permissions": {},
+  "contractTests": [
+    "contract-tests/fal-h3.json",
+    "contract-tests/fal-seedance-2.json",
+    "contract-tests/fal-minimax-music-3.json"
+  ]
+}

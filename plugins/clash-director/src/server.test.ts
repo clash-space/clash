@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-test("registers only Director tools plus the Director GUI resource", async () => {
+test("registers Director headless tools while the GUI is quarantined", async () => {
   const module = await import("./server.js").catch(() => ({} as Record<string, any>));
   assert.equal(typeof module.registerDirectorPluginMcp, "function");
   const tools = new Map<string, any>();
@@ -25,13 +25,12 @@ test("registers only Director tools plus the Director GUI resource", async () =>
     mutate: async () => stages[0],
   };
   module.registerDirectorPluginMcp(fakeServer, adapter, "window.__DIRECTOR_APP__ = true;");
-  assert.deepEqual([...tools.keys()], module.DIRECTOR_PLUGIN_TOOL_NAMES);
-  assert.equal(resources.get("Clash Director")?.uri, "ui://clash/director");
-  assert.deepEqual(tools.get("clash_director_list")?.config.annotations, { readOnlyHint: true });
-  assert.equal(
-    tools.get("clash_director_open")?.config._meta.ui.resourceUri,
-    "ui://clash/director",
+  assert.deepEqual(
+    [...tools.keys()],
+    module.DIRECTOR_PLUGIN_TOOL_NAMES.filter((name: string) => name !== "clash_director_open"),
   );
+  assert.equal(resources.size, 0);
+  assert.deepEqual(tools.get("clash_director_list")?.config.annotations, { readOnlyHint: true });
   for (const name of [
     "clash_director_list",
     "clash_director_get",
@@ -45,6 +44,4 @@ test("registers only Director tools plus the Director GUI resource", async () =>
     );
     assert.equal(tools.get(name)?.config._meta["ui/resourceUri"], undefined);
   }
-  const opened = await tools.get("clash_director_open").callback({ cwd: "/workspace", stageId: "stage-1" });
-  assert.equal(opened.structuredContent.selected.id, "stage-1");
 });

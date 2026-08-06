@@ -1,12 +1,15 @@
 import { z } from "zod";
 
-import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind } from "./models";
+import { MOCK_MODEL_CARDS, MODEL_CARDS, ModelCardSchema, normalizeModelId, type ModelCard, type ModelKind, type ModelParameter, type ProviderCredentialRequirements, type ReferenceBinding } from "./models";
 import { findCompatibleModels, type Modality } from "./model-capabilities";
+import type { ExecutablePluginBinding } from "./executable-plugin";
 
 export const ModelUpstreamIdSchema = z.enum([
   "local",
   "mock",
   "fal",
+  "bfl",
+  "pika",
   "google-ai-studio",
   "google-agent-platform",
   "openai",
@@ -27,8 +30,12 @@ export const ModelUpstreamApiShapeSchema = z.enum([
   "local-asr",
   "local-tts",
   "fal",
+  "bfl",
+  "pika",
+  "pika-chat",
   "google-agent-platform",
   "google-ai-studio",
+  "google-ai-studio-interactions",
   "openai-images",
   "openai-compatible",
   "anthropic-compatible",
@@ -52,6 +59,7 @@ export const ProviderAccountIdSchema = z.enum([
   "local",
   "official",
   "fal",
+  "pika",
   "kie",
   "replicate",
   "kling",
@@ -85,7 +93,21 @@ export interface ModelUpstreamRoute {
   /** Higher numbers win when user/provider route weighting is configured. */
   weight?: number;
   requiredCredentials?: string[];
+  credentialRequirements?: ProviderCredentialRequirements;
   requiredOAuth?: ProviderOAuthId[];
+  /** Effective inline-reference semantics after applying the provider implementation override. */
+  referenceBinding?: ReferenceBinding;
+  /** Provider-specific replacements for user-configurable candidates/ranges. */
+  parameterOverrides?: ModelParameter[];
+  /** Provider-specific defaults paired with parameterOverrides. */
+  defaultParamOverrides?: Record<string, string | number | boolean>;
+  /** Base Card parameters not implemented by this provider. */
+  excludedParameterIds?: string[];
+  /** Executable Plugin projector selected for this provider/model route. */
+  projectorPluginId?: string;
+  projectorExportId?: string;
+  /** Exact active projector resolved by the Kernel for author-time Canvas pinning. */
+  projectorBinding?: ExecutablePluginBinding;
 }
 
 export interface ModelProviderSupportedModel {
@@ -104,6 +126,7 @@ export interface ModelProviderDefinition {
   priority: number;
   weight?: number;
   requiredCredentials?: string[];
+  credentialRequirements?: ProviderCredentialRequirements;
   requiredOAuth?: ProviderOAuthId[];
 }
 
@@ -251,6 +274,11 @@ function customTextModelCard(
       requiresPrompt: true,
       inputMode: { images: { max: 20 } },
       promptModalities: ["text", "image"],
+      referenceBinding: {
+        type: "ordered-content-parts",
+        usesRoles: false,
+        modalityScopedIndexes: false,
+      },
     },
     availableProviders,
     defaultProvider: availableProviders[0],
@@ -319,7 +347,6 @@ const FAL_IMAGE_ROUTES: Array<[string, string]> = [
 const FAL_VIDEO_ROUTES: Array<[string, string]> = [
   ["sora-2", "fal-ai/sora-2/text-to-video"],
   ["kling-3", "fal-ai/kling-video/v3/pro/image-to-video"],
-  ["seedance-2-text", "bytedance/seedance-2.0/text-to-video"],
   ["seedance-2-startend", "bytedance/seedance-2.0/image-to-video"],
   ["seedance-2-ref", "bytedance/seedance-2.0/reference-to-video"],
 ];
@@ -332,7 +359,6 @@ const GOOGLE_IMAGE_ROUTES: Array<[string, string]> = [
 const GOOGLE_VIDEO_ROUTES: Array<[string, string]> = [
   ["veo-3.1", "veo-3.1-generate-001"],
   ["veo-3.1-startend", "veo-3.1-generate-001"],
-  ["veo-3.1-lite", "veo-3.1-lite-generate-001"],
   ["veo-3.1-fast", "veo-3.1-fast-generate-001"],
   ["veo-3.1-fast-startend", "veo-3.1-fast-generate-001"],
 ];
@@ -350,9 +376,29 @@ function routesFromModelCard(model: ModelCard): ModelUpstreamRoute[] {
     priority: implementation.priority ?? 100,
     ...(implementation.weight !== undefined ? { weight: implementation.weight } : {}),
     ...(implementation.requiredCredentials?.length ? { requiredCredentials: [...implementation.requiredCredentials] } : {}),
+    ...(implementation.credentialRequirements ? {
+      credentialRequirements: {
+        ...implementation.credentialRequirements,
+        anyOf: implementation.credentialRequirements.anyOf.map((credentials) => [...credentials]),
+      },
+    } : {}),
     ...(implementation.requiredOAuth?.length
       ? { requiredOAuth: implementation.requiredOAuth.map((provider) => ProviderOAuthIdSchema.parse(provider)) }
       : {}),
+    ...((implementation.referenceBinding ?? model.input.referenceBinding)
+      ? { referenceBinding: implementation.referenceBinding ?? model.input.referenceBinding }
+      : {}),
+    ...(implementation.parameterOverrides?.length
+      ? { parameterOverrides: implementation.parameterOverrides.map((parameter) => ({ ...parameter })) }
+      : {}),
+    ...(implementation.defaultParamOverrides
+      ? { defaultParamOverrides: { ...implementation.defaultParamOverrides } }
+      : {}),
+    ...(implementation.excludedParameterIds?.length
+      ? { excludedParameterIds: [...implementation.excludedParameterIds] }
+      : {}),
+    ...(implementation.projectorPluginId ? { projectorPluginId: implementation.projectorPluginId } : {}),
+    ...(implementation.projectorExportId ? { projectorExportId: implementation.projectorExportId } : {}),
   }));
 }
 
@@ -384,6 +430,14 @@ export const MODEL_PROVIDER_DEFINITIONS: ModelProviderDefinition[] = [
     upstreamId: "fal",
     apiShape: "fal",
     priority: 20,
+    requiredCredentials: [API_KEY_CREDENTIAL],
+  },
+  {
+    providerId: "official",
+    upstreamId: "bfl",
+    region: "global",
+    apiShape: "bfl",
+    priority: 10,
     requiredCredentials: [API_KEY_CREDENTIAL],
   },
   {
@@ -529,7 +583,7 @@ function providerIdForRoute(route: ModelUpstreamRoute): ProviderAccountId {
     route.upstreamId === "google-agent-platform" ||
     route.upstreamId === "anthropic"
   ) return "official";
-  if (route.upstreamId === "fal" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
+  if (route.upstreamId === "fal" || route.upstreamId === "pika" || route.upstreamId === "kie" || route.upstreamId === "replicate" || route.upstreamId === "mock") {
     return route.upstreamId;
   }
   return "custom";
@@ -547,6 +601,7 @@ export interface ProviderModelSupport {
     upstreamModel: string;
     apiShape: ModelUpstreamApiShape;
     requiredCredentials: string[];
+    credentialRequirements?: ProviderCredentialRequirements;
     requiredOAuth: ProviderOAuthId[];
   }>;
   requiredCredentials: string[];
@@ -596,6 +651,12 @@ export function listProviderModelSupport(options: {
       upstreamModel: route.upstreamModel,
       apiShape: route.apiShape,
       requiredCredentials: [...(route.requiredCredentials ?? [])],
+      ...(route.credentialRequirements ? {
+        credentialRequirements: {
+          ...route.credentialRequirements,
+          anyOf: route.credentialRequirements.anyOf.map((credentials) => [...credentials]),
+        },
+      } : {}),
       requiredOAuth: [...(route.requiredOAuth ?? [])],
     });
     row.requiredCredentials = [...new Set([...row.requiredCredentials, ...(route.requiredCredentials ?? [])])].sort();
@@ -705,7 +766,7 @@ function compareProviderCandidatesForModel(
 }
 
 function canServeRoute(route: ModelUpstreamRoute, provider: ProviderAccountAvailability): boolean {
-  return provider.enabled !== false && hasRequiredCredentials(route, provider) && hasRequiredOAuth(route, provider);
+  return provider.enabled !== false && modelRouteCredentialsSatisfied(route, provider) && hasRequiredOAuth(route, provider);
 }
 
 function providerCandidate(
@@ -771,23 +832,42 @@ function configForRoute(
   return upstreamConfig(query.configuredUpstreams, route.upstreamId);
 }
 
-function missingRequiredCredentials(
-  route: ModelUpstreamRoute,
+export function missingModelRouteCredentials(
+  route: Pick<ModelUpstreamRoute, "requiredCredentials" | "credentialRequirements">,
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): string[] {
-  if (!route.requiredCredentials?.length) return [];
+  if (!route.requiredCredentials?.length && !route.credentialRequirements) return [];
   if (!config) return [];
-  if (config.configuredCredentials === undefined) return [...route.requiredCredentials];
-  return route.requiredCredentials.filter((credential) => !config.configuredCredentials?.includes(credential));
+  const configured = new Set(config.configuredCredentials ?? []);
+  const commonMissing = (route.requiredCredentials ?? [])
+    .filter((credential) => !configured.has(credential));
+  const alternatives = route.credentialRequirements?.anyOf;
+  if (!alternatives?.length) return commonMissing;
+  const alternativeChecks = alternatives.map((credentials) => ({
+    missing: credentials.filter((credential) => !configured.has(credential)),
+    matched: credentials.filter((credential) => configured.has(credential)).length,
+  }));
+  if (alternativeChecks.some((check) => check.missing.length === 0)) return commonMissing;
+  const nearest = [...alternativeChecks].sort((a, b) =>
+    a.missing.length - b.missing.length || b.matched - a.matched
+  )[0]?.missing ?? [];
+  return [...new Set([...commonMissing, ...nearest])];
 }
 
-function hasRequiredCredentials(
-  route: ModelUpstreamRoute,
+export function modelRouteCredentialsSatisfied(
+  route: Pick<ModelUpstreamRoute, "requiredCredentials" | "credentialRequirements">,
   config: ProviderAccountAvailability | UpstreamAvailability | undefined,
 ): boolean {
-  if (!route.requiredCredentials?.length) return true;
+  if (!route.requiredCredentials?.length && !route.credentialRequirements) return true;
   if (!config) return true;
-  return missingRequiredCredentials(route, config).length === 0;
+  if (missingModelRouteCredentials(route, config).length > 0) return false;
+  const alternatives = route.credentialRequirements?.anyOf;
+  if (!alternatives?.length) return true;
+  const configured = new Set(config.configuredCredentials ?? []);
+  const satisfied = alternatives.filter((credentials) =>
+    credentials.every((credential) => configured.has(credential))
+  );
+  return route.credentialRequirements?.exclusive ? satisfied.length === 1 : satisfied.length > 0;
 }
 
 function missingRequiredOAuth(
@@ -815,7 +895,7 @@ function isEnabled(route: ModelUpstreamRoute, query: ModelUpstreamRouteQuery): b
   if (!query.configuredUpstreams && !query.configuredProviders) return true;
   const config = configForRoute(query, route);
   if (!config || config.enabled === false) return false;
-  return hasRequiredCredentials(route, config) && hasRequiredOAuth(route, config);
+  return modelRouteCredentialsSatisfied(route, config) && hasRequiredOAuth(route, config);
 }
 
 function candidateRoutes(query: ModelUpstreamRouteQuery): ModelUpstreamRoute[] {
@@ -882,6 +962,36 @@ export function resolveModelUpstreamRoute(query: ModelUpstreamRouteQuery): Model
   return listModelUpstreamRoutes(query)[0] ?? null;
 }
 
+/** Compose the public model contract with the selected provider's deltas.
+ * This keeps common fields shared while ensuring the UI and backend validate
+ * the exact candidates the selected provider can receive. */
+export function applyModelProviderImplementation(
+  model: ModelCard,
+  route: ModelUpstreamRoute | null | undefined,
+): ModelCard {
+  if (!route) return model;
+  const excludedParameterIds = new Set(route.excludedParameterIds ?? []);
+  const overrides = new Map((route.parameterOverrides ?? []).map((parameter) => [parameter.id, parameter]));
+  const parameterIds = new Set(model.parameters.map((parameter) => parameter.id));
+  const parameters = model.parameters
+    .filter((parameter) => !excludedParameterIds.has(parameter.id))
+    .map((parameter) => overrides.get(parameter.id) ?? parameter);
+  for (const parameter of route.parameterOverrides ?? []) {
+    if (!parameterIds.has(parameter.id) && !excludedParameterIds.has(parameter.id)) parameters.push(parameter);
+  }
+  const defaultParams = Object.fromEntries(
+    Object.entries(model.defaultParams).filter(([parameterId]) => !excludedParameterIds.has(parameterId)),
+  );
+  return ModelCardSchema.parse({
+    ...model,
+    parameters,
+    defaultParams: { ...defaultParams, ...(route.defaultParamOverrides ?? {}) },
+    input: route.referenceBinding
+      ? { ...model.input, referenceBinding: route.referenceBinding }
+      : model.input,
+  });
+}
+
 function uniqueProviderIds(routes: ModelUpstreamRoute[]): ProviderAccountId[] {
   return [...new Set(routes.map(providerIdForRoute))];
 }
@@ -921,7 +1031,7 @@ export function listModelCatalogEntries(options: {
       return !!config && config.enabled !== false;
     });
     const missingCredentials = [
-      ...new Set(configuredCandidates.flatMap((route) => missingRequiredCredentials(route, configForRoute(query, route)))),
+      ...new Set(configuredCandidates.flatMap((route) => missingModelRouteCredentials(route, configForRoute(query, route)))),
     ];
     const missingOAuth = [
       ...new Set(configuredCandidates.flatMap((route) => missingRequiredOAuth(route, configForRoute(query, route)))),
@@ -932,7 +1042,7 @@ export function listModelCatalogEntries(options: {
         ? "configured-provider"
         : "all";
     return {
-      model,
+      model: applyModelProviderImplementation(model, selectedRoute),
       tier,
       routes,
       selectedRoute,

@@ -1,8 +1,39 @@
+import {
+  TIMELINE_APP_CONTRACT,
+  type TimelineAppContract,
+} from "./timeline-contract-adapter.js";
+
 export const TIMELINE_APP_RESOURCE_URI = "ui://clash/timeline";
 export const TIMELINE_APP_MIME_TYPE = "text/html;profile=mcp-app";
+export { TIMELINE_APP_CONTRACT };
 
-export function createTimelineAppHtml(bundledJavascript: string): string {
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function inlineJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
+}
+
+export function createTimelineAppHtml(
+  bundledJavascript: string,
+  appContract: TimelineAppContract = TIMELINE_APP_CONTRACT,
+): string {
   const safeJavascript = bundledJavascript.replace(/<\/script/gi, "<\\/script");
+  const categoryOptions = appContract.trackCategories.map((category) => (
+    `<option value="${escapeHtml(category.id)}"${
+      category.id === appContract.defaultTrackCategory ? " selected" : ""
+    }>${escapeHtml(category.label)}</option>`
+  )).join("\n                ");
+  const safeAppContract = inlineJson(appContract);
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -286,10 +317,7 @@ export function createTimelineAppHtml(bundledJavascript: string): string {
             <label>Track ID<input name="trackId" autocomplete="off" required /></label>
             <label>Category
               <select name="category" data-track-category>
-                <option value="visual">Video / image</option>
-                <option value="text">Text / subtitle</option>
-                <option value="effect">Effects</option>
-                <option value="audio">Audio</option>
+                ${categoryOptions}
               </select>
             </label>
             <button type="submit" data-secondary>Add track</button>
@@ -298,12 +326,13 @@ export function createTimelineAppHtml(bundledJavascript: string): string {
           <div data-empty-state hidden><h2>Start with structure.</h2><p>Create a timeline or add a typed track. Every save goes through the same read-proof and apply contract as the Clash CLI.</p></div>
         </section>
         <aside data-inspector>
-          <div data-panel-heading><h2>Inspector</h2><p>Edit exact frame values.</p></div>
+          <div data-panel-heading><h2>Inspector</h2><p>Timing-only editor; use agents or YAML for the full Timeline DSL.</p></div>
           <div data-inspector-content><p data-inspector-placeholder>Select a clip to inspect its timing.</p></div>
         </aside>
       </div>
       <output data-status aria-live="polite">Connecting…</output>
     </main>
+    <script>window.__CLASH_TIMELINE_APP_CONTRACT__=${safeAppContract};</script>
     <script type="module">${safeJavascript}</script>
   </body>
 </html>`;

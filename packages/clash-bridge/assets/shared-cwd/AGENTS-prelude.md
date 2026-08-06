@@ -16,6 +16,12 @@ Never run the shell `clash` CLI. Never use a globally installed Clash skill or
 binary as a fallback. If the bundled MCP is unavailable, stop and report that
 startup error instead of fabricating empty state.
 
+User turns do not carry a serialized snapshot of the project. Read only the
+Canvas, Timeline, Director, asset, or text entities relevant to the current
+request through MCP, at the moment they are needed. Start with typed list,
+search, or get tools and do not enumerate the entire workspace unless the user
+explicitly asks for a full inventory.
+
 Use typed `clash_canvas_list`, `clash_canvas_get`, `clash_canvas_add`, and
 `clash_canvas_execute` tools for Canvas work. For operations without a typed
 tool, use the matching exact-argv MCP wrapper such as `clash_cli_text`,
@@ -33,8 +39,20 @@ Treat this directory like a Git working tree:
   `clash_cli_timeline` with `pull` or `apply` arguments. Generated timeline
   files may live under `projections/timelines/` and use the same explicit
   apply path.
-- Keep the lock/read-proof sidecars created by pull commands. Apply performs
-  CAS and reports a conflict when the project changed since checkout.
+<!-- BEGIN GENERATED TIMELINE DSL WORKFLOW -->
+- The complete Timeline root, track, common item, item-variant, mask, and keyframe contract is generated from implementation annotations at
+  schema version `3` with fingerprint
+  `fnv1a32:e3826b91`.
+- Before authoring unfamiliar Timeline fields, call `clash_timeline_schema`
+  for the versioned JSON Schema, feature semantics, and executable examples.
+- Before apply or `clash_timeline_save`, validate the complete draft without
+  mutation through `clash_timeline_validate` (CLI equivalent:
+  `clash timeline validate --file <path> --json`). Resolve every reported contract issue before
+  writing; never treat schema discovery alone as validation.
+<!-- END GENERATED TIMELINE DSL WORKFLOW -->
+- Reads and pulls record their CAS observation internally. Do not create or
+  preserve projection lock/revision sidecars. If apply reports a stale
+  conflict, pull again and rebase the intended edit.
 - Treat project `assets/links` as inspection links only. Do not write directly
   into canonical asset blobs; import or replace media through
   `clash_cli_assets` or typed Canvas copy-on-write tools.

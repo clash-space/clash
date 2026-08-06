@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   configFilePath,
+  getServerUrl,
   loadConfig,
   requireApiKey,
   saveConfig,
@@ -19,6 +20,69 @@ test("config path honors CLASH_HOME", () => {
     configFilePath({ CLASH_HOME: "/tmp/clash-home" }),
     "/tmp/clash-home/config.yaml",
   );
+});
+
+test("server URL follows the active host in the selected profile home", async () => {
+  const originalClashHome = process.env.CLASH_HOME;
+  const originalApiUrl = process.env.CLASH_API_URL;
+  const clashHome = await tempDir();
+  process.env.CLASH_HOME = clashHome;
+  delete process.env.CLASH_API_URL;
+  await mkdir(join(clashHome, "run"), { recursive: true });
+  await writeFile(join(clashHome, "run", "host.json"), JSON.stringify({
+    schemaVersion: 1,
+    protocolVersion: 1,
+    dataSchemaVersion: 1,
+    hostId: "profile-host",
+    endpoint: "http://127.0.0.1:49329",
+    pid: process.pid,
+    launchMode: "desktop",
+    startedBy: "desktop",
+    startedAt: "2026-08-05T00:00:00.000Z",
+    updatedAt: "2026-08-05T00:00:00.000Z",
+  }), "utf8");
+  try {
+    assert.equal(getServerUrl(), "http://127.0.0.1:49329");
+  } finally {
+    if (originalClashHome === undefined) delete process.env.CLASH_HOME;
+    else process.env.CLASH_HOME = originalClashHome;
+    if (originalApiUrl === undefined) delete process.env.CLASH_API_URL;
+    else process.env.CLASH_API_URL = originalApiUrl;
+  }
+});
+
+test("server URL never crosses an explicitly mismatched host profile", async () => {
+  const originalClashHome = process.env.CLASH_HOME;
+  const originalProfile = process.env.CLASH_PROFILE;
+  const originalApiUrl = process.env.CLASH_API_URL;
+  const clashHome = await tempDir();
+  process.env.CLASH_HOME = clashHome;
+  process.env.CLASH_PROFILE = "dev";
+  delete process.env.CLASH_API_URL;
+  await mkdir(join(clashHome, "run"), { recursive: true });
+  await writeFile(join(clashHome, "run", "host.json"), JSON.stringify({
+    schemaVersion: 1,
+    protocolVersion: 1,
+    dataSchemaVersion: 1,
+    hostId: "production-host",
+    endpoint: "http://127.0.0.1:49321",
+    pid: process.pid,
+    launchMode: "desktop",
+    startedBy: "desktop",
+    profile: "prod",
+    startedAt: "2026-08-05T00:00:00.000Z",
+    updatedAt: "2026-08-05T00:00:00.000Z",
+  }), "utf8");
+  try {
+    assert.equal(getServerUrl(), "http://localhost:8788");
+  } finally {
+    if (originalClashHome === undefined) delete process.env.CLASH_HOME;
+    else process.env.CLASH_HOME = originalClashHome;
+    if (originalProfile === undefined) delete process.env.CLASH_PROFILE;
+    else process.env.CLASH_PROFILE = originalProfile;
+    if (originalApiUrl === undefined) delete process.env.CLASH_API_URL;
+    else process.env.CLASH_API_URL = originalApiUrl;
+  }
 });
 
 test("saved CLI config uses owner-only permissions", async () => {

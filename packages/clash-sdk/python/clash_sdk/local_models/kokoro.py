@@ -61,6 +61,20 @@ def _write_pcm_wav(path: Path, chunks: list[Any], sample_rate: int) -> int:
 class KokoroLocalTtsRuntime:
     """Small, multilingual local TTS using MLX-Audio's Kokoro adapter."""
 
+    def __init__(self) -> None:
+        self._models: dict[str, Any] = {}
+
+    def _model(self, snapshot: Path) -> Any:
+        key = str(snapshot)
+        cached = self._models.get(key)
+        if cached is not None:
+            return cached
+        from mlx_audio.tts.utils import load_model
+
+        loaded = load_model(key)
+        self._models[key] = loaded
+        return loaded
+
     def status(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
         try:
             _ensure_supported_model(model)
@@ -98,7 +112,13 @@ class KokoroLocalTtsRuntime:
 
     def remove(self, model: str, cache_dir: str | None = None) -> None:
         _ensure_supported_model(model)
+        self._models.clear()
         _remove_snapshot(model, cache_dir)
+
+    def warmup(self, model: str, cache_dir: str | None = None) -> LocalModelStatus:
+        _ensure_supported_model(model)
+        self._model(_require_cached_snapshot(model, cache_dir))
+        return LocalModelStatus(available=True)
 
     def synthesize(
         self,
@@ -113,9 +133,7 @@ class KokoroLocalTtsRuntime:
             raise ValueError("text is required")
         _ensure_supported_model(model)
         snapshot = _require_cached_snapshot(model, cache_dir)
-        from mlx_audio.tts.utils import load_model
-
-        tts = load_model(str(snapshot))
+        tts = self._model(snapshot)
         voice_id = voice or "af_heart"
         speed_value = speed or 1.0
         chunks = [result.audio for result in tts.generate(

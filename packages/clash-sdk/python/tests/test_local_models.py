@@ -1,3 +1,4 @@
+import importlib
 import importlib.util
 import io
 import json
@@ -229,10 +230,12 @@ def test_funasr_normalizes_word_timestamps_and_requests_alignment(monkeypatch):
     import funasr
 
     generated = []
+    constructed = []
 
     class FakeAutoModel:
         def __init__(self, **kwargs):
             assert kwargs == {"model": "iic/SenseVoiceSmall", "trust_remote_code": True}
+            constructed.append(kwargs)
 
         def generate(self, **kwargs):
             generated.append(kwargs)
@@ -246,9 +249,15 @@ def test_funasr_normalizes_word_timestamps_and_requests_alignment(monkeypatch):
 
     monkeypatch.setattr(funasr, "AutoModel", FakeAutoModel)
 
-    transcription = FunAsrLocalAsrRuntime().transcribe(
+    runtime = FunAsrLocalAsrRuntime()
+    transcription = runtime.transcribe(
         model="iic/SenseVoiceSmall",
         audio_path="/tmp/input.wav",
+        language="zh",
+    )
+    runtime.transcribe(
+        model="iic/SenseVoiceSmall",
+        audio_path="/tmp/second.wav",
         language="zh",
     )
 
@@ -270,9 +279,20 @@ def test_funasr_normalizes_word_timestamps_and_requests_alignment(monkeypatch):
         "word-000002",
         "word-000003",
     ]
+    assert constructed == [
+        {"model": "iic/SenseVoiceSmall", "trust_remote_code": True},
+    ]
     assert generated == [
         {
             "input": "/tmp/input.wav",
+            "language": "zh",
+            "use_itn": True,
+            "batch_size_s": 60,
+            "output_timestamp": True,
+            "pred_timestamp": True,
+        },
+        {
+            "input": "/tmp/second.wav",
             "language": "zh",
             "use_itn": True,
             "batch_size_s": 60,
@@ -283,7 +303,7 @@ def test_funasr_normalizes_word_timestamps_and_requests_alignment(monkeypatch):
 
 
 def test_funasr_status_distinguishes_installed_runtime_from_downloaded_model(monkeypatch):
-    import modelscope.hub.snapshot_download as snapshot_module
+    snapshot_module = importlib.import_module("modelscope.hub.snapshot_download")
 
     def missing_model(*args, **kwargs):
         assert kwargs["local_files_only"] is True
@@ -298,7 +318,7 @@ def test_funasr_status_distinguishes_installed_runtime_from_downloaded_model(mon
 
 
 def test_funasr_removes_only_the_managed_cached_model(tmp_path, monkeypatch):
-    import modelscope.hub.snapshot_download as snapshot_module
+    snapshot_module = importlib.import_module("modelscope.hub.snapshot_download")
 
     cached_model = tmp_path / "managed-model"
     cached_model.mkdir()
@@ -322,6 +342,7 @@ def test_piper_runtime_downloads_to_managed_cache_and_synthesizes_wav(tmp_path, 
     config_path = tmp_path / f"{model}.onnx.json"
     downloads = []
     synthesized = []
+    loaded = []
 
     def fake_check_call(command):
         downloads.append(command)
@@ -340,8 +361,12 @@ def test_piper_runtime_downloads_to_managed_cache_and_synthesizes_wav(tmp_path, 
         def __init__(self, *, length_scale):
             self.length_scale = length_scale
 
+    def fake_load_voice(path):
+        loaded.append(path)
+        return FakeVoice()
+
     fake_piper = types.ModuleType("piper")
-    fake_piper.PiperVoice = types.SimpleNamespace(load=lambda path: FakeVoice())
+    fake_piper.PiperVoice = types.SimpleNamespace(load=fake_load_voice)
     fake_piper.SynthesisConfig = FakeSynthesisConfig
     monkeypatch.setitem(sys.modules, "piper", fake_piper)
     original_find_spec = importlib.util.find_spec
@@ -366,6 +391,14 @@ def test_piper_runtime_downloads_to_managed_cache_and_synthesizes_wav(tmp_path, 
         voice="huayan",
         speed=1.25,
     )
+    runtime.synthesize(
+        model=model,
+        text="第二次调用",
+        output_path=str(output_path),
+        cache_dir=str(tmp_path),
+        voice="huayan",
+        speed=1.25,
+    )
 
     assert downloads == [
         [sys.executable, "-m", "pip", "install", "-U", "piper-tts[zh]"],
@@ -378,7 +411,8 @@ def test_piper_runtime_downloads_to_managed_cache_and_synthesizes_wav(tmp_path, 
             model,
         ],
     ]
-    assert synthesized == [("Clash 本地语音", 0.8)]
+    assert loaded == [str(model_path)]
+    assert synthesized == [("Clash 本地语音", 0.8), ("第二次调用", 0.8)]
     assert output_path.exists()
     assert result.backend_id == "piper"
     assert result.model_id == model
@@ -486,6 +520,7 @@ def test_kokoro_synthesizes_a_managed_wav_with_voice_language(tmp_path, monkeypa
     import clash_sdk.local_models.kokoro as kokoro_module
 
     generated = []
+    loaded = []
 
     class FakeKokoroModel:
         sample_rate = 24000
@@ -494,8 +529,12 @@ def test_kokoro_synthesizes_a_managed_wav_with_voice_language(tmp_path, monkeypa
             generated.append(kwargs)
             yield types.SimpleNamespace(audio=types.SimpleNamespace(tolist=lambda: [0.0, 0.5, -0.5, 0.0]))
 
+    def fake_load_model(path):
+        loaded.append(path)
+        return FakeKokoroModel()
+
     fake_utils = types.ModuleType("mlx_audio.tts.utils")
-    fake_utils.load_model = lambda path: FakeKokoroModel()
+    fake_utils.load_model = fake_load_model
     monkeypatch.setitem(sys.modules, "mlx_audio", types.ModuleType("mlx_audio"))
     monkeypatch.setitem(sys.modules, "mlx_audio.tts", types.ModuleType("mlx_audio.tts"))
     monkeypatch.setitem(sys.modules, "mlx_audio.tts.utils", fake_utils)
@@ -506,9 +545,18 @@ def test_kokoro_synthesizes_a_managed_wav_with_voice_language(tmp_path, monkeypa
     )
 
     output = tmp_path / "kokoro.wav"
-    result = KokoroLocalTtsRuntime().synthesize(
+    runtime = KokoroLocalTtsRuntime()
+    result = runtime.synthesize(
         model="mlx-community/Kokoro-82M-4bit",
         text="你好 Clash",
+        output_path=str(output),
+        cache_dir=str(tmp_path),
+        voice="zf_xiaobei",
+        speed=1.1,
+    )
+    runtime.synthesize(
+        model="mlx-community/Kokoro-82M-4bit",
+        text="再次生成",
         output_path=str(output),
         cache_dir=str(tmp_path),
         voice="zf_xiaobei",
@@ -519,7 +567,11 @@ def test_kokoro_synthesizes_a_managed_wav_with_voice_language(tmp_path, monkeypa
     assert result.backend_id == "mlx-kokoro"
     assert result.voice_id == "zf_xiaobei"
     assert result.sample_rate == 24000
-    assert generated == [{"text": "你好 Clash", "voice": "zf_xiaobei", "speed": 1.1, "lang_code": "z"}]
+    assert loaded == [str(tmp_path / "kokoro")]
+    assert generated == [
+        {"text": "你好 Clash", "voice": "zf_xiaobei", "speed": 1.1, "lang_code": "z"},
+        {"text": "再次生成", "voice": "zf_xiaobei", "speed": 1.1, "lang_code": "z"},
+    ]
 
 
 def test_vibevoice_combines_speaker_segments_with_whisper_word_alignment(tmp_path, monkeypatch):
@@ -552,8 +604,14 @@ def test_vibevoice_combines_speaker_segments_with_whisper_word_alignment(tmp_pat
                 {"start_time": 1.0, "end_time": 2.2, "speaker_id": 1, "text": "General Kenobi"},
             ])
 
+    loaded = []
+
+    def fake_load(path):
+        loaded.append(path)
+        return FakeVibeVoiceModel()
+
     fake_utils = types.ModuleType("mlx_audio.stt.utils")
-    fake_utils.load = lambda path: FakeVibeVoiceModel()
+    fake_utils.load = fake_load
     monkeypatch.setitem(sys.modules, "mlx_audio", types.ModuleType("mlx_audio"))
     monkeypatch.setitem(sys.modules, "mlx_audio.stt", types.ModuleType("mlx_audio.stt"))
     monkeypatch.setitem(sys.modules, "mlx_audio.stt.utils", fake_utils)
@@ -563,7 +621,14 @@ def test_vibevoice_combines_speaker_segments_with_whisper_word_alignment(tmp_pat
         lambda model, cache_dir: tmp_path / "vibevoice",
     )
 
-    result = VibeVoiceLocalAsrRuntime(whisper_runtime=FakeWhisperRuntime()).transcribe(
+    runtime = VibeVoiceLocalAsrRuntime(whisper_runtime=FakeWhisperRuntime())
+    result = runtime.transcribe(
+        model="mlx-community/VibeVoice-ASR-4bit",
+        audio_path="/tmp/meeting.wav",
+        language="en",
+        cache_dir=str(tmp_path),
+    )
+    runtime.transcribe(
         model="mlx-community/VibeVoice-ASR-4bit",
         audio_path="/tmp/meeting.wav",
         language="en",
@@ -576,6 +641,7 @@ def test_vibevoice_combines_speaker_segments_with_whisper_word_alignment(tmp_pat
         ("speaker-1", ["word-000001", "word-000002"]),
         ("speaker-2", ["word-000003", "word-000004"]),
     ]
+    assert loaded == [str(tmp_path / "vibevoice")]
 
 
 def test_parakeet_merges_aligned_subword_tokens_into_true_word_timings(tmp_path, monkeypatch):
@@ -627,9 +693,16 @@ def test_parakeet_merges_aligned_subword_tokens_into_true_word_timings(tmp_path,
         lambda model, cache_dir: tmp_path / "parakeet",
     )
 
-    transcription = runtime_type().transcribe(
+    runtime = runtime_type()
+    transcription = runtime.transcribe(
         model="mlx-community/parakeet-tdt-0.6b-v3",
         audio_path="/tmp/european-interview.wav",
+        language="fr",
+        cache_dir=str(tmp_path),
+    )
+    runtime.transcribe(
+        model="mlx-community/parakeet-tdt-0.6b-v3",
+        audio_path="/tmp/second-interview.wav",
         language="fr",
         cache_dir=str(tmp_path),
     )
@@ -649,7 +722,7 @@ def test_parakeet_merges_aligned_subword_tokens_into_true_word_timings(tmp_path,
         ["word-000003"],
     ]
     assert load_calls == [str(tmp_path / "parakeet")]
-    assert generate_calls == ["/tmp/european-interview.wav"]
+    assert generate_calls == ["/tmp/european-interview.wav", "/tmp/second-interview.wav"]
 
 
 def test_parakeet_manages_mlx_audio_and_the_hugging_face_snapshot(tmp_path, monkeypatch):
@@ -741,3 +814,81 @@ def test_local_model_rpc_exposes_an_explicit_parakeet_adapter(monkeypatch, capsy
         "result": {"available": True, "message": "parakeet"},
     }
     assert calls == [("mlx-community/parakeet-tdt-0.6b-v3", "/tmp/clash-asr")]
+
+
+def test_local_model_rpc_serves_multiple_requests_with_one_runtime(monkeypatch, capsys):
+    import clash_sdk.local_models.rpc as rpc_module
+
+    constructed = []
+
+    class FakeParakeetRuntime:
+        def __init__(self):
+            constructed.append(self)
+
+        def status(self, model, cache_dir=None):
+            return LocalModelStatus(available=True, message=model)
+
+    requests = [
+        {"id": "one", "method": "status", "params": {"model": "model-one"}},
+        {"id": "two", "method": "status", "params": {"model": "model-two"}},
+    ]
+    monkeypatch.setattr(rpc_module, "ParakeetLocalAsrRuntime", FakeParakeetRuntime, raising=False)
+    monkeypatch.setattr(sys, "argv", ["local-model-rpc", "parakeet"])
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO("\n".join(json.dumps(request) for request in requests)),
+    )
+
+    assert rpc_module.main() == 0
+    responses = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert responses == [
+        {"id": "one", "ok": True, "result": {"available": True, "message": "model-one"}},
+        {"id": "two", "ok": True, "result": {"available": True, "message": "model-two"}},
+    ]
+    assert len(constructed) == 1
+
+
+def test_local_model_rpc_router_lazily_reuses_multiple_adapter_runtimes(monkeypatch, capsys):
+    import clash_sdk.local_models.rpc as rpc_module
+
+    parakeet_runtimes = []
+    piper_runtimes = []
+
+    class FakeParakeetRuntime:
+        def __init__(self):
+            parakeet_runtimes.append(self)
+
+        def status(self, model, cache_dir=None):
+            return LocalModelStatus(available=True, message=f"asr:{model}")
+
+    class FakePiperRuntime:
+        def __init__(self):
+            piper_runtimes.append(self)
+
+        def status(self, model, cache_dir=None):
+            return LocalModelStatus(available=True, message=f"tts:{model}")
+
+    requests = [
+        {"id": "asr-one", "adapter": "parakeet", "method": "status", "params": {"model": "asr-one"}},
+        {"id": "tts-one", "adapter": "piper", "method": "status", "params": {"model": "tts-one"}},
+        {"id": "asr-two", "adapter": "parakeet", "method": "status", "params": {"model": "asr-two"}},
+    ]
+    monkeypatch.setattr(rpc_module, "ParakeetLocalAsrRuntime", FakeParakeetRuntime, raising=False)
+    monkeypatch.setattr(rpc_module, "PiperLocalTtsRuntime", FakePiperRuntime, raising=False)
+    monkeypatch.setattr(sys, "argv", ["local-model-rpc", "router"])
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO("\n".join(json.dumps(request) for request in requests)),
+    )
+
+    assert rpc_module.main() == 0
+    responses = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [response["result"]["message"] for response in responses] == [
+        "asr:asr-one",
+        "tts:tts-one",
+        "asr:asr-two",
+    ]
+    assert len(parakeet_runtimes) == 1
+    assert len(piper_runtimes) == 1

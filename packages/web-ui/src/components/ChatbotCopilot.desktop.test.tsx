@@ -8,6 +8,10 @@ import ChatbotCopilot from "./ChatbotCopilot";
 import { AppFeedbackProvider } from "./AppFeedback";
 import type { Runtime, UseClashRuntimeReturn } from "@clash/web-ui/hooks/useClashRuntime";
 import type { ByoMessage } from "@clash/web-ui/lib/acpEvents";
+import {
+  serializeAgentAnnotationPromptBlock,
+  type AgentAnnotationDraft,
+} from "@clash/shared-types";
 
 const mocks = vi.hoisted(() => ({
   useClashRuntime: vi.fn(),
@@ -170,6 +174,23 @@ const desktopLocalRuntime: Runtime = {
   status: "online",
   last_heartbeat: 1,
   created_at: 1,
+};
+
+const queuedAnnotation: AgentAnnotationDraft = {
+  id: "queued-annotation-1",
+  kind: "agent-annotation",
+  note: "Move this beat earlier.",
+  target: {
+    projectId: "project-one",
+    surface: "timeline",
+    surfaceId: "timeline-one",
+    surfaceLabel: "Main Timeline",
+    objectId: "clip-one",
+    objectType: "timeline-clip",
+    objectLabel: "Opening beat",
+    objectPath: "timelines/timeline-one/clips/clip-one",
+    capabilities: ["read", "modify"],
+  },
 };
 
 const codexAcpConfigOptions = [
@@ -362,7 +383,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     mocks.useClashRuntime.mockReturnValue(runtimeState({
       selectedRuntimeId: "desktop-local",
       selectedAgentId: "codex-acp",
-      status: "streaming",
+      status: "streaming" as const,
       ready: true,
       messages: [{
         id: "runtime-follow-target",
@@ -1121,6 +1142,76 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(steerQueuedPrompt).toHaveBeenCalledWith("t1");
   });
 
+  it("renders queued annotation content as a first-class queue summary", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const annotationBlock = serializeAgentAnnotationPromptBlock([queuedAnnotation]);
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "streaming",
+      ready: true,
+      promptQueue: [{
+        id: "q-annotation",
+        turnId: "t-annotation",
+        text: `${annotationBlock}\nPlease revise this section.`,
+        createdAt: 1,
+      }],
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.getByRole("group", { name: "Queued prompt content" })).toBeTruthy();
+    expect(screen.getByText("Please revise this section.")).toBeTruthy();
+    expect(screen.getByText("Opening beat")).toBeTruthy();
+    expect(screen.getByText("1 annotation")).toBeTruthy();
+    expect(screen.queryByText(/clash-agent-annotations/)).toBeNull();
+  });
+
+  it("renders queued mentions and attachments without exposing their markdown transport", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "streaming",
+      ready: true,
+      promptQueue: [{
+        id: "q-rich-content",
+        turnId: "t-rich-content",
+        text: "Review @[Opening frame](node:image-1) ![reference.png](asset-key)",
+        createdAt: 1,
+      }],
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    expect(screen.getByText("@Opening frame")).toBeTruthy();
+    expect(screen.getByText("reference.png")).toBeTruthy();
+    expect(screen.queryByText(/\]\(node:image-1\)/)).toBeNull();
+    expect(screen.queryByText(/!\[reference\.png\]/)).toBeNull();
+  });
+
   it("does not render a queued prompt again after its user message is already visible", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
@@ -1195,6 +1286,52 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove queued message 1" }));
     expect(removeQueuedPrompt).toHaveBeenCalledWith("t1");
+  });
+
+  it("preserves queued annotation blocks when editing the visible prompt text", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return {
+          observe: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const annotationBlock = serializeAgentAnnotationPromptBlock([queuedAnnotation]);
+    const updateQueuedPrompt = vi.fn();
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      status: "streaming",
+      ready: true,
+      promptQueue: [{
+        id: "q-annotation",
+        turnId: "t-annotation",
+        text: `${annotationBlock}\nOriginal request.`,
+        createdAt: 1,
+      }],
+      updateQueuedPrompt,
+    }));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    renderDesktopCopilot();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Queued message options 1" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit message" }));
+    expect((screen.getByLabelText("chat draft") as HTMLInputElement).value).toBe("Original request.");
+
+    fireEvent.change(screen.getByLabelText("chat draft"), { target: { value: "Updated request." } });
+    fireEvent.click(screen.getByTestId("submit-chat-input"));
+
+    expect(updateQueuedPrompt).toHaveBeenCalledWith(
+      "t-annotation",
+      expect.stringContaining("clash-agent-annotations"),
+    );
+    expect(updateQueuedPrompt.mock.calls[0]?.[1]).toContain("Updated request.");
+    expect(updateQueuedPrompt.mock.calls[0]?.[1]).toContain("Opening beat");
   });
 
   it("hides the runtime prompt queue bar when queueing is disabled", () => {
@@ -3735,7 +3872,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(sendMessage.mock.calls[0]?.[0]).not.toContain("Selected context:");
   });
 
-  it("sends the active canvas identity and resolved mention references to the agent", () => {
+  it("keeps active canvas state out of the user turn so the agent can read it through Clash MCP", () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -3776,10 +3913,8 @@ describe("ChatbotCopilot desktop local mode", () => {
     });
     fireEvent.click(screen.getByTestId("submit-chat-input"));
 
-    const prompt = sendMessage.mock.calls[0]?.[0] as string;
-    expect(prompt).toContain('"activeSurface":{"kind":"canvas","id":"canvas-main","name":"Main Storyboard"}');
-    expect(prompt).toContain('"references":[{"id":"action-1","kind":"node","canvasId":"canvas-main"');
-    expect(prompt).toContain("Run @[Render variants](node:action-1)");
+    expect(sendMessage).toHaveBeenCalledWith("Run @[Render variants](node:action-1)");
+    expect(sendMessage.mock.calls[0]?.[0]).not.toContain("clash-workspace-context");
   });
 
   it("auto-opens the session update notice from the header and lets the user collapse it", async () => {
@@ -3843,7 +3978,7 @@ describe("ChatbotCopilot desktop local mode", () => {
     expect(restartSession).toHaveBeenCalledWith("now");
   });
 
-  it("renders ACP permission options as a blocking card inside the Chat panel", async () => {
+  it("replaces the entire composer with the blocking ACP permission form", async () => {
     globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
     vi.stubGlobal(
       "IntersectionObserver",
@@ -3876,9 +4011,78 @@ describe("ChatbotCopilot desktop local mode", () => {
 
     const approval = await screen.findByRole("group", { name: "Approval required" });
     expect(approval.closest("aside")).toBeTruthy();
+    expect(approval.className).toContain("clash-chat-input-surface");
     expect(screen.queryByRole("dialog", { name: "Approval required" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Harness permission mode" })).toBeNull();
+    expect(screen.queryByTestId("milkdown-editor")).toBeNull();
     expect(screen.getByText("Edit file")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Allow" }));
     expect(respondPermission).toHaveBeenCalledWith("permission-1", "allow");
+  });
+
+  it("restores the untouched composer draft after a blocking permission is resolved", () => {
+    globalThis.__CLASH_RUNTIME_CONFIG__ = { mode: "desktop" };
+    vi.stubGlobal(
+      "IntersectionObserver",
+      vi.fn(function IntersectionObserver() {
+        return { observe: vi.fn(), disconnect: vi.fn() };
+      }),
+    );
+    Element.prototype.scrollIntoView = vi.fn();
+    const baseRuntime = {
+      selectedRuntimeId: "desktop-local",
+      selectedAgentId: "codex-acp",
+      sessionId: "session-permission-draft",
+      status: "streaming" as const,
+      ready: true,
+    };
+    mocks.useClashRuntime.mockReturnValue(runtimeState(baseRuntime));
+    mocks.useAgentCopilot.mockReturnValue(cloudState());
+
+    const view = renderDesktopCopilot();
+    fireEvent.change(screen.getByRole("textbox", { name: "chat draft" }), {
+      target: { value: "keep this draft" },
+    });
+
+    mocks.useClashRuntime.mockReturnValue(runtimeState({
+      ...baseRuntime,
+      permissionRequests: [{
+        requestId: "permission-draft",
+        sessionId: "session-permission-draft",
+        toolCall: { toolCallId: "tool-draft", title: "Write project file" },
+        options: [
+          { optionId: "reject", name: "Reject", kind: "reject_once" },
+          { optionId: "allow", name: "Allow", kind: "allow_once" },
+        ],
+      }],
+    }));
+    view.rerender(
+      <ChatbotCopilot
+        projectId="project-one"
+        threadId="thread-one"
+        initialMessages={[]}
+        width={420}
+        onWidthChange={() => undefined}
+        isCollapsed={false}
+        onCollapseChange={() => undefined}
+      />,
+    );
+    expect(screen.queryByRole("textbox", { name: "chat draft" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Approval required" })).toBeTruthy();
+
+    mocks.useClashRuntime.mockReturnValue(runtimeState(baseRuntime));
+    view.rerender(
+      <ChatbotCopilot
+        projectId="project-one"
+        threadId="thread-one"
+        initialMessages={[]}
+        width={420}
+        onWidthChange={() => undefined}
+        isCollapsed={false}
+        onCollapseChange={() => undefined}
+      />,
+    );
+    expect((screen.getByRole("textbox", { name: "chat draft" }) as HTMLInputElement).value)
+      .toBe("keep this draft");
   });
 });

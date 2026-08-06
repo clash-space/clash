@@ -9,6 +9,7 @@ import {
   resolveCanvasActor,
   resolveCanvasPresenceOptions,
   resolveCanvasProjectId,
+  resolveInstalledPluginAction,
 } from "./canvas";
 import { initProject } from "./projects";
 
@@ -38,6 +39,36 @@ test("uses runtime-injected actor identity without a network lookup", async () =
       actorAgentId: "local-agent",
     });
   });
+});
+
+test("canvas custom actions resolve executable plugin bindings from the active profile host", async () => {
+  const action = await resolveInstalledPluginAction({
+    actionId: "codex-imagegen",
+    serverUrl: "http://127.0.0.1:49321",
+    apiKey: "local-token",
+    request: async () => new Response(JSON.stringify({
+      actions: [{
+        id: "codex-imagegen",
+        outputType: "image",
+        pluginBinding: {
+          pluginId: "clash-codex-imagegen",
+          version: "0.1.0",
+          exportId: "generate-image",
+          schemaHash: `sha256:${"a".repeat(64)}`,
+        },
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } }),
+  });
+
+  assert.deepEqual(action?.pluginBinding, {
+    pluginId: "clash-codex-imagegen",
+    version: "0.1.0",
+    exportId: "generate-image",
+    schemaHash: `sha256:${"a".repeat(64)}`,
+  });
+  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+  assert.match(source, /getMap\("customActions"\)\.set\(action\.id, action\.definition\)/);
+  assert.match(source, /await registerInstalledPluginAction\(projectId, installedPluginAction\)/);
 });
 
 test("canvas connect passes presence options into the daemon", () => {

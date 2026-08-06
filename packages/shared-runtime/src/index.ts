@@ -24,6 +24,58 @@ export {
 export { visibleUserPromptText } from "./prompt-content.js";
 
 export {
+  buildMiniMaxH3Content,
+  type MiniMaxH3ContentInput,
+  type MiniMaxH3OrderedContentPart,
+} from "./minimax-h3.js";
+
+export {
+  buildBflFlux3VideoRequest,
+  generateBflFlux3Video,
+  resolveFlux3KeyframeIndices,
+  type BflFlux3VideoInput,
+  type BflFlux3VideoRequestOptions,
+  type BflFlux3VideoResult,
+} from "./bfl-video.js";
+
+export {
+  createGeminiOmniInteraction,
+  downloadGeminiOmniVideo,
+  extractGeminiOmniVideo,
+  geminiOmniInteractionId,
+  geminiOmniInteractionStatus,
+  getGeminiOmniInteraction,
+  type CreateGeminiOmniInteractionInput,
+  type GeminiOmniInputPart,
+  type GeminiOmniInteraction,
+  type GeminiOmniVideoOutput,
+  type GetGeminiOmniInteractionInput,
+} from "./gemini-omni.js";
+
+export {
+  createPikaMediaJob,
+  getPikaMediaContent,
+  PIKA_MEDIA_BASE_URL,
+  uploadPikaMedia,
+  waitForPikaMediaJob,
+  type PikaMediaJob,
+  type PikaMediaStatus,
+} from "./pika-media.js";
+
+export { generatePikaChat, type PikaChatResult } from "./pika-chat.js";
+
+export {
+  fetchPikaCatalogQuote,
+  pikaBillingBasis,
+  quotePikaCatalogRequest,
+  type PikaCatalogEntry,
+  type PikaCatalogPriceTier,
+  type PikaCatalogPricingComponent,
+  type PikaCatalogQuote,
+  type PikaQuoteComponent,
+} from "./pika-pricing.js";
+
+export {
   buildProjectRecoveryPolicy,
   buildProjectStatus,
   PROJECT_TIMELINE_APPLY_COMMAND,
@@ -64,8 +116,12 @@ export interface LocalHostDiscoveryRecord {
   pid: number;
   launchMode: HostLaunchMode;
   startedBy: HostStartedBy;
+  /** Runtime channel that owns this host. Missing legacy records are production. */
+  profile?: "dev" | "prod";
   agentCliPath?: string;
   ownerClientId?: string;
+  /** 0600-file-only bearer used by a separately managed Bridge to reach the local Kernel broker. */
+  pluginBrokerToken?: string;
   startedAt: string;
   updatedAt: string;
 }
@@ -93,8 +149,11 @@ export function isLocalHostDiscoveryRecord(value: unknown): value is LocalHostDi
     && record.pid > 0
     && isHostLaunchMode(record.launchMode)
     && isHostStartedBy(record.startedBy)
+    && (record.profile === undefined || record.profile === "dev" || record.profile === "prod")
     && (record.agentCliPath === undefined || (typeof record.agentCliPath === "string" && record.agentCliPath.length > 0))
     && (record.ownerClientId === undefined || typeof record.ownerClientId === "string")
+    && (record.pluginBrokerToken === undefined
+      || (typeof record.pluginBrokerToken === "string" && record.pluginBrokerToken.length >= 32))
     && typeof record.startedAt === "string"
     && typeof record.updatedAt === "string"
   );

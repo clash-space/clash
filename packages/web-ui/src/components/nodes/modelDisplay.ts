@@ -11,7 +11,10 @@ export function getModelProviderDisplay({
 }: {
   isCustom: boolean;
   selectedModel?: ModelCard;
-  customDef?: CustomActionDefinition;
+  customDef?: {
+    model?: CustomActionDefinition["model"];
+    [key: string]: unknown;
+  };
 }): string {
   if (!isCustom) return "";
 

@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:log": "./scripts/dev-log.sh",
+    "clash:dev": "node packages/cli/dist/index.js --profile dev",
+    "clash:prod": "node packages/cli/dist/index.js --profile prod",
+    "mcp:dev": "node packages/cli/dist/index.js --profile dev mcp serve --stdio",
+    "mcp:prod": "node packages/cli/dist/index.js --profile prod mcp serve --stdio",
     "logs": "./scripts/logs.sh",
     "build": "turbo run build",
     "test": "turbo run test",

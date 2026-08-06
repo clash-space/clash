@@ -40,6 +40,11 @@ function makeCtx() {
       actorType: "user",
       actorUserId: "user-1",
       prompt: "make it move",
+      promptParts: [
+        { type: "text", text: "Use " },
+        { type: "asset_ref", r2Key: "ref.png", modality: "image" },
+        { type: "text", text: " as the opening" },
+      ],
       modelName: "seedance-2-ref",
       referenceImageR2Keys: ["ref.png"],
       selectedRoute: {
@@ -52,6 +57,11 @@ function makeCtx() {
         apiShape: "modelark",
         priority: 9,
         requiredCredentials: ["apiKey"],
+        referenceBinding: {
+          type: "positional-tokens",
+          modalityScopedIndexes: true,
+          tokens: { image: "[Image {n}]", video: "[Video {n}]", audio: "[Audio {n}]" },
+        },
       },
     },
     env: {
@@ -83,7 +93,8 @@ describe("volcengineVideoProvider", () => {
       baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     });
     mocks.signedMediaUrl.mockResolvedValue("https://media.example/ref.png");
-    mocks.signedMediaUrls.mockResolvedValue([]);
+    mocks.signedMediaUrls.mockImplementation(async (_env: unknown, keys?: string[]) =>
+      keys?.map((key) => `https://media.example/${key}`) ?? []);
     mocks.generateModelArkVideo.mockResolvedValue({
       url: "https://video.example/out.mp4",
       coverImageUrl: "https://video.example/cover.jpg",
@@ -100,6 +111,7 @@ describe("volcengineVideoProvider", () => {
       expect.objectContaining({
         baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
         upstreamModel: "doubao-seedance-2-0-pro",
+        prompt: "Use [Image 1] as the opening",
       }),
     );
     expect(ctx.notifyCompleted).toHaveBeenCalledWith({ assetId: "asset-1" });

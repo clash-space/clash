@@ -20,16 +20,19 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "build:deps": "npm --prefix ../../packages/shared-runtime run build && npm --prefix ../../packages/shared-types run build && npm --prefix ../../packages/cli run build && npm --prefix ../../packages/clash-bridge run build:runtime",
-    "build": "npm run build:deps && tsc",
+    "build:deps": "npm --prefix ../../packages/shared-runtime run build && npm --prefix ../../packages/shared-types run build && npm --prefix ../../packages/clash-sdk/js run build && npm --prefix ../../packages/cli run build && npm --prefix ../../plugins/first-party-media run build && npm --prefix ../../plugins/codex-imagegen run build && npm --prefix ../../packages/clash-bridge run build:runtime",
+    "build": "tsc",
+    "build:with-deps": "npm run build:deps && tsc",
     "type-check": "npm run build:deps && tsc --noEmit",
     "test": "npm run build:deps && vitest run src",
-    "test:e2e": "npm run build && node e2e/daemon-smoke.mjs",
+    "test:e2e": "npm run build:with-deps && node e2e/daemon-smoke.mjs",
     "test:providers": "tsx scripts/provider-conformance.ts",
     "test:google-agent-platform": "tsx scripts/google-agent-platform-conformance.ts",
     "test:watch": "vitest src"
   },
   "dependencies": {
+    "@clash-plugin/first-party-media": "workspace:*",
+    "@clash-plugin/codex-imagegen": "workspace:*",
     "@clash-space/bridge": "workspace:*",
     "@clash-space/cli": "workspace:*",
     "@clash-space/sdk": "workspace:*",

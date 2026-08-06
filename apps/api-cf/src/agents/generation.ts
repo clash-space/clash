@@ -18,6 +18,12 @@ import type { GenerationParams } from "../generation/params";
 import { resolveProvider } from "../generation/registry";
 import { getPlugins } from "../plugins/registry";
 import { recordGenerationEvent } from "../observability/events";
+import {
+  applyModelProviderImplementation,
+  MODEL_CARDS,
+  normalizeModelId,
+  validateModelCardConfiguration,
+} from "@clash/shared-types";
 
 // Re-export so existing importers (ProjectRoom, TaskPolling, tests) keep working.
 export type { GenerationParams } from "../generation/params";
@@ -51,6 +57,25 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     };
 
     try {
+      const modelId = normalizeModelId(params.modelName ?? params.videoModel) ?? params.modelName ?? params.videoModel;
+      const baseCard = MODEL_CARDS.find((card) => card.id === modelId);
+      if (baseCard) {
+        const effectiveCard = applyModelProviderImplementation(baseCard, selectedRoute);
+        const lyricsParam = effectiveCard.musicInput?.lyricsParam;
+        const effectiveModelParams: Record<string, string | number | boolean | undefined> = {
+          ...(params.modelParams as Record<string, string | number | boolean | undefined> | undefined),
+          ...(params.duration !== undefined ? { duration: params.duration } : {}),
+          ...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
+        };
+        const validationError = validateModelCardConfiguration(effectiveCard, {
+          prompt: params.prompt,
+          lyrics: lyricsParam && typeof effectiveModelParams[lyricsParam] === "string"
+            ? effectiveModelParams[lyricsParam] as string
+            : undefined,
+          modelParams: effectiveModelParams,
+        });
+        if (validationError) throw new Error(validationError);
+      }
       await plugins.generation?.beforeGenerate?.(hookCtx);
       await provider.execute(ctx);
       await plugins.generation?.afterGenerate?.(hookCtx, {});

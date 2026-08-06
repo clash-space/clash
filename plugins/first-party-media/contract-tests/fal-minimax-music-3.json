@@ -1,0 +1,43 @@
+{
+  "apiVersion": "clash.plugin.contract-test/v1",
+  "id": "fal-minimax-music-3-basic",
+  "target": {
+    "exportId": "fal-minimax-music-3",
+    "kind": "provider-projector"
+  },
+  "input": {
+    "values": {
+      "prompt": "dreamy synth pop",
+      "lyrics": "[Verse]\nNeon rain",
+      "lyrics_optimizer": true,
+      "is_instrumental": false,
+      "sample_rate": 44100,
+      "bitrate": 256000,
+      "format": "mp3"
+    },
+    "references": []
+  },
+  "expect": {
+    "status": "completed",
+    "outputs": [
+      {
+        "slot": "projection",
+        "kind": "value",
+        "value": {
+          "endpoint": "fal-ai/minimax-music/v3",
+          "input": {
+            "prompt": "dreamy synth pop",
+            "lyrics": "[Verse]\nNeon rain",
+            "lyrics_optimizer": true,
+            "is_instrumental": false,
+            "audio_setting": {
+              "sample_rate": 44100,
+              "bitrate": 256000,
+              "format": "mp3"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

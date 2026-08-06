@@ -1,39 +1,29 @@
+import {
+  TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES,
+  TIMELINE_DSL_ROLE_CATEGORIES,
+  TIMELINE_DSL_TRACK_CATEGORIES,
+} from '@clash/shared-types';
 import type { Item, Track, TrackCategory, TrackRole } from './types';
 
 /** Top-to-bottom lane order. The primary lane anchors visuals above audio. */
 export const TRACK_CATEGORY_ORDER = [
-  'effect',
-  'text',
-  'visual',
-  'primary',
-  'audio',
+  ...TIMELINE_DSL_TRACK_CATEGORIES,
 ] as const satisfies readonly TrackCategory[];
 
 const CATEGORY_RANK = new Map<TrackCategory, number>(
   TRACK_CATEGORY_ORDER.map((category, index) => [category, index]),
 );
 
-const ROLE_CATEGORY: Partial<Record<TrackRole, TrackCategory>> = {
-  'primary-video': 'primary',
-  'b-roll': 'visual',
-  overlay: 'visual',
-  subtitle: 'text',
-  narration: 'audio',
-  dialogue: 'audio',
-  music: 'audio',
-  sfx: 'audio',
-  transition: 'effect',
-};
+const ROLE_CATEGORY = Object.fromEntries(
+  Object.entries(TIMELINE_DSL_ROLE_CATEGORIES).filter((entry): entry is [TrackRole, TrackCategory] => entry[1] !== null),
+) as Partial<Record<TrackRole, TrackCategory>>;
 
-const CATEGORY_ALLOWED_TYPES: Record<TrackCategory, ReadonlySet<Item['type']>> = {
-  effect: new Set(['composition', 'transition']),
-  text: new Set(['text']),
-  visual: new Set(['video', 'image', 'solid', 'sticker', 'derived-overlay']),
-  // The persistent primary lane is the visual spine of the edit. Video can
-  // carry its embedded audio, but standalone audio belongs in an audio lane.
-  primary: new Set(['video', 'image', 'solid']),
-  audio: new Set(['audio']),
-};
+const CATEGORY_ALLOWED_TYPES = Object.fromEntries(
+  Object.entries(TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES).map(([category, itemTypes]) => [
+    category,
+    new Set<Item['type']>(itemTypes),
+  ]),
+) as unknown as Record<TrackCategory, ReadonlySet<Item['type']>>;
 
 export function itemTrackCategory(item: Pick<Item, 'type'>): Exclude<TrackCategory, 'primary'> {
   switch (item.type) {

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
   createProviderTestRecordingFetch,
+  createJsonlProviderTestRecorder,
   createProviderTestReplayFetch,
   createProviderTestReplayFixtures,
   createProviderConformanceStubs,
@@ -49,6 +50,14 @@ describe("provider test recorder", () => {
       }),
     ]));
     expect([...new Set(stubs.map((stub) => stub.shape))]).toEqual(expect.arrayContaining(["asr", "image", "video", "audio", "text"]));
+    expect(stubs.find((stub) => stub.modelId === "gemini-omni-flash")).toMatchObject({
+      providerId: "official",
+      upstreamId: "google-ai-studio",
+      credentialRequirements: {
+        anyOf: [["apiKey"], ["gatewayToken", "baseUrl"]],
+        exclusive: true,
+      },
+    });
   });
 
   it("records request, response, and callback payloads with every field preserved", async () => {
@@ -79,7 +88,11 @@ describe("provider test recorder", () => {
     await recorder.recordResponse({
       requestId,
       status: 200,
-      headers: { "content-type": "application/json", "x-request-id": "provider-request-1" },
+      headers: {
+        "content-type": "application/json",
+        "set-cookie": "provider-session=secret-cookie",
+        "x-request-id": "provider-request-1",
+      },
       body: {
         images: [{ url: "https://provider.example/result.png", width: 1024, height: 576 }],
         providerRawField: { anything: true },
@@ -121,7 +134,11 @@ describe("provider test recorder", () => {
       requestId,
       response: {
         status: 200,
-        headers: { "content-type": "application/json", "x-request-id": "provider-request-1" },
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": "[redacted]",
+          "x-request-id": "provider-request-1",
+        },
         body: {
           images: [{ url: "https://provider.example/result.png", width: 1024, height: 576 }],
           providerRawField: { anything: true },
@@ -143,6 +160,37 @@ describe("provider test recorder", () => {
       },
     });
     expect(providerTestRecordingEventToJsonl(events[0])).toContain('"type":"request"');
+    expect(JSON.stringify(events)).not.toContain("secret-cookie");
+  });
+
+  it("serializes concurrent large JSONL event writes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "provider-test-recorder-writes-"));
+    const filePath = join(dir, "concurrent.jsonl");
+    const recorder = await createJsonlProviderTestRecorder(filePath);
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.id === "mock:mock::mock-image-model");
+    expect(stub).toBeTruthy();
+
+    try {
+      const requestIds = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+        recorder.recordRequest({
+          stub: stub!,
+          url: `https://provider.example/result-${index}.mp4`,
+          method: "GET",
+        })));
+      await Promise.all(requestIds.map((requestId, index) => recorder.recordResponse({
+        requestId,
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+        body: new Uint8Array(256 * 1024).fill(index),
+      })));
+
+      const lines = (await readFile(filePath, "utf8")).trim().split(/\r?\n/);
+      expect(lines).toHaveLength(16);
+      expect(lines.map((line) => JSON.parse(line))).toHaveLength(16);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("wraps live provider fetches with request and response recording", async () => {
@@ -257,6 +305,58 @@ describe("provider test recorder", () => {
     expect(JSON.stringify(events)).not.toContain("real-access-token");
   });
 
+  it("redacts URL credentials and replays the same request with different runtime secrets", async () => {
+    const events: unknown[] = [];
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "mock" && candidate.shape === "text");
+    expect(stub).toBeTruthy();
+    const recorder = createProviderTestRecorder({
+      requestId: () => "provider-test-query-secret",
+      write: async (event) => {
+        events.push(event);
+      },
+    });
+    const recordingFetch = createProviderTestRecordingFetch({
+      fetch: async () => Response.json({
+        download: "https://media.example/result?token=response-secret&part=1",
+      }),
+      recorder,
+      stub: stub!,
+    });
+
+    await recordingFetch(
+      "https://provider.example/generate?key=request-secret&mode=fast",
+    );
+
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("request-secret");
+    expect(serialized).not.toContain("response-secret");
+    expect(events[0]).toMatchObject({
+      type: "request",
+      request: {
+        url: "https://provider.example/generate?key=%5Bredacted%5D&mode=fast",
+      },
+    });
+    expect(events[1]).toMatchObject({
+      type: "response",
+      response: {
+        body: {
+          download: "https://media.example/result?token=%5Bredacted%5D&part=1",
+        },
+      },
+    });
+
+    const replayFetch = createProviderTestReplayFetch(
+      createProviderTestReplayFixtures(events as never),
+    );
+    const replayResponse = await replayFetch(
+      "https://provider.example/generate?key=different-runtime-secret&mode=fast",
+    );
+    expect(await replayResponse.json()).toEqual({
+      download: "https://media.example/result?token=%5Bredacted%5D&part=1",
+    });
+  });
+
   it("loads JSONL recordings into replay fixtures keyed by provider/model request", async () => {
     const dir = await mkdtemp(join(tmpdir(), "provider-test-recorder-"));
     const filePath = join(dir, "recording.jsonl");
@@ -332,6 +432,43 @@ describe("provider test recorder", () => {
     }
   });
 
+  it("ignores only an interrupted trailing JSONL event", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "provider-test-recorder-tail-"));
+    const filePath = join(dir, "recording.jsonl");
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.providerId === "mock" && candidate.shape === "text");
+    expect(stub).toBeTruthy();
+    const complete = {
+      schemaVersion: 1,
+      type: "request",
+      timestamp: "2026-08-04T00:00:00.000Z",
+      requestId: "complete-request",
+      stub: stub!,
+      request: { url: "https://provider.example/text", method: "POST", headers: {} },
+    };
+
+    try {
+      await writeFile(
+        filePath,
+        `${providerTestRecordingEventToJsonl(complete)}{"schemaVersion":1,"type":"response"`,
+        "utf8",
+      );
+      await expect(readJsonlProviderTestRecording(filePath)).resolves.toEqual([complete]);
+
+      await writeFile(
+        filePath,
+        `${providerTestRecordingEventToJsonl(complete)}not-json\n${providerTestRecordingEventToJsonl({
+          ...complete,
+          requestId: "later-request",
+        })}`,
+        "utf8",
+      );
+      await expect(readJsonlProviderTestRecording(filePath)).rejects.toThrow(/line 2/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("replays recorded provider fixtures through a fetch-compatible stub", async () => {
     const stub = createProviderConformanceStubs({ includeMock: true })
       .find((candidate) => candidate.providerId === "official" && candidate.upstreamId === "openai" && candidate.shape === "image");
@@ -387,6 +524,38 @@ describe("provider test recorder", () => {
       method: "POST",
       body: JSON.stringify({ model: "gpt-image-2", prompt: "Replay this image" }),
     })).rejects.toThrow(/No provider test replay fixture/);
+  });
+
+  it("replays recorded binary provider responses byte-for-byte", async () => {
+    const recordedEvents: unknown[] = [];
+    const stub = createProviderConformanceStubs({ includeMock: true })
+      .find((candidate) => candidate.id === "mock:mock::mock-image-model");
+    expect(stub).toBeTruthy();
+    const recorder = createProviderTestRecorder({
+      requestId: () => "provider-test-binary-video",
+      write: async (event) => {
+        recordedEvents.push(event);
+      },
+    });
+    const expected = new Uint8Array([0, 1, 2, 127, 128, 254, 255]);
+    const recordingFetch = createProviderTestRecordingFetch({
+      fetch: async () => new Response(expected, {
+        headers: { "content-type": "video/mp4" },
+      }),
+      recorder,
+      stub: stub!,
+    });
+
+    const liveResponse = await recordingFetch("https://provider.example/result.mp4");
+    expect(new Uint8Array(await liveResponse.arrayBuffer())).toEqual(expected);
+
+    const replayFetch = createProviderTestReplayFetch(
+      createProviderTestReplayFixtures(recordedEvents as never),
+    );
+    const replayResponse = await replayFetch("https://provider.example/result.mp4");
+
+    expect(replayResponse.headers.get("content-type")).toBe("video/mp4");
+    expect(new Uint8Array(await replayResponse.arrayBuffer())).toEqual(expected);
   });
 
   it("replays recorded provider callbacks through a fetch-compatible handler", async () => {

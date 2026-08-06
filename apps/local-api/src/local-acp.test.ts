@@ -4377,6 +4377,44 @@ describe("local ACP adapter", () => {
     expect(setConfigOption).toHaveBeenCalledWith("local-acp-session-config", "model", "gpt-5.4");
   });
 
+  it("forwards initial ACP config before the session manager starts", async () => {
+    const start = vi.fn<SessionManagerLike["start"]>(async () => undefined);
+    const adapter = createLocalAcpAdapter({
+      detectAgents: async () => [{
+        id: "codex-acp",
+        label: "Codex",
+        spec: { command: "codex-acp" },
+      }],
+      createSessionManager: () => ({
+        start,
+        prompt: vi.fn(),
+        cancel: vi.fn(),
+        dispose: vi.fn(),
+      }),
+      createSessionId: () => "local-acp-session-initial-config",
+    });
+
+    await adapter.createSession({
+      runtimeId: "desktop-local",
+      agentTemplateId: "master-clash",
+      projectId: "project-initial-config",
+      configValues: {
+        mode: "agent",
+        model: "gpt-5.6-sol",
+        effort: "high",
+      },
+    });
+
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({
+      session_id: "local-acp-session-initial-config",
+      config_options: {
+        mode: "agent",
+        model: "gpt-5.6-sol",
+        effort: "high",
+      },
+    }));
+  });
+
   it("relays ACP session mode updates between session manager and browser clients", async () => {
     let sendToBrowser!: SessionSender;
     const setMode = vi.fn<NonNullable<SessionManagerLike["setMode"]>>(async () => undefined);

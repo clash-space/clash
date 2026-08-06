@@ -181,7 +181,7 @@ function AnnotationHighlight({
         top: `${(finalRect.y + finalRect.height / 2) * 100}%`,
       }
     : undefined;
-  return (
+  const content = (
     <>
       {rects.map((rect, index) => (
         <span
@@ -190,34 +190,44 @@ function AnnotationHighlight({
           aria-hidden="true"
           className={`absolute rounded-[3px] ${
             draft ? "bg-brand/20" : "bg-brand/14"
-          } ring-1 ring-inset ring-brand/25`}
+          } ring-1 ring-inset ring-brand/25 ${
+            annotation && onSelect
+              ? "pointer-events-auto cursor-pointer hover:bg-brand/20"
+              : ""
+          }`}
           style={rectStyle(rect)}
+          onPointerDown={
+            annotation && onSelect
+              ? (event) => event.stopPropagation()
+              : undefined
+          }
+          onClick={
+            annotation && onSelect
+              ? (event) => {
+                  event.stopPropagation();
+                  onSelect(annotation.id);
+                }
+              : undefined
+          }
         />
       ))}
       {finalRect ? (
         annotation && onSelect ? (
-          <AgentAnnotationActionsContextMenu
-            annotation={annotation}
-            onOpen={() => onSelect(annotation.id)}
-            onLocate={onLocate ? () => onLocate(annotation.id) : undefined}
-            onRemove={onRemove ? () => onRemove(annotation.id) : undefined}
+          <button
+            type="button"
+            data-agent-annotation-pin=""
+            aria-label={`Annotation ${number}`}
+            aria-pressed={active}
+            className={pinClassName}
+            style={pinStyle}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(annotation.id);
+            }}
           >
-            <button
-              type="button"
-              data-agent-annotation-pin=""
-              aria-label={`Annotation ${number}`}
-              aria-pressed={active}
-              className={pinClassName}
-              style={pinStyle}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelect(annotation.id);
-              }}
-            >
-              {number}
-            </button>
-          </AgentAnnotationActionsContextMenu>
+            {number}
+          </button>
         ) : (
           <span
             data-agent-annotation-pin=""
@@ -230,6 +240,21 @@ function AnnotationHighlight({
         )
       ) : null}
     </>
+  );
+
+  return annotation && onSelect ? (
+    <AgentAnnotationActionsContextMenu
+      annotation={annotation}
+      onOpen={() => onSelect(annotation.id)}
+      onLocate={onLocate ? () => onLocate(annotation.id) : undefined}
+      onRemove={onRemove ? () => onRemove(annotation.id) : undefined}
+    >
+      <span data-agent-annotation-interaction-root="" className="contents">
+        {content}
+      </span>
+    </AgentAnnotationActionsContextMenu>
+  ) : (
+    content
   );
 }
 

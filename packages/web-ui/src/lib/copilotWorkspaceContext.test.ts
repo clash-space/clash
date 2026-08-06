@@ -82,7 +82,7 @@ describe('buildProjectMentionSources', () => {
 });
 
 describe('buildCopilotPrompt', () => {
-  it('adds invisible structured workspace context and resolves mentioned references', () => {
+  it('keeps workspace state out of the user prompt so the agent reads it through Clash MCP', () => {
     const context: CopilotWorkspaceContext = {
       projectId: 'project-7',
       projectName: 'Launch Film',
@@ -115,12 +115,8 @@ describe('buildCopilotPrompt', () => {
       ],
     );
 
-    expect(result).toContain('<!-- clash-workspace-context ');
-    expect(result).toContain('"projectId":"project-7"');
-    expect(result).toContain('"kind":"canvas","id":"canvas-main","name":"Main Storyboard"');
-    expect(result).toContain('"id":"action-1","kind":"node","canvasId":"canvas-main"');
-    expect(result).toContain('"id":"asset-1","kind":"asset"');
-    expect(result).toMatch(/-->\nUse @\[Render variants\]/);
+    expect(result).toBe('Use @[Render variants](node:action-1) with @[Logo master](node:asset-1)');
+    expect(result).not.toContain('clash-workspace-context');
   });
 
   it('embeds agent annotations as structured object addresses before the visible prompt', () => {

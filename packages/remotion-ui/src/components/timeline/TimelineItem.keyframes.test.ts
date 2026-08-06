@@ -24,6 +24,9 @@ describe('TimelineItem keyframe markers', () => {
         opacity: [
           { frame: 20, value: 0, interpolation: 'hold' },
         ],
+        maskPosition: [
+          { frame: 10, value: [50, 50], interpolation: 'linear' },
+        ],
       },
     };
 
@@ -35,7 +38,7 @@ describe('TimelineItem keyframe markers', () => {
         leftPercent: 0,
       },
       {
-        channels: ['position'],
+        channels: ['position', 'maskPosition'],
         edge: 'middle',
         frame: 10,
         leftPercent: 50,

@@ -11,8 +11,10 @@ test("ships as one installable Director Codex plugin", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.equal(manifest.name, "clash-director");
   assert.equal(manifest.mcpServers, "./.mcp.json");
-  assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Write"]);
+  assert.deepEqual(manifest.interface.capabilities, ["Read", "Write"]);
+  assert.equal(manifest.interface.defaultPrompt.some((prompt: string) => /\bopen\b/i.test(prompt)), false);
   assert.equal(mcp.mcpServers["clash-director"].args[0], "./runtime/index.js");
+  assert.deepEqual(mcp.mcpServers["clash-director"].env, { CLASH_PROFILE: "prod" });
   assert.equal(pkg.name, "@clash-space/director-plugin");
   assert.ok(pkg.files.includes("runtime"));
 });

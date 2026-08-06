@@ -24,3 +24,5 @@ export * from './trackCategories';
 export * from './nleHandoff';
 export * from './timelineKeyframes';
 export * from './canvasKeyframeEdits';
+export * from './timelineFieldCoverage';
+export * from './timelineFieldConsumers';

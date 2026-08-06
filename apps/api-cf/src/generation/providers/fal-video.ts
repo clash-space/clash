@@ -8,6 +8,7 @@ import { generateFalVideo } from "../../services/fal-video";
 import type { GenerationContext } from "../context";
 import type { GenerationProvider } from "../provider";
 import { credentialsForRoute } from "./provider-credentials";
+import { positionalReferencePrompt } from "./positional-reference-prompt";
 
 async function uploadR2ToFal(bucket: R2Bucket, key: string, falApiKey: string): Promise<string> {
   fal.config({ credentials: falApiKey });
@@ -59,9 +60,10 @@ export const falVideoProvider: GenerationProvider = {
       { retries: { limit: 2, delay: "5 seconds", backoff: "exponential" }, timeout: "10 minutes" },
       async () => {
         const model = params.videoModel ?? params.modelName;
+        const prompt = positionalReferencePrompt(params);
         log.info("fal-video generate started", { ...ctx.tag, model });
         const result = await generateFalVideo(falKey, {
-          prompt: params.prompt ?? "",
+          prompt,
           startFrameUrl: sources.startFrameUrl,
           endFrameUrl: sources.endFrameUrl,
           referenceImageUrls: sources.referenceImageUrls,

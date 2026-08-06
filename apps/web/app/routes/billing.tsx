@@ -6,10 +6,12 @@ import {
   fetchBalance,
   fetchLedger,
   fetchPlans,
+  fetchProviderUsage,
   type Balance,
   type LedgerEntry,
   type Plan,
   type TopupPack,
+  type ProviderUsageAuditEvent,
 } from "@clash/web-ui/lib/billingClient";
 
 interface LoaderData {
@@ -18,9 +20,14 @@ interface LoaderData {
   packs: TopupPack[];
   ledger: LedgerEntry[];
   notEnabled: boolean;
+  providerUsage: ProviderUsageAuditEvent[];
 }
 
 export async function loader(_: LoaderFunctionArgs): Promise<LoaderData> {
+  const providerUsageResult = await Promise.allSettled([fetchProviderUsage(100)]);
+  const providerUsage = providerUsageResult[0]?.status === "fulfilled"
+    ? providerUsageResult[0].value.events
+    : [];
   // /plans is the cheapest probe — if it 404s, the whole billing API is absent.
   let plans: Plan[] = [];
   let packs: TopupPack[] = [];
@@ -30,7 +37,7 @@ export async function loader(_: LoaderFunctionArgs): Promise<LoaderData> {
     packs = r.packs;
   } catch (e) {
     if (e instanceof BillingNotEnabledError) {
-      return { balance: null, plans: [], packs: [], ledger: [], notEnabled: true };
+      return { balance: null, plans: [], packs: [], ledger: [], notEnabled: true, providerUsage };
     }
     throw e;
   }
@@ -54,6 +61,7 @@ export async function loader(_: LoaderFunctionArgs): Promise<LoaderData> {
     packs,
     ledger: ledgerRes.status === "fulfilled" ? ledgerRes.value.entries : [],
     notEnabled: false,
+    providerUsage,
   };
 }
 
@@ -66,6 +74,7 @@ export default function BillingRoute() {
       packs={data.packs}
       ledger={data.ledger}
       notEnabled={data.notEnabled}
+      providerUsage={data.providerUsage}
     />
   );
 }

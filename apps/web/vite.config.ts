@@ -11,6 +11,34 @@ const persistStatePath = process.env.CLASH_WEB_E2E_PERSIST_STATE?.trim()
   ? resolve(process.env.CLASH_WEB_E2E_PERSIST_STATE)
   : resolve(repoRoot, ".wrangler/state");
 
+// During development, load shared workspaces from source instead of their
+// generated package exports. This preserves source HMR while allowing Vite to
+// ignore dist writes produced by tests/builds without serving stale modules.
+export const DEV_SOURCE_ALIASES = [
+  {
+    find: /^@clash\/shared-types$/,
+    replacement: resolve(repoRoot, "packages/shared-types/src/index.ts"),
+  },
+  {
+    find: /^@clash\/shared-types\/assets$/,
+    replacement: resolve(repoRoot, "packages/shared-types/src/assets.ts"),
+  },
+  {
+    find: /^@clash\/shared-types\/timeline-library$/,
+    replacement: resolve(repoRoot, "packages/shared-types/src/timeline-library.ts"),
+  },
+  {
+    find: /^@clash\/shared-runtime$/,
+    replacement: resolve(repoRoot, "packages/shared-runtime/src/index.ts"),
+  },
+  {
+    find: /^@clash\/shared-runtime\/local-paths$/,
+    replacement: resolve(repoRoot, "packages/shared-runtime/src/local-paths.ts"),
+  },
+];
+
+export const DEV_WATCH_IGNORES = ["**/dist/**", "**/release/**", "**/.tmp/**"];
+
 // Pure Vite SPA. index.html is the entry; main.tsx mounts a
 // createBrowserRouter-based React app. No SSR at any layer.
 //
@@ -79,6 +107,7 @@ export default defineConfig(async ({ command, isPreview }) => {
     // remotion copies (one per react/react-dom peer combo) — useVideoConfig()
     // returns null otherwise.
     resolve: {
+      alias: command === "serve" && !isPreview ? DEV_SOURCE_ALIASES : undefined,
       dedupe: [
         "react",
         "react-dom",
@@ -95,6 +124,10 @@ export default defineConfig(async ({ command, isPreview }) => {
       // workspace packages (packages/web-ui, etc.) live above apps/web/.
       // Without this, dynamic imports of those files 403 in dev.
       fs: { allow: [repoRoot] },
+      // Tests and package builds rewrite workspace dist files. They are not
+      // runtime inputs in dev (the aliases above point at source), so watching
+      // them only causes expensive full-page reloads and lost editor state.
+      watch: { ignored: DEV_WATCH_IGNORES },
     },
     preview: {
       port: 3001,

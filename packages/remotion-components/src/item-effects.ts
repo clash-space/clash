@@ -1,5 +1,8 @@
 import type { CSSProperties } from 'react';
-import type { EffectInstanceRef } from '@master-clash/remotion-core';
+import {
+  TIMELINE_SHARED_DEFAULTS,
+  type EffectInstanceRef,
+} from '@master-clash/remotion-core';
 import {
   builtInEffectRegistry,
   computeEffectPresentation,
@@ -32,7 +35,7 @@ function appendStyleValue(
 export function computeItemEffectStyle(
   options: ComputeItemEffectStyleOptions,
 ): CSSProperties {
-  const effects = options.effects ?? [];
+  const effects = options.effects ?? TIMELINE_SHARED_DEFAULTS.itemBase.effects;
   if (effects.length === 0) return {};
 
   const progress = Math.min(

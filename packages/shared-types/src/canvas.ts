@@ -8,7 +8,17 @@
  */
 
 import { z } from 'zod';
-import { resolveAspectRatio, type ModelCard } from './models';
+import {
+  ModelConstraintRuleSchema,
+  ModelInputRuleSchema,
+  ModelParameterSchema,
+  resolveAspectRatio,
+  type ModelCard,
+} from './models';
+import {
+  validateModelCardConfiguration,
+  validateParameterContractConfiguration,
+} from './model-constraints';
 import {
   validateRefs,
   partitionRefs,
@@ -31,6 +41,12 @@ import {
   extractPromptText,
   parsePromptParts,
 } from './prompt';
+import {
+  ExecutablePluginBindingSchema,
+  ExecutablePluginPermissionsSchema,
+  ExecutableActionPresentationSchema,
+  type ExecutablePluginBinding,
+} from './executable-plugin';
 
 // === Position ===
 export const PositionSchema = z.object({
@@ -112,6 +128,8 @@ export type NodeStatus = z.infer<typeof NodeStatusSchema>;
 export const NodeDataSchema = z.object({
   label: z.string().optional(),
   content: z.string().optional(),
+  /** Direct text entered in a music action's dedicated Lyrics input. */
+  lyrics: z.string().optional(),
   description: z.string().optional(),
   prompt: z.string().optional(),
   src: z.string().optional(),
@@ -155,6 +173,8 @@ export const NodeDataSchema = z.object({
   customActionId: z.string().optional(),
   /** User-configured parameters for custom actions */
   customActionParams: z.record(z.unknown()).optional(),
+  /** Immutable plugin export/version/schema used by this node. */
+  pluginBinding: ExecutablePluginBindingSchema.optional(),
   // ─── Actor attribution (Phase 0 multi-actor billing) ────────
   // Stamped by the creation site (web UI / ACP tool / CLI). For
   // legacy nodes created before this rollout these are absent —
@@ -330,6 +350,8 @@ export interface BuildPendingAssetNodeInput {
    *  (image / video / audio / text). Overrides what we'd otherwise
    *  derive from actionType. */
   outputType?: 'image' | 'video' | 'audio' | 'text';
+  /** Exact executable implementation selected when this node was created. */
+  pluginBinding?: ExecutablePluginBinding;
 }
 
 export interface PendingAssetNode {
@@ -358,7 +380,7 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
   const {
     nodeId, prompt, modelId, modelParams, actionType,
     referenceImageAssetIds, referenceVideoAssetIds, referenceAudioAssetIds,
-    referenceMode, customActionId, customActionParams, outputType,
+    referenceMode, customActionId, customActionParams, outputType, pluginBinding,
   } = input;
 
   // Custom-action flag drives a few small divergences: we don't pin
@@ -410,6 +432,7 @@ export function buildPendingAssetNode(input: BuildPendingAssetNodeInput): Pendin
     prompt,
     actionType,
   };
+  if (pluginBinding) data.pluginBinding = ExecutablePluginBindingSchema.parse(pluginBinding);
 
   if (isCustom) {
     if (customActionId) data.customActionId = customActionId;
@@ -495,6 +518,8 @@ export type GenerationConfig =
 export interface BuildGenerationPayloadInput {
   /** Raw prompt as the user typed it (with `@[Label](node:id)` mentions). */
   prompt: string;
+  /** Direct text entered in the dedicated Lyrics slot for music models. */
+  lyrics?: string;
   /** All canvas nodes the action-badge has incoming edges from. The
    *  helper does NOT walk edges itself — the caller supplies the
    *  resolved nodes (web reads from React Flow state, server from
@@ -520,6 +545,8 @@ export interface BuildGenerationPayloadInput {
     | `custom:${string}`;
   label?: string;
   referenceMode?: string;
+  /** Exact plugin implementation selected on the Action Badge. */
+  pluginBinding?: ExecutablePluginBinding;
 }
 
 export interface BuildGenerationPayloadResult {
@@ -537,8 +564,8 @@ export interface BuildGenerationPayloadResult {
    *  buckets themselves. */
   partition: RefPartition;
   /** The cleaned, plain-text prompt that ends up in
-   *  `pendingInput.prompt` — exposed separately for callers that want
-   *  to compute a label from the cleaned prompt. */
+   *  provider adapters after they choose how to encode references. The
+   *  pending input itself preserves authored @-mention ordering. */
   cleanedPrompt: string;
 }
 
@@ -599,10 +626,21 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
     ? partitionRefs(input.refNodes, cap)
     : { texts: [], imageAssetIds: [], videoAssetIds: [], audioAssetIds: [] };
 
-  // 3. Text refs fold into the prompt (`# Heading\n\nbody\n\n# …`).
-  //    The text bucket is consumed here and never reaches the
-  //    pending-asset data — that's intentional.
-  const composedPrompt = composePromptWithTextRefs(input.prompt, partition.texts);
+  // Music providers expose the same two product inputs with different wire
+  // shapes. Prompt may consume model-supported references; Lyrics is direct
+  // text only. MiniMax has a `lyrics` field; Suno custom mode puts lyrics in
+  // `prompt` and uses style/title alongside it.
+  const musicInput = input.config.kind === 'model'
+    ? input.config.modelCard?.musicInput
+    : undefined;
+  const musicLyrics = musicInput
+    ? (input.lyrics ?? '').trim()
+    : '';
+  const hasMappedLyrics = Boolean(musicInput && musicLyrics);
+  const lyricsUsePrompt = hasMappedLyrics && musicInput?.lyricsTarget === 'prompt';
+  const promptWithTextReferences = composePromptWithTextRefs(input.prompt, partition.texts);
+  const composedPrompt = lyricsUsePrompt ? musicLyrics : promptWithTextReferences;
+  const cleanedEditorPrompt = extractPromptText(parsePromptParts(promptWithTextReferences));
   const directorPromptContexts = cap?.promptModalities.includes('text')
     ? [...new Map(
         input.refNodes
@@ -629,7 +667,40 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
 
   // 5. Validate against the capability. Skipped when we don't have
   //    one (custom mid-install / model card not loaded).
-  const validationError = unexportedDirectorStageError ?? attachedRefValidationError ?? (cap
+  const modelConfigurationError = input.config.kind === 'model' && input.config.modelCard
+    ? validateModelCardConfiguration(input.config.modelCard, {
+        prompt: cleanedPrompt,
+        lyrics: musicLyrics,
+        modelParams: input.config.modelParams,
+      }, {
+        rejectUnknownParameters: true,
+        allowedParameterIds: [
+          'keyframe_frame_indices',
+          'keyframe_timing_customized',
+          'provider_id',
+          'require_real_provider',
+          ...(input.config.modelCard.providerImplementations?.flatMap((implementation) => [
+            ...(implementation.parameterOverrides?.map((parameter) => parameter.id) ?? []),
+            ...Object.keys(implementation.defaultParamOverrides ?? {}),
+          ]) ?? []),
+        ],
+      })
+    : null;
+  const customConfigurationError = input.config.kind === 'custom'
+    ? validateParameterContractConfiguration({
+        parameters: input.config.customDef.parameters,
+        defaultParams: customActionDefaultParams(input.config.customDef),
+        constraints: input.config.customDef.constraints,
+      }, {
+        prompt: cleanedPrompt,
+        modelParams: input.config.customActionParams,
+      })
+    : null;
+  const validationError = unexportedDirectorStageError
+    ?? attachedRefValidationError
+    ?? modelConfigurationError
+    ?? customConfigurationError
+    ?? (cap
     ? validateGenerationInput({
         prompt: cleanedPrompt,
         referenceTextSnippets: partition.texts,
@@ -642,6 +713,25 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
 
   const totalAssetRefs =
     partition.imageAssetIds.length + partition.videoAssetIds.length + partition.audioAssetIds.length;
+  const modelParams: Record<string, string | number | boolean> = input.config.kind === 'model'
+    ? { ...input.config.modelParams }
+    : {};
+  if (musicInput?.lyricsTarget === 'modelParam' && musicInput.lyricsParam) {
+    modelParams[musicInput.lyricsParam] = musicLyrics;
+  }
+  if (lyricsUsePrompt && musicInput?.descriptionParam) {
+    const currentDescription = modelParams[musicInput.descriptionParam];
+    if (typeof currentDescription !== 'string' || !currentDescription.trim()) {
+      modelParams[musicInput.descriptionParam] = cleanedEditorPrompt;
+    }
+  }
+  if (lyricsUsePrompt && musicInput?.titleParam) {
+    const currentTitle = modelParams[musicInput.titleParam];
+    if (typeof currentTitle !== 'string' || !currentTitle.trim()) {
+      modelParams[musicInput.titleParam] = input.label
+        || extractLabelFromPrompt(cleanedEditorPrompt, 'Untitled');
+    }
+  }
 
   // 6. Pending-asset input. Both branches write the SAME ref fields —
   //    custom actions previously dropped them (so a marketplace
@@ -651,9 +741,9 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
     input.config.kind === 'model'
       ? {
           nodeId: '', // caller fills in
-          prompt: cleanedPrompt,
+          prompt: promptWithDirectorPlan,
           modelId: input.configId,
-          modelParams: input.config.modelParams,
+          modelParams,
           actionType: input.actionType as
             | typeof ACTION_TYPE.ImageGen
             | typeof ACTION_TYPE.VideoGen
@@ -665,10 +755,11 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
           referenceAudioAssetIds: partition.audioAssetIds.length > 0 ? partition.audioAssetIds : undefined,
           referenceMode:
             input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),
+          pluginBinding: input.pluginBinding,
         }
       : {
           nodeId: '',
-          prompt: cleanedPrompt,
+          prompt: promptWithDirectorPlan,
           // Custom actions don't have a modelId, but the pending node
           // schema still needs *something* to disambiguate the
           // dispatch path. We stash `custom:<actionId>` in the modelId
@@ -688,6 +779,7 @@ export function buildGenerationPayload(input: BuildGenerationPayloadInput): Buil
           referenceMode:
             input.referenceMode ?? (totalAssetRefs > 0 ? 'image-and-prompt' : undefined),
           outputType: input.config.customDef.outputType,
+          pluginBinding: input.pluginBinding,
         };
 
   return { pendingInput, validationError, partition, cleanedPrompt };
@@ -756,20 +848,7 @@ export const AssetStatus = {
 // Used by local agents (Python SDK) and deployed workers (CF Workers)
 // to register custom actions on the canvas.
 
-export const CustomActionParameterSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  type: z.enum(['text', 'number', 'slider', 'select', 'boolean']),
-  description: z.string().optional(),
-  defaultValue: z.union([z.string(), z.number(), z.boolean()]).optional(),
-  options: z.array(z.object({
-    label: z.string(),
-    value: z.union([z.string(), z.number()]),
-  })).optional(),
-  min: z.number().optional(),
-  max: z.number().optional(),
-  step: z.number().optional(),
-});
+export const CustomActionParameterSchema = ModelParameterSchema;
 export type CustomActionParameter = z.infer<typeof CustomActionParameterSchema>;
 
 export const CustomActionSecretSchema = z.object({
@@ -976,6 +1055,10 @@ const CustomActionDefinitionBaseSchema = z.object({
   description: z.string().optional(),
   parameters: z.array(CustomActionParameterSchema).default([]),
   outputType: z.enum(['image', 'video', 'audio', 'text']),
+  input: ModelInputRuleSchema.optional(),
+  constraints: z.array(ModelConstraintRuleSchema).default([]),
+  presentation: ExecutableActionPresentationSchema.default({ type: 'form' }),
+  maxRuntimeMs: z.number().int().positive().optional(),
   icon: z.string().optional(),
   color: z.string().optional(),
   /** Execution runtime: 'local' = Python SDK via WebSocket, 'worker' = deployed CF Worker via HTTP */
@@ -990,6 +1073,10 @@ const CustomActionDefinitionBaseSchema = z.object({
   workerUrl: z.string().optional(),
   /** User variables this action needs (e.g. API keys). Platform injects at runtime. */
   secrets: z.array(CustomActionSecretSchema).default([]),
+  /** Exact hosted/local executable plugin version represented by this action. */
+  pluginBinding: ExecutablePluginBindingSchema.optional(),
+  /** Capability set approved when this exact plugin version was installed. */
+  pluginPermissions: ExecutablePluginPermissionsSchema.optional(),
   /** Provider/model binding used by MaaS-compatible actions. */
   model: CustomActionModelSchema.optional(),
   /** Discovery tags */
@@ -1021,10 +1108,36 @@ const CustomActionDefinitionBaseSchema = z.object({
    */
   attachedProjects: z.array(z.string()).default(["*"]),
 });
-export const CustomActionDefinitionSchema = CustomActionDefinitionBaseSchema.transform((def) =>
-  mergeActionProviderSecrets(def),
-);
+export const CustomActionDefinitionSchema = CustomActionDefinitionBaseSchema.transform((def) => {
+  const input = def.input ?? ModelInputRuleSchema.parse({
+    requiresPrompt: def.promptModalities.includes('text'),
+    inputMode: Object.fromEntries(
+      (['image', 'video', 'audio'] as const)
+        .filter((modality) => def.promptModalities.includes(modality))
+        .map((modality) => [
+          modality === 'image' ? 'images' : modality === 'video' ? 'videos' : 'audios',
+          { max: Number.MAX_SAFE_INTEGER },
+        ]),
+    ),
+    promptModalities: def.promptModalities,
+  });
+  return mergeActionProviderSecrets({
+    ...def,
+    input,
+    promptModalities: input.promptModalities,
+  });
+});
 export type CustomActionDefinition = z.output<typeof CustomActionDefinitionSchema>;
+
+export function customActionDefaultParams(
+  def: Pick<CustomActionDefinition, 'parameters'>,
+): Record<string, string | number | boolean> {
+  return Object.fromEntries(
+    def.parameters
+      .filter((parameter) => parameter.defaultValue !== undefined)
+      .map((parameter) => [parameter.id, parameter.defaultValue!]),
+  );
+}
 
 /** Check if an actionType string represents a custom (local) action */
 export function isCustomActionType(actionType: string): boolean {

@@ -7,6 +7,9 @@ import { falImageProvider } from "./providers/fal-image";
 import { openaiImageProvider } from "./providers/openai-image";
 import { geminiTtsProvider } from "./providers/gemini-tts";
 import { minimaxAudioProvider } from "./providers/minimax-audio";
+import { falAudioProvider } from "./providers/fal-audio";
+import { minimaxVideoProvider } from "./providers/minimax-video";
+import { geminiOmniProvider } from "./providers/gemini-omni";
 import { elevenLabsTtsProvider } from "./providers/elevenlabs-tts";
 import { sunoAudioProvider } from "./providers/suno-audio";
 import { klingVideoProvider } from "./providers/kling-video";
@@ -17,6 +20,8 @@ import { textGenProvider } from "./providers/text-gen";
 import { googleTextProvider } from "./providers/google-text";
 import { understandProvider } from "./providers/understand";
 import { describeProvider } from "./providers/describe";
+import { pikaMediaProvider } from "./providers/pika-media";
+import { bflVideoProvider } from "./providers/bfl-video";
 
 function selectedRoute(params: GenerationParams) {
   if (!params.selectedRoute) {
@@ -37,17 +42,22 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
   switch (params.type) {
     case "video_gen": {
       const route = selectedRoute(params);
+      if (route?.apiShape === "pika") return pikaMediaProvider;
+      if (route?.apiShape === "bfl") return bflVideoProvider;
+      if (route?.apiShape === "google-ai-studio-interactions") return geminiOmniProvider;
       if (route?.upstreamId === "google-agent-platform") return veoProvider;
       if (route?.upstreamId === "kling") return klingVideoProvider;
       if (route?.apiShape === "dreamina-cli") {
         throw new Error("Dreamina CLI generation is only available in the local desktop runtime.");
       }
       if (route?.upstreamId === "volcengine") return volcengineVideoProvider;
+      if (route?.upstreamId === "minimax") return minimaxVideoProvider;
       if (route?.apiShape === "fal") return falVideoProvider;
       return unsupportedRoute(params);
     }
     case "image_gen": {
       const route = selectedRoute(params);
+      if (route?.apiShape === "pika") return pikaMediaProvider;
       if (route?.upstreamId === "openai") return openaiImageProvider;
       if (route?.upstreamId === "google-agent-platform") return googleImageProvider;
       if (route?.apiShape === "fal") return falImageProvider;
@@ -55,6 +65,8 @@ export function resolveProvider(params: GenerationParams): GenerationProvider {
     }
     case "audio_gen": {
       const route = selectedRoute(params);
+      if (route?.apiShape === "pika") return pikaMediaProvider;
+      if (route?.apiShape === "fal") return falAudioProvider;
       if (route?.upstreamId === "google-ai-studio") return geminiTtsProvider;
       if (route?.upstreamId === "minimax") return minimaxAudioProvider;
       if (route?.upstreamId === "elevenlabs") return elevenLabsTtsProvider;

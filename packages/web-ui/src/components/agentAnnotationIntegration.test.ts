@@ -169,7 +169,7 @@ describe("agent annotation surface integration", () => {
     expect(previewDialog).toContain("Open editor");
     expect(previewDialog).toContain("portalContainer={portalContainer}");
     expect(previewDialog).toContain("<AgentSelectionAnnotationOverlay");
-    expect(previewDialog).toContain("captureSelection");
+    expect(previewDialog).toContain("handleSelectionAnnotationContextMenu");
     expect(previewDialog).toContain("onContextMenu");
     expect(previewDialog).not.toContain("onPointerUp");
     expect(projectEditor).toContain("annotations={pendingAgentAnnotations}");

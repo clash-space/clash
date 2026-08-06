@@ -23,6 +23,23 @@ function params(
 }
 
 describe("generation provider registry", () => {
+  it("routes Pika API Club media implementations to the Pika provider", () => {
+    const route: ModelUpstreamRoute = {
+      modelCode: "nano-banana-2",
+      kind: "image",
+      providerId: "pika",
+      upstreamId: "pika",
+      upstreamModel: "google/gemini-3.1-flash-image/text-to-image",
+      apiShape: "pika",
+      priority: 18,
+    };
+    expect(resolveProvider(params("image_gen", "nano-banana-2", route)).name).toBe("pika-media");
+    expect(resolveProvider(params("video_gen", "pika-2.5", { ...route, modelCode: "pika-2.5", kind: "video" })).name)
+      .toBe("pika-media");
+    expect(resolveProvider(params("audio_gen", "minimax-music-3", { ...route, modelCode: "minimax-music-3", kind: "audio" })).name)
+      .toBe("pika-media");
+  });
+
   it("routes Seedance model codes to the hosted Volcengine video provider", () => {
     expect(resolveProvider(params("video_gen", "seedance-2-ref", {
       modelCode: "seedance-2-ref",
@@ -101,6 +118,54 @@ describe("generation provider registry", () => {
       apiShape: "minimax",
       priority: 8,
     })).name).toBe("minimax-audio");
+  });
+
+  it("routes the selected fal MiniMax Music 3 implementation to the fal audio provider", () => {
+    expect(resolveProvider(params("audio_gen", "minimax-music-3", {
+      modelCode: "minimax-music-3",
+      kind: "audio",
+      providerId: "fal",
+      upstreamId: "fal",
+      upstreamModel: "fal-ai/minimax-music/v3",
+      apiShape: "fal",
+      priority: 9,
+    })).name).toBe("fal-audio");
+  });
+
+  it("routes MiniMax H3 to the hosted MiniMax video provider", () => {
+    expect(resolveProvider(params("video_gen", "minimax-h3", {
+      modelCode: "minimax-h3",
+      kind: "video",
+      providerId: "minimax",
+      upstreamId: "minimax",
+      upstreamModel: "MiniMax-H3",
+      apiShape: "minimax",
+      priority: 8,
+    })).name).toBe("minimax-video");
+  });
+
+  it("routes Gemini Omni to the Google AI Studio Interactions provider", () => {
+    expect(resolveProvider(params("video_gen", "gemini-omni-flash", {
+      modelCode: "gemini-omni-flash",
+      kind: "video",
+      providerId: "official",
+      upstreamId: "google-ai-studio",
+      upstreamModel: "gemini-omni-flash-preview",
+      apiShape: "google-ai-studio-interactions",
+      priority: 10,
+    })).name).toBe("gemini-omni");
+  });
+
+  it("routes the official FLUX 3 implementation to BFL", () => {
+    expect(resolveProvider(params("video_gen", "flux-3-video", {
+      modelCode: "flux-3-video",
+      kind: "video",
+      providerId: "official",
+      upstreamId: "bfl",
+      upstreamModel: "flux-3-video",
+      apiShape: "bfl",
+      priority: 10,
+    } as any)).name).toBe("bfl-video");
   });
 
   it("routes ElevenLabs TTS to the hosted ElevenLabs audio provider", () => {

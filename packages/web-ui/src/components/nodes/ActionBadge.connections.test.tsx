@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { CustomActionDefinitionSchema } from "@clash/shared-types";
 
-import PromptActionNode from "./ActionBadge";
+import PromptActionNode, { planKeyframeInsertion } from "./ActionBadge";
 import { CanvasTransientUiProvider } from "../CanvasTransientUiContext";
+import { CustomActionsProvider } from "../CustomActionsContext";
 
 const reactFlowMock = vi.hoisted(() => {
   const nodeConnections: any[] = [];
   return {
     addEdges: vi.fn(),
     getEdges: vi.fn(() => []),
-    getNode: vi.fn(),
-    getNodes: vi.fn(() => []),
+    getNode: vi.fn((_id: string): any => undefined),
+    getNodes: vi.fn((): any[] => []),
     nodeConnections,
     setEdges: vi.fn(),
     setNodes: vi.fn(),
@@ -20,6 +22,7 @@ const reactFlowMock = vi.hoisted(() => {
 
 const spawnAssetMock = vi.hoisted(() => ({
   adoptDraft: vi.fn(),
+  latestInput: null as any,
   spawnDraft: vi.fn(),
   spawnPending: vi.fn(),
 }));
@@ -119,14 +122,17 @@ vi.mock("@clash/web-ui/lib/layout", () => ({
 }));
 
 vi.mock("./useSpawnPendingAsset", () => ({
-  useSpawnPendingAsset: () => ({
-    adoptDraft: spawnAssetMock.adoptDraft,
-    canSpawn: true,
-    disabledReason: null,
-    outputKind: "audio",
-    spawnDraft: spawnAssetMock.spawnDraft,
-    spawnPending: spawnAssetMock.spawnPending,
-  }),
+  useSpawnPendingAsset: (input: any) => {
+    spawnAssetMock.latestInput = input;
+    return {
+      adoptDraft: spawnAssetMock.adoptDraft,
+      canSpawn: true,
+      disabledReason: null,
+      outputKind: "audio",
+      spawnDraft: spawnAssetMock.spawnDraft,
+      spawnPending: spawnAssetMock.spawnPending,
+    };
+  },
 }));
 
 vi.mock("./ActionBadgePipelineMenu", () => ({
@@ -150,6 +156,22 @@ const baseNodeProps = {
 };
 
 describe("ActionBadge canvas subscriptions", () => {
+  it("redistributes untouched timing but preserves custom timing when adding a keyframe", () => {
+    expect(planKeyframeInsertion([0, 60, 120], 120, false)).toEqual({
+      insertionIndex: 2,
+      frameIndices: [0, 40, 80, 120],
+    });
+    expect(planKeyframeInsertion([0, 24, 120], 120, true)).toEqual({
+      insertionIndex: 2,
+      frameIndices: [0, 24, 72, 120],
+    });
+    // Equal gaps choose the later slot so insertion still feels append-like.
+    expect(planKeyframeInsertion([0, 60, 120], 120, true)).toEqual({
+      insertionIndex: 2,
+      frameIndices: [0, 60, 90, 120],
+    });
+  });
+
   beforeEach(() => {
     cleanup();
     reactFlowMock.nodeConnections.splice(0);
@@ -159,7 +181,10 @@ describe("ActionBadge canvas subscriptions", () => {
     reactFlowMock.getNode.mockReturnValue(undefined);
     reactFlowMock.getNodes.mockReset();
     reactFlowMock.getNodes.mockReturnValue([]);
+    reactFlowMock.addEdges.mockReset();
+    reactFlowMock.setNodes.mockReset();
     spawnAssetMock.adoptDraft.mockReset();
+    spawnAssetMock.latestInput = null;
     spawnAssetMock.adoptDraft.mockResolvedValue({ id: "draft-1" });
     spawnAssetMock.spawnDraft.mockReset();
     spawnAssetMock.spawnPending.mockReset();
@@ -213,6 +238,376 @@ describe("ActionBadge canvas subscriptions", () => {
     expect(
       screen.getByRole("button", { name: "Configure action" }).className,
     ).toContain("hover:bg-transparent");
+  });
+
+  it("renders direct-only Lyrics while connected Text references remain Prompt references", () => {
+    reactFlowMock.nodeConnections.push({
+      edgeId: "lyrics-text-music-action",
+      source: "lyrics-text",
+      target: "music-action",
+    });
+    const lyricsNode = {
+      id: "lyrics-text",
+      type: "text",
+      data: { label: "Chorus draft", content: "Stay until morning" },
+    };
+    reactFlowMock.getNode.mockImplementation((id: string) => id === lyricsNode.id ? lyricsNode : undefined);
+    reactFlowMock.getNodes.mockReturnValue([lyricsNode]);
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="music-action"
+          type="action-badge"
+          data={{
+            actionType: "audio-gen",
+            content: "Dreamy synth pop",
+            label: "Night song",
+            lyrics: "[Verse]\nNeon rain",
+            modelId: "minimax-music-3",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+
+    const lyricsInput = screen.getByRole("textbox", { name: "Lyrics" });
+    expect((lyricsInput as HTMLTextAreaElement).value).toBe("[Verse]\nNeon rain");
+    expect(screen.queryByRole("button", { name: "Add lyrics reference" })).toBeNull();
+    expect(spawnAssetMock.latestInput.lyrics).toBe("[Verse]\nNeon rain");
+    expect(spawnAssetMock.latestInput.refNodeIds).toEqual(["lyrics-text"]);
+    expect(spawnAssetMock.latestInput.lyricsRefNodeIds).toBeUndefined();
+
+    fireEvent.change(lyricsInput, { target: { value: "[Chorus]\nStay" } });
+    expect(spawnAssetMock.latestInput.lyrics).toBe("[Chorus]\nStay");
+  });
+
+  it("does not render a Lyrics input for non-music models", () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="video-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "A quiet street",
+            label: "Generate video",
+            modelId: "minimax-h3",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    expect(screen.queryByRole("textbox", { name: "Lyrics" })).toBeNull();
+  });
+
+  it("presents FLUX 3 keyframes as an independent model card", () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="flux-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Connect these moments",
+            label: "FLUX 3",
+            modelId: "flux-3-video-keyframes",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    expect(screen.queryByRole("combobox", { name: "FLUX 3 Video workflow" })).toBeNull();
+    const strip = screen.getByTestId("frame-reference-strip");
+    expect(strip.getAttribute("data-frame-layout")).toBe("scroll");
+    expect(screen.getByRole("button", { name: "Pick Start keyframe" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pick End keyframe" })).toBeTruthy();
+    expect(strip.textContent).toContain("Start");
+    expect(strip.textContent).toContain("End");
+    expect(strip.textContent).toContain("0s");
+    expect(strip.textContent).toContain("5s");
+    expect(screen.queryByText(/0\/10 keyframes/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add reference from canvas" })).toBeNull();
+    expect(screen.queryByTestId("keyframe-timeline-track")).toBeNull();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+    expect(screen.getByRole("option", { name: "FLUX 3 Video" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "FLUX 3 Video (Keyframes)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "FLUX 3 Video (Continue)" })).toBeTruthy();
+  });
+
+  it("uses the shared frame strip for fixed start/end slots", () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="start-end-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Move between these frames",
+            label: "Start and end",
+            modelId: "minimax-h3-startend",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    const strip = screen.getByTestId("frame-reference-strip");
+    expect(strip.getAttribute("data-frame-layout")).toBe("fixed");
+    expect(screen.getByRole("button", { name: "Pick Start frame" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pick End frame" })).toBeTruthy();
+  });
+
+  it("gives FLUX 3 continuation a single semantic Source video slot", () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="flux-continue-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Keep the shot moving",
+            label: "Continue",
+            modelId: "flux-3-video-continue",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    expect(screen.queryByRole("combobox", { name: "FLUX 3 Video workflow" })).toBeNull();
+    expect(screen.getByText("Source video")).toBeTruthy();
+    expect(screen.getByText("MP4 · up to 15s · 50 MB")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Choose source video" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add reference from canvas" })).toBeNull();
+  });
+
+  it("labels and evenly times the first and last FLUX 3 keyframes", () => {
+    const keyframes = Array.from({ length: 2 }, (_, index) => ({
+      id: `frame-${index + 1}`,
+      type: "image",
+      data: { label: `Frame ${index + 1}` },
+    }));
+    reactFlowMock.nodeConnections.push(...keyframes.map((frame) => ({
+      edgeId: `${frame.id}-flux-action`,
+      source: frame.id,
+      target: "flux-action",
+    })));
+    reactFlowMock.getNode.mockImplementation((id: string) => keyframes.find((frame) => frame.id === id));
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="flux-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Connect these moments",
+            label: "FLUX 3",
+            modelId: "flux-3-video-keyframes",
+            referenceImageOrder: keyframes.map((frame) => frame.id),
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    const editor = screen.getByRole("list", { name: "FLUX 3 keyframes" });
+    const strip = screen.getByTestId("frame-reference-strip");
+    expect(strip.getAttribute("data-frame-layout")).toBe("scroll");
+    expect(strip.className).not.toMatch(/rounded-xl|border-warm-border|bg-warm-surface|shadow-sm/);
+    expect(editor.textContent).toContain("Start");
+    expect(editor.textContent).toContain("End");
+    expect(editor.textContent).toContain("0s");
+    expect(editor.textContent).toContain("5s");
+    expect(screen.queryByText(/2\/10 keyframes/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Add middle keyframe" })).toBeTruthy();
+    expect(screen.queryByTestId("keyframe-timeline-track")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit keyframe timing" }));
+    expect(screen.getByRole("dialog", { name: "Edit keyframe timing" })).toBeTruthy();
+    expect(screen.getByTestId("keyframe-timeline-track")).toBeTruthy();
+  });
+
+  it("edits an intermediate FLUX 3 keyframe at exact 24 fps positions in the timing dialog", async () => {
+    const keyframes = Array.from({ length: 3 }, (_, index) => ({
+      id: `timed-frame-${index + 1}`,
+      type: "image",
+      data: { label: `Timed frame ${index + 1}` },
+    }));
+    reactFlowMock.nodeConnections.push(...keyframes.map((frame) => ({
+      edgeId: `${frame.id}-timed-action`,
+      source: frame.id,
+      target: "timed-action",
+    })));
+    reactFlowMock.getNode.mockImplementation((id: string) => keyframes.find((frame) => frame.id === id));
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="timed-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Hit the exact beat",
+            label: "Timed FLUX 3",
+            modelId: "flux-3-video-keyframes",
+            modelParams: {
+              duration: 5,
+              keyframe_frame_indices: "[0,48,120]",
+              keyframe_timing_customized: true,
+            },
+            referenceImageOrder: keyframes.map((frame) => frame.id),
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit keyframe timing" }));
+    const timingDialog = screen.getByRole("dialog", { name: "Edit keyframe timing" });
+    const timeSlots = timingDialog.querySelectorAll('[data-testid="keyframe-time-slot"]');
+    expect(timeSlots).toHaveLength(3);
+    for (const slot of timeSlots) {
+      expect(slot.className).toContain("flex");
+      expect(slot.className).toContain("h-4");
+      expect(slot.className).toContain("w-10");
+      expect(slot.className).toContain("items-center");
+      expect(slot.className).toContain("justify-center");
+      expect(slot.className).toContain("leading-none");
+    }
+    const track = screen.getByTestId("keyframe-timeline-track");
+    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, top: 0, left: 0, right: 480, bottom: 100, width: 480, height: 100,
+      toJSON: () => ({}),
+    });
+    const markerContent = screen.getAllByLabelText("Frame 2 at 2s")
+      .find((element) => element.closest('[role="dialog"]')) as HTMLElement;
+    const marker = markerContent.parentElement as HTMLElement;
+    marker.setPointerCapture = vi.fn();
+    fireEvent.pointerDown(marker, { pointerId: 7, clientX: 100 });
+    fireEvent.pointerMove(marker, { pointerId: 7, clientX: 196 });
+    fireEvent.pointerUp(marker, { pointerId: 7, clientX: 196 });
+
+    await waitFor(() => {
+      const dragged = reactFlowMock.setNodes.mock.calls.some(([update]) => {
+        if (typeof update !== "function") return false;
+        const [nextNode] = update([{ id: "timed-action", data: {} }]);
+        return nextNode?.data?.modelParams?.keyframe_frame_indices === "[0,72,120]";
+      });
+      expect(dragged).toBe(true);
+    });
+
+    const timeInput = screen.getByRole("spinbutton", { name: "Frame 2 time in seconds" }) as HTMLInputElement;
+    expect(timeInput.value).toBe("2.00");
+    fireEvent.change(timeInput, { target: { value: "3" } });
+    fireEvent.blur(timeInput);
+
+    await waitFor(() => {
+      const persisted = reactFlowMock.setNodes.mock.calls.some(([update]) => {
+        if (typeof update !== "function") return false;
+        const [nextNode] = update([{ id: "timed-action", data: {} }]);
+        return nextNode?.data?.modelParams?.keyframe_frame_indices === "[0,72,120]"
+          && nextNode?.data?.modelParams?.keyframe_timing_customized === true;
+      });
+      expect(persisted).toBe(true);
+    });
+  });
+
+  it("stops offering keyframes at the model card limit", () => {
+    const keyframes = Array.from({ length: 10 }, (_, index) => ({
+      id: `frame-${index + 1}`,
+      type: "image",
+      data: { label: `Frame ${index + 1}` },
+    }));
+    reactFlowMock.nodeConnections.push(...keyframes.map((frame) => ({
+      edgeId: `${frame.id}-flux-action`,
+      source: frame.id,
+      target: "flux-action",
+    })));
+    reactFlowMock.getNode.mockImplementation((id: string) => keyframes.find((frame) => frame.id === id));
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="flux-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Connect every beat",
+            label: "FLUX 3",
+            modelId: "flux-3-video-keyframes",
+            referenceImageOrder: keyframes.map((frame) => frame.id),
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    const editor = screen.getByRole("list", { name: "FLUX 3 keyframes" });
+    expect(editor.className).toContain("min-w-max");
+    const strip = screen.getByTestId("frame-reference-strip");
+    const scrollViewport = screen.getByTestId("frame-reference-scroll");
+    const timingButton = screen.getByRole("button", { name: "Edit keyframe timing" });
+    expect(scrollViewport.className).toContain("overflow-x-auto");
+    expect(strip.className).toContain("w-[18rem]");
+    expect(strip.className).toContain("max-w-[min(18rem,calc(100vw-3rem))]");
+    expect(strip.className).toContain("min-w-0");
+    expect(strip.className).toContain("flex-none");
+    expect(strip.style.width).toBe("18rem");
+    expect(strip.style.maxWidth).toBe("calc(100vw - 3rem)");
+    expect(strip.style.minWidth).toBe("0px");
+    expect(scrollViewport.contains(timingButton)).toBe(false);
+    expect(strip.contains(timingButton)).toBe(true);
+    expect(strip.querySelectorAll(".clash-node-ref-index")).toHaveLength(0);
+    expect(screen.queryByText(/10\/10 keyframes/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add middle keyframe" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit keyframe timing" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit keyframe timing" });
+    expect(dialog.querySelectorAll(".clash-node-ref-index")).toHaveLength(0);
+  });
+
+  it("switches between independent FLUX 3 model cards through the model picker", async () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="flux-action"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "A moving portrait",
+            label: "FLUX 3",
+            modelId: "flux-3-video",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+    fireEvent.click(screen.getByRole("option", { name: "FLUX 3 Video (Continue)" }));
+
+    await waitFor(() => {
+      const persisted = reactFlowMock.setNodes.mock.calls.some(([update]) => {
+        if (typeof update !== "function") return false;
+        const [nextNode] = update([{ id: "flux-action", data: {} }]);
+        return nextNode?.data?.modelId === "flux-3-video-continue";
+      });
+      expect(persisted).toBe(true);
+    });
   });
 
   it("resolves connected source nodes by id without scanning the whole node array", () => {
@@ -295,8 +690,54 @@ describe("ActionBadge canvas subscriptions", () => {
     const modelSelect = screen.getByRole("combobox", { name: "Model" });
     expect(modelSelect.hasAttribute("disabled")).toBe(false);
     fireEvent.click(modelSelect);
-    expect(screen.getAllByRole("option")).toHaveLength(1);
-    expect(screen.getByRole("option", { name: "Seedance 2.0 (Reference)" })).toBeTruthy();
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+    expect(screen.getByRole("option", { name: "Seedance 2.0 (全能参考)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Seedance 2.5 (全能参考)" })).toBeTruthy();
+  });
+
+  it("selects a form Custom Action from the Image Gen model picker", async () => {
+    const action = CustomActionDefinitionSchema.parse({
+      id: "codex-imagegen",
+      name: "Codex ImageGen",
+      outputType: "image",
+      presentation: { type: "form" },
+      parameters: [{
+        id: "aspect_ratio",
+        label: "Aspect Ratio",
+        type: "select",
+        options: [{ label: "Square", value: "1:1" }],
+        defaultValue: "1:1",
+      }],
+    });
+
+    render(
+      <CanvasTransientUiProvider>
+        <CustomActionsProvider actions={[action]}>
+          <PromptActionNode
+            {...baseNodeProps}
+            id="action-1"
+            type="action-badge"
+            data={{
+              actionType: "image-gen",
+              content: "Draw a quiet forest",
+              label: "Image Prompt",
+              modelId: "nano-banana-2",
+            }}
+          />
+        </CustomActionsProvider>
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+    fireEvent.click(screen.getByRole("option", { name: "Codex ImageGen" }));
+
+    await waitFor(() => expect(spawnAssetMock.latestInput).toMatchObject({
+      actionType: "custom:codex-imagegen",
+      isCustom: true,
+      customActionParams: { aspect_ratio: "1:1" },
+      customDef: { id: "codex-imagegen" },
+    }));
   });
 
   it("keeps exactly one action configuration panel open", () => {
@@ -371,6 +812,45 @@ describe("ActionBadge canvas subscriptions", () => {
 
     await waitFor(() => expect(spawnAssetMock.spawnPending).toHaveBeenCalledTimes(1));
     expect(spawnAssetMock.adoptDraft).not.toHaveBeenCalled();
+  });
+
+  it("surfaces Model Card media constraints before spawning generation", async () => {
+    reactFlowMock.nodeConnections.push({
+      edgeId: "image-oversize-action-1",
+      source: "image-oversize",
+      target: "action-1",
+    });
+    reactFlowMock.getNode.mockImplementation((id: string) => id === "image-oversize" ? ({
+      id,
+      type: "image",
+      data: {
+        assetId: "asset-oversize",
+        naturalWidth: 1024,
+        naturalHeight: 1024,
+        metadata: { bytes: 31 * 1024 * 1024, contentType: "image/png" },
+      },
+    }) : undefined);
+
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="action-1"
+          type="action-badge"
+          data={{
+            actionType: "video-gen",
+            content: "Animate this frame",
+            label: "Animate",
+            modelId: "minimax-h3-startend",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run action" }));
+
+    expect((await screen.findByText(/30 MB/)).textContent).toContain("30 MB");
+    expect(spawnAssetMock.spawnPending).not.toHaveBeenCalled();
   });
 
   it("turns Director Shot packets into one visual Shot Group and one generation per Shot", async () => {

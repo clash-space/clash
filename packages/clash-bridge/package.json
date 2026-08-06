@@ -29,6 +29,16 @@
       "types": "./src/lib/session-manager.ts",
       "import": "./dist/session-manager.js",
       "default": "./dist/session-manager.js"
+    },
+    "./plugin-host": {
+      "types": "./src/lib/plugin-host-ipc.ts",
+      "import": "./dist/plugin-host.js",
+      "default": "./dist/plugin-host.js"
+    },
+    "./actions-host": {
+      "types": "./src/lib/actions-loader.ts",
+      "import": "./dist/actions-host.js",
+      "default": "./dist/actions-host.js"
     }
   },
   "files": [
@@ -50,6 +60,7 @@
     "@agentclientprotocol/claude-agent-acp": "^0.47.0",
     "@agentclientprotocol/sdk": "^0.28.1",
     "@clash/shared-runtime": "workspace:*",
+    "@clash/shared-types": "workspace:*",
     "@openma/common": "github:openma-ai/openma-common#codex/acp-lifecycle-v05",
     "ws": "^8.18.0"
   },

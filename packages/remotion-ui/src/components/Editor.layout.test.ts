@@ -199,7 +199,7 @@ describe("Editor embedded layout", () => {
     expect(source).not.toContain("const collapsedSidePanelWidth = '0px'");
     expect(source).not.toContain("'--clash-timeline-collapsed-width'");
     expect(source).not.toContain('data-[side-panel-collapsed=true]:[grid-template-columns:');
-    expect(source).toContain("'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : '12rem'");
+    expect(source).toContain("'--clash-timeline-side-panel-min-width': sidePanelCollapsed ? '0px' : 'min(12rem,25%)'");
     expect(source).toContain("'--clash-timeline-side-panel-width': sidePanelCollapsed ? '0px' : `${sidePanelWidth}px`");
     expect(source).toContain("group/timeline-editor");
     expect(source).not.toContain("const previewGridColumnClass = sidePanelCollapsed");

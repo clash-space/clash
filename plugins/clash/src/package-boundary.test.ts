@@ -9,10 +9,16 @@ test("plugin manifest starts one bundled MCP runtime and keeps product state in 
 
   assert.equal(manifest.name, "clash");
   assert.equal(manifest.mcpServers, "./.mcp.json");
+  assert.equal(manifest.interface.capabilities.includes("Interactive"), false);
+  assert.equal(
+    manifest.interface.defaultPrompt.some((prompt: string) => /\bopen\b/i.test(prompt)),
+    false,
+  );
   assert.deepEqual(mcp.mcpServers.clash, {
     command: "node",
     args: ["./runtime/index.js"],
     cwd: ".",
+    env: { CLASH_PROFILE: "prod" },
   });
 });
 
@@ -73,6 +79,9 @@ test("plugin packaging builds core, then bridge agents, then the non-recursive s
   );
   assert.match(bridgePackage.scripts?.build ?? "", /build:runtime.*bundle:agents/);
   assert.match(localApiPackage.scripts?.["build:deps"] ?? "", /clash-bridge run build:runtime/);
+  assert.equal(localApiPackage.scripts?.build, "tsc");
+  assert.match(localApiPackage.scripts?.["build:with-deps"] ?? "", /build:deps.*tsc/);
+  assert.match(packageJson.scripts?.["build:deps"] ?? "", /local-api build:with-deps/);
   assert.doesNotMatch(hostCore, /sourceAgentsDir/);
   assert.match(hostCore, /rm\(resolve\(runtimeDir, "agents"\)/);
   assert.match(bundleAgents, /"packages",[\s\S]*"clash-bridge",[\s\S]*"dist",[\s\S]*"agents"/);

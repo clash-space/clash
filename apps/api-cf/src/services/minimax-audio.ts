@@ -35,6 +35,11 @@ function numberParam(params: Record<string, unknown> | undefined, key: string, f
   return fallback;
 }
 
+function booleanParam(params: Record<string, unknown> | undefined, key: string, fallback = false): boolean {
+  const value = params?.[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim();
   if (clean.length % 2 !== 0) throw new Error("MiniMax audio response returned invalid hex audio.");
@@ -61,29 +66,46 @@ export async function generateMiniMaxAudio(
   const key = apiKey?.trim();
   if (!key) throw new Error("MiniMax provider account is missing apiKey.");
   const text = params.prompt.trim();
-  if (!text) throw new Error("Prompt is required for MiniMax TTS.");
-
   const model = MINIMAX_MODEL_MAP[params.modelName ?? "minimax-tts"] ?? params.modelName ?? "speech-02-hd";
   const format = stringParam(params.modelParams, "format", "mp3") ?? "mp3";
-  const body = {
-    model,
-    text,
-    stream: false,
-    output_format: "hex",
-    voice_setting: {
-      voice_id: stringParam(params.modelParams, "voice_id", "female-warm"),
-      speed: numberParam(params.modelParams, "speed", 1),
-      pitch: numberParam(params.modelParams, "pitch", 0),
-    },
-    audio_setting: {
-      sample_rate: numberParam(params.modelParams, "sample_rate", 32000),
-      bitrate: numberParam(params.modelParams, "bitrate", 128000),
-      format,
-      channel: numberParam(params.modelParams, "channel", 1),
-    },
-  };
+  const isMusic = model.startsWith("music-");
+  const lyrics = stringParam(params.modelParams, "lyrics", "") ?? "";
+  if (!text && !isMusic) throw new Error("Prompt is required for MiniMax TTS.");
+  const body = isMusic
+    ? {
+        model,
+        prompt: text,
+        lyrics,
+        stream: false,
+        output_format: "hex",
+        lyrics_optimizer: booleanParam(params.modelParams, "lyrics_optimizer", false),
+        is_instrumental: booleanParam(params.modelParams, "is_instrumental"),
+        aigc_watermark: booleanParam(params.modelParams, "aigc_watermark"),
+        audio_setting: {
+          sample_rate: numberParam(params.modelParams, "sample_rate", 44100),
+          bitrate: numberParam(params.modelParams, "bitrate", 256000),
+          format,
+        },
+      }
+    : {
+        model,
+        text,
+        stream: false,
+        output_format: "hex",
+        voice_setting: {
+          voice_id: stringParam(params.modelParams, "voice_id", "female-warm"),
+          speed: numberParam(params.modelParams, "speed", 1),
+          pitch: numberParam(params.modelParams, "pitch", 0),
+        },
+        audio_setting: {
+          sample_rate: numberParam(params.modelParams, "sample_rate", 32000),
+          bitrate: numberParam(params.modelParams, "bitrate", 128000),
+          format,
+          channel: numberParam(params.modelParams, "channel", 1),
+        },
+      };
 
-  const resp = await fetch(`${normalizeBaseUrl(params.baseUrl)}/v1/t2a_v2`, {
+  const resp = await fetch(`${normalizeBaseUrl(params.baseUrl)}${isMusic ? "/v1/music_generation" : "/v1/t2a_v2"}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
@@ -101,11 +123,11 @@ export async function generateMiniMaxAudio(
   }
   if (!resp.ok || json?.base_resp?.status_code !== 0) {
     const message = json?.base_resp?.status_msg ?? `${resp.status} ${resp.statusText}`;
-    throw new Error(`MiniMax TTS request failed: ${message}`);
+    throw new Error(`MiniMax ${isMusic ? "music" : "TTS"} request failed: ${message}`);
   }
   const audio = json?.data?.audio;
   if (typeof audio !== "string" || !audio) {
-    throw new Error("MiniMax TTS response returned no audio.");
+    throw new Error(`MiniMax ${isMusic ? "music" : "TTS"} response returned no audio.`);
   }
 
   return {

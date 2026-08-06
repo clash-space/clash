@@ -1,13 +1,4 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { a as TimelineAdapter } from './adapter-DSKpN3gP.js';
-
-declare function registerTimelinePluginMcp(server: Pick<McpServer, "registerTool" | "registerResource">, adapter: TimelineAdapter, bundledAppJavascript: string): void;
-declare function createTimelinePluginServer(options?: {
-    adapter?: TimelineAdapter;
-    bundledAppJavascript?: string;
-}): McpServer;
-declare function serveTimelinePluginStdio(options?: {
-    adapter?: TimelineAdapter;
-}): Promise<void>;
-
-export { createTimelinePluginServer, registerTimelinePluginMcp, serveTimelinePluginStdio };
+import '@modelcontextprotocol/sdk/server/mcp.js';
+import './adapter-T0k3E55A.js';
+export { e as TimelineToolErrorPayload, f as createTimelinePluginServer, r as registerTimelinePluginMcp, s as serveTimelinePluginStdio, t as timelineToolErrorPayload } from './server-3TV0dM9B.js';
+import '@clash/shared-types/timeline-contract';

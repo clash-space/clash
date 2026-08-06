@@ -53,6 +53,8 @@ if (remoteDebuggingPort) {
   app.commandLine.appendSwitch("remote-debugging-port", remoteDebuggingPort);
 }
 hydrateMacGuiPath();
+const runtimeAppName = process.env.CLASH_APP_NAME?.trim();
+if (runtimeAppName) app.setName(runtimeAppName);
 
 protocol.registerSchemesAsPrivileged([
   {

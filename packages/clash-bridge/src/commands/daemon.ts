@@ -19,6 +19,8 @@ import { detectAll } from "../_acp-runtime/registry.js";
 import { SessionManager } from "../lib/session-manager.js";
 import { gcOldSessions } from "../lib/session-cwd.js";
 import { ActionsHost } from "../lib/actions-loader.js";
+import { startPluginHostIpcServer, type PluginHostIpcServer } from "../lib/plugin-host-ipc.js";
+import { createLocalKernelPluginBroker } from "../lib/local-kernel-plugin-broker.js";
 import { printBanner, log, c } from "../lib/style.js";
 import { PKG_VERSION } from "../lib/version.js";
 import WebSocket from "ws";
@@ -70,6 +72,7 @@ export async function runDaemon(): Promise<void> {
     serverUrl: creds.serverUrl,
     apiKey: creds.agentApiKey ?? creds.token,
     runtimeId: creds.runtimeId,
+    pluginBroker: createLocalKernelPluginBroker(),
   });
   try {
     const result = await actionsHost.start();
@@ -84,6 +87,13 @@ export async function runDaemon(): Promise<void> {
   } catch (e) {
     log.warn(`actions: host start failed: ${e instanceof Error ? e.message : String(e)}`);
   }
+  let pluginHostIpc: PluginHostIpcServer | null = null;
+  try {
+    pluginHostIpc = await startPluginHostIpcServer({ host: actionsHost });
+    log.step(`plugins: local IPC listening at ${pluginHostIpc.socketPath}`);
+  } catch (e) {
+    log.warn(`plugins: local IPC start failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   const stop = (sig: string) => {
     if (stopping) return;
@@ -96,6 +106,7 @@ export async function runDaemon(): Promise<void> {
     // close and immediately frees the customActions map entries on
     // next heartbeat-derived offline transition.
     void actionsHost.stopAll();
+    void pluginHostIpc?.close();
     if (currentWs) {
       try { currentWs.close(1000, "shutdown"); } catch { /* already closing */ }
     }

@@ -32291,8 +32291,10 @@ function summary(name, value) {
   if (name === "clash_director_save") return "Director Stage projection validated and applied.";
   return JSON.stringify(value);
 }
-function registerDirectorPluginMcp(server, adapter, bundledAppJavascript) {
+function registerDirectorPluginMcp(server, adapter, bundledAppJavascript, options = {}) {
+  const appSurfaces = options.appSurfaces ?? false;
   for (const name of DIRECTOR_PLUGIN_TOOL_NAMES) {
+    if (!appSurfaces && name === "clash_director_open") continue;
     const definition = definitions[name];
     K3(server, name, {
       title: definition.title,
@@ -32320,7 +32322,7 @@ function registerDirectorPluginMcp(server, adapter, bundledAppJavascript) {
       }
     });
   }
-  N3(server, "Clash Director", DIRECTOR_APP_RESOURCE_URI, {
+  if (appSurfaces) N3(server, "Clash Director", DIRECTOR_APP_RESOURCE_URI, {
     description: "Interactive Director Stage editor backed by Clash read-proof and projection apply behavior"
   }, async () => ({
     contents: [{

@@ -1,8 +1,10 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { Buffer } from "node:buffer";
 import {
   listProviderModelSupport,
   type ModelKind,
+  type ProviderCredentialRequirements,
 } from "@clash/shared-types";
 
 const PROVIDER_TEST_RECORDING_SCHEMA_VERSION = 1;
@@ -25,6 +27,7 @@ export interface ProviderConformanceStub {
   shape: ModelKind;
   apiShape: string;
   requiredCredentials: string[];
+  credentialRequirements?: ProviderCredentialRequirements;
   requiredOAuth: string[];
   input: ProviderConformanceInput;
 }
@@ -34,8 +37,17 @@ export type ProviderTestRecordingPayload =
   | string
   | number
   | boolean
+  | ProviderTestRecordingBinaryPayload
   | ProviderTestRecordingPayload[]
   | { [key: string]: ProviderTestRecordingPayload };
+
+interface ProviderTestRecordingBinaryPayload {
+  $binary: {
+    encoding: "base64";
+    data: string;
+    byteLength: number;
+  };
+}
 
 export interface ProviderTestRecordingRequestEvent {
   schemaVersion: typeof PROVIDER_TEST_RECORDING_SCHEMA_VERSION;
@@ -134,6 +146,12 @@ export function createProviderConformanceStubs(options: { includeMock?: boolean 
         shape: model.kind,
         apiShape: model.apiShape,
         requiredCredentials: [...(model.requiredCredentials ?? support.requiredCredentials ?? [])],
+        ...(model.credentialRequirements ? {
+          credentialRequirements: {
+            ...model.credentialRequirements,
+            anyOf: model.credentialRequirements.anyOf.map((credentials) => [...credentials]),
+          },
+        } : {}),
         requiredOAuth: [...(model.requiredOAuth ?? support.requiredOAuth ?? [])],
         input: providerConformanceInputForModel(model.kind, model.id, model.name),
       } satisfies ProviderConformanceStub;
@@ -166,7 +184,7 @@ export function createProviderTestRecorder(options: {
         requestId,
         stub: input.stub,
         request: {
-          url: input.url,
+          url: normalizeHttpUrlForRecording(input.url) ?? input.url,
           method: input.method,
           headers: normalizeHeaders(input.headers),
           ...(input.body === undefined ? {} : { body: normalizePayload(input.body) }),
@@ -194,7 +212,7 @@ export function createProviderTestRecorder(options: {
         timestamp: now().toISOString(),
         requestId: input.requestId,
         callback: {
-          url: input.url,
+          url: normalizeHttpUrlForRecording(input.url) ?? input.url,
           method: input.method,
           headers: normalizeHeaders(input.headers),
           ...(input.body === undefined ? {} : { body: normalizePayload(input.body) }),
@@ -206,9 +224,14 @@ export function createProviderTestRecorder(options: {
 
 export async function createJsonlProviderTestRecorder(filePath: string): Promise<ProviderTestRecorder> {
   await mkdir(dirname(filePath), { recursive: true });
+  let writeQueue: Promise<void> = Promise.resolve();
   return createProviderTestRecorder({
-    write: async (event) => {
-      await appendFile(filePath, providerTestRecordingEventToJsonl(event), "utf8");
+    write: (event) => {
+      const write = writeQueue.then(() =>
+        appendFile(filePath, providerTestRecordingEventToJsonl(event), "utf8")
+      );
+      writeQueue = write.catch(() => undefined);
+      return write;
     },
   });
 }
@@ -250,11 +273,21 @@ export function createProviderTestRecordingFetch(options: {
 
 export async function readJsonlProviderTestRecording(filePath: string): Promise<ProviderTestRecordingEvent[]> {
   const raw = await readFile(filePath, "utf8");
-  return raw
+  const lines = raw
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => parseProviderTestRecordingEvent(line, index + 1));
+    .filter(Boolean);
+  const events: ProviderTestRecordingEvent[] = [];
+  for (const [index, line] of lines.entries()) {
+    try {
+      events.push(parseProviderTestRecordingEvent(line, index + 1));
+    } catch (error) {
+      const interruptedTail = index === lines.length - 1 && !/\r?\n$/.test(raw);
+      if (interruptedTail) break;
+      throw error;
+    }
+  }
+  return events;
 }
 
 export function createProviderTestReplayFixtures(events: readonly ProviderTestRecordingEvent[]): ProviderTestReplayFixture[] {
@@ -372,6 +405,8 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
       try {
         return normalizePayload(JSON.parse(value));
       } catch {
+        const url = normalizeHttpUrlForRecording(value);
+        if (url) return url;
         const formBody = normalizeUrlEncodedPayload(value);
         return formBody ?? value;
       }
@@ -383,10 +418,10 @@ function normalizePayload(value: unknown): ProviderTestRecordingPayload {
     return normalizePayload(Object.fromEntries(value.entries()));
   }
   if (value instanceof ArrayBuffer) {
-    return `[arrayBuffer:${value.byteLength}]`;
+    return normalizeBinaryPayload(new Uint8Array(value));
   }
   if (ArrayBuffer.isView(value)) {
-    return `[arrayBuffer:${value.byteLength}]`;
+    return normalizeBinaryPayload(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
   }
   if (typeof value === "object") {
     return Object.fromEntries(
@@ -412,7 +447,22 @@ function normalizeUrlEncodedPayload(value: string): ProviderTestRecordingPayload
 }
 
 function shouldRedactKey(key: string): boolean {
-  return /authorization|api[-_]?key|access[-_]?key|private[-_]?key|secret|token|password|assertion/i.test(key);
+  return /authorization|api[-_]?key|access[-_]?key|private[-_]?key|secret|token|password|assertion|cookie/i.test(key)
+    || /^key$/i.test(key);
+}
+
+function normalizeHttpUrlForRecording(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    if (url.password) url.password = "[redacted]";
+    for (const key of [...url.searchParams.keys()]) {
+      if (shouldRedactKey(key)) url.searchParams.set(key, "[redacted]");
+    }
+    return url.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 async function providerTestFetchRequest(input: RequestInfo | URL, init?: RequestInit): Promise<{
@@ -514,7 +564,7 @@ function providerTestReplayFixtureMatches(
   fixture: ProviderTestReplayFixture,
   request: { url: string; method: string; body?: unknown },
 ): boolean {
-  if (fixture.request.url !== request.url) return false;
+  if (fixture.request.url !== (normalizeHttpUrlForRecording(request.url) ?? request.url)) return false;
   if (fixture.request.method.toUpperCase() !== request.method.toUpperCase()) return false;
   if (!("body" in fixture.request)) return true;
   return providerTestPayloadKey(fixture.request.body) === providerTestPayloadKey(request.body);
@@ -550,12 +600,37 @@ function providerTestReplayResponseBody(body: ProviderTestRecordingPayload | und
   if (body === undefined || body === null) return null;
   if (typeof body === "string") return body;
   if (typeof body === "number" || typeof body === "boolean") return String(body);
+  if (isProviderTestRecordingBinaryPayload(body)) {
+    return Uint8Array.from(Buffer.from(body.$binary.data, body.$binary.encoding));
+  }
   return JSON.stringify(body);
+}
+
+function normalizeBinaryPayload(value: Uint8Array): ProviderTestRecordingBinaryPayload {
+  return {
+    $binary: {
+      encoding: "base64",
+      data: Buffer.from(value).toString("base64"),
+      byteLength: value.byteLength,
+    },
+  };
+}
+
+function isProviderTestRecordingBinaryPayload(
+  value: ProviderTestRecordingPayload,
+): value is ProviderTestRecordingBinaryPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const binary = (value as Record<string, unknown>).$binary;
+  if (!binary || typeof binary !== "object" || Array.isArray(binary)) return false;
+  const fields = binary as Record<string, unknown>;
+  return fields.encoding === "base64"
+    && typeof fields.data === "string"
+    && typeof fields.byteLength === "number";
 }
 
 function providerTestReplayErrorMessage(body: ProviderTestRecordingPayload | undefined): string {
   if (body && typeof body === "object" && !Array.isArray(body)) {
-    const error = body.error;
+    const error = (body as Record<string, ProviderTestRecordingPayload>).error;
     if (typeof error === "string") return error;
   }
   return "Provider test replay fixture recorded a fetch failure";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
-test("one Clash plugin server composes the full tool surface and four focused Apps", async (t) => {
+test("one Clash plugin server quarantines every MCP App while keeping headless tools", async (t) => {
   let module: Record<string, unknown> = {};
   try {
     module = await import("./server.js") as Record<string, unknown>;
@@ -37,41 +37,39 @@ test("one Clash plugin server composes the full tool surface and four focused Ap
   const listedTools = (await client.listTools()).tools;
   const tools = listedTools.map((tool) => tool.name);
   for (const name of [
-    "clash_studio_open",
-    "clash_canvas_open",
-    "clash_timeline_open",
-    "clash_director_open",
+    "clash_canvas_list",
+    "clash_canvas_execute",
+    "clash_timeline_list",
+    "clash_timeline_schema",
+    "clash_director_list",
     "clash_cli_assets",
     "clash_cli_effect",
   ]) assert.ok(tools.includes(name), `missing ${name}`);
+  for (const name of [
+    "clash_studio_open",
+    "clash_canvas_open",
+    "clash_canvas_snapshot",
+    "clash_timeline_open",
+    "clash_director_open",
+  ]) assert.equal(tools.includes(name), false, `${name} must stay quarantined`);
   assert.equal(
     tools.some((name) => name.startsWith("plugin_") && name.includes("skill")),
     false,
     "skills belong to each harness native cwd discovery path, not MCP",
   );
 
-  const appToolUris = new Map(listedTools.map((tool) => [
-    tool.name,
-    (tool._meta?.ui as { resourceUri?: string } | undefined)?.resourceUri
-      ?? tool._meta?.["ui/resourceUri"],
-  ]));
-  assert.deepEqual(
-    Object.fromEntries([...appToolUris].filter(([, resourceUri]) => resourceUri !== undefined)),
-    {
-      clash_studio_open: "ui://clash/studio",
-      clash_canvas_open: "ui://clash/canvas",
-      clash_timeline_open: "ui://clash/timeline",
-      clash_director_open: "ui://clash/director",
-    },
-  );
+  const appToolUris = listedTools.flatMap((tool) => {
+    const resourceUri = (tool._meta?.ui as { resourceUri?: string } | undefined)?.resourceUri
+      ?? tool._meta?.["ui/resourceUri"];
+    return resourceUri === undefined ? [] : [[tool.name, resourceUri]];
+  });
+  assert.deepEqual(appToolUris, []);
 
-  const resources = (await client.listResources()).resources.map((resource) => resource.uri).sort();
-  assert.deepEqual(resources, [
-    "ui://clash/canvas",
-    "ui://clash/director",
-    "ui://clash/studio",
-    "ui://clash/timeline",
-  ]);
+  await assert.rejects(
+    client.listResources(),
+    (error: unknown) => (error as { code?: number }).code === -32601,
+    "quarantined plugin must not advertise MCP App resources",
+  );
 });
 
 test("plugin runtime closes the host manager exactly once", async () => {

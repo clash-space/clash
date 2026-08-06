@@ -1,6 +1,6 @@
-import { memo, useState, useEffect, useCallback, useMemo, useRef, Fragment, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, memo, useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Handle, NodeToolbar, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
-import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT } from '@phosphor-icons/react';
+import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT, SlidersHorizontal } from '@phosphor-icons/react';
 import { motion, Reorder } from 'framer-motion';
 import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
@@ -11,7 +11,7 @@ import { generateSemanticId } from '@clash/web-ui/lib/utils/semanticId';
 import { SignedImg } from '../SignedMedia';
 import { getSignedUrl } from '@clash/web-ui/lib/hooks/useSignedUrl';
 import { getAsset } from '@clash/web-ui/lib/hooks/useAsset';
-import { listCompatibleModelCatalogEntries, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, directorReferencePackets, referenceAssetId, referenceModality, type DirectorReferencePacket, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality } from '@clash/shared-types';
+import { applyModelParameterChange, normalizeModelParametersForCard, listCompatibleModelCatalogEntries, MODEL_CARDS, snapAspectRatio, parsePromptParts, extractPromptText, composePromptWithTextRefs, buildMention, capability, capabilityFromCustom, customActionDefaultParams, directorReferencePackets, referenceAssetId, referenceModality, validateReferenceMedia, type DirectorReferencePacket, type ExecutablePluginBinding, type ModelCard, type ModelParameter, type CustomActionDefinition, type Modality, type ReferenceMediaMetadata } from '@clash/shared-types';
 import { applyLayoutPatchesToLoro, collectLayoutNodePatches } from '@clash/web-ui/lib/loroNodeSync';
 import { useProjectCustomActions } from '../CustomActionsContext';
 import {
@@ -38,8 +38,10 @@ import { useSpawnPendingAsset } from './useSpawnPendingAsset';
 import ActionBadgePipelineMenu from './ActionBadgePipelineMenu';
 import AttributionLine from './AttributionLine';
 import { getModelDropdownSecondaryText } from './modelDisplay';
+import { resolveModelProjectorBinding } from './modelPluginBinding';
 import { NodeModalDialog } from './NodeModalDialog';
 import { useCanvasTransientUiOwner } from '../CanvasTransientUiContext';
+import { generationChoiceDefaults, listGenerationActionChoices } from './generationActionChoices';
 
 type ModelParams = Record<string, string | number | boolean>;
 type BuiltInActionKind = 'image' | 'video' | 'audio' | 'text';
@@ -69,6 +71,350 @@ const PARAM_BOOLEAN_OPTIONS: SelectOption<boolean>[] = [
     { value: false, label: 'Off' },
 ];
 const NODE_INTERACTION_BOUNDARY_CLASS = 'nodrag nopan';
+const KEYFRAME_FRAME_INDICES_PARAM = 'keyframe_frame_indices';
+const KEYFRAME_TIMING_CUSTOMIZED_PARAM = 'keyframe_timing_customized';
+
+function evenlySpacedFrameIndices(count: number, lastFrame: number): number[] {
+    if (count <= 0) return [];
+    if (count === 1) return [0];
+    return Array.from({ length: count }, (_, index) => Math.round(index * lastFrame / (count - 1)));
+}
+
+function keyframeFrameIndices(raw: unknown, count: number, lastFrame: number, customized: boolean): number[] {
+    if (typeof raw !== 'string') return evenlySpacedFrameIndices(count, lastFrame);
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length !== count) {
+            return evenlySpacedFrameIndices(count, lastFrame);
+        }
+        const values = parsed.map(Number);
+        const structurallyValid = values.every((value, index) =>
+            Number.isInteger(value)
+            && value >= 0
+            && (index === 0 || value > values[index - 1]));
+        if (!structurallyValid) return evenlySpacedFrameIndices(count, lastFrame);
+        if (!customized) return evenlySpacedFrameIndices(count, lastFrame);
+        if (count <= 1) return [0];
+        const previousLastFrame = values[values.length - 1];
+        if (previousLastFrame <= 0) return evenlySpacedFrameIndices(count, lastFrame);
+        const scaled = values.map((value) => Math.round((value / previousLastFrame) * lastFrame));
+        scaled[0] = 0;
+        scaled[scaled.length - 1] = lastFrame;
+        for (let index = 1; index < scaled.length; index += 1) {
+            scaled[index] = Math.max(scaled[index], scaled[index - 1] + 1);
+        }
+        for (let index = scaled.length - 2; index >= 0; index -= 1) {
+            scaled[index] = Math.min(scaled[index], scaled[index + 1] - 1);
+        }
+        return scaled;
+    } catch {
+        return evenlySpacedFrameIndices(count, lastFrame);
+    }
+}
+
+function formatFrameTime(frameIndex: number, frameRate: number): string {
+    const seconds = frameIndex / frameRate;
+    return Number.isInteger(seconds) ? `${seconds}s` : `${seconds.toFixed(2)}s`;
+}
+
+export function planKeyframeInsertion(
+    currentFrames: number[],
+    lastFrame: number,
+    customized: boolean,
+): { insertionIndex: number; frameIndices: number[] } {
+    const nextCount = currentFrames.length + 1;
+    if (!customized || currentFrames.length < 2) {
+        return {
+            insertionIndex: Math.max(1, currentFrames.length - 1),
+            frameIndices: evenlySpacedFrameIndices(nextCount, lastFrame),
+        };
+    }
+    let insertionIndex = 1;
+    let largestGap = -1;
+    for (let index = 0; index < currentFrames.length - 1; index += 1) {
+        const gap = currentFrames[index + 1] - currentFrames[index];
+        if (gap >= largestGap) {
+            largestGap = gap;
+            insertionIndex = index + 1;
+        }
+    }
+    if (largestGap <= 1) {
+        return {
+            insertionIndex: Math.max(1, currentFrames.length - 1),
+            frameIndices: evenlySpacedFrameIndices(nextCount, lastFrame),
+        };
+    }
+    const frameIndices = [...currentFrames];
+    frameIndices.splice(
+        insertionIndex,
+        0,
+        Math.floor((currentFrames[insertionIndex - 1] + currentFrames[insertionIndex]) / 2),
+    );
+    return { insertionIndex, frameIndices };
+}
+
+function FrameReferenceStrip({
+    ariaLabel,
+    children,
+    layout,
+    message,
+    trailingControl,
+}: {
+    ariaLabel: string;
+    children: ReactNode;
+    layout: 'fixed' | 'scroll';
+    message?: ReactNode;
+    trailingControl?: ReactNode;
+}) {
+    const scroll = layout === 'scroll';
+    const content = (
+        <div className={scroll ? 'flex min-w-max items-start gap-x-1.5 pr-1' : 'flex items-start gap-x-1.5'} role="list" aria-label={ariaLabel}>
+            {children}
+        </div>
+    );
+    if (!scroll) {
+        return (
+            <div data-testid="frame-reference-strip" data-frame-layout={layout} className="pointer-events-auto relative mb-2 px-1">
+                {content}
+                {message}
+            </div>
+        );
+    }
+    return (
+        <div
+            data-testid="frame-reference-strip"
+            data-frame-layout={layout}
+            className="pointer-events-auto relative mb-2 w-[18rem] min-w-0 max-w-[min(18rem,calc(100vw-3rem))] flex-none px-1"
+            style={{
+                width: '18rem',
+                maxWidth: 'calc(100vw - 3rem)',
+                minWidth: 0,
+                flex: 'none',
+            }}
+        >
+            <div className="flex min-w-0 items-start gap-1.5">
+                <div data-testid="frame-reference-scroll" className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-1 pt-1">
+                    {content}
+                </div>
+                {trailingControl && <div className="flex-none pt-2">{trailingControl}</div>}
+            </div>
+            {message}
+        </div>
+    );
+}
+
+function FrameReferenceSlot({
+    badge,
+    emptyControl,
+    filled,
+    label,
+    onRemove,
+    removeLabel,
+    thumb,
+    timeControl,
+    timeLabel,
+}: {
+    badge?: ReactNode;
+    emptyControl?: ReactNode;
+    filled: boolean;
+    label: string;
+    onRemove?: () => void;
+    removeLabel?: string;
+    thumb?: string;
+    timeControl?: ReactNode;
+    timeLabel?: string;
+}) {
+    return (
+        <div className="group/thumb relative w-10 flex-shrink-0" title={label}>
+            {filled ? (
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-warm-border bg-warm-muted shadow-sm">
+                    {thumb ? (
+                        <SignedImg src={thumb} alt={label} className="h-full w-full object-cover" />
+                    ) : (
+                        <ImageIcon size={15} className="text-content-secondary" />
+                    )}
+                </div>
+            ) : emptyControl}
+            <span className="sr-only">{label}</span>
+            {badge != null && (
+                <span className="clash-node-ref-index pointer-events-none absolute -left-1 -top-1 min-w-[14px] rounded px-1 text-center text-[9px] font-bold leading-[14px]">
+                    {badge}
+                </span>
+            )}
+            {timeControl ?? (timeLabel && (
+                <div className="mt-1 text-center text-[9px] tabular-nums leading-none text-content-secondary">
+                    {timeLabel}
+                </div>
+            ))}
+            {onRemove && removeLabel && (
+                <IconButton
+                    label={removeLabel}
+                    icon="×"
+                    size="sm"
+                    shape="circle"
+                    onClick={onRemove}
+                    className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -right-1 -top-1 hidden h-5 min-h-5 w-5 min-w-5 text-[11px] leading-none group-hover/thumb:flex`}
+                />
+            )}
+        </div>
+    );
+}
+
+const KEYFRAME_TIME_SLOT_CLASS = 'mt-1 flex h-4 w-10 items-center justify-center text-center text-[9px] tabular-nums leading-none text-content-secondary';
+
+function KeyframeTimeInput({
+    frameIndex,
+    frameRate,
+    label,
+    maxFrame,
+    minFrame,
+    onCommit,
+}: {
+    frameIndex: number;
+    frameRate: number;
+    label: string;
+    maxFrame: number;
+    minFrame: number;
+    onCommit: (frameIndex: number) => void;
+}) {
+    const canonical = (frameIndex / frameRate).toFixed(2);
+    const [draft, setDraft] = useState(canonical);
+    useEffect(() => setDraft(canonical), [canonical]);
+
+    const commit = () => {
+        const seconds = Number.parseFloat(draft);
+        const requestedFrame = Number.isFinite(seconds) ? Math.round(seconds * frameRate) : frameIndex;
+        const nextFrame = Math.max(minFrame, Math.min(maxFrame, requestedFrame));
+        onCommit(nextFrame);
+        setDraft((nextFrame / frameRate).toFixed(2));
+    };
+
+    return (
+        <label
+            data-testid="keyframe-time-slot"
+            className={`relative ${KEYFRAME_TIME_SLOT_CLASS}`}
+            title={`${label} · exact position at ${frameRate} fps`}
+        >
+            <span className="sr-only">{label}</span>
+            <input
+                aria-label={label}
+                type="number"
+                inputMode="decimal"
+                min={(minFrame / frameRate).toFixed(2)}
+                max={(maxFrame / frameRate).toFixed(2)}
+                step={(1 / frameRate).toFixed(4)}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={commit}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.currentTarget.blur();
+                    if (event.key === 'Escape') {
+                        setDraft(canonical);
+                        event.currentTarget.blur();
+                    }
+                }}
+                className={`${NODE_INTERACTION_BOUNDARY_CLASS} block h-full w-full rounded border border-transparent bg-transparent px-0.5 text-center text-[9px] tabular-nums leading-none text-content-secondary outline-none transition-colors hover:border-warm-border hover:bg-warm-surface focus:border-brand/45 focus:bg-warm-surface focus:text-content-primary`}
+            />
+        </label>
+    );
+}
+
+function TimelineKeyframeMarker({
+    children,
+    draggable,
+    frameIndex,
+    lastFrame,
+    maxFrame,
+    minFrame,
+    onCommit,
+    trackRef,
+}: {
+    children: (previewFrame: number) => ReactNode;
+    draggable: boolean;
+    frameIndex: number;
+    lastFrame: number;
+    maxFrame: number;
+    minFrame: number;
+    onCommit: (frameIndex: number) => void;
+    trackRef: RefObject<HTMLDivElement | null>;
+}) {
+    const [previewFrame, setPreviewFrame] = useState(frameIndex);
+    const previewFrameRef = useRef(frameIndex);
+    const dragStartRef = useRef<{ pointerId: number; clientX: number; frameIndex: number } | null>(null);
+    useEffect(() => {
+        previewFrameRef.current = frameIndex;
+        setPreviewFrame(frameIndex);
+    }, [frameIndex]);
+
+    const updateFromPointer = (clientX: number) => {
+        const dragStart = dragStartRef.current;
+        const track = trackRef.current;
+        if (!dragStart || !track || lastFrame <= 0) return;
+        const width = track.getBoundingClientRect().width;
+        if (width <= 0) return;
+        const deltaFrames = Math.round(((clientX - dragStart.clientX) / width) * lastFrame);
+        const nextFrame = Math.max(minFrame, Math.min(maxFrame, dragStart.frameIndex + deltaFrames));
+        previewFrameRef.current = nextFrame;
+        setPreviewFrame(nextFrame);
+    };
+
+    const finishDrag = (pointerId: number) => {
+        if (dragStartRef.current?.pointerId !== pointerId) return;
+        dragStartRef.current = null;
+        onCommit(previewFrameRef.current);
+    };
+
+    return (
+        <div
+            className={`group/timeline-marker absolute top-4 z-10 -translate-x-1/2 transition-[left] duration-75 hover:z-30 focus-within:z-30 ${draggable ? 'cursor-ew-resize touch-none' : ''}`}
+            style={{ left: `${lastFrame > 0 ? (previewFrame / lastFrame) * 100 : 0}%` }}
+            onPointerDown={(event) => {
+                if (!draggable || (event.target as HTMLElement).closest('button,input')) return;
+                dragStartRef.current = { pointerId: event.pointerId, clientX: event.clientX, frameIndex: previewFrame };
+                event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+                if (dragStartRef.current?.pointerId !== event.pointerId) return;
+                updateFromPointer(event.clientX);
+            }}
+            onPointerUp={(event) => finishDrag(event.pointerId)}
+            onPointerCancel={(event) => finishDrag(event.pointerId)}
+        >
+            <span
+                aria-hidden
+                className={`pointer-events-none absolute left-1/2 top-[-14px] h-2 w-2 -translate-x-1/2 rounded-full border border-warm-border bg-warm-surface shadow-sm transition-colors ${draggable ? 'group-hover/timeline-marker:border-brand/60 group-hover/timeline-marker:bg-brand/15' : ''}`}
+            />
+            <span
+                aria-hidden
+                className="pointer-events-none absolute left-1/2 top-[-7px] h-[7px] w-px -translate-x-1/2 bg-warm-border"
+            />
+            {children(previewFrame)}
+        </div>
+    );
+}
+
+function referenceMediaMetadata(node: { type?: string; data?: Record<string, any> }): ReferenceMediaMetadata | null {
+    const modality = referenceModality(node);
+    if (!modality || modality === 'text') return null;
+    const data = node.data ?? {};
+    const metadata = data.metadata && typeof data.metadata === 'object' ? data.metadata : {};
+    const numeric = (key: string, fallbackKey?: string): number | undefined => {
+        const value = data[key] ?? metadata[key] ?? (fallbackKey ? data[fallbackKey] ?? metadata[fallbackKey] : undefined);
+        return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+    };
+    return {
+        modality,
+        contentType: data.contentType ?? metadata.contentType,
+        fileName: data.originalName ?? metadata.originalName,
+        bytes: numeric('bytes'),
+        width: numeric('naturalWidth', 'width'),
+        height: numeric('naturalHeight', 'height'),
+        durationMs: numeric('durationMs'),
+        frameRate: numeric('frameRate', 'fps'),
+        videoCodec: data.videoCodec ?? metadata.videoCodec,
+        audioCodec: data.audioCodec ?? metadata.audioCodec,
+    };
+}
 
 function paramOptionsToSelectOptions(param: ModelParameter): SelectOption<SelectValue>[] {
     return (param.options ?? []).map((option) => ({
@@ -224,6 +570,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // Canvas-node ref picker (click + to attach). Value is slot target:
     // 'append' for non-startEnd strip, 'start' | 'end' for startEnd slots.
     const [refPickerTarget, setRefPickerTarget] = useState<null | 'append' | 'start' | 'end'>(null);
+    const keyframeTrackRef = useRef<HTMLDivElement>(null);
+    const [keyframeTimelineOpen, setKeyframeTimelineOpen] = useState(false);
+    const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
 
     // React Flow hooks
     const { enabledModelCatalog, projectId } = useProject();
@@ -259,6 +608,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     };
     const [label, setLabel] = useState(data.label || 'Prompt');
     const [content, setContent] = useState(cleanContent(data.content));
+    const [lyrics, setLyrics] = useState(typeof data.lyrics === 'string' ? data.lyrics : '');
     const isCheckpointLocked = useMemo(() => {
         const checkpointEdges = getEdges();
         const downstreamIds = new Set<string>();
@@ -296,6 +646,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     };
 
     const [actionType, setActionType] = useState<string>(data.actionType || 'image-gen');
+    const lastIncomingActionType = useRef<string>(data.actionType || 'image-gen');
     const isCustom = actionType.startsWith('custom:');
     const customActionId = isCustom ? actionType.replace('custom:', '') : null;
 
@@ -317,22 +668,27 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const customActionOffline = !customActionOnline;
 
     // Custom action params state
-    const [customActionParams, _setCustomActionParams] = useState<ModelParams>(
-        (data.customActionParams as ModelParams) ?? {}
-    );
+    const [customActionParams, setCustomActionParams] = useState<ModelParams>({
+        ...(customDef ? customActionDefaultParams(customDef) : {}),
+        ...((data.customActionParams as ModelParams) ?? {}),
+    });
 
     const editorRef = useRef<HTMLDivElement>(null);
 
-    const actionKind = getBuiltInActionKind(actionType);
+    const actionKind = customDef?.outputType ?? getBuiltInActionKind(actionType);
     const initialModelId = isCustom ? '' :
         (actionKind === 'image' || actionKind === 'video'
             ? resolveConfiguredModelId(actionType as 'image-gen' | 'video-gen', data.modelId as string | undefined, data.modelName)
             : (data.modelId as string | undefined)) ||
-        (MODEL_CARDS.find((card) => card.kind === actionKind)?.id ?? FALLBACK_MODEL_BY_KIND[actionKind]);
+        (enabledModelCatalog.find((entry) => entry.model.kind === actionKind)?.model.id
+            ?? MODEL_CARDS.find((card) => card.kind === actionKind)?.id
+            ?? FALLBACK_MODEL_BY_KIND[actionKind]);
+    const initialModelCard = enabledModelCatalog.find((entry) => entry.model.id === initialModelId)?.model
+        ?? MODEL_CARDS.find((card) => card.id === initialModelId);
 
     const [modelId, setModelId] = useState<string>(initialModelId);
     const [modelParams, setModelParams] = useState<ModelParams>({
-        ...(MODEL_CARDS.find((card) => card.id === initialModelId)?.defaultParams ?? {}),
+        ...(initialModelCard?.defaultParams ?? {}),
         ...(data.modelParams ?? {}),
     });
 
@@ -388,6 +744,10 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             .filter((card) => card.kind === actionKind),
         [actionKind, enabledModelCatalog]
     );
+    const selectedCatalogEntry = useMemo(
+        () => isCustom ? undefined : enabledModelCatalog.find((entry) => entry.model.id === modelId),
+        [enabledModelCatalog, isCustom, modelId],
+    );
     const selectedModel = useMemo<ModelCard | undefined>(
         // For custom actions, fall back to `undefined` rather than the
         // first image model card — otherwise the picker chip shows
@@ -395,14 +755,30 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         // returned nothing and `?? availableModels[0]` picked a random
         // image model. Custom actions have their own name source
         // (`customDef.name`) — see modelDisplay below.
-        () => isCustom ? undefined : (MODEL_CARDS.find((card) => card.id === modelId) ?? availableModels[0]),
+        () => isCustom ? undefined : (availableModels.find((card) => card.id === modelId) ?? MODEL_CARDS.find((card) => card.id === modelId) ?? availableModels[0]),
         [availableModels, modelId, isCustom]
     );
+    useEffect(() => {
+        if (!selectedModel) return;
+        setModelParams((current) => {
+            const next = normalizeModelParametersForCard(selectedModel, current);
+            const keys = new Set([...Object.keys(current), ...Object.keys(next)]);
+            return [...keys].every((key) => current[key] === next[key]) ? current : next;
+        });
+    }, [selectedModel]);
+    const isMusicModel = selectedModel?.task === 'music-generation';
+    const storedPluginBinding = data.pluginBinding as ExecutablePluginBinding | undefined;
+    const routePluginBinding = selectedCatalogEntry?.selectedRoute?.projectorBinding;
+    const resolvedPluginBinding = resolveModelProjectorBinding(
+        storedPluginBinding,
+        routePluginBinding,
+    );
+    const effectivePluginBinding = resolvedPluginBinding.binding;
 
     const modelDisplay = isCustom
         ? (customDef?.name ?? customActionId ?? 'Custom action')
-        : (selectedModel?.name || modelId);
-    const countValue = Number(modelParams.count ?? 1);
+        : (selectedModel?.name ?? modelId);
+    const countValue = Number((isCustom ? customActionParams.count : modelParams.count) ?? 1);
     const modelPickerLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : modelDisplay;
     const checkpointRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run again with current parameters';
     const panelRunLabel = customActionOffline ? RUNTIME_OFFLINE_TOOLTIP : 'Run action';
@@ -410,8 +786,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // Single derivation — all per-modality questions read fields off `cap`.
     // See packages/shared-types/src/model-capabilities.ts.
     const cap = useMemo(
-        () => (selectedModel ? capability(selectedModel) : null),
-        [selectedModel],
+        () => customDef
+            ? capabilityFromCustom(customDef)
+            : selectedModel
+                ? capability(selectedModel)
+                : null,
+        [customDef, selectedModel],
     );
     const acceptsTextRef = cap?.ref.text.accepts ?? false;
     const acceptsImageRef = cap?.ref.image.accepts ?? false;
@@ -419,6 +799,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const acceptsAudioRef = cap?.ref.audio.accepts ?? false;
     const acceptsAnyRef = acceptsTextRef || acceptsImageRef || acceptsVideoRef || acceptsAudioRef;
     const isStartEnd = cap?.ref.image.isStartEnd ?? false;
+    const isKeyframePresentation = selectedModel?.input.presentation?.type === 'keyframes';
+    const isContinuationPresentation = selectedModel?.input.presentation?.type === 'video-continuation';
+    const keyframeLimit = cap?.ref.image.max ?? 0;
+    const keyframeFrameRate = selectedModel?.input.presentation?.type === 'keyframes'
+        ? selectedModel.input.presentation.frameRate ?? 24
+        : 24;
+    const keyframeDurationSeconds = (() => {
+        const value = Number(modelParams.duration);
+        return Number.isFinite(value) && value > 0 ? value : 5;
+    })();
+    const keyframeLastFrame = Math.round(keyframeDurationSeconds * keyframeFrameRate);
+    const keyframeTimingCustomized = modelParams[KEYFRAME_TIMING_CUSTOMIZED_PARAM] === true;
 
     // Resolve a node's ref source if its kind is accepted by the current model.
     // Returns the raw R2 key — renderers use cover for video, placeholder for audio.
@@ -478,6 +870,15 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         const extras = attachedNodeIds.filter(nid => !seen.has(nid));
         return [...ordered, ...extras];
     }, [attachedNodeIds, data.referenceImageOrder]);
+    const keyframeFrames = useMemo(
+        () => keyframeFrameIndices(
+            modelParams[KEYFRAME_FRAME_INDICES_PARAM],
+            refNodeIds.length,
+            keyframeLastFrame,
+            keyframeTimingCustomized,
+        ),
+        [keyframeLastFrame, keyframeTimingCustomized, modelParams, refNodeIds.length],
+    );
 
     // Group attached refs by kind once — used by the model-compat check below.
     const refKindCounts = useMemo(() => {
@@ -513,12 +914,23 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         [availableModels, isModelCompatibleWithRefs, refNodeIds.length],
     );
 
+    const generationChoices = useMemo(
+        () => listGenerationActionChoices({
+            outputKind: actionKind,
+            models: compatibleAvailableModels,
+            customActions,
+            referenceCounts: refKindCounts,
+        }),
+        [actionKind, compatibleAvailableModels, customActions, refKindCounts],
+    );
+
     const clearAllRefs = useCallback(() => {
         const edgeIds = connectedEdges.filter(e => e.target === id).map(e => e.id);
-        if (edgeIds.length === 0) return;
-        setEdges(eds => eds.filter(e => !edgeIds.includes(e.id)));
-        if (loroSync?.connected) {
-            edgeIds.forEach(eid => loroSync.removeEdge(eid));
+        if (edgeIds.length > 0) {
+            setEdges(eds => eds.filter(e => !edgeIds.includes(e.id)));
+            if (loroSync?.connected) {
+                edgeIds.forEach(eid => loroSync.removeEdge(eid));
+            }
         }
     }, [id, connectedEdges, setEdges, loroSync]);
 
@@ -552,17 +964,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     // every modelParams update — otherwise user overrides would be clobbered.
     }, [startRefId, modelId]);
 
-    // startEnd mismatch warning: flag when start and end frames have different
-    // aspect ratios (fal's Kling 3 / Seedance i2v derive output from start, so a
-    // mismatched end frame commonly produces distorted interpolation).
+    // Endpoint mismatch warning shared by fixed start/end and expandable
+    // keyframe presentations. In keyframe mode the final reference is End.
     const startEndMismatch = useMemo(() => {
-        if (!isStartEnd) return null;
+        if (!isStartEnd && !isKeyframePresentation) return null;
         const s = getNodeNaturalDims(refNodeIds[0]);
-        const e = getNodeNaturalDims(refNodeIds[1]);
+        const endIndex = isKeyframePresentation ? refNodeIds.length - 1 : 1;
+        const e = getNodeNaturalDims(refNodeIds[endIndex]);
         if (!s || !e) return null;
         // 3% tolerance on log-ratio difference — covers pixel rounding.
         return Math.abs(Math.log((s.w / s.h) / (e.w / e.h))) > 0.03 ? { s, e } : null;
-    }, [isStartEnd, refNodeIds, getNodeNaturalDims]);
+    }, [isStartEnd, isKeyframePresentation, refNodeIds, getNodeNaturalDims]);
 
     const persistRefOrder = useCallback((next: string[]) => {
         // Single writer for referenceImageOrder — dedup here so no duplicate
@@ -579,6 +991,22 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             loroSync.updateNode(id, { data: { referenceImageOrder: cleaned } });
         }
     }, [id, setNodes, loroSync]);
+
+    const persistKeyframeFrames = useCallback((next: number[], customized = keyframeTimingCustomized) => {
+        const serialized = JSON.stringify(next);
+        const nextParams = {
+            ...modelParams,
+            [KEYFRAME_FRAME_INDICES_PARAM]: serialized,
+            [KEYFRAME_TIMING_CUSTOMIZED_PARAM]: customized,
+        };
+        setModelParams(nextParams);
+        setNodes((nodes) => nodes.map((node) => node.id === id
+            ? { ...node, data: { ...node.data, modelParams: nextParams } }
+            : node));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: { modelParams: nextParams } });
+        }
+    }, [id, keyframeTimingCustomized, loroSync, modelParams, setNodes]);
 
     const addRefNode = useCallback((sourceNodeId: string) => {
         // Deterministic edgeId means re-adding the same source is a no-op
@@ -602,6 +1030,22 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             edgeIds.forEach(eid => loroSync.removeEdge(eid));
         }
     }, [id, connectedEdges, setEdges, loroSync]);
+
+    const removeKeyframeRef = useCallback((sourceNodeId: string) => {
+        const removedIndex = refNodeIds.indexOf(sourceNodeId);
+        if (removedIndex < 0) return;
+        const nextOrder = refNodeIds.filter((nodeId) => nodeId !== sourceNodeId);
+        let nextFrames = keyframeFrames.filter((_, index) => index !== removedIndex);
+        if (keyframeTimingCustomized) {
+            if (nextFrames.length > 0) nextFrames[0] = 0;
+            if (nextFrames.length > 1) nextFrames[nextFrames.length - 1] = keyframeLastFrame;
+        } else {
+            nextFrames = evenlySpacedFrameIndices(nextOrder.length, keyframeLastFrame);
+        }
+        persistRefOrder(nextOrder);
+        persistKeyframeFrames(nextFrames);
+        removeRefNode(sourceNodeId);
+    }, [keyframeFrames, keyframeLastFrame, keyframeTimingCustomized, persistKeyframeFrames, persistRefOrder, refNodeIds, removeRefNode]);
 
     // One-shot cleanup for pre-existing dirty data:
     //   1. referenceImageOrder may have duplicate ids (from before
@@ -668,9 +1112,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             }
         }
         return getNodes().filter(n => {
-            if (attached.has(n.id)) return false;
             if (downstream.has(n.id)) return false;
             const t = referenceModality(n);
+            if (attached.has(n.id)) return false;
             if (t === 'text') return acceptsTextRef;
             if (t === 'image') return acceptsImageRef;
             if (t === 'video') return acceptsVideoRef;
@@ -679,17 +1123,38 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         });
     }, [shouldComputeRefPickerCandidates, refNodeIds, getNodes, getEdges, connectedEdges, id, acceptsTextRef, acceptsImageRef, acceptsVideoRef, acceptsAudioRef]);
 
-    // Attach a picked canvas node into the target slot. For startEnd, pad the
-    // order array so slot 0/1 are stable even when the other slot is empty.
+    // Attach a picked canvas node into the target slot. Keyframe append means
+    // "append a middle frame": insert immediately before the fixed End slot.
     const attachRefToSlot = useCallback((sourceNodeId: string, target: 'append' | 'start' | 'end') => {
+        if (target === 'append' && isKeyframePresentation && refNodeIds.length >= keyframeLimit) return;
         addRefNode(sourceNodeId);
-        if (target === 'append') return;
         const existing = Array.isArray(data.referenceImageOrder) ? [...(data.referenceImageOrder as string[])] : [...refNodeIds];
-        const slotIdx = target === 'start' ? 0 : 1;
+        if (target === 'append') {
+            if (!isKeyframePresentation) return;
+            const insertion = planKeyframeInsertion(
+                keyframeFrames,
+                keyframeLastFrame,
+                keyframeTimingCustomized,
+            );
+            const insertionIndex = insertion.insertionIndex;
+            existing.splice(insertionIndex, 0, sourceNodeId);
+            persistRefOrder(existing);
+            persistKeyframeFrames(insertion.frameIndices, keyframeTimingCustomized);
+            return;
+        }
+        if (target === 'end' && isKeyframePresentation && existing.length === 0) return;
+        const slotIdx = target === 'start'
+            ? 0
+            : isKeyframePresentation
+                ? existing.length
+                : 1;
         while (existing.length <= slotIdx) existing.push('');
         existing[slotIdx] = sourceNodeId;
         persistRefOrder(existing.filter(Boolean));
-    }, [addRefNode, data.referenceImageOrder, refNodeIds, persistRefOrder]);
+        if (isKeyframePresentation) {
+            persistKeyframeFrames(target === 'start' ? [0] : [0, keyframeLastFrame], false);
+        }
+    }, [addRefNode, data.referenceImageOrder, isKeyframePresentation, keyframeFrames, keyframeLastFrame, keyframeLimit, keyframeTimingCustomized, persistKeyframeFrames, refNodeIds, persistRefOrder]);
 
     // Resolve ref node → asset R2 key map. Used for @-mention thumbnails,
     // startEnd slot previews, and the generic ref grid. node.data.src is
@@ -944,7 +1409,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [filteredMentionNodes, insertMention, mentionCombobox, showMentionMenu]);
 
     const syncModelState = useCallback(
-        (nextModelId: string, nextParams: ModelParams) => {
+        (
+            nextModelId: string,
+            nextParams: ModelParams,
+            nextPluginBinding: ExecutablePluginBinding | undefined = effectivePluginBinding,
+        ) => {
             setNodes((nds) =>
                 nds.map((node) => {
                     if (node.id === id) {
@@ -955,6 +1424,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                 modelId: nextModelId,
                                 model: nextModelId,
                                 modelParams: nextParams,
+                                pluginBinding: nextPluginBinding,
                             },
                         };
                     }
@@ -967,15 +1437,30 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         modelId: nextModelId,
                         model: nextModelId,
                         modelParams: nextParams,
+                        pluginBinding: nextPluginBinding,
                     }
                 });
             }
         },
-        [id, loroSync, setNodes]
+        [effectivePluginBinding, id, loroSync, setNodes]
     );
 
+    const syncActionState = useCallback((nextData: Record<string, unknown>) => {
+        setNodes((nodes) => nodes.map((node) => node.id === id
+            ? { ...node, data: { ...node.data, ...nextData } }
+            : node));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: nextData });
+        }
+    }, [id, loroSync, setNodes]);
+
+    useEffect(() => {
+        if (!routePluginBinding || !resolvedPluginBinding.persistRouteBinding) return;
+        syncModelState(modelId, modelParams, routePluginBinding);
+    }, [modelId, modelParams, resolvedPluginBinding.persistRouteBinding, routePluginBinding, syncModelState]);
+
     const handleModelChange = useCallback(async (nextId: string) => {
-        const nextModel = MODEL_CARDS.find((card) => card.id === nextId) || availableModels[0];
+        const nextModel = availableModels.find((card) => card.id === nextId) || MODEL_CARDS.find((card) => card.id === nextId) || availableModels[0];
         if (nextModel && refNodeIds.length > 0 && !isModelCompatibleWithRefs(nextModel)) {
             const ok = await confirm({
                 title: `Switch to ${nextModel.name}?`,
@@ -989,16 +1474,85 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         }
         const nextParams = { ...(nextModel?.defaultParams ?? {}) } as ModelParams;
         const resolvedId = nextModel?.id ?? nextId;
+        const nextPluginBinding = enabledModelCatalog.find((entry) => entry.model.id === resolvedId)
+            ?.selectedRoute?.projectorBinding;
         setModelId(resolvedId);
         setModelParams(nextParams);
-        syncModelState(resolvedId, nextParams);
-    }, [availableModels, refNodeIds.length, isModelCompatibleWithRefs, clearAllRefs, confirm, syncModelState]);
+        syncModelState(resolvedId, nextParams, nextPluginBinding);
+    }, [availableModels, enabledModelCatalog, refNodeIds.length, isModelCompatibleWithRefs, clearAllRefs, confirm, syncModelState]);
+
+    const handleGenerationChoiceChange = useCallback(async (value: string) => {
+        const choice = generationChoices.find((candidate) => candidate.value === value);
+        if (!choice) return;
+        if (choice.kind === 'action') {
+            const nextActionType = `custom:${choice.id}`;
+            const nextParams = generationChoiceDefaults(choice.action);
+            setActionType(nextActionType);
+            setCustomActionParams(nextParams);
+            setModelId('');
+            setModelParams({});
+            syncActionState({
+                actionType: nextActionType,
+                customActionId: choice.id,
+                customActionParams: nextParams,
+                modelId: undefined,
+                model: undefined,
+                modelParams: undefined,
+                pluginBinding: choice.action.pluginBinding,
+            });
+            return;
+        }
+
+        await handleModelChange(choice.id);
+        const nextActionType = `${choice.model.kind}-gen`;
+        setActionType(nextActionType);
+        setCustomActionParams({});
+        syncActionState({
+            actionType: nextActionType,
+            customActionId: undefined,
+            customActionParams: undefined,
+        });
+    }, [generationChoices, handleModelChange, syncActionState]);
 
     const updateModelParam = useCallback((paramId: string, value: string | number | boolean) => {
-        const next = { ...modelParams, [paramId]: value };
+        if (isCustom) {
+            const next = customDef
+                ? applyModelParameterChange({
+                    parameters: customDef.parameters,
+                    defaultParams: customActionDefaultParams(customDef),
+                    constraints: customDef.constraints,
+                }, customActionParams, paramId, value)
+                : { ...customActionParams, [paramId]: value };
+            setCustomActionParams(next);
+            syncActionState({ customActionParams: next });
+            return;
+        }
+        const next = applyModelParameterChange(selectedModel, modelParams, paramId, value);
+        if (isKeyframePresentation && paramId === 'duration') {
+            const nextDuration = Number(value);
+            const nextLastFrame = Math.round(nextDuration * keyframeFrameRate);
+            const nextFrames = keyframeFrameIndices(
+                modelParams[KEYFRAME_FRAME_INDICES_PARAM],
+                refNodeIds.length,
+                nextLastFrame,
+                keyframeTimingCustomized,
+            );
+            next[KEYFRAME_FRAME_INDICES_PARAM] = JSON.stringify(nextFrames);
+            next[KEYFRAME_TIMING_CUSTOMIZED_PARAM] = keyframeTimingCustomized;
+        }
         setModelParams(next);
         syncModelState(modelId, next);
-    }, [modelId, modelParams, syncModelState]);
+    }, [customActionParams, customDef, isCustom, isKeyframePresentation, keyframeFrameRate, keyframeTimingCustomized, modelId, modelParams, refNodeIds.length, selectedModel, syncActionState, syncModelState]);
+
+    const updateLyrics = useCallback((nextLyrics: string) => {
+        setLyrics(nextLyrics);
+        setNodes((nodes) => nodes.map((node) => node.id === id
+            ? { ...node, data: { ...node.data, lyrics: nextLyrics } }
+            : node));
+        if (loroSync?.connected) {
+            loroSync.updateNode(id, { data: { lyrics: nextLyrics } });
+        }
+    }, [id, setNodes, loroSync]);
 
     // Sync content and label when data changes (from Loro or other sources)
     useEffect(() => {
@@ -1009,15 +1563,31 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             const cleaned = cleanContent(data.content);
             setContent((prev: string) => (prev !== cleaned ? cleaned : prev));
         }
-    }, [data.label, data.content]);
+        if (data.lyrics !== undefined) {
+            const nextLyrics = typeof data.lyrics === 'string' ? data.lyrics : '';
+            setLyrics((prev) => prev !== nextLyrics ? nextLyrics : prev);
+        }
+    }, [data.label, data.content, data.lyrics]);
 
 
     useEffect(() => {
         const incomingType = data.actionType || 'image-gen';
-        if (incomingType !== actionType) {
-            setActionType(incomingType);
-        }
-    }, [data.actionType, actionType]);
+        if (incomingType === lastIncomingActionType.current) return;
+        lastIncomingActionType.current = incomingType;
+        setActionType(incomingType);
+    }, [data.actionType]);
+
+    useEffect(() => {
+        if (!customDef) return;
+        const next = {
+            ...customActionDefaultParams(customDef),
+            ...((data.customActionParams as ModelParams | undefined) ?? {}),
+        };
+        setCustomActionParams((current) => {
+            const keys = new Set([...Object.keys(current), ...Object.keys(next)]);
+            return [...keys].every((key) => current[key] === next[key]) ? current : next;
+        });
+    }, [customDef, data.customActionParams]);
 
     // Clear the one-shot `openPanel` flag once consumed, so reloading or
     // re-hydrating from Loro doesn't force the panel open on every mount.
@@ -1036,35 +1606,43 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         // actions (`custom:<id>`) resolve their model id through customDef.
         if (actionType !== 'image-gen' && actionType !== 'video-gen') {
             if (data.modelId && data.modelId !== modelId) {
-                const nextModel = MODEL_CARDS.find((card) => card.id === data.modelId) || selectedModel;
+                const nextModel = availableModels.find((card) => card.id === data.modelId) || MODEL_CARDS.find((card) => card.id === data.modelId) || selectedModel;
                 const nextParams = { ...(nextModel?.defaultParams ?? {}), ...(data.modelParams ?? {}) } as ModelParams;
                 setModelId(nextModel?.id ?? (data.modelId as string));
                 setModelParams(nextParams);
                 return;
             }
             if (data.modelParams) {
-                setModelParams((prev) => ({
-                    ...(selectedModel?.defaultParams ?? {}),
-                    ...prev,
-                    ...data.modelParams,
-                }));
+                setModelParams((prev) => {
+                    const next = {
+                        ...(selectedModel?.defaultParams ?? {}),
+                        ...prev,
+                        ...data.modelParams,
+                    } as ModelParams;
+                    const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+                    return [...keys].every((key) => prev[key] === next[key]) ? prev : next;
+                });
             }
             return;
         }
         const incomingModelId = resolveConfiguredModelId(actionType, data.modelId as string | undefined, data.modelName);
         if (incomingModelId && incomingModelId !== modelId) {
-            const nextModel = MODEL_CARDS.find((card) => card.id === incomingModelId) || selectedModel;
+            const nextModel = availableModels.find((card) => card.id === incomingModelId) || MODEL_CARDS.find((card) => card.id === incomingModelId) || selectedModel;
             const nextParams = { ...(nextModel?.defaultParams ?? {}), ...(data.modelParams ?? {}) } as ModelParams;
             setModelId(nextModel?.id ?? incomingModelId);
             setModelParams(nextParams);
         } else if (data.modelParams) {
-            setModelParams((prev) => ({
-                ...(selectedModel?.defaultParams ?? {}),
-                ...prev,
-                ...data.modelParams,
-            }));
+            setModelParams((prev) => {
+                const next = {
+                    ...(selectedModel?.defaultParams ?? {}),
+                    ...prev,
+                    ...data.modelParams,
+                } as ModelParams;
+                const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+                return [...keys].every((key) => prev[key] === next[key]) ? prev : next;
+            });
         }
-    }, [actionType, data.modelId, data.modelName, data.modelParams, modelId, selectedModel]);
+    }, [actionType, availableModels, data.modelId, data.modelName, data.modelParams, modelId, selectedModel]);
 
     useEffect(() => {
         // Custom actions intentionally have selectedModel === undefined
@@ -1116,7 +1694,16 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             // `openPanel: true` — one-shot flag the mounted ActionBadge consumes
             // to auto-open its config panel. Clone also re-attaches ref edges,
             // so the user lands in a ready-to-tweak state.
-            data: { label, content, actionType, modelId, modelParams, referenceImageOrder: refNodeIds, openPanel: true },
+            data: {
+                label,
+                content,
+                lyrics,
+                actionType,
+                modelId,
+                modelParams,
+                referenceImageOrder: refNodeIds,
+                openPanel: true,
+            },
         };
         setNodes(nds => [...nds, newNode as any]);
         if (loroSync?.connected) {
@@ -1132,7 +1719,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         });
         setShowModal(false);
         closeActionPanel();
-    }, [id, label, content, actionType, modelId, modelParams, refNodeIds, projectId, getNode, setNodes, addEdges, loroSync, closeActionPanel]);
+    }, [id, label, content, lyrics, actionType, modelId, modelParams, refNodeIds, projectId, getNode, setNodes, addEdges, loroSync, closeActionPanel]);
 
     const handleLabelChange = (evt: React.ChangeEvent<HTMLInputElement>) => {
         const newLabel = evt.target.value;
@@ -1151,7 +1738,9 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         modelParams,
         selectedModel,
         content,
+        lyrics: isMusicModel ? lyrics : '',
         dataPrompt: data.prompt as string | undefined,
+        pluginBinding: effectivePluginBinding,
         projectId,
         refNodeIds,
         getNodes,
@@ -1168,6 +1757,17 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         setError(null);
 
         try {
+            if (cap) {
+                const mediaValidationError = validateReferenceMedia(
+                    cap,
+                    refNodeIds
+                        .map((nodeId) => getNode(nodeId))
+                        .filter((node): node is NonNullable<typeof node> => !!node)
+                        .map(referenceMediaMetadata)
+                        .filter((metadata): metadata is ReferenceMediaMetadata => !!metadata),
+                );
+                if (mediaValidationError) throw new Error(mediaValidationError);
+            }
             // Capture and clear pre-allocated asset ID (provided by backend; treat as single-use)
             const preAllocatedAssetId = data.preAllocatedAssetId as string | undefined;
             if (preAllocatedAssetId) {
@@ -1304,6 +1904,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         loroSync,
         projectId,
         addNodeWithAutoLayout,
+        cap,
     ]);
 
     // Helper to extract meaningful label from prompt content (already moved outside)
@@ -1519,6 +2120,121 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         </NodeModalDialog>
     ) : null;
 
+    const keyframeTimelineDialog = isKeyframePresentation ? (
+        <NodeModalDialog
+            open={keyframeTimelineOpen}
+            onClose={() => setKeyframeTimelineOpen(false)}
+            ariaLabel="Edit keyframe timing"
+            contentClassName="h-auto max-h-[min(28rem,calc(100vh-2rem))] w-[min(48rem,calc(100vw-2rem))] max-w-none overflow-hidden rounded-2xl"
+        >
+            <div className="flex items-center justify-between border-b border-warm-border px-4 py-3">
+                <div>
+                    <div className="text-sm font-semibold text-content-primary">Keyframe timing</div>
+                    <div className="mt-0.5 text-[10px] text-content-secondary">
+                        {keyframeTimingCustomized ? 'Custom timing' : 'Evenly distributed'} · {keyframeFrameRate} fps · {keyframeDurationSeconds}s
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button
+                        aria-label="Distribute keyframes evenly"
+                        size="sm"
+                        shape="rounded"
+                        onClick={() => persistKeyframeFrames(
+                            evenlySpacedFrameIndices(refNodeIds.length, keyframeLastFrame),
+                            false,
+                        )}
+                        className="border border-warm-border bg-warm-surface text-content-secondary shadow-none hover:bg-warm-muted hover:text-content-primary"
+                    >
+                        Distribute evenly
+                    </Button>
+                    <IconButton
+                        label="Close keyframe timing"
+                        icon={<X size={15} weight="bold" />}
+                        size="md"
+                        shape="rounded"
+                        onClick={() => setKeyframeTimelineOpen(false)}
+                    />
+                </div>
+            </div>
+
+            <div className="overflow-x-auto px-8 pb-6 pt-7">
+                <div className="min-w-[38rem]">
+                    <div
+                        ref={keyframeTrackRef}
+                        data-testid="keyframe-timeline-track"
+                        className="relative mx-5 h-20"
+                    >
+                        <div aria-hidden className="absolute inset-x-0 top-1 h-1 rounded-full bg-warm-muted shadow-inner" />
+                        <div aria-hidden className="absolute left-0 top-0 h-3 w-px bg-content-secondary/60" />
+                        <div aria-hidden className="absolute right-0 top-0 h-3 w-px bg-content-secondary/60" />
+                        {refNodeIds.map((nodeId, index) => {
+                            const isStart = index === 0;
+                            const isEnd = index === refNodeIds.length - 1 && refNodeIds.length > 1;
+                            const frameIndex = keyframeFrames[index] ?? 0;
+                            const minFrame = isStart ? 0 : (keyframeFrames[index - 1] ?? 0) + 1;
+                            const maxFrame = isEnd ? keyframeLastFrame : (keyframeFrames[index + 1] ?? keyframeLastFrame) - 1;
+                            const label = isStart ? 'Start' : isEnd ? 'End' : `Frame ${index + 1}`;
+                            return (
+                                <TimelineKeyframeMarker
+                                    key={nodeId}
+                                    frameIndex={frameIndex}
+                                    lastFrame={keyframeLastFrame}
+                                    minFrame={minFrame}
+                                    maxFrame={maxFrame}
+                                    draggable={!isCheckpointLocked && !isStart && !isEnd}
+                                    onCommit={(nextFrame) => {
+                                        if (isStart || isEnd) return;
+                                        const nextFrames = [...keyframeFrames];
+                                        nextFrames[index] = nextFrame;
+                                        persistKeyframeFrames(nextFrames, true);
+                                        setSelectedKeyframeId(nodeId);
+                                    }}
+                                    trackRef={keyframeTrackRef}
+                                >
+                                    {(previewFrame) => (
+                                        <div
+                                            aria-label={`${label} at ${formatFrameTime(previewFrame, keyframeFrameRate)}`}
+                                            onPointerDown={() => setSelectedKeyframeId(nodeId)}
+                                            className={`${NODE_INTERACTION_BOUNDARY_CLASS} rounded-lg outline-none transition-shadow ${selectedKeyframeId === nodeId ? 'ring-2 ring-brand/55 ring-offset-2 ring-offset-warm-surface' : 'focus-visible:ring-2 focus-visible:ring-brand/45'}`}
+                                        >
+                                            <FrameReferenceSlot
+                                                filled
+                                                label={label}
+                                                thumb={refThumbByNodeId.get(nodeId)}
+                                                timeControl={isStart || isEnd ? (
+                                                    <div
+                                                        data-testid="keyframe-time-slot"
+                                                        className={KEYFRAME_TIME_SLOT_CLASS}
+                                                    >
+                                                        {formatFrameTime(previewFrame, keyframeFrameRate)}
+                                                    </div>
+                                                ) : (
+                                                    <KeyframeTimeInput
+                                                        frameIndex={previewFrame}
+                                                        frameRate={keyframeFrameRate}
+                                                        label={`${label} time in seconds`}
+                                                        minFrame={minFrame}
+                                                        maxFrame={maxFrame}
+                                                        onCommit={(nextFrame) => {
+                                                            const nextFrames = [...keyframeFrames];
+                                                            nextFrames[index] = nextFrame;
+                                                            persistKeyframeFrames(nextFrames, true);
+                                                            setSelectedKeyframeId(nodeId);
+                                                        }}
+                                                    />
+                                                )}
+                                            />
+                                        </div>
+                                    )}
+                                </TimelineKeyframeMarker>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </NodeModalDialog>
+    ) : null;
+
     // Computed display name for the badge
     const badgeDisplayName = isCustom
         ? (customDef?.name || customActionId || 'Custom')
@@ -1528,10 +2244,11 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     const paramChips = useMemo(() => {
         const chips: { label: string; value: string; paramId: string }[] = [];
         const params = isCustom ? customDef?.parameters : selectedModel?.parameters;
+        const activeParams = isCustom ? customActionParams : modelParams;
         if (!params) return chips;
         params.forEach((p: any) => {
             if (p.id === 'count') return; // count is shown separately as xN chip
-            const val = modelParams[p.id] ?? p.defaultValue;
+            const val = activeParams[p.id] ?? p.defaultValue;
             if (val === undefined) return;
             if (p.type === 'select' && p.options) {
                 const opt = p.options.find((o: any) => String(o.value) === String(val));
@@ -1543,7 +2260,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             }
         });
         return chips;
-    }, [isCustom, customDef, selectedModel, modelParams]);
+    }, [isCustom, customActionParams, customDef, selectedModel, modelParams]);
 
     const closeConfigPanelControls = useCallback(() => {
         setParamsPopoverOpen(false);
@@ -1579,9 +2296,239 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     {/* Reference images strip above the prompt panel.
                         - startEnd models: two labeled Start/End slots joined by ⇌, always visible.
                         - Other models: Reorder.Group of numbered thumbs (drag to reorder, × to detach). */}
-                    {isStartEnd ? (
-                        <div className="pointer-events-auto mb-2 px-1 relative">
-                            <div className="flex items-center gap-1.5">
+                    {isKeyframePresentation ? (() => {
+                        const startNodeId = refNodeIds[0];
+                        const endNodeId = refNodeIds.length >= 2 ? refNodeIds[refNodeIds.length - 1] : undefined;
+                        const middleNodeIds = refNodeIds.length > 2 ? refNodeIds.slice(1, -1) : [];
+                        const pickerSlot = (
+                            slot: 'start' | 'end',
+                            label: string,
+                            timeLabel: string,
+                            disabled = false,
+                        ) => (
+                            <FrameReferenceSlot
+                                filled={false}
+                                label={label}
+                                timeLabel={timeLabel}
+                                emptyControl={(
+                                    <Popover
+                                        open={refPickerTarget === slot}
+                                        onOpenChange={(open) => setRefPickerTarget(open ? slot : null)}
+                                    >
+                                        <PopoverTrigger asChild>
+                                            <IconButton
+                                                label={`Pick ${label} keyframe`}
+                                                title={`Up to ${keyframeLimit} keyframes · exact positions at ${keyframeFrameRate} fps`}
+                                                icon={<Plus size={14} weight="bold" />}
+                                                size="lg"
+                                                shape="rounded"
+                                                disabled={isCheckpointLocked || disabled}
+                                                className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-warm-border bg-warm-surface text-content-secondary shadow-sm hover:border-brand/45 hover:bg-warm-muted hover:text-content-primary"
+                                            />
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                            side="top"
+                                            align="start"
+                                            className="z-[9999] w-[320px] overflow-hidden rounded-xl p-0"
+                                            onPointerDown={(event) => event.stopPropagation()}
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <RefPickerContent
+                                                title={`Pick ${label.toLowerCase()} keyframe`}
+                                                candidates={refPickerCandidates}
+                                                onPick={(nodeId) => {
+                                                    attachRefToSlot(nodeId, slot);
+                                                    setRefPickerTarget(null);
+                                                }}
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                )}
+                            />
+                        );
+
+                        return (
+                            <FrameReferenceStrip
+                                ariaLabel="FLUX 3 keyframes"
+                                layout="scroll"
+                                trailingControl={refNodeIds.length >= 2 ? (
+                                    <IconButton
+                                        label="Edit keyframe timing"
+                                        title="Edit keyframe timing"
+                                        icon={<SlidersHorizontal size={15} weight="bold" />}
+                                        size="md"
+                                        shape="rounded"
+                                        onClick={() => setKeyframeTimelineOpen(true)}
+                                        className={`${NODE_INTERACTION_BOUNDARY_CLASS} h-7 min-h-7 w-7 min-w-7 border border-warm-border bg-warm-surface text-content-secondary shadow-sm hover:bg-warm-muted hover:text-content-primary`}
+                                    />
+                                ) : undefined}
+                                message={startEndMismatch ? (
+                                    <p className="mt-1.5 text-[10px] leading-tight text-amber-600">
+                                        Start and end frames have different aspect ratios ({formatRatio(startEndMismatch.s.w, startEndMismatch.s.h)} vs {formatRatio(startEndMismatch.e.w, startEndMismatch.e.h)}). Use frames with matching dimensions.
+                                    </p>
+                                ) : undefined}
+                            >
+                                <div role="listitem">
+                                    {startNodeId ? (
+                                        <FrameReferenceSlot
+                                            filled
+                                            label="Start"
+                                            thumb={refThumbByNodeId.get(startNodeId)}
+                                            timeLabel="0s"
+                                            onRemove={isCheckpointLocked ? undefined : () => removeKeyframeRef(startNodeId)}
+                                            removeLabel="Remove start keyframe"
+                                        />
+                                    ) : pickerSlot('start', 'Start', '0s')}
+                                </div>
+
+                                {middleNodeIds.map((nodeId, middleIndex) => {
+                                    const sequenceIndex = middleIndex + 1;
+                                    return (
+                                        <div
+                                            key={nodeId}
+                                            role="listitem"
+                                            aria-label={`Frame ${sequenceIndex + 1} at ${formatFrameTime(keyframeFrames[sequenceIndex], keyframeFrameRate)}`}
+                                        >
+                                            <FrameReferenceSlot
+                                                filled
+                                                label={`Frame ${sequenceIndex + 1}`}
+                                                thumb={refThumbByNodeId.get(nodeId)}
+                                                timeLabel={formatFrameTime(keyframeFrames[sequenceIndex], keyframeFrameRate)}
+                                                onRemove={isCheckpointLocked ? undefined : () => removeKeyframeRef(nodeId)}
+                                                removeLabel={`Remove frame ${sequenceIndex + 1} keyframe`}
+                                            />
+                                        </div>
+                                    );
+                                })}
+
+                                {!isCheckpointLocked && endNodeId && refNodeIds.length < keyframeLimit && (
+                                    <div role="listitem" className="w-10 flex-shrink-0">
+                                        <Popover
+                                            open={refPickerTarget === 'append'}
+                                            onOpenChange={(open) => setRefPickerTarget(open ? 'append' : null)}
+                                        >
+                                            <PopoverTrigger asChild>
+                                                <IconButton
+                                                    label="Add middle keyframe"
+                                                    title={`Up to ${keyframeLimit} keyframes`}
+                                                    icon={<Plus size={14} weight="bold" />}
+                                                    size="lg"
+                                                    shape="rounded"
+                                                    className="h-10 min-h-10 w-10 min-w-10 rounded-lg border border-dashed border-warm-border bg-warm-surface text-content-secondary shadow-sm hover:border-brand/45 hover:bg-warm-muted hover:text-content-primary"
+                                                />
+                                            </PopoverTrigger>
+                                            <PopoverContent
+                                                side="top"
+                                                align="start"
+                                                className="z-[9999] w-[320px] overflow-hidden rounded-xl p-0"
+                                                onPointerDown={(event) => event.stopPropagation()}
+                                                onClick={(event) => event.stopPropagation()}
+                                            >
+                                                <RefPickerContent
+                                                    title="Pick a middle keyframe"
+                                                    candidates={refPickerCandidates}
+                                                    onPick={(nodeId) => {
+                                                        attachRefToSlot(nodeId, 'append');
+                                                        setSelectedKeyframeId(nodeId);
+                                                        setRefPickerTarget(null);
+                                                        if (keyframeTimingCustomized) setKeyframeTimelineOpen(true);
+                                                    }}
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
+                                    </div>
+                                )}
+
+                                <div role="listitem">
+                                    {endNodeId ? (
+                                        <FrameReferenceSlot
+                                            filled
+                                            label="End"
+                                            thumb={refThumbByNodeId.get(endNodeId)}
+                                            timeLabel={formatFrameTime(keyframeLastFrame, keyframeFrameRate)}
+                                            onRemove={isCheckpointLocked ? undefined : () => removeKeyframeRef(endNodeId)}
+                                            removeLabel="Remove end keyframe"
+                                        />
+                                    ) : pickerSlot('end', 'End', formatFrameTime(keyframeLastFrame, keyframeFrameRate), !startNodeId)}
+                                </div>
+
+                            </FrameReferenceStrip>
+                        );
+                    })() : isContinuationPresentation ? (
+                        <div className="pointer-events-auto mb-2 min-w-[18rem] rounded-xl border border-warm-border bg-warm-surface px-3 py-2.5 shadow-sm">
+                            <div className="mb-2">
+                                <div className="text-[11px] font-semibold text-content-primary">Source video</div>
+                                <div className="text-[10px] text-content-secondary">MP4 · up to 15s · 50 MB</div>
+                            </div>
+                            {refNodeIds[0] ? (() => {
+                                const sourceNodeId = refNodeIds[0];
+                                const sourceNode = getNode(sourceNodeId);
+                                const thumb = refThumbByNodeId.get(sourceNodeId);
+                                return (
+                                    <div className="group/thumb relative flex w-52 items-center gap-2 rounded-lg border border-warm-border bg-warm-muted p-1.5">
+                                        <div className="flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-video/15 text-video">
+                                            {thumb ? <SignedImg src={thumb} alt="Source video" className="h-full w-full object-cover" /> : <VideoCamera size={16} weight="bold" />}
+                                        </div>
+                                        <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-content-primary">
+                                            {(sourceNode?.data?.label as string | undefined) ?? sourceNodeId}
+                                        </span>
+                                        {!isCheckpointLocked && (
+                                            <IconButton
+                                                label="Remove source video"
+                                                icon="×"
+                                                size="sm"
+                                                shape="circle"
+                                                onClick={() => removeRefNode(sourceNodeId)}
+                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} h-6 min-h-6 w-6 min-w-6 text-[11px]`}
+                                            />
+                                        )}
+                                    </div>
+                                );
+                            })() : !isCheckpointLocked && (
+                                <Popover
+                                    open={refPickerTarget === 'append'}
+                                    onOpenChange={(open) => setRefPickerTarget(open ? 'append' : null)}
+                                >
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            aria-label="Choose source video"
+                                            size="sm"
+                                            shape="rounded"
+                                            leftIcon={<Plus size={14} weight="bold" />}
+                                            className="border border-dashed border-warm-border bg-transparent text-content-secondary shadow-none hover:bg-warm-muted hover:text-content-primary"
+                                        >
+                                            Choose source video
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                        side="top"
+                                        align="start"
+                                        className="z-[9999] w-[320px] overflow-hidden rounded-xl p-0"
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                        onClick={(event) => event.stopPropagation()}
+                                    >
+                                        <RefPickerContent
+                                            title="Pick a source video"
+                                            candidates={refPickerCandidates}
+                                            onPick={(nodeId) => {
+                                                attachRefToSlot(nodeId, 'append');
+                                                setRefPickerTarget(null);
+                                            }}
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+                        </div>
+                    ) : isStartEnd ? (
+                        <FrameReferenceStrip
+                            ariaLabel="Start and end frames"
+                            layout="fixed"
+                            message={startEndMismatch ? (
+                                <p className="mt-1.5 text-[10px] leading-tight text-amber-600">
+                                    Start and end frames have different aspect ratios ({formatRatio(startEndMismatch.s.w, startEndMismatch.s.h)} vs {formatRatio(startEndMismatch.e.w, startEndMismatch.e.h)}). Output will likely be distorted — use frames with matching dimensions.
+                                </p>
+                            ) : undefined}
+                        >
                                 {(['start', 'end'] as const).map((slot, slotIdx) => {
                                     const nodeId = refNodeIds[slotIdx];
                                     const node = nodeId ? getNode(nodeId) : undefined;
@@ -1594,26 +2541,15 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                             {slotIdx === 1 && (
                                                 <span className="text-slate-700 dark:text-slate-300 text-xs select-none px-0.5" aria-hidden>⇌</span>
                                             )}
-                                            <div className="relative group/thumb flex-shrink-0">
-                                                {node && thumb ? (
-                                                    <>
-                                                        <SignedImg
-                                                            src={thumb}
-                                                            alt={fullLabel}
-                                                            className="h-10 w-10 rounded-lg object-cover border border-warm-border shadow-sm"
-                                                        />
-                                                        {!isCheckpointLocked && (
-                                                            <IconButton
-                                                                label={`Clear ${fullLabel} frame`}
-                                                                icon="×"
-                                                                size="sm"
-                                                                shape="circle"
-                                                                onClick={() => removeRefNode(nodeId!)}
-                                                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} clash-node-ref-remove absolute -top-1 -right-1 hidden h-5 min-h-5 w-5 min-w-5 text-[11px] leading-none group-hover/thumb:flex`}
-                                                            />
-                                                        )}
-                                                    </>
-                                                ) : (
+                                            <div role="listitem">
+                                                <FrameReferenceSlot
+                                                    badge={badge}
+                                                    filled={Boolean(node)}
+                                                    label={fullLabel}
+                                                    thumb={thumb}
+                                                    onRemove={!isCheckpointLocked && nodeId ? () => removeRefNode(nodeId) : undefined}
+                                                    removeLabel={`Clear ${fullLabel} frame`}
+                                                    emptyControl={node ? undefined : (
                                                     <Popover
                                                         open={refPickerTarget === slot}
                                                         onOpenChange={(open) => setRefPickerTarget(open ? slot : null)}
@@ -1644,21 +2580,13 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                             />
                                                         </PopoverContent>
                                                     </Popover>
-                                                )}
-                                                <span className="clash-node-ref-index absolute -top-1 -left-1 text-[9px] font-bold rounded px-1 min-w-[14px] text-center leading-[14px] pointer-events-none">
-                                                    {badge}
-                                                </span>
+                                                    )}
+                                                />
                                             </div>
                                         </Fragment>
                                     );
                                 })}
-                            </div>
-                            {startEndMismatch && (
-                                <p className="mt-1.5 text-[10px] text-amber-600 leading-tight">
-                                    Start and end frames have different aspect ratios ({formatRatio(startEndMismatch.s.w, startEndMismatch.s.h)} vs {formatRatio(startEndMismatch.e.w, startEndMismatch.e.h)}). Output will likely be distorted — use frames with matching dimensions.
-                                </p>
-                            )}
-                        </div>
+                        </FrameReferenceStrip>
                     ) : acceptsAnyRef && (
                         <div className="pointer-events-auto mb-2 px-1 relative">
                             <div className="flex items-center gap-1.5">
@@ -1773,8 +2701,12 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         checkpoints render read-only because downstream lineage
                         now depends on these inputs. */}
                     <div className="relative px-4 pt-3 pb-4 nodrag">
+                        <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-content-secondary">
+                            Prompt
+                        </div>
                         <div
                             ref={editorRef}
+                            aria-label="Prompt"
                             contentEditable={!isCheckpointLocked}
                             suppressContentEditableWarning
                             className={`${NODE_INTERACTION_BOUNDARY_CLASS} w-full max-h-[40vh] overflow-y-auto text-sm focus:outline-none leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-stone-400 ${
@@ -1793,13 +2725,32 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                         )}
                     </div>
 
+                    {isMusicModel && (
+                        <div className="border-t border-warm-border px-4 py-3 nodrag">
+                            <label
+                                htmlFor={`action-lyrics-${id}`}
+                                className="mb-2 block text-[10px] font-semibold uppercase tracking-wide text-content-secondary"
+                            >
+                                Lyrics
+                            </label>
+                            <textarea
+                                id={`action-lyrics-${id}`}
+                                aria-label="Lyrics"
+                                value={lyrics}
+                                onChange={(event) => updateLyrics(event.target.value)}
+                                disabled={isCheckpointLocked}
+                                maxLength={selectedModel?.musicInput?.maxLyricsCharacters}
+                                placeholder="Write lyrics..."
+                                className={`${NODE_INTERACTION_BOUNDARY_CLASS} min-h-24 w-full resize-y rounded-lg border border-warm-border bg-transparent px-3 py-2 text-sm leading-relaxed text-content-primary outline-none placeholder:text-stone-400 focus:border-brand/70 disabled:cursor-default disabled:opacity-70`}
+                            />
+                        </div>
+                    )}
+
                     {/* Bottom toolbar: model selector + clickable param chips */}
                     <div className="flex items-center gap-1.5 px-3 pb-3 flex-nowrap overflow-visible">
-                        {/* Model selector chip. For custom actions whose runtime is
-                            offline, render in a disabled, low-opacity state with a
-                            tooltip — we don't auto-switch off the action, but we
-                            also don't open the model picker (custom actions don't
-                            have alternative models anyway). */}
+                        {/* Model / Custom Action selector. Keep it available when
+                            the current custom runtime is offline so the user can
+                            switch back to another model or installed action. */}
                         <div
                             className="relative"
                             style={customActionOffline ? { opacity: 0.5 } : undefined}
@@ -1809,17 +2760,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     <SelectMenu<string>
                                         className="relative"
                                         triggerClassName="px-2.5 py-1 text-xs"
-                                        value={modelId}
-                                        options={compatibleAvailableModels
-                                            .map((card) => {
-                                                return {
-                                                    value: card.id,
-                                                    label: card.name,
-                                                    description: getModelDropdownSecondaryText(true),
-                                                };
-                                            })}
-                                        onValueChange={(nextModelId) => {
-                                            handleModelChange(nextModelId);
+                                        value={isCustom
+                                            ? `action:${customActionId}`
+                                            : `model:${modelId}`}
+                                        options={generationChoices.map((choice) => ({
+                                            value: choice.value,
+                                            label: choice.label,
+                                            description: choice.kind === 'action'
+                                                ? `Custom Action · ${choice.description ?? 'Marketplace integration'}`
+                                                : getModelDropdownSecondaryText(true),
+                                        }))}
+                                        onValueChange={(nextChoice) => {
+                                            void handleGenerationChoiceChange(nextChoice);
                                             setParamsPopoverOpen(false);
                                         }}
                                         ariaLabel="Model"
@@ -1830,7 +2782,6 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         placement="top"
                                         menuWidth={240}
                                         maxMenuHeight={192}
-                                        disabled={customActionOffline}
                                         stopPropagation
                                     />
                                 </span>
@@ -1873,7 +2824,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     <Accordion type="single" collapsible>
                                         {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
                                             const p = param as ModelParameter;
-                                            const currentVal = modelParams[p.id] ?? p.defaultValue;
+                                            const currentVal = (isCustom ? customActionParams : modelParams)[p.id] ?? p.defaultValue;
                                             const currentLabel = p.type === 'select'
                                                 ? (p.options?.find((o) => String(o.value) === String(currentVal))?.label ?? String(currentVal))
                                                 : p.type === 'boolean' ? (currentVal ? 'On' : 'Off') : String(currentVal);
@@ -1890,10 +2841,18 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                         <Button
                                                             size="sm"
                                                             shape="rounded"
+                                                            disabled={p.readOnly}
                                                             className="group w-full justify-between rounded-none border-0 bg-transparent px-4 py-2.5 shadow-none hover:bg-warm-muted"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
-                                                            <span className="text-xs text-stone-700 dark:text-stone-300">{p.label}</span>
+                                                            <span className="flex items-center gap-1.5 text-xs text-stone-700 dark:text-stone-300">
+                                                                {p.label}
+                                                                {p.readOnly && (
+                                                                    <span className="rounded-full bg-warm-muted px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+                                                                        Fixed
+                                                                    </span>
+                                                                )}
+                                                            </span>
                                                             <span className="flex items-center gap-1 text-xs font-semibold text-slate-900 dark:text-slate-50">
                                                                 {currentLabel}
                                                                 <CaretDown size={10} weight="bold" className="text-stone-700 transition-transform group-data-[state=open]:rotate-180 dark:text-stone-300" />
@@ -1967,7 +2926,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
 
                         {/* Batch count chip (xN). Stays interactive even when checkpoint-locked —
                             user can bump the count and then Run to spawn more siblings. */}
-                        <SelectMenu<number>
+                        {!isCustom && <SelectMenu<number>
                             ariaLabel="Batch count"
                             value={countValue}
                             options={BATCH_COUNT_OPTIONS}
@@ -1982,7 +2941,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             showCaret
                             stopPropagation
                             triggerClassName="h-auto min-h-0 px-2.5 py-1 text-xs"
-                        />
+                        />}
 
                         {/* Materialized-checkpoint lock: Run again or copy into a fresh revision. */}
                         {isCheckpointLocked && (
@@ -2134,6 +3093,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
             </NodeToolbar>
 
             {modalContent}
+            {keyframeTimelineDialog}
         </>
     );
 };
@@ -2152,14 +3112,16 @@ function formatRatio(w: number, h: number): string {
 const RefPickerContent = ({
     candidates,
     onPick,
+    title = 'Pick a canvas asset',
 }: {
     candidates: RFNode[];
     onPick: (nodeId: string) => void;
+    title?: string;
 }) => {
     return (
         <>
             <div className="px-3 py-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide border-b border-warm-border">
-                Pick a canvas asset
+                {title}
             </div>
             {candidates.length === 0 ? (
                 <div className="px-3 py-6 text-xs text-slate-700 dark:text-slate-300 text-center">

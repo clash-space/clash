@@ -107,6 +107,26 @@ export interface LocalMutationAuditFilter {
   limit?: number;
 }
 
+export interface LocalPluginBrokerAuditRecord {
+  id: string;
+  occurredAt: string;
+  pluginId: string;
+  pluginVersion: string;
+  projectId: string;
+  invocationId: string;
+  requestId: string;
+  operation: string;
+  target: string;
+  status: "ok" | "error";
+  error?: string | null;
+}
+
+export interface LocalPluginBrokerAuditFilter {
+  pluginId?: string;
+  invocationId?: string;
+  limit?: number;
+}
+
 export interface LocalTextRevisionFilter {
   projectId: string;
   nodeId?: string;
@@ -304,7 +324,21 @@ function applySchema(db: SqliteDatabase): void {
       reason TEXT,
       result_entity_id TEXT,
       error TEXT,
-      mutation_json TEXT NOT NULL
+	      mutation_json TEXT NOT NULL
+	    );
+
+    CREATE TABLE IF NOT EXISTS plugin_broker_audit (
+      id TEXT PRIMARY KEY NOT NULL,
+      occurred_at TEXT NOT NULL,
+      plugin_id TEXT NOT NULL,
+      plugin_version TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      invocation_id TEXT NOT NULL,
+      request_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      target TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error TEXT
     );
     COMMIT;
   `);
@@ -326,6 +360,8 @@ function applySchema(db: SqliteDatabase): void {
 	    CREATE INDEX IF NOT EXISTS mutation_audit_created_idx ON mutation_audit(created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_operation_idx ON mutation_audit(operation, created_at DESC);
     CREATE INDEX IF NOT EXISTS mutation_audit_entity_idx ON mutation_audit(entity_kind, entity_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS plugin_broker_audit_plugin_idx ON plugin_broker_audit(plugin_id, occurred_at DESC);
+    CREATE INDEX IF NOT EXISTS plugin_broker_audit_invocation_idx ON plugin_broker_audit(invocation_id, occurred_at DESC);
     COMMIT;
   `);
 }
@@ -1209,6 +1245,76 @@ export function createLocalMetadataStore(dataDir: string) {
     );
   }
 
+  async function appendPluginBrokerAudit(
+    record: LocalPluginBrokerAuditRecord,
+  ): Promise<void> {
+    await withDb((db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        db.prepare(`
+          INSERT INTO plugin_broker_audit (
+            id, occurred_at, plugin_id, plugin_version, project_id,
+            invocation_id, request_id, operation, target, status, error
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.id,
+          record.occurredAt,
+          record.pluginId,
+          record.pluginVersion,
+          record.projectId,
+          record.invocationId,
+          record.requestId,
+          record.operation,
+          record.target,
+          record.status,
+          record.error ?? null,
+        );
+        markMigration(db, dataDir, "");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async function listPluginBrokerAudit(
+    filter: LocalPluginBrokerAuditFilter = {},
+  ): Promise<LocalPluginBrokerAuditRecord[]> {
+    const clauses: string[] = [];
+    const params: SqlitePrimitive[] = [];
+    if (filter.pluginId?.trim()) {
+      clauses.push("plugin_id = ?");
+      params.push(filter.pluginId.trim());
+    }
+    if (filter.invocationId?.trim()) {
+      clauses.push("invocation_id = ?");
+      params.push(filter.invocationId.trim());
+    }
+    params.push(mutationAuditLimit(filter.limit));
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    return withDb((db) => db.prepare(`
+      SELECT id, occurred_at, plugin_id, plugin_version, project_id,
+             invocation_id, request_id, operation, target, status, error
+        FROM plugin_broker_audit
+        ${where}
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT ?
+    `).all(...params).map((row) => ({
+      id: rowString(row, "id"),
+      occurredAt: rowString(row, "occurred_at"),
+      pluginId: rowString(row, "plugin_id"),
+      pluginVersion: rowString(row, "plugin_version"),
+      projectId: rowString(row, "project_id"),
+      invocationId: rowString(row, "invocation_id"),
+      requestId: rowString(row, "request_id"),
+      operation: rowString(row, "operation"),
+      target: rowString(row, "target"),
+      status: rowString(row, "status") === "ok" ? "ok" as const : "error" as const,
+      error: rowOptionalString(row, "error") ?? null,
+    })));
+  }
+
   async function upsertTextRevision(
     revision: TextAppliedRevision,
     auditRecord?: LocalMutationAuditRecord,
@@ -1323,6 +1429,8 @@ export function createLocalMetadataStore(dataDir: string) {
     resolveStorageKeys,
     appendMutationAudit,
     listMutationAudit,
+    appendPluginBrokerAudit,
+    listPluginBrokerAudit,
     upsertTextRevision,
     listTextRevisions,
     getTextRevision,

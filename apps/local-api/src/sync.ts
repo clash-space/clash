@@ -9,6 +9,7 @@ import {
   reconcileCanvasGraph,
   reconcileProjectTimelineOwnership,
   reconcileProjectDirectorStageOwnership,
+  loroSyncUpdateId,
   type ActivityAction,
   type ActivityMessage,
   type ClientType,
@@ -184,6 +185,7 @@ export class LocalLoroRoom {
   private updatesSinceSnapshot = 0;
   private updateBytesSinceSnapshot = 0;
   private activityThrottle = new Map<string, number>();
+  private pendingWorkQueue: Promise<void> = Promise.resolve();
 
   private constructor(
     private readonly projectId: string,
@@ -253,6 +255,10 @@ export class LocalLoroRoom {
       ? exactBytes(this.doc.export({ mode: "update", from: repairVersion }))
       : null;
     await this.persistUpdate(updateBytes);
+    this.peers.get(sender)?.sendJson?.({
+      type: "sync_ack",
+      updateId: loroSyncUpdateId(updateBytes),
+    });
     for (const [peerId, peer] of this.peers.entries()) {
       if (peerId !== sender) peer.sendUpdate(updateBytes);
     }
@@ -414,7 +420,13 @@ export class LocalLoroRoom {
     }
   }
 
-  private async processPendingWork(): Promise<void> {
+  private processPendingWork(): Promise<void> {
+    const run = this.pendingWorkQueue.then(() => this.processPendingWorkOnce());
+    this.pendingWorkQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async processPendingWorkOnce(): Promise<void> {
     if (!this.workflowProcessor) return;
     const versionBefore = this.doc.version();
     const sideband: Record<string, unknown>[] = [];

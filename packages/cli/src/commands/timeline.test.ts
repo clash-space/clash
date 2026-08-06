@@ -8,14 +8,22 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { timelineDslToYaml } from "@clash/shared-types";
+import {
+  TIMELINE_DSL_FIELD_ANNOTATIONS,
+  TIMELINE_OPERATION_CATALOG,
+  TIMELINE_OPERATION_REGISTRY,
+  timelineDslToYaml,
+} from "@clash/shared-types";
 import {
   normalizeTimelineDslForYaml,
   parseTimelineFileForApply,
   resolveTimelineFilePath,
   timelineHash,
 } from "../lib/timeline-projection";
-import { timelineCommand } from "./timeline";
+import {
+  TIMELINE_CLI_OPERATION_EXECUTORS,
+  timelineCommand,
+} from "./timeline";
 import { canvasCommand } from "./canvas";
 
 test("registers only the Project Timeline command surface", () => {
@@ -23,17 +31,145 @@ test("registers only the Project Timeline command surface", () => {
   const source = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
 
   assert.match(indexSource, /program\.addCommand\(timelineCommand\)/);
-  assert.deepEqual(timelineCommand.commands.map((command) => command.name()), [
-    "list",
-    "create",
-    "attach",
-    "detach",
-    "copy",
-    "pull",
-    "apply",
-  ]);
+  const annotatedCommands = Object.values(TIMELINE_OPERATION_CATALOG.agent)
+    .flatMap((operation) => operation.surfaceBindings ?? [])
+    .filter((binding) => binding.startsWith("cli:timeline "))
+    .map((binding) => binding.slice("cli:timeline ".length));
+  assert.deepEqual(
+    timelineCommand.commands.map((command) => command.name()),
+    annotatedCommands,
+  );
   assert.doesNotMatch(source, /archivedTimelineNodeCommand|\.command\("(?:replace|history|content|restore)"\)/);
   assert.doesNotMatch(source, /--if-match|--force|--lock/);
+});
+
+test("maps every annotated CLI Timeline operation to its real Commander executor", () => {
+  const annotatedBindings = Object.entries(TIMELINE_OPERATION_REGISTRY.agent)
+    .flatMap(([operationId, operation]) =>
+      (operation.surfaceBindings ?? [])
+        .filter((binding) => binding.startsWith("cli:timeline "))
+        .map((binding) => [operationId, binding] as const)
+    );
+
+  assert.deepEqual(
+    Object.keys(TIMELINE_CLI_OPERATION_EXECUTORS).sort(),
+    annotatedBindings.map(([operationId]) => operationId).sort(),
+  );
+
+  for (const [operationId, binding] of annotatedBindings) {
+    const executor = TIMELINE_CLI_OPERATION_EXECUTORS[
+      operationId as keyof typeof TIMELINE_CLI_OPERATION_EXECUTORS
+    ];
+    const commandName = binding.slice("cli:timeline ".length);
+    const registeredCommand = timelineCommand.commands.find(
+      (command) => command.name() === commandName,
+    );
+
+    assert.ok(executor, `${operationId} is missing its CLI executor`);
+    assert.equal(executor.binding, binding);
+    assert.equal(executor.command, registeredCommand);
+    assert.equal(
+      typeof (executor.command as unknown as { _actionHandler?: unknown })._actionHandler,
+      "function",
+      `${operationId} does not have a Commander action handler`,
+    );
+  }
+});
+
+test("publishes the machine-readable Timeline DSL contract to agents", () => {
+  const schema = timelineCommand.commands.find((command) => command.name() === "schema");
+
+  assert.ok(schema);
+  assert.match(schema.description(), /machine-readable/i);
+  assert.equal(schema.options.some((option) => option.long === "--json"), true);
+});
+
+test("exposes read-only Timeline DSL validation before apply", () => {
+  const validate = timelineCommand.commands.find((command) => command.name() === "validate");
+
+  assert.ok(validate);
+  assert.match(validate.description(), /without applying/i);
+  assert.equal(validate.options.some((option) => option.long === "--file" && option.required), true);
+  assert.equal(validate.options.some((option) => option.long === "--json"), true);
+});
+
+test("public Timeline apply validation executes the published structural contract before normalization", () => {
+  const invalidInputs = [
+    {
+      name: "unknown item type",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: mystery\n        type: mystery\n        from: 0\n        durationInFrames: 10\n`,
+      error: /timeline\.dsl\.structure.*tracks\.0\.items\.0\.type/i,
+    },
+    {
+      name: "zero item duration",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: zero\n        type: image\n        from: 0\n        durationInFrames: 0\n`,
+      error: /timeline\.dsl\.structure.*tracks\.0\.items\.0\.durationInFrames/i,
+    },
+    {
+      name: "missing track id",
+      yaml: `tracks:\n  - items: []\n`,
+      error: /timeline\.dsl\.structure.*tracks\.0\.id/i,
+    },
+  ] as const;
+
+  for (const invalid of invalidInputs) {
+    const parsed = parseTimelineFileForApply(invalid.yaml);
+    assert.equal(parsed.ok, false, invalid.name);
+    if (parsed.ok) continue;
+    assert.match(parsed.error, invalid.error, invalid.name);
+  }
+});
+
+test("public Timeline apply rejects every published cross-field integrity violation", () => {
+  const invalidInputs = [
+    {
+      name: "duplicate item id",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: duplicate\n        type: image\n        sourceNodeId: image-1\n        from: 0\n        durationInFrames: 10\n      - id: duplicate\n        type: image\n        sourceNodeId: image-2\n        from: 10\n        durationInFrames: 10\n`,
+      ruleId: "timeline.item.duplicate-id",
+    },
+    {
+      name: "unknown track role",
+      yaml: `tracks:\n  - id: visual\n    role: video\n    items: []\n`,
+      ruleId: "timeline.dsl.structure",
+    },
+    {
+      name: "primary lane audio",
+      yaml: `tracks:\n  - id: primary\n    category: primary\n    items:\n      - id: audio\n        type: audio\n        sourceNodeId: audio-1\n        from: 0\n        durationInFrames: 10\n`,
+      ruleId: "timeline.track.category-item",
+    },
+    {
+      name: "missing media source",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: image\n        type: image\n        from: 0\n        durationInFrames: 10\n`,
+      ruleId: "timeline.item.source-required",
+    },
+    {
+      name: "fractional absolute frame",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: image\n        type: image\n        sourceNodeId: image-1\n        from: 0.5\n        durationInFrames: 10\n`,
+      ruleId: "timeline.item.frame-integer",
+    },
+    {
+      name: "malformed relative frame",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: image\n        type: image\n        sourceNodeId: image-1\n        from: prev + nope\n        durationInFrames: 10\n`,
+      ruleId: "timeline.item.from-expression",
+    },
+    {
+      name: "foreign type-specific field",
+      yaml: `tracks:\n  - id: visual\n    items:\n      - id: image\n        type: image\n        sourceNodeId: image-1\n        from: 0\n        durationInFrames: 10\n        audioGainDb: 2\n`,
+      ruleId: "timeline.item.field-applicability",
+    },
+    {
+      name: "dangling transition reference",
+      yaml: `tracks:\n  - id: effects\n    category: effect\n    items:\n      - id: dissolve\n        type: transition\n        transitionType: crossfade\n        fromItemId: missing-a\n        toItemId: missing-b\n        from: 5\n        durationInFrames: 4\n`,
+      ruleId: "timeline.transition.reference",
+    },
+  ] as const;
+
+  for (const invalid of invalidInputs) {
+    const parsed = parseTimelineFileForApply(invalid.yaml);
+    assert.equal(parsed.ok, false, invalid.name);
+    if (parsed.ok) continue;
+    assert.match(parsed.error, new RegExp(invalid.ruleId.replaceAll(".", "\\.")), invalid.name);
+  }
 });
 
 test("Timeline ownership mutations use concrete IDs and implicit cwd observations", () => {
@@ -130,7 +266,7 @@ test("normalizes and parses agent-edited Timeline YAML deterministically", () =>
     durationInFrames: 60,
     tracks: [{
       id: "main",
-      role: "video",
+      role: "primary-video",
       items: [{
         id: "shot-1",
         type: "video",
@@ -150,6 +286,119 @@ test("normalizes and parses agent-edited Timeline YAML deterministically", () =>
   assert.equal(timelineHash(parsed.dsl), timelineHash(normalized));
 });
 
+test("Timeline pull/apply normalization preserves every persisted root and track field", () => {
+  const state = {
+    compositionWidth: 1080,
+    compositionHeight: 1920,
+    fps: 30,
+    durationInFrames: 90,
+    primaryTrackId: null,
+    assetTranscripts: {
+      speech: {
+        schemaVersion: 1,
+        kind: "clash.editor.asset-transcript",
+        assetId: "speech",
+        text: "hello",
+        durationMs: 1000,
+        words: [],
+      },
+    },
+    mediaAssetRefs: [{ assetId: "speech" }],
+    "x-project-extension": { keep: true },
+    tracks: [{
+      id: "voice",
+      name: "Voice",
+      role: "narration",
+      category: "audio",
+      hidden: false,
+      locked: false,
+      "x-track-extension": { keep: true },
+      items: [],
+    }],
+  };
+
+  const normalized = normalizeTimelineDslForYaml(state);
+  const applied = parseTimelineFileForApply(timelineDslToYaml(normalized));
+
+  assert.deepEqual(normalized, state);
+  assert.equal(applied.ok, true);
+  if (!applied.ok) return;
+  assert.deepEqual(applied.dsl, state);
+});
+
+test("Timeline pull/apply normalization automatically preserves future annotated root and track fields", () => {
+  type RootFieldAnnotation =
+    (typeof TIMELINE_DSL_FIELD_ANNOTATIONS.root)[keyof typeof TIMELINE_DSL_FIELD_ANNOTATIONS.root];
+  type TrackFieldAnnotation =
+    (typeof TIMELINE_DSL_FIELD_ANNOTATIONS.track)[keyof typeof TIMELINE_DSL_FIELD_ANNOTATIONS.track];
+  const rootFields = TIMELINE_DSL_FIELD_ANNOTATIONS.root as unknown as Record<
+    string,
+    RootFieldAnnotation
+  >;
+  const trackFields = TIMELINE_DSL_FIELD_ANNOTATIONS.track as unknown as Record<
+    string,
+    TrackFieldAnnotation
+  >;
+  rootFields.futureRootField = {
+    ...TIMELINE_DSL_FIELD_ANNOTATIONS.root.primaryTrackId,
+    description: "Future root field injected by the registry sync contract test.",
+  };
+  trackFields.futureTrackField = {
+    ...TIMELINE_DSL_FIELD_ANNOTATIONS.track.name,
+    description: "Future track field injected by the registry sync contract test.",
+  };
+
+  try {
+    const state = {
+      compositionWidth: 1080,
+      compositionHeight: 1920,
+      fps: 30,
+      durationInFrames: 90,
+      futureRootField: "root-value",
+      tracks: [{
+        id: "visual",
+        futureTrackField: "track-value",
+        items: [],
+      }],
+    };
+
+    const normalized = normalizeTimelineDslForYaml(state);
+    const applied = parseTimelineFileForApply(timelineDslToYaml(normalized));
+
+    assert.equal(
+      (normalized as unknown as Record<string, unknown>).futureRootField,
+      "root-value",
+    );
+    assert.equal(
+      (normalized.tracks[0] as unknown as Record<string, unknown>).futureTrackField,
+      "track-value",
+    );
+    assert.equal(applied.ok, true);
+    if (!applied.ok) return;
+    const pulledAgain = normalizeTimelineDslForYaml(applied.dsl);
+    assert.equal(
+      (applied.dsl as unknown as Record<string, unknown>).futureRootField,
+      "root-value",
+    );
+    assert.equal(
+      (applied.dsl.tracks[0] as unknown as Record<string, unknown>).futureTrackField,
+      "track-value",
+    );
+    assert.equal(
+      (pulledAgain as unknown as Record<string, unknown>).futureRootField,
+      "root-value",
+    );
+    assert.equal(
+      (pulledAgain.tracks[0] as unknown as Record<string, unknown>).futureTrackField,
+      "track-value",
+    );
+    assert.equal(timelineHash(pulledAgain), timelineHash(normalized));
+  } finally {
+    delete rootFields.futureRootField;
+    delete trackFields.futureTrackField;
+  }
+});
+
 test("Timeline pull/apply projection preserves item-local transform keyframes", () => {
   const normalized = normalizeTimelineDslForYaml({
     tracks: [{
@@ -158,6 +407,7 @@ test("Timeline pull/apply projection preserves item-local transform keyframes", 
       items: [{
         id: "logo",
         type: "image",
+        sourceNodeId: "source-logo",
         from: 30,
         durationInFrames: 61,
         properties: { x: 0, y: 0, width: 0.5, height: 0.5, rotation: 0, opacity: 1 },
@@ -191,6 +441,52 @@ test("Timeline pull/apply projection preserves item-local transform keyframes", 
   if (!applied.ok) return;
   assert.deepEqual(applied.dsl.tracks[0]?.items[0]?.keyframes, normalized.tracks[0]?.items[0]?.keyframes);
   assert.equal(timelineHash(applied.dsl), timelineHash(normalized));
+});
+
+test("Timeline pull/apply projection preserves clip masks and mask keyframes", () => {
+  const normalized = normalizeTimelineDslForYaml({
+    primaryTrackId: "main",
+    tracks: [{
+      id: "main",
+      category: "primary",
+      items: [{
+        id: "masked-shot",
+        type: "video",
+        from: 0,
+        durationInFrames: 60,
+        sourceNodeId: "source-1",
+        mask: {
+          shape: "ellipse",
+          position: [50, 50],
+          size: [70, 70],
+          rotation: 0,
+          feather: 8,
+          inverted: false,
+        },
+        keyframes: {
+          maskPosition: [
+            { frame: 0, value: [30, 50], interpolation: "linear" },
+            { frame: 59, value: [70, 50], interpolation: "hold" },
+          ],
+          maskSize: [{ frame: 0, value: [70, 70], interpolation: "linear" }],
+          maskRotation: [{ frame: 30, value: 20, interpolation: "linear" }],
+          maskFeather: [{ frame: 59, value: 30, interpolation: "linear" }],
+        },
+      }],
+    }],
+    durationInFrames: 60,
+  });
+
+  const applied = parseTimelineFileForApply(timelineDslToYaml(normalized));
+
+  assert.equal(normalized.primaryTrackId, "main");
+  assert.equal(normalized.tracks[0]?.category, "primary");
+  assert.equal(applied.ok, true);
+  if (!applied.ok) return;
+  assert.deepEqual(applied.dsl.tracks[0]?.items[0]?.mask, normalized.tracks[0]?.items[0]?.mask);
+  assert.deepEqual(applied.dsl.tracks[0]?.items[0]?.keyframes, normalized.tracks[0]?.items[0]?.keyframes);
+  assert.equal(applied.dsl.primaryTrackId, "main");
+  assert.equal(applied.dsl.tracks[0]?.category, "primary");
 });
 
 test("Timeline hashes treat omitted composition defaults as explicit defaults", () => {

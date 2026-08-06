@@ -3,6 +3,7 @@ import { generateModelArkVideo } from "../../services/modelark-video";
 import type { GenerationProvider } from "../provider";
 import { signedMediaUrl, signedMediaUrls } from "./media-url";
 import { credentialsForRoute } from "./provider-credentials";
+import { positionalReferencePrompt } from "./positional-reference-prompt";
 
 type ModelArkProviderKind = "volcengine";
 
@@ -42,7 +43,7 @@ function createModelArkVideoProvider(kind: ModelArkProviderKind): GenerationProv
           const credentials = await credentialsForRoute(ctx, route);
           const result = await generateModelArkVideo(credentials.apiKey, {
             baseUrl: credentials.baseUrl ?? "https://ark.cn-beijing.volces.com/api/v3",
-            prompt: params.prompt ?? "",
+            prompt: positionalReferencePrompt(params),
             modelName,
             upstreamModel: route.upstreamModel,
             startFrameUrl: sources.startFrameUrl,

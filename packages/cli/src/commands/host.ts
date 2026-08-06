@@ -1,8 +1,10 @@
 import { Command } from "commander";
 import { getHostDiscoveryStatus } from "../lib/host-discovery";
+import { resolveClashProfile, type ClashRuntimeProfile } from "@clash/shared-runtime/local-paths";
 
 export interface HostStatusOutput {
   status: "active" | "inactive";
+  profile: ClashRuntimeProfile;
   endpoint?: string;
   launchMode?: string;
   pid?: number;
@@ -19,9 +21,11 @@ export async function runHostStatus(options: {
 } = {}): Promise<HostStatusOutput> {
   const stdout = options.stdout ?? console.log;
   const state = await getHostDiscoveryStatus({ runDir: options.runDir });
+  const profile = resolveClashProfile();
   const output: HostStatusOutput = state.status === "active"
     ? {
       status: "active",
+      profile,
       endpoint: state.record.endpoint,
       launchMode: state.record.launchMode,
       pid: state.record.pid,
@@ -29,7 +33,7 @@ export async function runHostStatus(options: {
       protocolVersion: state.record.protocolVersion,
       dataSchemaVersion: state.record.dataSchemaVersion,
     }
-    : { status: "inactive" };
+    : { status: "inactive", profile };
 
   if (options.json) {
     stdout(JSON.stringify(output, null, 2));
@@ -38,12 +42,14 @@ export async function runHostStatus(options: {
 
   if (output.status === "active") {
     stdout(`Host: active`);
+    stdout(`Profile: ${output.profile}`);
     stdout(`Endpoint: ${output.endpoint}`);
     stdout(`Launch mode: ${output.launchMode}`);
     stdout(`PID: ${output.pid}`);
     stdout(`Protocol: ${output.protocolVersion}`);
   } else {
     stdout("Host: inactive");
+    stdout(`Profile: ${output.profile}`);
     stdout("Open Clash Desktop or start the local-api host.");
   }
 

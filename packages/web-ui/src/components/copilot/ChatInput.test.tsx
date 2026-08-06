@@ -168,6 +168,13 @@ describe("ChatInput", () => {
     );
   });
 
+  it("only gives the composer accent focus when the editor itself is focused", () => {
+    expect(globalCss).not.toMatch(/\.clash-chat-input-surface:focus-within\s*\{/);
+    expect(globalCss).toMatch(
+      /\.clash-chat-input-surface:has\(\.clash-chat-input-editor:focus-within\)\s*\{/,
+    );
+  });
+
   it("keeps the default composer caret inset from the rounded edge", async () => {
     const { container } = render(
       <Suspense fallback={<div>Loading</div>}>
@@ -696,11 +703,11 @@ describe("ChatInput", () => {
       ),
     );
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Enable voice input in Audio settings first.");
+    expect(alert.textContent).toContain("Enable voice input in Voice input settings first.");
     expect(
-      screen.getByRole("link", { name: "Open Audio" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Open Voice input" }).getAttribute("href"),
     ).toBe("/settings?section=audio");
-    fireEvent.click(screen.getByRole("link", { name: "Open Audio" }));
+    fireEvent.click(screen.getByRole("link", { name: "Open Voice input" }));
     await waitFor(() =>
       expect(screen.getByTestId("location-probe").textContent).toBe("/settings?section=audio"),
     );
@@ -712,6 +719,245 @@ describe("ChatInput", () => {
     } else {
       Reflect.deleteProperty(navigator, "mediaDevices");
     }
+  });
+
+  it("anchors homepage voice setup beside the microphone and shows immediate progress", async () => {
+    const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+    const stopTracks = vi.fn();
+    const getUserMedia = vi.fn(async () => ({
+      getTracks: () => [{ stop: stopTracks }],
+    }) as unknown as MediaStream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    class ImmediateMediaRecorder {
+      state: RecordingState = "inactive";
+      mimeType = "audio/webm";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+
+      static isTypeSupported() {
+        return true;
+      }
+
+      constructor(_stream: MediaStream) {}
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        if (this.state === "inactive") return;
+        this.state = "inactive";
+        this.ondataavailable?.({ data: new Blob(["voice"], { type: this.mimeType }) } as BlobEvent);
+        this.onstop?.();
+      }
+    }
+
+    class ImmediateAudioContext {
+      createMediaStreamSource() {
+        return {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        } as unknown as MediaStreamAudioSourceNode;
+      }
+
+      createAnalyser() {
+        return {
+          fftSize: 0,
+          frequencyBinCount: 16,
+          getFloatTimeDomainData: vi.fn((values: Float32Array) => values.fill(0)),
+        } as unknown as AnalyserNode;
+      }
+
+      close() {
+        return Promise.resolve();
+      }
+    }
+
+    vi.stubGlobal("MediaRecorder", ImmediateMediaRecorder);
+    vi.stubGlobal("AudioContext", ImmediateAudioContext);
+    vi.stubGlobal("requestAnimationFrame", vi.fn(() => 0));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    let resolveAudioConfig!: (response: Response) => void;
+    const fetchMock = vi.fn((_input: RequestInfo | URL) => new Promise<Response>((resolveFetch) => {
+      resolveAudioConfig = resolveFetch;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+            variant="hero"
+          />
+        </Suspense>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/v1/local/audio/voice-input");
+    const voiceButton = screen.getByRole("button", { name: "copilot.chatInput.voice" });
+    fireEvent.click(voiceButton);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const recording = await screen.findByRole("region", { name: "copilot.chatInput.voice" });
+    expect(recording.querySelector('[data-waveform-engine="wavesurfer-record"]')).toBeTruthy();
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(screen.queryByRole("dialog", { name: "Voice input setup" })).toBeNull();
+
+    resolveAudioConfig(new Response(
+      JSON.stringify({
+        asr: {
+          enabled: false,
+          provider: "builtin-funasr",
+          base_url: null,
+          model: "iic/SenseVoiceSmall",
+          ready: false,
+          setup: {
+            provider: "funasr",
+            runtime: "builtin-rpc",
+            status: "disabled",
+          },
+        },
+      }),
+      { headers: { "content-type": "application/json" } },
+    ));
+
+    const setup = await screen.findByRole("dialog", { name: "Voice input setup" });
+    expect(setup.textContent).toContain("Enable voice input in Voice input settings first.");
+    expect(screen.queryByRole("region", { name: "copilot.chatInput.voice" })).toBeNull();
+    expect(stopTracks).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "Open Voice input" }).getAttribute("href"))
+      .toBe("/settings?section=audio");
+
+    fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.voice" }));
+    expect(screen.queryByRole("dialog", { name: "Voice input setup" })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    if (mediaDevicesDescriptor) {
+      Object.defineProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
+    } else {
+      Reflect.deleteProperty(navigator, "mediaDevices");
+    }
+  });
+
+  it("prefetches voice readiness for project composers and reuses the home snapshot", async () => {
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({
+        asr: {
+          enabled: false,
+          provider: "builtin-funasr",
+          base_url: null,
+          model: "iic/SenseVoiceSmall",
+          ready: false,
+          setup: {
+            provider: "funasr",
+            runtime: "builtin-rpc",
+            status: "disabled",
+          },
+        },
+      }),
+      { headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const home = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+            variant="hero"
+          />
+        </Suspense>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    home.unmount();
+
+    render(
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+          />
+        </Suspense>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.voice" }));
+    await screen.findByRole("alert");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rechecks an unavailable shared voice snapshot after its short cache window", async () => {
+    let now = 10_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const fetchMock = vi.fn(async () => new Response(
+      JSON.stringify({
+        asr: {
+          enabled: false,
+          provider: "builtin-funasr",
+          base_url: null,
+          model: "iic/SenseVoiceSmall",
+          ready: false,
+          setup: {
+            provider: "funasr",
+            runtime: "builtin-rpc",
+            status: "disabled",
+          },
+        },
+      }),
+      { headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const home = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+            variant="hero"
+          />
+        </Suspense>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    home.unmount();
+
+    now += 1_001;
+    render(
+      <MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Suspense fallback={<div>Loading</div>}>
+          <ChatInput
+            input=""
+            onInputChange={() => undefined}
+            onSubmit={() => undefined}
+          />
+        </Suspense>
+      </MemoryRouter>,
+    );
+
+    await screen.findByTestId("milkdown-editor");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
   it("points an enabled voice input with an undeployed ASR model to Models", async () => {
@@ -753,7 +999,7 @@ describe("ChatInput", () => {
     );
   });
 
-  it("records a ready local ASR clip, transcribes it, and inserts the returned text", async () => {
+  it("keeps recording in the composer toolbar and supports transcribe-only or transcribe-and-send", async () => {
     const mediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
     const stopTracks = vi.fn();
     const stream = { getTracks: () => [{ stop: stopTracks }] } as unknown as MediaStream;
@@ -768,9 +1014,14 @@ describe("ChatInput", () => {
       mimeType = "audio/webm";
       ondataavailable: ((event: BlobEvent) => void) | null = null;
       onerror: (() => void) | null = null;
+      onstop: (() => void) | null = null;
       private readonly listeners = new Map<string, Array<() => void>>();
 
       constructor(_stream: MediaStream) {}
+
+      static isTypeSupported() {
+        return true;
+      }
 
       start() {
         this.state = "recording";
@@ -780,6 +1031,7 @@ describe("ChatInput", () => {
         if (this.state === "inactive") return;
         this.state = "inactive";
         this.ondataavailable?.({ data: new Blob(["voice"], { type: this.mimeType }) } as BlobEvent);
+        this.onstop?.();
         this.listeners.get("stop")?.forEach((listener) => listener());
       }
 
@@ -788,18 +1040,29 @@ describe("ChatInput", () => {
       }
     }
 
+    const getByteFrequencyData = vi.fn((values: Uint8Array) => values.fill(0));
+    const getByteTimeDomainData = vi.fn((values: Uint8Array) => {
+      values.fill(128);
+      values[0] = 196;
+    });
+
     class TestAudioContext {
       createAnalyser() {
         return {
           fftSize: 0,
           smoothingTimeConstant: 0,
           frequencyBinCount: 24,
-          getByteFrequencyData: (values: Uint8Array) => values.fill(0),
+          getByteFrequencyData,
+          getByteTimeDomainData,
+          getFloatTimeDomainData: vi.fn((values: Float32Array) => values.fill(0.25)),
         } as unknown as AnalyserNode;
       }
 
       createMediaStreamSource() {
-        return { connect: vi.fn() } as unknown as MediaStreamAudioSourceNode;
+        return {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        } as unknown as MediaStreamAudioSourceNode;
       }
 
       close() {
@@ -813,7 +1076,12 @@ describe("ChatInput", () => {
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
     const onInputChange = vi.fn();
+    const onSubmit = vi.fn();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/api/v1/local/audio/voice-input/warmup")) {
+        expect(init?.method).toBe("POST");
+        return Response.json({ warmed: true, runtime: "builtin-rpc" });
+      }
       if (String(input).includes("/api/v1/local/audio/transcriptions")) {
         expect(init?.method).toBe("POST");
         expect(init?.body).toBeInstanceOf(FormData);
@@ -829,6 +1097,7 @@ describe("ChatInput", () => {
             provider: "builtin-funasr",
             base_url: null,
             model: "iic/SenseVoiceSmall",
+            setup: { runtime: "builtin-rpc" },
           },
         }), { headers: { "content-type": "application/json" } });
       }
@@ -843,7 +1112,8 @@ describe("ChatInput", () => {
             <ChatInput
               input="existing"
               onInputChange={onInputChange}
-              onSubmit={() => undefined}
+              onSubmit={onSubmit}
+              variant="hero"
             />
           </Suspense>
         </MemoryRouter>,
@@ -851,17 +1121,41 @@ describe("ChatInput", () => {
 
       await screen.findByTestId("milkdown-editor");
       fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.voice" }));
-      await screen.findByRole("region", { name: "copilot.chatInput.voice" });
+      const recording = await screen.findByRole("region", { name: "copilot.chatInput.voice" });
       expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+      expect(recording.classList.contains("clash-voice-recording-toolbar")).toBe(true);
+      const waveform = recording.querySelector(".clash-voice-recording-waveform");
+      expect(waveform).toBeTruthy();
+      expect(waveform?.querySelector('[data-waveform-engine="wavesurfer-record"]')).toBeTruthy();
+      expect(waveform?.querySelector("svg")).toBeNull();
+      expect(screen.getByText("0:00")).toBeTruthy();
+      expect(recording.querySelector(".animate-spin")).toBeNull();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/local/audio/voice-input/warmup"),
+        expect.objectContaining({ method: "POST" }),
+      ));
 
-      fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.confirmVoice" }));
+      fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.stopAndTranscribe" }));
 
       await waitFor(() => expect(onInputChange).toHaveBeenCalledWith("existing hello from ASR"));
+      expect(onSubmit).not.toHaveBeenCalled();
       expect(stopTracks).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("/api/v1/local/audio/transcriptions"),
         expect.objectContaining({ method: "POST" }),
       );
+
+      fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.voice" }));
+      await screen.findByRole("region", { name: "copilot.chatInput.voice" });
+      fireEvent.click(screen.getByRole("button", { name: "copilot.chatInput.stopTranscribeAndSend" }));
+
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
+        "existing hello from ASR",
+        [],
+        [],
+      ));
+      expect(onInputChange).toHaveBeenLastCalledWith("");
+      expect(stopTracks).toHaveBeenCalledTimes(2);
     } finally {
       if (mediaDevicesDescriptor) {
         Object.defineProperty(navigator, "mediaDevices", mediaDevicesDescriptor);
