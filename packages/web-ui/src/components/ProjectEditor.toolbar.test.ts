@@ -21,6 +21,15 @@ describe("ProjectEditor toolbar surface", () => {
     expect(projectEditorSource).toContain('{ id: "director-stage", label: "Director Stage", icon: Cube }');
   });
 
+  it("creates Remotion components as their own first-class Canvas tool", () => {
+    expect(projectEditorSource).toContain(
+      '{ id: "remotion-component", label: "Remotion Component", icon: Code }',
+    );
+    expect(projectEditorSource).toMatch(
+      /type === ["']remotion-component["'][\s\S]*componentId:[\s\S]*content:[\s\S]*durationInFrames:/,
+    );
+  });
+
   it("uses canvas-specific chrome instead of the shared floating surface", () => {
     expect(projectEditorSource).toContain("clash-canvas-toolbar-surface");
     expect(projectEditorSource).toContain("clash-canvas-menu-surface");

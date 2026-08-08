@@ -1,14 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import {
   LoroSyncClient,
+  PROJECT_ASSET_RENDER_CANVAS_ID,
   projectDirectorStageReadToken,
   projectDirectorStageRevisionId,
   projectCanvasReadToken,
   projectTimelineReadToken,
   projectTimelineRevisionId,
+  requestTimelineRender,
 } from "@clash/shared-types";
 import { canvasBatchDeleteReadToken, canvasNodeReadToken } from "./canvas-update-guardrails";
 import {
@@ -16,6 +26,7 @@ import {
   daemonSocketDir,
   getSocketPath,
   handleCommandForTest,
+  isDaemonRunning,
 } from "./daemon";
 import { textHash, textReadToken } from "./text-projection";
 
@@ -45,6 +56,76 @@ test("daemon socket paths cannot escape the socket directory through project ids
   assert.match(basename(first), /^[a-f0-9]{32}\.sock$/);
   assert.notEqual(first, second);
   assert.ok(first.length < 100, `Unix socket path is too long: ${first.length}`);
+});
+
+function createDaemonPresenceFixture(t: test.TestContext, pidContents: string) {
+  const clashHome = mkdtempSync(join(tmpdir(), "clash-daemon-presence-"));
+  t.after(() => rmSync(clashHome, { recursive: true, force: true }));
+
+  const env = { CLASH_HOME: clashHome };
+  const projectId = "daemon-presence-project";
+  mkdirSync(daemonSocketDir(env), { recursive: true });
+  const socketPath = getSocketPath(projectId, env);
+  const pidPath = socketPath.replace(/\.sock$/, ".pid");
+  const mcpPath = socketPath.replace(/\.sock$/, ".mcp.json");
+  writeFileSync(socketPath, "socket-placeholder");
+  writeFileSync(pidPath, pidContents);
+  writeFileSync(mcpPath, JSON.stringify({ url: "http://127.0.0.1:49321/mcp" }));
+
+  return { env, projectId, socketPath, pidPath, mcpPath };
+}
+
+test("daemon treats EPERM from the process probe as running without cleaning metadata", (t) => {
+  const fixture = createDaemonPresenceFixture(t, "4321");
+  let probed: [number, number] | undefined;
+
+  const running = isDaemonRunning(fixture.projectId, {
+    env: fixture.env,
+    probeProcess(pid, signal) {
+      probed = [pid, signal];
+      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    },
+  });
+
+  assert.equal(running, true);
+  assert.deepEqual(probed, [4321, 0]);
+  assert.equal(existsSync(fixture.socketPath), true);
+  assert.equal(existsSync(fixture.pidPath), true);
+  assert.equal(existsSync(fixture.mcpPath), true);
+});
+
+test("daemon treats ESRCH from the process probe as stale and cleans metadata", (t) => {
+  const fixture = createDaemonPresenceFixture(t, "4321");
+
+  const running = isDaemonRunning(fixture.projectId, {
+    env: fixture.env,
+    probeProcess() {
+      throw Object.assign(new Error("no such process"), { code: "ESRCH" });
+    },
+  });
+
+  assert.equal(running, false);
+  assert.equal(existsSync(fixture.socketPath), false);
+  assert.equal(existsSync(fixture.pidPath), false);
+  assert.equal(existsSync(fixture.mcpPath), false);
+});
+
+test("daemon treats an invalid pid file as stale without probing and cleans metadata", (t) => {
+  const fixture = createDaemonPresenceFixture(t, "4321-not-a-pid");
+  let probeCalls = 0;
+
+  const running = isDaemonRunning(fixture.projectId, {
+    env: fixture.env,
+    probeProcess() {
+      probeCalls += 1;
+    },
+  });
+
+  assert.equal(running, false);
+  assert.equal(probeCalls, 0);
+  assert.equal(existsSync(fixture.socketPath), false);
+  assert.equal(existsSync(fixture.pidPath), false);
+  assert.equal(existsSync(fixture.mcpPath), false);
 });
 
 test("daemon lifecycle automatically exposes and closes its MCP HTTP endpoint", () => {
@@ -329,6 +410,111 @@ test("daemon manages standalone and Canvas-owned Timelines", () => {
     action: "detach_timeline",
     timelineId: "timeline-1",
   }) as { timeline?: { owner?: { kind?: string } } }).timeline?.owner?.kind, "project");
+});
+
+test("daemon lists trusted standalone Timeline renders without registering or selecting the internal Canvas", () => {
+  const client = new LoroSyncClient({
+    serverUrl: "http://localhost:0",
+    projectId: "project-timeline-render-readback",
+    token: "test",
+  });
+  const state = {
+    durationInFrames: 24,
+    tracks: [
+      {
+        id: "visuals",
+        items: [{ id: "title", type: "text", from: 0, durationInFrames: 24 }],
+      },
+    ],
+  };
+  const created = client.createTimeline({
+    id: "timeline-1",
+    name: "Episode 1",
+    state,
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const completed = requestTimelineRender(client.doc, {
+    timelineId: "timeline-1",
+    actorUserId: "user-1",
+    actorAgentId: "agent-1",
+    generateId: () => "render-completed",
+  });
+  const pending = requestTimelineRender(client.doc, {
+    timelineId: "timeline-1",
+    actorUserId: "user-1",
+    actorAgentId: "agent-1",
+    generateId: () => "render-pending",
+  });
+  assert.equal(completed.ok, true);
+  assert.equal(pending.ok, true);
+  client.doc.getMap("nodes").set("render-completed", {
+    ...(client.doc.getMap("nodes").get("render-completed") as Record<string, unknown>),
+    data: {
+      ...((client.doc.getMap("nodes").get("render-completed") as {
+        data: Record<string, unknown>;
+      }).data),
+      status: "completed",
+      assetId: "asset-render-completed",
+    },
+  });
+  client.doc.commit({ origin: "test:complete-render" });
+
+  assert.equal(
+    client.listCanvases().some((canvas) => canvas.id === PROJECT_ASSET_RENDER_CANVAS_ID),
+    false,
+  );
+
+  const completedOnly = handleCommandForTest(client, {
+    action: "list_timeline_renders",
+  }) as {
+    canvasId?: string;
+    status?: string;
+    renders?: Array<{
+      node: Parameters<typeof canvasNodeReadToken>[0];
+      lineage: {
+        sourceTimelineId?: string;
+        sourceTimelineRevisionId?: string;
+      };
+      version: string;
+      readToken: string;
+    }>;
+    error?: string;
+  };
+  assert.equal(completedOnly.error, undefined);
+  assert.equal(completedOnly.canvasId, PROJECT_ASSET_RENDER_CANVAS_ID);
+  assert.equal(completedOnly.status, "completed");
+  assert.deepEqual(completedOnly.renders?.map((render) => render.node.id), [
+    "render-completed",
+  ]);
+  const completedRender = completedOnly.renders?.[0];
+  assert.equal(completedRender?.lineage.sourceTimelineId, "timeline-1");
+  assert.equal(
+    completedRender?.lineage.sourceTimelineRevisionId,
+    created.timeline.revisionId,
+  );
+  assert.equal(
+    completedRender?.version,
+    completedRender && canvasNodeReadToken(completedRender.node),
+  );
+  assert.match(
+    completedRender?.readToken ?? "",
+    new RegExp(`^${completedRender?.version}:receipt:[A-Za-z0-9._~-]+$`),
+  );
+
+  const all = handleCommandForTest(client, {
+    action: "list_timeline_renders",
+    status: "all",
+  }) as {
+    status?: string;
+    renders?: Array<{ node: { id: string } }>;
+  };
+  assert.equal(all.status, "all");
+  assert.deepEqual(
+    all.renders?.map((render) => render.node.id).sort(),
+    ["render-completed", "render-pending"],
+  );
 });
 
 test("daemon manages independently revisioned Director Stages", () => {

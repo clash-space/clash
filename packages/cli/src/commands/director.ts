@@ -1,7 +1,7 @@
 import { Command, Option } from "commander";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import WebSocket from "ws";
 import {
   applyDirectorStageCommand,
@@ -34,6 +34,10 @@ import {
   parseDirectorStageFileForApply,
   resolveDirectorStageFilePath,
 } from "../lib/director-stage-projection";
+import {
+  recoverStaleProjection,
+  staleProjectionRecoveryError,
+} from "../lib/stale-projection-recovery";
 
 type DirectorStageWorkspaceResult = {
   stages?: ProjectDirectorStage[];
@@ -168,6 +172,257 @@ async function readDirectorStage(
     listed.versions[stage.id] ?? projectDirectorStageReadToken(stage),
   );
   return stage;
+}
+
+async function recoverStaleDirectorStageApply(options: {
+  context: ResolvedProjectContext;
+  stageId: string;
+  editedProjectionPath: string;
+}): Promise<never> {
+  const listed = await listDirectorStages(options.context);
+  const latest = listed.stages.find((candidate) => candidate.id === options.stageId);
+  if (!latest) {
+    throw new Error(`Director Stage ${options.stageId} not found after the stale write was rejected`);
+  }
+  const currentObservation = listed.versions[latest.id] ?? projectDirectorStageReadToken(latest);
+  const recovery = await recoverStaleProjection({
+    workspaceRoot: options.context.workspaceRoot ?? process.cwd(),
+    projectId: options.context.projectId,
+    entityKind: "director-stage",
+    entityId: latest.id,
+    currentRevisionId: latest.revisionId,
+    currentObservation,
+    editedProjectionPath: options.editedProjectionPath,
+    latestContent: directorStageCanonicalJson(latest.state),
+  });
+  throw staleProjectionRecoveryError("Director Stage", recovery);
+}
+
+type DirectorCaptureAspectRatio = "16:9" | "9:16" | "4:3" | "3:4" | "1:1";
+
+type DirectorCaptureRenderResult = {
+  renderer: { id: string; contractVersion: number };
+  stateSha256: string;
+  frames: Array<{
+    label: string;
+    timeSeconds: number;
+    aspectRatio: DirectorCaptureAspectRatio;
+    activeCameraId?: string;
+    width: number;
+    height: number;
+    mimeType: "image/png";
+    dataBase64: string;
+    sha256: string;
+  }>;
+};
+
+type DirectorCaptureStage = Pick<ProjectDirectorStage, "id" | "name" | "revisionId" | "state">;
+
+export type DirectorCaptureReceipt = {
+  captured: true;
+  stageId: string;
+  sourceStageRevisionId: string;
+  verifiedStageRevisionId: string;
+  renderer: { id: string; contractVersion: number };
+  stateSha256: string;
+  frames: Array<{
+    artifactId: string;
+    timeSeconds: number;
+    aspectRatio: DirectorCaptureAspectRatio;
+    activeCameraId?: string;
+    width: number;
+    height: number;
+    mimeType: "image/png";
+    sha256: string;
+    path: string;
+  }>;
+  receiptPath: string;
+};
+
+function captureSha256(value: Uint8Array | string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function captureArtifactId(label: string): string {
+  const value = label.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+    throw new Error(`Invalid Director capture label: ${label}`);
+  }
+  return value;
+}
+
+function resolveCaptureOutputDir(cwd: string, stageId: string, outputDir?: string): string {
+  const root = resolve(cwd);
+  const target = outputDir?.trim()
+    ? resolve(root, outputDir)
+    : join(root, "director-stages", captureArtifactId(stageId), "captures");
+  const traversal = relative(root, target);
+  if (traversal === ".." || traversal.startsWith(`..${sep}`) || isAbsolute(traversal)) {
+    throw new Error("Director capture output directory must stay inside the current project cwd");
+  }
+  return target;
+}
+
+function captureAspectRatioAt(
+  state: ProjectDirectorStage["state"],
+  timeSeconds: number,
+  override?: DirectorCaptureAspectRatio,
+): DirectorCaptureAspectRatio {
+  if (override) return override;
+  const duration = state.animation?.durationSeconds;
+  const active = [...(state.shotSequence ?? [])]
+    .sort((left, right) => left.startTime - right.startTime || left.id.localeCompare(right.id))
+    .find((shot) => timeSeconds >= shot.startTime && (
+      timeSeconds < shot.startTime + shot.durationSeconds ||
+      (duration !== undefined && Math.abs(timeSeconds - duration) < 1e-6 &&
+        Math.abs(shot.startTime + shot.durationSeconds - duration) < 1e-6)
+    ));
+  return active?.aspectRatio ?? state.shotSequence?.[0]?.aspectRatio ?? state.shots[0]?.aspectRatio ?? "16:9";
+}
+
+function defaultCaptureLabels(count: number): string[] {
+  if (count === 3) return ["frame-opening", "frame-action", "frame-closing"];
+  return Array.from({ length: count }, (_, index) => `frame-${String(index + 1).padStart(3, "0")}`);
+}
+
+async function renderDirectorStageThroughHost(
+  request: Record<string, unknown>,
+): Promise<DirectorCaptureRenderResult> {
+  const serverUrl = getServerUrl();
+  const apiKey = requireApiKey(serverUrl);
+  const response = await fetch(new URL("/api/v1/local/director-stage/capture", serverUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+    },
+    body: JSON.stringify(request),
+  });
+  const value = await response.json().catch(() => ({})) as DirectorCaptureRenderResult & { error?: string };
+  if (!response.ok) {
+    throw new Error(value.error ?? `Director product renderer failed with HTTP ${response.status}`);
+  }
+  return value;
+}
+
+export async function captureDirectorStageWithReadback(options: {
+  cwd: string;
+  stageId: string;
+  times: number[];
+  labels?: string[];
+  outputDir?: string;
+  aspectRatio?: DirectorCaptureAspectRatio;
+  longEdge: number;
+  readStage: () => Promise<DirectorCaptureStage>;
+  render?: (request: Record<string, unknown>) => Promise<DirectorCaptureRenderResult>;
+}): Promise<DirectorCaptureReceipt> {
+  if (!Array.isArray(options.times) || options.times.length < 1 || options.times.length > 12) {
+    throw new Error("Director capture requires between 1 and 12 --time values");
+  }
+  const times = options.times.map((time) => {
+    if (!Number.isFinite(time) || time < 0) {
+      throw new Error("Director capture times must be finite non-negative seconds");
+    }
+    return time;
+  });
+  const labels = options.labels?.length ? options.labels : defaultCaptureLabels(times.length);
+  if (labels.length !== times.length) {
+    throw new Error("Director capture --label count must match --time count");
+  }
+  const artifactIds = labels.map(captureArtifactId);
+  if (new Set(artifactIds).size !== artifactIds.length) {
+    throw new Error("Director capture labels must be unique");
+  }
+  if (!Number.isInteger(options.longEdge) || options.longEdge < 256 || options.longEdge > 4096) {
+    throw new Error("Director capture --long-edge must be an integer between 256 and 4096");
+  }
+
+  const before = await options.readStage();
+  if (before.id !== options.stageId) throw new Error(`Director Stage ${options.stageId} not found`);
+  const request = {
+    state: before.state,
+    longEdge: options.longEdge,
+    frames: times.map((timeSeconds, index) => ({
+      label: artifactIds[index]!,
+      timeSeconds,
+      aspectRatio: captureAspectRatioAt(before.state, timeSeconds, options.aspectRatio),
+    })),
+  };
+  const rendered = await (options.render ?? renderDirectorStageThroughHost)(request);
+  if (rendered.renderer.id !== "clash-director-viewport-webgl") {
+    throw new Error(`Unexpected Director renderer: ${rendered.renderer.id}`);
+  }
+  if (rendered.renderer.contractVersion !== 1) {
+    throw new Error(`Unsupported Director renderer contract: ${rendered.renderer.contractVersion}`);
+  }
+  if (rendered.stateSha256 !== captureSha256(JSON.stringify(before.state))) {
+    throw new Error("Director renderer state hash does not match the persisted Stage revision");
+  }
+  if (rendered.frames.length !== times.length) {
+    throw new Error("Director renderer returned an incomplete frame set");
+  }
+  for (const [index, frame] of rendered.frames.entries()) {
+    const expected = request.frames[index]!;
+    if (frame.label !== expected.label) {
+      throw new Error(`Director renderer changed frame label ${expected.label}`);
+    }
+    if (frame.timeSeconds !== expected.timeSeconds) {
+      throw new Error(`Director renderer changed frame time for ${expected.label}`);
+    }
+    if (frame.aspectRatio !== expected.aspectRatio) {
+      throw new Error(`Director renderer changed frame aspect ratio for ${expected.label}`);
+    }
+    if (frame.mimeType !== "image/png") {
+      throw new Error(`Director renderer returned a non-PNG frame for ${expected.label}`);
+    }
+    if (!Number.isInteger(frame.width) || frame.width < 1 ||
+        !Number.isInteger(frame.height) || frame.height < 1) {
+      throw new Error(`Director renderer returned invalid dimensions for ${expected.label}`);
+    }
+  }
+
+  const after = await options.readStage();
+  if (after.revisionId !== before.revisionId) {
+    throw new Error(
+      `Director Stage ${options.stageId} changed during capture (${before.revisionId} -> ${after.revisionId})`,
+    );
+  }
+
+  const outputDir = resolveCaptureOutputDir(options.cwd, options.stageId, options.outputDir);
+  mkdirSync(outputDir, { recursive: true });
+  const frames = rendered.frames.map((frame, index) => {
+    const artifactId = artifactIds[index]!;
+    const bytes = Buffer.from(frame.dataBase64, "base64");
+    if (bytes.length === 0 || captureSha256(bytes) !== frame.sha256) {
+      throw new Error(`Director renderer returned invalid bytes for ${artifactId}`);
+    }
+    const path = join(outputDir, `${artifactId}.png`);
+    writeFileSync(path, bytes);
+    return {
+      artifactId,
+      timeSeconds: frame.timeSeconds,
+      aspectRatio: frame.aspectRatio,
+      ...(frame.activeCameraId ? { activeCameraId: frame.activeCameraId } : {}),
+      width: frame.width,
+      height: frame.height,
+      mimeType: frame.mimeType,
+      sha256: frame.sha256,
+      path,
+    };
+  });
+  const receiptPath = join(outputDir, "capture.json");
+  const receipt: DirectorCaptureReceipt = {
+    captured: true,
+    stageId: options.stageId,
+    sourceStageRevisionId: before.revisionId,
+    verifiedStageRevisionId: after.revisionId,
+    renderer: rendered.renderer,
+    stateSha256: rendered.stateSha256,
+    frames,
+    receiptPath,
+  };
+  writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+  return receipt;
 }
 
 async function updateStageWithCommand(
@@ -402,6 +657,39 @@ directorCommand
     else console.log(`Detached Director Stage: ${result.stage.id}`);
   });
 
+function collectOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+directorCommand
+  .command("capture")
+  .description("Capture exact-time PNG evidence through the daemon-owned DirectorViewport WebGL renderer")
+  .requiredOption("--stage <id>", "Director Stage ID")
+  .option("--time <seconds>", "Exact Stage time in seconds (repeat for each PNG)", collectOption, [])
+  .option("--label <artifact-id>", "Artifact id for each PNG (repeat in --time order)", collectOption, [])
+  .option("--output-dir <path>", "Project-relative output directory")
+  .addOption(new Option("--aspect-ratio <ratio>", "Override the shot aspect ratio").choices([
+    "16:9", "9:16", "4:3", "3:4", "1:1",
+  ]))
+  .option("--long-edge <pixels>", "Output long edge in pixels", "1920")
+  .option("--project <id>", "Project ID")
+  .option("--json", "Output the capture and Stage readback receipt as JSON")
+  .action(async (options) => {
+    const context = await resolveCanvasProjectContext(options);
+    const receipt = await captureDirectorStageWithReadback({
+      cwd: context.workspaceRoot ?? process.cwd(),
+      stageId: options.stage,
+      times: (options.time as string[]).map((value) => finiteNumber(value, "--time")),
+      labels: options.label as string[],
+      outputDir: options.outputDir,
+      aspectRatio: options.aspectRatio as DirectorCaptureAspectRatio | undefined,
+      longEdge: positiveInteger(options.longEdge, "--long-edge"),
+      readStage: () => readDirectorStage(context, options.stage),
+    });
+    if (isJsonMode(options)) printJson(receipt);
+    else process.stderr.write(`captured ${receipt.frames.length} Director PNGs to ${dirname(receipt.receiptPath)}\n`);
+  });
+
 directorCommand
   .command("pull")
   .description("Export the current Director Stage revision to JSON")
@@ -438,6 +726,7 @@ directorCommand
   .requiredOption("--stage <id>", "Director Stage ID")
   .option("--project <id>", "Project ID")
   .option("--file <path>", "Projection path")
+  .option("--base-revision <revision>", "Revision the edited projection was based on")
   .option("--json", "Output result as JSON")
   .action(async (options) => {
     const context = await resolveCanvasProjectContext(options);
@@ -448,7 +737,26 @@ directorCommand
     });
     const parsed = parseDirectorStageFileForApply(readFileSync(filePath, "utf8"));
     if (!parsed.ok) throw new Error(parsed.error);
-    const observedVersion = await requireDirectorStageObservation(context, options.stage);
+    let observedVersion: string | undefined;
+    const baseRevisionId = typeof options.baseRevision === "string"
+      ? options.baseRevision.trim()
+      : "";
+    if (baseRevisionId) {
+      const listed = await listDirectorStages(context);
+      const latest = listed.stages.find((candidate) => candidate.id === options.stage);
+      if (!latest) throw new Error(`Director Stage ${options.stage} not found`);
+      if (latest.revisionId !== baseRevisionId) {
+        await recoverStaleDirectorStageApply({
+          context,
+          stageId: options.stage,
+          editedProjectionPath: filePath,
+        });
+      }
+      observedVersion = listed.versions[latest.id] ?? projectDirectorStageReadToken(latest);
+      await recordDirectorStageObservation(context, latest.id, observedVersion);
+    } else {
+      observedVersion = await requireDirectorStageObservation(context, options.stage);
+    }
     let result: DirectorStageWorkspaceResult;
     if (isDaemonRunning(context.projectId)) {
       result = await sendCommand(context.projectId, {
@@ -471,7 +779,16 @@ directorCommand
         await client.disconnect();
       }
     }
-    if (result.error || !result.stage) throw new Error(result.error ?? "Director Stage apply failed");
+    if (result.error || !result.stage) {
+      if (result.code === "STALE_READ") {
+        await recoverStaleDirectorStageApply({
+          context,
+          stageId: options.stage,
+          editedProjectionPath: filePath,
+        });
+      }
+      throw new Error(result.error ?? "Director Stage apply failed");
+    }
     await recordDirectorStageObservation(
       context,
       result.stage.id,

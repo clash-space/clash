@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
   computeClipAnimationStyle,
-  computeCompositionLayerStyle,
   selectCaptionCueAtFrame,
   VideoComposition,
 } from './VideoComposition';
@@ -73,6 +72,45 @@ vi.mock('remotion', () => ({
 }));
 
 describe('composition preview helpers', () => {
+  it('resolves the latest Remotion TSX from a fixed Canvas sourceNodeId', () => {
+    const source = `import React from "react";
+export default function LiveCard() {
+  return <div data-live-component="">Latest node source</div>;
+}`;
+    const markup = renderToStaticMarkup(
+      React.createElement(VideoComposition, {
+        tracks: [{
+          id: 'overlays',
+          name: 'Overlays',
+          role: 'overlay',
+          category: 'effect',
+          items: [{
+            id: 'live-card',
+            type: 'composition',
+            compositionKind: 'custom',
+            runtime: 'remotion',
+            compositionId: 'LiveCard',
+            sourcePath: 'components/live-card.tsx',
+            sourceNodeId: 'remotion-node-fixed',
+            from: 0,
+            durationInFrames: 60,
+          }],
+        }] as any,
+        allNodes: new Map([
+          ['remotion-node-fixed', {
+            id: 'remotion-node-fixed',
+            type: 'remotion-component',
+            data: { content: source, componentId: 'LiveCard' },
+          }],
+        ]),
+      }),
+    );
+
+    expect(markup).toContain('data-remotion-source-node-id="remotion-node-fixed"');
+    expect(markup).toContain('data-live-component=""');
+    expect(markup).toContain('Latest node source');
+  });
+
   it('renders a keyframed clip mask at the item-local frame', () => {
     mockedFrame = 10;
     const markup = renderToStaticMarkup(
@@ -411,33 +449,6 @@ describe('composition preview helpers', () => {
     expect(markup).toContain('line-height:1.3');
   });
 
-  it('computes motion-graphics layer style by sequence frame', () => {
-    const layer = {
-      id: 'title',
-      type: 'text' as const,
-      from: 0,
-      durationInFrames: 60,
-      x: 100,
-      y: 900,
-      opacity: 0,
-      scale: 1,
-      rotation: 0,
-      animations: [
-        { property: 'x' as const, from: -400, to: 100, startFrame: 0, durationInFrames: 20, easing: 'easeOutCubic' as const },
-        { property: 'opacity' as const, from: 0, to: 1, startFrame: 0, durationInFrames: 10, easing: 'linear' as const },
-      ],
-    };
-
-    expect(computeCompositionLayerStyle(layer, 0)).toMatchObject({
-      opacity: 0,
-      transform: 'translate(-400px, 900px) scale(1) rotate(0deg)',
-    });
-    expect(computeCompositionLayerStyle(layer, 20)).toMatchObject({
-      opacity: 1,
-      transform: 'translate(100px, 900px) scale(1) rotate(0deg)',
-    });
-  });
-
   it('selects active caption cue from structured caption item', () => {
     const cues = [
       { id: 'a', startFrame: 0, durationInFrames: 30, text: '第一句' },
@@ -550,9 +561,9 @@ describe('composition preview helpers', () => {
     expect(markup).toContain('data-caption-item-id="captions-main"');
     expect(markup).toContain('data-caption-cue-id="cue-hook"');
     expect(markup).toContain('第一句');
-    expect(markup).toContain('data-composition-item-id="mg-lower-third"');
-    expect(markup).toContain('data-composition-id="lower-third"');
-    expect(markup).toContain('data-layer-id="title"');
+    expect(markup).not.toContain('data-composition-item-id="mg-lower-third"');
+    expect(markup).not.toContain('data-layer-id="title"');
+    expect(markup).not.toContain('重点');
     expect(markup).toContain('data-derived-source-asset-id="asset-logo-original"');
     expect(markup).toContain('data-derived-asset-id="asset-logo-callout"');
     expect(markup).toContain('src="/api/assets/view/assets/derived/logo-callout.webp"');

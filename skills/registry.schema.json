@@ -287,6 +287,10 @@
           "tags": { "type": "array", "items": { "type": "string" } },
           "inputs": { "type": "array", "items": { "type": "string" } },
           "outputs": { "type": "array", "items": { "type": "string" } },
+          "executionContract": {
+            "enum": ["production-action", "native-cli-mcp"],
+            "description": "How the ready skill reaches executable product behavior. Native CLI/MCP contracts do not require a synthetic production action wrapper."
+          },
           "requiredSystemCapabilities": {
             "type": "array",
             "description": "Compatibility names for host capabilities needed to make the skill runnable as a managed production workflow.",

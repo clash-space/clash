@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const pluginRoot = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
 
 test("plugin manifest starts one bundled MCP runtime and keeps product state in the shared local host", async () => {
   const manifest = JSON.parse(await readFile(new URL("../.codex-plugin/plugin.json", import.meta.url), "utf8"));
@@ -20,6 +24,96 @@ test("plugin manifest starts one bundled MCP runtime and keeps product state in 
     cwd: ".",
     env: { CLASH_PROFILE: "prod" },
   });
+});
+
+test("the real runtime smoke keeps workspace location independent from CLASH_HOME", async () => {
+  const source = await readFile(new URL("./runtime-smoke.test.ts", import.meta.url), "utf8");
+
+  assert.match(source, /clash-plugin-workspace-/);
+  assert.doesNotMatch(source, /join\(clashHome,\s*"workspace"\)/);
+});
+
+test("the base Clash skill teaches peer CLI and MCP navigation without AGENTS injection", async () => {
+  const markdown = await readFile(join(pluginRoot, "skills", "clash", "SKILL.md"), "utf8");
+
+  assert.match(markdown, /name: clash/);
+  assert.match(markdown, /peer transports/i);
+  assert.match(markdown, /clash --help/);
+  assert.match(markdown, /clash <command> --help/);
+  assert.match(markdown, /clash init --json/);
+  assert.match(markdown, /root `clash` tool/i);
+  assert.match(markdown, /root `clash`[\s\S]*navigation/i);
+  assert.match(markdown, /`clash_canvas`[\s\S]*Canvas operations/i);
+  assert.match(markdown, /`clash_composition`[\s\S]*temporal\s+composition[\s\S]*spatial\s+composition/i);
+  assert.match(markdown, /kind: "timeline"[\s\S]*kind: "director-stage"/i);
+  assert.match(markdown, /dispatcher[\s\S]*operation[\s\S]*arguments/i);
+  assert.match(markdown, /command-local short name/i);
+  assert.match(markdown, /complete `clash_\*` leaf name[\s\S]*compatibility/i);
+  assert.doesNotMatch(markdown, /`clash_timeline`|`clash_director`|same `clash` tool/is);
+  assert.match(markdown, /clash_workspace_init/);
+  assert.match(markdown, /daemon as a prerequisite/i);
+  assert.match(markdown, /normal CLI or MCP entry point[\s\S]*probe[\s\S]*start/i);
+  assert.match(markdown, /ready\s+receipt[\s\S]*do not\s+run\s+init/i);
+  assert.match(markdown, /reused: false[\s\S]*reused: true/i);
+  assert.match(markdown, /stale[\s\S]*read[\s\S]*rebase[\s\S]*never force/i);
+  assert.match(markdown, /automatically pull[\s\S]*recovery[\s\S]*merge[\s\S]*retry/i);
+  assert.match(markdown, /never automatically (?:replay|resubmit)/i);
+  assert.match(markdown, /never replace[\s\S]*direct FFmpeg render/i);
+  assert.match(markdown, /no `clash_cli_\*` MCP namespace wrappers/i);
+  assert.doesNotMatch(markdown, /CLASH_BENCH|exact[- ]argv|baseRevisionId/i);
+});
+
+test("production skills pair creative judgment with the supported product path", async () => {
+  const expectedSkills: Record<string, RegExp> = {
+    "clash-director-production": /blocking|point of view|eyeline|screen direction/i,
+    "clash-timeline-production": /rhythm|editorial|continuity|audio/i,
+    "clash-mg-character": /silhouette|anticipation|arc|follow-through/i,
+    "clash-video-finishing": /coherence|color|sound|typography/i,
+  };
+
+  for (const [skillName, creativeLanguage] of Object.entries(expectedSkills)) {
+    const skillRoot = join(pluginRoot, "skills", skillName);
+    const [markdown, metadata] = await Promise.all([
+      readFile(join(skillRoot, "SKILL.md"), "utf8"),
+      readFile(join(skillRoot, "agents", "openai.yaml"), "utf8"),
+    ]);
+    assert.match(markdown, new RegExp(`name: ${skillName}`));
+    assert.match(markdown, creativeLanguage, `${skillName} needs domain craft guidance`);
+    assert.match(markdown, /base `clash` skill/i, `${skillName} should delegate mechanics to clash`);
+    assert.match(
+      markdown,
+      /ready\s+receipt[\s\S]*do not\s+(?:run\s+init|start\s+a\s+daemon)/i,
+    );
+    assert.doesNotMatch(markdown, /CLASH_BENCH|exact[- ]argv|\.clash\/project\.toml/i);
+    if (metadata) {
+      assert.match(metadata, new RegExp(`\\$${skillName}`));
+      assert.match(metadata, /story|dramatic|motion|coherent|creative|pacing|rhythm/i);
+    }
+  }
+
+  const mgSkill = await readFile(join(pluginRoot, "skills", "clash-mg-character", "SKILL.md"), "utf8");
+  assert.match(mgSkill, /default-exported, single-file Remotion TSX/i);
+  assert.match(mgSkill, /clash canvas add --type remotion/);
+  assert.match(mgSkill, /sourceNodeId/);
+  assert.match(mgSkill, /clash timeline render --timeline/);
+  assert.match(mgSkill, /clash_canvas_add/);
+  assert.match(mgSkill, /clash_timeline_render/);
+  assert.doesNotMatch(
+    mgSkill,
+    /render-mg|verify-mg-preview|export-mg|MgCompositionSpec|runtime:\s*html|rasterizer|spec\.json/i,
+  );
+});
+
+test("every Clash MCP constructor uses the shared wire-compatibility server", async () => {
+  for (const path of [
+    "../../../packages/mcp-server/src/server.ts",
+    "../../clash-timeline/src/server.ts",
+    "../../clash-director/src/server.ts",
+  ]) {
+    const source = await readFile(new URL(path, import.meta.url), "utf8");
+    assert.match(source, /new ClashMcpServer\(/, path);
+    assert.doesNotMatch(source, /new McpServer\(/, path);
+  }
 });
 
 test("bundled self-host entry derives discovery from the canonical Clash home", async () => {
@@ -105,7 +199,57 @@ test("the MCP host client uses the shared canonical Clash home helper, not the l
     "utf8",
   );
   assert.match(source, /from "@clash\/shared-runtime\/local-paths"/);
+  assert.match(source, /from "@clash\/shared-runtime\/local-daemon"/);
   assert.doesNotMatch(source, /from "@master-clash\/local-api"/);
+});
+
+test("the bundled host is a persistent user daemon rather than an MCP-owned child", async () => {
+  const [entry, bootstrap, sharedBootstrap, localApiServer] = await Promise.all([
+    readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
+    readFile(new URL("./plugin-host.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../packages/shared-runtime/src/local-daemon.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../apps/local-api/src/server.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(entry, /launchMode:\s*"user-service"/);
+  assert.match(entry, /CLASH_DAEMON_STARTED_BY/);
+  assert.match(entry, /startedBy,/);
+  assert.doesNotMatch(entry, /CLASH_PLUGIN_OWNER_CLIENT_ID is required/);
+  assert.match(bootstrap, /launchDetachedLocalDaemon/);
+  assert.match(sharedBootstrap, /detached:\s*true/);
+  assert.match(sharedBootstrap, /child\.unref\(\)/);
+  assert.match(sharedBootstrap, /CLASH_LOCAL_API_WRAPPER_ENTRY/);
+  assert.match(localApiServer, /!process\.env\.CLASH_LOCAL_API_WRAPPER_ENTRY/);
+  assert.doesNotMatch(localApiServer, /!process\.env\.CLASH_PLUGIN_OWNER_CLIENT_ID/);
+});
+
+test("the persistent daemon owns a packaged Remotion renderer without a second service port", async () => {
+  const [entry, hostBuild, packageJson] = await Promise.all([
+    readFile(new URL("./local-api-entry.ts", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/build-host-runtime.ts", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+
+  assert.match(entry, /createRemotionTimelineRenderer/);
+  assert.match(entry, /timelineRenderer,/);
+  assert.match(entry, /new URL\("\.\/remotion-bundle"/);
+  assert.doesNotMatch(entry, /RENDER_SERVER_(?:PORT|URL)|child_process|spawn\(/);
+  assert.match(hostBuild, /\.remotion-bundle/);
+  assert.match(hostBuild, /remotion-bundle/);
+  assert.match(hostBuild, /external:\s*\["@remotion\/renderer"\]/);
+  assert.equal(packageJson.dependencies?.["@remotion/renderer"], "4.0.370");
+});
+
+test("the bundled Clash CLI and stdio MCP are peer clients of the same daemon bootstrap", async () => {
+  const [cliEntry, hostRunner] = await Promise.all([
+    readFile(new URL("../../../packages/cli/src/plugin.ts", import.meta.url), "utf8"),
+    readFile(new URL("./host-runner.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(cliEntry, /ensureCliLocalDaemon/);
+  assert.match(cliEntry, /parseAsync/);
+  assert.match(hostRunner, /ensureHost/);
+  assert.match(hostRunner, /CLASH_API_URL:\s*host\.endpoint/);
 });
 
 test("the packaged MCP entry completes an initialize handshake in plain Node", async () => {

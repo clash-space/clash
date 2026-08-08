@@ -1,8 +1,5 @@
 import {
   TIMELINE_DSL_FIELD_ANNOTATIONS,
-  type MgAnimation,
-  type MgCompositionLayer,
-  type MgCompositionSpec,
   type TimelineDslItemType,
 } from '@clash/shared-types';
 import {
@@ -37,8 +34,6 @@ const metaUnsupported = (note: string): TimelineFieldConsumerClassification =>
   classifyTimelineField(['meta', 'unsupported'], note);
 const persistence = (note: string): TimelineFieldConsumerClassification =>
   classifyTimelineField(['persistence'], note);
-const persistenceUnsupported = (note: string): TimelineFieldConsumerClassification =>
-  classifyTimelineField(['persistence', 'unsupported'], note);
 const future = (note: string): TimelineFieldConsumerClassification =>
   classifyTimelineField(['future'], note);
 const unsupported = (note: string): TimelineFieldConsumerClassification =>
@@ -194,11 +189,14 @@ export const TIMELINE_EDITOR_FIELD_CONSUMERS = {
   composition: {
     ...VISUAL_BASE_FIELD_CONSUMERS,
     compositionKind: metaUnsupported('Routes the composition inspector, but no control currently edits the declared kind.'),
-    runtime: editorMeta('Displayed read-only and used to route first-party versus external composition UX.'),
+    runtime: editorMeta('Displayed read-only and used to identify the live Remotion or legacy fallback route.'),
     compositionId: editorMeta('Displayed read-only as composition identity.'),
     sourcePath: editorMeta('Displayed read-only as the user-owned project source.'),
     renderedAssetPath: persistence('Preserved as render fallback; the inspector does not expose it.'),
-    spec: editor('The first-party MG inspector edits supported nested spec fields.'),
+    spec: classifyTimelineField(
+      ['persistence', 'unsupported'],
+      'Legacy custom runtime configuration is preserved but has no editor control.',
+    ),
   },
   'derived-overlay': {
     ...VISUAL_BASE_FIELD_CONSUMERS,
@@ -217,65 +215,6 @@ export const TIMELINE_EDITOR_FIELD_CONSUMERS = {
     effect: unsupported('The declared SDK transition effect has no inspector control yet.'),
   },
 } as const satisfies ItemFieldConsumerRegistry;
-
-type MgTextLayer = Extract<MgCompositionLayer, { type: 'text' }>;
-type MgShapeLayer = Extract<MgCompositionLayer, { type: 'shape' }>;
-
-const MG_LAYER_BASE_EDITOR_FIELD_CONSUMERS = {
-  id: editorMeta('Displayed as read-only layer identity and used for search and updates.'),
-  type: editorMeta('Displayed read-only and routes text versus shape controls.'),
-  from: editor('The MG inspector edits layer start frame.'),
-  durationInFrames: editor('The MG inspector edits layer duration.'),
-  zIndex: editor('The MG inspector edits layer order.'),
-  x: editor('The MG inspector edits horizontal position.'),
-  y: editor('The MG inspector edits vertical position.'),
-  width: editor('The MG inspector edits optional width.'),
-  height: editor('The MG inspector edits optional height.'),
-  opacity: editor('The MG inspector edits layer opacity.'),
-  scale: editor('The MG inspector edits layer scale.'),
-  rotation: editor('The MG inspector edits layer rotation.'),
-  animations: persistenceUnsupported('Animation definitions are preserved, but this inspector has no MG animation controls.'),
-} as const;
-
-/** Nested audit for composition.spec fields in the first-party MG inspector. */
-export const TIMELINE_MG_EDITOR_FIELD_CONSUMERS = {
-  spec: {
-    id: meta('Parsed and preserved as MG spec identity.'),
-    name: meta('Parsed and preserved as human-readable MG metadata.'),
-    width: meta('Validated and preserved; the Timeline composition size is edited elsewhere.'),
-    height: meta('Validated and preserved; the Timeline composition size is edited elsewhere.'),
-    fps: meta('Validated and preserved; Timeline fps is edited elsewhere.'),
-    durationInFrames: meta('Validated and preserved; Timeline item duration is edited outside the nested spec.'),
-    background: editor('The MG inspector edits the Canvas background.'),
-    layers: editor('The MG inspector searches and edits supported layer fields.'),
-  } satisfies Record<keyof MgCompositionSpec, TimelineFieldConsumerClassification>,
-  textLayer: {
-    ...MG_LAYER_BASE_EDITOR_FIELD_CONSUMERS,
-    text: editor('The MG inspector edits text content.'),
-    fontFamily: persistenceUnsupported('Font family is preserved, but this inspector has no MG font-family control.'),
-    fontSize: editor('The MG inspector edits text size.'),
-    fontWeight: editor('The MG inspector edits string or numeric font weight.'),
-    color: editor('The MG inspector edits text color.'),
-    letterSpacing: editor('The MG inspector edits text tracking.'),
-    align: editor('The MG inspector edits text alignment.'),
-  } satisfies Record<keyof MgTextLayer, TimelineFieldConsumerClassification>,
-  shapeLayer: {
-    ...MG_LAYER_BASE_EDITOR_FIELD_CONSUMERS,
-    shape: persistenceUnsupported('Shape geometry is preserved, but this inspector has no geometry selector.'),
-    fill: editor('The MG inspector edits shape fill.'),
-    stroke: editor('The MG inspector edits optional shape stroke.'),
-    strokeWidth: editor('The MG inspector edits shape stroke width.'),
-    radius: editor('The MG inspector edits rounded-corner radius.'),
-  } satisfies Record<keyof MgShapeLayer, TimelineFieldConsumerClassification>,
-  animation: {
-    property: persistenceUnsupported('MG animation channels are preserved but not editable in this inspector.'),
-    from: persistenceUnsupported('MG animation start values are preserved but not editable in this inspector.'),
-    to: persistenceUnsupported('MG animation end values are preserved but not editable in this inspector.'),
-    startFrame: persistenceUnsupported('MG animation start frames are preserved but not editable in this inspector.'),
-    durationInFrames: persistenceUnsupported('MG animation durations are preserved but not editable in this inspector.'),
-    easing: persistenceUnsupported('MG animation easing is preserved but not editable in this inspector.'),
-  } satisfies Record<keyof MgAnimation, TimelineFieldConsumerClassification>,
-} as const;
 
 /** Exact disposition for every default published by the shared annotation registry. */
 export const TIMELINE_EDITOR_DEFAULT_COVERAGE = {

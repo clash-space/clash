@@ -3,15 +3,21 @@
 调研日期：2026-07-15  
 源码快照：ChatCut `fd271fe`、Remotion `ae327ff`、Hyperframes `15ca6fd`
 
+> 当前产品契约（2026-08-07）：本文保留外部 effect/transition 调研，
+> 但不定义第二套内容合成引擎。Clash 中动态图形唯一可执行路径是
+> `Remotion TSX -> Canvas remotion-component -> Timeline sourceNodeId -> Timeline render`。
+> 下文出现的 DOM 捕获只描述第三方实现或 effect 内部 source adapter，不能作为
+> Agent 可选择的创作、预览或导出路线。
+
 ## 结论
 
 三个项目确实提供了不同的 shader 思路，但差异主要在系统边界，而不只是 shader 数量：
 
-| 产品 | 核心思路 | Shader 在系统中的位置 | Clash 值得采用的部分 |
-| --- | --- | --- | --- |
-| ChatCut | catalog-first 的 Agent 生成协议 | Agent 生成继承 `EffectProcessor` / `TransitionProcessor` 的 TypeScript 类，GLSL 是其中一个 pass | 先搜目录再生成、限制参数数量、沙箱校验、版本化发布流程 |
-| Remotion | 统一 effect graph | `@remotion/effects` 同时管理 2D Canvas 与 WebGL2 effect，预留 WebGPU；transition presentation 另有一套组件 API | effect descriptor、schema、backend 分组、canvas pool、跨 backend 桥接 |
-| Hyperframes | DOM-first 的确定性视频合成 | 先把两个完整 HTML scene 捕获成纹理，再做 WebGL transition；导出端有 page-side / Node-side fallback | DOM 捕获适配器、预览/导出一致性、短时电影化转场、Apache-2.0 shader 目录 |
+| 产品        | 核心思路                        | Shader 在系统中的位置                                                                                          | Clash 值得采用的部分                                                    |
+| ----------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| ChatCut     | catalog-first 的 Agent 生成协议 | Agent 生成继承 `EffectProcessor` / `TransitionProcessor` 的 TypeScript 类，GLSL 是其中一个 pass                | 先搜目录再生成、限制参数数量、沙箱校验、版本化发布流程                  |
+| Remotion    | 统一 effect graph               | `@remotion/effects` 同时管理 2D Canvas 与 WebGL2 effect，预留 WebGPU；transition presentation 另有一套组件 API | effect descriptor、schema、backend 分组、canvas pool、跨 backend 桥接   |
+| Hyperframes | DOM-first 的确定性视频合成      | 先把两个完整 HTML scene 捕获成纹理，再做 WebGL transition；导出端有 page-side / Node-side fallback             | DOM 捕获适配器、预览/导出一致性、短时电影化转场、Apache-2.0 shader 目录 |
 
 对 Clash 的推荐不是三选一，而是分层吸收：
 
@@ -29,7 +35,7 @@ flowchart LR
   Hyperframes["Hyperframes ideas"] -. "DOM capture + shaders" .-> Source
 ```
 
-当前落地选择：保留 Clash 自己的版本化 Effect SDK，先吸收 Hyperframes 的三种 Apache-2.0 转场思路；同时加入 provenance 元数据。暂不直接复制 ChatCut 代码，也不在本次改动中整体升级 Remotion。
+当前落地选择：保留 Clash 自己的版本化 Effect SDK，吸收经过许可证审查的转场思路并加入 provenance 元数据。Agent 创作的动态图形始终是单文件 Remotion TSX；Canvas 节点负责编辑与预览，Timeline 通过稳定 `sourceNodeId` 引用最新源码，最终仅由 Timeline 的 Remotion renderer 交付媒体。
 
 ## 1. `@remotion/effects` 是 shader 吗？
 
@@ -103,41 +109,39 @@ ChatCut 的 Library 把七类内容放在同一浏览入口：Motion Graphics、
 - 内置 LUT 是 effect ref，用户上传的 `.cube` 是 LUT asset，两条路径必须显式区分；
 - Audio FX 应是音频 processor，不应进入 WebGL effect runtime。
 
-Clash 已经有一套更具体的 first-party Motion Graphics 模型，不应再创建平行的 template schema：
+Clash 的动态图形不再拥有独立的 layer/spec/HTML 模型，也不创建平行的预览或导出命令。当前契约只有四层：
 
-- `MgCompositionSpecSchema` 定义尺寸、fps、时长、透明背景、text/shape layer 和逐帧 animation；
-- `renderMgCompositionHtml` 生成自包含、可 seek 的 HTML preview；
-- `buildMgOverlayManifest` 生成 `compositionKind: motion-graphics`、`runtime: html` 的 timeline projection；
-- Timeline semantic validation、Timeline `CompositionRenderer` 和 Remotion `VideoComposition` 已消费同一 composition item；
-- production CLI 支持 route、render、preview verification、snapshot export、video export 和 CAS apply；
-- `examples/mg/lower-third` 是可以执行的 first-party fixture。
+- Agent 在工作区创作 default-export 的单文件 Remotion TSX；
+- 源码以原文持久化到独立 Canvas `remotion-component` 节点，并在 Editor 中编译预览；
+- Timeline composition item 使用 `runtime: remotion` 和该节点的稳定 `sourceNodeId`，不复制源码；
+- 最终媒体由 Timeline render 产生，并把完成的 Asset 与 Timeline revision 一起读回。
 
-因此 Library 中的 Motion Graphics artifact 现在直接携带 `MgCompositionSpec`，应用动作是 `insert-composition-item`。需要播放兼容或交付时，可从同一 spec 派生透明 WebM/MP4 asset，但 derived asset 不是 MG 的源模型。
+因此 Library 中的 Motion Graphics 条目如果包含可编辑代码，其 artifact 是 Remotion 组件，apply 动作是创建或选择 Canvas 组件节点，再把该节点引用加入 Timeline。对同一 Canvas 节点的修改会出现在后续 Timeline 预览与渲染中；需要保护既有下游版本时，才显式 copy-on-write 并重新连线。
 
 ### 推荐给普通用户的入口
 
 Clash 不应原样复制七个并列 Tab。推荐六个用户入口，底层仍保留七个精确 category：
 
-| 用户入口 | 内部 category | 用户理解 |
-| --- | --- | --- |
-| Recommended | 动态聚合 | 根据选中片段、内容和节奏推荐 |
-| Graphics | `motion-graphics` | 字幕条、数据图、标题动画等画面元素 |
-| Transitions | `transitions` | 两段素材之间怎么切换 |
-| Visual Effects | `fx`、`zoom` | 画面处理和镜头运动 |
-| Color Looks | `luts` | 整体颜色与影调 |
-| Audio | `sound-effects`、`audio-fx` | 插入声音或处理已有声音 |
+| 用户入口       | 内部 category               | 用户理解                           |
+| -------------- | --------------------------- | ---------------------------------- |
+| Recommended    | 动态聚合                    | 根据选中片段、内容和节奏推荐       |
+| Graphics       | `motion-graphics`           | 字幕条、数据图、标题动画等画面元素 |
+| Transitions    | `transitions`               | 两段素材之间怎么切换               |
+| Visual Effects | `fx`、`zoom`                | 画面处理和镜头运动                 |
+| Color Looks    | `luts`                      | 整体颜色与影调                     |
+| Audio          | `sound-effects`、`audio-fx` | 插入声音或处理已有声音             |
 
 内部 apply contract：
 
-| category | artifact | apply target |
-| --- | --- | --- |
-| Motion Graphics | first-party `MgCompositionSpec` | 插入 `motion-graphics/html` composition item |
-| Sound Effects | audio asset | 插入 audio track item |
-| Transitions | visual effect ref | 相邻 clip boundary |
-| FX | visual effect ref | visual item 或 track range |
-| Zoom | visual effect ref / motion preset | visual track range |
-| LUTs | built-in effect ref 或 LUT asset | visual item |
-| Audio FX | audio processor ref | audio item 或 audio track |
+| category        | artifact                          | apply target                                                   |
+| --------------- | --------------------------------- | -------------------------------------------------------------- |
+| Motion Graphics | Canvas `remotion-component`       | 插入 `custom/remotion` composition item，并保留 `sourceNodeId` |
+| Sound Effects   | audio asset                       | 插入 audio track item                                          |
+| Transitions     | visual effect ref                 | 相邻 clip boundary                                             |
+| FX              | visual effect ref                 | visual item 或 track range                                     |
+| Zoom            | visual effect ref / motion preset | visual track range                                             |
+| LUTs            | built-in effect ref 或 LUT asset  | visual item                                                    |
+| Audio FX        | audio processor ref               | audio item 或 audio track                                      |
 
 截图中的 FX 也应按实现机制拆分：
 
@@ -183,7 +187,7 @@ Clash 当前应先把这套模式放在已有 Assets/Timeline 编辑入口内部
 - demo 转场窗口从 2.4 秒缩短为 0.6 秒；
 - 保留原来的 `displacement-warp`、`prism-split`、`pixel-dissolve` ID，不破坏历史工程。
 - Timeline Library 的七类 runtime schema、六个用户分组和 category-level Agent apply contract；
-- Motion Graphics 条目直接复用已有 `MgCompositionSpecSchema`，不再维护重复 template 模型；
+- Motion Graphics 条目统一为 Canvas `remotion-component`，Timeline 只保留实时 `sourceNodeId`；
 - CapCut-style collection query 与 per-user favorite/entitlement/download view state；
 - runtime validation 会拒绝声音素材/视觉 effect 混用、Zoom item-bound 等错误组合。
 

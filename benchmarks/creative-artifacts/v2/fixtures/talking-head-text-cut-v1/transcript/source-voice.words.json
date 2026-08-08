@@ -1,0 +1,1183 @@
+{
+  "schemaVersion": 1,
+  "kind": "clash.asr.timed-transcript",
+  "timebase": "milliseconds",
+  "alignment": "word",
+  "text": "今天我想聊一个嗯不对我们重来你每天列的待办越多，可能完成得越少。听起来很反直觉，对吧?我以前会在早上写十二件事，然后，呃，到晚上真正完成的只有两件。后来我只改了一个动作，先选一件今天必须完成的事，把它拆成二十五分钟，然后，然后关掉通知。重点不是更努力，而是让下一步小到不用思考。所以明天早上，别先打开消息，先写下今天唯一重要的一件事。",
+  "backendId": "mlx-whisper+known-script-correction",
+  "modelId": "mlx-community/whisper-small-mlx",
+  "language": "zh-CN",
+  "durationMs": 43633,
+  "words": [
+    {
+      "id": "word-001",
+      "text": "今天",
+      "startMs": 0,
+      "endMs": 360,
+      "confidence": 0.9,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-002",
+      "text": "我想",
+      "startMs": 360,
+      "endMs": 880,
+      "confidence": 0.94,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-003",
+      "text": "聊",
+      "startMs": 880,
+      "endMs": 1080,
+      "confidence": 0.89,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-004",
+      "text": "一个",
+      "startMs": 1080,
+      "endMs": 1620,
+      "confidence": 0.59,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-005",
+      "text": "嗯",
+      "startMs": 2200,
+      "endMs": 2480,
+      "confidence": 0.8,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-006",
+      "text": "不对",
+      "startMs": 2720,
+      "endMs": 3160,
+      "confidence": 0.9,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-007",
+      "text": "我们",
+      "startMs": 3560,
+      "endMs": 3760,
+      "confidence": 0.97,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-008",
+      "text": "重",
+      "startMs": 3760,
+      "endMs": 4000,
+      "confidence": 0.9,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-009",
+      "text": "来",
+      "startMs": 4000,
+      "endMs": 4700,
+      "confidence": 0.98,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-010",
+      "text": "你",
+      "startMs": 4920,
+      "endMs": 5440,
+      "confidence": 0.006744384765625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-011",
+      "text": "每",
+      "startMs": 5440,
+      "endMs": 5960,
+      "confidence": 0.98193359375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-012",
+      "text": "天",
+      "startMs": 5960,
+      "endMs": 6260,
+      "confidence": 0.998046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-013",
+      "text": "列",
+      "startMs": 6260,
+      "endMs": 6380,
+      "confidence": 0.943359375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-014",
+      "text": "的",
+      "startMs": 6380,
+      "endMs": 6520,
+      "confidence": 0.873046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-015",
+      "text": "待",
+      "startMs": 6520,
+      "endMs": 6720,
+      "confidence": 0.05828857421875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-016",
+      "text": "办",
+      "startMs": 6720,
+      "endMs": 6920,
+      "confidence": 0.06658935546875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-017",
+      "text": "越",
+      "startMs": 6920,
+      "endMs": 7140,
+      "confidence": 0.9423828125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-018",
+      "text": "多，",
+      "startMs": 7140,
+      "endMs": 7360,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-019",
+      "text": "可能",
+      "startMs": 7780,
+      "endMs": 8000,
+      "confidence": 0.7841796875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-020",
+      "text": "完成",
+      "startMs": 8000,
+      "endMs": 8400,
+      "confidence": 0.99658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-021",
+      "text": "得",
+      "startMs": 8400,
+      "endMs": 8640,
+      "confidence": 0.060638427734375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-022",
+      "text": "越",
+      "startMs": 8640,
+      "endMs": 8820,
+      "confidence": 0.99560546875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-023",
+      "text": "少。",
+      "startMs": 8820,
+      "endMs": 9140,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-024",
+      "text": "听",
+      "startMs": 9680,
+      "endMs": 9940,
+      "confidence": 0.9130859375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-025",
+      "text": "起",
+      "startMs": 9940,
+      "endMs": 10160,
+      "confidence": 0.998046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-026",
+      "text": "来",
+      "startMs": 10160,
+      "endMs": 10340,
+      "confidence": 1,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-027",
+      "text": "很",
+      "startMs": 10340,
+      "endMs": 10560,
+      "confidence": 0.99609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-028",
+      "text": "反",
+      "startMs": 10560,
+      "endMs": 10760,
+      "confidence": 0.990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-029",
+      "text": "直",
+      "startMs": 10760,
+      "endMs": 11000,
+      "confidence": 0.990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-030",
+      "text": "觉，",
+      "startMs": 11000,
+      "endMs": 11240,
+      "confidence": 0.9736328125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-031",
+      "text": "对",
+      "startMs": 11580,
+      "endMs": 11740,
+      "confidence": 0.92041015625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-032",
+      "text": "吧?",
+      "startMs": 11740,
+      "endMs": 12000,
+      "confidence": 0.99609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-033",
+      "text": "我",
+      "startMs": 12940,
+      "endMs": 13140,
+      "confidence": 0.87060546875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-034",
+      "text": "以前",
+      "startMs": 13140,
+      "endMs": 13480,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-035",
+      "text": "会",
+      "startMs": 13480,
+      "endMs": 13800,
+      "confidence": 0.9951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-036",
+      "text": "在",
+      "startMs": 13800,
+      "endMs": 14060,
+      "confidence": 0.99462890625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-037",
+      "text": "早",
+      "startMs": 14060,
+      "endMs": 14280,
+      "confidence": 0.98681640625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-038",
+      "text": "上",
+      "startMs": 14280,
+      "endMs": 14580,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-039",
+      "text": "写",
+      "startMs": 14580,
+      "endMs": 14760,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-040",
+      "text": "十",
+      "startMs": 14760,
+      "endMs": 15000,
+      "confidence": 0.88525390625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-041",
+      "text": "二",
+      "startMs": 15000,
+      "endMs": 15200,
+      "confidence": 0.9951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-042",
+      "text": "件",
+      "startMs": 15200,
+      "endMs": 15420,
+      "confidence": 0.95166015625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-043",
+      "text": "事，",
+      "startMs": 15420,
+      "endMs": 15700,
+      "confidence": 0.9912109375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-044",
+      "text": "然后，",
+      "startMs": 16000,
+      "endMs": 16340,
+      "confidence": 0.96728515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-045",
+      "text": "呃，",
+      "startMs": 16860,
+      "endMs": 17020,
+      "confidence": 0.4814453125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-046",
+      "text": "到",
+      "startMs": 17580,
+      "endMs": 17760,
+      "confidence": 0.81103515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-047",
+      "text": "晚上",
+      "startMs": 17760,
+      "endMs": 18040,
+      "confidence": 0.9609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-048",
+      "text": "真",
+      "startMs": 18040,
+      "endMs": 18460,
+      "confidence": 0.99267578125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-049",
+      "text": "正",
+      "startMs": 18460,
+      "endMs": 18640,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-050",
+      "text": "完成",
+      "startMs": 18640,
+      "endMs": 18920,
+      "confidence": 0.99853515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-051",
+      "text": "的",
+      "startMs": 18920,
+      "endMs": 19220,
+      "confidence": 0.974609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-052",
+      "text": "只有",
+      "startMs": 19220,
+      "endMs": 19460,
+      "confidence": 0.94677734375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-053",
+      "text": "两",
+      "startMs": 19460,
+      "endMs": 19800,
+      "confidence": 0.98486328125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-054",
+      "text": "件。",
+      "startMs": 19800,
+      "endMs": 20080,
+      "confidence": 0.99853515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-055",
+      "text": "后",
+      "startMs": 20740,
+      "endMs": 20940,
+      "confidence": 0.966796875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-056",
+      "text": "来",
+      "startMs": 20940,
+      "endMs": 21160,
+      "confidence": 0.99658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-057",
+      "text": "我",
+      "startMs": 21160,
+      "endMs": 21340,
+      "confidence": 0.9287109375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-058",
+      "text": "只",
+      "startMs": 21340,
+      "endMs": 21540,
+      "confidence": 0.7568359375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-059",
+      "text": "改",
+      "startMs": 21540,
+      "endMs": 21720,
+      "confidence": 0.99658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-060",
+      "text": "了",
+      "startMs": 21720,
+      "endMs": 21940,
+      "confidence": 1,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-061",
+      "text": "一个",
+      "startMs": 21940,
+      "endMs": 22160,
+      "confidence": 0.998046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-062",
+      "text": "动",
+      "startMs": 22160,
+      "endMs": 22400,
+      "confidence": 0.9951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-063",
+      "text": "作，",
+      "startMs": 22400,
+      "endMs": 22680,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-064",
+      "text": "先",
+      "startMs": 23020,
+      "endMs": 23220,
+      "confidence": 0.93408203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-065",
+      "text": "选",
+      "startMs": 23220,
+      "endMs": 23500,
+      "confidence": 0.998046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-066",
+      "text": "一",
+      "startMs": 23500,
+      "endMs": 23780,
+      "confidence": 0.96875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-067",
+      "text": "件",
+      "startMs": 23780,
+      "endMs": 23980,
+      "confidence": 0.99853515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-068",
+      "text": "今天",
+      "startMs": 23980,
+      "endMs": 24360,
+      "confidence": 0.98486328125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-069",
+      "text": "必",
+      "startMs": 24360,
+      "endMs": 24700,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-070",
+      "text": "须",
+      "startMs": 24700,
+      "endMs": 24880,
+      "confidence": 0.9912109375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-071",
+      "text": "完成",
+      "startMs": 24880,
+      "endMs": 25160,
+      "confidence": 0.99853515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-072",
+      "text": "的",
+      "startMs": 25160,
+      "endMs": 25480,
+      "confidence": 0.9521484375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-073",
+      "text": "事，",
+      "startMs": 25480,
+      "endMs": 25720,
+      "confidence": 0.99560546875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-074",
+      "text": "把它",
+      "startMs": 26040,
+      "endMs": 26320,
+      "confidence": 0.66259765625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-075",
+      "text": "拆",
+      "startMs": 26320,
+      "endMs": 26680,
+      "confidence": 0.994140625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-076",
+      "text": "成",
+      "startMs": 26680,
+      "endMs": 26940,
+      "confidence": 0.99658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-077",
+      "text": "二",
+      "startMs": 26940,
+      "endMs": 27160,
+      "confidence": 0.69873046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-078",
+      "text": "十",
+      "startMs": 27160,
+      "endMs": 27320,
+      "confidence": 0.9970703125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-079",
+      "text": "五",
+      "startMs": 27320,
+      "endMs": 27480,
+      "confidence": 0.99755859375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-080",
+      "text": "分",
+      "startMs": 27480,
+      "endMs": 27680,
+      "confidence": 0.9931640625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-081",
+      "text": "钟，",
+      "startMs": 27680,
+      "endMs": 27960,
+      "confidence": 0.9912109375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-082",
+      "text": "然后，",
+      "startMs": 28360,
+      "endMs": 28820,
+      "confidence": 0.94775390625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-083",
+      "text": "然后",
+      "startMs": 29120,
+      "endMs": 29420,
+      "confidence": 0.94140625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-084",
+      "text": "关",
+      "startMs": 29420,
+      "endMs": 29740,
+      "confidence": 0.9638671875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-085",
+      "text": "掉",
+      "startMs": 29740,
+      "endMs": 29980,
+      "confidence": 0.99658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-086",
+      "text": "通",
+      "startMs": 29980,
+      "endMs": 29981,
+      "confidence": 0.0001404285430908203,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-087",
+      "text": "知。",
+      "startMs": 29980,
+      "endMs": 29981,
+      "confidence": 0.3388671875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-088",
+      "text": "重",
+      "startMs": 31200,
+      "endMs": 31720,
+      "confidence": 0.54443359375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-089",
+      "text": "点",
+      "startMs": 31720,
+      "endMs": 31980,
+      "confidence": 0.62548828125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-090",
+      "text": "不是",
+      "startMs": 31980,
+      "endMs": 32260,
+      "confidence": 0.98828125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-091",
+      "text": "更",
+      "startMs": 32260,
+      "endMs": 32560,
+      "confidence": 0.99072265625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-092",
+      "text": "努",
+      "startMs": 32560,
+      "endMs": 32780,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-093",
+      "text": "力，",
+      "startMs": 32780,
+      "endMs": 33040,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-094",
+      "text": "而",
+      "startMs": 33240,
+      "endMs": 33380,
+      "confidence": 0.849609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-095",
+      "text": "是",
+      "startMs": 33380,
+      "endMs": 33580,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-096",
+      "text": "让",
+      "startMs": 33580,
+      "endMs": 33740,
+      "confidence": 0.98095703125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-097",
+      "text": "下一",
+      "startMs": 33740,
+      "endMs": 34060,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-098",
+      "text": "步",
+      "startMs": 34060,
+      "endMs": 34360,
+      "confidence": 0.95849609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-099",
+      "text": "小",
+      "startMs": 34360,
+      "endMs": 34580,
+      "confidence": 0.9482421875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-100",
+      "text": "到",
+      "startMs": 34580,
+      "endMs": 34800,
+      "confidence": 0.10992431640625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-101",
+      "text": "不用",
+      "startMs": 34800,
+      "endMs": 35060,
+      "confidence": 0.9853515625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-102",
+      "text": "思",
+      "startMs": 35060,
+      "endMs": 35420,
+      "confidence": 0.98974609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-103",
+      "text": "考。",
+      "startMs": 35420,
+      "endMs": 35680,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-104",
+      "text": "所以",
+      "startMs": 36160,
+      "endMs": 36620,
+      "confidence": 0.95458984375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-105",
+      "text": "明",
+      "startMs": 36620,
+      "endMs": 36860,
+      "confidence": 0.99560546875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-106",
+      "text": "天",
+      "startMs": 36860,
+      "endMs": 37140,
+      "confidence": 0.99609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-107",
+      "text": "早",
+      "startMs": 37140,
+      "endMs": 37360,
+      "confidence": 0.99658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-108",
+      "text": "上，",
+      "startMs": 37360,
+      "endMs": 37700,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-109",
+      "text": "别",
+      "startMs": 38020,
+      "endMs": 38160,
+      "confidence": 0.76220703125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-110",
+      "text": "先",
+      "startMs": 38160,
+      "endMs": 38440,
+      "confidence": 0.99609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-111",
+      "text": "打",
+      "startMs": 38440,
+      "endMs": 38640,
+      "confidence": 0.99609375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-112",
+      "text": "开",
+      "startMs": 38640,
+      "endMs": 38880,
+      "confidence": 0.998046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-113",
+      "text": "消",
+      "startMs": 38880,
+      "endMs": 39140,
+      "confidence": 0.9970703125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-114",
+      "text": "息，",
+      "startMs": 39140,
+      "endMs": 39400,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-115",
+      "text": "先",
+      "startMs": 39740,
+      "endMs": 39940,
+      "confidence": 0.98828125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-116",
+      "text": "写",
+      "startMs": 39940,
+      "endMs": 40160,
+      "confidence": 0.998046875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-117",
+      "text": "下",
+      "startMs": 40160,
+      "endMs": 40440,
+      "confidence": 0.9658203125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-118",
+      "text": "今天",
+      "startMs": 40440,
+      "endMs": 40760,
+      "confidence": 0.97314453125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-119",
+      "text": "唯",
+      "startMs": 40760,
+      "endMs": 41100,
+      "confidence": 0.95458984375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-120",
+      "text": "一",
+      "startMs": 41100,
+      "endMs": 41260,
+      "confidence": 0.99755859375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-121",
+      "text": "重要",
+      "startMs": 41260,
+      "endMs": 41460,
+      "confidence": 0.9990234375,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-122",
+      "text": "的",
+      "startMs": 41460,
+      "endMs": 41760,
+      "confidence": 0.99951171875,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-123",
+      "text": "一",
+      "startMs": 41760,
+      "endMs": 41940,
+      "confidence": 0.86572265625,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-124",
+      "text": "件",
+      "startMs": 41940,
+      "endMs": 42140,
+      "confidence": 0.9970703125,
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "word-125",
+      "text": "事。",
+      "startMs": 42140,
+      "endMs": 42400,
+      "confidence": 0.99853515625,
+      "speakerId": "presenter-1"
+    }
+  ],
+  "segments": [
+    {
+      "id": "segment-001",
+      "text": "今天我想聊一个，嗯，不对，我们重来。",
+      "startMs": 0,
+      "endMs": 4700,
+      "wordIds": [
+        "word-001",
+        "word-002",
+        "word-003",
+        "word-004",
+        "word-005",
+        "word-006",
+        "word-007",
+        "word-008",
+        "word-009"
+      ],
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "segment-002",
+      "text": "你每天列的待办越多，可能完成得越少。",
+      "startMs": 4920,
+      "endMs": 9140,
+      "wordIds": [
+        "word-010",
+        "word-011",
+        "word-012",
+        "word-013",
+        "word-014",
+        "word-015",
+        "word-016",
+        "word-017",
+        "word-018",
+        "word-019",
+        "word-020",
+        "word-021",
+        "word-022",
+        "word-023"
+      ],
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "segment-003",
+      "text": "听起来很反直觉，对吧?我以前会在早上写十二件事，然后，呃，到晚上真正完成的只有两件。",
+      "startMs": 9680,
+      "endMs": 20080,
+      "wordIds": [
+        "word-024",
+        "word-025",
+        "word-026",
+        "word-027",
+        "word-028",
+        "word-029",
+        "word-030",
+        "word-031",
+        "word-032",
+        "word-033",
+        "word-034",
+        "word-035",
+        "word-036",
+        "word-037",
+        "word-038",
+        "word-039",
+        "word-040",
+        "word-041",
+        "word-042",
+        "word-043",
+        "word-044",
+        "word-045",
+        "word-046",
+        "word-047",
+        "word-048",
+        "word-049",
+        "word-050",
+        "word-051",
+        "word-052",
+        "word-053",
+        "word-054"
+      ],
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "segment-004",
+      "text": "后来我只改了一个动作，先选一件今天必须完成的事，把它拆成二十五分钟，然后，然后关掉通知。",
+      "startMs": 20740,
+      "endMs": 29980,
+      "wordIds": [
+        "word-055",
+        "word-056",
+        "word-057",
+        "word-058",
+        "word-059",
+        "word-060",
+        "word-061",
+        "word-062",
+        "word-063",
+        "word-064",
+        "word-065",
+        "word-066",
+        "word-067",
+        "word-068",
+        "word-069",
+        "word-070",
+        "word-071",
+        "word-072",
+        "word-073",
+        "word-074",
+        "word-075",
+        "word-076",
+        "word-077",
+        "word-078",
+        "word-079",
+        "word-080",
+        "word-081",
+        "word-082",
+        "word-083",
+        "word-084",
+        "word-085"
+      ],
+      "speakerId": "presenter-1"
+    },
+    {
+      "id": "segment-005",
+      "text": "重点不是更努力，而是让下一步小到不用思考。所以明天早上，别先打开消息，先写下今天唯一重要的一件事。",
+      "startMs": 31200,
+      "endMs": 42400,
+      "wordIds": [
+        "word-088",
+        "word-089",
+        "word-090",
+        "word-091",
+        "word-092",
+        "word-093",
+        "word-094",
+        "word-095",
+        "word-096",
+        "word-097",
+        "word-098",
+        "word-099",
+        "word-100",
+        "word-101",
+        "word-102",
+        "word-103",
+        "word-104",
+        "word-105",
+        "word-106",
+        "word-107",
+        "word-108",
+        "word-109",
+        "word-110",
+        "word-111",
+        "word-112",
+        "word-113",
+        "word-114",
+        "word-115",
+        "word-116",
+        "word-117",
+        "word-118",
+        "word-119",
+        "word-120",
+        "word-121",
+        "word-122",
+        "word-123",
+        "word-124",
+        "word-125"
+      ],
+      "speakerId": "presenter-1"
+    }
+  ]
+}

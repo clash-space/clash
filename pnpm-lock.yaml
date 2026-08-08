@@ -157,7 +157,7 @@ importers:
     devDependencies:
       '@agentclientprotocol/claude-agent-acp':
         specifier: ^0.47.0
-        version: 0.47.0(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))
+        version: 0.47.0(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))
       '@agentclientprotocol/codex-acp':
         specifier: ^1.1.7
         version: 1.1.7
@@ -695,6 +695,12 @@ importers:
 
   packages/mcp-server:
     dependencies:
+      '@clash/shared-mcp':
+        specifier: workspace:*
+        version: link:../shared-mcp
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../shared-runtime
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
@@ -910,6 +916,34 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
 
+  packages/shared-artifact-evals:
+    dependencies:
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      yaml:
+        specifier: ^2.6.0
+        version: 2.9.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.0
+        version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(@vitest/ui@1.3.1)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.23.0)(yaml@2.9.0))
+
   packages/shared-layout:
     dependencies:
       '@dagrejs/dagre':
@@ -921,6 +955,28 @@ importers:
         version: 8.5.1(@swc/core@1.15.43)(jiti@2.7.0)(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/shared-mcp:
+    dependencies:
+      '@clash/shared-runtime':
+        specifier: workspace:*
+        version: link:../shared-runtime
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      zod:
+        specifier: ^4.1.13
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.2
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
+      typescript:
+        specifier: ^5.9.0
         version: 5.9.3
 
   packages/shared-runtime:
@@ -1179,6 +1235,9 @@ importers:
       '@clash-space/timeline-plugin':
         specifier: workspace:*
         version: link:../clash-timeline
+      '@clash/shared-mcp':
+        specifier: workspace:*
+        version: link:../../packages/shared-mcp
       '@clash/shared-runtime':
         specifier: workspace:*
         version: link:../../packages/shared-runtime
@@ -1188,6 +1247,12 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      '@remotion/renderer':
+        specifier: 4.0.370
+        version: 4.0.370(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      loro-crdt:
+        specifier: ^1.10.3
+        version: 1.13.6
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -1210,12 +1275,21 @@ importers:
 
   plugins/clash-director:
     dependencies:
+      '@clash/shared-mcp':
+        specifier: workspace:*
+        version: link:../../packages/shared-mcp
+      '@clash/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)
+      loro-crdt:
+        specifier: ^1.10.3
+        version: 1.13.6
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -1238,6 +1312,9 @@ importers:
 
   plugins/clash-timeline:
     dependencies:
+      '@clash/shared-mcp':
+        specifier: workspace:*
+        version: link:../../packages/shared-mcp
       '@modelcontextprotocol/ext-apps':
         specifier: ^1.7.4
         version: 1.7.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(zod@4.4.3)
@@ -3711,7 +3788,7 @@ packages:
     os: [win32]
 
   '@openma/common@https://codeload.github.com/openma-ai/openma-common/tar.gz/28d93020c85c2dddbddcb8231f784d768fb88e69':
-    resolution: {gitHosted: true, integrity: sha512-cKi1brNo1cka+KdhXhcqzIVG8jWMqncbZrtiBr6+LLGXKCBNZbMZziqAMP8dK5Yo0ACl7vakC/PWkXbj+amtMA==, tarball: https://codeload.github.com/openma-ai/openma-common/tar.gz/28d93020c85c2dddbddcb8231f784d768fb88e69}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/openma-ai/openma-common/tar.gz/28d93020c85c2dddbddcb8231f784d768fb88e69}
     version: 0.5.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -10208,15 +10285,6 @@ snapshots:
 
   '@adobe/css-tools@4.5.0': {}
 
-  '@agentclientprotocol/claude-agent-acp@0.47.0(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))':
-    dependencies:
-      '@agentclientprotocol/sdk': 0.26.0(zod@4.4.3)
-      '@anthropic-ai/claude-agent-sdk': 0.3.179(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))(zod@4.4.3)
-      zod: 4.4.3
-    transitivePeerDependencies:
-      - '@anthropic-ai/sdk'
-      - '@modelcontextprotocol/sdk'
-
   '@agentclientprotocol/claude-agent-acp@0.47.0(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))':
     dependencies:
       '@agentclientprotocol/sdk': 0.26.0(zod@4.4.3)
@@ -10361,21 +10429,6 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.179':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk@0.3.179(@anthropic-ai/sdk@0.110.0(zod@3.22.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3))(zod@4.4.3)':
-    dependencies:
-      '@anthropic-ai/sdk': 0.110.0(zod@3.22.3)
-      '@modelcontextprotocol/sdk': 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3)
-      zod: 4.4.3
-    optionalDependencies:
-      '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-linux-arm64': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-linux-x64': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.179
-      '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.179
-
   '@anthropic-ai/claude-agent-sdk@0.3.179(@anthropic-ai/sdk@0.110.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(zod@4.4.3)':
     dependencies:
       '@anthropic-ai/sdk': 0.110.0(zod@4.4.3)
@@ -10390,13 +10443,6 @@ snapshots:
       '@anthropic-ai/claude-agent-sdk-linux-x64-musl': 0.3.179
       '@anthropic-ai/claude-agent-sdk-win32-arm64': 0.3.179
       '@anthropic-ai/claude-agent-sdk-win32-x64': 0.3.179
-
-  '@anthropic-ai/sdk@0.110.0(zod@3.22.3)':
-    dependencies:
-      json-schema-to-ts: 3.1.1
-      standardwebhooks: 1.0.0
-    optionalDependencies:
-      zod: 3.22.3
 
   '@anthropic-ai/sdk@0.110.0(zod@4.4.3)':
     dependencies:
@@ -12761,30 +12807,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@3.22.3)':
-    dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.27)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.1.0
-      express: 5.2.1
-      express-rate-limit: 8.5.2(express@5.2.1)
-      hono: 4.12.27
-      jose: 6.2.3
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.0
-      raw-body: 3.0.2
-      zod: 3.22.3
-      zod-to-json-schema: 3.25.2(zod@3.22.3)
-    optionalDependencies:
-      '@cfworker/json-schema': 4.1.1
-    transitivePeerDependencies:
-      - supports-color
-
   '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.27)
@@ -13736,7 +13758,7 @@ snapshots:
       remotion: 4.0.370(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       source-map: 0.7.3
       style-loader: 4.0.0(webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16))
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
     transitivePeerDependencies:
       - '@minify-html/node'
       - '@swc/core'
@@ -15628,7 +15650,7 @@ snapshots:
       postcss-value-parser: 4.2.0
       schema-utils: 3.3.0
       semver: 7.8.5
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
 
   css-selector-parser@3.3.0: {}
 
@@ -19228,7 +19250,7 @@ snapshots:
 
   style-loader@4.0.0(webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)):
     dependencies:
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
 
   style-mod@4.1.3: {}
 
@@ -19312,7 +19334,7 @@ snapshots:
       jest-worker: 27.4.5
       schema-utils: 4.3.3
       terser: 5.48.0
-      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16)
+      webpack: 5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16)
     optionalDependencies:
       '@swc/core': 1.15.43
       esbuild: 0.25.0
@@ -19873,7 +19895,7 @@ snapshots:
 
   webpack-sources@3.5.0: {}
 
-  webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.27.7)(lightningcss@1.32.0)(postcss@8.5.16):
+  webpack@5.96.1(@swc/core@1.15.43)(esbuild@0.25.0)(lightningcss@1.32.0)(postcss@8.5.16):
     dependencies:
       '@types/eslint-scope': 3.7.7
       '@types/estree': 1.0.9
@@ -20086,10 +20108,6 @@ snapshots:
   zod-to-json-schema@3.24.6(zod@3.24.4):
     dependencies:
       zod: 3.24.4
-
-  zod-to-json-schema@3.25.2(zod@3.22.3):
-    dependencies:
-      zod: 3.22.3
 
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:

@@ -1,0 +1,17 @@
+{
+  "summary": "Outcome-driven, artifact-first headless benchmark runner and deterministic graders for Clash creative work.",
+  "context_hints": [
+    "The execution agent receives only the outcome contract and copied built-in skills; rubric checks remain outside its workspace.",
+    "Never grade from the agent final message. Resolve submission paths inside the isolated workspace, reject symlinks, hash files, and independently validate artifacts.",
+    "Required rubric gates fail closed even when the weighted score exceeds the pass threshold.",
+    "Director v1 is structural unless real rendered media exists; MG character v1 is the geometric 2D profile, not a skeletal rig."
+  ],
+  "key_files": {
+    "src/schemas.ts": "Versioned benchmark, outcome, submission, and rubric schemas.",
+    "src/evaluator.ts": "Director, Timeline, MG, media, artifact-set, and mixed-lineage grading.",
+    "src/runner.ts": "Isolated workspace provisioning, skill installation, native Codex and Claude Code execution, logs, and outcome result generation.",
+    "src/cli.ts": "CLI entry point for real Codex, Claude Code, and command-based benchmark runs.",
+    "src/claude-adapter.test.ts": "Claude print-mode arguments, daemon-first MCP binding, skills, stream-json trajectory, and error contracts.",
+    "src/index.test.ts": "Artifact security, hard-gate, mixed-source, suite, and real child-process runner contracts."
+  }
+}

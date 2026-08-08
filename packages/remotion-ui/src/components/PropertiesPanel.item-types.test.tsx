@@ -17,7 +17,6 @@ import {
 } from '@master-clash/remotion-core';
 import {
   TIMELINE_MASK_ANIMATION_BINDINGS,
-  type MgCompositionSpec,
 } from '@clash/shared-types';
 import { PropertiesPanel } from './PropertiesPanel';
 
@@ -475,112 +474,26 @@ describe('PropertiesPanel item type coverage', () => {
     });
   });
 
-  it('edits first-party motion-graphics layer content and color inside the Composition spec', () => {
-    const spec: MgCompositionSpec = {
-      id: 'lower-third',
-      name: 'Lower third',
-      width: 1920,
-      height: 1080,
-      fps: 30,
-      durationInFrames: 90,
-      background: 'transparent',
-      layers: [
-        {
-          id: 'title',
-          type: 'text',
-          text: 'Original',
-          from: 0,
-          durationInFrames: 90,
-          zIndex: 1,
-          x: 120,
-          y: 800,
-          opacity: 1,
-          scale: 1,
-          rotation: 0,
-          animations: [],
-          fontFamily: 'Inter',
-          fontSize: 64,
-          fontWeight: 700,
-          color: '#ffffff',
-          letterSpacing: 0,
-          align: 'left',
-        },
-        {
-          id: 'panel',
-          type: 'shape',
-          shape: 'rounded-rect',
-          fill: '#ff6b50',
-          from: 0,
-          durationInFrames: 90,
-          zIndex: 0,
-          x: 100,
-          y: 780,
-          width: 720,
-          height: 180,
-          opacity: 1,
-          scale: 1,
-          rotation: 0,
-          animations: [],
-          radius: 24,
-        },
-      ],
-    };
+  it('shows a live Remotion composition identity without exposing the removed MG spec editor', () => {
     const composition: CompositionItem = {
-      id: 'mg',
+      id: 'live-card',
       type: 'composition',
-      compositionKind: 'motion-graphics',
-      runtime: 'html',
-      compositionId: 'lower-third',
-      sourcePath: 'motion/lower-third.html',
-      spec,
+      compositionKind: 'custom',
+      runtime: 'remotion',
+      compositionId: 'LiveCard',
+      sourceNodeId: 'remotion-node-fixed',
+      sourcePath: 'components/live-card.tsx',
+      spec: { legacy: 'must remain inert' },
       from: 0,
       durationInFrames: 90,
     };
     const stateRef = renderInspector(composition);
 
-    expect(screen.getByText('Motion Graphics')).toBeTruthy();
-    expect(screen.getByText('2 layers')).toBeTruthy();
-    expect(screen.getByRole('searchbox', { name: 'Search MG layers' })).toBeTruthy();
-    fireEvent.change(screen.getByRole('textbox', { name: 'MG background' }), {
-      target: { value: '#0f172a' },
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: 'MG layer title text' }), {
-      target: { value: 'Updated' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'MG layer title start frame' }), {
-      target: { value: '12' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'MG layer title x position' }), {
-      target: { value: '180' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'MG layer title opacity' }), {
-      target: { value: '0.75' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'MG layer title font size' }), {
-      target: { value: '72' },
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: 'MG layer panel fill' }), {
-      target: { value: '#172033' },
-    });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'MG layer panel width' }), {
-      target: { value: '840' },
-    });
-
-    const updatedSpec = latestItem<CompositionItem>(stateRef).spec as MgCompositionSpec;
-    expect(updatedSpec.background).toBe('#0f172a');
-    expect(updatedSpec.layers[0]).toMatchObject({
-      id: 'title',
-      text: 'Updated',
-      from: 12,
-      x: 180,
-      opacity: 0.75,
-      fontSize: 72,
-    });
-    expect(updatedSpec.layers[1]).toMatchObject({
-      id: 'panel',
-      fill: '#172033',
-      width: 840,
-    });
+    expect(screen.getByText('Remotion Component')).toBeTruthy();
+    expect(screen.getByText('remotion-node-fixed')).toBeTruthy();
+    expect(screen.queryByRole('searchbox', { name: 'Search MG layers' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'MG background' })).toBeNull();
+    expect(latestItem<CompositionItem>(stateRef).spec).toEqual({ legacy: 'must remain inert' });
   });
 
   it('edits image fade colors as real renderer-backed fields', () => {

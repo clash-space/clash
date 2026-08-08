@@ -32,7 +32,7 @@ export const TimelinePrimaryToolIcon: React.FC<{ tool: TimelinePrimaryToolIconId
     );
   }
 
-  if (tool === 'stickers' || tool === 'motion-graphics') {
+  if (tool === 'stickers') {
     return (
       <svg data-timeline-tool-icon={tool} data-graphics-layers-icon="" viewBox="0 0 24 24" className={iconClassName} aria-hidden="true">
         <path d="m12 4 8 4-8 4-8-4 8-4Z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
@@ -75,15 +75,6 @@ export const TimelinePrimaryToolIcon: React.FC<{ tool: TimelinePrimaryToolIconId
     return (
       <svg data-timeline-tool-icon={tool} viewBox="0 0 24 24" className={iconClassName} aria-hidden="true">
         <path d="m4 6 6 6-6 6V6Zm16 0-6 6 6 6V6Z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-
-  if (tool === 'templates') {
-    return (
-      <svg data-timeline-tool-icon={tool} viewBox="0 0 24 24" className={iconClassName} aria-hidden="true">
-        <rect x="4" y="4.5" width="16" height="15" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7" />
-        <path d="M4.5 9h15M9 9.5v9.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
       </svg>
     );
   }

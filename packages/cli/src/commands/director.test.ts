@@ -34,6 +34,7 @@ test("registers an agent-first Director Stage command surface", async () => {
     "create",
     "attach",
     "detach",
+    "capture",
     "pull",
     "apply",
     "object",
@@ -111,6 +112,22 @@ test("Director Stage mutations use the shared command reducer and implicit read 
     assert.match(source, new RegExp(option));
   }
   assert.doesNotMatch(source, /--if-match|--force|--lock/);
+});
+
+test("Director apply auto-pulls a stale latest projection without replaying the local edit", async () => {
+  const module = await import("./director") as unknown as { directorCommand: {
+    commands: readonly { name(): string; options: readonly { long?: string }[] }[];
+  } };
+  const source = readFileSync(new URL("./director.ts", import.meta.url), "utf8");
+  const apply = module.directorCommand.commands.find((command) => command.name() === "apply");
+
+  assert.ok(apply);
+  assert.equal(apply.options.some((option) => option.long === "--base-revision"), true);
+  assert.match(source, /recoverStaleProjection/);
+  assert.match(source, /result\.code === "STALE_READ"/);
+  assert.match(source, /directorStageCanonicalJson\(latest\.state\)/);
+  assert.match(source, /staleProjectionRecoveryError\("Director Stage"/);
+  assert.doesNotMatch(source, /retry.*update_director_stage_state/is);
 });
 
 test("resolves and validates Director Stage JSON projections inside cwd", async () => {

@@ -146,6 +146,16 @@ describe("desktop startup test suite", () => {
     expect(source).toContain("localApiServer.close");
   });
 
+  it("joins the shared local daemon or starts it once instead of creating a second writer", () => {
+    const source = readText("src/main.ts");
+
+    expect(source).toContain("createLocalDaemonBootstrap");
+    expect(source).toContain("ensureDaemon()");
+    expect(source).toContain('launchMode: "desktop"');
+    expect(source).toContain('startedBy: "desktop"');
+    expect(source).toContain("clashHomeForLocalDataDir(dataDir)");
+  });
+
   it("injects the packaged Python SDK into local-model subprocess discovery", () => {
     const source = readText("src/main.ts");
 

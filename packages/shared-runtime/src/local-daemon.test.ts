@@ -1,0 +1,252 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  createLocalDaemonBootstrap,
+  launchDetachedLocalDaemon,
+  type LocalDaemonLaunchResult,
+} from "./local-daemon.js";
+import {
+  LOCAL_HOST_DATA_SCHEMA_VERSION,
+  LOCAL_HOST_PROTOCOL_VERSION,
+  LOCAL_HOST_RECORD_SCHEMA_VERSION,
+  type LocalHostDiscoveryRecord,
+} from "./index.js";
+
+function record(overrides: Partial<LocalHostDiscoveryRecord> = {}): LocalHostDiscoveryRecord {
+  return {
+    schemaVersion: LOCAL_HOST_RECORD_SCHEMA_VERSION,
+    protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+    dataSchemaVersion: LOCAL_HOST_DATA_SCHEMA_VERSION,
+    hostId: "daemon-1",
+    endpoint: "http://127.0.0.1:49321",
+    pid: process.pid,
+    launchMode: "user-service",
+    startedBy: "plugin",
+    profile: "prod",
+    startedAt: "2026-08-07T00:00:00.000Z",
+    updatedAt: "2026-08-07T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+async function publish(runDir: string, value: LocalHostDiscoveryRecord): Promise<void> {
+  await mkdir(runDir, { recursive: true });
+  await writeFile(join(runDir, "host.json"), JSON.stringify(value), "utf8");
+}
+
+describe("local daemon bootstrap", () => {
+  it("launches a detached daemon that outlives the initiating client", async () => {
+    let spawnOptions: Record<string, unknown> | undefined;
+    let unrefs = 0;
+    const launched = launchDetachedLocalDaemon({
+      entryPath: "/opt/clash/clashd.cjs",
+      dataDir: "/tmp/clash/local-api",
+      runDir: "/tmp/clash/run",
+      cliEntryPath: "/opt/clash/clash.cjs",
+      env: { CLASH_PROFILE: "prod" },
+      spawnProcess: (_command, _args, options) => {
+        spawnOptions = options as Record<string, unknown>;
+        return {
+          pid: 4242,
+          unref: () => { unrefs += 1; },
+        } as never;
+      },
+    });
+
+    expect(launched.pid).toBe(4242);
+    expect(spawnOptions).toMatchObject({
+      detached: true,
+      stdio: "ignore",
+      env: {
+        CLASH_PROFILE: "prod",
+        CLASH_LOCAL_DATA_DIR: "/tmp/clash/local-api",
+        CLASH_HOST_RUN_DIR: "/tmp/clash/run",
+        CLASH_CLI_ENTRY_PATH: "/opt/clash/clash.cjs",
+        CLASH_LOCAL_API_WRAPPER_ENTRY: "1",
+        PORT: "0",
+      },
+    });
+    expect(unrefs).toBe(1);
+  });
+
+  it("reuses a healthy daemon without launching another process", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-reuse-"));
+    const active = record();
+    await publish(runDir, active);
+    let launches = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      probe: async () => true,
+      launch: async () => {
+        launches += 1;
+        return { pid: 999_999 };
+      },
+    });
+
+    await expect(bootstrap.ensureDaemon()).resolves.toEqual(active);
+    expect(launches).toBe(0);
+  });
+
+  it("actively launches when discovery is stale and waits for healthy readiness", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-stale-"));
+    await publish(runDir, record({ pid: 999_999 }));
+    let launches = 0;
+    let ready = false;
+    const started = record({ hostId: "daemon-started", pid: process.pid });
+    const launch = async (): Promise<LocalDaemonLaunchResult> => {
+      launches += 1;
+      await publish(runDir, started);
+      ready = true;
+      return { pid: started.pid };
+    };
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      pidExists: (pid) => pid === process.pid,
+      probe: async (candidate) => ready && candidate.hostId === started.hostId,
+      launch,
+    });
+
+    await expect(bootstrap.ensureDaemon()).resolves.toEqual(started);
+    expect(launches).toBe(1);
+  });
+
+  it("fails closed instead of creating a second writer when a live daemon is unhealthy", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-unhealthy-"));
+    await publish(runDir, record({ pid: process.pid }));
+    let launches = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      probe: async () => false,
+      startupTimeoutMs: 25,
+      pollIntervalMs: 5,
+      launch: async () => {
+        launches += 1;
+        return { pid: process.pid };
+      },
+    });
+
+    await expect(bootstrap.ensureDaemon()).rejects.toThrow(/alive but unhealthy/i);
+    expect(launches).toBe(0);
+  });
+
+  it("rejects a healthy-looking endpoint owned by a different daemon identity", async () => {
+    const server = createServer((_request, response) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({
+        ok: true,
+        mode: "local",
+        host: {
+          hostId: "different-daemon",
+          pid: process.pid,
+          profile: "prod",
+          protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+        },
+      }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-identity-"));
+    await publish(runDir, record({
+      hostId: "expected-daemon",
+      endpoint: `http://127.0.0.1:${address.port}`,
+    }));
+    let launches = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      launch: async () => {
+        launches += 1;
+        return { pid: process.pid };
+      },
+    });
+
+    try {
+      await expect(bootstrap.ensureDaemon()).rejects.toThrow(/alive but unhealthy/i);
+      expect(launches).toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+    }
+  });
+
+  it("coordinates concurrent cold starts across independent clients", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-race-"));
+    let launches = 0;
+    const started = record({ hostId: "daemon-race" });
+    const launch = async (): Promise<LocalDaemonLaunchResult> => {
+      launches += 1;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await publish(runDir, started);
+      return { pid: started.pid };
+    };
+    const options = {
+      runDir,
+      profile: "prod" as const,
+      probe: async () => true,
+      launch,
+    };
+    const first = createLocalDaemonBootstrap(options);
+    const second = createLocalDaemonBootstrap(options);
+
+    const [one, two] = await Promise.all([
+      first.ensureDaemon(),
+      second.ensureDaemon(),
+    ]);
+
+    expect(one.hostId).toBe(started.hostId);
+    expect(two.hostId).toBe(started.hostId);
+    expect(launches).toBe(1);
+  });
+
+  it("never stops a daemon when the bootstrapping client closes", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-persist-"));
+    const started = record({ hostId: "daemon-persist" });
+    let stops = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      probe: async () => true,
+      launch: async () => {
+        await publish(runDir, started);
+        return { pid: started.pid, stop: async () => { stops += 1; } };
+      },
+    });
+
+    await bootstrap.ensureDaemon();
+    await bootstrap.close();
+
+    expect(stops).toBe(0);
+    expect(JSON.parse(await readFile(join(runDir, "host.json"), "utf8")).hostId)
+      .toBe(started.hostId);
+  });
+
+  it("re-probes after an earlier ensure call instead of caching a stale endpoint forever", async () => {
+    const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-reprobe-"));
+    const first = record({ hostId: "daemon-first" });
+    const second = record({ hostId: "daemon-second" });
+    await publish(runDir, first);
+    let probes = 0;
+    const bootstrap = createLocalDaemonBootstrap({
+      runDir,
+      profile: "prod",
+      probe: async () => {
+        probes += 1;
+        return true;
+      },
+      launch: async () => ({ pid: process.pid }),
+    });
+
+    expect((await bootstrap.ensureDaemon()).hostId).toBe(first.hostId);
+    await publish(runDir, second);
+    expect((await bootstrap.ensureDaemon()).hostId).toBe(second.hostId);
+    expect(probes).toBe(2);
+  });
+});

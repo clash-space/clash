@@ -27,7 +27,7 @@ const segmentSpecs: Array<{
   categories: TimelineLibraryCategory[];
 }> = [
   { id: 'intro', seconds: 1.2, categories: [] },
-  { id: 'motion', seconds: 2.4, categories: ['text', 'stickers', 'motion-graphics', 'templates'] },
+  { id: 'motion', seconds: 2.4, categories: ['text', 'stickers'] },
   { id: 'effects', seconds: 3, categories: ['fx', 'zoom', 'adjustments'] },
   { id: 'color', seconds: 2.4, categories: ['luts', 'filters'] },
   { id: 'transitions', seconds: 2.4, categories: ['transitions'] },

@@ -909,224 +909,59 @@ async function main() {
     ],
   }, "visual-moments");
 
-  const mgOverlay = await writeJson("mg/projections/lower-third.timeline-manifest.json", {
+  const remotionComponentSourcePath = path.join(artifactRoot, "mg/components/lower-third.tsx");
+  await mkdir(path.dirname(remotionComponentSourcePath), { recursive: true });
+  const remotionComponentSource = `import React from "react";
+import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+
+export default function LowerThird() {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 18, stiffness: 170 } });
+  const exit = interpolate(frame, [72, 90], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-end", padding: 72, opacity: exit }}>
+      <div data-mg-role="lower-third" style={{ transform: \`translateX(\${(1 - enter) * -120}px)\` }}>
+        <strong data-mg-role="headline">Clash Motion</strong>
+      </div>
+    </AbsoluteFill>
+  );
+}
+`;
+  await writeFile(remotionComponentSourcePath, remotionComponentSource, "utf8");
+
+  const remotionDelivery = await writeJson("mg/evidence/lower-third.remotion-delivery.json", {
     schemaVersion: 1,
-    overlayId: "lower-third-001",
-    sourcePath: "projections/mg/lower-third-001/index.html",
-    renderedAssetPath: "assets/overlays/lower-third-001.webm",
-    casApply: timelineCasApply("projections/timelines/lower-third-001.mg.timeline.yaml"),
-    timelineItems: [
-      {
-        id: "overlay-lower-third-001",
-        type: "composition",
-        compositionKind: "motion-graphics",
-        runtime: "html",
-        compositionId: "lower-third-001",
-        sourcePath: "projections/mg/lower-third-001/index.html",
-        renderedAssetPath: "assets/overlays/lower-third-001.webm",
-        from: 120,
-        durationInFrames: 90,
-      },
-    ],
-    validation: {
-      durationFrames: 90,
-      dimensions: { width: 1080, height: 1920 },
-      htmlPreview: true,
-      seekablePreview: true,
-      currentFrameState: "data-current-frame",
-      frameEvent: "clash-mg-frame",
-      renderRequired: true,
-      externalRuntime: false,
-      implementation: {
-        renderer: "clash-first-party-mg-composition",
-        source: "first-party",
-        license: "MIT",
-        thirdPartyCodeCopied: false,
-        externalRuntime: false,
-        researchReferences: ["HyperFrames"],
-      },
+    kind: "clash.remotion-component.delivery-evidence",
+    component: {
+      nodeId: "node-remotion-lower-third",
+      nodeType: "remotion-component",
+      componentId: "lower-third",
+      sourcePath: "mg/components/lower-third.tsx",
+      defaultExport: true,
+      sourceBytes: Buffer.byteLength(remotionComponentSource),
     },
-  }, "mg-overlay-manifest");
-
-  const mgPreviewVerification = await writeJson("mg/qa/lower-third.preview-verification.json", {
-    schemaVersion: 1,
-    kind: "clash.mg.preview-verification",
-    status: "pass",
-    overlayId: "lower-third-001",
-    htmlPath: "projections/mg/lower-third-001/index.html",
-    manifestPath: "mg/projections/lower-third.timeline-manifest.json",
-    framesChecked: [0, 15, 30],
-    checks: [
-      {
-        id: "html.self-contained",
-        label: "HTML preview is self-contained",
-        required: true,
-        status: "pass",
-        expected: "no remote URLs, external scripts, external stylesheets, or dynamic imports",
-        actual: "no external references",
-      },
-      {
-        id: "html.seek-api",
-        label: "HTML preview exposes seek controls and frame events",
-        required: true,
-        status: "pass",
-        expected: "window.__CLASH_MG__, scrubber, data-current-frame, and clash-mg-frame event",
-        actual: "seek API present",
-      },
-      {
-        id: "manifest.cas-fresh-pull",
-        label: "Timeline apply uses implicit cwd CAS",
-        required: true,
-        status: "pass",
-        expected: "pull then apply with implicit cwd observation and explicit --timeline runtime arg",
-        actual: "implicit cwd CAS present",
-      },
-      {
-        id: "implementation.first-party-license-safe",
-        label: "Implementation is first-party and license-safe",
-        required: true,
-        status: "pass",
-        expected: "first-party MIT renderer with no copied third-party runtime",
-        actual: "first-party renderer declared",
-      },
-      {
-        id: "frames.deterministic-evaluation",
-        label: "Frame evaluation is deterministic",
-        required: true,
-        status: "pass",
-        expected: "same frame evaluates to identical layer styles",
-        actual: "deterministic evaluator output",
-      },
-    ],
-    frameEvaluations: [
-      {
-        frame: 0,
-        layers: [
-          { id: "overlay-lower-third-001", type: "shape", visible: true, style: { x: -760, y: 1350, opacity: 0, scale: 1, rotation: 0 } },
-          { id: "title", type: "text", visible: false, style: { x: 116, y: 1436, opacity: 0, scale: 1, rotation: 0 } },
-        ],
-      },
-      {
-        frame: 15,
-        layers: [
-          { id: "overlay-lower-third-001", type: "shape", visible: true, style: { x: 68.148, y: 1350, opacity: 0.92, scale: 1, rotation: 0 } },
-          { id: "title", type: "text", visible: true, style: { x: 116, y: 1386.05, opacity: 1, scale: 1, rotation: 0 } },
-        ],
-      },
-      {
-        frame: 30,
-        layers: [
-          { id: "overlay-lower-third-001", type: "shape", visible: true, style: { x: 72, y: 1350, opacity: 0.92, scale: 1, rotation: 0 } },
-          { id: "title", type: "text", visible: true, style: { x: 116, y: 1386, opacity: 1, scale: 1, rotation: 0 } },
-        ],
-      },
-    ],
-    blockedReasons: [],
-  }, "mg-preview-verification");
-
-  const compositionRoute = await writeJson("mg/routes/lower-third.composition-route.json", {
-    schemaVersion: 1,
-    kind: "clash.render.composition-route",
-    compositionId: "lower-third-001",
-    compositionKind: "motion-graphics",
-    status: "planned",
-    selectedRuntime: "html",
-    fallbackUsed: false,
-    routeCommand: "clash production render-mg",
-    requirements: ["agent-readable", "interactive-preview", "transparent-overlay"],
-    availableRuntimes: ["html", "ffmpeg"],
-    inputPath: "compositions/lower-third-001/spec.json",
-    outputPath: "projections/mg/lower-third-001/index.html",
-    validationPlan: ["duration", "dimensions", "fps", "nonblank-frames", "alpha"],
-    decisionLog: ["selected html for agent-readable motion-graphics preview"],
-    blockedReasons: [],
-    rejectedFallbacks: [],
-    createdAt: "2026-01-01T00:00:00.000Z",
-  }, "composition-route");
-
-  const reactCompositionTimeline = await writeJson("mg/projections/react-chart.composition.timeline-manifest.json", {
-    schemaVersion: 1,
-    kind: "clash.composition.timeline-projection",
-    routePlanPath: "mg/routes/react-chart.route.json",
-    compositionId: "react-chart",
-    compositionKind: "custom",
-    runtime: "remotion",
-    sourcePath: "components/ReactChart.tsx",
-    renderedAssetId: "asset-react-chart-render",
-    renderedAssetPath: "assets/renders/react-chart.webm",
-    routeCommand: "clash render remotion",
-    validationPlan: ["duration", "dimensions", "fps", "nonblank-frames"],
-    timelineItems: [
-      {
-        id: "composition-react-chart",
+    timeline: {
+      timelineId: "timeline-main",
+      item: {
+        id: "composition-lower-third",
         type: "composition",
-        from: 30,
-        durationInFrames: 120,
+        from: 0,
+        durationInFrames: 90,
         compositionKind: "custom",
         runtime: "remotion",
-        compositionId: "react-chart",
-        sourcePath: "components/ReactChart.tsx",
-        renderedAssetPath: "assets/renders/react-chart.webm",
-        assetId: "asset-react-chart-render",
+        compositionId: "lower-third",
+        sourceNodeId: "node-remotion-lower-third",
       },
-    ],
-    validation: {
-      routeStatus: "planned",
-      fallbackUsed: false,
-      renderedAssetRegistered: true,
-      renderedAssetMatchesRoute: true,
-      localProjectPaths: true,
-      timelineItemType: "composition",
+      resolvesLatestSource: true,
     },
-    casApply: timelineCasApply("projections/timelines/react-chart.composition.timeline.yaml"),
-  }, "composition-timeline-projection");
-
-  const mgVideoExport = await writeJson("mg/exports/lower-third-001.webm.manifest.json", {
-    kind: "clash.mg.video-export",
-    compositionId: "lower-third-001",
-    sourceSpecPath: "compositions/lower-third-001/spec.json",
-    outputPath: "assets/overlays/lower-third-001.webm",
-    format: "webm",
-    fps: 30,
-    durationInFrames: 90,
-    durationSeconds: 3,
-    dimensions: { width: 1080, height: 1920 },
-    renderer: {
-      kind: "first-party-rgba-rasterizer",
-      externalRuntime: false,
-      ffmpeg: "ffmpeg",
+    render: {
+      command: "clash timeline render",
+      status: "completed",
+      assetId: "asset-timeline-main-render",
+      playable: true,
     },
-    alpha: {
-      requested: true,
-      verified: true,
-      mode: "vp9-alpha-mode",
-      pixelSampleVerified: true,
-      reason: "ffprobe reported VP9 alpha_mode=1 and decoded alpha-plane samples contain transparent and visible pixels",
-      sample: {
-        frame: 0,
-        width: 1080,
-        height: 1920,
-        pixels: 2073600,
-        transparentPixels: 1800000,
-        visiblePixels: 240000,
-        minAlpha: 0,
-        maxAlpha: 255,
-      },
-    },
-    probe: {
-      codecName: "vp9",
-      width: 1080,
-      height: 1920,
-      pixelFormat: "yuv420p",
-      durationSeconds: 3,
-      alphaMode: "1",
-    },
-    limitations: [
-      "text is rendered with a deterministic first-party bitmap font",
-      "rotation is rejected until the rasterizer supports it",
-    ],
-  }, "mg-video-export");
-
+  }, "remotion-component-delivery");
   const derivedOverlay = await writeJson("mg/projections/logo-callout.derived-overlay.timeline-manifest.json", {
     schemaVersion: 1,
     kind: "clash.derived-overlay.timeline-projection",
@@ -2347,23 +2182,14 @@ async function main() {
     {
       id: "motion-graphics",
       artifacts: [
-        mgOverlay.path,
-        mgPreviewVerification.path,
-        compositionRoute.path,
-        reactCompositionTimeline.path,
-        mgVideoExport.path,
-        derivedOverlay.path,
+        remotionComponentSourcePath,
+        remotionDelivery.path,
       ],
       checks: [
-        { name: "MG overlay manifest validates seekable HTML preview contract", pass: true },
-        { name: "MG preview verification validates deterministic frame QA", pass: true },
-        { name: "composition route plan validates without silent fallback", pass: true },
-        { name: "rendered Remotion composition projection validates CAS timeline contract", pass: true },
-        { name: "MG video export validates decoded alpha samples", pass: true },
-        { name: "derived overlay projection validates", pass: true },
-        { name: "derived overlay preserves copy-on-write lineage", pass: true },
-        { name: "CAS apply boundary is explicit", pass: true },
-        { name: "first-party HTML runtime is required", pass: true },
+        { name: "Canvas remotion-component source is editable TSX", pass: true },
+        { name: "Timeline composition binds the fixed sourceNodeId", pass: true },
+        { name: "Timeline resolves the latest component source", pass: true },
+        { name: "Timeline render completed with a playable Asset", pass: true },
       ],
     },
     {

@@ -14,8 +14,6 @@ import {
   timelineHash,
 } from "../lib/timeline-projection";
 import { applyProductionMetadataAction, applyProductionMetadataProjection } from "../lib/production-actions";
-import { renderMgProductionProjection } from "../lib/mg-production";
-import { exportMgSnapshotAsset } from "../lib/mg-snapshot-export";
 import { planTalkingHeadTextCutAction } from "../lib/talking-head-plan";
 import { analyzeWavBeatAction } from "../lib/audio-beat-analysis";
 import { exportTextCutMedia } from "../lib/text-cut-media-export";
@@ -48,10 +46,7 @@ test("registers a top-level production command for action-driven media workflows
     "apply-metadata",
     "apply-metadata-projection",
     "validate-pipeline-manifest",
-    "render-mg",
-    "verify-mg-preview",
     "plan-composition-route",
-    "project-composition-timeline",
     "plan-review-gate",
     "approve-review-gate",
     "plan-dry-run-cost-gate",
@@ -62,8 +57,6 @@ test("registers a top-level production command for action-driven media workflows
     "plan-audio-stem-separation",
     "plan-comfyui-workflow",
     "plan-content-credentials",
-    "export-mg-snapshots",
-    "export-mg-video",
     "project-derived-overlay",
     "plan-text-cut",
     "export-text-cut-media",
@@ -890,230 +883,15 @@ test("runs production apply-metadata as a black-box CLI command over fixtures", 
   assert.equal(editedTalkAsset.metadata["talking-head.analysis"].words.at(-1).text, "again");
 });
 
-test("renders an MG spec into self-contained HTML, manifest, and timeline YAML projection", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-mg-"));
-  const specPath = join(cwd, "compositions", "lower-third", "spec.json");
-  await writeJson(specPath, {
-    id: "agent-cwd-lower-third",
-    name: "Agent CWD Lower Third",
-    width: 1080,
-    height: 1920,
-    fps: 30,
-    durationInFrames: 90,
-    background: "transparent",
-    layers: [
-      {
-        id: "bar",
-        type: "shape",
-        shape: "rounded-rect",
-        from: 0,
-        durationInFrames: 75,
-        x: 72,
-        y: 1350,
-        width: 640,
-        height: 132,
-        fill: "#101820",
-        opacity: 0,
-        animations: [
-          { property: "x", from: -760, to: 72, startFrame: 0, durationInFrames: 18, easing: "easeOutCubic" },
-          { property: "opacity", from: 0, to: 0.92, startFrame: 0, durationInFrames: 12, easing: "linear" },
-        ],
-      },
-      {
-        id: "title",
-        type: "text",
-        from: 6,
-        durationInFrames: 60,
-        x: 116,
-        y: 1386,
-        text: "Agent owns cwd",
-        fontSize: 56,
-        color: "#F8FAFC",
-        opacity: 0,
-        animations: [
-          { property: "opacity", from: 0, to: 1, startFrame: 6, durationInFrames: 8, easing: "linear" },
-        ],
-      },
-    ],
-  });
-
-  const result = await renderMgProductionProjection({
-    cwd,
-    specPath,
-    outDir: "projections/mg/agent-cwd-lower-third",
-    renderedAssetPath: "assets/overlays/agent-cwd-lower-third.webm",
-    timelineFromFrame: 120,
-  });
-
-  assert.equal(result.compositionId, "agent-cwd-lower-third");
-  assert.equal(result.htmlPath, join(cwd, "projections", "mg", "agent-cwd-lower-third", "index.html"));
-  assert.equal(result.manifestPath, join(cwd, "projections", "mg", "agent-cwd-lower-third", "timeline-manifest.json"));
-  assert.equal(result.timelineProjectionPath, join(cwd, "projections", "timelines", "agent-cwd-lower-third.mg.timeline.yaml"));
-  assert.equal("timelineLockPath" in result, false);
-  const html = await readFile(result.htmlPath, "utf8");
-  assert.match(html, /window\.__CLASH_MG__/);
-  assert.match(html, /id="frame-scrubber"/);
-  assert.match(html, /data-current-frame="0"/);
-  assert.match(html, /clash-mg-frame/);
-  assert.doesNotMatch(html, /https?:\/\//);
-  const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
-  assert.deepEqual(
-    manifest.casApply,
-    expectedTimelineCasApply("projections/timelines/agent-cwd-lower-third.mg.timeline.yaml"),
-  );
-  assert.equal(manifest.timelineItems[0].type, "composition");
-  assert.equal(manifest.timelineItems[0].from, 120);
-  assert.equal(manifest.validation.seekablePreview, true);
-  assert.equal(manifest.validation.currentFrameState, "data-current-frame");
-  assert.equal(manifest.validation.frameEvent, "clash-mg-frame");
-  assert.equal(manifest.validation.externalRuntime, false);
-  assert.deepEqual(manifest.validation.implementation, {
-    renderer: "clash-first-party-mg-composition",
-    source: "first-party",
-    license: "MIT",
-    thirdPartyCodeCopied: false,
-    externalRuntime: false,
-    researchReferences: ["HyperFrames"],
-  });
-  const parsedTimeline = timelineDslFromYaml(await readFile(result.timelineProjectionPath, "utf8"));
-  assert.equal(parsedTimeline.ok, true);
-  if (!parsedTimeline.ok) return;
-  assert.equal(parsedTimeline.dsl.tracks[0].role, "overlay");
-  assert.equal(parsedTimeline.dsl.tracks[0].items[0].type, "composition");
-});
-
-test("runs production render-mg as a black-box CLI command over the MG fixture", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-mg-cli-"));
-  const fixtureRoot = new URL("../../../../examples/mg/lower-third/", import.meta.url);
-  await cp(fixtureRoot, join(cwd, "mg"), { recursive: true });
-  const cliEntry = new URL("../index.ts", import.meta.url);
-  const require = createRequire(import.meta.url);
-  const tsxLoader = require.resolve("tsx");
-
-  const child = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "render-mg",
-      "--spec",
-      "mg/spec.json",
-      "--out",
-      "projections/mg/lower-third",
-      "--rendered-asset",
-      "assets/overlays/lower-third.webm",
-      "--from",
-      "42",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-
-  assert.equal(child.status, 0, child.stderr);
-  const payload = JSON.parse(child.stdout);
-  assert.match(payload.htmlPath, /projections\/mg\/lower-third\/index\.html$/);
-  assert.match(payload.timelineProjectionPath, /projections\/timelines\/cwd-principle-lower-third\.mg\.timeline\.yaml$/);
-  assert.equal("timelineLockPath" in payload, false);
-  assert.ok(existsSync(payload.htmlPath));
-  assert.ok(existsSync(payload.timelineProjectionPath));
-  const manifest = JSON.parse(await readFile(payload.manifestPath, "utf8"));
-  assert.equal("lockPath" in manifest.casApply, false);
-  assert.equal(manifest.casApply.applyArgs.includes("--lock"), false);
-  assert.deepEqual(
-    manifest.casApply,
-    expectedTimelineCasApply("projections/timelines/cwd-principle-lower-third.mg.timeline.yaml"),
-  );
-  assert.equal(manifest.validation.implementation.thirdPartyCodeCopied, false);
-  assert.equal(manifest.validation.implementation.renderer, "clash-first-party-mg-composition");
-});
-
-test("runs production verify-mg-preview over rendered HTML and writes deterministic frame QA", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-mg-preview-"));
-  const fixtureRoot = new URL("../../../../examples/mg/lower-third/", import.meta.url);
-  await cp(fixtureRoot, join(cwd, "mg"), { recursive: true });
-  const cliEntry = new URL("../index.ts", import.meta.url);
-  const require = createRequire(import.meta.url);
-  const tsxLoader = require.resolve("tsx");
-
-  const render = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "render-mg",
-      "--spec",
-      "mg/spec.json",
-      "--out",
-      "projections/mg/lower-third",
-      "--rendered-asset",
-      "assets/overlays/lower-third.webm",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-  assert.equal(render.status, 0, render.stderr);
-
-  const verify = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "verify-mg-preview",
-      "--html",
-      "projections/mg/lower-third/index.html",
-      "--manifest",
-      "projections/mg/lower-third/timeline-manifest.json",
-      "--frames",
-      "0,12,42",
-      "--out",
-      "qa/mg/lower-third.preview-verification.json",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-
-  assert.equal(verify.status, 0, verify.stderr);
-  const payload = JSON.parse(verify.stdout);
-  assert.equal(payload.status, "pass");
-  assert.equal(payload.overlayId, "cwd-principle-lower-third");
-  assert.deepEqual(payload.framesChecked, [0, 12, 42]);
-  assert.match(payload.reportPath, /qa\/mg\/lower-third\.preview-verification\.json$/);
-  const report = JSON.parse(await readFile(payload.reportPath, "utf8"));
-  assert.equal(report.kind, "clash.mg.preview-verification");
-  assert.equal(report.status, "pass");
-  assert.deepEqual(report.blockedReasons, []);
-  assert.deepEqual(
-    report.checks.map((check: any) => [check.id, check.status]),
-    [
-      ["html.self-contained", "pass"],
-      ["html.seek-api", "pass"],
-      ["manifest.cas-fresh-pull", "pass"],
-      ["implementation.first-party-license-safe", "pass"],
-      ["frames.deterministic-evaluation", "pass"],
-    ],
-  );
-  assert.deepEqual(report.frameEvaluations.map((entry: any) => entry.frame), [0, 12, 42]);
-  assert.ok(
-    report.frameEvaluations[1].layers.some((layer: any) => layer.id === "title" && layer.style.opacity > 0),
-    "frame 12 should evaluate visible title animation state",
-  );
-});
-
 test("runs production plan-composition-route without silent runtime fallback", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-composition-route-cli-"));
-  await writeJson(join(cwd, "plans", "html-mg-route.json"), {
+  await writeJson(join(cwd, "plans", "remotion-motion-graphics-route.json"), {
     compositionId: "lower-third",
     compositionKind: "motion-graphics",
     requirements: ["agent-readable", "interactive-preview", "transparent-overlay"],
-    availableRuntimes: ["html", "ffmpeg"],
-    inputPath: "projections/mg/lower-third/spec.json",
-    outputPath: "projections/mg/lower-third/index.html",
+    availableRuntimes: ["remotion", "html", "ffmpeg"],
+    inputPath: "components/LowerThird.tsx",
+    outputPath: "assets/renders/lower-third.webm",
   });
   await writeJson(join(cwd, "plans", "react-route.json"), {
     compositionId: "react-chart",
@@ -1152,19 +930,19 @@ test("runs production plan-composition-route without silent runtime fallback", a
     { cwd, encoding: "utf8" },
   );
 
-  const html = runRoute("plans/html-mg-route.json", "plans/routes/lower-third.route.json");
-  assert.equal(html.status, 0, html.stderr);
-  const htmlPayload = JSON.parse(html.stdout);
-  assert.equal(htmlPayload.status, "planned");
-  assert.equal(htmlPayload.selectedRuntime, "html");
-  const htmlPlan = JSON.parse(await readFile(join(cwd, "plans", "routes", "lower-third.route.json"), "utf8"));
-  assert.equal(htmlPlan.kind, "clash.render.composition-route");
-  assert.equal(htmlPlan.status, "planned");
-  assert.equal(htmlPlan.selectedRuntime, "html");
-  assert.equal(htmlPlan.fallbackUsed, false);
-  assert.equal(htmlPlan.routeCommand, "clash production render-mg");
-  assert.deepEqual(htmlPlan.validationPlan, ["duration", "dimensions", "fps", "nonblank-frames", "alpha"]);
-  assert.match(htmlPlan.decisionLog.join("\n"), /selected html for agent-readable motion-graphics preview/);
+  const motionGraphics = runRoute("plans/remotion-motion-graphics-route.json", "plans/routes/lower-third.route.json");
+  assert.equal(motionGraphics.status, 0, motionGraphics.stderr);
+  const motionGraphicsPayload = JSON.parse(motionGraphics.stdout);
+  assert.equal(motionGraphicsPayload.status, "planned");
+  assert.equal(motionGraphicsPayload.selectedRuntime, "remotion");
+  const motionGraphicsPlan = JSON.parse(await readFile(join(cwd, "plans", "routes", "lower-third.route.json"), "utf8"));
+  assert.equal(motionGraphicsPlan.kind, "clash.render.composition-route");
+  assert.equal(motionGraphicsPlan.status, "planned");
+  assert.equal(motionGraphicsPlan.selectedRuntime, "remotion");
+  assert.equal(motionGraphicsPlan.fallbackUsed, false);
+  assert.equal(motionGraphicsPlan.routeCommand, "clash canvas add --type remotion && clash timeline render");
+  assert.deepEqual(motionGraphicsPlan.validationPlan, ["duration", "dimensions", "fps", "nonblank-frames", "alpha"]);
+  assert.match(motionGraphicsPlan.decisionLog.join("\n"), /selected remotion for motion-graphics/i);
 
   const react = runRoute("plans/react-route.json", "plans/routes/react-chart.route.json");
   assert.equal(react.status, 0, react.stderr);
@@ -1190,115 +968,8 @@ test("runs production plan-composition-route without silent runtime fallback", a
   assert.equal(remotionPlan.status, "planned");
   assert.equal(remotionPlan.selectedRuntime, "remotion");
   assert.equal(remotionPlan.fallbackUsed, false);
-  assert.equal(remotionPlan.routeCommand, "clash render remotion");
+  assert.equal(remotionPlan.routeCommand, "clash canvas add --type remotion && clash timeline render");
   assert.deepEqual(remotionPlan.validationPlan, ["duration", "dimensions", "fps", "nonblank-frames"]);
-});
-
-test("projects an already rendered Remotion composition into a CAS-required timeline view", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-composition-timeline-cli-"));
-  await writeJson(join(cwd, "plans", "routes", "react-chart.route.json"), {
-    schemaVersion: 1,
-    kind: "clash.render.composition-route",
-    compositionId: "react-chart",
-    compositionKind: "custom",
-    status: "planned",
-    selectedRuntime: "remotion",
-    fallbackUsed: false,
-    routeCommand: "clash render remotion",
-    requirements: ["react-components", "timeline-editor-integration"],
-    availableRuntimes: ["remotion", "html"],
-    inputPath: "components/ReactChart.tsx",
-    outputPath: "assets/renders/react-chart.webm",
-    validationPlan: ["duration", "dimensions", "fps", "nonblank-frames"],
-    decisionLog: ["selected remotion for react component timeline integration"],
-    blockedReasons: [],
-    rejectedFallbacks: [],
-    createdAt: "2026-07-06T00:00:00.000Z",
-  });
-  await writeJson(join(cwd, "assets", "manifest.json"), {
-    assets: [
-      {
-        id: "asset-react-chart-render",
-        type: "video",
-        path: "assets/renders/react-chart.webm",
-        metadata: {
-          "render.composition": {
-            compositionId: "react-chart",
-            runtime: "remotion",
-          },
-        },
-      },
-    ],
-  });
-  const cliEntry = new URL("../index.ts", import.meta.url);
-  const require = createRequire(import.meta.url);
-  const tsxLoader = require.resolve("tsx");
-
-  const child = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "project-composition-timeline",
-      "--route",
-      "plans/routes/react-chart.route.json",
-      "--rendered-asset",
-      "asset-react-chart-render",
-      "--from",
-      "30",
-      "--duration",
-      "120",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-
-  assert.equal(child.status, 0, child.stderr);
-  const payload = JSON.parse(child.stdout);
-  assert.equal(payload.projected, true);
-  assert.equal(payload.compositionId, "react-chart");
-  assert.equal(payload.runtime, "remotion");
-  assert.match(payload.timelineProjectionPath, /projections\/timelines\/react-chart\.composition\.timeline\.yaml$/);
-  assert.match(payload.manifestPath, /projections\/timelines\/react-chart\.composition\.timeline-manifest\.json$/);
-  assert.equal("timelineLockPath" in payload, false);
-
-  const parsedTimeline = timelineDslFromYaml(await readFile(payload.timelineProjectionPath, "utf8"));
-  assert.equal(parsedTimeline.ok, true);
-  if (!parsedTimeline.ok) return;
-  const item = parsedTimeline.dsl.tracks[0].items[0] as any;
-  assert.deepEqual([
-    item.id,
-    item.type,
-    item.runtime,
-    item.compositionId,
-    item.sourcePath,
-    item.renderedAssetPath,
-    item.assetId,
-    item.from,
-    item.durationInFrames,
-  ], [
-    "composition-react-chart",
-    "composition",
-    "remotion",
-    "react-chart",
-    "components/ReactChart.tsx",
-    "assets/renders/react-chart.webm",
-    "asset-react-chart-render",
-    30,
-    120,
-  ]);
-
-  const manifest = JSON.parse(await readFile(payload.manifestPath, "utf8"));
-  assert.equal(manifest.kind, "clash.composition.timeline-projection");
-  assert.deepEqual(
-    manifest.casApply,
-    expectedTimelineCasApply("projections/timelines/react-chart.composition.timeline.yaml"),
-  );
-  assert.equal(manifest.validation.fallbackUsed, false);
-  assert.equal(manifest.validation.renderedAssetRegistered, true);
-  assert.equal(manifest.timelineItems[0].runtime, "remotion");
 });
 
 test("runs production review gates with explicit approval and stale-write protection", async () => {
@@ -2589,123 +2260,6 @@ test("runs production content credentials plan without signing C2PA", async () =
   assert.equal(exportAsset.metadata["provenance.content-credentials"].signatureStatus, "unsigned");
 });
 
-test("exports MG frame snapshots as a real local asset manifest entry", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-mg-asset-"));
-  const specPath = join(cwd, "compositions", "lower-third", "spec.json");
-  const assetsPath = join(cwd, "assets", "manifest.json");
-  await writeJson(assetsPath, { assets: [] });
-  await writeJson(specPath, {
-    id: "agent-cwd-lower-third",
-    name: "Agent CWD Lower Third",
-    width: 1080,
-    height: 1920,
-    fps: 30,
-    durationInFrames: 90,
-    background: "transparent",
-    layers: [
-      {
-        id: "bar",
-        type: "shape",
-        shape: "rounded-rect",
-        from: 0,
-        durationInFrames: 75,
-        x: 72,
-        y: 1350,
-        width: 640,
-        height: 132,
-        fill: "#101820",
-        opacity: 0,
-        animations: [
-          { property: "x", from: -760, to: 72, startFrame: 0, durationInFrames: 18, easing: "easeOutCubic" },
-          { property: "opacity", from: 0, to: 0.92, startFrame: 0, durationInFrames: 12, easing: "linear" },
-        ],
-      },
-      {
-        id: "title",
-        type: "text",
-        from: 6,
-        durationInFrames: 60,
-        x: 116,
-        y: 1386,
-        text: "Agent owns cwd",
-        fontSize: 56,
-        color: "#F8FAFC",
-        opacity: 0,
-        animations: [
-          { property: "opacity", from: 0, to: 1, startFrame: 6, durationInFrames: 8, easing: "linear" },
-        ],
-      },
-    ],
-  });
-
-  const result = await exportMgSnapshotAsset({
-    cwd,
-    specPath,
-    assetId: "asset-mg-lower-third",
-    outDir: "assets/overlays/lower-third",
-    frames: [0, 18, 42],
-    assetsPath,
-  });
-
-  assert.equal(result.assetId, "asset-mg-lower-third");
-  assert.equal(result.framePaths.length, 3);
-  assert.equal(result.assetManifestPath, assetsPath);
-  assert.match(result.exportManifestPath, /assets\/overlays\/lower-third\/manifest\.json$/);
-  const frameSvg = await readFile(result.framePaths[1], "utf8");
-  assert.match(frameSvg, /<svg/);
-  assert.match(frameSvg, /data-frame="18"/);
-  assert.match(frameSvg, /Agent owns cwd/);
-  assert.doesNotMatch(frameSvg, /<script/i);
-  assert.doesNotMatch(frameSvg, /\b(?:href|src)=["']https?:\/\//i);
-  const assets = JSON.parse(await readFile(assetsPath, "utf8"));
-  assert.equal(assets.assets[0].id, "asset-mg-lower-third");
-  assert.equal(assets.assets[0].type, "overlay-snapshot-sequence");
-  assert.equal(assets.assets[0].metadata["mg.snapshot-export"].frameCount, 3);
-  assert.deepEqual(assets.assets[0].metadata["mg.snapshot-export"].frames.map((frame: any) => frame.frame), [0, 18, 42]);
-});
-
-test("runs production export-mg-snapshots as a black-box CLI command over the MG fixture", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-mg-asset-cli-"));
-  const fixtureRoot = new URL("../../../../examples/mg/lower-third/", import.meta.url);
-  await cp(fixtureRoot, join(cwd, "mg"), { recursive: true });
-  await writeJson(join(cwd, "assets", "manifest.json"), { assets: [] });
-  const cliEntry = new URL("../index.ts", import.meta.url);
-  const require = createRequire(import.meta.url);
-  const tsxLoader = require.resolve("tsx");
-
-  const child = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "export-mg-snapshots",
-      "--spec",
-      "mg/spec.json",
-      "--asset-id",
-      "asset-mg-lower-third",
-      "--out",
-      "assets/overlays/lower-third",
-      "--assets",
-      "assets/manifest.json",
-      "--frames",
-      "0,18,42",
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-
-  assert.equal(child.status, 0, child.stderr);
-  const payload = JSON.parse(child.stdout);
-  assert.equal(payload.assetId, "asset-mg-lower-third");
-  assert.equal(payload.frames, 3);
-  assert.match(payload.exportManifestPath, /assets\/overlays\/lower-third\/manifest\.json$/);
-  assert.ok(existsSync(join(cwd, "assets", "overlays", "lower-third", "frame-0018.svg")));
-  const assets = JSON.parse(await readFile(join(cwd, "assets", "manifest.json"), "utf8"));
-  assert.equal(assets.assets[0].metadata["mg.snapshot-export"].compositionId, "cwd-principle-lower-third");
-});
-
 test("projects a derived overlay asset into a CAS-required timeline view", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "clash-production-derived-overlay-"));
   await writeJson(join(cwd, "assets", "manifest.json"), {
@@ -2720,13 +2274,7 @@ test("projects a derived overlay asset into a CAS-required timeline view", async
         id: "asset-logo-callout",
         type: "overlay-snapshot-sequence",
         path: "assets/derived/logo-callout/manifest.json",
-        metadata: {
-          "mg.snapshot-export": {
-            kind: "clash.mg.snapshot-export",
-            compositionId: "logo-callout",
-            frameCount: 3,
-          },
-        },
+        metadata: {},
       },
     ],
   });
@@ -2799,114 +2347,6 @@ test("projects a derived overlay asset into a CAS-required timeline view", async
   );
   assert.equal(manifest.timelineItems[0].type, "derived-overlay");
 
-});
-
-test("runs production export-mg-video as a black-box CLI command and registers a playable overlay asset", async () => {
-  const ffmpeg = resolveExecutable("ffmpeg");
-  const ffprobe = resolveExecutable("ffprobe");
-  assert.ok(ffmpeg, "ffmpeg is required for MG video export test");
-  assert.ok(ffprobe, "ffprobe is required for MG video export test");
-
-  const cwd = await mkdtemp(join(tmpdir(), "clash-production-mg-video-cli-"));
-  await writeJson(join(cwd, "compositions", "badge", "spec.json"), {
-    id: "agent-badge",
-    name: "Agent Badge",
-    width: 160,
-    height: 90,
-    fps: 12,
-    durationInFrames: 12,
-    background: "transparent",
-    layers: [
-      {
-        id: "panel",
-        type: "shape",
-        shape: "rounded-rect",
-        from: 0,
-        durationInFrames: 12,
-        x: 12,
-        y: 20,
-        width: 112,
-        height: 34,
-        radius: 6,
-        fill: "#101820",
-        opacity: 0.9,
-      },
-      {
-        id: "label",
-        type: "text",
-        from: 0,
-        durationInFrames: 12,
-        x: 22,
-        y: 28,
-        text: "AGENT",
-        fontSize: 16,
-        color: "#F8FAFC",
-        opacity: 1,
-      },
-    ],
-  });
-  await writeJson(join(cwd, "assets", "manifest.json"), { assets: [] });
-  const cliEntry = new URL("../index.ts", import.meta.url);
-  const require = createRequire(import.meta.url);
-  const tsxLoader = require.resolve("tsx");
-
-  const child = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      tsxLoader,
-      cliEntry.pathname,
-      "production",
-      "export-mg-video",
-      "--spec",
-      "compositions/badge/spec.json",
-      "--asset-id",
-      "asset-agent-badge-video",
-      "--out",
-      "assets/overlays/agent-badge.webm",
-      "--assets",
-      "assets/manifest.json",
-      "--ffmpeg",
-      ffmpeg,
-      "--ffprobe",
-      ffprobe,
-      "--json",
-    ],
-    { cwd, encoding: "utf8" },
-  );
-
-  assert.equal(child.status, 0, child.stderr);
-  const payload = JSON.parse(child.stdout);
-  assert.equal(payload.assetId, "asset-agent-badge-video");
-  assert.equal(payload.format, "webm");
-  assert.match(payload.outputPath, /assets\/overlays\/agent-badge\.webm$/);
-  assert.match(payload.exportManifestPath, /assets\/overlays\/agent-badge\.webm\.manifest\.json$/);
-  assert.ok(existsSync(payload.outputPath));
-  assert.ok(existsSync(payload.exportManifestPath));
-  const exportManifest = JSON.parse(await readFile(payload.exportManifestPath, "utf8"));
-  assert.equal(exportManifest.kind, "clash.mg.video-export");
-  assert.equal(exportManifest.probe.width, 160);
-  assert.equal(exportManifest.probe.height, 90);
-  assert.equal(exportManifest.probe.codecName, "vp9");
-  assert.equal(exportManifest.probe.alphaMode, "1");
-  assert.equal(exportManifest.alpha.requested, true);
-  assert.equal(exportManifest.alpha.verified, true);
-  assert.equal(exportManifest.alpha.mode, "vp9-alpha-mode");
-  assert.equal(exportManifest.alpha.pixelSampleVerified, true);
-  assert.equal(exportManifest.alpha.reason, "ffprobe reported VP9 alpha_mode=1 and decoded alpha-plane samples contain transparent and visible pixels");
-  assert.equal(exportManifest.alpha.sample.frame, 0);
-  assert.equal(exportManifest.alpha.sample.width, 160);
-  assert.equal(exportManifest.alpha.sample.height, 90);
-  assert.ok(exportManifest.alpha.sample.transparentPixels > 0);
-  assert.ok(exportManifest.alpha.sample.visiblePixels > 0);
-  assert.equal(exportManifest.alpha.sample.minAlpha, 0);
-  assert.ok(exportManifest.alpha.sample.maxAlpha > 0);
-  assert.equal(exportManifest.durationInFrames, 12);
-  const assets = JSON.parse(await readFile(join(cwd, "assets", "manifest.json"), "utf8"));
-  assert.equal(assets.assets[0].id, "asset-agent-badge-video");
-  assert.equal(assets.assets[0].type, "overlay-video");
-  assert.equal(assets.assets[0].path, "assets/overlays/agent-badge.webm");
-  assert.equal(assets.assets[0].metadata["mg.video-export"].compositionId, "agent-badge");
 });
 
 test("plans talking-head filler, tone-particle, and silence cuts from ASR words", () => {
@@ -4165,22 +3605,15 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
     "        src: assets/video/shot-1.mp4",
     "  - id: motion-graphics",
     "    items:",
-    "      - id: mg-lower",
+    "      - id: remotion-lower",
     "        type: composition",
     "        from: 60",
     "        durationInFrames: 30",
     "        compositionKind: motion-graphics",
-    "        runtime: html",
+    "        runtime: remotion",
     "        compositionId: lower-third",
-    "        sourcePath: projections/mg/lower-third/index.html",
-    "        renderedAssetPath: assets/overlays/lower-third.webm",
-    "        spec:",
-    "          id: lower-third",
-    "          width: 1080",
-    "          height: 1920",
-    "          fps: 30",
-    "          durationInFrames: 30",
-    "          layers: []",
+    "        sourcePath: components/lower-third.tsx",
+    "        sourceNodeId: canvas-remotion-lower",
     "  - id: captions",
     "    role: subtitle",
     "    items:",
@@ -4240,7 +3673,7 @@ test("runs production export-timeline-handoff as CSV for external NLE review", a
   assert.equal(await readFile(join(cwd, "exports", "handoff", "episode.timeline.csv"), "utf8"), [
     "trackId,itemId,type,startFrame,endFrame,startTimecode,endTimecode,durationFrames,assetId,source,notes",
     "video,shot-1,video,0,60,00:00:00:00,00:00:02:00,60,asset-shot-1,assets/video/shot-1.mp4,",
-    "motion-graphics,mg-lower,composition,60,90,00:00:02:00,00:00:03:00,30,,projections/mg/lower-third/index.html,composition lower-third",
+    "motion-graphics,remotion-lower,composition,60,90,00:00:02:00,00:00:03:00,30,,components/lower-third.tsx,composition lower-third",
     "captions,cap-1,text,30,90,00:00:01:00,00:00:03:00,60,,,开场重点",
     "",
   ].join("\n"));

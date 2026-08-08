@@ -8,6 +8,8 @@ export type ResolvedTimelineItem = Item & {
   naturalWidth?: number;
   naturalHeight?: number;
   resolvedSrcUrl?: string;
+  /** Render-start-only source resolved from a live Remotion Canvas node. */
+  componentSource?: string;
 };
 
 export type TimelineMediaMergeFieldMode =

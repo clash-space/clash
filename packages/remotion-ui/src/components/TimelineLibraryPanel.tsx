@@ -18,7 +18,6 @@ export let currentDraggedLibraryRecord: TimelineLibraryCatalogRecord | null = nu
 const CATEGORY_LABELS: Record<TimelineLibraryCategory, string> = {
   text: 'Text',
   stickers: 'Stickers',
-  'motion-graphics': 'Motion graphics',
   'sound-effects': 'Sound effects',
   transitions: 'Transitions',
   fx: 'FX',
@@ -28,14 +27,11 @@ const CATEGORY_LABELS: Record<TimelineLibraryCategory, string> = {
   captions: 'Captions',
   filters: 'Filters',
   adjustments: 'Adjustments',
-  templates: 'Templates',
 };
 
 const CATEGORY_CLUSTER: Record<TimelineLibraryCategory, TimelineLibraryCategory[]> = {
   text: ['text'],
-  stickers: ['stickers', 'motion-graphics', 'templates'],
-  'motion-graphics': ['stickers', 'motion-graphics', 'templates'],
-  templates: ['stickers', 'motion-graphics', 'templates'],
+  stickers: ['stickers'],
   'sound-effects': ['sound-effects', 'audio-fx'],
   'audio-fx': ['sound-effects', 'audio-fx'],
   transitions: ['fx', 'transitions', 'zoom'],

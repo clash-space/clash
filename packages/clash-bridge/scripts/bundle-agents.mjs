@@ -6,10 +6,7 @@
  *   ├── manifest.json                         ← list of all agent templates + meta
  *   ├── master-clash/
  *   │   ├── runtime.json                      ← bridge-only (which CLI to spawn)
- *   │   └── template/                         ← what gets cp -R'd into the workspace
- *   │       ├── AGENTS.md
- *   │       ├── CLAUDE.md
- *   │       └── GEMINI.md
+ *   │   └── plugins/clash/                    ← Skill + peer stdio MCP runtime
  *   ├── canvas-editor/...
  *   ...
  *
@@ -48,25 +45,10 @@ async function main() {
   for (const id of ids) {
     const src = join(ASSETS, "agents", id);
     const dst = join(DIST, id);
-    const dstTpl = join(dst, "template");
-    await mkdir(dstTpl, { recursive: true });
+    await mkdir(dst, { recursive: true });
 
-    // Compose AGENTS.md = shared prelude (universal agent rules) + this
-    // role's body. The prelude pins behaviors that have to hold across
-    // every agent template. Putting them in the shared SKILL is unreliable
-    // because Claude
-    // Code only loads skills on demand, but AGENTS.md is always read at
-    // session start. Keep role-specific guidance in
-    // assets/agents/<role>/AGENTS.md; cross-cutting rules go in the
-    // prelude so a fix lands for every agent at once.
-    const prelude = await readFile(join(ASSETS, "shared-cwd", "AGENTS-prelude.md"), "utf-8");
-    const roleBody = await readFile(join(src, "AGENTS.md"), "utf-8");
-    const nativeContract = prelude.trimEnd() + "\n\n" + roleBody;
-    await Promise.all([
-      writeFile(join(dstTpl, "AGENTS.md"), nativeContract),
-      writeFile(join(dstTpl, "CLAUDE.md"), nativeContract),
-      writeFile(join(dstTpl, "GEMINI.md"), nativeContract),
-    ]);
+    // Navigation lives in the packaged Skill and stdio MCP menu. Do not
+    // inject harness instruction files into a project workspace.
     await cp(join(src, "runtime.json"), join(dst, "runtime.json"));
     const runtime = JSON.parse(await readFile(join(dst, "runtime.json"), "utf-8"));
     for (const pluginId of runtime.plugins ?? []) {

@@ -58,6 +58,7 @@ import {
   MapTrifold,
   MagnifyingGlass,
   Cube,
+  Code,
 } from "@phosphor-icons/react";
 import { useLocation, useNavigate } from "react-router";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -74,6 +75,9 @@ import { updateProjectName } from "@clash/web-ui/lib/clientActions";
 import VideoNode from "./nodes/VideoNode";
 import ImageNode from "./nodes/ImageNode";
 import TextNode from "./nodes/TextNode";
+import RemotionComponentNode, {
+  DEFAULT_REMOTION_COMPONENT_SOURCE,
+} from "./nodes/RemotionComponentNode";
 import AudioNode from "./nodes/AudioNode";
 import PromptActionNode from "./nodes/ActionBadge"; // Renamed: ActionBadge -> PromptActionNode
 import GroupNode from "./nodes/GroupNode";
@@ -741,6 +745,7 @@ const nodeTypes = {
   image: ImageNode,
   text: TextNode,
   context: TextNode, // Remap context to TextNode
+  "remotion-component": RemotionComponentNode,
   audio: AudioNode,
   "action-badge": PromptActionNode, // Merged: Prompt + Action
   group: GroupNode,
@@ -2500,6 +2505,7 @@ export default function ProjectEditor({
     },
     { id: "video-editor", label: "Editor", icon: FilmSlate },
     { id: "director-stage", label: "Director Stage", icon: Cube },
+    { id: "remotion-component", label: "Remotion Component", icon: Code },
     { id: "group", label: "Group", icon: Square },
     { id: "text", label: "Text", icon: TextT },
   ];
@@ -2640,6 +2646,17 @@ export default function ProjectEditor({
           content: "# Hello World\nDouble click to edit.",
           ...nodeData,
         };
+      } else if (type === "remotion-component") {
+        nodeData = {
+          label: "Remotion Component",
+          componentId: "Component",
+          content: DEFAULT_REMOTION_COMPONENT_SOURCE,
+          compositionWidth: 720,
+          compositionHeight: 1280,
+          fps: 30,
+          durationInFrames: 120,
+          ...extraData,
+        };
       } else if (type === "context") {
         // Remap context creation to text node style but keep label if needed, or just treat as text
         nodeData = {
@@ -2725,6 +2742,11 @@ export default function ProjectEditor({
         defaultHeight = ACTION_BADGE_NODE_SIZE.height;
         layoutWidth = ACTION_BADGE_NODE_SIZE.width;
         layoutHeight = ACTION_BADGE_NODE_SIZE.height;
+      } else if (nodeType === "remotion-component") {
+        defaultWidth = 420;
+        defaultHeight = 320;
+        layoutWidth = 420;
+        layoutHeight = 320;
       } else if (nodeType === "prompt") {
         defaultWidth = 300;
         defaultHeight = 150;
@@ -6354,6 +6376,13 @@ export default function ProjectEditor({
                                           key={selectedTimeline.id}
                                           timeline={selectedTimeline}
                                           mediaInputs={timelineMediaInputs}
+                                          runtimeNodes={assetRelationGraph.nodes
+                                            .filter((node) => node.type === "remotion-component")
+                                            .map((node) => ({
+                                              id: node.id,
+                                              type: "remotion-component",
+                                              data: node.data as Record<string, unknown>,
+                                            }))}
                                           canvases={loroSync.canvases}
                                           onSave={saveTimelineFromNavigator}
                                           onExport={exportTimelineFromNavigator}

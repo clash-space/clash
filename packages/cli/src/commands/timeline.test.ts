@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
+import { LoroDoc } from "loro-crdt";
 import {
   mkdirSync,
   readFileSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,6 +14,7 @@ import {
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_OPERATION_CATALOG,
   TIMELINE_OPERATION_REGISTRY,
+  createProjectTimeline,
   timelineDslToYaml,
 } from "@clash/shared-types";
 import {
@@ -22,6 +25,8 @@ import {
 } from "../lib/timeline-projection";
 import {
   TIMELINE_CLI_OPERATION_EXECUTORS,
+  prepareTimelineApplyObservation,
+  requestTimelineRenderWithReadback,
   timelineCommand,
 } from "./timeline";
 import { canvasCommand } from "./canvas";
@@ -91,6 +96,85 @@ test("exposes read-only Timeline DSL validation before apply", () => {
   assert.match(validate.description(), /without applying/i);
   assert.equal(validate.options.some((option) => option.long === "--file" && option.required), true);
   assert.equal(validate.options.some((option) => option.long === "--json"), true);
+});
+
+test("exposes a durable product render command with completion readback", () => {
+  const render = timelineCommand.commands.find((command) => command.name() === "render");
+
+  assert.ok(render);
+  assert.match(render.description(), /Remotion|render/i);
+  assert.equal(render.options.some((option) => option.long === "--timeline" && option.required), true);
+  assert.equal(render.options.some((option) => option.long === "--no-wait"), true);
+  assert.equal(render.options.some((option) => option.long === "--timeout-ms"), true);
+  assert.equal(render.options.some((option) => option.long === "--json"), true);
+});
+
+test("waits for the product render node and returns immutable Asset readback", async () => {
+  const doc = new LoroDoc();
+  const created = createProjectTimeline(doc, {
+    id: "rough-cut",
+    name: "Rough Cut",
+    state: {
+      compositionWidth: 720,
+      compositionHeight: 1280,
+      fps: 24,
+      durationInFrames: 24,
+      tracks: [{
+        id: "visual",
+        items: [{
+          id: "background",
+          type: "solid",
+          from: 0,
+          durationInFrames: 24,
+          color: "#101010",
+        }],
+      }],
+    },
+  });
+  assert.equal(created.ok, true);
+  doc.commit();
+  let delayCalls = 0;
+
+  const receipt = await requestTimelineRenderWithReadback({
+    client: { doc, flush: async () => undefined },
+    timelineId: "rough-cut",
+    actor: { actorUserId: "local-user", actorAgentId: "agent-1" },
+    wait: true,
+    timeoutMs: 5_000,
+    generateId: () => "render-node-1",
+    now: () => delayCalls * 100,
+    delay: async () => {
+      delayCalls += 1;
+      const nodes = doc.getMap("nodes");
+      const node = nodes.get("render-node-1") as Record<string, any>;
+      nodes.set("render-node-1", {
+        ...node,
+        data: { ...node.data, status: "completed", assetId: "asset-1" },
+      });
+      doc.commit();
+    },
+    loadAsset: async () => ({
+      id: "asset-1",
+      srcR2Key: "projects/project-1/generated/render.mp4",
+      signedUrl: "http://127.0.0.1:49321/assets/render.mp4",
+    }),
+  });
+
+  assert.deepEqual(receipt, {
+    submitted: true,
+    completed: true,
+    timelineId: "rough-cut",
+    sourceTimelineRevisionId: created.timeline.revisionId,
+    renderNodeId: "render-node-1",
+    target: { kind: "project-assets" },
+    status: "completed",
+    asset: {
+      id: "asset-1",
+      srcR2Key: "projects/project-1/generated/render.mp4",
+      signedUrl: "http://127.0.0.1:49321/assets/render.mp4",
+    },
+  });
+  assert.equal(delayCalls, 1);
 });
 
 test("public Timeline apply validation executes the published structural contract before normalization", () => {
@@ -207,6 +291,62 @@ test("Timeline pull and apply target Timeline entities rather than Canvas nodes"
   assert.match(source, /transcriptFilePath/);
   assert.match(source, /transcriptWordCount/);
   assert.doesNotMatch(source, /timeline_cas_update|timeline_cow_replace|timelineRevisionIndex/);
+});
+
+test("Timeline apply auto-pulls a stale latest projection without replaying the local edit", () => {
+  const source = readFileSync(new URL("./timeline.ts", import.meta.url), "utf8");
+  const apply = timelineCommand.commands.find((command) => command.name() === "apply");
+
+  assert.ok(apply);
+  assert.equal(apply.options.some((option) => option.long === "--base-revision"), true);
+  assert.match(source, /recoverStaleProjection/);
+  assert.match(source, /result\.code === "STALE_READ"/);
+  assert.match(source, /timelineDslToYaml\(normalizeTimelineDslForYaml\(latest\.state\)\)/);
+  assert.match(source, /staleProjectionRecoveryError\("Timeline"/);
+  assert.doesNotMatch(source, /retry.*update_timeline_state/is);
+});
+
+test("a stale base performs only host reads and materializes merge inputs", async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "clash-timeline-stale-apply-"));
+  const editedProjectionPath = join(workspaceRoot, "timelines", "rough-cut.timeline.yaml");
+  mkdirSync(join(workspaceRoot, "timelines"), { recursive: true });
+  writeFileSync(editedProjectionPath, "tracks:\n  - id: local-edit\n", "utf8");
+  const actions: string[] = [];
+  const latest = {
+    id: "rough-cut",
+    name: "Rough Cut",
+    revisionId: "revision-2",
+    owner: { kind: "project" as const },
+    state: { tracks: [{ id: "host-edit", items: [] }] },
+  };
+  const transport = {
+    isRunning: () => true,
+    send: async (_projectId: string, command: { action?: string }) => {
+      actions.push(String(command.action));
+      return {
+        timelines: [latest],
+        versions: { "rough-cut": "timeline-v1:latest:receipt:signed" },
+      };
+    },
+  };
+
+  await assert.rejects(prepareTimelineApplyObservation({
+    context: { projectId: "project-1", source: "marker", workspaceRoot },
+    timelineId: "rough-cut",
+    editedProjectionPath,
+    baseRevisionId: "revision-1",
+    transport,
+  }), /STALE_READ.*revision-2.*merge.*did not apply or resubmit/i);
+
+  assert.deepEqual(actions, ["list_timelines", "list_timelines"]);
+  assert.equal(readFileSync(editedProjectionPath, "utf8"), "tracks:\n  - id: local-edit\n");
+  assert.match(
+    readFileSync(join(
+      workspaceRoot,
+      ".clash/recovery/timeline/rough-cut.latest.timeline.yaml",
+    ), "utf8"),
+    /host-edit/,
+  );
 });
 
 test("Timeline fallback sync preserves spawned-agent presence", () => {

@@ -358,7 +358,7 @@ function localAssetHttpUrl(mediaBaseUrl: string, storageKey: string): string {
   return `${mediaBaseUrl.replace(/\/+$/, "")}/assets/${encodedKey}`;
 }
 
-async function resolveLocalTimelineDslReferences(options: {
+export async function resolveLocalTimelineDslReferences(options: {
   dataDir: string;
   doc: LoroDoc;
   projectId: string;
@@ -381,6 +381,38 @@ async function resolveLocalTimelineDslReferences(options: {
 
   for (const track of resolved.tracks ?? []) {
     for (const item of track.items ?? []) {
+      if (item.type === "composition" && item.runtime === "remotion") {
+        const sourceNodeId = typeof item.sourceNodeId === "string"
+          ? item.sourceNodeId.trim()
+          : "";
+        if (!sourceNodeId) {
+          throw new Error(
+            `Timeline Remotion item ${String(item.id ?? "unknown")} requires sourceNodeId`,
+          );
+        }
+        const sourceNode = nodes.get(sourceNodeId) as Record<string, any> | undefined;
+        if (!sourceNode || sourceNode.type !== "remotion-component") {
+          throw new Error(
+            `Timeline Remotion item ${String(item.id ?? "unknown")} must reference a remotion-component Canvas node`,
+          );
+        }
+        const sourceData = sourceNode.data && typeof sourceNode.data === "object"
+          ? sourceNode.data as Record<string, any>
+          : {};
+        if (typeof sourceData.content !== "string" || !sourceData.content.trim()) {
+          throw new Error(
+            `Remotion Canvas node ${sourceNodeId} has no executable TSX content`,
+          );
+        }
+        // This field exists only in the cloned render input. Timeline state
+        // keeps the stable sourceNodeId and resolves the latest code anew for
+        // every preview/export start.
+        item.componentSource = sourceData.content;
+        if (typeof sourceData.componentId === "string" && sourceData.componentId.trim()) {
+          item.compositionId = sourceData.componentId.trim();
+        }
+        continue;
+      }
       if (item.type !== "video" && item.type !== "image" && item.type !== "audio") continue;
       const lookupIds = [item.assetId, item.sourceNodeId]
         .filter((value): value is string => typeof value === "string" && value.length > 0);

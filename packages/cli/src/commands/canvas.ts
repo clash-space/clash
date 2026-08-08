@@ -906,12 +906,12 @@ async function resolveReferences(
 
 canvasCommand
   .command("add")
-  .description("Add a text, group, or action-badge node")
+  .description("Add a text, group, Remotion component, or action-badge node")
   .option("--project <id>", "Project ID (defaults to cwd marker or $CLASH_PROJECT_ID)")
-  .requiredOption("--type <type>", "Node type: text, group, image_gen, video_gen, audio_gen, text_gen")
+  .requiredOption("--type <type>", "Node type: text, group, remotion, image_gen, video_gen, audio_gen, text_gen")
   .requiredOption("--label <label>", "Node label")
   .option("--prompt <text>", "Generation prompt for *_gen nodes. May contain `@[Label](node:<id>)` mentions to reference canvas asset nodes; type partitioning is automatic from the referenced asset's kind.")
-  .option("--content <content>", "Body content for text / group nodes. Ignored for *_gen nodes — use --prompt there.")
+  .option("--content <content>", "Body content for text / group nodes or single-file Remotion TSX for remotion nodes. Ignored for *_gen nodes — use --prompt there.")
   .option("--parent <id>", "Parent group ID")
   .option(
     "--model <id>",
@@ -1050,8 +1050,9 @@ canvasCommand
     // sets `data.content` from this top-level field. For *_gen nodes
     // we've already populated data.content from --prompt above, so
     // don't double-write.
+    const persistedNodeType = options.type === "remotion" ? "remotion-component" : options.type;
     const daemonResult = await runCommand(projectId, {
-      action: "add", type: options.type, label: options.label,
+      action: "add", type: persistedNodeType, label: options.label,
       content: isGenNode ? undefined : options.content,
       parentId: options.parent,
       data: Object.keys(extraData).length ? extraData : undefined,
@@ -1093,7 +1094,7 @@ canvasCommand
       await wireRefEdges(daemonResult.node_id as string);
       if (isJsonMode(options)) { printJson({ ...daemonResult, refNodeIds }); }
       else {
-        console.log(`Created node: ${daemonResult.node_id} (${options.type})`);
+        console.log(`Created node: ${daemonResult.node_id} (${persistedNodeType})`);
         if (daemonResult.asset_id) console.log(`Asset ID:    ${daemonResult.asset_id}`);
         if (refNodeIds.length > 0) console.log(`Refs wired:  ${refNodeIds.join(", ")}`);
       }
@@ -1106,7 +1107,7 @@ canvasCommand
       const data: Record<string, unknown> = { ...extraData, label: options.label };
       if (options.content && !isGenNode) { data.content = options.content; }
 
-      const result = client.createNode(nodeId, options.type, data, null, options.parent ?? null);
+      const result = client.createNode(nodeId, persistedNodeType, data, null, options.parent ?? null);
       if (result.error) { console.error(`Error: ${result.error}`); process.exit(1); }
       const existing = client.canvas.listEdges();
       for (const sourceId of refNodeIds) {
@@ -1117,7 +1118,7 @@ canvasCommand
       if (isJsonMode(options)) {
         printJson({ ...result, refNodeIds });
       } else {
-        console.log(`Created node: ${result.node_id} (${options.type})`);
+        console.log(`Created node: ${result.node_id} (${persistedNodeType})`);
         if (result.asset_id) console.log(`Asset ID:    ${result.asset_id}`);
         if (refNodeIds.length > 0) console.log(`Refs wired:  ${refNodeIds.join(", ")}`);
       }

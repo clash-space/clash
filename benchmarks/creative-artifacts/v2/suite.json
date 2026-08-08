@@ -1,0 +1,3685 @@
+{
+  "schemaVersion": 1,
+  "id": "clash-creative-artifacts-v2",
+  "title": "Clash creative artifact benchmark v2 — 20 product-rendered cases",
+  "cases": [
+    {
+      "id": "director-street-vlog-cold-open-v2",
+      "title": "Director street-vlog cold open",
+      "category": "director",
+      "outcome": {
+        "objective": "Block a 6-second 9:16 street-vlog cold open using Casey Neistat only as editorial-format shorthand. Use two mannequins, foreground occlusion, a host entering toward camera, a moving medium shot, a sharp but readable screen-direction change that reveals a key prop, and a close reaction. Capture opening, reveal, and reaction PNGs from the real Director product surface. Preserve the editable Stage and submit the three PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, or proprietary brand package; evaluation concerns only the stated framing, blocking, and progression traits.",
+        "acceptanceCriteria": [
+          "The Director Stage is schema-valid and all object, camera, shot, active-camera, and animation references resolve.",
+          "The Stage has at least 4 objects, 3 cameras, 3 ordered shots, and 1 changing animation tracks.",
+          "The ordered coverage visibly progresses from an occluded arrival to a prop reveal and then a close reaction, with distinct shot scales and readable screen direction.",
+          "Exactly three evidence images are real PNG outputs captured from the Director product surface at distinct creative beats.",
+          "No real creator face, voice, logo, or proprietary brand package is imitated; Casey Neistat is only shorthand for the specified street-vlog editorial grammar.",
+          "The submission, execution trajectory, Stage revision, and render receipts are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Product-rendered opening PNG"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Product-rendered action PNG"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Product-rendered closing PNG"
+          },
+          {
+            "artifactId": "director-review",
+            "kind": "report",
+            "description": "Director visual and capability review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 900000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "director-stage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ],
+          "description": "Read back the persisted Stage plus three PNG render receipts produced by the Director product surface."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 65,
+          "required": true,
+          "minObjects": 4,
+          "minCameras": 3,
+          "minSequenceShots": 3,
+          "minAnimatedTracks": 1,
+          "minMannequins": 2
+        },
+        {
+          "id": "director-product-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "director-review",
+          "type": "artifact-exists",
+          "artifactId": "director-review",
+          "minBytes": 128,
+          "weight": 10,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "director-challenge-arena-countdown-v2",
+      "title": "Director challenge-arena countdown",
+      "category": "director",
+      "outcome": {
+        "objective": "Stage an 8-second 16:9 high-stakes challenge countdown using MrBeast only as editorial-format shorthand. Arrange two contestants, a visually legible obstacle lane, a prize target, and a clear start-to-finish axis. Progress through a wide rules view, an over-shoulder start, an obstacle action beat, and a finish reaction, then capture three real Director PNGs that prove the escalation. Preserve the editable Stage and submit the three PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, or proprietary brand package; evaluation concerns only clarity, stakes, scale, and reaction coverage.",
+        "acceptanceCriteria": [
+          "The Director Stage is schema-valid and all object, camera, shot, active-camera, and animation references resolve.",
+          "The Stage has at least 5 objects, 3 cameras, 4 ordered shots, and 2 changing animation tracks.",
+          "The arena geometry makes the contestants, obstacle path, and prize target immediately legible, while the shot order progresses from rules to start, action, and finish reaction.",
+          "Exactly three evidence images are real PNG outputs captured from the Director product surface at distinct creative beats.",
+          "No real creator face, voice, logo, or proprietary brand package is imitated; MrBeast is only shorthand for the specified high-stakes challenge grammar.",
+          "The submission, execution trajectory, Stage revision, and render receipts are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Product-rendered opening PNG"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Product-rendered action PNG"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Product-rendered closing PNG"
+          },
+          {
+            "artifactId": "director-review",
+            "kind": "report",
+            "description": "Director visual and capability review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 900000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "director-stage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ],
+          "description": "Read back the persisted Stage plus three PNG render receipts produced by the Director product surface."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 65,
+          "required": true,
+          "minObjects": 5,
+          "minCameras": 3,
+          "minSequenceShots": 4,
+          "minAnimatedTracks": 2,
+          "minMannequins": 2
+        },
+        {
+          "id": "director-product-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "director-review",
+          "type": "artifact-exists",
+          "artifactId": "director-review",
+          "minBytes": 128,
+          "weight": 10,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "director-premium-gadget-hero-v2",
+      "title": "Director premium gadget hero",
+      "category": "director",
+      "outcome": {
+        "objective": "Build a 6-second 1:1 premium gadget reveal using MKBHD only as editorial-format shorthand. Stage a hero object on a pedestal against a dark studio field, use one saturated accent color, motivated key and rim-light proxies, a macro-like detail angle, a low orbit, and a clean frontal hero lockup with deliberate title negative space. Capture real product PNGs for the opening silhouette, detail-orbit midpoint, and final lockup. Preserve the editable Stage and submit the three PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not reproduce any real logo, product trade dress, face, voice, or proprietary brand package; evaluation concerns only the specified premium-tech visual traits.",
+        "acceptanceCriteria": [
+          "The Director Stage is schema-valid and all object, camera, shot, active-camera, and animation references resolve.",
+          "The Stage has at least 4 objects, 3 cameras, 3 ordered shots, and 1 changing animation tracks.",
+          "The three beats visibly progress from silhouette to material detail to frontal hero lockup, with a dark field, one accent color, edge separation, and usable negative space.",
+          "Exactly three evidence images are real PNG outputs captured from the Director product surface at distinct creative beats.",
+          "No real logo, product trade dress, creator face, voice, or proprietary brand package is imitated; MKBHD is only shorthand for the stated premium-tech editorial grammar.",
+          "The submission, execution trajectory, Stage revision, and render receipts are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Product-rendered opening PNG"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Product-rendered action PNG"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Product-rendered closing PNG"
+          },
+          {
+            "artifactId": "director-review",
+            "kind": "report",
+            "description": "Director visual and capability review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 900000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "director-stage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ],
+          "description": "Read back the persisted Stage plus three PNG render receipts produced by the Director product surface."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 65,
+          "required": true,
+          "minObjects": 4,
+          "minCameras": 3,
+          "minSequenceShots": 3,
+          "minAnimatedTracks": 1,
+          "minMannequins": 0
+        },
+        {
+          "id": "director-product-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "director-review",
+          "type": "artifact-exists",
+          "artifactId": "director-review",
+          "minBytes": 128,
+          "weight": 10,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "director-future-lab-walkthrough-v2",
+      "title": "Director future-lab walkthrough",
+      "category": "director",
+      "outcome": {
+        "objective": "Block a 10-second 16:9 optimistic future-lab walkthrough using Cleo Abram only as editorial-format shorthand. A host and expert or robot enter through the lab, reveal a central device, synchronize a pointing beat toward its key mechanism, and finish in a wide scale-reveal composition. Use at least four ordered camera shots and capture three real Director PNGs at arrival, mechanism reveal, and scale reveal. Preserve the editable Stage and submit the PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, or proprietary brand package; evaluation concerns only energetic curiosity, spatial explanation, and scale progression.",
+        "acceptanceCriteria": [
+          "The Director Stage is schema-valid and all object, camera, shot, active-camera, and animation references resolve.",
+          "The Stage has at least 4 objects, 4 cameras, 4 ordered shots, and 2 changing animation tracks.",
+          "The blocking progresses from walking introduction to a synchronized mechanism point and then a wide scale reveal, using distinct camera distances that preserve spatial comprehension.",
+          "Exactly three evidence images are real PNG outputs captured from the Director product surface at distinct creative beats.",
+          "No real creator face, voice, logo, or proprietary brand package is imitated; Cleo Abram is only shorthand for the specified optimistic future-explainer grammar.",
+          "The submission, execution trajectory, Stage revision, and render receipts are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Product-rendered opening PNG"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Product-rendered action PNG"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Product-rendered closing PNG"
+          },
+          {
+            "artifactId": "director-review",
+            "kind": "report",
+            "description": "Director visual and capability review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 900000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "director-stage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ],
+          "description": "Read back the persisted Stage plus three PNG render receipts produced by the Director product surface."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 65,
+          "required": true,
+          "minObjects": 4,
+          "minCameras": 4,
+          "minSequenceShots": 4,
+          "minAnimatedTracks": 2,
+          "minMannequins": 2
+        },
+        {
+          "id": "director-product-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "director-review",
+          "type": "artifact-exists",
+          "artifactId": "director-review",
+          "minBytes": 128,
+          "weight": 10,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "director-investigation-evidence-wall-v2",
+      "title": "Director investigation evidence wall",
+      "category": "director",
+      "outcome": {
+        "objective": "Stage an 8-second 9:16 investigation at a desk, map, and evidence wall using Johnny Harris only as editorial-format shorthand. Move a presenter and collaborator through a question beat, an over-shoulder or top-down clue inspection, a push-in on the decisive connection, and a final reframing, using foreground papers or pins to create depth. Capture three real Director PNGs showing question, clue, and finding. Preserve the editable Stage and submit the PNGs as visual evidence; screenshots or synthetic stand-ins do not satisfy the product-render requirement. Do not imitate any real face, voice, logo, map artwork, or proprietary brand package; evaluation concerns only spatial evidence-building and explanatory coverage.",
+        "acceptanceCriteria": [
+          "The Director Stage is schema-valid and all object, camera, shot, active-camera, and animation references resolve.",
+          "The Stage has at least 6 objects, 3 cameras, 4 ordered shots, and 2 changing animation tracks.",
+          "The shot sequence visibly builds a question-to-clue-to-finding arc across the desk, map, and evidence wall, with foreground depth and a decisive push-in or overhead inspection.",
+          "Exactly three evidence images are real PNG outputs captured from the Director product surface at distinct creative beats.",
+          "No real creator face, voice, logo, map artwork, or proprietary brand package is imitated; Johnny Harris is only shorthand for the specified investigative editorial grammar.",
+          "The submission, execution trajectory, Stage revision, and render receipts are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Product-rendered opening PNG"
+          },
+          {
+            "artifactId": "frame-action",
+            "kind": "image",
+            "description": "Product-rendered action PNG"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Product-rendered closing PNG"
+          },
+          {
+            "artifactId": "director-review",
+            "kind": "report",
+            "description": "Director visual and capability review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 900000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "director-stage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "frame-opening",
+            "frame-action",
+            "frame-closing"
+          ],
+          "description": "Read back the persisted Stage plus three PNG render receipts produced by the Director product surface."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 65,
+          "required": true,
+          "minObjects": 6,
+          "minCameras": 3,
+          "minSequenceShots": 4,
+          "minAnimatedTracks": 2,
+          "minMannequins": 2
+        },
+        {
+          "id": "director-product-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 25,
+          "required": true
+        },
+        {
+          "id": "director-review",
+          "type": "artifact-exists",
+          "artifactId": "director-review",
+          "minBytes": 128,
+          "weight": 10,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-vertical-retention-hook-v2",
+      "title": "Timeline vertical retention hook",
+      "category": "timeline",
+      "outcome": {
+        "objective": "Edit a 6-second 9:16 high-retention cold-open graphic using MrBeast only as editorial-format shorthand. Deliver the promise or conflict in the first second with oversized text, escalate through changing numbers or scale comparisons, keep a continuous visual bed, and end on a payoff tease using text plus an editable Timeline composition. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, thumbnail, or proprietary brand package; evaluation concerns only hook speed, visual hierarchy, escalating stakes, and payoff structure.",
+        "acceptanceCriteria": [
+          "The canonical Timeline is 1080x1920 at 30fps and spans 6 seconds without invalid references or out-of-bounds items.",
+          "It contains at least 2 tracks and 4 items, including solid, text, composition item types.",
+          "The edit presents a readable promise or conflict within the first second, escalates through at least two materially different numeric or scale beats, and closes on a visually distinct payoff tease.",
+          "The final MP4 matches the declared canvas and duration, and the three evidence frames come from distinct final-render timestamps.",
+          "No real creator face, voice, logo, thumbnail, or proprietary brand package is imitated; MrBeast is only shorthand for the specified high-retention editorial grammar.",
+          "The submission, execution trajectory, Timeline revision, and render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered final MP4"
+          },
+          {
+            "artifactId": "frame-start",
+            "kind": "image",
+            "description": "Opening evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-middle",
+            "kind": "image",
+            "description": "Middle evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-end",
+            "kind": "image",
+            "description": "Closing evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "timeline-review",
+            "kind": "report",
+            "description": "Timeline and render review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-state-and-render-receipt",
+          "artifactIds": ["timeline", "final-video"],
+          "description": "Read back the canonical Timeline revision and a product render receipt for the final video."
+        },
+        "requiredProductOperations": [
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 35,
+          "required": true,
+          "minTracks": 2,
+          "minItems": 4,
+          "minDurationInFrames": 180,
+          "requiredItemTypes": ["solid", "text", "composition"]
+        },
+        {
+          "id": "timeline-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 30,
+          "required": true,
+          "width": 1080,
+          "height": 1920,
+          "minDurationSeconds": 5.8,
+          "maxDurationSeconds": 6.2,
+          "requireVideo": true
+        },
+        {
+          "id": "timeline-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "timeline-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-start", "frame-middle", "frame-end"],
+          "width": 1080,
+          "height": 1920,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "timeline-review",
+          "type": "artifact-exists",
+          "artifactId": "timeline-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-talking-head-tech-review-v2",
+      "title": "Timeline talking-head tech review",
+      "category": "timeline",
+      "outcome": {
+        "objective": "Turn the supplied 43.633-second synthetic talking-head fixture into a coherent 12-second 16:9 productivity-tech口播 using text-based editing. Use transcript/source-voice.words.json to remove the false start, filler words, repeated words, and dead air while retaining a complete hook, one supporting claim, and one actionable takeaway. Use MKBHD only as editorial-format shorthand: add at least two motivated jump cuts or punch-ins, cover one cut with a restrained graphic or fixture-derived detail crop, add a restrained lower third and selective keyword typography, and maintain dialogue continuity. Preserve the immutable source inputs and editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, product trade dress, or proprietary brand package; evaluation concerns only text-cut judgment, pacing, visual restraint, cut motivation, and information hierarchy.",
+        "acceptanceCriteria": [
+          "The canonical Timeline is 1920x1080 at 30fps and spans 12 seconds without invalid references or out-of-bounds items.",
+          "The edit derives from inputs/talking-head-raw.mp4 and transcript/source-voice.words.json, preserves the fixture files byte-for-byte, and records chosen source word/range to output timing in timeline-review.",
+          "The false start, 嗯/呃 fillers, duplicated 然后, and long dead-air ranges are absent from the final narrative while the hook, claim, and takeaway remain semantically continuous.",
+          "It contains at least 3 tracks and 5 items, including video, text, audio item types.",
+          "The cut contains at least two motivated reframing or jump-cut beats, one product B-roll cover, a restrained lower third, and selective keyword typography while preserving audible continuity.",
+          "The final MP4 matches the declared canvas and duration, and the three evidence frames come from distinct final-render timestamps.",
+          "No real creator face, voice, logo, product trade dress, or proprietary brand package is imitated; MKBHD is only shorthand for the stated premium technology-review editorial grammar.",
+          "The submission, execution trajectory, Timeline revision, and render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered final MP4"
+          },
+          {
+            "artifactId": "frame-start",
+            "kind": "image",
+            "description": "Opening evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-middle",
+            "kind": "image",
+            "description": "Middle evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-end",
+            "kind": "image",
+            "description": "Closing evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "timeline-review",
+            "kind": "report",
+            "description": "Timeline and render review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "inputFixture": {
+        "path": "fixtures/talking-head-text-cut-v1",
+        "manifestSha256": "9888a35c35b548ec996f4b53813483185fff909de2e0aab8c26a3b9157a132ce"
+      },
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-state-and-render-receipt",
+          "artifactIds": ["timeline", "final-video"],
+          "description": "Read back the canonical Timeline revision and a product render receipt for the final video."
+        },
+        "requiredProductOperations": [
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 35,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 5,
+          "minDurationInFrames": 360,
+          "requiredItemTypes": ["video", "text", "audio"]
+        },
+        {
+          "id": "timeline-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 30,
+          "required": true,
+          "width": 1920,
+          "height": 1080,
+          "minDurationSeconds": 11.8,
+          "maxDurationSeconds": 12.2,
+          "requireVideo": true,
+          "requireAudio": true
+        },
+        {
+          "id": "timeline-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "timeline-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-start", "frame-middle", "frame-end"],
+          "width": 1920,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "timeline-review",
+          "type": "artifact-exists",
+          "artifactId": "timeline-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-productivity-tip-cutdown-v2",
+      "title": "Timeline productivity-tip cutdown",
+      "category": "timeline",
+      "outcome": {
+        "objective": "Create an 8-second 1:1 productivity-tip cutdown using Ali Abdaal only as editorial-format shorthand. Open with a friendly problem question, move through a three-step checklist with presenter or desk B-roll, show a gentle progress cue, and finish on one concise actionable takeaway using an editable Timeline composition. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, workspace, or proprietary brand package; evaluation concerns only approachable pacing, checklist clarity, supportive B-roll, and a useful takeaway.",
+        "acceptanceCriteria": [
+          "The canonical Timeline is 1080x1080 at 30fps and spans 8 seconds without invalid references or out-of-bounds items.",
+          "It contains at least 2 tracks and 5 items, including video, text, composition item types.",
+          "The edit visibly progresses from a problem question through three ordered checklist steps to one concise takeaway, supported by presenter or desk B-roll and a readable progress cue.",
+          "The final MP4 matches the declared canvas and duration, and the three evidence frames come from distinct final-render timestamps.",
+          "No real creator face, voice, logo, workspace, or proprietary brand package is imitated; Ali Abdaal is only shorthand for the specified approachable productivity-editorial grammar.",
+          "The submission, execution trajectory, Timeline revision, and render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered final MP4"
+          },
+          {
+            "artifactId": "frame-start",
+            "kind": "image",
+            "description": "Opening evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-middle",
+            "kind": "image",
+            "description": "Middle evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-end",
+            "kind": "image",
+            "description": "Closing evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "timeline-review",
+            "kind": "report",
+            "description": "Timeline and render review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-state-and-render-receipt",
+          "artifactIds": ["timeline", "final-video"],
+          "description": "Read back the canonical Timeline revision and a product render receipt for the final video."
+        },
+        "requiredProductOperations": [
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 35,
+          "required": true,
+          "minTracks": 2,
+          "minItems": 5,
+          "minDurationInFrames": 240,
+          "requiredItemTypes": ["video", "text", "composition"]
+        },
+        {
+          "id": "timeline-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 30,
+          "required": true,
+          "width": 1080,
+          "height": 1080,
+          "minDurationSeconds": 7.8,
+          "maxDurationSeconds": 8.2,
+          "requireVideo": true
+        },
+        {
+          "id": "timeline-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "timeline-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-start", "frame-middle", "frame-end"],
+          "width": 1080,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "timeline-review",
+          "type": "artifact-exists",
+          "artifactId": "timeline-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-map-investigation-explainer-v2",
+      "title": "Timeline map-investigation explainer",
+      "category": "timeline",
+      "outcome": {
+        "objective": "Create a 10-second 16:9 map-investigation explainer using Johnny Harris only as editorial-format shorthand. Place a presenter and map or archival evidence in complementary regions, progressively introduce place labels, a route line, and one highlighted clue, then return to a clear full-frame conclusion rather than holding a static split screen throughout. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, map artwork, or proprietary brand package; evaluation concerns only evidence sequencing, geographic clarity, and the final explanatory reframe.",
+        "acceptanceCriteria": [
+          "The canonical Timeline is 1920x1080 at 30fps and spans 10 seconds without invalid references or out-of-bounds items.",
+          "It contains at least 3 tracks and 6 items, including video, text, composition item types.",
+          "The visual argument adds readable place labels, a route, and a highlighted clue in sequence, varies the presenter-evidence layout, and resolves to a full-frame conclusion.",
+          "The final MP4 matches the declared canvas and duration, and the three evidence frames come from distinct final-render timestamps.",
+          "No real creator face, voice, logo, map artwork, or proprietary brand package is imitated; Johnny Harris is only shorthand for the specified investigative explainer grammar.",
+          "The submission, execution trajectory, Timeline revision, and render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered final MP4"
+          },
+          {
+            "artifactId": "frame-start",
+            "kind": "image",
+            "description": "Opening evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-middle",
+            "kind": "image",
+            "description": "Middle evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-end",
+            "kind": "image",
+            "description": "Closing evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "timeline-review",
+            "kind": "report",
+            "description": "Timeline and render review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-state-and-render-receipt",
+          "artifactIds": ["timeline", "final-video"],
+          "description": "Read back the canonical Timeline revision and a product render receipt for the final video."
+        },
+        "requiredProductOperations": [
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 35,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 6,
+          "minDurationInFrames": 300,
+          "requiredItemTypes": ["video", "text", "composition"]
+        },
+        {
+          "id": "timeline-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 30,
+          "required": true,
+          "width": 1920,
+          "height": 1080,
+          "minDurationSeconds": 9.8,
+          "maxDurationSeconds": 10.2,
+          "requireVideo": true
+        },
+        {
+          "id": "timeline-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "timeline-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-start", "frame-middle", "frame-end"],
+          "width": 1920,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "timeline-review",
+          "type": "artifact-exists",
+          "artifactId": "timeline-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "timeline-street-vlog-mini-story-v2",
+      "title": "Timeline street-vlog mini story",
+      "category": "timeline",
+      "outcome": {
+        "objective": "Cut a 9-second 9:16 street-vlog mini story using Casey Neistat only as editorial-format shorthand. Build four legible beats—location setup, movement, an unexpected obstacle, and arrival payoff—using hard cuts, motivated speed changes, location or timestamp typography, and an audible music or environmental-sound bed while preserving spatial orientation. Preserve the editable Timeline, render a real decodable MP4, and extract start, middle, and end frames from that final media. Do not imitate any real face, voice, logo, handwriting, or proprietary brand package; evaluation concerns only momentum, geographic readability, and micro-story progression.",
+        "acceptanceCriteria": [
+          "The canonical Timeline is 1080x1920 at 30fps and spans 9 seconds without invalid references or out-of-bounds items.",
+          "It contains at least 3 tracks and 7 items, including video, text, audio item types.",
+          "The edit visibly progresses through location setup, movement, obstacle, and arrival payoff, with readable location or time typography and hard cuts or speed changes motivated by the audio bed.",
+          "The final MP4 matches the declared canvas and duration, and the three evidence frames come from distinct final-render timestamps.",
+          "No real creator face, voice, logo, handwriting, or proprietary brand package is imitated; Casey Neistat is only shorthand for the specified street-vlog editorial grammar.",
+          "The submission, execution trajectory, Timeline revision, and render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Product-rendered final MP4"
+          },
+          {
+            "artifactId": "frame-start",
+            "kind": "image",
+            "description": "Opening evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-middle",
+            "kind": "image",
+            "description": "Middle evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "frame-end",
+            "kind": "image",
+            "description": "Closing evidence frame extracted from final video"
+          },
+          {
+            "artifactId": "timeline-review",
+            "kind": "report",
+            "description": "Timeline and render review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "timeline-state-and-render-receipt",
+          "artifactIds": ["timeline", "final-video"],
+          "description": "Read back the canonical Timeline revision and a product render receipt for the final video."
+        },
+        "requiredProductOperations": [
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 35,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 7,
+          "minDurationInFrames": 270,
+          "requiredItemTypes": ["video", "text", "audio"]
+        },
+        {
+          "id": "timeline-render",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 30,
+          "required": true,
+          "width": 1080,
+          "height": 1920,
+          "minDurationSeconds": 8.8,
+          "maxDurationSeconds": 9.2,
+          "requireVideo": true,
+          "requireAudio": true
+        },
+        {
+          "id": "timeline-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "timeline-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-start", "frame-middle", "frame-end"],
+          "width": 1080,
+          "height": 1920,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "timeline-review",
+          "type": "artifact-exists",
+          "artifactId": "timeline-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-character-cosmic-question-host-v2",
+      "title": "Remotion character cosmic-question host",
+      "category": "mg-character",
+      "outcome": {
+        "objective": "Create a flat-geometric cosmic-question host using Kurzgesagt only as editorial-format shorthand, as an editable Remotion TSX component in a 4-second 720x1280 composition at 24fps. Animate one character from thought to a clearly posed question, then use its gesture to launch orbiting science icons with a limited palette, readable silhouette, anticipation, overshoot, and settle. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. Do not imitate any existing mascot, illustration, voice, logo, or proprietary brand package; evaluation concerns only the stated geometric science-explainer and motion traits.",
+        "acceptanceCriteria": [
+          "The editable source is a self-contained Remotion TSX component at components/remotion-character-cosmic-question-host-v2.tsx, uses deterministic frame-driven animation, and contains semantically named head, torso, left/right arms, and left/right legs.",
+          "clash_canvas_add persists the exact TSX as a remotion-component node; the stable node ID returned by Clash is reused verbatim as sourceNodeId on a Timeline composition item with compositionKind custom, runtime remotion, and the local TSX sourcePath.",
+          "The visible action progresses from thought to question to a gesture-launched orbit and settle, with a limited palette, readable silhouette, and materially distinct anticipation, overshoot, and settle poses.",
+          "The canonical Timeline is valid at 720x1280, 24fps, and 96 frames, and clash_timeline_render completes with a decodable product-owned video.",
+          "The start, action, and settle PNGs are sampled from that rendered video, are decodable at delivery size, and show materially distinct poses.",
+          "No existing mascot, illustration, voice, logo, or proprietary brand package is imitated; Kurzgesagt is only shorthand for the specified flat-geometric science-explainer grammar.",
+          "The submission, full Clash product trajectory, Canvas component readback, Timeline revision, stable sourceNodeId, and final render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX source at components/remotion-character-cosmic-question-host-v2.tsx"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML containing the sourceNodeId-linked Remotion composition"
+          },
+          {
+            "artifactId": "mg-video",
+            "kind": "video",
+            "description": "Video produced by clash_timeline_render from the persisted Timeline"
+          },
+          {
+            "artifactId": "pose-start",
+            "kind": "image",
+            "description": "Start-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-action",
+            "kind": "image",
+            "description": "Action-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-settle",
+            "kind": "image",
+            "description": "Settle-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "mg-review",
+            "kind": "report",
+            "description": "Remotion source, motion, render, and readback review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "mg-video"],
+          "description": "Match the delivered TSX to the persisted remotion-component node, verify the Timeline uses that stable node ID as sourceNodeId, and read back the completed render Asset and source revision."
+        },
+        "requiredProductOperations": [
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 25,
+          "required": true,
+          "minSourceBytes": 1400,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": ["useCurrentFrame", "interpolate", "spring"]
+        },
+        {
+          "id": "mg-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 10,
+          "required": true,
+          "minTracks": 1,
+          "minItems": 1,
+          "minDurationInFrames": 96,
+          "requiredItemTypes": ["composition"]
+        },
+        {
+          "id": "mg-render",
+          "type": "media",
+          "artifactId": "mg-video",
+          "weight": 30,
+          "required": true,
+          "width": 720,
+          "height": 1280,
+          "minDurationSeconds": 3.8,
+          "maxDurationSeconds": 4.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mg-poses",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mg-visual-poses",
+          "type": "visual-frames",
+          "artifactIds": ["pose-start", "pose-action", "pose-settle"],
+          "width": 720,
+          "height": 1280,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.005
+          },
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mg-review",
+          "type": "artifact-exists",
+          "artifactId": "mg-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-character-task-juggler-v2",
+      "title": "Remotion character task juggler",
+      "category": "mg-character",
+      "outcome": {
+        "objective": "Create a one-person productivity task-juggler as an editable Remotion TSX component in a 6-second 1080x1080 composition at 30fps. Animate the character through a looping walk while it successively handles a clock, notebook, and parcel; use opposing limbs, planted contacts, readable handoffs, and secondary follow-through on every prop. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. This is an original creator-overlay format: do not imitate any real face, voice, mascot, logo, or proprietary brand package; evaluation concerns only task readability, contact stability, rhythm, and follow-through.",
+        "acceptanceCriteria": [
+          "The editable source is a self-contained Remotion TSX component at components/remotion-character-task-juggler-v2.tsx, uses deterministic frame-driven animation, and contains semantically named head, torso, left/right arms, and left/right legs.",
+          "clash_canvas_add persists the exact TSX as a remotion-component node; the stable node ID returned by Clash is reused verbatim as sourceNodeId on a Timeline composition item with compositionKind custom, runtime remotion, and the local TSX sourcePath.",
+          "The visible loop gives the clock, notebook, and parcel separate readable handling beats, keeps foot contacts planted, uses opposing limb motion, and shows secondary prop follow-through.",
+          "The canonical Timeline is valid at 1080x1080, 30fps, and 180 frames, and clash_timeline_render completes with a decodable product-owned video.",
+          "The start, action, and settle PNGs are sampled from that rendered video, are decodable at delivery size, and show materially distinct poses.",
+          "No real face, voice, mascot, logo, or proprietary brand package is imitated; scoring uses only the specified creator-overlay animation traits.",
+          "The submission, full Clash product trajectory, Canvas component readback, Timeline revision, stable sourceNodeId, and final render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX source at components/remotion-character-task-juggler-v2.tsx"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML containing the sourceNodeId-linked Remotion composition"
+          },
+          {
+            "artifactId": "mg-video",
+            "kind": "video",
+            "description": "Video produced by clash_timeline_render from the persisted Timeline"
+          },
+          {
+            "artifactId": "pose-start",
+            "kind": "image",
+            "description": "Start-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-action",
+            "kind": "image",
+            "description": "Action-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-settle",
+            "kind": "image",
+            "description": "Settle-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "mg-review",
+            "kind": "report",
+            "description": "Remotion source, motion, render, and readback review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "mg-video"],
+          "description": "Match the delivered TSX to the persisted remotion-component node, verify the Timeline uses that stable node ID as sourceNodeId, and read back the completed render Asset and source revision."
+        },
+        "requiredProductOperations": [
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 25,
+          "required": true,
+          "minSourceBytes": 1800,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": ["useCurrentFrame", "interpolate", "spring"]
+        },
+        {
+          "id": "mg-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 10,
+          "required": true,
+          "minTracks": 1,
+          "minItems": 1,
+          "minDurationInFrames": 180,
+          "requiredItemTypes": ["composition"]
+        },
+        {
+          "id": "mg-render",
+          "type": "media",
+          "artifactId": "mg-video",
+          "weight": 30,
+          "required": true,
+          "width": 1080,
+          "height": 1080,
+          "minDurationSeconds": 5.8,
+          "maxDurationSeconds": 6.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mg-poses",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mg-visual-poses",
+          "type": "visual-frames",
+          "artifactIds": ["pose-start", "pose-action", "pose-settle"],
+          "width": 1080,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.005
+          },
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mg-review",
+          "type": "artifact-exists",
+          "artifactId": "mg-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-character-hot-take-reaction-v2",
+      "title": "Remotion character hot-take reaction",
+      "category": "mg-character",
+      "outcome": {
+        "objective": "Create an expressive hot-take reaction overlay as an editable Remotion TSX component in a 5-second 1080x1920 composition at 30fps. Animate one character through neutral, disbelief, insight, and relieved acceptance using face, shoulder line, arm pose, and center-of-mass changes; keep intentional negative space so the character can sit beside talking-head footage. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. This is an original creator reaction format: do not imitate any real face, voice, mascot, logo, emoji set, or proprietary brand package; evaluation concerns only emotional legibility, pose contrast, timing, and overlay usability.",
+        "acceptanceCriteria": [
+          "The editable source is a self-contained Remotion TSX component at components/remotion-character-hot-take-reaction-v2.tsx, uses deterministic frame-driven animation, and contains semantically named head, torso, left/right arms, and left/right legs.",
+          "clash_canvas_add persists the exact TSX as a remotion-component node; the stable node ID returned by Clash is reused verbatim as sourceNodeId on a Timeline composition item with compositionKind custom, runtime remotion, and the local TSX sourcePath.",
+          "The visible performance has four legible emotional beats—neutral, disbelief, insight, and relief—expressed through face, shoulders, arms, and center of mass while preserving adjacent negative space.",
+          "The canonical Timeline is valid at 1080x1920, 30fps, and 150 frames, and clash_timeline_render completes with a decodable product-owned video.",
+          "The start, action, and settle PNGs are sampled from that rendered video, are decodable at delivery size, and show materially distinct poses.",
+          "No real face, voice, mascot, logo, emoji set, or proprietary brand package is imitated; scoring uses only the specified creator-reaction animation traits.",
+          "The submission, full Clash product trajectory, Canvas component readback, Timeline revision, stable sourceNodeId, and final render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX source at components/remotion-character-hot-take-reaction-v2.tsx"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML containing the sourceNodeId-linked Remotion composition"
+          },
+          {
+            "artifactId": "mg-video",
+            "kind": "video",
+            "description": "Video produced by clash_timeline_render from the persisted Timeline"
+          },
+          {
+            "artifactId": "pose-start",
+            "kind": "image",
+            "description": "Start-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-action",
+            "kind": "image",
+            "description": "Action-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-settle",
+            "kind": "image",
+            "description": "Settle-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "mg-review",
+            "kind": "report",
+            "description": "Remotion source, motion, render, and readback review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "mg-video"],
+          "description": "Match the delivered TSX to the persisted remotion-component node, verify the Timeline uses that stable node ID as sourceNodeId, and read back the completed render Asset and source revision."
+        },
+        "requiredProductOperations": [
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 25,
+          "required": true,
+          "minSourceBytes": 1800,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mg-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 10,
+          "required": true,
+          "minTracks": 1,
+          "minItems": 1,
+          "minDurationInFrames": 150,
+          "requiredItemTypes": ["composition"]
+        },
+        {
+          "id": "mg-render",
+          "type": "media",
+          "artifactId": "mg-video",
+          "weight": 30,
+          "required": true,
+          "width": 1080,
+          "height": 1920,
+          "minDurationSeconds": 4.8,
+          "maxDurationSeconds": 5.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mg-poses",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mg-visual-poses",
+          "type": "visual-frames",
+          "artifactIds": ["pose-start", "pose-action", "pose-settle"],
+          "width": 1080,
+          "height": 1920,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.005
+          },
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mg-review",
+          "type": "artifact-exists",
+          "artifactId": "mg-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-character-claim-evidence-synthesis-v2",
+      "title": "Remotion character claim-evidence synthesis",
+      "category": "mg-character",
+      "outcome": {
+        "objective": "Create a claim-versus-evidence synthesis as an editable Remotion TSX component in a 6-second 1920x1080 composition at 30fps. Give two visually contrasting characters separate claim and evidence puzzle pieces, then animate questioning, alignment, a continuous handshake or piece connection, and a resolved combined conclusion with readable anticipation, contact, and settle poses. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. This is an original explainer format: do not imitate any real face, voice, mascot, logo, or proprietary brand package; evaluation concerns only contrast, contact continuity, synthesis, and pose readability.",
+        "acceptanceCriteria": [
+          "The editable source is a self-contained Remotion TSX component at components/remotion-character-claim-evidence-synthesis-v2.tsx, uses deterministic frame-driven animation, and contains semantically named head, torso, left/right arms, and left/right legs.",
+          "clash_canvas_add persists the exact TSX as a remotion-component node; the stable node ID returned by Clash is reused verbatim as sourceNodeId on a Timeline composition item with compositionKind custom, runtime remotion, and the local TSX sourcePath.",
+          "The two characters and their claim/evidence pieces remain visually distinct through questioning, alignment, continuous contact, and a resolved combined conclusion.",
+          "The canonical Timeline is valid at 1920x1080, 30fps, and 180 frames, and clash_timeline_render completes with a decodable product-owned video.",
+          "The start, action, and settle PNGs are sampled from that rendered video, are decodable at delivery size, and show materially distinct poses.",
+          "No real face, voice, mascot, logo, or proprietary brand package is imitated; scoring uses only the specified original explainer-animation traits.",
+          "The submission, full Clash product trajectory, Canvas component readback, Timeline revision, stable sourceNodeId, and final render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX source at components/remotion-character-claim-evidence-synthesis-v2.tsx"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML containing the sourceNodeId-linked Remotion composition"
+          },
+          {
+            "artifactId": "mg-video",
+            "kind": "video",
+            "description": "Video produced by clash_timeline_render from the persisted Timeline"
+          },
+          {
+            "artifactId": "pose-start",
+            "kind": "image",
+            "description": "Start-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-action",
+            "kind": "image",
+            "description": "Action-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-settle",
+            "kind": "image",
+            "description": "Settle-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "mg-review",
+            "kind": "report",
+            "description": "Remotion source, motion, render, and readback review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "mg-video"],
+          "description": "Match the delivered TSX to the persisted remotion-component node, verify the Timeline uses that stable node ID as sourceNodeId, and read back the completed render Asset and source revision."
+        },
+        "requiredProductOperations": [
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 25,
+          "required": true,
+          "minSourceBytes": 2400,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mg-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 10,
+          "required": true,
+          "minTracks": 1,
+          "minItems": 1,
+          "minDurationInFrames": 180,
+          "requiredItemTypes": ["composition"]
+        },
+        {
+          "id": "mg-render",
+          "type": "media",
+          "artifactId": "mg-video",
+          "weight": 30,
+          "required": true,
+          "width": 1920,
+          "height": 1080,
+          "minDurationSeconds": 5.8,
+          "maxDurationSeconds": 6.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mg-poses",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mg-visual-poses",
+          "type": "visual-frames",
+          "artifactIds": ["pose-start", "pose-action", "pose-settle"],
+          "width": 1920,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.005
+          },
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mg-review",
+          "type": "artifact-exists",
+          "artifactId": "mg-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "remotion-character-channel-sting-v2",
+      "title": "Remotion character channel sting",
+      "category": "mg-character",
+      "outcome": {
+        "objective": "Create an original creator-channel sting as an editable Remotion TSX component in a 5-second 1920x1080 composition at 30fps. Animate a character breaking through or displacing a foreground panel with a weighted impact, recovering, pointing to one concise channel promise, and holding a clean readable end card. Persist the exact TSX as a Canvas remotion-component, reuse the returned stable Canvas node ID unchanged as the Timeline composition sourceNodeId with runtime remotion, render the persisted Timeline through clash_timeline_render, and extract start, action, and settle PNGs from the real video. Do not imitate any real face, voice, mascot, logo, slogan, or proprietary brand package; evaluation concerns only impact weight, recovery, pointing clarity, and end-card readability.",
+        "acceptanceCriteria": [
+          "The editable source is a self-contained Remotion TSX component at components/remotion-character-channel-sting-v2.tsx, uses deterministic frame-driven animation, and contains semantically named head, torso, left/right arms, and left/right legs.",
+          "clash_canvas_add persists the exact TSX as a remotion-component node; the stable node ID returned by Clash is reused verbatim as sourceNodeId on a Timeline composition item with compositionKind custom, runtime remotion, and the local TSX sourcePath.",
+          "The visible action shows a weighted panel impact, recovery, a clear pointing pose, and a stable end card with one concise readable channel promise.",
+          "The canonical Timeline is valid at 1920x1080, 30fps, and 150 frames, and clash_timeline_render completes with a decodable product-owned video.",
+          "The start, action, and settle PNGs are sampled from that rendered video, are decodable at delivery size, and show materially distinct poses.",
+          "No real face, voice, mascot, logo, slogan, or proprietary brand package is imitated; scoring uses only the specified original channel-sting animation traits.",
+          "The submission, full Clash product trajectory, Canvas component readback, Timeline revision, stable sourceNodeId, and final render receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX source at components/remotion-character-channel-sting-v2.tsx"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML containing the sourceNodeId-linked Remotion composition"
+          },
+          {
+            "artifactId": "mg-video",
+            "kind": "video",
+            "description": "Video produced by clash_timeline_render from the persisted Timeline"
+          },
+          {
+            "artifactId": "pose-start",
+            "kind": "image",
+            "description": "Start-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-action",
+            "kind": "image",
+            "description": "Action-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "pose-settle",
+            "kind": "image",
+            "description": "Settle-pose PNG sampled from the rendered video"
+          },
+          {
+            "artifactId": "mg-review",
+            "kind": "report",
+            "description": "Remotion source, motion, render, and readback review"
+          }
+        ]
+      },
+      "passScore": 82,
+      "timeoutMs": 1200000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-mg-character"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "remotion-component-and-render-receipt",
+          "artifactIds": ["component-source", "timeline", "mg-video"],
+          "description": "Match the delivered TSX to the persisted remotion-component node, verify the Timeline uses that stable node ID as sourceNodeId, and read back the completed render Asset and source revision."
+        },
+        "requiredProductOperations": [
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 25,
+          "required": true,
+          "minSourceBytes": 1800,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mg-timeline",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 10,
+          "required": true,
+          "minTracks": 1,
+          "minItems": 1,
+          "minDurationInFrames": 150,
+          "requiredItemTypes": ["composition"]
+        },
+        {
+          "id": "mg-render",
+          "type": "media",
+          "artifactId": "mg-video",
+          "weight": 30,
+          "required": true,
+          "width": 1920,
+          "height": 1080,
+          "minDurationSeconds": 4.8,
+          "maxDurationSeconds": 5.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mg-poses",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 3,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mg-visual-poses",
+          "type": "visual-frames",
+          "artifactIds": ["pose-start", "pose-action", "pose-settle"],
+          "width": 1920,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.005
+          },
+          "weight": 20,
+          "required": true
+        },
+        {
+          "id": "mg-review",
+          "type": "artifact-exists",
+          "artifactId": "mg-review",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-productivity-mythbust-short-v2",
+      "title": "Mixed productivity myth-bust short",
+      "category": "mixed",
+      "outcome": {
+        "objective": "Assemble an 8-second 9:16 productivity myth-bust short using Ali Abdaal only as editorial-format shorthand. Combine a Director desk-and-presenter setup, an original Remotion TSX reaction or checklist character, and an editable Timeline whose jump cuts, selective dynamic captions, and supporting desk B-roll progress from myth to evidence to one actionable tip. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, workspace, mascot, or proprietary brand package; evaluation concerns only approachable pacing, evidence clarity, and usefulness.",
+        "acceptanceCriteria": [
+          "The final composition is 720x1280 at 30fps and approximately 8 seconds.",
+          "The editable character source is a self-contained Remotion TSX component at components/mixed-productivity-mythbust-short-v2-character.tsx, and clash_canvas_add persists that exact source as a remotion-component Canvas node.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion; the Director-derived asset lineage remains referenced by the same canonical Timeline.",
+          "The final edit visibly progresses from a stated productivity myth through one evidence beat to an actionable tip, using motivated presenter reframing, selective captions, desk B-roll, and a visible original character reaction or checklist beat.",
+          "clash_director_capture supplies at least one exact-time product-rendered Stage PNG, and clash_timeline_render completes with a decodable final video plus three sampled PNGs.",
+          "No real creator face, voice, logo, workspace, mascot, or proprietary brand package is imitated; Ali Abdaal is only shorthand for the specified approachable productivity-editorial grammar.",
+          "The full Clash product trajectory, Stage revision, Director capture receipt, Canvas component content, Timeline revision, sourceNodeId, and final render Asset receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "director-capture-frame",
+            "kind": "image",
+            "description": "Exact-time Stage PNG produced by clash_director_capture"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX character source at components/mixed-productivity-mythbust-short-v2-character.tsx"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Final MP4 produced by clash_timeline_render"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-mg-action",
+            "kind": "image",
+            "description": "Character-action PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing PNG sampled from the final video"
+          },
+          {
+            "artifactId": "lineage-report",
+            "kind": "report",
+            "description": "Stage, Canvas component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 1500000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback",
+          "mixed-product-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            },
+            {
+              "capability": "mixed-product-readback",
+              "status": "available",
+              "detail": "Stage capture, Canvas component, Timeline revision, and final render receipts can be retained as one cross-product lineage chain."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "mixed-remotion-lineage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "director-capture-frame",
+            "timeline",
+            "component-source",
+            "final-video"
+          ],
+          "description": "Match the Stage and capture receipt, delivered TSX and Canvas node content, Timeline sourceNodeId and revision, and the completed final render Asset."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 15,
+          "required": true,
+          "minObjects": 3,
+          "minCameras": 2,
+          "minCapturedShots": 2,
+          "minAnimatedTracks": 1
+        },
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 15,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 4,
+          "minDurationInFrames": 240,
+          "requiredItemTypes": ["video", "composition", "text"]
+        },
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 15,
+          "required": true,
+          "minSourceBytes": 1400,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": ["useCurrentFrame", "interpolate", "spring"]
+        },
+        {
+          "id": "mixed-lineage",
+          "type": "mixed-lineage",
+          "directorArtifactId": "stage",
+          "timelineArtifactId": "timeline",
+          "componentArtifactId": "component-source",
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "final-video",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 20,
+          "required": true,
+          "width": 720,
+          "height": 1280,
+          "minDurationSeconds": 7.8,
+          "maxDurationSeconds": 8.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mixed-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 4,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mixed-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-opening", "frame-mg-action", "frame-closing"],
+          "width": 720,
+          "height": 1280,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.01
+          },
+          "weight": 5,
+          "required": true
+        },
+        {
+          "id": "lineage-report",
+          "type": "artifact-exists",
+          "artifactId": "lineage-report",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-challenge-cold-open-v2",
+      "title": "Mixed challenge cold open",
+      "category": "mixed",
+      "outcome": {
+        "objective": "Assemble a 10-second 16:9 high-stakes challenge cold open using MrBeast only as editorial-format shorthand. Combine a Director obstacle arena, an original Remotion TSX countdown or referee character, and a paced Timeline that reveals the prize, compresses the rules, shows an action and reaction escalation, and cuts out on unresolved suspense. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, thumbnail, mascot, or proprietary brand package; evaluation concerns only stakes clarity, escalation, scale contrast, and reaction timing.",
+        "acceptanceCriteria": [
+          "The final composition is 1920x1080 at 30fps and approximately 10 seconds.",
+          "The editable character source is a self-contained Remotion TSX component at components/mixed-challenge-cold-open-v2-character.tsx, and clash_canvas_add persists that exact source as a remotion-component Canvas node.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion; the Director-derived asset lineage remains referenced by the same canonical Timeline.",
+          "The final edit makes the prize and obstacle legible, compresses the rule into a readable beat, visibly uses the original countdown or referee character, escalates through action and reaction, and ends on unresolved suspense.",
+          "clash_director_capture supplies at least one exact-time product-rendered Stage PNG, and clash_timeline_render completes with a decodable final video plus three sampled PNGs.",
+          "No real creator face, voice, logo, thumbnail, mascot, or proprietary brand package is imitated; MrBeast is only shorthand for the specified high-stakes challenge grammar.",
+          "The full Clash product trajectory, Stage revision, Director capture receipt, Canvas component content, Timeline revision, sourceNodeId, and final render Asset receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "director-capture-frame",
+            "kind": "image",
+            "description": "Exact-time Stage PNG produced by clash_director_capture"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX character source at components/mixed-challenge-cold-open-v2-character.tsx"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Final MP4 produced by clash_timeline_render"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-mg-action",
+            "kind": "image",
+            "description": "Character-action PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing PNG sampled from the final video"
+          },
+          {
+            "artifactId": "lineage-report",
+            "kind": "report",
+            "description": "Stage, Canvas component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 1500000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback",
+          "mixed-product-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            },
+            {
+              "capability": "mixed-product-readback",
+              "status": "available",
+              "detail": "Stage capture, Canvas component, Timeline revision, and final render receipts can be retained as one cross-product lineage chain."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "mixed-remotion-lineage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "director-capture-frame",
+            "timeline",
+            "component-source",
+            "final-video"
+          ],
+          "description": "Match the Stage and capture receipt, delivered TSX and Canvas node content, Timeline sourceNodeId and revision, and the completed final render Asset."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 15,
+          "required": true,
+          "minObjects": 5,
+          "minCameras": 2,
+          "minCapturedShots": 3,
+          "minAnimatedTracks": 1
+        },
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 15,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 6,
+          "minDurationInFrames": 300,
+          "requiredItemTypes": ["video", "composition", "text"]
+        },
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 15,
+          "required": true,
+          "minSourceBytes": 1600,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mixed-lineage",
+          "type": "mixed-lineage",
+          "directorArtifactId": "stage",
+          "timelineArtifactId": "timeline",
+          "componentArtifactId": "component-source",
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "final-video",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 20,
+          "required": true,
+          "width": 1920,
+          "height": 1080,
+          "minDurationSeconds": 9.8,
+          "maxDurationSeconds": 10.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mixed-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 4,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mixed-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-opening", "frame-mg-action", "frame-closing"],
+          "width": 1920,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.01
+          },
+          "weight": 5,
+          "required": true
+        },
+        {
+          "id": "lineage-report",
+          "type": "artifact-exists",
+          "artifactId": "lineage-report",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-premium-gadget-mini-review-v2",
+      "title": "Mixed premium gadget mini review",
+      "category": "mixed",
+      "outcome": {
+        "objective": "Assemble a 9-second 1:1 premium gadget mini review using MKBHD only as editorial-format shorthand. Combine a dark-studio Director product orbit, an original Remotion TSX metric-presenter character, and a Timeline that alternates concise review copy with product B-roll, compares three readable metrics, and resolves to a clean hero lockup using one saturated accent color. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, product trade dress, mascot, or proprietary brand package; evaluation concerns only premium visual restraint, comparison clarity, and B-roll motivation.",
+        "acceptanceCriteria": [
+          "The final composition is 1080x1080 at 30fps and approximately 9 seconds.",
+          "The editable character source is a self-contained Remotion TSX component at components/mixed-premium-gadget-mini-review-v2-character.tsx, and clash_canvas_add persists that exact source as a remotion-component Canvas node.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion; the Director-derived asset lineage remains referenced by the same canonical Timeline.",
+          "The final edit alternates review copy and product detail coverage, presents three readable comparison metrics through the original character, maintains a dark field with one accent color, and resolves to a clean hero lockup.",
+          "clash_director_capture supplies at least one exact-time product-rendered Stage PNG, and clash_timeline_render completes with a decodable final video plus three sampled PNGs.",
+          "No real creator face, voice, logo, product trade dress, mascot, or proprietary brand package is imitated; MKBHD is only shorthand for the stated premium technology-review grammar.",
+          "The full Clash product trajectory, Stage revision, Director capture receipt, Canvas component content, Timeline revision, sourceNodeId, and final render Asset receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "director-capture-frame",
+            "kind": "image",
+            "description": "Exact-time Stage PNG produced by clash_director_capture"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX character source at components/mixed-premium-gadget-mini-review-v2-character.tsx"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Final MP4 produced by clash_timeline_render"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-mg-action",
+            "kind": "image",
+            "description": "Character-action PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing PNG sampled from the final video"
+          },
+          {
+            "artifactId": "lineage-report",
+            "kind": "report",
+            "description": "Stage, Canvas component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 1500000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback",
+          "mixed-product-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            },
+            {
+              "capability": "mixed-product-readback",
+              "status": "available",
+              "detail": "Stage capture, Canvas component, Timeline revision, and final render receipts can be retained as one cross-product lineage chain."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "mixed-remotion-lineage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "director-capture-frame",
+            "timeline",
+            "component-source",
+            "final-video"
+          ],
+          "description": "Match the Stage and capture receipt, delivered TSX and Canvas node content, Timeline sourceNodeId and revision, and the completed final render Asset."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 15,
+          "required": true,
+          "minObjects": 4,
+          "minCameras": 2,
+          "minCapturedShots": 3,
+          "minAnimatedTracks": 1
+        },
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 15,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 5,
+          "minDurationInFrames": 270,
+          "requiredItemTypes": ["video", "composition", "text"]
+        },
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 15,
+          "required": true,
+          "minSourceBytes": 1800,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mixed-lineage",
+          "type": "mixed-lineage",
+          "directorArtifactId": "stage",
+          "timelineArtifactId": "timeline",
+          "componentArtifactId": "component-source",
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "final-video",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 20,
+          "required": true,
+          "width": 1080,
+          "height": 1080,
+          "minDurationSeconds": 8.8,
+          "maxDurationSeconds": 9.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mixed-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 4,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mixed-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-opening", "frame-mg-action", "frame-closing"],
+          "width": 1080,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.01
+          },
+          "weight": 5,
+          "required": true
+        },
+        {
+          "id": "lineage-report",
+          "type": "artifact-exists",
+          "artifactId": "lineage-report",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-map-investigation-story-v2",
+      "title": "Mixed map-investigation story",
+      "category": "mixed",
+      "outcome": {
+        "objective": "Assemble a 12-second 16:9 map-investigation story using Johnny Harris only as editorial-format shorthand. Combine a Director evidence-wall or map-table Stage, an original Remotion TSX guide character, and a Timeline that moves from a big question through labeled places, a route, sourced clue callouts, and a causal reframe rather than holding one static split screen. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, map artwork, mascot, or proprietary brand package; evaluation concerns only evidence sequencing, geographic clarity, source visibility, and explanatory payoff.",
+        "acceptanceCriteria": [
+          "The final composition is 1920x1080 at 30fps and approximately 12 seconds.",
+          "The editable character source is a self-contained Remotion TSX component at components/mixed-map-investigation-story-v2-character.tsx, and clash_canvas_add persists that exact source as a remotion-component Canvas node.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion; the Director-derived asset lineage remains referenced by the same canonical Timeline.",
+          "The final edit progresses from a big question through labeled geography, route and clue evidence to a causal reframe, visibly uses the original guide character, varies the presenter-evidence layout, and keeps source labels readable.",
+          "clash_director_capture supplies at least one exact-time product-rendered Stage PNG, and clash_timeline_render completes with a decodable final video plus three sampled PNGs.",
+          "No real creator face, voice, logo, map artwork, mascot, or proprietary brand package is imitated; Johnny Harris is only shorthand for the specified investigative explainer grammar.",
+          "The full Clash product trajectory, Stage revision, Director capture receipt, Canvas component content, Timeline revision, sourceNodeId, and final render Asset receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "director-capture-frame",
+            "kind": "image",
+            "description": "Exact-time Stage PNG produced by clash_director_capture"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX character source at components/mixed-map-investigation-story-v2-character.tsx"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Final MP4 produced by clash_timeline_render"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-mg-action",
+            "kind": "image",
+            "description": "Character-action PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing PNG sampled from the final video"
+          },
+          {
+            "artifactId": "lineage-report",
+            "kind": "report",
+            "description": "Stage, Canvas component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 1500000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback",
+          "mixed-product-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            },
+            {
+              "capability": "mixed-product-readback",
+              "status": "available",
+              "detail": "Stage capture, Canvas component, Timeline revision, and final render receipts can be retained as one cross-product lineage chain."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "mixed-remotion-lineage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "director-capture-frame",
+            "timeline",
+            "component-source",
+            "final-video"
+          ],
+          "description": "Match the Stage and capture receipt, delivered TSX and Canvas node content, Timeline sourceNodeId and revision, and the completed final render Asset."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 15,
+          "required": true,
+          "minObjects": 3,
+          "minCameras": 2,
+          "minCapturedShots": 3,
+          "minAnimatedTracks": 1
+        },
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 15,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 7,
+          "minDurationInFrames": 360,
+          "requiredItemTypes": ["video", "composition", "text"]
+        },
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 15,
+          "required": true,
+          "minSourceBytes": 1700,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mixed-lineage",
+          "type": "mixed-lineage",
+          "directorArtifactId": "stage",
+          "timelineArtifactId": "timeline",
+          "componentArtifactId": "component-source",
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "final-video",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 20,
+          "required": true,
+          "width": 1920,
+          "height": 1080,
+          "minDurationSeconds": 11.8,
+          "maxDurationSeconds": 12.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mixed-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 4,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mixed-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-opening", "frame-mg-action", "frame-closing"],
+          "width": 1920,
+          "height": 1080,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.01
+          },
+          "weight": 5,
+          "required": true
+        },
+        {
+          "id": "lineage-report",
+          "type": "artifact-exists",
+          "artifactId": "lineage-report",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "mixed-future-tech-optimist-short-v2",
+      "title": "Mixed future-tech optimist short",
+      "category": "mixed",
+      "outcome": {
+        "objective": "Assemble a 10-second 9:16 optimistic future-tech short using Cleo Abram only as editorial-format shorthand. Combine a Director lab and device scale reveal, an original Remotion TSX science-guide character, and an energetic Timeline whose three clear chapters ask a big question, show how the mechanism works, and explain why it matters before an uplifting final beat. Preserve the Director Stage, Remotion TSX character source, and canonical Timeline; persist the TSX as a Canvas remotion-component, bind its stable node ID as the Timeline composition sourceNodeId with runtime remotion, capture Director visual evidence, render through clash_timeline_render, and sample three PNGs from the final product video. Do not imitate any real face, voice, logo, mascot, or proprietary brand package; evaluation concerns only curiosity, mechanism clarity, scale progression, and constructive payoff.",
+        "acceptanceCriteria": [
+          "The final composition is 1080x1920 at 30fps and approximately 10 seconds.",
+          "The editable character source is a self-contained Remotion TSX component at components/mixed-future-tech-optimist-short-v2-character.tsx, and clash_canvas_add persists that exact source as a remotion-component Canvas node.",
+          "The stable Canvas node ID returned by Clash is reused unchanged as sourceNodeId on a composition item with compositionKind custom and runtime remotion; the Director-derived asset lineage remains referenced by the same canonical Timeline.",
+          "The final edit visibly progresses through big question, mechanism explanation, and why-it-matters chapters, uses the original science-guide character, expands from detail to scale, and ends on a constructive payoff.",
+          "clash_director_capture supplies at least one exact-time product-rendered Stage PNG, and clash_timeline_render completes with a decodable final video plus three sampled PNGs.",
+          "No real creator face, voice, logo, mascot, or proprietary brand package is imitated; Cleo Abram is only shorthand for the specified optimistic future-explainer grammar.",
+          "The full Clash product trajectory, Stage revision, Director capture receipt, Canvas component content, Timeline revision, sourceNodeId, and final render Asset receipt are persisted for external evaluation."
+        ],
+        "deliverables": [
+          {
+            "artifactId": "stage",
+            "kind": "director-stage",
+            "description": "Editable Director Stage JSON"
+          },
+          {
+            "artifactId": "director-capture-frame",
+            "kind": "image",
+            "description": "Exact-time Stage PNG produced by clash_director_capture"
+          },
+          {
+            "artifactId": "timeline",
+            "kind": "timeline",
+            "description": "Editable canonical Timeline YAML"
+          },
+          {
+            "artifactId": "component-source",
+            "kind": "remotion-component",
+            "description": "Editable Remotion TSX character source at components/mixed-future-tech-optimist-short-v2-character.tsx"
+          },
+          {
+            "artifactId": "final-video",
+            "kind": "video",
+            "description": "Final MP4 produced by clash_timeline_render"
+          },
+          {
+            "artifactId": "frame-opening",
+            "kind": "image",
+            "description": "Opening PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-mg-action",
+            "kind": "image",
+            "description": "Character-action PNG sampled from the final video"
+          },
+          {
+            "artifactId": "frame-closing",
+            "kind": "image",
+            "description": "Closing PNG sampled from the final video"
+          },
+          {
+            "artifactId": "lineage-report",
+            "kind": "report",
+            "description": "Stage, Canvas component, Timeline, and render lineage review"
+          }
+        ]
+      },
+      "passScore": 85,
+      "timeoutMs": 1500000,
+      "skills": [
+        "../../../plugins/clash/skills/clash",
+        "../../../plugins/clash/skills/clash-director-production",
+        "../../../plugins/clash/skills/clash-timeline-production",
+        "../../../plugins/clash/skills/clash-mg-character",
+        "../../../plugins/clash/skills/clash-video-finishing"
+      ],
+      "execution": {
+        "profile": "clash-host",
+        "requiredCapabilities": [
+          "director-stage-readback",
+          "director-headless-png-capture",
+          "canvas-remotion-component",
+          "remotion-component-readback",
+          "timeline-state-readback",
+          "timeline-headless-render",
+          "timeline-render-readback",
+          "mixed-product-readback"
+        ],
+        "preflight": {
+          "status": "ready",
+          "checks": [
+            {
+              "capability": "director-stage-readback",
+              "status": "available",
+              "detail": "The project host returns the persisted Director Stage and its signed revision receipt."
+            },
+            {
+              "capability": "director-headless-png-capture",
+              "status": "available",
+              "detail": "clash_director_capture uses the daemon-owned DirectorViewport WebGL renderer for exact-time PNGs with Stage revision verification."
+            },
+            {
+              "capability": "canvas-remotion-component",
+              "status": "available",
+              "detail": "clash_canvas_add persists executable TSX as a remotion-component Canvas node with a stable node ID."
+            },
+            {
+              "capability": "remotion-component-readback",
+              "status": "available",
+              "detail": "The Canvas node content, Timeline sourceNodeId, and delivered TSX source can be matched during product readback."
+            },
+            {
+              "capability": "timeline-state-readback",
+              "status": "available",
+              "detail": "The typed Timeline service creates, saves, and reads back canonical Timeline state."
+            },
+            {
+              "capability": "timeline-headless-render",
+              "status": "available",
+              "detail": "clash_timeline_render submits the persisted Timeline revision to the daemon-owned Remotion renderer."
+            },
+            {
+              "capability": "timeline-render-readback",
+              "status": "available",
+              "detail": "A completed Timeline render returns an immutable Asset and render receipt linked to the source Timeline revision."
+            },
+            {
+              "capability": "mixed-product-readback",
+              "status": "available",
+              "detail": "Stage capture, Canvas component, Timeline revision, and final render receipts can be retained as one cross-product lineage chain."
+            }
+          ]
+        },
+        "evidence": {
+          "traceRequired": true,
+          "submissionRequired": true
+        },
+        "productReadback": {
+          "required": true,
+          "mechanism": "mixed-remotion-lineage-and-render-receipt",
+          "artifactIds": [
+            "stage",
+            "director-capture-frame",
+            "timeline",
+            "component-source",
+            "final-video"
+          ],
+          "description": "Match the Stage and capture receipt, delivered TSX and Canvas node content, Timeline sourceNodeId and revision, and the completed final render Asset."
+        },
+        "requiredProductOperations": [
+          "director.create",
+          "director.mutate",
+          "director.get",
+          "director.capture",
+          "canvas.add",
+          "canvas.get",
+          "timeline.create",
+          "timeline.get",
+          "timeline.validate",
+          "timeline.save",
+          "timeline.render"
+        ]
+      },
+      "rubric": [
+        {
+          "id": "director-source",
+          "type": "director-stage",
+          "artifactId": "stage",
+          "weight": 15,
+          "required": true,
+          "minObjects": 4,
+          "minCameras": 2,
+          "minCapturedShots": 4,
+          "minAnimatedTracks": 1
+        },
+        {
+          "id": "timeline-source",
+          "type": "timeline",
+          "artifactId": "timeline",
+          "weight": 15,
+          "required": true,
+          "minTracks": 3,
+          "minItems": 7,
+          "minDurationInFrames": 300,
+          "requiredItemTypes": ["video", "composition", "text"]
+        },
+        {
+          "id": "mg-source",
+          "type": "mg-character",
+          "profile": "remotion-tsx",
+          "artifactId": "component-source",
+          "weight": 15,
+          "required": true,
+          "minSourceBytes": 1900,
+          "requiredBodyParts": [
+            "head",
+            "torso",
+            "arm-left",
+            "arm-right",
+            "leg-left",
+            "leg-right"
+          ],
+          "requiredRemotionApis": [
+            "useCurrentFrame",
+            "interpolate",
+            "spring",
+            "Sequence"
+          ]
+        },
+        {
+          "id": "mixed-lineage",
+          "type": "mixed-lineage",
+          "directorArtifactId": "stage",
+          "timelineArtifactId": "timeline",
+          "componentArtifactId": "component-source",
+          "weight": 15,
+          "required": true
+        },
+        {
+          "id": "final-video",
+          "type": "media",
+          "artifactId": "final-video",
+          "weight": 20,
+          "required": true,
+          "width": 1080,
+          "height": 1920,
+          "minDurationSeconds": 9.8,
+          "maxDurationSeconds": 10.2,
+          "requireVideo": true
+        },
+        {
+          "id": "mixed-frames",
+          "type": "artifact-set",
+          "kind": "image",
+          "minCount": 4,
+          "minBytes": 1024,
+          "weight": 10,
+          "required": true
+        },
+        {
+          "id": "mixed-visual-frames",
+          "type": "visual-frames",
+          "artifactIds": ["frame-opening", "frame-mg-action", "frame-closing"],
+          "width": 1080,
+          "height": 1920,
+          "minDistinctPairs": 2,
+          "minMeanAbsoluteDifference": 0.005,
+          "safeArea": {
+            "marginPercent": 0.03,
+            "backgroundTolerance": 24,
+            "maxForegroundEdgeRatio": 0.01
+          },
+          "weight": 5,
+          "required": true
+        },
+        {
+          "id": "lineage-report",
+          "type": "artifact-exists",
+          "artifactId": "lineage-report",
+          "minBytes": 128,
+          "weight": 5,
+          "required": true
+        }
+      ]
+    }
+  ]
+}

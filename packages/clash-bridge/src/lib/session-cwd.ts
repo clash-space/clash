@@ -7,8 +7,7 @@
  * The path segment is URI-encoded to avoid collisions; `.clash/project.toml`
  * stores the canonical project id.
  *
- * Each agent template has its own bundled AGENTS.md system prompt + chosen
- * ACP runtime (claude-agent-acp by default; could be
+ * Each agent template has its own chosen ACP runtime (claude-agent-acp by default; could be
  * openclaw / hermes / … per `dist/agents/<id>/runtime.json`).
  *
  * Per-project directories keep project files, local artifacts, agent tool
@@ -20,7 +19,6 @@
  */
 
 import {
-  cp,
   lstat,
   mkdir,
   readFile,
@@ -257,9 +255,8 @@ export async function resolveAgentMcpServers(
  *
  * Layout:
  *   ~/.clash/projects/<encoded-project-id>/
- *     AGENTS.md
  *     .clash/project.toml
- *     AGENTS.md / CLAUDE.md / GEMINI.md
+ *     harness-native Skill links when explicitly supported
  */
 export async function ensureAgentCwd(
   agentTemplateId: string,
@@ -271,7 +268,7 @@ export async function ensureAgentCwd(
   const cwd = join(paths().projectsDir, projectPathSegment);
   await mkdir(cwd, { recursive: true });
   await ensureProjectWorkspaceLayout(cwd);
-  await installAgentTemplate(agentTemplateId, cwd);
+  await assertAgentTemplate(agentTemplateId);
   await installNativeAgentSkills(
     agentTemplateId,
     resolveHarnessProjectSkillDirectory(capabilities.harnessId ?? ""),
@@ -301,19 +298,13 @@ function sanitize(id: string): string {
   return id.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^\.+/, "");
 }
 
-/**
- * Copy the bundled agent template into the project cwd. Reapplied every
- * spawn so an upgraded daemon refreshes stale startup guidance automatically.
- * Skills stay in the bundled plugin and are linked into the selected
- * harness's native project discovery directory during session startup.
- * Per-project files with non-overlapping names are preserved; matching bundled
- * names get overwritten.
- */
-async function installAgentTemplate(agentTemplateId: string, cwd: string): Promise<void> {
+/** Validate the selected runtime without writing repository instructions. */
+async function assertAgentTemplate(agentTemplateId: string): Promise<void> {
   const templateId = sanitize(agentTemplateId);
-  const tpl = join(bundledAgentsDir(), templateId, "template");
+  const runtimePath = join(bundledAgentsDir(), templateId, "runtime.json");
   try {
-    await cp(tpl, cwd, { recursive: true, force: true });
+    const runtime = await lstat(runtimePath);
+    if (!runtime.isFile()) throw new Error(`unknown agent template: ${templateId}`);
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error(`unknown agent template: ${templateId}`);

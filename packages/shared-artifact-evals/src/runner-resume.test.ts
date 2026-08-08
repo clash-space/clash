@@ -1,0 +1,267 @@
+import { chmod, mkdtemp, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { runBenchmarkSuite } from "./runner";
+import type { ArtifactBenchmarkCase, ArtifactBenchmarkSuite, BenchmarkAgent } from "./types";
+
+function benchmarkCase(
+  id: string,
+  overrides: Partial<ArtifactBenchmarkCase> = {},
+): ArtifactBenchmarkCase {
+  return {
+    id,
+    title: id,
+    category: "timeline",
+    outcome: {
+      objective: `Create the ${id} artifact.`,
+      acceptanceCriteria: ["The report artifact exists."],
+      deliverables: [{ artifactId: "result", kind: "report", description: "Result" }],
+    },
+    passScore: 100,
+    timeoutMs: 10_000,
+    skills: [],
+    rubric: [{
+      id: "result-exists",
+      type: "artifact-exists",
+      artifactId: "result",
+      kind: "report",
+      weight: 1,
+      required: true,
+    }],
+    ...overrides,
+  };
+}
+
+function suite(cases: ArtifactBenchmarkCase[]): ArtifactBenchmarkSuite {
+  return {
+    schemaVersion: 1,
+    id: "resume-suite",
+    title: "Resume suite",
+    cases,
+  };
+}
+
+function successfulAgent(extraSource = ""): BenchmarkAgent {
+  const source = [
+    'const fs = require("node:fs")',
+    'const path = require("node:path")',
+    'const workspace = process.env.CLASH_BENCH_WORKSPACE',
+    'const caseId = process.env.CLASH_BENCH_CASE_ID',
+    extraSource,
+    'fs.writeFileSync(path.join(workspace, "result.txt"), "artifact")',
+    'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:caseId,artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
+  ].filter(Boolean).join(";");
+  return { command: process.execPath, args: ["-e", source] };
+}
+
+async function jsonLines(path: string): Promise<Array<Record<string, unknown>>> {
+  return (await readFile(path, "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+describe("benchmark batch recovery", () => {
+  it("isolates a case setup crash, retries only that infrastructure failure, and continues the suite", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-isolation-"));
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    await mkdir(suiteRoot);
+
+    const report = await runBenchmarkSuite({
+      suite: suite([
+        benchmarkCase("broken-setup", { skills: ["skills/does-not-exist"] }),
+        benchmarkCase("still-runs"),
+      ]),
+      suiteRoot,
+      outputRoot,
+      runId: "isolated-run",
+      agent: successfulAgent(),
+      maxInfrastructureAttempts: 2,
+    });
+
+    expect(report.status).toBe("fail");
+    expect(report.cases).toHaveLength(2);
+    expect(report.cases[0]).toMatchObject({
+      id: "broken-setup",
+      status: "fail",
+      attempt: 2,
+      failure: { classification: "infrastructure", retryable: true },
+      agent: { status: "not-run" },
+    });
+    expect(report.cases[1]).toMatchObject({ id: "still-runs", status: "pass", attempt: 1 });
+    await expect(readFile(join(outputRoot, "isolated-run", "still-runs", "workspace", "result.txt"), "utf8"))
+      .resolves.toBe("artifact");
+    await expect(readFile(join(outputRoot, "isolated-run", "broken-setup", "workspace", "outcome.json"), "utf8"))
+      .resolves.toContain("broken-setup");
+    await expect(readFile(join(outputRoot, "isolated-run", "broken-setup", "attempts", "002", "runner-error.json"), "utf8"))
+      .resolves.toContain("does-not-exist");
+
+    const ledger = await jsonLines(join(outputRoot, "isolated-run", "attempts.jsonl"));
+    expect(ledger.map(({ caseId, attempt, event, status }) => ({ caseId, attempt, event, status }))).toEqual([
+      { caseId: "broken-setup", attempt: 1, event: "started", status: undefined },
+      { caseId: "broken-setup", attempt: 1, event: "completed", status: "fail" },
+      { caseId: "broken-setup", attempt: 2, event: "started", status: undefined },
+      { caseId: "broken-setup", attempt: 2, event: "completed", status: "fail" },
+      { caseId: "still-runs", attempt: 1, event: "started", status: undefined },
+      { caseId: "still-runs", attempt: 1, event: "completed", status: "pass" },
+    ]);
+  });
+
+  it("resumes an infrastructure failure into a new preserved attempt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-resume-"));
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    const agentPath = join(root, "late-agent");
+    await mkdir(suiteRoot);
+    const benchmarkSuite = suite([benchmarkCase("recoverable")]);
+
+    const first = await runBenchmarkSuite({
+      suite: benchmarkSuite,
+      suiteRoot,
+      outputRoot,
+      runId: "resume-run",
+      agent: { command: agentPath },
+      maxInfrastructureAttempts: 1,
+    });
+    expect(first.cases[0]).toMatchObject({
+      attempt: 1,
+      failure: { classification: "infrastructure", retryable: true },
+      agent: { status: "spawn-error" },
+    });
+
+    await writeFile(agentPath, [
+      `#!${process.execPath}`,
+      'const fs = require("node:fs")',
+      'const path = require("node:path")',
+      'const workspace = process.env.CLASH_BENCH_WORKSPACE',
+      'const caseId = process.env.CLASH_BENCH_CASE_ID',
+      'fs.writeFileSync(path.join(workspace, "result.txt"), "recovered")',
+      'fs.writeFileSync(path.join(workspace, "submission.json"), JSON.stringify({schemaVersion:1,taskId:caseId,artifacts:[{id:"result",kind:"report",path:"result.txt"}]}))',
+    ].join("\n"), "utf8");
+    await chmod(agentPath, 0o755);
+
+    const resumed = await runBenchmarkSuite({
+      suite: benchmarkSuite,
+      suiteRoot,
+      outputRoot,
+      runId: "resume-run",
+      agent: { command: agentPath },
+      resume: true,
+      maxInfrastructureAttempts: 2,
+    });
+
+    expect(resumed).toMatchObject({ status: "pass", resumed: true });
+    expect(resumed.cases[0]).toMatchObject({ attempt: 2, status: "pass" });
+    expect(resumed.cases[0]?.workspace).toBe(await realpath(join(outputRoot, "resume-run", "recoverable", "attempts", "002", "workspace")));
+    await expect(readFile(join(outputRoot, "resume-run", "recoverable", "logs", "stderr.log"), "utf8"))
+      .resolves.toMatch(/ENOENT|spawn/i);
+    const gallery = await readFile(join(outputRoot, "resume-run", "report.html"), "utf8");
+    expect(gallery).toContain("recoverable/attempts/002/workspace/result.txt");
+  });
+
+  it("does not rerun evaluation failures when resuming", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-no-mask-"));
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    const counterPath = join(root, "counter.txt");
+    await mkdir(suiteRoot);
+    const benchmarkSuite = suite([benchmarkCase("creative-failure")]);
+    const failingAgent: BenchmarkAgent = {
+      command: process.execPath,
+      args: ["-e", [
+        'const fs = require("node:fs")',
+        'const current = Number(fs.existsSync(process.env.COUNTER_PATH) ? fs.readFileSync(process.env.COUNTER_PATH, "utf8") : "0")',
+        'fs.writeFileSync(process.env.COUNTER_PATH, String(current + 1))',
+      ].join(";")],
+      env: { COUNTER_PATH: counterPath },
+    };
+
+    const first = await runBenchmarkSuite({
+      suite: benchmarkSuite,
+      suiteRoot,
+      outputRoot,
+      runId: "no-mask-run",
+      agent: failingAgent,
+      maxInfrastructureAttempts: 2,
+    });
+    expect(first.cases[0]).toMatchObject({
+      attempt: 1,
+      failure: { classification: "evaluation", retryable: false },
+    });
+
+    const resumed = await runBenchmarkSuite({
+      suite: benchmarkSuite,
+      suiteRoot,
+      outputRoot,
+      runId: "no-mask-run",
+      agent: successfulAgent('fs.writeFileSync(process.env.COUNTER_PATH, "999")'),
+      resume: true,
+      maxInfrastructureAttempts: 10,
+    });
+    expect(resumed.cases[0]).toMatchObject({
+      attempt: 1,
+      failure: { classification: "evaluation", retryable: false },
+    });
+    expect(await readFile(counterPath, "utf8")).toBe("1");
+    const ledger = await jsonLines(join(outputRoot, "no-mask-run", "attempts.jsonl"));
+    expect(ledger.filter(({ event }) => event === "started")).toHaveLength(1);
+  });
+
+  it("records blocked preflight cases without launching the agent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-bench-blocked-"));
+    const suiteRoot = join(root, "suite");
+    const outputRoot = join(root, "runs");
+    const launchedPath = join(root, "launched.txt");
+    await mkdir(suiteRoot);
+
+    const report = await runBenchmarkSuite({
+      suite: suite([benchmarkCase("blocked-case", {
+        execution: {
+          profile: "clash-host",
+          requiredMcpTools: ["clash"],
+          requiredCapabilities: ["timeline-headless-render"],
+          preflight: {
+            status: "blocked",
+            checks: [{
+              capability: "timeline-headless-render",
+              status: "missing",
+              detail: "No renderer is installed in the packaged host.",
+            }],
+          },
+          evidence: {
+            traceRequired: true,
+            submissionRequired: true,
+          },
+          productReadback: {
+            required: true,
+            mechanism: "timeline-render-readback",
+            artifactIds: ["result"],
+            description: "Read the rendered timeline back from the product daemon.",
+          },
+        },
+      })]),
+      suiteRoot,
+      outputRoot,
+      runId: "blocked-run",
+      agent: successfulAgent(`fs.writeFileSync(${JSON.stringify(launchedPath)}, "launched")`),
+    });
+
+    expect(report.status).toBe("blocked");
+    expect(report.cases[0]).toMatchObject({
+      status: "blocked",
+      attempt: 1,
+      failure: { classification: "preflight", retryable: false },
+      agent: { status: "not-run" },
+      execution: { status: "blocked" },
+      evaluation: { status: "not-run" },
+      outcome: { status: "blocked" },
+    });
+    await expect(readFile(launchedPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(outputRoot, "blocked-run", "blocked-case", "preflight.json"), "utf8"))
+      .resolves.toContain("timeline-headless-render");
+  });
+});

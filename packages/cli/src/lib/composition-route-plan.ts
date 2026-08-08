@@ -128,7 +128,7 @@ function decideCompositionRoute(request: CompositionRouteRequest): Omit<
       return {
         status: "planned",
         selectedRuntime: "remotion",
-        routeCommand: "clash render remotion",
+        routeCommand: "clash canvas add --type remotion && clash timeline render",
         validationPlan: baseValidationPlan(request),
         decisionLog: ["selected remotion for react component timeline integration"],
         blockedReasons: [],
@@ -158,18 +158,18 @@ function decideCompositionRoute(request: CompositionRouteRequest): Omit<
     request.compositionKind === "motion-graphics" &&
     (requirementSet.has("agent-readable") || requirementSet.has("interactive-preview"))
   ) {
-    if (availableSet.has("html")) {
+    if (availableSet.has("remotion")) {
       return {
         status: "planned",
-        selectedRuntime: "html",
-        routeCommand: "clash production render-mg",
+        selectedRuntime: "remotion",
+        routeCommand: "clash canvas add --type remotion && clash timeline render",
         validationPlan: baseValidationPlan(request),
-        decisionLog: ["selected html for agent-readable motion-graphics preview"],
+        decisionLog: ["selected remotion for motion-graphics authoring and rendering"],
         blockedReasons: [],
         rejectedFallbacks: [],
       };
     }
-    return missingRequiredRuntime("html", request, "motion-graphics preview requires html runtime");
+    return missingRequiredRuntime("remotion", request, "motion-graphics requires the Remotion Canvas and Timeline route");
   }
 
   if (request.compositionKind === "math-diagram" || requirementSet.has("math-diagram")) {

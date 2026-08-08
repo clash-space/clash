@@ -38,6 +38,8 @@ export type TimelineToolInput = {
   newNodeId?: string;
   newActionNodeId?: string;
   position?: { x: number; y: number };
+  wait?: boolean;
+  timeoutMs?: number;
   document?: string | Record<string, unknown>;
   format?: "yaml" | "json" | "object";
   state?: Record<string, unknown>;
@@ -109,6 +111,13 @@ export function buildTimelineCliArgs(
       }
       if (input.newNodeId?.trim()) args.push("--new-node", input.newNodeId.trim());
       appendPosition(args, input);
+      break;
+    case "clash_timeline_render":
+      args.push("render", "--timeline", required(input, "timelineId"));
+      if (input.wait === false) args.push("--no-wait");
+      if (input.timeoutMs !== undefined) {
+        args.push("--timeout-ms", String(input.timeoutMs));
+      }
       break;
     default:
       throw new Error(`Timeline operation ${name} is not exposed`);

@@ -35,6 +35,7 @@ describe("Timeline field descriptor consumers", () => {
       trackRoles: expect.arrayContaining(["primary-video", "subtitle", "music", "mixed"]),
       categoryAllowedItemTypes: {
         primary: ["video", "image", "solid"],
+        visual: expect.arrayContaining(["composition"]),
       },
       roleAllowedItemTypes: {
         music: ["audio"],
@@ -47,7 +48,7 @@ describe("Timeline field descriptor consumers", () => {
       compositionKinds: ["motion-graphics", "custom"],
       compositionRuntimes: ["html", "react", "remotion"],
       derivedMediaTypes: ["image", "video"],
-      derivationKinds: expect.arrayContaining(["trim", "crop", "mg-render"]),
+      derivationKinds: expect.arrayContaining(["trim", "crop", "transcode"]),
       transitionTypes: expect.arrayContaining(["crossfade", "circle-wipe", "zoom-in"]),
     });
   });
@@ -67,6 +68,7 @@ describe("Timeline field descriptor consumers", () => {
       "timeline.attach",
       "timeline.detach",
       "timeline.copy",
+      "timeline.render",
       "timeline.pull",
       "timeline.apply",
     ]);

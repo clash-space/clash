@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { MgCompositionSpecSchema } from "./mg-composition";
 import { TimelineItemKeyframesSchema } from "./timeline-keyframes";
 import {
   TIMELINE_MASK_APPLIES_TO_ITEM_TYPES,
@@ -168,7 +167,7 @@ export type TimelineDslTrackRole = (typeof TIMELINE_DSL_TRACK_ROLES)[number];
 export const TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES = {
   effect: ["composition", "transition"],
   text: ["text"],
-  visual: ["video", "image", "solid", "sticker", "derived-overlay"],
+  visual: ["video", "image", "solid", "sticker", "composition", "derived-overlay"],
   primary: ["video", "image", "solid"],
   audio: ["audio"],
 } as const satisfies Record<TimelineDslTrackCategory, readonly TimelineDslItemType[]>;
@@ -218,7 +217,6 @@ export const TIMELINE_DERIVATION_KINDS = [
   "trim",
   "crop",
   "caption-burn",
-  "mg-render",
   "transcode",
   "other",
 ] as const;
@@ -819,7 +817,7 @@ const itemTypeFields = {
     }),
   },
   composition: {
-    compositionKind: authored(z.enum(TIMELINE_COMPOSITION_KINDS), "First-party motion-graphics or custom composition kind.", {
+    compositionKind: authored(z.enum(TIMELINE_COMPOSITION_KINDS), "Composition domain label; motion-graphics must resolve a live Remotion Canvas component.", {
       required: true,
       editor: propertiesControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"],
@@ -839,12 +837,12 @@ const itemTypeFields = {
       editor: noControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"],
     }),
-    renderedAssetPath: derived(NonEmptyStringSchema, "Host-produced rendered preview/export asset path; required for React and Remotion composition states and preserved by agents.", {
+    renderedAssetPath: derived(NonEmptyStringSchema, "Host-produced rendered preview/export asset path for legacy React composition states, preserved by agents.", {
       required: false,
       editor: noControl,
       runtimeConsumers: ["preview", "render", "export"],
     }),
-    spec: authored(z.union([MgCompositionSpecSchema, z.record(z.unknown())]), "Agent-authored composition spec; first-party motion graphics use MgCompositionSpec.", {
+    spec: authored(z.record(z.unknown()), "Optional runtime configuration for legacy custom compositions; motion graphics use Canvas Remotion component source instead.", {
       required: false,
       editor: propertiesControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"],

@@ -358,7 +358,7 @@ describe('applyTimelineCommand', () => {
     expect(result.issues.map((issue) => issue.code)).toContain('track.role_item_mismatch');
   });
 
-  it('accepts a HyperFrames-style MG composition item on an overlay track', () => {
+  it('accepts a live Remotion Canvas component on an overlay track', () => {
     const timeline = dsl([
       {
         id: 'overlays',
@@ -366,22 +366,15 @@ describe('applyTimelineCommand', () => {
         role: 'overlay',
         items: [
           {
-            id: 'mg-lower-third',
+            id: 'live-card',
             type: 'composition',
-            compositionKind: 'motion-graphics',
-            runtime: 'html',
-            compositionId: 'lower-third',
-            sourcePath: 'compositions/lower-third/index.html',
+            compositionKind: 'custom',
+            runtime: 'remotion',
+            compositionId: 'LiveCard',
+            sourceNodeId: 'remotion-node-fixed',
+            sourcePath: 'components/live-card.tsx',
             from: 30,
             durationInFrames: 90,
-            spec: {
-              id: 'lower-third',
-              width: 1080,
-              height: 1920,
-              fps: 30,
-              durationInFrames: 90,
-              layers: [],
-            },
           },
         ] as any,
       },
@@ -420,7 +413,7 @@ describe('applyTimelineCommand', () => {
     expect(result.issues.map((issue) => issue.code)).toContain('item.invalid_composition');
   });
 
-  it('rejects React or Remotion composition items without a rendered preview asset', () => {
+  it('rejects Remotion composition items without a live Canvas source node', () => {
     const result = validateTimelineDsl(
       dsl([
         {
@@ -445,10 +438,10 @@ describe('applyTimelineCommand', () => {
 
     expect(result.ok).toBe(false);
     expect(result.issues.map((issue) => issue.code)).toContain('item.invalid_composition');
-    expect(result.issues.map((issue) => issue.path)).toContain('tracks[0].items[0].renderedAssetPath');
+    expect(result.issues.map((issue) => issue.path)).toContain('tracks[0].items[0].sourceNodeId');
   });
 
-  it('accepts React or Remotion composition items once a local rendered preview asset exists', () => {
+  it('accepts Remotion composition items once a live Canvas source node exists', () => {
     const result = validateTimelineDsl(
       dsl([
         {
@@ -462,8 +455,8 @@ describe('applyTimelineCommand', () => {
               compositionKind: 'custom',
               runtime: 'remotion',
               compositionId: 'react-chart',
+              sourceNodeId: 'remotion-node-fixed',
               sourcePath: 'compositions/react-chart/Composition.tsx',
-              renderedAssetPath: 'assets/renders/react-chart.webm',
               from: 0,
               durationInFrames: 60,
             },

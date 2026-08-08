@@ -4,7 +4,6 @@ import { startClashMcpHttpServer } from "./server";
 export * from "./canvas-app";
 export * from "./canvas-contract";
 export * from "./canvas-gateway";
-export * from "./cli-contract";
 export * from "./server";
 export * from "./studio-app";
 

@@ -16,6 +16,7 @@ export default defineConfig({
   splitting: false,
   dts: true,
   noExternal: [
+    "@clash/shared-mcp",
     "@clash/shared-types",
     "@modelcontextprotocol/ext-apps",
     "@modelcontextprotocol/sdk",

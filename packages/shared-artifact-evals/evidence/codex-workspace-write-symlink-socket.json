@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-08T00:43:05+08:00",
+  "platform": "darwin-arm64",
+  "codexVersion": "0.144.3",
+  "codexThreadId": "019fdd1a-a3d5-7211-8601-f93d34c2c616",
+  "purpose": "Verify that the benchmark runner's dual writable roots let a workspace-write Codex command connect to a daemon through a symlinked CLASH_HOME.",
+  "topology": {
+    "runtimeRoot": "/private/var/folders/x9/f0tcx1g52w505y4tk5bs16r40000gn/T/clash-sandbox-runtime.r12Zim",
+    "runtimeClashHome": "/private/var/folders/x9/f0tcx1g52w505y4tk5bs16r40000gn/T/clash-sandbox-runtime.r12Zim/home",
+    "persistedClashHome": "/Users/xiaoyang/Library/Caches/clash-sandbox-proofs/persisted.sx14kN",
+    "socketPath": "/private/var/folders/x9/f0tcx1g52w505y4tk5bs16r40000gn/T/clash-sandbox-runtime.r12Zim/home/daemon.sock",
+    "relationship": "runtimeClashHome is a symlink to persistedClashHome"
+  },
+  "codexExecArguments": [
+    "--sandbox",
+    "workspace-write",
+    "--add-dir",
+    "/private/var/folders/x9/f0tcx1g52w505y4tk5bs16r40000gn/T/clash-sandbox-runtime.r12Zim",
+    "--add-dir",
+    "/Users/xiaoyang/Library/Caches/clash-sandbox-proofs/persisted.sx14kN",
+    "-c",
+    "sandbox_workspace_write.network_access=true"
+  ],
+  "probeCommand": "node -e 'const net=require(\"net\"); const s=net.connect(process.argv[1]); s.on(\"data\",d=>process.stdout.write(d)); s.on(\"error\",e=>{console.error(e.code,e.message); process.exit(7)});' /private/var/folders/x9/f0tcx1g52w505y4tk5bs16r40000gn/T/clash-sandbox-runtime.r12Zim/home/daemon.sock",
+  "observed": {
+    "stdout": "pong\n",
+    "exitCode": 0
+  },
+  "interpretation": "The runner's runtimeRoot plus persistedClashHome configuration is compatible with a real Codex workspace-write shell command. A separate target-only probe also passed on Codex 0.144.3, so this capture proves compatibility, not that both roots are necessary on every Codex version.",
+  "ephemeralProbePathsRemovedAfterCapture": true
+}

@@ -32,6 +32,15 @@ test("video production skill E2E harness emits category artifacts and validates 
       assert.ok(category.artifacts.length > 0, `${category.id} should produce artifacts`);
       assert.ok(category.checks.every((check) => check.pass === true), `${category.id} checks should pass`);
     }
+    const motionGraphics = report.categories.find((category) => category.id === "motion-graphics");
+    const motionGraphicsEvidence = JSON.stringify(motionGraphics);
+    assert.match(motionGraphicsEvidence, /remotion-component/);
+    assert.match(motionGraphicsEvidence, /sourceNodeId/);
+    assert.match(motionGraphicsEvidence, /Timeline render/);
+    assert.doesNotMatch(
+      motionGraphicsEvidence,
+      /HTML preview|rasterizer|render-mg|verify-mg-preview|export-mg|composition route/i,
+    );
   } finally {
     await rm(artifactRoot, { recursive: true, force: true });
   }

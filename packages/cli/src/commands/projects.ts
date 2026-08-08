@@ -1,10 +1,11 @@
 import { Command } from "commander";
-import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   buildProjectStatus as buildSharedProjectStatus,
+  initializeClashWorkspace,
   projectWorkspaceId,
+  type ClashWorkspaceInitialization,
   type ProjectStatus as SharedProjectStatus,
 } from "@clash/shared-runtime";
 import { apiJson } from "../lib/api";
@@ -81,17 +82,8 @@ export async function linkProject(
 export async function initProject(options: {
   cwd?: string;
   projectId?: string;
-} = {}): Promise<{ projectId: string; markerPath: string; workspaceId: string }> {
-  const projectId = options.projectId?.trim() || `local_${randomUUID()}`;
-  const cwd = resolve(options.cwd ?? process.cwd());
-  const workspaceId = projectWorkspaceId("managed", projectId, cwd);
-  const markerPath = await writeProjectMarker(cwd, {
-    schemaVersion: 1,
-    projectId,
-    workspaceId,
-    store: "managed",
-  });
-  return { projectId, markerPath, workspaceId };
+} = {}): Promise<ClashWorkspaceInitialization> {
+  return initializeClashWorkspace(options);
 }
 
 export async function resolveProjectStatus(options: {
@@ -160,7 +152,7 @@ export const initCommand = new Command("init")
     if (isJsonMode(options)) {
       printJson(result);
     } else {
-      console.log(`Initialized Clash project: ${result.projectId}`);
+      console.log(`${result.reused ? "Reused" : "Created"} Clash project: ${result.projectId}`);
       console.log(`Marker: ${result.markerPath}`);
     }
   });

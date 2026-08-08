@@ -97,18 +97,16 @@ it("bundles public Project Timeline guidance and rejects removed command spellin
 
 it("bundles one canonical Clash plugin skill and MCP runtime for built-in agents", async () => {
   const agentRoot = join(isolatedPackage, "dist", "agents", "master-clash");
-  const [agentsContract, claudeContract, geminiContract, pluginSkill, pluginManifest, pluginMcp, runtime] = await Promise.all([
-    readFile(join(agentRoot, "template", "AGENTS.md"), "utf8"),
-    readFile(join(agentRoot, "template", "CLAUDE.md"), "utf8"),
-    readFile(join(agentRoot, "template", "GEMINI.md"), "utf8"),
+  const [pluginSkill, pluginManifest, pluginMcp, runtime] = await Promise.all([
     readFile(join(agentRoot, "plugins", "clash", "skills", "clash", "SKILL.md"), "utf8"),
     readFile(join(agentRoot, "plugins", "clash", ".codex-plugin", "plugin.json"), "utf8"),
     readFile(join(agentRoot, "plugins", "clash", ".mcp.json"), "utf8"),
     readFile(join(agentRoot, "runtime.json"), "utf8"),
   ]);
 
-  expect(claudeContract).toBe(agentsContract);
-  expect(geminiContract).toBe(agentsContract);
+  for (const filename of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+    await expect(access(join(agentRoot, "template", filename))).rejects.toMatchObject({ code: "ENOENT" });
+  }
   expect(pluginSkill).toContain("# Clash product skill");
   await expect(access(join(agentRoot, "template", ".agents", "skills", "clash", "SKILL.md"))).rejects.toMatchObject({
     code: "ENOENT",

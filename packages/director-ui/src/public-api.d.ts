@@ -35,6 +35,29 @@ export interface DirectorCameraPose {
   fov: number;
 }
 
+export interface DirectorRenderedFrame {
+  timeSeconds: number;
+  canvas: HTMLCanvasElement;
+}
+
+export interface DirectorWebGlRendererLike {
+  render(scene: unknown, camera: unknown): void;
+}
+
+export function createDirectorFramePublicationGate(requiredStableFrames?: number): {
+  tick(resourcesActive: boolean): boolean;
+  reset(): void;
+};
+
+export function renderDirectorFrameNow(input: {
+  renderer: DirectorWebGlRendererLike;
+  scene: unknown;
+  camera: unknown;
+  timeSeconds: number;
+  canvas: HTMLCanvasElement;
+  publish: (frame: DirectorRenderedFrame) => void;
+}): void;
+
 export type DirectorBuiltinModelCategory =
   | "Characters"
   | "Animals"
@@ -141,6 +164,7 @@ export interface DirectorViewportProps {
   onObjectContextMenu?: (objectId: string) => void;
   onTransformCommit?: (objectId: string, transform: DirectorStageTransform) => void;
   onReady?: (canvas: HTMLCanvasElement) => void;
+  onFrameRendered?: (frame: DirectorRenderedFrame) => void;
   renderPalette?: Partial<DirectorRenderPalette>;
   fallback?: React.ReactNode;
   className?: string;

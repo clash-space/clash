@@ -1,7 +1,7 @@
 {
   "name": "Clash Codex Plugin",
   "purpose": "Package the complete Clash MCP tool and focused App surface as one installable Codex Plugin.",
-  "runtimeBoundary": "Reuse an active Desktop/local-api host or start the bundled local-api as a plugin-owned third client. Share the same local replica and close only a host whose plugin ownership record matches this process.",
+  "runtimeBoundary": "CLI and stdio MCP are peer clients of one discoverable local daemon. Reuse a healthy compatible host or start the bundled daemon once; client shutdown releases only client resources and does not stop the shared daemon.",
   "entrypoints": [
     ".codex-plugin/plugin.json",
     ".mcp.json",
@@ -10,7 +10,12 @@
     "src/host-runner.ts",
     "src/plugin-host.ts",
     "src/local-api-entry.ts",
-    "scripts/build-host-runtime.ts"
+    "scripts/build-host-runtime.ts",
+    "skills/clash/SKILL.md",
+    "skills/clash-director-production/SKILL.md",
+    "skills/clash-timeline-production/SKILL.md",
+    "skills/clash-mg-character/SKILL.md",
+    "skills/clash-video-finishing/SKILL.md"
   ],
   "verification": [
     "pnpm --filter @clash-space/codex-plugin test",

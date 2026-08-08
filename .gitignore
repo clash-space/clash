@@ -61,6 +61,7 @@ coverage/
 .pytest_cache/
 .coverage
 htmlcov/
+/.clash-provider-traffic/
 
 # Wrangler
 .wrangler/
@@ -88,6 +89,7 @@ dmypy.json
 output/
 generated/
 assets/output/
+artifacts/headless-benchmarks/
 
 # Secrets
 *.pem

@@ -13,6 +13,7 @@ import {
   agentReadReceiptToken,
   DEFAULT_CANVAS_ID,
   LoroSyncClient,
+  PROJECT_ASSET_RENDER_CANVAS_ID,
   createMediaAssetCowNodeData,
   isMediaNodeType,
   projectDirectorStageReadToken,
@@ -64,6 +65,11 @@ export type DaemonPresenceOptions = Pick<
   "clientType" | "userId" | "userName" | "agentName"
 >;
 
+export interface DaemonRunningOptions {
+  env?: Record<string, string | undefined>;
+  probeProcess?: (pid: number, signal: 0) => void;
+}
+
 export function daemonSocketDir(env: Record<string, string | undefined> = process.env): string {
   return join(resolveClashRoot(env), "sockets");
 }
@@ -105,27 +111,53 @@ export function getDaemonMcpEndpoint(projectId: string): string | undefined {
 /**
  * Check if a daemon is already running for this project.
  */
-export function isDaemonRunning(projectId: string): boolean {
-  const pidPath = getPidPath(projectId);
+export function isDaemonRunning(
+  projectId: string,
+  options: DaemonRunningOptions = {},
+): boolean {
+  const env = options.env ?? process.env;
+  const pidPath = getPidPath(projectId, env);
   if (!existsSync(pidPath)) return false;
 
+  let pid: number;
   try {
-    const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-    process.kill(pid, 0); // check if process exists
-    return true;
+    const contents = readFileSync(pidPath, "utf-8").trim();
+    if (!/^[1-9]\d*$/.test(contents)) throw new Error("Invalid daemon pid");
+    pid = Number(contents);
+    if (!Number.isSafeInteger(pid)) throw new Error("Invalid daemon pid");
   } catch {
+    cleanup(projectId, env);
+    return false;
+  }
+
+  try {
+    (options.probeProcess ?? process.kill)(pid, 0); // check if process exists
+    return true;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "EPERM"
+    ) {
+      return true;
+    }
+
     // Stale pid file — clean up
-    cleanup(projectId);
+    cleanup(projectId, env);
     return false;
   }
 }
 
-function cleanup(projectId: string) {
-  const sockPath = getSocketPath(projectId);
-  const pidPath = getPidPath(projectId);
+function cleanup(
+  projectId: string,
+  env: Record<string, string | undefined> = process.env,
+) {
+  const sockPath = getSocketPath(projectId, env);
+  const pidPath = getPidPath(projectId, env);
   try { unlinkSync(sockPath); } catch { /* best-effort stale socket cleanup */ }
   try { unlinkSync(pidPath); } catch { /* best-effort stale pid cleanup */ }
-  try { unlinkSync(getMcpPath(projectId)); } catch { /* best-effort stale MCP metadata cleanup */ }
+  try { unlinkSync(getMcpPath(projectId, env)); } catch { /* best-effort stale MCP metadata cleanup */ }
 }
 
 function daemonCanvasReadReceipt(readToken: string): string {
@@ -576,6 +608,7 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
     action === "create_canvas" ||
     action === "rename_canvas" ||
     action === "delete_canvas" ||
+    action === "list_timeline_renders" ||
     action === "list_timelines" ||
     action === "create_timeline" ||
     action === "update_timeline_state" ||
@@ -682,6 +715,48 @@ function handleCommand(client: LoroSyncClient, cmd: any): object {
         versions: Object.fromEntries(
           timelines.map((timeline) => [timeline.id, projectTimelineReceiptReadToken(timeline)]),
         ),
+      };
+    }
+
+    case "list_timeline_renders": {
+      const status = cmd.status ?? "completed";
+      if (status !== "completed" && status !== "all") {
+        return {
+          error: "Timeline render status must be 'completed' or 'all'",
+        };
+      }
+      const renders = client
+        .canvasFor(PROJECT_ASSET_RENDER_CANVAS_ID)
+        .listNodes("video")
+        .filter((node) => status === "all" || node.data.status === "completed")
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((node) => {
+          const version = canvasNodeReadToken(node);
+          return {
+            node,
+            lineage: {
+              sourceTimelineId:
+                typeof node.data.sourceTimelineId === "string"
+                  ? node.data.sourceTimelineId
+                  : null,
+              sourceTimelineRevisionId:
+                typeof node.data.sourceTimelineRevisionId === "string"
+                  ? node.data.sourceTimelineRevisionId
+                  : null,
+              renderTarget: node.data.renderTarget ?? null,
+              assetId:
+                typeof node.data.assetId === "string" ? node.data.assetId : null,
+              status:
+                typeof node.data.status === "string" ? node.data.status : null,
+            },
+            version,
+            readToken: canvasNodeReceiptReadToken(node),
+          };
+        });
+      return {
+        canvasId: PROJECT_ASSET_RENDER_CANVAS_ID,
+        status,
+        renders,
       };
     }
 

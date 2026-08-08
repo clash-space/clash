@@ -219,8 +219,8 @@ const GLOBAL_RULE_REACHABILITY_CASES = [
       },
     },
     {
-      name: "invalid first-party motion graphics spec",
-      expected: "timeline.composition.mg-spec",
+      name: "legacy HTML motion graphics authoring",
+      expected: "timeline.composition.preview-contract",
       state: {
         tracks: [{
           id: "effects",
@@ -230,7 +230,14 @@ const GLOBAL_RULE_REACHABILITY_CASES = [
             runtime: "html",
             compositionId: "bad-mg",
             sourcePath: "./bad-mg.html",
-            spec: { id: "bad-mg" },
+            spec: {
+              id: "bad-mg",
+              width: 1080,
+              height: 1920,
+              fps: 30,
+              durationInFrames: 30,
+              layers: [],
+            },
           })],
         }],
       },
@@ -420,6 +427,25 @@ function compositionState(sourcePath: string) {
 }
 
 describe("complete Timeline semantic contract", () => {
+  it("accepts a live Remotion component as a visual overlay asset", () => {
+    const result = validateTimelineDsl({
+      tracks: [{
+        id: "remotion-overlays",
+        role: "overlay",
+        category: "visual",
+        items: [clip("live-character", "composition", 0, {
+          compositionKind: "custom",
+          runtime: "remotion",
+          compositionId: "LiveCharacter",
+          sourcePath: "components/live-character.tsx",
+          sourceNodeId: "remotion-node-fixed",
+        })],
+      }],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it.each(GLOBAL_RULE_REACHABILITY_CASES)("rejects $name with a stable rule id", ({ state, expected }) => {
     expect(validationRuleIds(state)).toContain(expected);
   });
@@ -514,7 +540,6 @@ describe("complete Timeline semantic contract", () => {
       "timeline.item.animation-duration",
       "timeline.audio.ducking-track-role",
       "timeline.composition.local-path",
-      "timeline.composition.mg-spec",
       "timeline.caption.structured",
       "timeline.transition.reference",
     ]) {

@@ -43,6 +43,7 @@ import {
   type ResolvedTimelineItem,
 } from './timeline-media-merge';
 import { isTimelineTransitionRenderItem } from './timeline-render-field-consumers';
+import { RemotionSourceComposition } from './inline-remotion-source';
 
 export {
   mergeContiguousMediaItems,
@@ -269,95 +270,12 @@ export const computeTransitionEffectStyle = (options: {
   }) as React.CSSProperties;
 };
 
-type RuntimeAnimation = {
-  property: 'x' | 'y' | 'opacity' | 'scale' | 'rotation';
-  from: number;
-  to: number;
-  startFrame: number;
-  durationInFrames: number;
-  easing?: 'linear' | 'easeInCubic' | 'easeOutCubic' | 'easeInOutCubic';
-};
-
-type RuntimeCompositionLayer = {
-  id: string;
-  type: 'text' | 'shape';
-  from?: number;
-  durationInFrames?: number;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  opacity?: number;
-  scale?: number;
-  rotation?: number;
-  zIndex?: number;
-  animations?: RuntimeAnimation[];
-  text?: string;
-  fontFamily?: string;
-  fontSize?: number;
-  fontWeight?: string | number;
-  color?: string;
-  fill?: string;
-  shape?: 'rect' | 'rounded-rect' | 'circle';
-  radius?: number;
-};
-
 type RuntimeCaptionCue = {
   id: string;
   startFrame: number;
   durationInFrames: number;
   text: string;
 };
-
-function applyCompositionEasing(t: number, easing: RuntimeAnimation['easing']): number {
-  const clamped = Math.min(1, Math.max(0, t));
-  if (easing === 'easeInCubic') return clamped ** 3;
-  if (easing === 'easeOutCubic') return 1 - (1 - clamped) ** 3;
-  if (easing === 'easeInOutCubic') {
-    return clamped < 0.5 ? 4 * clamped ** 3 : 1 - ((-2 * clamped + 2) ** 3) / 2;
-  }
-  return clamped;
-}
-
-function rounded(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
-export function computeCompositionLayerStyle(
-  layer: RuntimeCompositionLayer,
-  frame: number,
-): React.CSSProperties {
-  const style = {
-    x: layer.x ?? 0,
-    y: layer.y ?? 0,
-    opacity: layer.opacity ?? 1,
-    scale: layer.scale ?? 1,
-    rotation: layer.rotation ?? 0,
-  };
-
-  for (const animation of layer.animations ?? []) {
-    const progress = (frame - animation.startFrame) / animation.durationInFrames;
-    if (progress < 0) continue;
-    const eased = applyCompositionEasing(progress, animation.easing ?? 'linear');
-    style[animation.property] = animation.from + (animation.to - animation.from) * eased;
-  }
-
-  const x = rounded(style.x);
-  const y = rounded(style.y);
-  const scale = rounded(style.scale);
-  const rotation = rounded(style.rotation);
-  return {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: typeof layer.width === 'number' ? layer.width : undefined,
-    height: typeof layer.height === 'number' ? layer.height : undefined,
-    opacity: rounded(style.opacity),
-    zIndex: layer.zIndex ?? 0,
-    transform: `translate(${x}px, ${y}px) scale(${scale}) rotate(${rotation}deg)`,
-    transformOrigin: '0 0',
-  };
-}
 
 export function selectCaptionCueAtFrame(
   cues: RuntimeCaptionCue[] | undefined,
@@ -484,6 +402,9 @@ const resolveTimelineItem = (
 
   if (asset) {
     const assetData = asset.data || {};
+    const isLiveRemotionComponent = item.type === 'composition'
+      && item.runtime === 'remotion'
+      && asset.type === 'remotion-component';
 
     // Get natural dimensions from asset node
     let naturalWidth = assetData.naturalWidth;
@@ -508,6 +429,12 @@ const resolveTimelineItem = (
       type: item.type,
       naturalWidth,
       naturalHeight,
+      componentSource: isLiveRemotionComponent && typeof assetData.content === 'string'
+        ? assetData.content
+        : undefined,
+      compositionId: isLiveRemotionComponent && typeof assetData.componentId === 'string'
+        ? assetData.componentId
+        : item.type === 'composition' ? item.compositionId : undefined,
       resolvedSrcUrl: resolveAssetUrl(assetData.src || ('src' in item ? item.src : undefined)),
     } as ResolvedTimelineItem;
   }
@@ -932,11 +859,12 @@ const ItemComponent: React.FC<{
       runtime?: string;
       compositionKind?: string;
       compositionId?: string;
+      sourceNodeId?: string;
+      componentSource?: string;
       renderedAssetPath?: string;
-      spec?: { layers?: RuntimeCompositionLayer[] };
     };
-    const layers = compositionItem.spec?.layers;
-    if (compositionItem.runtime === 'html' && compositionItem.compositionKind === 'motion-graphics' && Array.isArray(layers)) {
+
+    if (compositionItem.runtime === 'remotion') {
       return (
         <AbsoluteFill
           ref={(el) => {
@@ -947,48 +875,34 @@ const ItemComponent: React.FC<{
           data-composition-id={compositionItem.compositionId}
           data-composition-kind={compositionItem.compositionKind}
           data-composition-runtime={compositionItem.runtime}
+          data-remotion-source-node-id={compositionItem.sourceNodeId}
           style={applyTransform({ overflow: 'hidden', opacity: isObscured ? 0 : 1 })}
         >
-          {layers
-            .slice()
-            .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-            .map((layer) => {
-              const start = layer.from ?? 0;
-              const duration = layer.durationInFrames ?? resolvedItem.durationInFrames;
-              if (frame < start || frame >= start + duration) return null;
-              const layerStyle = computeCompositionLayerStyle(layer, frame);
-              if (layer.type === 'shape') {
-                const radius = layer.shape === 'circle' ? '9999px' : layer.radius ?? 0;
-                return (
-                  <div
-                    key={layer.id}
-                    data-layer-id={layer.id}
-                    style={{
-                      ...layerStyle,
-                      backgroundColor: layer.fill ?? '#ffffff',
-                      borderRadius: radius,
-                    }}
-                  />
-                );
-              }
-              return (
-                <div
-                  key={layer.id}
-                  data-layer-id={layer.id}
-                  style={{
-                    ...layerStyle,
-                    color: layer.color ?? '#ffffff',
-                    fontFamily: layer.fontFamily ?? 'Inter, system-ui, sans-serif',
-                    fontSize: layer.fontSize ?? 64,
-                    fontWeight: layer.fontWeight ?? 700,
-                    lineHeight: 1.04,
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {layer.text ?? ''}
-                </div>
-              );
-            })}
+          {compositionItem.componentSource ? (
+            <RemotionSourceComposition
+              source={compositionItem.componentSource}
+              componentId={compositionItem.compositionId}
+            />
+          ) : (
+            <div
+              role="alert"
+              data-inline-remotion-error="missing-source"
+              style={{
+                boxSizing: 'border-box',
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 24,
+                color: '#fecaca',
+                background: '#450a0a',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              }}
+            >
+              Missing Remotion component source for Canvas node {compositionItem.sourceNodeId ?? '(unset)'}.
+            </div>
+          )}
         </AbsoluteFill>
       );
     }

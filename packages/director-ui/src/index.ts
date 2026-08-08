@@ -10,6 +10,12 @@ export {
   type DirectorViewportProps,
 } from "./DirectorViewport";
 export {
+  createDirectorFramePublicationGate,
+  renderDirectorFrameNow,
+  type DirectorRenderedFrame,
+  type DirectorWebGlRendererLike,
+} from "./headless-render-boundary";
+export {
   DirectorKeyframeTimeline,
   editDirectorActionClipTiming,
   editDirectorSequenceShotTiming,

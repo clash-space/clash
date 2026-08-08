@@ -427,8 +427,20 @@ export function evaluateDirectorMannequinActionPose({
   locomotionDistance?: number;
   activeActions: EvaluatedDirectorActionClip[];
 }): DirectorMannequinPose {
+  const semanticPreset = DIRECTOR_MANNEQUIN_POSE_PRESETS[
+    basePose.preset as keyof typeof DIRECTOR_MANNEQUIN_POSE_PRESETS
+  ];
+  const resolvedBasePose = semanticPreset
+    ? {
+        ...basePose,
+        joints: {
+          ...semanticPreset.joints,
+          ...basePose.joints,
+        },
+      }
+    : basePose;
   let evaluated = animateDirectorMannequinWalkCycle(
-    basePose,
+    resolvedBasePose,
     timeSeconds,
     locomotionSpeed,
     locomotionDistance,

@@ -99,6 +99,23 @@ export {
   type ProjectWorkspaceIdKind,
 } from "./project-status.js";
 
+export {
+  initializeClashWorkspace,
+  type ClashWorkspaceInitialization,
+} from "./workspace-init.js";
+
+export {
+  CLASH_MCP_COMMANDS,
+  CLASH_MCP_COMMAND_IDS,
+  buildClashMcpCommandMenu,
+  classifyClashMcpTool,
+  getClashMcpCommand,
+  type ClashMcpCommand,
+  type ClashMcpCommandId,
+  type ClashMcpCommandMenu,
+  type ClashMcpToolFamily,
+} from "./mcp-command-menu.js";
+
 export const LOCAL_HOST_RECORD_SCHEMA_VERSION = 1;
 export const LOCAL_HOST_PROTOCOL_VERSION = 1;
 export const LOCAL_HOST_DATA_SCHEMA_VERSION = 1;

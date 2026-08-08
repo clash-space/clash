@@ -225,6 +225,10 @@ import {
   type LocalMetadataSessionMessage as PersistedLocalAcpSessionMessage,
 } from "./local-metadata-store.js";
 import { FileReplicaStore } from "./loro/file-replica-store.js";
+import type {
+  DirectorStageRenderRequest,
+  LocalDirectorStageRenderer,
+} from "./director-stage-renderer.js";
 
 export interface ProviderOAuthDeviceFlowStart {
   verificationUri: string;
@@ -253,6 +257,12 @@ export interface LocalApiOptions {
   dataDir: string;
   clashRoot?: string;
   userId?: string;
+  hostIdentity?: {
+    hostId: string;
+    pid: number;
+    profile: "dev" | "prod";
+    protocolVersion: number;
+  };
   localAcp?: LocalAcpAdapter;
   /** Single process-owned cold-start barrier. Runtime/config consumers wait
    * for it; diagnostic snapshot reads may opt out explicitly. */
@@ -298,6 +308,7 @@ export interface LocalApiOptions {
   listInstalledMarketplaceActions?: () => Promise<Array<Record<string, unknown>>>;
   installMarketplaceAction?: (packageId: string) => Promise<Record<string, unknown>>;
   uninstallMarketplaceAction?: (actionId: string) => Promise<void>;
+  directorStageRenderer?: LocalDirectorStageRenderer;
 }
 
 export interface LocalAssetProbeInput {
@@ -3596,12 +3607,27 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     c.json({
       ok: true,
       mode: "local",
+      ...(options.hostIdentity ? { host: options.hostIdentity } : {}),
       runtime: {
         mode: "local",
         capabilities: defaultRuntimeCapabilities("local"),
       },
     }),
   );
+
+  app.post("/api/v1/local/director-stage/capture", async (c) => {
+    if (!options.directorStageRenderer) {
+      return c.json({ error: "Director Stage product renderer is unavailable" }, 503);
+    }
+    try {
+      const request = await c.req.json() as DirectorStageRenderRequest;
+      return c.json(await options.directorStageRenderer.render(request));
+    } catch (error) {
+      return c.json({
+        error: error instanceof Error ? error.message : String(error),
+      }, 422);
+    }
+  });
 
   app.post("/api/v1/local/plugin-broker", async (c) => {
     if (!options.executablePluginBroker || !options.pluginBrokerToken) {
@@ -4779,8 +4805,31 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
     });
     const models = await Promise.all(entries.map(async (entry) => {
       const route = entry.selectedRoute;
+      const localCapability = route?.apiShape === "local-asr"
+        ? "speech-to-text"
+        : route?.apiShape === "local-tts"
+          ? "text-to-speech"
+          : undefined;
+      const runtimeStatus = localCapability && route
+        ? await audioConfig.getModelStatus({
+            capability: localCapability,
+            model: route.upstreamModel,
+          })
+        : undefined;
+      const entryWithReadiness = runtimeStatus
+        ? {
+            ...entry,
+            runtimeReadiness: {
+              capability: runtimeStatus.capability,
+              model: runtimeStatus.model,
+              readiness: runtimeStatus.available ? "ready" as const : "not-installed" as const,
+              executable: runtimeStatus.available,
+              ...(runtimeStatus.message ? { message: runtimeStatus.message } : {}),
+            },
+          }
+        : entry;
       if (!route?.projectorPluginId || !route.projectorExportId || !options.resolvePluginBinding) {
-        return entry;
+        return entryWithReadiness;
       }
       const projectorBinding = await options.resolvePluginBinding(
         route.projectorPluginId,
@@ -4788,7 +4837,7 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
         "provider-projector",
       );
       return {
-        ...entry,
+        ...entryWithReadiness,
         selectedRoute: { ...route, projectorBinding },
         routes: entry.routes.map((candidate) =>
           candidate.projectorPluginId === route.projectorPluginId
@@ -5071,10 +5120,16 @@ export function createLocalApiApp(options: LocalApiOptions): Hono {
   });
   app.get("/api/v1/local/audio/models/status", async (c) => {
     try {
-      return c.json(await audioConfig.getModelStatus({
+      const status = await audioConfig.getModelStatus({
         capability: c.req.query("capability"),
         model: c.req.query("model"),
-      }));
+      });
+      const readState = await localAudioReadState(audioConfig);
+      return c.json({
+        ...status,
+        readiness: status.available ? "ready" : "not-installed",
+        readToken: localAudioReceiptReadToken(readState),
+      });
     } catch (error) {
       if (error instanceof LocalAudioConfigError) {
         return c.json({ error: error.message }, error.status as 400);

@@ -42,14 +42,11 @@ describe('PropertiesPanel primitives', () => {
     expect(source).not.toContain('bg-[#fffdfb]');
   });
 
-  it('keeps unselected aspect-ratio controls on semantic dark surfaces', () => {
+  it('routes canvas aspect-ratio editing through the shared visual picker', () => {
     const source = readFileSync(new URL('./PropertiesPanel.tsx', import.meta.url), 'utf8');
-    const aspectRatioStart = source.indexOf('<label className={labelClassName}>Aspect Ratio</label>');
-    const aspectRatioEnd = source.indexOf('<div className="grid grid-cols-2 gap-2">', aspectRatioStart);
-    const aspectRatioSource = source.slice(aspectRatioStart, aspectRatioEnd);
 
-    expect(aspectRatioSource).toContain('bg-warm-surface');
-    expect(aspectRatioSource).toContain('dark:text-neutral-200');
-    expect(aspectRatioSource).not.toContain('bg-white');
+    expect(source).toContain("import { AspectRatioPicker } from './AspectRatioPicker'");
+    expect(source).toContain('<AspectRatioPicker');
+    expect(source).toContain('ariaLabel="Canvas aspect ratio"');
   });
 });

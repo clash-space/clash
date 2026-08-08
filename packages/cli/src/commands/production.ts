@@ -10,10 +10,7 @@ import {
 } from "@clash/shared-types";
 import { applyProductionMetadataAction, applyProductionMetadataProjection, productionMetadataObservationId } from "../lib/production-actions";
 import { validatePipelineManifest } from "../lib/pipeline-manifest-validation";
-import { renderMgProductionProjection } from "../lib/mg-production";
-import { verifyMgPreview } from "../lib/mg-preview-verification";
 import { planCompositionRoute } from "../lib/composition-route-plan";
-import { projectCompositionTimeline } from "../lib/composition-timeline-projection";
 import { approveReviewStageGate, parseReviewGateDecision, planReviewStageGate, reviewGateObservationId } from "../lib/review-stage-gate";
 import { planDryRunCostGate } from "../lib/dry-run-cost-gate";
 import { planReferenceRolesAction } from "../lib/reference-roles-plan";
@@ -23,8 +20,6 @@ import { planImageEmbeddingStoreAction } from "../lib/image-embedding-store-plan
 import { planAudioStemSeparationAction } from "../lib/audio-stem-separation-plan";
 import { planComfyuiWorkflowAction } from "../lib/comfyui-workflow-plan";
 import { planContentCredentialsAction } from "../lib/content-credentials-plan";
-import { exportMgSnapshotAsset } from "../lib/mg-snapshot-export";
-import { exportMgVideoAsset } from "../lib/mg-video-export";
 import { planTalkingHeadTextCutAction } from "../lib/talking-head-plan";
 import { exportTextCutMedia } from "../lib/text-cut-media-export";
 import { verifyCaptionLineage } from "../lib/caption-lineage-verification";
@@ -255,72 +250,6 @@ productionCommand
   });
 
 productionCommand
-  .command("render-mg")
-  .description(
-    "Render a first-party motion-graphics spec into local HTML, manifest, and timeline projection files."
-  )
-  .requiredOption("--spec <path>", "Agent-authored MgCompositionSpec JSON file")
-  .option("--out <path>", "Output directory for HTML preview and manifest")
-  .requiredOption("--rendered-asset <path>", "Local project path where the rendered overlay asset will live")
-  .option("--from <frame>", "Timeline start frame", parseNonNegativeFrame, 0)
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    try {
-      const result = await renderMgProductionProjection({
-        cwd: process.cwd(),
-        specPath: options.spec,
-        outDir: options.out,
-        renderedAssetPath: options.renderedAsset,
-        timelineFromFrame: options.from,
-      });
-      if (isJsonMode(options)) {
-        printJson(result);
-        return;
-      }
-      console.log(`rendered MG ${result.compositionId}`);
-      console.log(`html: ${result.htmlPath}`);
-      console.log(`manifest: ${result.manifestPath}`);
-      console.log(`projection: ${result.timelineProjectionPath}`);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-productionCommand
-  .command("verify-mg-preview")
-  .description(
-    "Verify a first-party MG HTML preview, manifest CAS boundary, and deterministic frame evaluation."
-  )
-  .requiredOption("--html <path>", "Self-contained MG HTML preview path")
-  .requiredOption("--manifest <path>", "MG timeline manifest path")
-  .option("--frames <list>", "Comma-separated frame numbers to evaluate", parseFrameList)
-  .option("--out <path>", "Output preview verification report path")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    try {
-      const result = await verifyMgPreview({
-        cwd: process.cwd(),
-        htmlPath: options.html,
-        manifestPath: options.manifest,
-        frames: options.frames,
-        outPath: options.out,
-      });
-      if (isJsonMode(options)) {
-        printJson(result);
-        return;
-      }
-      console.log(`verified MG preview ${result.overlayId}`);
-      console.log(`status: ${result.status}`);
-      console.log(`report: ${result.reportPath}`);
-      if (result.blockedReasons.length > 0) console.log(`blocked: ${result.blockedReasons.join("; ")}`);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-productionCommand
   .command("plan-composition-route")
   .description(
     "Plan the explicit render runtime for a composition request without silently falling back to another runtime."
@@ -343,43 +272,6 @@ productionCommand
       console.log(`status: ${result.status}`);
       console.log(`runtime: ${result.selectedRuntime ?? "none"}`);
       console.log(`plan: ${result.planPath}`);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-productionCommand
-  .command("project-composition-timeline")
-  .description(
-    "Project an already rendered Remotion composition asset into a CAS-required composition timeline view."
-  )
-  .requiredOption("--route <path>", "Composition route plan JSON file")
-  .requiredOption("--rendered-asset <id>", "Rendered asset id already registered in assets/manifest.json")
-  .option("--rendered-src <path>", "Rendered asset project path; defaults to the route outputPath")
-  .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
-  .option("--from <frame>", "Timeline start frame", parseNonNegativeFrame, 0)
-  .requiredOption("--duration <frames>", "Timeline composition duration in frames", parsePositiveFrame)
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    try {
-      const result = await projectCompositionTimeline({
-        cwd: process.cwd(),
-        routePath: options.route,
-        renderedAssetId: options.renderedAsset,
-        renderedSrc: options.renderedSrc,
-        assetsPath: options.assets,
-        from: options.from,
-        durationInFrames: options.duration,
-      });
-      if (isJsonMode(options)) {
-        printJson(result);
-        return;
-      }
-      console.log(`projected composition ${result.compositionId}`);
-      console.log(`runtime: ${result.runtime}`);
-      console.log(`timeline: ${result.timelineProjectionPath}`);
-      console.log(`manifest: ${result.manifestPath}`);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -743,96 +635,6 @@ productionCommand
   });
 
 productionCommand
-  .command("export-mg-snapshots")
-  .description(
-    "Export deterministic SVG snapshots from a first-party MG spec and register them as a local overlay asset."
-  )
-  .requiredOption("--spec <path>", "Agent-authored MgCompositionSpec JSON file")
-  .requiredOption("--asset-id <id>", "Asset id to create or update in assets/manifest.json")
-  .option("--out <path>", "Output directory for SVG frames and export manifest")
-  .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
-  .option("--frames <list>", "Comma-separated frame numbers to export", parseFrameList, [0])
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    try {
-      const result = await exportMgSnapshotAsset({
-        cwd: process.cwd(),
-        specPath: options.spec,
-        assetId: options.assetId,
-        outDir: options.out,
-        frames: options.frames,
-        assetsPath: options.assets,
-      });
-      const payload = {
-        exported: true,
-        assetId: result.assetId,
-        assetManifestPath: result.assetManifestPath,
-        exportManifestPath: result.exportManifestPath,
-        frames: result.framePaths.length,
-      };
-      if (isJsonMode(options)) {
-        printJson(payload);
-        return;
-      }
-      console.log(`exported MG snapshots for ${result.assetId}`);
-      console.log(`asset manifest: ${result.assetManifestPath}`);
-      console.log(`export manifest: ${result.exportManifestPath}`);
-      console.log(`frames: ${result.framePaths.length}`);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-productionCommand
-  .command("export-mg-video")
-  .description(
-    "Export a first-party MG spec to a playable local WebM/MP4 overlay asset and validate it with ffprobe."
-  )
-  .requiredOption("--spec <path>", "Agent-authored MgCompositionSpec JSON file")
-  .requiredOption("--asset-id <id>", "Asset id to create or update in assets/manifest.json")
-  .option("--out <path>", "Output .webm or .mp4 path; defaults to assets/overlays/<spec-id>.webm")
-  .option("--assets <path>", "Asset manifest path", "assets/manifest.json")
-  .option("--ffmpeg <path>", "ffmpeg executable path; defaults to CLASH_FFMPEG_PATH, FFMPEG_PATH, or PATH")
-  .option("--ffprobe <path>", "ffprobe executable path; defaults to CLASH_FFPROBE_PATH, FFPROBE_PATH, or PATH")
-  .option("--json", "Output result as JSON")
-  .action(async (options) => {
-    try {
-      const result = await exportMgVideoAsset({
-        cwd: process.cwd(),
-        specPath: options.spec,
-        assetId: options.assetId,
-        outPath: options.out,
-        assetsPath: options.assets,
-        ffmpegPath: options.ffmpeg,
-        ffprobePath: options.ffprobe,
-      });
-      const payload = {
-        exported: true,
-        assetId: result.assetId,
-        format: result.format,
-        outputPath: result.outputPath,
-        assetManifestPath: result.assetManifestPath,
-        exportManifestPath: result.exportManifestPath,
-        probe: result.probe,
-      };
-      if (isJsonMode(options)) {
-        printJson(payload);
-        return;
-      }
-      console.log(`exported MG video for ${result.assetId}`);
-      console.log(`format: ${result.format}`);
-      console.log(`output: ${result.outputPath}`);
-      console.log(`asset manifest: ${result.assetManifestPath}`);
-      console.log(`export manifest: ${result.exportManifestPath}`);
-      console.log(`probe: ${result.probe.codecName} ${result.probe.width}x${result.probe.height}`);
-    } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
-
-productionCommand
   .command("project-derived-overlay")
   .description(
     "Project an existing copy-on-write derived asset into a CAS-required derived-overlay timeline view."
@@ -845,7 +647,7 @@ productionCommand
   .requiredOption("--duration <frames>", "Timeline overlay duration in frames", parsePositiveFrame)
   .requiredOption(
     "--derivation-kind <kind>",
-    "Derivation kind: trim, crop, caption-burn, mg-render, transcode, or other",
+    "Derivation kind: trim, crop, caption-burn, transcode, or other",
     parseDerivedOverlayDerivationKind,
   )
   .option("--description <text>", "Human-readable derivation note")
@@ -2225,18 +2027,6 @@ function parseNonNegativeFrame(value: string): number {
   return parsed;
 }
 
-function parseFrameList(value: string): number[] {
-  const frames = value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => Number(part));
-  if (frames.length === 0 || frames.some((frame) => !Number.isInteger(frame) || frame < 0)) {
-    throw new Error("--frames must be a comma-separated list of non-negative integer frames");
-  }
-  return frames;
-}
-
 function parseScore(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
@@ -2263,13 +2053,12 @@ function parseDerivedOverlayDerivationKind(value: string): DerivedOverlayDerivat
     value === "trim" ||
     value === "crop" ||
     value === "caption-burn" ||
-    value === "mg-render" ||
     value === "transcode" ||
     value === "other"
   ) {
     return value;
   }
-  throw new Error("derivation kind must be trim, crop, caption-burn, mg-render, transcode, or other");
+  throw new Error("derivation kind must be trim, crop, caption-burn, transcode, or other");
 }
 
 function parseQaStatus(value: string): "passed" | "requires-review" | "failed" {

@@ -128,6 +128,31 @@ const TimelineApplyOutputSchema = z.object({
   timelineHash: IdentifierSchema,
 }).passthrough();
 
+const TimelineRenderTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("project-assets") }).strict(),
+  z.object({
+    kind: z.literal("canvas"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema,
+  }).strict(),
+]);
+
+const TimelineRenderReceiptSchema = z.object({
+  submitted: z.literal(true),
+  completed: z.boolean(),
+  timelineId: IdentifierSchema,
+  sourceTimelineRevisionId: IdentifierSchema,
+  renderNodeId: IdentifierSchema,
+  target: TimelineRenderTargetSchema,
+  status: z.enum(["pending", "completed", "failed"]),
+  asset: z.object({
+    id: IdentifierSchema,
+    signedUrl: IdentifierSchema.optional(),
+    srcR2Key: IdentifierSchema.optional(),
+  }).passthrough().optional(),
+  error: z.string().min(1).optional(),
+}).passthrough();
+
 const timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.object({
   ...timelineDslAnnotatedObjectShape(
     TIMELINE_DSL_FIELD_ANNOTATIONS.itemBase,
@@ -403,6 +428,28 @@ const agent = {
     description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
     runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
     surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
+    agentCallable: true,
+  }),
+  "timeline.render": agentOperation({
+    id: "timeline.render",
+    kind: "agent",
+    inputSchema: z.object({
+      timelineId: IdentifierSchema,
+      wait: z.boolean().optional(),
+      timeoutMs: z.number().int().min(1_000).max(900_000).optional(),
+    }).strict(),
+    outputSchema: TimelineRenderReceiptSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The Timeline exists and contains at least one renderable item.",
+      "The local daemon has a healthy packaged Remotion rendering backend.",
+    ],
+    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "remotion-renderer", "agent-runtime"],
+    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
     agentCallable: true,
   }),
   "timeline.pull": agentOperation({

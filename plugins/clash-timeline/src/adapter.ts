@@ -33,6 +33,7 @@ export type TimelineAdapter = {
   attach(input: TimelineToolInput): Promise<unknown>;
   detach(input: TimelineToolInput): Promise<unknown>;
   copy(input: TimelineToolInput): Promise<unknown>;
+  render(input: TimelineToolInput): Promise<Record<string, unknown>>;
 };
 
 export function timelineWorkspaceCwd(input: TimelineToolInput): string {
@@ -173,6 +174,7 @@ export function createTimelineAdapter(options: {
     attach: (input) => invoke("clash_timeline_attach", input),
     detach: (input) => invoke("clash_timeline_detach", input),
     copy: (input) => invoke("clash_timeline_copy", input),
+    render: async (input) => objectResult(await invoke("clash_timeline_render", input)),
     async save(input) {
       const timelineId = input.timelineId?.trim();
       if (!timelineId) throw new Error("timelineId is required");
@@ -181,18 +183,9 @@ export function createTimelineAdapter(options: {
       }
       assertTimelineState(input.state);
 
-      const current = await get(input);
       const baseRevisionId = input.baseRevisionId?.trim();
       if (!baseRevisionId) {
         throw new Error("baseRevisionId is required; read the Timeline before saving");
-      }
-      if (!current.revisionId) {
-        throw new Error(`Timeline ${timelineId} did not expose a revisionId; read it again before saving`);
-      }
-      if (current.revisionId !== baseRevisionId) {
-        throw new Error(
-          `STALE_TIMELINE: save is based on ${baseRevisionId}, but Timeline ${timelineId} is now ${current.revisionId}. Read again and reapply the edit.`,
-        );
       }
       const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
@@ -208,6 +201,8 @@ export function createTimelineAdapter(options: {
         timelineId,
         "--file",
         filePath,
+        "--base-revision",
+        baseRevisionId,
       ];
       if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
       args.push("--json");

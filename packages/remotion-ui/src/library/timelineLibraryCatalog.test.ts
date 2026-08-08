@@ -12,7 +12,6 @@ describe('Timeline Library catalog', () => {
     expect([...categories]).toEqual(expect.arrayContaining([
       'text',
       'stickers',
-      'motion-graphics',
       'sound-effects',
       'transitions',
       'fx',
@@ -22,7 +21,6 @@ describe('Timeline Library catalog', () => {
       'captions',
       'filters',
       'adjustments',
-      'templates',
     ]));
 
     for (const record of TIMELINE_LIBRARY_CATALOG) {

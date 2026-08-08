@@ -91,7 +91,7 @@ test("rejects invalid Timeline state locally with shared rule ids before invokin
   assert.equal(writes, 0);
 });
 
-test("saves through read proof, a project projection, and Timeline apply", async () => {
+test("saves through one base-pinned CLI apply path", async () => {
   const module = await adapterModule();
   assert.equal(typeof module.createTimelineAdapter, "function");
   const events: Array<Record<string, unknown>> = [];
@@ -122,7 +122,6 @@ test("saves through read proof, a project projection, and Timeline apply", async
 
   assert.equal(result.revisionId, "revision-2");
   assert.deepEqual(events, [
-    { kind: "run", args: ["timeline", "list", "--json"], cwd: "/workspace" },
     {
       kind: "write",
       path: join("/workspace", "timelines", "rough-cut.timeline.yaml"),
@@ -132,27 +131,26 @@ test("saves through read proof, a project projection, and Timeline apply", async
       kind: "run",
       args: [
         "timeline", "apply", "--timeline", "rough-cut", "--file",
-        join("/workspace", "timelines", "rough-cut.timeline.yaml"), "--json",
+        join("/workspace", "timelines", "rough-cut.timeline.yaml"),
+        "--base-revision", "revision-1", "--json",
       ],
       cwd: "/workspace",
     },
   ]);
 });
 
-test("rejects a stale full-state save before writing the projection", async () => {
+test("passes a stale base to the CLI recovery path while preserving the proposed projection", async () => {
   const module = await adapterModule();
   let writes = 0;
   const calls: string[][] = [];
   const adapter = module.createTimelineAdapter({
     run: async (args: string[]) => {
       calls.push(args);
-      return [{
-        id: "rough-cut",
-        name: "Rough Cut",
-        revisionId: "revision-2",
-        owner: { kind: "project" },
-        state: { tracks: [] },
-      }];
+      throw new Error([
+        "STALE_READ: Timeline rough-cut changed; latest revision revision-2",
+        "was pulled to .clash/recovery/timeline/rough-cut.latest.timeline.yaml.",
+        "Your edited projection remains at timelines/rough-cut.timeline.yaml.",
+      ].join(" "));
     },
     writeProjection: async () => { writes += 1; },
   });
@@ -164,10 +162,14 @@ test("rejects a stale full-state save before writing the projection", async () =
       baseRevisionId: "revision-1",
       state: { tracks: [] },
     }),
-    /STALE_TIMELINE.*revision-1.*revision-2/i,
+    /STALE_READ.*revision-2.*\.clash\/recovery.*edited projection remains/i,
   );
-  assert.equal(writes, 0);
-  assert.deepEqual(calls, [["timeline", "list", "--json"]]);
+  assert.equal(writes, 1);
+  assert.deepEqual(calls, [[
+    "timeline", "apply", "--timeline", "rough-cut", "--file",
+    join("/workspace", "timelines", "rough-cut.timeline.yaml"),
+    "--base-revision", "revision-1", "--json",
+  ]]);
 });
 
 test("does not write when the Timeline has not been read or does not exist", async () => {
@@ -181,9 +183,45 @@ test("does not write when the Timeline has not been read or does not exist", asy
 
   await assert.rejects(
     adapter.save({ cwd: "/workspace", timelineId: "missing", state: { tracks: [] } }),
-    /not found/i,
+    /baseRevisionId is required/i,
   );
   assert.equal(writes, 0);
+});
+
+test("requests a daemon render and waits for persisted product readback", async () => {
+  const module = await adapterModule();
+  const calls: Array<{ args: string[]; cwd: string }> = [];
+  const adapter = module.createTimelineAdapter({
+    run: async (args: string[], cwd: string) => {
+      calls.push({ args, cwd });
+      return {
+        submitted: true,
+        completed: true,
+        timelineId: "rough-cut",
+        sourceTimelineRevisionId: "revision-1",
+        renderNodeId: "render-1",
+        target: { kind: "project-assets" },
+        status: "completed",
+        asset: { id: "asset-1", signedUrl: "http://127.0.0.1/assets/render.mp4" },
+      };
+    },
+  });
+
+  const receipt = await adapter.render({
+    cwd: "/workspace",
+    timelineId: "rough-cut",
+    wait: true,
+    timeoutMs: 600_000,
+  });
+
+  assert.equal(receipt.renderNodeId, "render-1");
+  assert.deepEqual(calls, [{
+    args: [
+      "timeline", "render", "--timeline", "rough-cut",
+      "--timeout-ms", "600000", "--json",
+    ],
+    cwd: "/workspace",
+  }]);
 });
 
 test("defaults to the Clash ACP workspace instead of the MCP process cwd", async () => {

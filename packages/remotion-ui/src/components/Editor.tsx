@@ -16,6 +16,7 @@ import {
   type NleTarget,
 } from '@master-clash/remotion-core';
 import { CanvasPreview } from './CanvasPreview';
+import type { TimelineRuntimeNode } from './CanvasPreview';
 import { Timeline } from './Timeline';
 import type { TimelineAssetInsertRequest } from './timeline/insertAssetRequest';
 import { AssetPanel } from './AssetPanel';
@@ -59,7 +60,6 @@ const TIMELINE_PRIMARY_TOOLS: TimelinePrimaryTool[] = [
 const PRIMARY_TOOL_FOR_LIBRARY_CATEGORY: Record<TimelineLibraryCategory, TimelinePrimaryToolId> = {
   text: 'text',
   stickers: 'stickers',
-  'motion-graphics': 'stickers',
   'sound-effects': 'sound-effects',
   transitions: 'fx',
   fx: 'fx',
@@ -69,7 +69,6 @@ const PRIMARY_TOOL_FOR_LIBRARY_CATEGORY: Record<TimelineLibraryCategory, Timelin
   captions: 'captions',
   filters: 'filters',
   adjustments: 'filters',
-  templates: 'stickers',
 };
 
 const EDITOR_WORKSPACE_ORDER: EditorWorkspace[] = ['assets', 'canvas', 'timeline'];
@@ -180,6 +179,8 @@ const StateSyncer = ({ stateRef }: { stateRef: React.MutableRefObject<EditorStat
 type EditorProps = {
   initialAssets?: EditorAssetInput[];
   initialState?: Partial<EditorState>;
+  /** Non-media Canvas nodes that Timeline runtime items resolve by sourceNodeId. */
+  runtimeNodes?: TimelineRuntimeNode[];
   /** Ref to read final state on close - avoids onStateChange overhead during playback */
   stateRef?: React.MutableRefObject<EditorState | null>;
   /** @deprecated Use stateRef for better performance */
@@ -222,6 +223,7 @@ type EditorProps = {
 export const Editor: React.FC<EditorProps> = ({
   initialAssets,
   initialState,
+  runtimeNodes,
   stateRef,
   onStateChange,
   onBack,
@@ -648,6 +650,7 @@ export const Editor: React.FC<EditorProps> = ({
             >
               <div className="clash-timeline-preview-surface clash-timeline-panel-surface h-full w-full overflow-hidden bg-warm-surface">
                 <CanvasPreview
+                  runtimeNodes={runtimeNodes}
                   audioMeterOpen={audioMeterOpen}
                   onToggleAudioMeter={toggleAudioMeter}
                   audioMeterStore={audioMeterStore}
@@ -755,6 +758,7 @@ export const Editor: React.FC<EditorProps> = ({
                 >
                   <div className="h-full w-full overflow-hidden rounded-lg bg-warm-surface shadow-inner ring-1 ring-warm-border/70">
                     <CanvasPreview
+                      runtimeNodes={runtimeNodes}
                       audioMeterOpen={audioMeterOpen}
                       onToggleAudioMeter={toggleAudioMeter}
                       audioMeterStore={audioMeterStore}

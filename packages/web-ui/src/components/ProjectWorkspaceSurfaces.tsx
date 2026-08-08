@@ -378,6 +378,7 @@ export function ProjectAssetSurface({
 export function ProjectTimelineEditorSurface({
     timeline,
     mediaInputs,
+    runtimeNodes = [],
     canvases,
     onSave,
     onExport,
@@ -392,6 +393,7 @@ export function ProjectTimelineEditorSurface({
 }: {
     timeline: ProjectTimeline;
     mediaInputs: TimelineMediaInput[];
+    runtimeNodes?: Array<{ id: string; type: string; data: Record<string, unknown> }>;
     canvases: ProjectCanvas[];
     onSave: (
         timelineId: string,
@@ -757,6 +759,7 @@ export function ProjectTimelineEditorSurface({
                         <TimelineEditor
                             layout="embedded"
                             initialAssets={editorAssets}
+                            runtimeNodes={runtimeNodes}
                             initialState={initialState}
                             stateRef={editorStateRef}
                             onStateChange={scheduleStatePersist}

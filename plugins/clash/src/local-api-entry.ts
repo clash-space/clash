@@ -1,6 +1,10 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import {
   clashHomeForLocalDataDir,
+  createHeadlessDirectorStageRenderer,
+  createRemotionTimelineRenderer,
   defaultLocalApiDataDir,
   startLocalApiServer,
 } from "@master-clash/local-api";
@@ -27,21 +31,53 @@ process.once("SIGINT", () => { void closeServer(0); });
 process.once("SIGTERM", () => { void closeServer(0); });
 
 async function main(): Promise<void> {
-  const ownerClientId = process.env.CLASH_PLUGIN_OWNER_CLIENT_ID?.trim();
-  if (!ownerClientId) throw new Error("CLASH_PLUGIN_OWNER_CLIENT_ID is required");
+  const startedBy = process.env.CLASH_DAEMON_STARTED_BY === "cli" ? "cli" : "plugin";
   const dataDir = defaultLocalApiDataDir(process.env);
+  const remotionBundle =
+    process.env.CLASH_REMOTION_BUNDLE_PATH?.trim() ||
+    fileURLToPath(new URL("./remotion-bundle", import.meta.url));
+  if (!existsSync(remotionBundle)) {
+    throw new Error(`Packaged Remotion bundle is missing: ${remotionBundle}`);
+  }
+  const timelineRenderer = createRemotionTimelineRenderer({
+    resolveServeUrl: async () => remotionBundle,
+    loadRenderer: async () => {
+      const renderer = await import("@remotion/renderer");
+      return {
+        selectComposition: (options) => renderer.selectComposition(options as never),
+        renderMedia: (options) => renderer.renderMedia(options as never),
+      };
+    },
+  });
+  const directorBundle =
+    process.env.CLASH_DIRECTOR_BUNDLE_PATH?.trim() ||
+    fileURLToPath(new URL("./director-bundle", import.meta.url));
+  if (!existsSync(directorBundle)) {
+    throw new Error(`Packaged Director bundle is missing: ${directorBundle}`);
+  }
+  const directorStageRenderer = createHeadlessDirectorStageRenderer({
+    bundleDir: directorBundle,
+    openBrowser: async () => {
+      const renderer = await import("@remotion/renderer");
+      return renderer.openBrowser("chrome", {
+        chromiumOptions: { gl: "angle" },
+        logLevel: "error",
+      }) as never;
+    },
+  });
   const runDir =
     process.env.CLASH_HOST_RUN_DIR?.trim() ||
     join(clashHomeForLocalDataDir(dataDir), "run");
   server = await startLocalApiServer({
     port: Number(process.env.PORT ?? 0),
     dataDir,
+    timelineRenderer,
+    directorStageRenderer,
     discovery: {
       enabled: true,
       runDir,
-      launchMode: "plugin",
-      startedBy: "plugin",
-      ownerClientId,
+      launchMode: "user-service",
+      startedBy,
     },
   });
 }

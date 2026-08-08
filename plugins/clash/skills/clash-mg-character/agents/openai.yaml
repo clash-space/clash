@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash MG Character"
+  short_description: "Design expressive poses and appealing character motion"
+  default_prompt: "Use $clash-mg-character to create a readable character silhouette, expressive key poses, and convincing motion."

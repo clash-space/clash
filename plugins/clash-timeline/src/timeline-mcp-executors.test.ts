@@ -90,7 +90,7 @@ function timelineStateSchemas(value: unknown): Array<Record<string, unknown>> {
   ];
 }
 
-test("projects every MCP output from the shared catalog and expands every Timeline entity state", async () => {
+test("projects every MCP output with a compact reference to the authoritative Timeline state", async () => {
   const module = await executorModule();
   const entityOperations = new Set([
     "timeline.open",
@@ -111,9 +111,12 @@ test("projects every MCP output from the shared catalog and expands every Timeli
     const states = timelineStateSchemas(publicSchema);
     assert.ok(states.length > 0, `${operationId} must expose Timeline entity state`);
     for (const state of states) {
-      assert.equal(state.$ref, "#/definitions/TimelineDsl", operationId);
+      assert.equal(state.type, "object", operationId);
+      assert.equal(state["x-clash-contract-ref"], "TimelineDsl", operationId);
+      assert.equal(state["x-clash-schema-tool"], "clash_timeline_schema", operationId);
+      assert.match(String(state.description), /complete Timeline DSL state/i, operationId);
     }
-    assert.ok(publicSchema.definitions?.TimelineDsl, operationId);
+    assert.equal(publicSchema.definitions, undefined, operationId);
   }
 });
 
@@ -162,7 +165,7 @@ test("maps canonical registry inputs into the CLI transport adapter", async () =
   const module = await executorModule();
   const calls: Array<{ operation: string; input: Record<string, unknown> }> = [];
   const adapter = Object.fromEntries([
-    "schema", "validate", "list", "get", "create", "save", "attach", "detach", "copy",
+    "schema", "validate", "list", "get", "create", "save", "attach", "detach", "copy", "render",
   ].map((operation) => [operation, async (input: Record<string, unknown>) => {
     calls.push({ operation, input });
     if (operation === "list") return [];
@@ -198,6 +201,15 @@ test("maps canonical registry inputs into the CLI transport adapter", async () =
     { cwd: "/workspace", document: { tracks: [] }, format: "object" },
     adapter,
   );
+  await module.TIMELINE_MCP_EXECUTORS["timeline.render"].execute(
+    {
+      cwd: "/workspace",
+      timelineId: "social-cut",
+      wait: true,
+      timeoutMs: 600_000,
+    },
+    adapter,
+  );
 
   assert.deepEqual(calls, [
     {
@@ -228,6 +240,15 @@ test("maps canonical registry inputs into the CLI transport adapter", async () =
     {
       operation: "validate",
       input: { cwd: "/workspace", state: { tracks: [] }, format: "object" },
+    },
+    {
+      operation: "render",
+      input: {
+        cwd: "/workspace",
+        timelineId: "social-cut",
+        wait: true,
+        timeoutMs: 600_000,
+      },
     },
   ]);
 });

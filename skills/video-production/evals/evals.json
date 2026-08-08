@@ -72,7 +72,7 @@
       "id": "mg-overlay-plan",
       "skill_id": "clash.video.motion-graphics-overlays",
       "prompt": "Create MG overlays for a talking-head clip: kinetic captions, lower third, product callout, and transparent render validation.",
-      "expected_output": "overlay plan, composition source, rendered overlay asset, timeline items, validation checks."
+      "expected_output": "creative overlay plan, default-exported Remotion TSX, Canvas remotion-component identity, live sourceNodeId Timeline item, completed Timeline render receipt and playable Asset."
     },
     {
       "id": "pipeline-manifest",
@@ -95,8 +95,8 @@
     {
       "id": "composition-router",
       "skill_id": "clash.render.composition-runtime-router",
-      "prompt": "Choose between Remotion, HTML composition, and FFmpeg for a kinetic caption overlay and final render.",
-      "expected_output": "Decision log with runtime availability, no silent fallback, and validation checks."
+      "prompt": "Route an editable TSX kinetic caption component into Clash Canvas and the final Timeline without freezing a source snapshot.",
+      "expected_output": "Remotion TSX Canvas node, fixed sourceNodeId Timeline binding, latest-source preview semantics, and completed Timeline render evidence."
     },
     {
       "id": "release-checkpoint",

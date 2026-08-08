@@ -3,6 +3,21 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
+function unsupportedTuplePaths(value: unknown, path = "$"): string[] {
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) => unsupportedTuplePaths(entry, `${path}[${index}]`));
+  }
+  const record = value as Record<string, unknown>;
+  return [
+    ...(Array.isArray(record.items) ? [`${path}.items`] : []),
+    ...(Array.isArray(record.prefixItems) ? [`${path}.prefixItems`] : []),
+    ...Object.entries(record).flatMap(([key, child]) => (
+      unsupportedTuplePaths(child, `${path}.${key}`)
+    )),
+  ];
+}
+
 test("one Clash plugin server quarantines every MCP App while keeping headless tools", async (t) => {
   let module: Record<string, unknown> = {};
   try {
@@ -17,7 +32,9 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
     close(): Promise<void>;
   };
   const server = create({
-    runner: async (args: string[]) => args[0] === "projects" ? [] : { status: "active" },
+    runner: async (args: string[]) => (
+      args[0] === "projects" || args[1] === "list" ? [] : { status: "active" }
+    ),
     appBundles: {
       canvas: "window.__CANVAS__ = true;",
       studio: "window.__STUDIO__ = true;",
@@ -34,17 +51,56 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
   await server.connect(serverTransport);
   await client.connect(clientTransport);
 
-  const listedTools = (await client.listTools()).tools;
-  const tools = listedTools.map((tool) => tool.name);
+  const rootTools = (await client.listTools()).tools;
+  const discoveryBytes = Buffer.byteLength(JSON.stringify(rootTools));
+  assert.ok(
+    discoveryBytes < 20_000,
+    `MCP discovery must stay compact enough for natural tool selection; received ${discoveryBytes} bytes`,
+  );
+  const fixedToolNames = [
+    "clash",
+    "clash_canvas",
+    "clash_composition",
+    "clash_workspace_init",
+  ];
+  assert.deepEqual(rootTools.map(({ name }) => name).sort(), fixedToolNames);
+  assert.equal(rootTools.length, 4);
+  const operations: Array<any> = [];
+  for (const command of ["canvas", "timeline", "director"] as const) {
+    const selected = await client.callTool({ name: "clash", arguments: { command } });
+    assert.notEqual(selected.isError, true, JSON.stringify(selected));
+    assert.equal(
+      (selected.structuredContent as { selectedDispatcher?: string }).selectedDispatcher,
+      command === "canvas" ? "clash_canvas" : "clash_composition",
+    );
+    assert.equal(
+      (selected.structuredContent as { operations?: unknown[] }).operations,
+      undefined,
+    );
+    const menu = await client.callTool(command === "canvas"
+      ? { name: "clash_canvas", arguments: {} }
+      : {
+          name: "clash_composition",
+          arguments: { kind: command === "timeline" ? "timeline" : "director-stage" },
+        });
+    assert.notEqual(menu.isError, true, JSON.stringify(menu));
+    const selectedOperations = (menu.structuredContent as { operations: unknown[] }).operations;
+    assert.ok(selectedOperations.length > 0, `${command} must reveal live operations`);
+    assert.deepEqual(
+      (await client.listTools()).tools.map(({ name }) => name).sort(),
+      fixedToolNames,
+    );
+    operations.push(...selectedOperations);
+  }
+  const tools = operations.map((operation) => operation.name);
   for (const name of [
     "clash_canvas_list",
     "clash_canvas_execute",
     "clash_timeline_list",
     "clash_timeline_schema",
     "clash_director_list",
-    "clash_cli_assets",
-    "clash_cli_effect",
   ]) assert.ok(tools.includes(name), `missing ${name}`);
+  assert.equal(tools.some((name) => name.startsWith("clash_cli_")), false);
   for (const name of [
     "clash_studio_open",
     "clash_canvas_open",
@@ -58,12 +114,55 @@ test("one Clash plugin server quarantines every MCP App while keeping headless t
     "skills belong to each harness native cwd discovery path, not MCP",
   );
 
-  const appToolUris = listedTools.flatMap((tool) => {
-    const resourceUri = (tool._meta?.ui as { resourceUri?: string } | undefined)?.resourceUri
-      ?? tool._meta?.["ui/resourceUri"];
-    return resourceUri === undefined ? [] : [[tool.name, resourceUri]];
-  });
-  assert.deepEqual(appToolUris, []);
+  for (const tool of [...rootTools, ...operations]) {
+    assert.match(tool.description ?? "", /^Use when:/, `${tool.name} must explain selection intent`);
+    assert.match(tool.description ?? "", /\bEffect:/, `${tool.name} must explain its product effect`);
+    assert.match(tool.description ?? "", /\bReturns:/, `${tool.name} must explain its result`);
+    assert.match(tool.description ?? "", /\bNext:/, `${tool.name} must explain continuation or recovery`);
+  }
+  assert.match(
+    operations.find(({ name }) => name === "clash_canvas_execute")?.description ?? "",
+    /submission is not completion|submitted.*not.*completed/i,
+  );
+  for (const tool of operations) {
+    for (const [direction, schema] of [
+      ["input", tool.inputSchema],
+      ["output", tool.outputSchema],
+    ] as const) {
+      if (!schema) continue;
+      assert.deepEqual(
+        unsupportedTuplePaths(schema),
+        [],
+        `${tool.name} ${direction} bypassed the shared MCP wire policy`,
+      );
+    }
+  }
+  const directorSave = operations.find(({ name }) => name === "clash_director_save");
+  assert.match(
+    (directorSave?.inputSchema as any)?.properties?.state?.description ?? "",
+    /complete.*clash_director_schema/i,
+  );
+
+  for (const [command, dispatcher, kind] of [
+    ["canvas", "clash_canvas", undefined],
+    ["timeline", "clash_composition", "timeline"],
+    ["director", "clash_composition", "director-stage"],
+  ] as const) {
+    const result = await client.callTool({
+      name: dispatcher,
+      arguments: {
+        ...(kind ? { kind } : {}),
+        operation: "list",
+        arguments: { cwd: process.cwd() },
+      },
+    });
+    assert.notEqual(result.isError, true, `${command}.list dispatch failed: ${JSON.stringify(result)}`);
+    assert.deepEqual(result.structuredContent, { items: [] });
+    assert.deepEqual(
+      (await client.listTools()).tools.map(({ name }) => name).sort(),
+      fixedToolNames,
+    );
+  }
 
   await assert.rejects(
     client.listResources(),

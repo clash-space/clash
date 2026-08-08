@@ -17,6 +17,9 @@ import { mcpCommand } from "./commands/mcp";
 import { effectCommand } from "./commands/effects";
 import { directorCommand } from "./commands/director";
 import { resolveClashProfile } from "@clash/shared-runtime/local-paths";
+import { installCliTrace } from "./lib/cli-trace";
+
+installCliTrace();
 
 const program = new Command();
 

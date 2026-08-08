@@ -196,28 +196,6 @@ export function buildTimelineLibraryApplication({
       };
     }
 
-    case 'motion-graphics':
-    case 'templates': {
-      const spec = libraryItem.artifact.spec;
-      const item: Item = {
-        id: createId('library-composition'),
-        type: 'composition',
-        compositionKind: 'motion-graphics',
-        runtime: 'html',
-        compositionId: spec.id,
-        sourcePath: libraryItem.artifact.sourcePath ?? `library/${spec.id}.html`,
-        ...(libraryItem.artifact.renderedAssetPath
-          ? { renderedAssetPath: libraryItem.artifact.renderedAssetPath }
-          : {}),
-        spec,
-        from: frame,
-        durationInFrames: spec.durationInFrames,
-      };
-      return {
-        actions: appendItemActions({ state, createId, category: 'effect', trackName: 'Motion Graphics', role: 'overlay', item, targetTrackId }),
-      };
-    }
-
     case 'sound-effects': {
       if (!record.runtimeAsset) return disabled('This sound effect is not installed.');
       const item: Item = {

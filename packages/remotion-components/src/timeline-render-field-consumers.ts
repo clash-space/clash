@@ -1,8 +1,5 @@
 import {
   TIMELINE_DSL_FIELD_ANNOTATIONS,
-  type MgAnimation,
-  type MgCompositionLayer,
-  type MgCompositionSpec,
   type TimelineDslItemType,
 } from '@clash/shared-types';
 import {
@@ -187,12 +184,12 @@ export const TIMELINE_RENDER_FIELD_CONSUMERS = {
   },
   composition: {
     ...VISUAL_BASE_FIELD_CONSUMERS,
-    compositionKind: rendered('Routes first-party motion-graphics versus custom composition handling.'),
-    runtime: rendered('Routes direct HTML MG rendering versus rendered-asset fallback.'),
-    compositionId: meta('Emitted as composition identity metadata; it does not load an implementation.'),
+    compositionKind: meta('Preserves the composition domain label; runtime selects the renderer path.'),
+    runtime: rendered('Routes live Remotion component execution versus the legacy rendered-asset fallback.'),
+    compositionId: rendered('Identifies the live Remotion component during compilation and output inspection.'),
     sourcePath: unsupported('The Remotion renderer does not execute or load the user-owned source project.'),
     renderedAssetPath: rendered('Supplies the pre-rendered composition fallback video.'),
-    spec: rendered('Supplies first-party HTML motion-graphics layers; nested coverage is audited separately.'),
+    spec: unsupported('Legacy custom runtime configuration is preserved but never interpreted as motion graphics.'),
   },
   'derived-overlay': {
     ...VISUAL_BASE_FIELD_CONSUMERS,
@@ -288,65 +285,6 @@ export const TIMELINE_TRANSITION_CONTENT_FIELD_CONSUMERS = {
     style: unsupported('Transition text content does not currently apply structured-caption style.'),
   },
 } as const satisfies TransitionContentRegistry;
-
-type MgTextLayer = Extract<MgCompositionLayer, { type: 'text' }>;
-type MgShapeLayer = Extract<MgCompositionLayer, { type: 'shape' }>;
-
-const MG_LAYER_BASE_RENDER_FIELD_CONSUMERS = {
-  id: meta('Used as React and DOM layer identity.'),
-  type: rendered('Selects text or shape output.'),
-  from: rendered('Controls item-local layer visibility start.'),
-  durationInFrames: rendered('Controls item-local layer visibility end.'),
-  zIndex: rendered('Controls layer sort and stacking.'),
-  x: rendered('Controls layer translation.'),
-  y: rendered('Controls layer translation.'),
-  width: rendered('Controls optional layer width.'),
-  height: rendered('Controls optional layer height.'),
-  opacity: rendered('Controls layer opacity.'),
-  scale: rendered('Controls layer scale.'),
-  rotation: rendered('Controls layer rotation.'),
-  animations: rendered('Samples seek-safe MG animation channels.'),
-} as const;
-
-/** Nested audit for the direct first-party MG renderer inside composition.spec. */
-export const TIMELINE_MG_RENDER_FIELD_CONSUMERS = {
-  spec: {
-    id: meta('Spec identity is persisted but the item compositionId supplies rendered DOM identity.'),
-    name: meta('Human-readable MG name is not painted by the direct renderer.'),
-    width: unsupported('The direct renderer uses the parent composition width instead of spec.width.'),
-    height: unsupported('The direct renderer uses the parent composition height instead of spec.height.'),
-    fps: unsupported('The direct renderer uses the parent Remotion fps instead of spec.fps.'),
-    durationInFrames: unsupported('The Timeline item duration controls playback instead of the nested spec duration.'),
-    background: unsupported('The direct renderer does not currently paint spec.background.'),
-    layers: rendered('Supplies sorted, timed text and shape layers.'),
-  } satisfies Record<keyof MgCompositionSpec, TimelineFieldConsumerClassification>,
-  textLayer: {
-    ...MG_LAYER_BASE_RENDER_FIELD_CONSUMERS,
-    text: rendered('Paints text layer content.'),
-    fontFamily: rendered('Controls text layer font family.'),
-    fontSize: rendered('Controls text layer font size.'),
-    fontWeight: rendered('Controls text layer font weight.'),
-    color: rendered('Controls text layer color.'),
-    letterSpacing: unsupported('The direct renderer does not currently apply MG text letterSpacing.'),
-    align: unsupported('The direct renderer does not currently apply MG text alignment.'),
-  } satisfies Record<keyof MgTextLayer, TimelineFieldConsumerClassification>,
-  shapeLayer: {
-    ...MG_LAYER_BASE_RENDER_FIELD_CONSUMERS,
-    shape: rendered('Selects rectangle, rounded rectangle, or circle geometry.'),
-    fill: rendered('Paints shape fill color.'),
-    stroke: unsupported('The direct renderer does not currently paint MG shape stroke.'),
-    strokeWidth: unsupported('The direct renderer does not currently paint MG shape stroke width.'),
-    radius: rendered('Controls rounded-rectangle radius; circles use a full radius.'),
-  } satisfies Record<keyof MgShapeLayer, TimelineFieldConsumerClassification>,
-  animation: {
-    property: rendered('Selects the animated MG transform or opacity channel.'),
-    from: rendered('Supplies the animation start value.'),
-    to: rendered('Supplies the animation end value.'),
-    startFrame: rendered('Controls item-local animation start.'),
-    durationInFrames: rendered('Controls animation progress duration.'),
-    easing: rendered('Controls deterministic MG easing.'),
-  } satisfies Record<keyof MgAnimation, TimelineFieldConsumerClassification>,
-} as const;
 
 export const TIMELINE_TRANSITION_RENDER_ITEM_TYPES = [
   'video',

@@ -24,13 +24,15 @@ carry the distinction.
 | --- | --- |
 | `effect` | `composition`, `transition` |
 | `text` | `text`, `caption` |
-| `visual` | `video`, `image`, `solid`, `sticker`, `derived-overlay` |
+| `visual` | `video`, `image`, `solid`, `sticker`, `composition`, `derived-overlay` |
 | `primary` | `video`, `audio`, `image`, `solid` |
 | `audio` | `audio` |
 
 Clip-local shader effects remain in a visual or primary clip's `effects`
-stack. The effect lane is for time-ranged compositions and transitions; it
-does not duplicate clip-local processing.
+stack. Canvas-linked Remotion compositions are visual assets and default to a
+visual overlay lane. The effect lane remains compatible with time-ranged
+composition states and transitions; it does not duplicate clip-local
+processing.
 
 The primary lane is the semantic edit used by transcript editing. A video may
 keep its linked audio there, and an explicitly chosen dialogue/voiceover audio

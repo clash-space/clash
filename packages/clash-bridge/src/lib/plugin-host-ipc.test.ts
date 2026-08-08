@@ -6,10 +6,82 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   PluginHostClient,
+  pluginHostSocketPath,
   startPluginHostIpcServer,
 } from "./plugin-host-ipc";
 
 describe("Bridge plugin host IPC", () => {
+  it("maps a long config directory to a reachable short Unix socket", async () => {
+    if (process.platform === "win32") return;
+
+    const root = await mkdtemp(join(tmpdir(), "clash-plugin-ipc-long-"));
+    const configDir = join(root, "deep-workspace-segment".repeat(6));
+    const socketPath = pluginHostSocketPath({}, configDir);
+
+    expect(Buffer.byteLength(socketPath)).toBeLessThanOrEqual(96);
+    expect(socketPath.startsWith(configDir)).toBe(false);
+
+    const server = await startPluginHostIpcServer({
+      socketPath,
+      host: {
+        listCards: () => [],
+        resolveBinding: () => {
+          throw new Error("not used");
+        },
+        invoke: async () => {
+          throw new Error("not used");
+        },
+      },
+    });
+    try {
+      await expect(new PluginHostClient({ socketPath }).listCards()).resolves.toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("serializes concurrent startup for one socket without unlinking the live owner", async () => {
+    const root = await mkdtemp(join(tmpdir(), "clash-plugin-ipc-concurrent-"));
+    const socketPath = join(root, "host.sock");
+    const host = {
+      listCards: () => [],
+      resolveBinding: () => {
+        throw new Error("not used");
+      },
+      invoke: async () => {
+        throw new Error("not used");
+      },
+    };
+
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 8 }, () => startPluginHostIpcServer({ host, socketPath })),
+    );
+    const owners = attempts.filter(
+      (attempt): attempt is PromiseFulfilledResult<Awaited<ReturnType<typeof startPluginHostIpcServer>>> =>
+        attempt.status === "fulfilled",
+    );
+    const rejected = attempts.filter(
+      (attempt): attempt is PromiseRejectedResult => attempt.status === "rejected",
+    );
+
+    try {
+      expect(
+        owners,
+        rejected.map((attempt) => String(attempt.reason)).join("\n"),
+      ).toHaveLength(1);
+      expect(rejected).toHaveLength(7);
+      for (const attempt of rejected) {
+        expect(attempt.reason).toMatchObject({ code: "EADDRINUSE" });
+      }
+      await expect(new PluginHostClient({ socketPath }).listCards()).resolves.toEqual([]);
+      if (process.platform !== "win32") {
+        expect((await stat(socketPath)).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      await Promise.all(owners.map(({ value }) => value.close()));
+    }
+  });
+
   it("resolves and invokes an exact executable-plugin binding over a local socket", async () => {
     const root = await mkdtemp(join(tmpdir(), "clash-plugin-ipc-"));
     const socketPath = join(root, "plugin-host.sock");
@@ -33,6 +105,7 @@ describe("Bridge plugin host IPC", () => {
           name: "Caption Helper",
           outputType: "text" as const,
           parameters: [],
+          presentation: { type: "form" as const },
           input: { requiresPrompt: true, inputMode: {}, promptModalities: ["text" as const] },
           functionExportId: "caption-helper",
         },

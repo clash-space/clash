@@ -42,14 +42,11 @@ import {
 import {
   DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION,
   createDefaultTimelineItemMask,
-  MgCompositionSpecSchema,
   TIMELINE_MASK_APPLIES_TO_ITEM_TYPES,
   TIMELINE_MASK_SCALAR_ANIMATION_BINDINGS,
   TIMELINE_MASK_STATIC_CONTROL_BINDINGS,
   TIMELINE_MASK_VECTOR_ANIMATION_BINDINGS,
   TIMELINE_KEYFRAME_INTERPOLATIONS,
-  type MgCompositionLayer,
-  type MgCompositionSpec,
   type TimelineMaskNumberInputAnnotation,
   type TimelineMaskScalarAnimationBinding,
   type TimelineMaskStaticControlBinding,
@@ -61,6 +58,7 @@ import {
   RemotionSelect,
   RemotionTextarea,
 } from './ui/controls';
+import { AspectRatioPicker } from './AspectRatioPicker';
 import { getContinuousTransitionBoundaries } from '../library/applyTimelineLibraryItem';
 
 const TRANSITION_TYPES: TransitionType[] = [
@@ -103,11 +101,17 @@ const fieldClassName = `h-8 w-full ${controlRadiusClassName} border border-warm-
 const readOnlyFieldClassName = `flex min-h-8 w-full items-center ${controlRadiusClassName} border border-warm-border/75 bg-warm-muted/55 px-2.5 text-stone-500 dark:text-stone-400 ${editorTypeClassName.item}`;
 const colorFieldClassName = `h-8 w-10 shrink-0 cursor-pointer ${controlRadiusClassName} border border-warm-border bg-warm-page/40 p-1`;
 
-const aspectRatioLabel = (width: number, height: number): string => {
-  const ratio = width / Math.max(1, height);
-  const rounded = Math.round(ratio * 100) / 100;
-  return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(2)}:1`;
-};
+const CANVAS_ASPECT_RATIO_PRESETS = [
+  { value: '16:9', label: '16:9', width: 1920, height: 1080 },
+  { value: '9:16', label: '9:16', width: 1080, height: 1920 },
+  { value: '3:2', label: '3:2', width: 1620, height: 1080 },
+  { value: '2:3', label: '2:3', width: 1080, height: 1620 },
+  { value: '3:4', label: '3:4', width: 1080, height: 1440 },
+  { value: '4:3', label: '4:3', width: 1440, height: 1080 },
+  { value: '1:1', label: '1:1', width: 1080, height: 1080 },
+  { value: '21:9', label: '21:9', width: 2560, height: 1080 },
+  { value: '4:5', label: '4:5', width: 1080, height: 1350 },
+];
 
 const MediaFitControl: React.FC<{
   value?: MediaFit;
@@ -153,19 +157,6 @@ const InspectorCompactNumberField: React.FC<
     />
   </label>
 );
-
-const updateMgLayer = (
-  spec: MgCompositionSpec,
-  layerId: string,
-  updates: Partial<MgCompositionLayer>,
-): MgCompositionSpec => ({
-  ...spec,
-  layers: spec.layers.map((layer) => (
-    layer.id === layerId
-      ? { ...layer, ...updates } as MgCompositionLayer
-      : layer
-  )),
-});
 
 const effectDisplayName = (effectId: string): string => effectId
   .split('/').pop()!
@@ -1079,8 +1070,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   title = 'Properties',
   headerAction,
 }) => {
-  const [mgLayerQuery, setMgLayerQuery] = React.useState('');
-  const [mgLayerOpenById, setMgLayerOpenById] = React.useState<Record<string, boolean>>({});
   const dispatch = useEditorDispatch();
   const {
     tracks,
@@ -1101,11 +1090,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   const selectedItemData = selectedItem?.item;
   const itemEnd = selectedItemData ? selectedItemData.from + selectedItemData.durationInFrames : 0;
-
-  React.useEffect(() => {
-    setMgLayerQuery('');
-    setMgLayerOpenById({});
-  }, [selectedItemId]);
 
   // Format time helper
   const formatTime = (frames: number): string => {
@@ -1131,74 +1115,30 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <div className={inspectorSectionClassName}>
             <h3 className={sectionTitleClassName}>Canvas</h3>
 
-            <div className="mb-3">
-              <label className={labelClassName}>Aspect Ratio</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: '16:9', w: 1920, h: 1080 },
-                  { label: '9:16', w: 1080, h: 1920 },
-                  { label: '4:3', w: 1440, h: 1080 },
-                  { label: '1:1', w: 1080, h: 1080 },
-                  { label: '21:9', w: 2560, h: 1080 },
-                  { label: '4:5', w: 1080, h: 1350 },
-                ].map(preset => (
-                  <RemotionButton
-                    key={preset.label}
-                    onClick={() => dispatch({
-                      type: 'SET_COMPOSITION_SIZE',
-                      payload: { width: preset.w, height: preset.h },
-                    })}
-                    className={`${controlRadiusClassName} px-2 py-1.5 font-medium transition-colors ${editorTypeClassName.control} ${compositionWidth === preset.w && compositionHeight === preset.h
-                        ? 'bg-brand text-brand-foreground shadow-sm'
-                        : 'border border-warm-border bg-warm-surface text-stone-700 hover:border-brand/40 hover:bg-brand/[0.08] hover:text-brand dark:text-neutral-200'
-                      }`}
-                  >
-                    {preset.label}
-                  </RemotionButton>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label>
-                <span className={labelClassName}>Width</span>
-                <RemotionInput
-                  aria-label="Canvas width in pixels"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={compositionWidth}
-                  onChange={(event) => dispatch({
-                    type: 'SET_COMPOSITION_SIZE',
-                    payload: {
-                      width: Math.max(1, parseInt(event.target.value, 10) || 1),
-                      height: compositionHeight,
-                    },
-                  })}
-                  className={fieldClassName}
-                />
-              </label>
-              <label>
-                <span className={labelClassName}>Height</span>
-                <RemotionInput
-                  aria-label="Canvas height in pixels"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={compositionHeight}
-                  onChange={(event) => dispatch({
-                    type: 'SET_COMPOSITION_SIZE',
-                    payload: {
-                      width: compositionWidth,
-                      height: Math.max(1, parseInt(event.target.value, 10) || 1),
-                    },
-                  })}
-                  className={fieldClassName}
-                />
-              </label>
-            </div>
-            <p className={`mb-0 mt-2 text-stone-400 ${editorTypeClassName.caption}`}>
-              {aspectRatioLabel(compositionWidth, compositionHeight)}
-            </p>
+            <AspectRatioPicker
+              ariaLabel="Canvas aspect ratio"
+              className="mb-1"
+              options={CANVAS_ASPECT_RATIO_PRESETS}
+              value={CANVAS_ASPECT_RATIO_PRESETS.find((preset) => (
+                preset.width === compositionWidth && preset.height === compositionHeight
+              ))?.value ?? 'custom'}
+              onValueChange={(nextValue) => {
+                const preset = CANVAS_ASPECT_RATIO_PRESETS.find((candidate) => candidate.value === nextValue);
+                if (!preset) return;
+                dispatch({
+                  type: 'SET_COMPOSITION_SIZE',
+                  payload: { width: preset.width, height: preset.height },
+                });
+              }}
+              customDimensions={{
+                width: compositionWidth,
+                height: compositionHeight,
+                onChange: (dimensions) => dispatch({
+                  type: 'SET_COMPOSITION_SIZE',
+                  payload: dimensions,
+                }),
+              }}
+            />
           </div>
 
           {/* Duration Section */}
@@ -1253,15 +1193,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const supportsMask = (TIMELINE_MASK_APPLIES_TO_ITEM_TYPES as readonly string[])
     .includes(item.type);
   const subtitleItem = isSubtitleTextItem(item) ? item : null;
-  const parsedMgSpec = item.type === 'composition'
-    ? MgCompositionSpecSchema.safeParse((item as CompositionItem).spec)
-    : null;
-  const visibleMgLayers = parsedMgSpec?.success
-    ? parsedMgSpec.data.layers.filter((layer) => (
-      layer.id.toLocaleLowerCase().includes(mgLayerQuery.trim().toLocaleLowerCase())
-      || layer.type.includes(mgLayerQuery.trim().toLocaleLowerCase())
-    ))
-    : [];
   const resolvedSource = item.type === 'composition'
     ? item.sourcePath
     : getItemResolvedSrc(item, assets);
@@ -2220,470 +2151,25 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {item.type === 'composition' && (
           <div className={inspectorSectionClassName}>
-            <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h3 className="m-0 font-semibold tracking-[-0.01em] text-slate-800 dark:text-stone-200">
-                Motion Graphics
-              </h3>
-              <span className={`text-stone-400 ${editorTypeClassName.caption}`}>
-                {parsedMgSpec?.success ? `${parsedMgSpec.data.layers.length} layers` : 'External runtime'}
-              </span>
-            </div>
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              <InspectorIdentityRow label="Runtime" value={(item as CompositionItem).runtime} />
-              <InspectorIdentityRow label="Composition" value={(item as CompositionItem).compositionId} />
-            </div>
-            {parsedMgSpec?.success ? (
-              <div>
-                <label className="mb-3 block">
-                  <span className={labelClassName}>Canvas background</span>
-                  <RemotionInput
-                    aria-label="MG background"
-                    type="text"
-                    value={parsedMgSpec.data.background}
-                    onChange={(event) => updateItem({
-                      spec: {
-                        ...parsedMgSpec.data,
-                        background: event.target.value,
-                      },
-                    } as Partial<typeof item>)}
-                    className={fieldClassName}
-                  />
-                </label>
-                <RemotionInput
-                  aria-label="Search MG layers"
-                  type="search"
-                  value={mgLayerQuery}
-                  onChange={(event) => setMgLayerQuery(event.target.value)}
-                  placeholder="Search layers"
-                  className={`${fieldClassName} mb-2`}
-                />
-                <div className="divide-y divide-warm-border/70 border-y border-warm-border/70">
-                  {visibleMgLayers.map((layer) => (
-                    <details
-                      key={layer.id}
-                      open={mgLayerOpenById[layer.id] ?? (
-                        parsedMgSpec.data.layers.length <= 8 || mgLayerQuery.trim().length > 0
-                      )}
-                      onToggle={(event) => {
-                        const isOpen = event.currentTarget.open;
-                        setMgLayerOpenById((current) => (
-                          current[layer.id] === isOpen
-                            ? current
-                            : { ...current, [layer.id]: isOpen }
-                        ));
-                      }}
-                      className="group py-1.5"
-                    >
-                      <summary className={`flex cursor-pointer list-none items-center justify-between gap-2 py-1 text-slate-700 marker:hidden dark:text-stone-300 ${editorTypeClassName.control}`}>
-                        <span className="min-w-0 truncate font-medium">{layer.id}</span>
-                        <span className="flex items-center gap-2">
-                          <span className={`uppercase tracking-[0.08em] text-stone-400 ${editorTypeClassName.caption}`}>
-                            {layer.type}
-                          </span>
-                          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-stone-400 transition-transform group-open:rotate-90" aria-hidden="true">
-                            <path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </span>
-                      </summary>
-                      <div className="space-y-3 pb-2 pt-1">
-                        <div>
-                          <span className={labelClassName}>Timing</span>
-                          <div className="grid grid-cols-2 gap-2">
-                            <InspectorCompactNumberField
-                              prefix="Start"
-                              aria-label={`MG layer ${layer.id} start frame`}
-                              min={0}
-                              step={1}
-                              value={layer.from}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { from: Math.max(0, parseInt(event.target.value, 10) || 0) },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                            <InspectorCompactNumberField
-                              prefix="Dur"
-                              aria-label={`MG layer ${layer.id} duration in frames`}
-                              min={1}
-                              step={1}
-                              value={layer.durationInFrames}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  {
-                                    durationInFrames: Math.max(
-                                      1,
-                                      parseInt(event.target.value, 10) || 1,
-                                    ),
-                                  },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <span className={labelClassName}>Position</span>
-                          <div className="grid grid-cols-2 gap-2">
-                            <InspectorCompactNumberField
-                              prefix="X"
-                              aria-label={`MG layer ${layer.id} x position`}
-                              step={1}
-                              value={layer.x}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { x: Number(event.target.value) || 0 },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                            <InspectorCompactNumberField
-                              prefix="Y"
-                              aria-label={`MG layer ${layer.id} y position`}
-                              step={1}
-                              value={layer.y}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { y: Number(event.target.value) || 0 },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <span className={labelClassName}>Transform</span>
-                          <div className="grid grid-cols-2 gap-2">
-                            <InspectorCompactNumberField
-                              prefix="Scale"
-                              aria-label={`MG layer ${layer.id} scale`}
-                              min={0.01}
-                              step={0.05}
-                              value={layer.scale}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { scale: Math.max(0.01, Number(event.target.value) || 1) },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                            <InspectorCompactNumberField
-                              prefix="Rot"
-                              aria-label={`MG layer ${layer.id} rotation`}
-                              step={1}
-                              value={layer.rotation}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { rotation: Number(event.target.value) || 0 },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                            <InspectorCompactNumberField
-                              prefix="Alpha"
-                              aria-label={`MG layer ${layer.id} opacity`}
-                              min={0}
-                              max={1}
-                              step={0.05}
-                              value={layer.opacity}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  {
-                                    opacity: Math.min(
-                                      1,
-                                      Math.max(0, Number(event.target.value) || 0),
-                                    ),
-                                  },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                            <InspectorCompactNumberField
-                              prefix="Z"
-                              aria-label={`MG layer ${layer.id} layer order`}
-                              step={1}
-                              value={layer.zIndex}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { zIndex: parseInt(event.target.value, 10) || 0 },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <span className={labelClassName}>Size</span>
-                          <div className="grid grid-cols-2 gap-2">
-                            <InspectorCompactNumberField
-                              prefix="W"
-                              aria-label={`MG layer ${layer.id} width`}
-                              min={1}
-                              step={1}
-                              value={layer.width ?? ''}
-                              placeholder="Auto"
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  {
-                                    width: event.target.value === ''
-                                      ? undefined
-                                      : Math.max(1, Number(event.target.value) || 1),
-                                  },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                            <InspectorCompactNumberField
-                              prefix="H"
-                              aria-label={`MG layer ${layer.id} height`}
-                              min={1}
-                              step={1}
-                              value={layer.height ?? ''}
-                              placeholder="Auto"
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  {
-                                    height: event.target.value === ''
-                                      ? undefined
-                                      : Math.max(1, Number(event.target.value) || 1),
-                                  },
-                                ),
-                              } as Partial<typeof item>)}
-                            />
-                          </div>
-                        </div>
-                        {layer.type === 'text' ? (
-                          <div className="space-y-2">
-                            <span className={labelClassName}>Typography</span>
-                            <RemotionInput
-                              aria-label={`MG layer ${layer.id} text`}
-                              type="text"
-                              value={layer.text}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  { text: event.target.value },
-                                ),
-                              } as Partial<typeof item>)}
-                              className={fieldClassName}
-                            />
-                            <div className="grid grid-cols-2 gap-2">
-                              <label>
-                                <span className={labelClassName}>Font size</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} font size`}
-                                  type="number"
-                                  min={1}
-                                  step={1}
-                                  value={layer.fontSize}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      {
-                                        fontSize: Math.max(
-                                          1,
-                                          Number(event.target.value) || 1,
-                                        ),
-                                      },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                              <label>
-                                <span className={labelClassName}>Weight</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} font weight`}
-                                  type="text"
-                                  value={layer.fontWeight}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      {
-                                        fontWeight: Number.isNaN(Number(event.target.value))
-                                          ? event.target.value
-                                          : Number(event.target.value),
-                                      },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                              <label>
-                                <span className={labelClassName}>Color</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} color`}
-                                  type="text"
-                                  value={layer.color}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      { color: event.target.value },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                              <label>
-                                <span className={labelClassName}>Tracking</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} letter spacing`}
-                                  type="number"
-                                  step={0.1}
-                                  value={layer.letterSpacing}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      { letterSpacing: Number(event.target.value) || 0 },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                            </div>
-                            <span className={labelClassName}>Alignment</span>
-                            <RemotionSelect
-                              aria-label={`MG layer ${layer.id} text alignment`}
-                              value={layer.align}
-                              onChange={(event) => updateItem({
-                                spec: updateMgLayer(
-                                  parsedMgSpec.data,
-                                  layer.id,
-                                  {
-                                    align: event.target.value as Extract<
-                                      MgCompositionLayer,
-                                      { type: 'text' }
-                                    >['align'],
-                                  },
-                                ),
-                              } as Partial<typeof item>)}
-                              className={fieldClassName}
-                            >
-                              <option value="left">Left</option>
-                              <option value="center">Center</option>
-                              <option value="right">Right</option>
-                            </RemotionSelect>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <span className={labelClassName}>Shape</span>
-                            <div className="grid grid-cols-2 gap-2">
-                              <label>
-                                <span className={labelClassName}>Fill</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} fill`}
-                                  type="text"
-                                  value={layer.fill}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      { fill: event.target.value },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                              <label>
-                                <span className={labelClassName}>Stroke</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} stroke`}
-                                  type="text"
-                                  value={layer.stroke ?? ''}
-                                  placeholder="None"
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      { stroke: event.target.value || undefined },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                              <label>
-                                <span className={labelClassName}>Stroke width</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} stroke width`}
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={layer.strokeWidth ?? 0}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      {
-                                        strokeWidth: Math.max(
-                                          0,
-                                          Number(event.target.value) || 0,
-                                        ),
-                                      },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                              <label>
-                                <span className={labelClassName}>Radius</span>
-                                <RemotionInput
-                                  aria-label={`MG layer ${layer.id} corner radius`}
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={layer.radius}
-                                  onChange={(event) => updateItem({
-                                    spec: updateMgLayer(
-                                      parsedMgSpec.data,
-                                      layer.id,
-                                      {
-                                        radius: Math.max(
-                                          0,
-                                          Number(event.target.value) || 0,
-                                        ),
-                                      },
-                                    ),
-                                  } as Partial<typeof item>)}
-                                  className={fieldClassName}
-                                />
-                              </label>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </details>
-                  ))}
-                  {visibleMgLayers.length === 0 && (
-                    <p className={`my-3 text-center text-stone-400 ${editorTypeClassName.control}`}>
-                      No matching layers
-                    </p>
-                  )}
-                </div>
+            <h3 className={sectionTitleClassName}>
+              {item.runtime === 'remotion' ? 'Remotion Component' : 'Composition'}
+            </h3>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <InspectorIdentityRow label="Runtime" value={item.runtime} />
+                <InspectorIdentityRow label="Composition" value={item.compositionId} />
               </div>
-            ) : (
+              {item.sourceNodeId && (
+                <InspectorIdentityRow label="Canvas node" value={item.sourceNodeId} />
+              )}
               <p className={`m-0 text-stone-500 ${editorTypeClassName.control}`}>
-                This composition is rendered by its declared runtime. Its source remains editable in the project workspace.
+                {item.runtime === 'remotion'
+                  ? 'Edit this component on its linked Canvas node. Timeline preview and render resolve that node\'s latest source.'
+                  : 'This legacy composition is rendered by its declared runtime or rendered asset fallback.'}
               </p>
-            )}
+            </div>
           </div>
         )}
-
         {item.type === 'derived-overlay' && (
           <div className={inspectorSectionClassName}>
             <h3 className={sectionTitleClassName}>Derived Media</h3>

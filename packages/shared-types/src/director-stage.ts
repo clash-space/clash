@@ -1,5 +1,6 @@
 import { LoroMap, type LoroDoc } from "loro-crdt";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { agentReadToken } from "./agent-read-proof";
 import { Canvas } from "./canvas-ops";
 export {
@@ -491,6 +492,35 @@ export const DirectorStageStateSchema = z.object({
     cameraCues: z.array(DirectorStageCameraCueSchema).optional(),
   }).optional(),
 });
+
+export type DirectorStageSchemaContract = "state" | "object" | "camera";
+
+const directorStageContractSchemas = {
+  state: { schema: DirectorStageStateSchema, name: "DirectorStageState" },
+  object: { schema: DirectorStageObjectSchema, name: "DirectorStageObject" },
+  camera: { schema: DirectorStageCameraSchema, name: "DirectorStageCamera" },
+} as const;
+
+const directorStageJsonSchemas = Object.fromEntries(
+  Object.entries(directorStageContractSchemas).map(([contract, definition]) => [
+    contract,
+    zodToJsonSchema(definition.schema, {
+      name: definition.name,
+      target: "jsonSchema7",
+    }),
+  ]),
+) as Record<DirectorStageSchemaContract, Record<string, unknown>>;
+
+/**
+ * Return the machine-readable projection generated beside the authoritative
+ * Director Zod contract. MCP and other surfaces consume this instead of
+ * maintaining a second schema copy.
+ */
+export function directorStageJsonSchema(
+  contract: DirectorStageSchemaContract,
+): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(directorStageJsonSchemas[contract])) as Record<string, unknown>;
+}
 
 export type DirectorStageVector3 = z.infer<typeof DirectorStageVector3Schema>;
 export type DirectorStageTransform = z.infer<typeof DirectorStageTransformSchema>;

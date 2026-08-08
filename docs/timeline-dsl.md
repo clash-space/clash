@@ -155,12 +155,12 @@ authored optional field is absent; parsing does not silently materialize it.
 
 | Field | Required (authored / runtime) | Projection policy | Consumer fallback | Editor routing | Applies to | Runtime consumers | Meaning |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `compositionKind` | authored / runtime | editable | — | properties-panel | all declared owners | composition-runtime, preview, render | First-party motion-graphics or custom composition kind. |
+| `compositionKind` | authored / runtime | editable | — | properties-panel | all declared owners | composition-runtime, preview, render | Composition domain label; motion-graphics must resolve a live Remotion Canvas component. |
 | `runtime` | authored / runtime | editable | — | properties-panel | all declared owners | composition-runtime, preview, render | Runtime used by the composition source. |
 | `compositionId` | authored / runtime | editable | — | properties-panel | all declared owners | composition-runtime, preview, render | Stable composition implementation id. |
 | `sourcePath` | authored / runtime | editable | — | none | all declared owners | composition-runtime, preview, render | User-owned local project path for the composition source. |
-| `renderedAssetPath` | optional / optional | preserve / derived | — | none | all declared owners | preview, render, export | Host-produced rendered preview/export asset path; required for React and Remotion composition states and preserved by agents. |
-| `spec` | optional / optional | editable | — | properties-panel | all declared owners | composition-runtime, preview, render | Agent-authored composition spec; first-party motion graphics use MgCompositionSpec. |
+| `renderedAssetPath` | optional / optional | preserve / derived | — | none | all declared owners | preview, render, export | Host-produced rendered preview/export asset path for legacy React composition states, preserved by agents. |
+| `spec` | optional / optional | editable | — | properties-panel | all declared owners | composition-runtime, preview, render | Optional runtime configuration for legacy custom compositions; motion graphics use Canvas Remotion component source instead. |
 
 ### `derived-overlay` item fields
 
@@ -202,6 +202,7 @@ are generated from the executable operation registry embedded in
 | `timeline.attach` | yes | write | host-enforced | requires-observation | cli:timeline attach, mcp:clash_timeline_attach | cli, mcp, local-host, project-workspace, canvas | Move a standalone Timeline into a Canvas as a Timeline Action. Preconditions: The Timeline was observed through list or pull and remains at that revision. The Timeline is standalone and the target Canvas exists. The Timeline Action node id is unused. |
 | `timeline.detach` | yes | write | host-enforced | requires-observation | cli:timeline detach, mcp:clash_timeline_detach | cli, mcp, local-host, project-workspace, canvas | Detach a Canvas-owned Timeline back to the Project root. Preconditions: The Timeline was observed through list or pull and remains at that revision. The Timeline is currently owned by a Canvas Timeline Action. |
 | `timeline.copy` | yes | write | host-enforced | requires-observation | cli:timeline copy, mcp:clash_timeline_copy | cli, mcp, local-host, project-workspace, canvas | Copy a Timeline Action into another Canvas using copy-on-write identity. Preconditions: The source Timeline was observed and remains at that revision. The source is a Canvas-owned Timeline Action and the target Canvas exists. The new Timeline and Action node ids are unused. |
+| `timeline.render` | yes | write | none | records-observation | cli:timeline render, mcp:clash_timeline_render | cli, mcp, local-host, remotion-renderer, agent-runtime | Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback. Preconditions: The Timeline exists and contains at least one renderable item. The local daemon has a healthy packaged Remotion rendering backend. |
 | `timeline.pull` | yes | read | none | records-observation | cli:timeline pull | cli, local-host, yaml-projection, agent-runtime | Project the current Timeline revision to agent-editable YAML and record its observation. Preconditions: The Timeline exists in the current Project replica. |
 | `timeline.apply` | yes | write | host-enforced | requires-observation | cli:timeline apply | cli, local-host, yaml-projection, timeline-semantics | Validate an authored projection and atomically advance the Project Timeline revision. Preconditions: The Timeline was pulled or listed and remains at that revision. The complete authored document passes structural and semantic validation. Any immutable downstream dependency guard permits the revision advance. |
 

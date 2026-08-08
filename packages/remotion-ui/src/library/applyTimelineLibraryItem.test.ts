@@ -42,26 +42,21 @@ const apply = (state: EditorState, category: string, label?: string): EditorStat
 };
 
 describe('buildTimelineLibraryApplication', () => {
-  it('inserts text, stickers, motion graphics, and real sound assets into compatible typed lanes', () => {
+  it('inserts text, stickers, and real sound assets into compatible typed lanes', () => {
     let state = makeState();
     state = apply(state, 'text');
     state = apply(state, 'stickers');
-    state = apply(state, 'motion-graphics');
     state = apply(state, 'sound-effects', 'Mouse Click');
 
     expect(state.tracks.map((track) => track.category)).toEqual([
-      'effect',
       'text',
       'visual',
       'primary',
       'audio',
     ]);
     expect(state.tracks.flatMap((track) => track.items).map((item) => item.type)).toEqual(
-      expect.arrayContaining(['text', 'sticker', 'composition', 'audio']),
+      expect.arrayContaining(['text', 'sticker', 'audio']),
     );
-    const composition = state.tracks.flatMap((track) => track.items)
-      .find((item) => item.type === 'composition');
-    expect(composition).not.toHaveProperty('renderedAssetPath');
     expect(state.assets).toHaveLength(1);
     expect(state.assets[0].src).toMatch(/^data:audio\/wav;base64,/);
   });

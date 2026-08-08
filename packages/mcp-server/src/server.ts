@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -8,6 +8,8 @@ import {
 import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { z } from "zod";
+import { ClashMcpServer, describeClashTool } from "@clash/shared-mcp";
+import { initializeClashWorkspace } from "@clash/shared-runtime";
 import {
   CANVAS_MCP_TOOL_NAMES,
   canvasToolVisibility,
@@ -29,11 +31,6 @@ import {
   STUDIO_APP_MIME_TYPE,
   STUDIO_APP_RESOURCE_URI,
 } from "./studio-app";
-import {
-  CLASH_CLI_NAMESPACES,
-  CLASH_CLI_NAMESPACE_TOOL_NAMES,
-  buildCliNamespaceArgs,
-} from "./cli-contract";
 
 const scope = {
   cwd: z.string().min(1).optional().describe("Absolute project workspace path containing .clash/project.toml"),
@@ -49,59 +46,106 @@ const toolDefinitions: Record<CanvasMcpToolName, {
 }> = {
   clash_canvas_open: {
     title: "Open Clash Canvas",
-    description: "Open the interactive Clash Canvas App for a project Canvas.",
+    description: describeClashTool({
+      useWhen: "a person needs the interactive Canvas surface",
+      effect: "opens a read-only projection of the selected Canvas without changing product state",
+      returns: "the current Canvas snapshot used by the app",
+      next: "inspect the snapshot or choose a typed mutation from its advertised contract",
+    }),
     inputSchema: scope,
     annotations: { readOnlyHint: true },
   },
   clash_canvas_snapshot: {
     title: "Refresh Canvas snapshot",
-    description: "Read the full node and edge snapshot used by the Canvas App.",
+    description: describeClashTool({
+      useWhen: "the interactive Canvas projection needs fresh nodes and edges",
+      effect: "reads current Canvas state without changing it",
+      returns: "the complete app snapshot",
+      next: "inspect the returned identities before choosing a mutation",
+    }),
     inputSchema: scope,
     annotations: { readOnlyHint: true },
   },
   clash_canvas_list: {
     title: "List Canvas nodes",
-    description: "Run the same node listing as clash canvas list.",
+    description: describeClashTool({
+      useWhen: "you need candidate Canvas nodes and do not yet have the exact node identity",
+      effect: "reads node summaries, optionally filtered by type, without changing the Canvas",
+      returns: "matching node summaries and their stable IDs",
+      next: "read the chosen node before updating, copying, executing, or planning deletion",
+    }),
     inputSchema: { ...scope, type: z.string().optional() },
     annotations: { readOnlyHint: true },
   },
   clash_canvas_edges: {
     title: "List Canvas edges",
-    description: "Run the same graph edge read as clash canvas edges.",
+    description: describeClashTool({
+      useWhen: "a decision depends on graph relationships between Canvas nodes",
+      effect: "reads current dependency and reference edges without changing the Canvas",
+      returns: "the Canvas edge set with source and target identities",
+      next: "use those relationships to plan the smallest safe edit",
+    }),
     inputSchema: scope,
     annotations: { readOnlyHint: true },
   },
   clash_canvas_get: {
     title: "Read Canvas node",
-    description: "Read one node, including immutability and asset metadata.",
+    description: describeClashTool({
+      useWhen: "you have a node ID and need its complete current state before acting",
+      effect: "reads the node, including immutability, asset, and execution metadata",
+      returns: "the complete node and any locally readable asset information",
+      next: "use the returned state and ID in the selected typed mutation or completion check",
+    }),
     inputSchema: { ...scope, nodeId: z.string().min(1) },
     annotations: { readOnlyHint: true },
   },
   clash_canvas_search: {
     title: "Search Canvas nodes",
-    description: "Search Canvas node labels and content.",
+    description: describeClashTool({
+      useWhen: "you know descriptive text but not the exact Canvas node identity",
+      effect: "searches node labels and content without changing product state",
+      returns: "ranked matching node summaries and IDs",
+      next: "read the intended match before mutating or executing it",
+    }),
     inputSchema: { ...scope, query: z.string().min(1), types: z.array(z.string()).optional() },
     annotations: { readOnlyHint: true },
   },
   clash_canvas_add: {
     title: "Add Canvas node",
-    description: "Create the same text, group, or generation Action node as clash canvas add.",
+    description: describeClashTool({
+      useWhen: "the creative outcome needs a new text, group, editable Remotion TSX component, or generation Action node",
+      effect: "creates one persisted Canvas node; type 'remotion' stores a distinct remotion-component with a stable node ID and editable TSX content",
+      returns: "the created node and its stable ID",
+      next: "read the node; execute only generation Actions, while Remotion components are referenced by sourceNodeId from a Timeline and rendered through timeline render",
+    }),
     inputSchema: {
       ...scope,
-      type: z.string().min(1), label: z.string().min(1),
-      content: z.string().optional(), prompt: z.string().optional(), parentId: z.string().optional(),
+      type: z.string().min(1).describe("Node type: text, group, remotion, image_gen, video_gen, audio_gen, or text_gen"),
+      label: z.string().min(1),
+      content: z.string().optional().describe("Text content, or for type 'remotion', a single-file default-exported Remotion TSX component"),
+      prompt: z.string().optional(), parentId: z.string().optional(),
       modelId: z.string().optional(), actionId: z.string().optional(), refs: z.array(z.string()).optional(),
       params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
     },
   },
   clash_canvas_execute: {
     title: "Execute Canvas node",
-    description: "Execute a generation Action or Timeline render node.",
+    description: describeClashTool({
+      useWhen: "a persisted generation Action or Timeline render node should be submitted exactly once",
+      effect: "submits the selected executable node; submission is not completion",
+      returns: "the accepted submission state and any child node identity",
+      next: "read the returned child or target until terminal state, and never duplicate an accepted submission",
+    }),
     inputSchema: { ...scope, nodeId: z.string().min(1) },
   },
   clash_canvas_update: {
     title: "Update Canvas node",
-    description: "Update mutable node data with the same guards as clash canvas update.",
+    description: describeClashTool({
+      useWhen: "an existing mutable Canvas node needs an in-place metadata or content edit",
+      effect: "updates only supported mutable fields while preserving the node identity",
+      returns: "the updated persisted node",
+      next: "read it back and confirm the intended fields before further work",
+    }),
     inputSchema: {
       ...scope, nodeId: z.string().min(1), label: z.string().optional(), content: z.string().optional(),
       assetId: z.string().optional(),
@@ -110,18 +154,33 @@ const toolDefinitions: Record<CanvasMcpToolName, {
   },
   clash_canvas_move: {
     title: "Move Canvas node",
-    description: "Persist an absolute node position; used by CLI and Canvas App dragging.",
+    description: describeClashTool({
+      useWhen: "an existing Canvas node needs a new absolute visual position",
+      effect: "persists the supplied Canvas coordinates without changing node content",
+      returns: "the moved node with its stored position",
+      next: "read or inspect the layout if placement quality matters",
+    }),
     inputSchema: { ...scope, nodeId: z.string().min(1), x: z.number().finite(), y: z.number().finite() },
     annotations: { idempotentHint: true },
   },
   clash_canvas_copy: {
     title: "Copy Canvas node",
-    description: "Create a mutable copy while preserving downstream references.",
+    description: describeClashTool({
+      useWhen: "an immutable or reusable node needs an independently editable variant",
+      effect: "creates a copy-on-write node while preserving the original and downstream references",
+      returns: "the copied node and its new stable ID",
+      next: "edit or replace assets on the returned copy rather than the original",
+    }),
     inputSchema: { ...scope, nodeId: z.string().min(1), newNodeId: z.string().optional() },
   },
   clash_canvas_replace_asset: {
     title: "Replace Canvas media asset",
-    description: "Create a copy-on-write media node bound to a replacement immutable asset.",
+    description: describeClashTool({
+      useWhen: "a media node should point at a different immutable asset without mutating the source node",
+      effect: "creates a copy-on-write media node bound to the replacement asset",
+      returns: "the replacement node and its new stable ID",
+      next: "read the returned node and verify its asset identity before using it downstream",
+    }),
     inputSchema: {
       ...scope, nodeId: z.string().min(1), assetId: z.string().min(1),
       newNodeId: z.string().optional(), label: z.string().optional(),
@@ -129,19 +188,34 @@ const toolDefinitions: Record<CanvasMcpToolName, {
   },
   clash_canvas_delete_plan: {
     title: "Plan Canvas node deletion",
-    description: "Read the graph-aware deletion plan before deleting nodes.",
+    description: describeClashTool({
+      useWhen: "the user has requested deletion and graph impact must be understood first",
+      effect: "computes the affected Canvas nodes and edges without deleting anything",
+      returns: "a graph-aware deletion plan for the requested IDs",
+      next: "show or verify the impact, then apply the exact batch only after deletion is authorized",
+    }),
     inputSchema: { ...scope, nodeIds: z.array(z.string().min(1)).min(1) },
     annotations: { readOnlyHint: true },
   },
   clash_canvas_delete_batch: {
     title: "Delete Canvas node batch",
-    description: "Apply a previously read graph-aware Canvas deletion.",
+    description: describeClashTool({
+      useWhen: "an authorized graph-aware deletion plan should now be applied",
+      effect: "destructively deletes the exact requested Canvas node batch",
+      returns: "the deleted identities and resulting graph state",
+      next: "read the Canvas to confirm only the planned nodes were removed",
+    }),
     inputSchema: { ...scope, nodeIds: z.array(z.string().min(1)).min(1) },
     annotations: { destructiveHint: true },
   },
   clash_canvas_delete: {
     title: "Delete Canvas node",
-    description: "Delete one Canvas node using the same graph guards as the CLI.",
+    description: describeClashTool({
+      useWhen: "the user has authorized deletion of one confirmed Canvas node",
+      effect: "destructively removes that node using graph safety guards",
+      returns: "the deleted identity and resulting state",
+      next: "read the Canvas to confirm the requested removal",
+    }),
     inputSchema: { ...scope, nodeId: z.string().min(1) },
     annotations: { destructiveHint: true },
   },
@@ -199,7 +273,12 @@ export function registerClashCanvasMcp(
 
   if (appSurfaces) registerAppTool(server, "clash_studio_open", {
     title: "Open Clash Studio",
-    description: "Open the local Clash host and project overview. Requires Clash Desktop or local-api to be running.",
+    description: describeClashTool({
+      useWhen: "a person needs the interactive local host and project overview",
+      effect: "opens a read-only Studio projection and does not mutate project state",
+      returns: "host status and visible project summaries",
+      next: "select a project or use a typed product capability for further work",
+    }),
     inputSchema: {
       cwd: z.string().min(1).optional().describe("Optional absolute workspace path used as CLI working directory"),
     },
@@ -234,32 +313,37 @@ export function registerClashCanvasMcp(
     }
   });
 
-  for (const [index, name] of CLASH_CLI_NAMESPACE_TOOL_NAMES.entries()) {
-    const namespace = CLASH_CLI_NAMESPACES[index];
-    registerAppTool(server, name, {
-      title: `Clash ${namespace}`,
-      description: `Run any public clash ${namespace} CLI operation with an exact argv array. Use --json when the command supports it.`,
-      inputSchema: {
-        cwd: z.string().min(1).optional().describe("Optional absolute workspace path used as CLI working directory"),
-        args: z.array(z.string()).max(128).default([]).describe(`Arguments after "clash ${namespace}"`),
-      },
-      _meta: { ui: { visibility: ["model", "app"] } },
-    }, async (input) => {
-      try {
-        const value = await runner(
-          buildCliNamespaceArgs(name, input),
-          typeof input.cwd === "string" ? input.cwd : undefined,
-        );
-        return {
-          content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value) }],
-          structuredContent: Array.isArray(value) ? { items: value } : value as Record<string, unknown>,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { content: [{ type: "text" as const, text: message }], isError: true };
-      }
-    });
-  }
+  registerAppTool(server, "clash_workspace_init", {
+    title: "Initialize Clash workspace",
+    description: describeClashTool({
+      useWhen: "the current workspace is not yet bound to a Clash project",
+      effect: "creates the canonical binding once, reuses a compatible binding, and refuses to overwrite a conflicting project",
+      returns: "the project ID, workspace ID, marker path, and whether the binding was reused",
+      next: "use the advertised typed capability that directly matches the creative outcome",
+    }),
+    inputSchema: {
+      cwd: z.string().min(1).describe("Absolute path of the workspace to initialize"),
+      projectId: z.string().min(1).optional().describe("Optional stable Clash project ID; generated when omitted"),
+    },
+    _meta: { ui: { visibility: ["model", "app"] } },
+  }, async (input) => {
+    try {
+      const initialized = await initializeClashWorkspace({
+        cwd: input.cwd,
+        ...(typeof input.projectId === "string" ? { projectId: input.projectId } : {}),
+      });
+      return {
+        content: [{
+          type: "text" as const,
+          text: `${initialized.reused ? "Reused" : "Created"} Clash workspace for project ${initialized.projectId}.`,
+        }],
+        structuredContent: initialized,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { content: [{ type: "text" as const, text: message }], isError: true };
+    }
+  });
 
   if (appSurfaces) registerAppResource(server, "Clash Canvas", CANVAS_APP_RESOURCE_URI, {
     description: "Interactive Clash node Canvas",
@@ -290,7 +374,7 @@ export function createClashMcpServer(options: {
   bundledStudioAppJavascript?: string;
   appSurfaces?: boolean;
 } = {}): McpServer {
-  const server = new McpServer({ name: "clash", version: "0.1.0" });
+  const server = new ClashMcpServer({ name: "clash", version: "0.1.0" });
   const bundledAppJavascript = options.bundledAppJavascript ?? readFileSync(
     new URL("./canvas-app-client.js", import.meta.url),
     "utf8",

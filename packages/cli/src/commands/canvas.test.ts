@@ -189,8 +189,16 @@ test("canvas add fallback checks createNode errors before wiring reference edges
 
   assert.match(
     source,
-    /const result = client\.createNode\(nodeId, options\.type, data, null, options\.parent \?\? null\);[\s\S]*if \(result\.error\) \{ console\.error\(`Error: \$\{result\.error\}`\); process\.exit\(1\); \}[\s\S]*const existing = client\.canvas\.listEdges\(\);/,
+    /const result = client\.createNode\(nodeId, persistedNodeType, data, null, options\.parent \?\? null\);[\s\S]*if \(result\.error\) \{ console\.error\(`Error: \$\{result\.error\}`\); process\.exit\(1\); \}[\s\S]*const existing = client\.canvas\.listEdges\(\);/,
   );
+});
+
+test("canvas add exposes the distinct Remotion component node type", () => {
+  const source = readFileSync(new URL("./canvas.ts", import.meta.url), "utf8");
+
+  assert.match(source, /remotion-component/);
+  assert.match(source, /Node type:.*remotion/);
+  assert.match(source, /Body content.*Remotion TSX/);
 });
 
 test("asset downloader accepts absolute and relative signed URLs", () => {

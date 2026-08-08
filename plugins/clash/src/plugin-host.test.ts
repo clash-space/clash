@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,8 +11,9 @@ type HostRecord = {
   hostId: string;
   endpoint: string;
   pid: number;
-  launchMode: "desktop" | "plugin";
-  startedBy: "desktop" | "plugin";
+  launchMode: "desktop" | "plugin" | "user-service";
+  startedBy: "desktop" | "plugin" | "cli";
+  profile?: "dev" | "prod";
   agentCliPath: string;
   ownerClientId?: string;
   startedAt: string;
@@ -23,15 +24,21 @@ const existingHost: HostRecord = {
   schemaVersion: 1,
   protocolVersion: 1,
   dataSchemaVersion: 1,
-  hostId: "desktop-host",
+  hostId: "daemon-existing",
   endpoint: "http://127.0.0.1:49321",
   pid: process.pid,
-  launchMode: "desktop",
-  startedBy: "desktop",
+  launchMode: "user-service",
+  startedBy: "plugin",
+  profile: "prod",
   agentCliPath: "/tmp/desktop-clash",
-  startedAt: "2026-07-16T00:00:00.000Z",
-  updatedAt: "2026-07-16T00:00:00.000Z",
+  startedAt: "2026-08-07T00:00:00.000Z",
+  updatedAt: "2026-08-07T00:00:00.000Z",
 };
+
+async function publish(runDir: string, value: HostRecord): Promise<void> {
+  await mkdir(runDir, { recursive: true });
+  await writeFile(join(runDir, "host.json"), JSON.stringify(value), "utf8");
+}
 
 async function loadHostModule(): Promise<Record<string, unknown>> {
   try {
@@ -41,13 +48,17 @@ async function loadHostModule(): Promise<Record<string, unknown>> {
   }
 }
 
-test("plugin host discovery refuses a different runtime profile", async () => {
+type Manager = {
+  ensureHost(): Promise<HostRecord>;
+  close(): Promise<void>;
+};
+
+type CreateManager = (options: Record<string, unknown>) => Manager;
+
+test("daemon discovery refuses a different runtime profile", async () => {
   const module = await loadHostModule();
-  const runDir = await mkdtemp(join(tmpdir(), "clash-plugin-profile-"));
-  await writeFile(join(runDir, "host.json"), JSON.stringify({
-    ...existingHost,
-    profile: "prod",
-  }), "utf8");
+  const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-profile-"));
+  await publish(runDir, { ...existingHost, profile: "prod" });
 
   const read = module.readActivePluginHost as (
     runDir: string,
@@ -56,182 +67,94 @@ test("plugin host discovery refuses a different runtime profile", async () => {
   assert.equal(await read(runDir, "dev"), undefined);
 });
 
-test("plugin host manager reuses an active host without taking ownership", async () => {
+test("MCP reuses a healthy daemon without launching another", async () => {
   const module = await loadHostModule();
   assert.equal(typeof module.createPluginHostManager, "function");
+  const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-reuse-"));
+  await publish(runDir, existingHost);
   let starts = 0;
-  let closes = 0;
-  const manager = (module.createPluginHostManager as (options: Record<string, unknown>) => {
-    ensureHost(): Promise<HostRecord>;
-    ownsHost(): boolean;
-    close(): Promise<void>;
-  })({
-    readHost: async () => existingHost,
+  const manager = (module.createPluginHostManager as CreateManager)({
+    runDir,
+    probeHost: async () => true,
     startHost: async () => {
       starts += 1;
-      return { record: existingHost, close: async () => { closes += 1; } };
+      return { pid: process.pid };
     },
   });
 
-  assert.equal(await manager.ensureHost(), existingHost);
-  assert.equal(manager.ownsHost(), false);
+  assert.deepEqual(await manager.ensureHost(), existingHost);
   await manager.close();
   assert.equal(starts, 0);
-  assert.equal(closes, 0);
 });
 
-test("plugin host manager reuses the ambient Desktop API without starting a second local-api", async () => {
+test("one client starts the persistent daemon once under concurrent demand", async () => {
   const module = await loadHostModule();
-  assert.equal(typeof module.createPluginHostManager, "function");
+  const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-concurrent-"));
   let starts = 0;
-  const manager = (module.createPluginHostManager as (options: Record<string, unknown>) => {
-    ensureHost(): Promise<HostRecord>;
-    ownsHost(): boolean;
-    close(): Promise<void>;
-  })({
-    env: {
-      CLASH_API_URL: "http://127.0.0.1:54201",
-      CLASH_CLI_ENTRY_PATH: "/tmp/clash-cli.cjs",
-    },
-    readHost: async () => undefined,
+  let stops = 0;
+  const started: HostRecord = { ...existingHost, hostId: "daemon-started" };
+  const manager = (module.createPluginHostManager as CreateManager)({
+    runDir,
+    probeHost: async () => true,
     startHost: async () => {
       starts += 1;
-      return {
-        record: {
-          ...existingHost,
-          hostId: "unexpected-plugin-host",
-          launchMode: "plugin",
-          startedBy: "plugin",
-          ownerClientId: "plugin-ambient",
-        },
-        close: async () => undefined,
-      };
-    },
-    ownerClientId: "plugin-ambient",
-  });
-
-  const host = await manager.ensureHost();
-
-  assert.equal(host.endpoint, "http://127.0.0.1:54201");
-  assert.equal(host.agentCliPath, "/tmp/clash-cli.cjs");
-  assert.equal(host.launchMode, "desktop");
-  assert.equal(host.startedBy, "desktop");
-  assert.equal(starts, 0);
-  assert.equal(manager.ownsHost(), false);
-  await manager.close();
-});
-
-test("plugin host manager starts once under concurrent demand and closes only its host", async () => {
-  const module = await loadHostModule();
-  assert.equal(typeof module.createPluginHostManager, "function");
-  let starts = 0;
-  let closes = 0;
-  const pluginHost: HostRecord = {
-    ...existingHost,
-    hostId: "plugin-host",
-    launchMode: "plugin",
-    startedBy: "plugin",
-    ownerClientId: "plugin-1",
-  };
-  const manager = (module.createPluginHostManager as (options: Record<string, unknown>) => {
-    ensureHost(): Promise<HostRecord>;
-    ownsHost(): boolean;
-    close(): Promise<void>;
-  })({
-    ownerClientId: "plugin-1",
-    readHost: async () => undefined,
-    startHost: async () => {
-      starts += 1;
-      await Promise.resolve();
-      return { record: pluginHost, close: async () => { closes += 1; } };
+      await publish(runDir, started);
+      return { pid: started.pid, stop: async () => { stops += 1; } };
     },
   });
 
   const [first, second] = await Promise.all([manager.ensureHost(), manager.ensureHost()]);
-  assert.equal(first, pluginHost);
-  assert.equal(second, pluginHost);
+  assert.equal(first.hostId, started.hostId);
+  assert.equal(second.hostId, started.hostId);
   assert.equal(starts, 1);
-  assert.equal(manager.ownsHost(), true);
   await manager.close();
-  await manager.close();
-  assert.equal(closes, 1);
+  assert.equal(stops, 0, "closing MCP must not stop the shared daemon");
 });
 
-test("separate plugin managers coordinate one host startup through the run directory", async () => {
+test("separate MCP clients coordinate one persistent daemon startup", async () => {
   const module = await loadHostModule();
-  assert.equal(typeof module.createPluginHostManager, "function");
-  const create = module.createPluginHostManager as (options: Record<string, unknown>) => {
-    ensureHost(): Promise<HostRecord>;
-    ownsHost(): boolean;
-    close(): Promise<void>;
-  };
-  const runDir = await mkdtemp(join(tmpdir(), "clash-plugin-lock-"));
-  let active: HostRecord | undefined;
+  const create = module.createPluginHostManager as CreateManager;
+  const runDir = await mkdtemp(join(tmpdir(), "clash-daemon-lock-"));
   let starts = 0;
-  const startHost = async ({ ownerClientId }: { ownerClientId: string }) => {
-    starts += 1;
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
-    active = {
-      ...existingHost,
-      hostId: `plugin-${ownerClientId}`,
-      launchMode: "plugin",
-      startedBy: "plugin",
-      ownerClientId,
-    };
-    return { record: active, close: async () => undefined };
-  };
+  const started: HostRecord = { ...existingHost, hostId: "daemon-shared" };
   const options = {
     runDir,
-    readHost: async () => active,
-    startHost,
+    probeHost: async () => true,
+    startHost: async () => {
+      starts += 1;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await publish(runDir, started);
+      return { pid: started.pid };
+    },
   };
-  const first = create({ ...options, ownerClientId: "plugin-1" });
-  const second = create({ ...options, ownerClientId: "plugin-2" });
+  const first = create(options);
+  const second = create(options);
 
   const [firstHost, secondHost] = await Promise.all([first.ensureHost(), second.ensureHost()]);
   assert.equal(starts, 1);
   assert.equal(firstHost.hostId, secondHost.hostId);
-  assert.notEqual(first.ownsHost(), second.ownsHost());
   await first.close();
   await second.close();
 });
 
-test("plugin host derives discovery from the authoritative local-api data directory", async () => {
+test("daemon bootstrap derives discovery from the authoritative local-api data directory", async () => {
   const module = await loadHostModule();
-  assert.equal(typeof module.createPluginHostManager, "function");
-  const create = module.createPluginHostManager as (options: Record<string, unknown>) => {
-    ensureHost(): Promise<HostRecord>;
-    close(): Promise<void>;
-  };
-  const staleRoot = await mkdtemp(join(tmpdir(), "clash-plugin-stale-root-"));
-  const canonicalRoot = await mkdtemp(join(tmpdir(), "clash-plugin-canonical-root-"));
+  const staleRoot = await mkdtemp(join(tmpdir(), "clash-daemon-stale-root-"));
+  const canonicalRoot = await mkdtemp(join(tmpdir(), "clash-daemon-canonical-root-"));
   const dataDir = join(canonicalRoot, "local-api");
   let startedWith: { runDir: string; dataDir: string } | undefined;
-  const pluginHost: HostRecord = {
-    ...existingHost,
-    hostId: "plugin-canonical-root",
-    launchMode: "plugin",
-    startedBy: "plugin",
-    ownerClientId: "plugin-canonical-root",
-  };
-  const manager = create({
-    ownerClientId: "plugin-canonical-root",
-    env: {
-      CLASH_HOME: staleRoot,
-      CLASH_LOCAL_DATA_DIR: dataDir,
-    },
-    readHost: async () => undefined,
+  const started: HostRecord = { ...existingHost, hostId: "daemon-canonical" };
+  const manager = (module.createPluginHostManager as CreateManager)({
+    env: { CLASH_HOME: staleRoot, CLASH_LOCAL_DATA_DIR: dataDir },
+    probeHost: async () => true,
     startHost: async (context: { runDir: string; dataDir: string }) => {
-      startedWith = {
-        runDir: context.runDir,
-        dataDir: context.dataDir,
-      };
-      return { record: pluginHost, close: async () => undefined };
+      startedWith = { runDir: context.runDir, dataDir: context.dataDir };
+      await publish(context.runDir, started);
+      return { pid: started.pid };
     },
   });
 
   await manager.ensureHost();
-
   assert.deepEqual(startedWith, {
     dataDir,
     runDir: join(canonicalRoot, "run"),

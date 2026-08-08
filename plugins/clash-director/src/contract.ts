@@ -1,7 +1,9 @@
 export const DIRECTOR_PLUGIN_TOOL_NAMES = [
   "clash_director_open",
+  "clash_director_schema",
   "clash_director_list",
   "clash_director_get",
+  "clash_director_capture",
   "clash_director_create",
   "clash_director_save",
   "clash_director_attach",
@@ -32,9 +34,11 @@ export type DirectorEntity = {
 };
 
 export type DirectorToolInput = {
+  contract?: "state" | "object" | "camera";
   cwd?: string;
   projectId?: string;
   stageId?: string;
+  baseRevisionId?: string;
   name?: string;
   canvasId?: string;
   nodeId?: string;
@@ -50,6 +54,11 @@ export type DirectorToolInput = {
   keyframe?: Record<string, unknown>;
   actionId?: string;
   action?: Record<string, unknown>;
+  times?: number[];
+  labels?: string[];
+  outputDir?: string;
+  aspectRatio?: "16:9" | "9:16" | "4:3" | "3:4" | "1:1";
+  longEdge?: number;
 };
 
 function required(input: DirectorToolInput, key: keyof DirectorToolInput): string {
@@ -163,6 +172,19 @@ export function buildDirectorCliArgs(
       args = ["director", "create", "--id", required(input, "stageId"), "--name", required(input, "name")];
       appendScope(args, input);
       return args;
+    case "clash_director_capture": {
+      if (!Array.isArray(input.times) || input.times.length === 0) {
+        throw new Error("times is required");
+      }
+      args = ["director", "capture", "--stage", required(input, "stageId")];
+      for (const time of input.times) flag(args, "--time", time);
+      for (const label of input.labels ?? []) flag(args, "--label", label);
+      flag(args, "--output-dir", input.outputDir);
+      flag(args, "--aspect-ratio", input.aspectRatio);
+      flag(args, "--long-edge", input.longEdge);
+      appendScope(args, input);
+      return args;
+    }
     case "clash_director_attach":
       args = ["director", "attach", "--stage", required(input, "stageId"), "--canvas", required(input, "canvasId")];
       flag(args, "--node", input.nodeId);

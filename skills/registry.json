@@ -46,168 +46,6 @@
   },
   "actions": [
     {
-      "id": "clash.action.production.render-mg",
-      "title": "Render first-party MG composition preview",
-      "source": "first-party",
-      "skillId": "clash.video.motion-graphics-overlays",
-      "trigger": {
-        "mode": "local-cli",
-        "command": "clash production render-mg",
-        "requiresLocalRuntime": true
-      },
-      "lifecycle": ["action", "asset", "view-projection"],
-      "inputs": [
-        {
-          "kind": "source",
-          "pathPattern": "compositions/<composition-id>/spec.json"
-        }
-      ],
-      "outputs": [
-        {
-          "kind": "view",
-          "pathPattern": "projections/mg/<composition-id>/index.html"
-        },
-        {
-          "kind": "manifest",
-          "pathPattern": "projections/mg/<composition-id>/timeline-manifest.json",
-          "schema": "mg-overlay-manifest"
-        },
-        {
-          "kind": "projection",
-          "pathPattern": "projections/timelines/<composition-id>.mg.timeline.yaml",
-          "applyCommand": "clash timeline apply",
-          "timelineIdPlaceholder": "<timeline-id>",
-          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
-          "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<composition-id>.mg.timeline.yaml"],
-          "casRequired": true
-        }
-      ],
-      "requiredSystemCapabilities": [
-        "render.html-composition",
-        "timeline.cas-projection",
-        "media.asset-registry",
-        "legal.oss-license-ledger"
-      ],
-      "contractTests": [
-        {
-          "path": "packages/cli/src/commands/production.test.ts",
-          "asserts": "render-mg black-box CLI creates self-contained HTML, manifest, CAS-required timeline projection, and first-party license-safe metadata"
-        },
-        {
-          "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
-        }
-      ]
-    },
-    {
-      "id": "clash.action.production.verify-mg-preview",
-      "title": "Verify first-party MG HTML preview and deterministic frames",
-      "source": "first-party",
-      "skillId": "clash.video.motion-graphics-overlays",
-      "trigger": {
-        "mode": "local-cli",
-        "command": "clash production verify-mg-preview",
-        "requiresLocalRuntime": true
-      },
-      "lifecycle": ["action", "review-gate"],
-      "inputs": [
-        {
-          "kind": "view",
-          "pathPattern": "projections/mg/<composition-id>/index.html"
-        },
-        {
-          "kind": "manifest",
-          "pathPattern": "projections/mg/<composition-id>/timeline-manifest.json",
-          "schema": "mg-overlay-manifest"
-        }
-      ],
-      "outputs": [
-        {
-          "kind": "analysis",
-          "pathPattern": "qa/mg/<composition-id>.preview-verification.json",
-          "schema": "mg-preview-verification"
-        }
-      ],
-      "requiredSystemCapabilities": [
-        "render.html-composition",
-        "timeline.cas-projection",
-        "legal.oss-license-ledger"
-      ],
-      "contractTests": [
-        {
-          "path": "packages/cli/src/commands/production.test.ts",
-          "asserts": "verify-mg-preview black-box CLI reads rendered HTML and manifest, rejects external preview dependencies, verifies first-party license-safe metadata, and writes deterministic frame QA"
-        },
-        {
-          "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, capabilities, and skill linkage"
-        }
-      ]
-    },
-    {
-      "id": "clash.action.production.project-composition-timeline",
-      "title": "Project a rendered Remotion composition into timeline",
-      "source": "first-party",
-      "skillId": "clash.render.composition-runtime-router",
-      "trigger": {
-        "mode": "local-cli",
-        "command": "clash production project-composition-timeline",
-        "requiresLocalRuntime": true
-      },
-      "lifecycle": ["action", "asset", "view-projection"],
-      "inputs": [
-        {
-          "kind": "manifest",
-          "pathPattern": "plans/routes/<composition-id>.route.json",
-          "schema": "composition-route"
-        },
-        {
-          "kind": "asset",
-          "pathPattern": "assets/manifest.json"
-        },
-        {
-          "kind": "asset",
-          "pathPattern": "assets/renders/<composition-id>.<ext>"
-        }
-      ],
-      "outputs": [
-        {
-          "kind": "manifest",
-          "pathPattern": "projections/timelines/<composition-id>.composition.timeline-manifest.json",
-          "schema": "composition-timeline-projection"
-        },
-        {
-          "kind": "projection",
-          "pathPattern": "projections/timelines/<composition-id>.composition.timeline.yaml",
-          "applyCommand": "clash timeline apply",
-          "timelineIdPlaceholder": "<timeline-id>",
-          "requiredRuntimeArgs": ["--timeline <timeline-id>"],
-          "pullCommand": "clash timeline pull",
-          "pullArgsPattern": ["--timeline", "<timeline-id>", "--file", "timelines/main.timeline.yaml"],
-          "applyArgsPattern": ["--timeline", "<timeline-id>", "--file", "projections/timelines/<composition-id>.composition.timeline.yaml"],
-          "casRequired": true
-        }
-      ],
-      "requiredSystemCapabilities": [
-        "render.composition-router",
-        "render.remotion-composition",
-        "media.asset-registry",
-        "timeline.cas-projection"
-      ],
-      "contractTests": [
-        {
-          "path": "packages/cli/src/commands/production.test.ts",
-          "asserts": "project-composition-timeline black-box CLI reads a planned Remotion route and registered rendered asset, then writes a CAS-required composition timeline projection"
-        },
-        {
-          "path": "skills/skill-market.test.mjs",
-          "asserts": "marketplace action contract exposes trigger, artifacts, implicit CAS apply commands, capabilities, and skill linkage"
-        }
-      ]
-    },
-    {
       "id": "clash.action.production.project-derived-overlay",
       "title": "Project a copy-on-write derived asset overlay",
       "source": "first-party",
@@ -1597,7 +1435,7 @@
       "id": "clash.video.motion-graphics-overlays",
       "name": "motion-graphics-overlays",
       "title": "Motion Graphics Overlays",
-      "description": "Create MG motion graphics, kinetic captions, lower-thirds, data callouts, brand-safe overlays, and reusable transparent or embedded video layers.",
+      "description": "Design kinetic typography, lower-thirds, character motion, data callouts, and branded overlays as editable Remotion TSX in a Canvas remotion-component, then deliver them through a live Timeline reference and Timeline render.",
       "kind": "detail",
       "source": "first-party",
       "path": "skills/video-production/motion-graphics-overlays",
@@ -1606,7 +1444,8 @@
         "mg",
         "captions",
         "overlay",
-        "hyperframes"
+        "remotion",
+        "timeline"
       ],
       "inputs": [
         "script segment",
@@ -1615,56 +1454,22 @@
         "data callout"
       ],
       "outputs": [
-        "overlay plan",
-        "composition files",
-        "rendered overlay",
-        "timeline references"
+        "creative overlay plan",
+        "Remotion TSX component",
+        "Canvas remotion-component",
+        "Timeline render receipt"
       ],
+      "executionContract": "native-cli-mcp",
       "requiredSystemCapabilities": [
-        "render.html-composition",
         "render.remotion-composition",
         "media.asset-registry",
-        "timeline.cas-projection",
-        "render.export-validation",
-        "workflow.production-action-runner"
+        "timeline.cas-projection"
       ],
       "researchSources": [
-        "HyperFrames",
         "Remotion"
       ],
-      "status": "blocked-by-system-gap",
-      "systemGaps": [
-        {
-          "capability": "render.html-composition",
-          "gap": "First-party seekable HTML MG previews and exports exist, but renderer parity for richer effects, fonts, layout, and complex component behavior is incomplete.",
-          "unblockSignal": "HTML composition parity tests cover the supported MG effect set and reject unsupported effects with explicit route plans."
-        },
-        {
-          "capability": "render.remotion-composition",
-          "gap": "Remotion preview rendering exists, but managed Remotion route execution, packaging, and host-side render orchestration are incomplete.",
-          "unblockSignal": "Remotion compositions can be selected, rendered, validated, and registered as assets through managed production commands."
-        },
-        {
-          "capability": "media.asset-registry",
-          "gap": "Local assets/manifest.json and some asset nodes exist, but durable SQLite-backed asset rows, path ownership checks, and canvas node round-trip are not complete.",
-          "unblockSignal": "A managed asset registry persists assets in the project DB and passes create/update/restore tests with canvas node mappings."
-        },
-        {
-          "capability": "timeline.cas-projection",
-          "gap": "Timeline projection files and stale-write checks exist, but managed timeline apply orchestration is not integrated across every host/UI write path.",
-          "unblockSignal": "Every timeline-modifying command and host UI path uses pull/edit/apply CAS with stale rejection tests."
-        },
-        {
-          "capability": "render.export-validation",
-          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
-          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
-        },
-        {
-          "capability": "workflow.production-action-runner",
-          "gap": "The CLI action runner covers many local plans, but provider execution, project DB integration, multi-user review UI, and managed timeline apply are incomplete.",
-          "unblockSignal": "Managed actions run through local API/project storage with permissions, provenance, review gates, and CAS apply integration."
-        }
-      ]
+      "status": "ready",
+      "systemGaps": []
     },
     {
       "id": "clash.video.pipeline-manifest-architecture",
@@ -1842,67 +1647,39 @@
     {
       "id": "clash.render.composition-runtime-router",
       "name": "composition-runtime-router",
-      "title": "Composition Runtime Router",
-      "description": "Route render work between Remotion, HTML/HyperFrames-style compositions, FFmpeg, Manim, and future runtimes through explicit route plans without silent fallback.",
+      "title": "Remotion Composition Delivery",
+      "description": "Route agent-authored React motion work through Clash's one executable composition path: editable Remotion TSX in a Canvas remotion-component, a Timeline composition bound by sourceNodeId, and a final Timeline render.",
       "kind": "architecture",
       "source": "first-party",
       "path": "skills/video-production/composition-runtime-router",
       "tags": [
         "architecture",
         "render",
-        "hyperframes",
-        "remotion"
+        "remotion",
+        "canvas",
+        "timeline"
       ],
       "inputs": [
-        "project files",
-        "brief",
-        "source assets"
+        "motion brief",
+        "component source",
+        "target Timeline"
       ],
       "outputs": [
-        "structured artifacts",
-        "validation report"
+        "Canvas remotion-component",
+        "live sourceNodeId Timeline binding",
+        "Timeline render receipt"
       ],
+      "executionContract": "native-cli-mcp",
       "requiredSystemCapabilities": [
-        "render.composition-router",
-        "render.html-composition",
         "render.remotion-composition",
-        "render.export-validation",
-        "legal.oss-license-ledger"
+        "media.asset-registry",
+        "timeline.cas-projection"
       ],
       "researchSources": [
-        "HyperFrames",
-        "Remotion",
-        "mcp-video",
-        "VibeFrame"
+        "Remotion"
       ],
-      "status": "blocked-by-system-gap",
-      "systemGaps": [
-        {
-          "capability": "render.composition-router",
-          "gap": "Composition route plans reject silent fallback, but host runtime probing and managed execution orchestration are incomplete.",
-          "unblockSignal": "Runtime availability is probed locally and selected routes can execute or fail closed with tested fallback rejection."
-        },
-        {
-          "capability": "render.html-composition",
-          "gap": "First-party seekable HTML MG previews and exports exist, but renderer parity for richer effects, fonts, layout, and complex component behavior is incomplete.",
-          "unblockSignal": "HTML composition parity tests cover the supported MG effect set and reject unsupported effects with explicit route plans."
-        },
-        {
-          "capability": "render.remotion-composition",
-          "gap": "Remotion preview rendering exists, but managed Remotion route execution, packaging, and host-side render orchestration are incomplete.",
-          "unblockSignal": "Remotion compositions can be selected, rendered, validated, and registered as assets through managed production commands."
-        },
-        {
-          "capability": "render.export-validation",
-          "gap": "Export validation covers selected MG and TVC probes, but full renderer/provider export packages, loudness, OCR/logo, and broad media validation are incomplete.",
-          "unblockSignal": "Rendered outputs have codec/duration/fps/dimensions/audio/loudness/visual QA receipts across MG, captions, MV, talking-head, and TVC flows."
-        },
-        {
-          "capability": "legal.oss-license-ledger",
-          "gap": "Third-party references have ledger entries, but dependency scanning, NOTICE generation, and explicit legal review workflow are incomplete.",
-          "unblockSignal": "External tools/models/prompts cannot be integrated until scanner output, NOTICE files, and legal review receipts are present."
-        }
-      ]
+      "status": "ready",
+      "systemGaps": []
     },
     {
       "id": "clash.review.video-release-checkpoint",
@@ -2520,9 +2297,9 @@
   "systemCapabilities": [
     {
       "id": "media.asset-registry",
-      "title": "Project asset registry",
+      "title": "Asset registry",
       "status": "partial",
-      "description": "Project-local assets/manifest.json can record production metadata, MG snapshot/video exports, and storyboard panel assets; stable SQLite rows, full media files, and canvas node mappings still need durable integration."
+      "description": "Project-local assets/manifest.json can record production metadata and storyboard panel assets, while completed Timeline renders create product Asset nodes. Stable SQLite rows and full path ownership checks still need durable integration across every media workflow."
     },
     {
       "id": "media.analysis-store",
@@ -2552,7 +2329,7 @@
       "id": "render.export-validation",
       "title": "Export validation",
       "status": "partial",
-      "description": "MG SVG snapshots and local WebM/MP4 overlay exports are written and registered; ffprobe validates codec, dimensions, duration, VP9 alpha_mode, and decoded alpha-plane pixel samples for transparent WebM MG exports, and TVC delivery validation can consume ffprobe media probes. Full render-server/provider export and broad referenced-media validation still missing."
+      "description": "Timeline render receipts and final media assets provide codec, duration, dimensions, and playable-output evidence; TVC delivery validation can consume ffprobe media probes. Loudness, OCR/logo, and broad referenced-media validation remain incomplete."
     },
     {
       "id": "review.stage-gates",
@@ -2639,28 +2416,16 @@
       "description": "clash production plan-visual-moments can turn agent or external analysis candidate ranges into video.visual-moments metadata, apply it to the source video asset, and emit projections/visual-moments recommendedClips sorted by quality/motion/action/emotion for MV/TVC planning. Automatic scene detection, VLM semantic scoring, optical-flow motion analysis, and rights-aware raw reference extraction remain missing."
     },
     {
-      "id": "render.html-composition",
-      "title": "HTML composition renderer",
-      "status": "partial",
-      "description": "First-party MG spec, deterministic frame evaluation, self-contained seekable HTML preview with browser-verifiable data-current-frame state and clash-mg-frame events, CLI projection generation with explicit CAS apply boundary, SVG snapshot asset export, local WebM/MP4 video export, derived-overlay timeline projection for registered overlay assets, VP9 alpha_mode verification, decoded alpha-plane pixel sampling, timeline composition item preview with inspectable composition DOM attributes, and manifests that declare Clash first-party MIT implementation with no copied third-party code exist; richer renderer parity remains missing."
-    },
-    {
       "id": "render.remotion-composition",
       "title": "Remotion composition renderer",
-      "status": "partial",
-      "description": "React/Remotion timeline rendering with media path hydration, structured caption cues, first-party MG composition layers, derived-overlay lineage attributes, preservation of structural timeline item types while resolving backing assets, audio, overlays, and export validation. Non-HTML React/Remotion composition timeline items must carry a local renderedAssetPath before apply; raw React source paths alone are rejected."
+      "status": "available",
+      "description": "Canvas remotion-component nodes hold editable default-exported Remotion TSX. Timeline composition items bind the fixed Canvas identity through sourceNodeId, preview and render resolve the latest TSX, and Timeline render produces the final product Asset and completion receipt."
     },
     {
       "id": "workflow.dry-run-cost-gate",
       "title": "Dry-run and cost gate",
       "status": "partial",
       "description": "clash production plan-dry-run-cost-gate writes clash.workflow.dry-run-cost-gate artifacts with provider/runtime availability, estimated cost/time, max-cost blocking, fallbackUsed=false, and rejected fallback records without executing generation/download/render/provider calls. Live provider probing, BYO OAuth/key checks, quota/rate-limit checks, and cloud policy sync remain missing."
-    },
-    {
-      "id": "render.composition-router",
-      "title": "Composition runtime router",
-      "status": "partial",
-      "description": "clash production plan-composition-route writes clash.render.composition-route plans with selected runtime, validation plan, decision log, and fallbackUsed=false, blocking unavailable required runtimes instead of silently falling back. React/Remotion timeline items require a local renderedAssetPath before apply. Host runtime probing, Remotion/Manim execution orchestration, and managed apply integration remain missing."
     },
     {
       "id": "audio.silence-analysis",
@@ -2762,7 +2527,7 @@
       "id": "workflow.production-action-runner",
       "title": "Production action runner",
       "status": "partial",
-      "description": "Local CLI action runner is a Clash-managed adapter for portable file/artifact skill workflows, with repo-hosted marketplace action contracts for representative production primitives. It validates pipeline manifests, applies AssetMetadataFillAction, composition route plans, review stage gates, dry-run cost gates, semantic reference role plans, product/logo QA plans, analysis backend benchmark plans, image embedding store plans, audio stem separation plans, ComfyUI workflow plans, content credentials plans, MG specs/snapshots/video exports, derived-overlay projections, beat analysis, lyrics alignment, visual moment libraries, MV beat-cut timeline projections, ad delivery/packshot metadata, ad visual frame extraction manifests, ad visual pixel evidence, ad visual QA plans, text-cut plans/media exports, caption sidecar exports, timeline CSV handoffs, reference-review plans, controlled reference download plans/executions, reference non-copying QA, storyboard consistency QA, storyboard prompt-pack CAS projections, and storyboard timeline projections into metadata/assets/projections/rights without mutating canvas; pipeline validation checks action/metadata/asset/projection/review/export artifact coverage and CAS-required projections, route plans forbid silent runtime fallback, dry-run gates do not execute providers, semantic references carry copy-on-write requirements, controlled reference download execution keeps raw media quarantined and does not grant final export rights, product/logo QA fails closed on locked reference evidence, ad visual frame extraction uses explicit local ffmpeg and writes manifests, ad visual pixel analysis reads only local PPM frame samples, ad visual QA plans do not execute OCR/logo/pixel analysis backends, analysis backend benchmarks do not execute backends, image embedding stores register existing vector files without executing models, audio stem separation registers existing stem files without executing separation backends, ComfyUI workflow plans register pinned workflow/output lineage without executing ComfyUI, content credentials plans register unsigned/external manifests without signing C2PA, review approvals use path-bound cwd observations, and MG/derived-overlay/MV beat-cut/storyboard prompt-pack/storyboard timeline projections declare explicit apply boundaries with host-managed implicit CAS, including COW prompt-pack replacement from the same observed version. Provider execution, project DB integration, multi-user review UI, and managed timeline apply orchestration remain separate."
+      "description": "Local CLI actions adapt portable file/artifact workflows for metadata, review gates, dry-run cost gates, reference analysis, captions, audio, storyboard projections, ad visual frame extraction manifests, ad visual QA plans, and delivery QA. Agent-authored motion graphics do not use this legacy action layer: they use a Canvas remotion-component and Timeline render. Provider execution, multi-user review UI, and managed apply orchestration remain separate."
     }
   ],
   "thirdPartyReferences": [

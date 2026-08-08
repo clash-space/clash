@@ -142,20 +142,11 @@ function cloneJsonSchema<T>(value: T): T {
 }
 
 function timelineContractJsonSchemaMetadata(): Record<string, unknown> {
-  const timelineSchema = timelineStateJsonSchema();
-  const definitions = timelineSchema.definitions;
-  if (!definitions || typeof definitions !== "object" || Array.isArray(definitions)) {
-    throw new Error("Timeline JSON Schema is missing definitions");
-  }
-  const metadata: Record<string, unknown> = {
-    definitions: cloneJsonSchema(definitions),
+  return {
     "x-clash-contract-fingerprint": TIMELINE_DSL_DEFINITION.contractFingerprint,
     "x-clash-schema-version": TIMELINE_DSL_DEFINITION.schemaVersion,
+    "x-clash-schema-tool": "clash_timeline_schema",
   };
-  for (const [key, value] of Object.entries(timelineSchema)) {
-    if (key.startsWith("x-clash-")) metadata[key] = cloneJsonSchema(value);
-  }
-  return metadata;
 }
 
 const TIMELINE_MCP_SCOPE_JSON_SCHEMA = Object.freeze({
@@ -171,8 +162,22 @@ const TIMELINE_MCP_SCOPE_JSON_SCHEMA = Object.freeze({
   },
 });
 
+function compactTimelineStateSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    description: [
+      "Complete Timeline DSL state, not a patch.",
+      "Call clash_timeline_schema for the authoritative fields and constraints.",
+    ].join(" "),
+    additionalProperties: true,
+    "x-clash-contract-ref": "TimelineDsl",
+    "x-clash-schema-tool": "clash_timeline_schema",
+    "x-clash-contract-fingerprint": TIMELINE_DSL_DEFINITION.contractFingerprint,
+  };
+}
+
 function timelineContractReferenceSchema(original: unknown): Record<string, unknown> {
-  const timelineReference = { $ref: "#/definitions/TimelineDsl" };
+  const timelineReference = compactTimelineStateSchema();
   if (!original || typeof original !== "object" || Array.isArray(original)) {
     return timelineReference;
   }
@@ -255,10 +260,7 @@ function expandTimelineEntityStateSchemas(value: unknown): boolean {
     ? schema.properties as Record<string, unknown>
     : undefined;
   if (properties?.state && properties.id && properties.name && properties.owner) {
-    properties.state = {
-      $ref: "#/definitions/TimelineDsl",
-      description: "Complete annotation-generated Timeline DSL state.",
-    };
+    properties.state = compactTimelineStateSchema();
     expanded = true;
   }
   for (const entry of Object.values(schema)) {

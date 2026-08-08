@@ -159,20 +159,17 @@ test("first-party skill marketplace registry is self-contained and installable",
   assert.ok(capabilityIds.has("image.reference-sheets"), "image/storyboard skills need reference sheet support");
   assert.ok(capabilityIds.has("legal.oss-license-ledger"), "skill marketplace needs OSS license tracking");
   const capabilityById = new Map(registry.systemCapabilities.map((capability) => [capability.id, capability]));
-  assert.equal(capabilityById.get("render.html-composition")?.status, "partial");
+  assert.equal(capabilityById.has("render.html-composition"), false);
+  assert.equal(capabilityById.has("render.composition-router"), false);
+  assert.equal(capabilityById.get("render.remotion-composition")?.status, "available");
   assert.match(
-    capabilityById.get("render.html-composition")?.description ?? "",
-    /seekable HTML preview.*data-current-frame.*clash-mg-frame.*decoded alpha-plane pixel sampling.*renderer parity/i,
+    capabilityById.get("render.remotion-composition")?.description ?? "",
+    /remotion-component.*sourceNodeId.*latest TSX.*Timeline render/i,
   );
   assert.equal(capabilityById.get("render.export-validation")?.status, "partial");
   assert.match(
     capabilityById.get("render.export-validation")?.description ?? "",
-    /VP9 alpha_mode.*decoded alpha-plane pixel samples/i,
-  );
-  assert.equal(capabilityById.get("render.composition-router")?.status, "partial");
-  assert.match(
-    capabilityById.get("render.composition-router")?.description ?? "",
-    /fallbackUsed=false|silent runtime fallback/i,
+    /Timeline render receipts.*playable-output evidence.*Loudness.*incomplete/i,
   );
   assert.equal(capabilityById.get("review.stage-gates")?.status, "partial");
   assert.match(
@@ -403,9 +400,9 @@ test("first-party skill marketplace registry is self-contained and installable",
     }
   }
 
-  assert.ok(actionIds.has("clash.action.production.render-mg"));
-  assert.ok(actionIds.has("clash.action.production.verify-mg-preview"));
-  assert.ok(actionIds.has("clash.action.production.project-composition-timeline"));
+  assert.equal(actionIds.has("clash.action.production.render-mg"), false);
+  assert.equal(actionIds.has("clash.action.production.verify-mg-preview"), false);
+  assert.equal(actionIds.has("clash.action.production.project-composition-timeline"), false);
   assert.ok(actionIds.has("clash.action.production.plan-text-cut"));
   assert.ok(actionIds.has("clash.action.production.verify-caption-lineage"));
   assert.ok(actionIds.has("clash.action.production.analyze-audio-beats"));
@@ -432,11 +429,19 @@ test("first-party skill marketplace registry is self-contained and installable",
       assert.ok(capabilityIds.has(capability), `${skill.id} references unknown capability ${capability}`);
     }
     if (skill.status === "ready") {
-      assert.notEqual(skill.kind, "architecture", `${skill.id} cannot be ready if it is architecture-only`);
+      const hasProductionAction = registry.actions.some((action) => action.skillId === skill.id);
+      const hasNativePeerContract = skill.executionContract === "native-cli-mcp";
       assert.ok(
-        registry.actions.some((action) => action.skillId === skill.id),
-        `${skill.id} cannot be ready without a runnable production action contract`,
+        hasProductionAction || hasNativePeerContract,
+        `${skill.id} cannot be ready without a production action or native CLI/MCP contract`,
       );
+      if (skill.kind === "architecture") {
+        assert.equal(
+          hasNativePeerContract,
+          true,
+          `${skill.id} can be ready as architecture only when it names a native executable contract`,
+        );
+      }
       assert.ok(
         !Array.isArray(skill.systemGaps) || skill.systemGaps.length === 0,
         `${skill.id} is ready and must not carry unresolved system gaps`,
@@ -501,10 +506,37 @@ test("first-party skill marketplace registry is self-contained and installable",
   assert.ok(ids.has("clash.image.character-reference-sheets"));
 
   const motionGraphics = registry.skills.find((skill) => skill.id === "clash.video.motion-graphics-overlays");
-  assert.equal(
-    motionGraphics?.status,
-    "blocked-by-system-gap",
-    "MG skill should stay blocked until remaining renderer parity and alpha validation gaps close",
+  assert.equal(motionGraphics?.status, "ready");
+  assert.deepEqual(motionGraphics?.requiredSystemCapabilities, [
+    "render.remotion-composition",
+    "media.asset-registry",
+    "timeline.cas-projection",
+  ]);
+  assert.deepEqual(motionGraphics?.systemGaps ?? [], []);
+
+  const registryText = JSON.stringify(registry);
+  assert.doesNotMatch(
+    registryText,
+    /render-mg|verify-mg-preview|export-mg|mg-overlay-manifest|mg-preview-verification|mg-video-export|render\.html-composition|first-party-rgba-rasterizer/i,
+  );
+});
+
+test("discoverable MG guidance uses only live Remotion Canvas source and Timeline render", async () => {
+  const [motionGraphics, runtimeGuidance, capabilities, e2e] = await Promise.all([
+    readFile(path.join(repoRoot, "skills", "video-production", "motion-graphics-overlays", "SKILL.md"), "utf8"),
+    readFile(path.join(repoRoot, "skills", "video-production", "composition-runtime-router", "SKILL.md"), "utf8").catch(() => ""),
+    readFile(path.join(repoRoot, "skills", "video-production", "SYSTEM_CAPABILITIES.md"), "utf8"),
+    readFile(path.join(repoRoot, "skills", "video-production", "e2e", "video-production-e2e.mjs"), "utf8"),
+  ]);
+  const discoverable = [motionGraphics, runtimeGuidance, capabilities, e2e].join("\n");
+
+  assert.match(motionGraphics, /Remotion TSX/i);
+  assert.match(motionGraphics, /remotion-component/);
+  assert.match(motionGraphics, /sourceNodeId/);
+  assert.match(motionGraphics, /timeline render/i);
+  assert.doesNotMatch(
+    discoverable,
+    /render-mg|verify-mg-preview|export-mg|MgCompositionSpec|runtime:\s*["']html|selectedRuntime["']?:\s*["']html|first-party-rgba-rasterizer|clash-mg-frame/i,
   );
 });
 
@@ -652,9 +684,7 @@ test("transcript cut plan schema matches the generated frame-based talking-head 
 
 test("timeline projection schemas require explicit Timeline entity args for CAS apply", async () => {
   for (const schemaName of [
-    "mg-overlay-manifest",
     "caption-overlay-projection",
-    "composition-timeline-projection",
     "derived-overlay-projection",
     "mv-beat-cut-projection",
     "storyboard-timeline-projection",

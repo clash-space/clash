@@ -9,7 +9,6 @@ export * from "./timeline-operation-annotations";
 export * from "./timeline-keyframes";
 export * from "./timeline-mask";
 export * from "./timeline-from-expression";
-export * from "./mg-composition";
 export {
   TIMELINE_DSL_DEFINITION,
   TIMELINE_DSL_SEMANTIC_RULES,

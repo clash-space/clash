@@ -11,7 +11,6 @@ describe('timeline library taxonomy', () => {
     expect(library.TIMELINE_LIBRARY_CATEGORIES).toEqual([
       'text',
       'stickers',
-      'motion-graphics',
       'sound-effects',
       'transitions',
       'fx',
@@ -21,12 +20,11 @@ describe('timeline library taxonomy', () => {
       'captions',
       'filters',
       'adjustments',
-      'templates',
     ]);
     expect(library.TIMELINE_LIBRARY_GROUPS).toEqual([
       { id: 'recommended', label: 'Recommended', categories: [] },
       { id: 'text', label: 'Text & Captions', categories: ['text', 'captions'] },
-      { id: 'graphics', label: 'Graphics', categories: ['stickers', 'motion-graphics', 'templates'] },
+      { id: 'graphics', label: 'Graphics', categories: ['stickers'] },
       { id: 'transitions', label: 'Transitions', categories: ['transitions'] },
       { id: 'visual-effects', label: 'Visual Effects', categories: ['fx', 'zoom'] },
       { id: 'color-looks', label: 'Color Looks', categories: ['filters', 'luts', 'adjustments'] },
@@ -68,29 +66,6 @@ describe('timeline library taxonomy', () => {
         category: 'stickers',
         artifact: { kind: 'sticker-asset', src: 'data:image/svg+xml,%3Csvg%3E%3C/svg%3E' },
         apply: { kind: 'insert-sticker-item' },
-      },
-      {
-        ...base,
-        id: 'library:motion:lower-third',
-        label: 'Lower Third',
-        category: 'motion-graphics',
-        artifact: {
-          kind: 'mg-composition',
-          spec: {
-            id: 'builtin-lower-third',
-            width: 1080,
-            height: 1920,
-            fps: 30,
-            durationInFrames: 90,
-            background: 'transparent',
-            layers: [],
-          },
-        },
-        apply: {
-          kind: 'insert-composition-item',
-          compositionKind: 'motion-graphics',
-          runtime: 'html',
-        },
       },
       {
         ...base,
@@ -167,29 +142,6 @@ describe('timeline library taxonomy', () => {
         artifact: { kind: 'effect-ref', effectId: 'clash/adjust-exposure', effectVersion: 1 },
         apply: { kind: 'attach-visual-effect', binding: 'item' },
       },
-      {
-        ...base,
-        id: 'library:template:social-title',
-        label: 'Social Title',
-        category: 'templates',
-        artifact: {
-          kind: 'mg-composition',
-          spec: {
-            id: 'social-title',
-            width: 1080,
-            height: 1920,
-            fps: 30,
-            durationInFrames: 90,
-            background: 'transparent',
-            layers: [],
-          },
-        },
-        apply: {
-          kind: 'insert-composition-item',
-          compositionKind: 'motion-graphics',
-          runtime: 'html',
-        },
-      },
     ];
 
     expect(entries.map((entry) => schema.safeParse(entry).success)).toEqual(
@@ -216,6 +168,44 @@ describe('timeline library taxonomy', () => {
       tags: [],
       artifact: { kind: 'effect-ref', effectId: 'clash/glow', effectVersion: 1 },
       apply: { kind: 'attach-visual-effect', binding: 'item-or-range' },
+    }).success).toBe(false);
+
+    expect(schema.safeParse({
+      id: 'library:motion:legacy-lower-third',
+      version: 1,
+      label: 'Legacy Lower Third',
+      category: 'motion-graphics',
+      tags: [],
+      artifact: {
+        kind: 'mg-composition',
+        spec: {
+          id: 'legacy-lower-third',
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          durationInFrames: 90,
+          layers: [],
+        },
+      },
+      apply: {
+        kind: 'insert-composition-item',
+        compositionKind: 'motion-graphics',
+        runtime: 'html',
+      },
+    }).success).toBe(false);
+
+    expect(schema.safeParse({
+      id: 'library:template:legacy-title',
+      version: 1,
+      label: 'Legacy Title',
+      category: 'templates',
+      tags: [],
+      artifact: { kind: 'mg-composition', spec: {} },
+      apply: {
+        kind: 'insert-composition-item',
+        compositionKind: 'motion-graphics',
+        runtime: 'html',
+      },
     }).success).toBe(false);
 
     expect(schema.safeParse({
@@ -248,12 +238,6 @@ describe('timeline library taxonomy', () => {
     expect(getContract).toBeDefined();
     if (!getContract) return;
 
-    expect(getContract('motion-graphics')).toEqual({
-      domain: 'composition',
-      target: 'video-track',
-      applyKind: 'insert-composition-item',
-      catalogFirst: true,
-    });
     expect(getContract('sound-effects')).toEqual({
       domain: 'asset',
       target: 'audio-track',

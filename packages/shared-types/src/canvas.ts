@@ -71,6 +71,8 @@ export const RF_NODE_TYPE = {
   Video: 'video',
   /** Audio asset (completed generation or upload) */
   Audio: 'audio',
+  /** Agent-authored Remotion TSX component with live Canvas/Timeline preview */
+  RemotionComponent: 'remotion-component',
   /** Generation node — renders as ActionBadge */
   ActionBadge: 'action-badge',
 } as const;
@@ -108,6 +110,7 @@ export const AGENT_NODE_TYPE_MAP = {
   image:     { rfType: RF_NODE_TYPE.Image },
   video:     { rfType: RF_NODE_TYPE.Video },
   audio:     { rfType: RF_NODE_TYPE.Audio },
+  remotion:  { rfType: RF_NODE_TYPE.RemotionComponent },
   image_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.ImageGen },
   video_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.VideoGen },
   audio_gen: { rfType: RF_NODE_TYPE.ActionBadge, actionType: ACTION_TYPE.AudioGen },
@@ -128,6 +131,16 @@ export type NodeStatus = z.infer<typeof NodeStatusSchema>;
 export const NodeDataSchema = z.object({
   label: z.string().optional(),
   content: z.string().optional(),
+  /** Stable component export id for a remotion-component Canvas node. */
+  componentId: z.string().min(1).optional(),
+  /** Product-scaffold preview/render width for a remotion-component node. */
+  compositionWidth: z.number().int().positive().optional(),
+  /** Product-scaffold preview/render height for a remotion-component node. */
+  compositionHeight: z.number().int().positive().optional(),
+  /** Product-scaffold frame rate for a remotion-component node. */
+  fps: z.number().positive().optional(),
+  /** Product-scaffold duration for a remotion-component node. */
+  durationInFrames: z.number().int().positive().optional(),
   /** Direct text entered in a music action's dedicated Lyrics input. */
   lyrics: z.string().optional(),
   description: z.string().optional(),

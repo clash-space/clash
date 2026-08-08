@@ -8,6 +8,11 @@ import {
   defaultLocalApiDataDir,
   startLocalApiServer,
 } from "@master-clash/local-api";
+import { createLocalDaemonBootstrap } from "@clash/shared-runtime/local-daemon";
+import {
+  clashHomeForLocalDataDir,
+  resolveClashProfile,
+} from "@clash/shared-runtime/local-paths";
 import {
   DEFAULT_DESKTOP_API_PORT,
   isAddressInUse,
@@ -205,10 +210,17 @@ function registerWebProtocol(): void {
   });
 }
 
-async function startLocalApiOnPort(port: number, dataDir: string): Promise<void> {
+async function startLocalApiOnPort(port: number, dataDir: string, runDir: string): Promise<void> {
   localApiServer = await startLocalApiServer({
     dataDir,
     port,
+    discovery: {
+      enabled: true,
+      runDir,
+      launchMode: "desktop",
+      startedBy: "desktop",
+      ownerClientId: `desktop-${process.pid}`,
+    },
     timelineRenderer: createDesktopTimelineRenderer({
       moduleDir: __dirname,
       isPackaged: app.isPackaged,
@@ -217,33 +229,65 @@ async function startLocalApiOnPort(port: number, dataDir: string): Promise<void>
   });
 }
 
+async function closeLocalApiServer(): Promise<void> {
+  const server = localApiServer;
+  if (!server) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error?: Error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (localApiServer === server) localApiServer = null;
+      resolve();
+    });
+  });
+}
+
 async function initializeRuntime(dataDir: string): Promise<void> {
   let apiPort = DEFAULT_DESKTOP_API_PORT;
+  let apiBaseUrl = process.env.CLASH_API_BASE_URL;
   await configureAcpHarnessEnvironment(dataDir);
 
-  if (!process.env.CLASH_API_BASE_URL) {
-    const resolved = await resolveAvailableDesktopApiPort({
-      envPort: process.env.CLASH_LOCAL_API_PORT,
-    });
-    apiPort = resolved.port;
-    if (resolved.source === "ephemeral") {
-      desktopLog.warn(`[desktop] local API port ${resolved.preferredPort} is unavailable; using ${resolved.port}`);
-    }
+  if (!apiBaseUrl) {
+    const runDir = join(clashHomeForLocalDataDir(dataDir), "run");
+    const daemon = createLocalDaemonBootstrap({
+      runDir,
+      profile: resolveClashProfile(process.env),
+      launch: async () => {
+        const resolved = await resolveAvailableDesktopApiPort({
+          envPort: process.env.CLASH_LOCAL_API_PORT,
+        });
+        apiPort = resolved.port;
+        if (resolved.source === "ephemeral") {
+          desktopLog.warn(`[desktop] local API port ${resolved.preferredPort} is unavailable; using ${resolved.port}`);
+        }
 
+        try {
+          await startLocalApiOnPort(apiPort, dataDir, runDir);
+        } catch (error) {
+          if (process.env.CLASH_LOCAL_API_PORT || !isAddressInUse(error)) throw error;
+          const fallback = await resolveAvailableDesktopApiPort({ envPort: "0" });
+          apiPort = fallback.port;
+          desktopLog.warn(`[desktop] local API port changed during startup; retrying on ${apiPort}`);
+          await startLocalApiOnPort(apiPort, dataDir, runDir);
+        }
+        return { pid: process.pid, stop: closeLocalApiServer };
+      },
+    });
     try {
-      await startLocalApiOnPort(apiPort, dataDir);
-    } catch (error) {
-      if (process.env.CLASH_LOCAL_API_PORT || !isAddressInUse(error)) throw error;
-      const fallback = await resolveAvailableDesktopApiPort({ envPort: "0" });
-      apiPort = fallback.port;
-      desktopLog.warn(`[desktop] local API port changed during startup; retrying on ${apiPort}`);
-      await startLocalApiOnPort(apiPort, dataDir);
+      const host = await daemon.ensureDaemon();
+      apiBaseUrl = host.endpoint;
+      const discoveredPort = Number(new URL(host.endpoint).port);
+      if (Number.isInteger(discoveredPort) && discoveredPort > 0) apiPort = discoveredPort;
+    } finally {
+      await daemon.close();
     }
   }
 
   runtime = resolveDesktopRuntime({
     apiPort,
-    apiBaseUrl: process.env.CLASH_API_BASE_URL,
+    apiBaseUrl,
     wsBaseUrl: process.env.CLASH_WS_BASE_URL,
     webUrl: process.env.CLASH_WEB_URL,
   });

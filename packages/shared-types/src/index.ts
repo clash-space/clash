@@ -155,6 +155,7 @@ export {
   directorDefaultAttachmentOffset,
   createProjectDirectorStage,
   detachDirectorStageFromCanvas,
+  directorStageJsonSchema,
   listProjectDirectorStages,
   projectDirectorStageReadToken,
   projectDirectorStageRevisionId,
@@ -179,6 +180,7 @@ export {
   type DirectorStageShot,
   type DirectorStageShotComposition,
   type DirectorStageSequenceShot,
+  type DirectorStageSchemaContract,
   type DirectorStageMotionAsset,
   type DirectorStageState,
   type DirectorStageStoryBeat,
@@ -546,23 +548,6 @@ export {
   type InvalidProviderModelFilter,
   type ModelProviderRouteQuery,
 } from './model-routing';
-
-// Agent-readable motion graphics composition contract.
-export {
-  MgAnimationSchema,
-  MgCompositionLayerSchema,
-  MgCompositionSpecSchema,
-  MgShapeLayerSchema,
-  MgTextLayerSchema,
-  buildMgOverlayManifest,
-  evaluateMgLayerAtFrame,
-  renderMgCompositionHtml,
-  type MgAnimation,
-  type MgCompositionLayer,
-  type MgCompositionSpec,
-  type MgEvaluatedLayerStyle,
-  type MgOverlayManifest,
-} from './mg-composition';
 
 // Production action -> metadata fill -> asset -> timeline/view contracts.
 export {

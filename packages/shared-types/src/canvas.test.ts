@@ -9,6 +9,7 @@ import {
   normalizeActionProviderId,
   NodeDataSchema,
   ACTION_TYPE,
+  AGENT_NODE_TYPE_MAP,
   RF_NODE_TYPE,
   isCustomActionType,
   getCustomActionId,
@@ -24,6 +25,33 @@ describe("ACTION_TYPE", () => {
   it("has built-in audio and text generation types", () => {
     expect(ACTION_TYPE.AudioGen).toBe("audio-gen");
     expect(ACTION_TYPE.TextGen).toBe("text-gen");
+  });
+});
+
+describe("Remotion component canvas node contract", () => {
+  it("exposes a distinct agent and ReactFlow node type", () => {
+    expect(RF_NODE_TYPE.RemotionComponent).toBe("remotion-component");
+    expect(AGENT_NODE_TYPE_MAP.remotion).toEqual({
+      rfType: "remotion-component",
+    });
+  });
+
+  it("stores the editable TSX source and preview configuration on the node", () => {
+    const parsed = NodeDataSchema.parse({
+      label: "Greeting character",
+      content: "export default function Greeting(){ return <div>Hello</div>; }",
+      componentId: "greeting-character",
+      compositionWidth: 720,
+      compositionHeight: 1280,
+      fps: 30,
+      durationInFrames: 120,
+    });
+
+    expect(parsed.componentId).toBe("greeting-character");
+    expect(parsed.compositionWidth).toBe(720);
+    expect(parsed.compositionHeight).toBe(1280);
+    expect(parsed.fps).toBe(30);
+    expect(parsed.durationInFrames).toBe(120);
   });
 });
 

@@ -157,7 +157,6 @@ const CANONICAL_RULE_TO_LEGACY_CODE: Readonly<Record<string, TimelineIssue['code
   'timeline.audio.ducking-track-role': 'track.role_item_mismatch',
   'timeline.composition.local-path': 'item.invalid_composition',
   'timeline.composition.preview-contract': 'item.invalid_composition',
-  'timeline.composition.mg-spec': 'item.invalid_composition',
   'timeline.caption.lineage': 'item.invalid_caption',
   'timeline.derived-overlay.local-path': 'item.invalid_derived_overlay',
   'timeline.derived-overlay.copy-on-write': 'item.invalid_derived_overlay',

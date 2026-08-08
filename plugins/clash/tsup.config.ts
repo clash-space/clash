@@ -10,6 +10,7 @@ export default defineConfig({
   bundle: true,
   splitting: false,
   dts: true,
+  external: ["loro-crdt"],
   noExternal: [
     "@clash-space/director-plugin",
     "@clash-space/director-plugin/adapter",
@@ -19,6 +20,7 @@ export default defineConfig({
     "@clash-space/timeline-plugin",
     "@clash-space/timeline-plugin/adapter",
     "@clash-space/timeline-plugin/server",
+    "@clash/shared-mcp",
     "@clash/shared-runtime",
     "@modelcontextprotocol/ext-apps",
     "@modelcontextprotocol/sdk",

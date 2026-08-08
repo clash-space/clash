@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash Director Production"
+  short_description: "Direct dramatic staging and motivated camera coverage"
+  default_prompt: "Use $clash-director-production to strengthen the story beat, blocking, performance, and camera point of view."

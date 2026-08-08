@@ -2,7 +2,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  renderTimelineAgentWorkflowReference,
   renderTimelineDslMarkdown,
   renderTimelineMaskSkillReference,
   renderTimelineMaskKeyframesExampleYaml,
@@ -13,8 +12,6 @@ const repositoryRoot = resolve(scriptDirectory, "../../..");
 const docsPath = resolve(repositoryRoot, "docs/timeline-dsl.md");
 const examplePath = resolve(repositoryRoot, "docs/examples/mask-keyframes.timeline.yaml");
 const timelineSkillPath = resolve(repositoryRoot, "plugins/clash-timeline/skills/clash-timeline/SKILL.md");
-const clashSkillPath = resolve(repositoryRoot, "plugins/clash/skills/clash/SKILL.md");
-const agentPreludePath = resolve(repositoryRoot, "packages/clash-bridge/assets/shared-cwd/AGENTS-prelude.md");
 
 async function updateGeneratedSection(path: string, generated: string): Promise<void> {
   const source = await readFile(path, "utf8");
@@ -34,6 +31,4 @@ await Promise.all([
   writeFile(docsPath, renderTimelineDslMarkdown(), "utf8"),
   writeFile(examplePath, renderTimelineMaskKeyframesExampleYaml(), "utf8"),
   updateGeneratedSection(timelineSkillPath, renderTimelineMaskSkillReference()),
-  updateGeneratedSection(clashSkillPath, renderTimelineAgentWorkflowReference()),
-  updateGeneratedSection(agentPreludePath, renderTimelineAgentWorkflowReference()),
 ]);

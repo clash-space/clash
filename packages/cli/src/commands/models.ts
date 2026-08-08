@@ -19,7 +19,6 @@ interface ProviderAccountPayload {
     vertexCredentials?: string;
   };
 }
-
 interface ModelProviderResponse {
   providers: Array<ProviderAccountPayload & { availableVariables?: string[] }>;
   readToken?: string;
@@ -37,7 +36,113 @@ interface ModelCatalogResponse {
     } | null;
     missingVariables: string[];
     candidateProviders: string[];
+    runtimeReadiness?: {
+      capability: LocalSpeechCapability;
+      model: string;
+      readiness: "ready" | "not-installed";
+      executable: boolean;
+      message?: string;
+    };
   }>;
+}
+
+export type LocalSpeechCapability = "speech-to-text" | "text-to-speech";
+
+interface LocalAudioModelStatusResponse extends Record<string, unknown> {
+  capability: LocalSpeechCapability;
+  model: string;
+  available: boolean;
+  readiness: "ready" | "not-installed";
+  message?: string;
+  readToken?: string;
+}
+
+type LocalAudioObservation = {
+  entityKind: string;
+  entityId: string;
+  revision?: unknown;
+};
+
+export type LocalAudioModelCommandDependencies = {
+  apiJson(
+    path: string,
+    options?: RequestInit,
+  ): Promise<Record<string, unknown>>;
+  recordObservation(
+    observation: LocalAudioObservation & { revision: unknown },
+  ): Promise<void>;
+  requireObservation(
+    observation: Omit<LocalAudioObservation, "revision">,
+  ): Promise<string | undefined>;
+  env: Record<string, string | undefined>;
+};
+
+const defaultLocalAudioModelDependencies: LocalAudioModelCommandDependencies = {
+  apiJson: (path, options) => apiJson<Record<string, unknown>>(path, options),
+  recordObservation: recordAgentObservation,
+  requireObservation: requireAgentObservation,
+  env: process.env,
+};
+
+function normalizeLocalSpeechCapability(value: unknown): LocalSpeechCapability {
+  if (value === "speech-to-text" || value === "text-to-speech") return value;
+  throw new Error("capability must be speech-to-text or text-to-speech");
+}
+
+function normalizeLocalModelId(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  throw new Error("model must be a non-empty model id");
+}
+
+export function publicLocalAudioModelResult<T extends Record<string, unknown>>(
+  result: T,
+): Record<string, unknown> {
+  return publicAgentCommandResult(result);
+}
+
+export async function getLocalAudioModelStatus(
+  input: { capability: LocalSpeechCapability; model: string },
+  dependencies: LocalAudioModelCommandDependencies = defaultLocalAudioModelDependencies,
+): Promise<Omit<LocalAudioModelStatusResponse, "readToken">> {
+  const capability = normalizeLocalSpeechCapability(input.capability);
+  const model = normalizeLocalModelId(input.model);
+  const query = new URLSearchParams({ capability, model });
+  const data = (await dependencies.apiJson(
+    `/api/v1/local/audio/models/status?${query.toString()}`,
+  )) as LocalAudioModelStatusResponse;
+  await dependencies.recordObservation({
+    entityKind: "local-config",
+    entityId: "audio",
+    revision: data.readToken,
+  });
+  return publicLocalAudioModelResult(data) as Omit<
+    LocalAudioModelStatusResponse,
+    "readToken"
+  >;
+}
+
+export async function mutateLocalAudioModel(
+  operation: "install" | "remove",
+  input: { capability: LocalSpeechCapability; model: string },
+  dependencies: LocalAudioModelCommandDependencies = defaultLocalAudioModelDependencies,
+): Promise<Record<string, unknown>> {
+  const capability = normalizeLocalSpeechCapability(input.capability);
+  const model = normalizeLocalModelId(input.model);
+  const observedVersion = await dependencies.requireObservation({
+    entityKind: "local-config",
+    entityId: "audio",
+  });
+  const data = await dependencies.apiJson(`/api/v1/local/audio/${operation}`, {
+    method: "POST",
+    headers: providerWriteHeaders({ observedVersion }, dependencies.env),
+    body: JSON.stringify({ capability, model }),
+  });
+  await dependencies.recordObservation({
+    entityKind: "local-config",
+    entityId: "audio",
+    revision: data.readToken,
+  });
+  return publicLocalAudioModelResult(data);
 }
 
 function optionalNumber(value: unknown): number | undefined {
@@ -97,7 +202,7 @@ export function providerWriteHeaders(
 }
 
 export const modelsCommand = new Command("models")
-  .description("Manage model catalog and provider routing");
+  .description("Manage model catalog, provider routing, and local audio runtimes");
 
 modelsCommand
   .command("providers")
@@ -188,6 +293,65 @@ modelsCommand
         : entry.missingVariables.length
           ? `missing ${entry.missingVariables.join(",")}`
           : entry.candidateProviders.join(",");
-      console.log(`  ${entry.model.kind.padEnd(5)} ${entry.model.id.padEnd(28)} ${entry.tier.padEnd(20)} ${route}`);
+      const readiness = entry.runtimeReadiness
+        ? ` runtime=${entry.runtimeReadiness.readiness}`
+        : "";
+      console.log(`  ${entry.model.kind.padEnd(5)} ${entry.model.id.padEnd(28)} ${entry.tier.padEnd(20)} ${route}${readiness}`);
     }
   });
+
+const localModelsCommand = modelsCommand
+  .command("local")
+  .description("Inspect and manage downloadable local ASR and TTS models");
+
+localModelsCommand
+  .command("status")
+  .description("Read whether one local audio model is installed and executable")
+  .requiredOption(
+    "--capability <text-to-speech|speech-to-text>",
+    "Capability: speech-to-text or text-to-speech",
+  )
+  .requiredOption("--model <id>", "Local runtime model id")
+  .option("--json", "Output as JSON")
+  .action(async (options) => {
+    const result = await getLocalAudioModelStatus({
+      capability: options.capability,
+      model: options.model,
+    });
+    if (isJsonMode(options)) {
+      printJson(result);
+      return;
+    }
+    const suffix = result.message ? ` — ${result.message}` : "";
+    console.log(
+      `${result.capability} ${result.model}: ${result.readiness}${suffix}`,
+    );
+  });
+
+for (const operation of ["install", "remove"] as const) {
+  localModelsCommand
+    .command(operation)
+    .description(
+      `${operation === "install" ? "Download and install" : "Remove"} one local audio model after a status read`,
+    )
+    .requiredOption(
+      "--capability <text-to-speech|speech-to-text>",
+      "Capability: speech-to-text or text-to-speech",
+    )
+    .requiredOption("--model <id>", "Local runtime model id")
+    .option("--json", "Output as JSON")
+    .action(async (options) => {
+      const result = await mutateLocalAudioModel(operation, {
+        capability: options.capability,
+        model: options.model,
+      });
+      if (isJsonMode(options)) {
+        printJson(result);
+        return;
+      }
+      const verb = operation === "install" ? "installed" : "removed";
+      console.log(
+        `Local ${options.capability} model ${verb}: ${options.model}`,
+      );
+    });
+}

@@ -56,7 +56,7 @@ describe("agent-facing Timeline DSL schema", () => {
     const definition = (shared as Record<string, unknown>).TIMELINE_DSL_DEFINITION as any;
 
     expect(definition).toBeDefined();
-    expect(definition.schemaVersion).toBe(3);
+    expect(definition.schemaVersion).toBe(5);
     expect(definition.format).toBe("clash.timeline.yaml");
     expect(definition.features.clipMask).toMatchObject({
       yamlPath: "tracks[].items[]",
@@ -318,6 +318,8 @@ describe("agent-facing Timeline DSL schema", () => {
       1: "fnv1a32:0beb21b4",
       2: "fnv1a32:d16ace31",
       3: "fnv1a32:e3826b91",
+      4: "fnv1a32:877b6827",
+      5: "fnv1a32:9cd7e84a",
     };
     expect(contractFingerprint).toBe(
       releasedContractFingerprints[definition.schemaVersion],
@@ -374,17 +376,10 @@ describe("agent-facing Timeline DSL schema", () => {
     )?.[0];
     expect(generatedSkillSection).toBe(shared.renderTimelineMaskSkillReference());
 
-    for (const guidanceUrl of [
-      "plugins/clash/skills/clash/SKILL.md",
-      "packages/clash-bridge/assets/shared-cwd/AGENTS-prelude.md",
-    ]) {
-      const guidance = readFileSync(repositoryPath(guidanceUrl), "utf8");
-      const generatedWorkflowSection = guidance.match(
-        /<!-- BEGIN GENERATED TIMELINE DSL WORKFLOW -->[\s\S]*?<!-- END GENERATED TIMELINE DSL WORKFLOW -->/,
-      )?.[0];
-      expect(generatedWorkflowSection).toBe(
-        shared.renderTimelineAgentWorkflowReference(),
-      );
+    for (const creativeGuidanceUrl of ["plugins/clash/skills/clash/SKILL.md"]) {
+      const creativeGuidance = readFileSync(repositoryPath(creativeGuidanceUrl), "utf8");
+      expect(creativeGuidance).not.toContain("BEGIN GENERATED TIMELINE DSL WORKFLOW");
+      expect(creativeGuidance).not.toContain("contract fingerprint");
     }
   });
 

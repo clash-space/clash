@@ -30,7 +30,7 @@
     "skills"
   ],
   "scripts": {
-    "prebuild": "pnpm --filter @clash/shared-types generate:timeline-dsl-docs",
+    "prebuild": "pnpm --filter @clash/shared-mcp build && pnpm --filter @clash/shared-types generate:timeline-dsl-docs",
     "build": "tsup && tsx scripts/build-cli-runtime.ts && esbuild src/app-client.ts --bundle --minify --format=esm --target=es2022 --outfile=runtime/app-client.js",
     "clean": "rm -rf runtime",
     "lint": "tsc --noEmit",
@@ -38,6 +38,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clash/shared-mcp": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^1.7.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.1.13"

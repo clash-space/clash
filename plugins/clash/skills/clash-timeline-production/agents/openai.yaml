@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash Timeline Production"
+  short_description: "Shape story, pacing, continuity, sound, and captions"
+  default_prompt: "Use $clash-timeline-production to improve the editorial story, pacing, continuity, audio, and final playback."

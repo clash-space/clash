@@ -27,7 +27,6 @@ const CATEGORY_ALLOWED_TYPES = Object.fromEntries(
 
 export function itemTrackCategory(item: Pick<Item, 'type'>): Exclude<TrackCategory, 'primary'> {
   switch (item.type) {
-    case 'composition':
     case 'transition':
       return 'effect';
     case 'text':

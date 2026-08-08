@@ -201,6 +201,18 @@ export const TIMELINE_MCP_EXECUTORS = {
     }),
     summary: jsonSummary,
   },
+  "timeline.render": {
+    title: "Render timeline",
+    inputSchema: timelineOperationInputSchema("timeline.render"),
+    outputSchema: timelineOperationOutputSchema("timeline.render"),
+    execute: (input, adapter) => adapter.render({
+      ...transportScope(input),
+      timelineId: input.timelineId,
+      ...(input.wait === undefined ? {} : { wait: input.wait }),
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+    }),
+    summary: jsonSummary,
+  },
 } satisfies Partial<Record<TimelineAgentOperationId, TimelineMcpExecutor>>;
 
 type ExecutorTable = Partial<Record<TimelineAgentOperationId, TimelineMcpExecutor>>;

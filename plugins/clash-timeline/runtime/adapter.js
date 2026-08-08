@@ -4070,64 +4070,6 @@ var z = /* @__PURE__ */ Object.freeze({
   ZodError
 });
 
-// ../../packages/shared-types/dist/chunk-6ZDYRAYK.js
-var MgAnimationPropertySchema = z.enum(["x", "y", "opacity", "scale", "rotation"]);
-var MgEasingSchema = z.enum(["linear", "easeInCubic", "easeOutCubic", "easeInOutCubic"]);
-var MgAnimationSchema = z.object({
-  property: MgAnimationPropertySchema,
-  from: z.number(),
-  to: z.number(),
-  startFrame: z.number().int().min(0),
-  durationInFrames: z.number().int().positive(),
-  easing: MgEasingSchema.default("linear")
-});
-var MgLayerBaseSchema = z.object({
-  id: z.string().min(1),
-  from: z.number().int().min(0).default(0),
-  durationInFrames: z.number().int().positive(),
-  zIndex: z.number().int().default(0),
-  x: z.number().default(0),
-  y: z.number().default(0),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
-  opacity: z.number().min(0).max(1).default(1),
-  scale: z.number().positive().default(1),
-  rotation: z.number().default(0),
-  animations: z.array(MgAnimationSchema).default([])
-});
-var MgTextLayerSchema = MgLayerBaseSchema.extend({
-  type: z.literal("text"),
-  text: z.string(),
-  fontFamily: z.string().default("Inter, system-ui, sans-serif"),
-  fontSize: z.number().positive().default(64),
-  fontWeight: z.union([z.string(), z.number()]).default(700),
-  color: z.string().default("#ffffff"),
-  letterSpacing: z.number().default(0),
-  align: z.enum(["left", "center", "right"]).default("left")
-});
-var MgShapeLayerSchema = MgLayerBaseSchema.extend({
-  type: z.literal("shape"),
-  shape: z.enum(["rect", "rounded-rect", "circle"]),
-  fill: z.string().default("#ffffff"),
-  stroke: z.string().optional(),
-  strokeWidth: z.number().min(0).optional(),
-  radius: z.number().min(0).default(0)
-});
-var MgCompositionLayerSchema = z.discriminatedUnion("type", [
-  MgTextLayerSchema,
-  MgShapeLayerSchema
-]);
-var MgCompositionSpecSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().optional(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  fps: z.number().positive(),
-  durationInFrames: z.number().int().positive(),
-  background: z.string().default("transparent"),
-  layers: z.array(MgCompositionLayerSchema).default([])
-});
-
 // ../../node_modules/.pnpm/zod-to-json-schema@3.24.6_zod@3.24.4/node_modules/zod-to-json-schema/dist/esm/Options.js
 var ignoreOverride = /* @__PURE__ */ Symbol("Let zodToJsonSchema decide on which parser to use");
 var defaultOptions = {
@@ -5405,7 +5347,7 @@ var zodToJsonSchema = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-JG7AU5JR.js
+// ../../packages/shared-types/dist/chunk-PVL2FXUQ.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -5803,7 +5745,7 @@ var TIMELINE_DSL_TRACK_ROLES = [
 var TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES = {
   effect: ["composition", "transition"],
   text: ["text"],
-  visual: ["video", "image", "solid", "sticker", "derived-overlay"],
+  visual: ["video", "image", "solid", "sticker", "composition", "derived-overlay"],
   primary: ["video", "image", "solid"],
   audio: ["audio"]
 };
@@ -5850,7 +5792,6 @@ var TIMELINE_DERIVATION_KINDS = [
   "trim",
   "crop",
   "caption-burn",
-  "mg-render",
   "transcode",
   "other"
 ];
@@ -6430,7 +6371,7 @@ var itemTypeFields = {
     })
   },
   composition: {
-    compositionKind: authored(z.enum(TIMELINE_COMPOSITION_KINDS), "First-party motion-graphics or custom composition kind.", {
+    compositionKind: authored(z.enum(TIMELINE_COMPOSITION_KINDS), "Composition domain label; motion-graphics must resolve a live Remotion Canvas component.", {
       required: true,
       editor: propertiesControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"]
@@ -6450,12 +6391,12 @@ var itemTypeFields = {
       editor: noControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"]
     }),
-    renderedAssetPath: derived(NonEmptyStringSchema, "Host-produced rendered preview/export asset path; required for React and Remotion composition states and preserved by agents.", {
+    renderedAssetPath: derived(NonEmptyStringSchema, "Host-produced rendered preview/export asset path for legacy React composition states, preserved by agents.", {
       required: false,
       editor: noControl,
       runtimeConsumers: ["preview", "render", "export"]
     }),
-    spec: authored(z.union([MgCompositionSpecSchema, z.record(z.unknown())]), "Agent-authored composition spec; first-party motion graphics use MgCompositionSpec.", {
+    spec: authored(z.record(z.unknown()), "Optional runtime configuration for legacy custom compositions; motion graphics use Canvas Remotion component source instead.", {
       required: false,
       editor: propertiesControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"]
@@ -6605,6 +6546,29 @@ var TimelineApplyOutputSchema = z.object({
   filePath: IdentifierSchema,
   sources: z.array(IdentifierSchema),
   timelineHash: IdentifierSchema
+}).passthrough();
+var TimelineRenderTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("project-assets") }).strict(),
+  z.object({
+    kind: z.literal("canvas"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema
+  }).strict()
+]);
+var TimelineRenderReceiptSchema = z.object({
+  submitted: z.literal(true),
+  completed: z.boolean(),
+  timelineId: IdentifierSchema,
+  sourceTimelineRevisionId: IdentifierSchema,
+  renderNodeId: IdentifierSchema,
+  target: TimelineRenderTargetSchema,
+  status: z.enum(["pending", "completed", "failed"]),
+  asset: z.object({
+    id: IdentifierSchema,
+    signedUrl: IdentifierSchema.optional(),
+    srcR2Key: IdentifierSchema.optional()
+  }).passthrough().optional(),
+  error: z.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z.object({
   ...timelineDslAnnotatedObjectShape(
@@ -6865,6 +6829,28 @@ var agent = {
     description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
     runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
     surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
+    agentCallable: true
+  }),
+  "timeline.render": agentOperation({
+    id: "timeline.render",
+    kind: "agent",
+    inputSchema: z.object({
+      timelineId: IdentifierSchema,
+      wait: z.boolean().optional(),
+      timeoutMs: z.number().int().min(1e3).max(9e5).optional()
+    }).strict(),
+    outputSchema: TimelineRenderReceiptSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The Timeline exists and contains at least one renderable item.",
+      "The local daemon has a healthy packaged Remotion rendering backend."
+    ],
+    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "remotion-renderer", "agent-runtime"],
+    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
     agentCallable: true
   }),
   "timeline.pull": agentOperation({
@@ -7280,7 +7266,6 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
   { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
   { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
   { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.composition.mg-spec", kind: "referenced-schema", objectPath: "tracks[].items[].spec", schema: "MgCompositionSpec" },
   { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
   { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
   { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
@@ -7598,25 +7583,25 @@ function evaluateStructuralSemanticRules(context) {
             "composition renderedAssetPath must be a local project path"
           ));
         }
-        if (item.runtime === "html" && item.compositionKind === "motion-graphics" && item.spec === void 0) {
+        if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
           issues.push(issue(
             "timeline.composition.preview-contract",
-            [...itemPath, "spec"],
-            "HTML motion-graphics composition requires a first-party spec"
+            [...itemPath, "runtime"],
+            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
           ));
         }
-        if (item.runtime !== "html" && !isLocalProjectPath(item.renderedAssetPath)) {
+        if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
+          issues.push(issue(
+            "timeline.composition.preview-contract",
+            [...itemPath, "sourceNodeId"],
+            "Remotion compositions require a live Canvas sourceNodeId"
+          ));
+        }
+        if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
           issues.push(issue(
             "timeline.composition.preview-contract",
             [...itemPath, "renderedAssetPath"],
-            "React and Remotion compositions require a local renderedAssetPath"
-          ));
-        }
-        if (item.compositionKind === "motion-graphics" && item.spec !== void 0 && !MgCompositionSpecSchema.safeParse(item.spec).success) {
-          issues.push(issue(
-            "timeline.composition.mg-spec",
-            [...itemPath, "spec"],
-            "motion-graphics composition spec must satisfy MgCompositionSpec"
+            "React compositions require a local renderedAssetPath"
           ));
         }
       }
@@ -7695,7 +7680,6 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
   "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
   "timeline.composition.local-path": evaluateStructuralSemanticRules,
   "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
-  "timeline.composition.mg-spec": evaluateStructuralSemanticRules,
   "timeline.caption.structured": evaluateCaptionSemanticRules,
   "timeline.caption.lineage": evaluateCaptionSemanticRules,
   "timeline.derived-overlay.local-path": evaluateStructuralSemanticRules,
@@ -8035,7 +8019,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 3,
+  schemaVersion: 5,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -22642,11 +22626,6 @@ Object.freeze({
     editableItemFields: Object.freeze(["from", "durationInFrames"])
   })
 });
-function timelineStateJsonSchema() {
-  return cloneJsonSchema(
-    TIMELINE_DSL_DEFINITION.jsonSchema
-  );
-}
 function validateTimelineState(state) {
   const validation = validateTimelineDsl(state);
   return validation.ok ? { ok: true, issues: [] } : { ok: false, issues: validation.issues };
@@ -22672,20 +22651,24 @@ function cloneJsonSchema(value) {
   return JSON.parse(JSON.stringify(value));
 }
 function timelineContractJsonSchemaMetadata() {
-  const timelineSchema = timelineStateJsonSchema();
-  const definitions = timelineSchema.definitions;
-  if (!definitions || typeof definitions !== "object" || Array.isArray(definitions)) {
-    throw new Error("Timeline JSON Schema is missing definitions");
-  }
-  const metadata = {
-    definitions: cloneJsonSchema(definitions),
+  return {
     "x-clash-contract-fingerprint": TIMELINE_DSL_DEFINITION.contractFingerprint,
-    "x-clash-schema-version": TIMELINE_DSL_DEFINITION.schemaVersion
+    "x-clash-schema-version": TIMELINE_DSL_DEFINITION.schemaVersion,
+    "x-clash-schema-tool": "clash_timeline_schema"
   };
-  for (const [key, value] of Object.entries(timelineSchema)) {
-    if (key.startsWith("x-clash-")) metadata[key] = cloneJsonSchema(value);
-  }
-  return metadata;
+}
+function compactTimelineStateSchema() {
+  return {
+    type: "object",
+    description: [
+      "Complete Timeline DSL state, not a patch.",
+      "Call clash_timeline_schema for the authoritative fields and constraints."
+    ].join(" "),
+    additionalProperties: true,
+    "x-clash-contract-ref": "TimelineDsl",
+    "x-clash-schema-tool": "clash_timeline_schema",
+    "x-clash-contract-fingerprint": TIMELINE_DSL_DEFINITION.contractFingerprint
+  };
 }
 function expandTimelineEntityStateSchemas(value) {
   if (!value || typeof value !== "object") return false;
@@ -22699,10 +22682,7 @@ function expandTimelineEntityStateSchemas(value) {
   let expanded = false;
   const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties) ? schema.properties : void 0;
   if (properties?.state && properties.id && properties.name && properties.owner) {
-    properties.state = {
-      $ref: "#/definitions/TimelineDsl",
-      description: "Complete annotation-generated Timeline DSL state."
-    };
+    properties.state = compactTimelineStateSchema();
     expanded = true;
   }
   for (const entry of Object.values(schema)) {
@@ -22899,6 +22879,13 @@ function buildTimelineCliArgs(name, input) {
       if (input.newNodeId?.trim()) args.push("--new-node", input.newNodeId.trim());
       appendPosition(args, input);
       break;
+    case "clash_timeline_render":
+      args.push("render", "--timeline", required2(input, "timelineId"));
+      if (input.wait === false) args.push("--no-wait");
+      if (input.timeoutMs !== void 0) {
+        args.push("--timeout-ms", String(input.timeoutMs));
+      }
+      break;
     default:
       throw new Error(`Timeline operation ${name} is not exposed`);
   }
@@ -23000,6 +22987,7 @@ function createTimelineAdapter(options = {}) {
     attach: (input) => invoke("clash_timeline_attach", input),
     detach: (input) => invoke("clash_timeline_detach", input),
     copy: (input) => invoke("clash_timeline_copy", input),
+    render: async (input) => objectResult(await invoke("clash_timeline_render", input)),
     async save(input) {
       const timelineId = input.timelineId?.trim();
       if (!timelineId) throw new Error("timelineId is required");
@@ -23007,18 +22995,9 @@ function createTimelineAdapter(options = {}) {
         throw new Error("state must be a Timeline object");
       }
       assertTimelineState(input.state);
-      const current = await get(input);
       const baseRevisionId = input.baseRevisionId?.trim();
       if (!baseRevisionId) {
         throw new Error("baseRevisionId is required; read the Timeline before saving");
-      }
-      if (!current.revisionId) {
-        throw new Error(`Timeline ${timelineId} did not expose a revisionId; read it again before saving`);
-      }
-      if (current.revisionId !== baseRevisionId) {
-        throw new Error(
-          `STALE_TIMELINE: save is based on ${baseRevisionId}, but Timeline ${timelineId} is now ${current.revisionId}. Read again and reapply the edit.`
-        );
       }
       const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
@@ -23034,7 +23013,9 @@ function createTimelineAdapter(options = {}) {
         "--timeline",
         timelineId,
         "--file",
-        filePath
+        filePath,
+        "--base-revision",
+        baseRevisionId
       ];
       if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
       args.push("--json");

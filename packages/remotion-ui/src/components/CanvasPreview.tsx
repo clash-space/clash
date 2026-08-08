@@ -112,12 +112,21 @@ type CanvasPreviewProps = {
   audioMeterOpen?: boolean;
   onToggleAudioMeter?: () => void;
   audioMeterStore?: PreviewAudioMeterStore;
+  /** Live Canvas nodes resolved by Timeline items such as remotion-component. */
+  runtimeNodes?: TimelineRuntimeNode[];
+};
+
+export type TimelineRuntimeNode = {
+  id: string;
+  type: string;
+  data: Record<string, unknown>;
 };
 
 export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(({
   audioMeterOpen = false,
   onToggleAudioMeter,
   audioMeterStore,
+  runtimeNodes = [],
 }) => {
   const dispatch = useEditorDispatch();
   const { beginHistoryGroup, endHistoryGroup } = useEditorHistory();
@@ -170,8 +179,11 @@ export const CanvasPreview: React.FC<CanvasPreviewProps> = React.memo(({
         map.set(asset.backingAssetId, nodeData);
       }
     }
+    for (const node of runtimeNodes) {
+      map.set(node.id, node);
+    }
     return map;
-  }, [assets]);
+  }, [assets, runtimeNodes]);
 
   const aspectRatio = useMemo(() => {
     const divisor = greatestCommonDivisor(compositionWidth, compositionHeight) || 1;

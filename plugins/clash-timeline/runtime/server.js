@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { readFileSync } from 'fs';
 import process3 from 'process';
-import { execFile } from 'child_process';
+import 'crypto';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
 import { isAbsolute, resolve, join, dirname } from 'path';
+import { execFile } from 'child_process';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 import { promisify } from 'util';
 
@@ -157,11 +158,11 @@ __export(util_exports, {
   explicitlyAborted: () => explicitlyAborted,
   extend: () => extend,
   finalizeIssue: () => finalizeIssue,
-  floatSafeRemainder: () => floatSafeRemainder2,
+  floatSafeRemainder: () => floatSafeRemainder,
   getElementAtPath: () => getElementAtPath,
   getEnumValues: () => getEnumValues,
   getLengthableOrigin: () => getLengthableOrigin,
-  getParsedType: () => getParsedType2,
+  getParsedType: () => getParsedType,
   getSizableOrigin: () => getSizableOrigin,
   hexToUint8Array: () => hexToUint8Array,
   isObject: () => isObject,
@@ -240,7 +241,7 @@ function cleanRegex(source) {
   const end = source.endsWith("$") ? source.length - 1 : source.length;
   return source.slice(start, end);
 }
-function floatSafeRemainder2(val, step) {
+function floatSafeRemainder(val, step) {
   const ratio = val / step;
   const roundedRatio = Math.round(ratio);
   const tolerance = Number.EPSILON * Math.max(Math.abs(ratio), 1);
@@ -735,7 +736,7 @@ function hexToUint8Array(hex3) {
 function uint8ArrayToHex(bytes) {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-var EVALUATING, captureStackTrace, allowsEval, getParsedType2, propertyKeyTypes, primitiveTypes, NUMBER_FORMAT_RANGES, BIGINT_FORMAT_RANGES, Class;
+var EVALUATING, captureStackTrace, allowsEval, getParsedType, propertyKeyTypes, primitiveTypes, NUMBER_FORMAT_RANGES, BIGINT_FORMAT_RANGES, Class;
 var init_util = __esm({
   "../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js"() {
     init_core();
@@ -757,7 +758,7 @@ var init_util = __esm({
         return false;
       }
     });
-    getParsedType2 = (data) => {
+    getParsedType = (data) => {
       const t = typeof data;
       switch (t) {
         case "undefined":
@@ -1323,7 +1324,7 @@ var init_checks = __esm({
       inst._zod.check = (payload) => {
         if (typeof payload.value !== typeof def.value)
           throw new Error("Cannot mix number and bigint in multiple_of check.");
-        const isMultiple = typeof payload.value === "bigint" ? payload.value % def.value === BigInt(0) : floatSafeRemainder2(payload.value, def.value) === 0;
+        const isMultiple = typeof payload.value === "bigint" ? payload.value % def.value === BigInt(0) : floatSafeRemainder(payload.value, def.value) === 0;
         if (isMultiple)
           return;
         payload.issues.push({
@@ -1866,7 +1867,7 @@ function isValidBase64URL(data) {
   const padded = base643.padEnd(Math.ceil(base643.length / 4) * 4, "=");
   return isValidBase64(padded);
 }
-function isValidJWT2(token, algorithm = null) {
+function isValidJWT(token, algorithm = null) {
   try {
     const tokensParts = token.split(".");
     if (tokensParts.length !== 3)
@@ -2016,7 +2017,7 @@ function handleExclusiveUnionResults(results, final, inst, ctx) {
   }
   return final;
 }
-function mergeValues2(a, b) {
+function mergeValues(a, b) {
   if (a === b) {
     return { valid: true, data: a };
   }
@@ -2028,7 +2029,7 @@ function mergeValues2(a, b) {
     const sharedKeys = Object.keys(a).filter((key) => bKeys.indexOf(key) !== -1);
     const newObj = { ...a, ...b };
     for (const key of sharedKeys) {
-      const sharedValue = mergeValues2(a[key], b[key]);
+      const sharedValue = mergeValues(a[key], b[key]);
       if (!sharedValue.valid) {
         return {
           valid: false,
@@ -2047,7 +2048,7 @@ function mergeValues2(a, b) {
     for (let index = 0; index < a.length; index++) {
       const itemA = a[index];
       const itemB = b[index];
-      const sharedValue = mergeValues2(itemA, itemB);
+      const sharedValue = mergeValues(itemA, itemB);
       if (!sharedValue.valid) {
         return {
           valid: false,
@@ -2092,7 +2093,7 @@ function handleIntersectionResults(result, left, right) {
   }
   if (aborted(result))
     return result;
-  const merged = mergeValues2(left.value, right.value);
+  const merged = mergeValues(left.value, right.value);
   if (!merged.valid) {
     throw new Error(`Unmergable intersection. Error path: ${JSON.stringify(merged.mergeErrorPath)}`);
   }
@@ -2629,7 +2630,7 @@ var init_schemas = __esm({
     $ZodJWT = /* @__PURE__ */ $constructor("$ZodJWT", (inst, def) => {
       $ZodStringFormat.init(inst, def);
       inst._zod.check = (payload) => {
-        if (isValidJWT2(payload.value, def.alg))
+        if (isValidJWT(payload.value, def.alg))
           return;
         payload.issues.push({
           code: "invalid_format",
@@ -5052,7 +5053,7 @@ var init_el = __esm({
 });
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/locales/en.js
-function en_default2() {
+function en_default() {
   return {
     localeError: error10()
   };
@@ -10170,7 +10171,7 @@ __export(locales_exports, {
   da: () => da_default,
   de: () => de_default,
   el: () => el_default,
-  en: () => en_default2,
+  en: () => en_default,
   eo: () => eo_default,
   es: () => es_default,
   fa: () => fa_default,
@@ -12630,7 +12631,7 @@ __export(core_exports2, {
   initializeContext: () => initializeContext,
   isValidBase64: () => isValidBase64,
   isValidBase64URL: () => isValidBase64URL,
-  isValidJWT: () => isValidJWT2,
+  isValidJWT: () => isValidJWT,
   locales: () => locales_exports,
   meta: () => meta,
   parse: () => parse,
@@ -12712,8 +12713,8 @@ var init_checks2 = __esm({
 });
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js
-var iso_exports2 = {};
-__export(iso_exports2, {
+var iso_exports = {};
+__export(iso_exports, {
   ZodISODate: () => ZodISODate,
   ZodISODateTime: () => ZodISODateTime,
   ZodISODuration: () => ZodISODuration,
@@ -12760,7 +12761,7 @@ var init_iso = __esm({
 });
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js
-var initializer2, ZodError2, ZodRealError;
+var initializer2, ZodError, ZodRealError;
 var init_errors2 = __esm({
   "../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js"() {
     init_core2();
@@ -12800,7 +12801,7 @@ var init_errors2 = __esm({
         }
       });
     };
-    ZodError2 = /* @__PURE__ */ $constructor("ZodError", initializer2);
+    ZodError = /* @__PURE__ */ $constructor("ZodError", initializer2);
     ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, {
       Parent: Error
     });
@@ -12808,15 +12809,15 @@ var init_errors2 = __esm({
 });
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js
-var parse2, parseAsync2, safeParse3, safeParseAsync3, encode2, decode2, encodeAsync2, decodeAsync2, safeEncode2, safeDecode2, safeEncodeAsync2, safeDecodeAsync2;
+var parse2, parseAsync2, safeParse2, safeParseAsync2, encode2, decode2, encodeAsync2, decodeAsync2, safeEncode2, safeDecode2, safeEncodeAsync2, safeDecodeAsync2;
 var init_parse2 = __esm({
   "../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js"() {
     init_core2();
     init_errors2();
     parse2 = /* @__PURE__ */ _parse(ZodRealError);
     parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
-    safeParse3 = /* @__PURE__ */ _safeParse(ZodRealError);
-    safeParseAsync3 = /* @__PURE__ */ _safeParseAsync(ZodRealError);
+    safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
+    safeParseAsync2 = /* @__PURE__ */ _safeParseAsync(ZodRealError);
     encode2 = /* @__PURE__ */ _encode(ZodRealError);
     decode2 = /* @__PURE__ */ _decode(ZodRealError);
     encodeAsync2 = /* @__PURE__ */ _encodeAsync(ZodRealError);
@@ -12831,73 +12832,73 @@ var init_parse2 = __esm({
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
 var schemas_exports2 = {};
 __export(schemas_exports2, {
-  ZodAny: () => ZodAny2,
-  ZodArray: () => ZodArray2,
+  ZodAny: () => ZodAny,
+  ZodArray: () => ZodArray,
   ZodBase64: () => ZodBase64,
   ZodBase64URL: () => ZodBase64URL,
-  ZodBigInt: () => ZodBigInt2,
+  ZodBigInt: () => ZodBigInt,
   ZodBigIntFormat: () => ZodBigIntFormat,
-  ZodBoolean: () => ZodBoolean2,
+  ZodBoolean: () => ZodBoolean,
   ZodCIDRv4: () => ZodCIDRv4,
   ZodCIDRv6: () => ZodCIDRv6,
   ZodCUID: () => ZodCUID,
   ZodCUID2: () => ZodCUID2,
-  ZodCatch: () => ZodCatch2,
+  ZodCatch: () => ZodCatch,
   ZodCodec: () => ZodCodec,
   ZodCustom: () => ZodCustom,
   ZodCustomStringFormat: () => ZodCustomStringFormat,
-  ZodDate: () => ZodDate2,
-  ZodDefault: () => ZodDefault2,
-  ZodDiscriminatedUnion: () => ZodDiscriminatedUnion2,
+  ZodDate: () => ZodDate,
+  ZodDefault: () => ZodDefault,
+  ZodDiscriminatedUnion: () => ZodDiscriminatedUnion,
   ZodE164: () => ZodE164,
   ZodEmail: () => ZodEmail,
   ZodEmoji: () => ZodEmoji,
-  ZodEnum: () => ZodEnum2,
+  ZodEnum: () => ZodEnum,
   ZodExactOptional: () => ZodExactOptional,
   ZodFile: () => ZodFile,
-  ZodFunction: () => ZodFunction2,
+  ZodFunction: () => ZodFunction,
   ZodGUID: () => ZodGUID,
   ZodIPv4: () => ZodIPv4,
   ZodIPv6: () => ZodIPv6,
-  ZodIntersection: () => ZodIntersection2,
+  ZodIntersection: () => ZodIntersection,
   ZodJWT: () => ZodJWT,
   ZodKSUID: () => ZodKSUID,
-  ZodLazy: () => ZodLazy2,
-  ZodLiteral: () => ZodLiteral2,
+  ZodLazy: () => ZodLazy,
+  ZodLiteral: () => ZodLiteral,
   ZodMAC: () => ZodMAC,
-  ZodMap: () => ZodMap2,
-  ZodNaN: () => ZodNaN2,
+  ZodMap: () => ZodMap,
+  ZodNaN: () => ZodNaN,
   ZodNanoID: () => ZodNanoID,
-  ZodNever: () => ZodNever2,
+  ZodNever: () => ZodNever,
   ZodNonOptional: () => ZodNonOptional,
-  ZodNull: () => ZodNull2,
-  ZodNullable: () => ZodNullable2,
-  ZodNumber: () => ZodNumber2,
+  ZodNull: () => ZodNull,
+  ZodNullable: () => ZodNullable,
+  ZodNumber: () => ZodNumber,
   ZodNumberFormat: () => ZodNumberFormat,
-  ZodObject: () => ZodObject2,
-  ZodOptional: () => ZodOptional2,
+  ZodObject: () => ZodObject,
+  ZodOptional: () => ZodOptional,
   ZodPipe: () => ZodPipe,
   ZodPrefault: () => ZodPrefault,
   ZodPreprocess: () => ZodPreprocess,
-  ZodPromise: () => ZodPromise2,
-  ZodReadonly: () => ZodReadonly2,
-  ZodRecord: () => ZodRecord2,
-  ZodSet: () => ZodSet2,
-  ZodString: () => ZodString2,
+  ZodPromise: () => ZodPromise,
+  ZodReadonly: () => ZodReadonly,
+  ZodRecord: () => ZodRecord,
+  ZodSet: () => ZodSet,
+  ZodString: () => ZodString,
   ZodStringFormat: () => ZodStringFormat,
   ZodSuccess: () => ZodSuccess,
-  ZodSymbol: () => ZodSymbol2,
+  ZodSymbol: () => ZodSymbol,
   ZodTemplateLiteral: () => ZodTemplateLiteral,
   ZodTransform: () => ZodTransform,
-  ZodTuple: () => ZodTuple2,
-  ZodType: () => ZodType2,
+  ZodTuple: () => ZodTuple,
+  ZodType: () => ZodType,
   ZodULID: () => ZodULID,
   ZodURL: () => ZodURL,
   ZodUUID: () => ZodUUID,
-  ZodUndefined: () => ZodUndefined2,
-  ZodUnion: () => ZodUnion2,
-  ZodUnknown: () => ZodUnknown2,
-  ZodVoid: () => ZodVoid2,
+  ZodUndefined: () => ZodUndefined,
+  ZodUnion: () => ZodUnion,
+  ZodUnknown: () => ZodUnknown,
+  ZodVoid: () => ZodVoid,
   ZodXID: () => ZodXID,
   ZodXor: () => ZodXor,
   _ZodString: () => _ZodString,
@@ -12962,7 +12963,7 @@ __export(schemas_exports2, {
   nullable: () => nullable,
   nullish: () => nullish2,
   number: () => number2,
-  object: () => object2,
+  object: () => object,
   optional: () => optional,
   partialRecord: () => partialRecord,
   pipe: () => pipe,
@@ -13035,7 +13036,7 @@ function _installLazyMethods(inst, group, methods) {
   }
 }
 function string2(params) {
-  return _string(ZodString2, params);
+  return _string(ZodString, params);
 }
 function email2(params) {
   return _email(ZodEmail, params);
@@ -13131,7 +13132,7 @@ function hash(alg, params) {
   return _stringFormat(ZodCustomStringFormat, format, regex, params);
 }
 function number2(params) {
-  return _number(ZodNumber2, params);
+  return _number(ZodNumber, params);
 }
 function int(params) {
   return _int(ZodNumberFormat, params);
@@ -13149,10 +13150,10 @@ function uint32(params) {
   return _uint32(ZodNumberFormat, params);
 }
 function boolean2(params) {
-  return _boolean(ZodBoolean2, params);
+  return _boolean(ZodBoolean, params);
 }
 function bigint2(params) {
-  return _bigint(ZodBigInt2, params);
+  return _bigint(ZodBigInt, params);
 }
 function int64(params) {
   return _int64(ZodBigIntFormat, params);
@@ -13161,46 +13162,46 @@ function uint64(params) {
   return _uint64(ZodBigIntFormat, params);
 }
 function symbol(params) {
-  return _symbol(ZodSymbol2, params);
+  return _symbol(ZodSymbol, params);
 }
 function _undefined3(params) {
-  return _undefined2(ZodUndefined2, params);
+  return _undefined2(ZodUndefined, params);
 }
 function _null3(params) {
-  return _null2(ZodNull2, params);
+  return _null2(ZodNull, params);
 }
 function any() {
-  return _any(ZodAny2);
+  return _any(ZodAny);
 }
 function unknown() {
-  return _unknown(ZodUnknown2);
+  return _unknown(ZodUnknown);
 }
 function never(params) {
-  return _never(ZodNever2, params);
+  return _never(ZodNever, params);
 }
 function _void2(params) {
-  return _void(ZodVoid2, params);
+  return _void(ZodVoid, params);
 }
 function date3(params) {
-  return _date(ZodDate2, params);
+  return _date(ZodDate, params);
 }
 function array(element, params) {
-  return _array(ZodArray2, element, params);
+  return _array(ZodArray, element, params);
 }
 function keyof(schema) {
   const shape = schema._zod.def.shape;
   return _enum2(Object.keys(shape));
 }
-function object2(shape, params) {
+function object(shape, params) {
   const def = {
     type: "object",
     shape: shape ?? {},
     ...util_exports.normalizeParams(params)
   };
-  return new ZodObject2(def);
+  return new ZodObject(def);
 }
 function strictObject(shape, params) {
-  return new ZodObject2({
+  return new ZodObject({
     type: "object",
     shape,
     catchall: never(),
@@ -13208,7 +13209,7 @@ function strictObject(shape, params) {
   });
 }
 function looseObject(shape, params) {
-  return new ZodObject2({
+  return new ZodObject({
     type: "object",
     shape,
     catchall: unknown(),
@@ -13216,7 +13217,7 @@ function looseObject(shape, params) {
   });
 }
 function union(options, params) {
-  return new ZodUnion2({
+  return new ZodUnion({
     type: "union",
     options,
     ...util_exports.normalizeParams(params)
@@ -13231,7 +13232,7 @@ function xor(options, params) {
   });
 }
 function discriminatedUnion(discriminator, options, params) {
-  return new ZodDiscriminatedUnion2({
+  return new ZodDiscriminatedUnion({
     type: "union",
     options,
     discriminator,
@@ -13239,7 +13240,7 @@ function discriminatedUnion(discriminator, options, params) {
   });
 }
 function intersection(left, right) {
-  return new ZodIntersection2({
+  return new ZodIntersection({
     type: "intersection",
     left,
     right
@@ -13249,7 +13250,7 @@ function tuple(items, _paramsOrRest, _params) {
   const hasRest = _paramsOrRest instanceof $ZodType;
   const params = hasRest ? _params : _paramsOrRest;
   const rest = hasRest ? _paramsOrRest : null;
-  return new ZodTuple2({
+  return new ZodTuple({
     type: "tuple",
     items,
     rest,
@@ -13258,14 +13259,14 @@ function tuple(items, _paramsOrRest, _params) {
 }
 function record(keyType, valueType, params) {
   if (!valueType || !valueType._zod) {
-    return new ZodRecord2({
+    return new ZodRecord({
       type: "record",
       keyType: string2(),
       valueType: keyType,
       ...util_exports.normalizeParams(valueType)
     });
   }
-  return new ZodRecord2({
+  return new ZodRecord({
     type: "record",
     keyType,
     valueType,
@@ -13275,7 +13276,7 @@ function record(keyType, valueType, params) {
 function partialRecord(keyType, valueType, params) {
   const k2 = clone(keyType);
   k2._zod.values = void 0;
-  return new ZodRecord2({
+  return new ZodRecord({
     type: "record",
     keyType: k2,
     valueType,
@@ -13283,7 +13284,7 @@ function partialRecord(keyType, valueType, params) {
   });
 }
 function looseRecord(keyType, valueType, params) {
-  return new ZodRecord2({
+  return new ZodRecord({
     type: "record",
     keyType,
     valueType,
@@ -13292,7 +13293,7 @@ function looseRecord(keyType, valueType, params) {
   });
 }
 function map(keyType, valueType, params) {
-  return new ZodMap2({
+  return new ZodMap({
     type: "map",
     keyType,
     valueType,
@@ -13300,7 +13301,7 @@ function map(keyType, valueType, params) {
   });
 }
 function set(valueType, params) {
-  return new ZodSet2({
+  return new ZodSet({
     type: "set",
     valueType,
     ...util_exports.normalizeParams(params)
@@ -13308,21 +13309,21 @@ function set(valueType, params) {
 }
 function _enum2(values, params) {
   const entries = Array.isArray(values) ? Object.fromEntries(values.map((v2) => [v2, v2])) : values;
-  return new ZodEnum2({
+  return new ZodEnum({
     type: "enum",
     entries,
     ...util_exports.normalizeParams(params)
   });
 }
 function nativeEnum(entries, params) {
-  return new ZodEnum2({
+  return new ZodEnum({
     type: "enum",
     entries,
     ...util_exports.normalizeParams(params)
   });
 }
 function literal(value, params) {
-  return new ZodLiteral2({
+  return new ZodLiteral({
     type: "literal",
     values: Array.isArray(value) ? value : [value],
     ...util_exports.normalizeParams(params)
@@ -13338,7 +13339,7 @@ function transform(fn) {
   });
 }
 function optional(innerType) {
-  return new ZodOptional2({
+  return new ZodOptional({
     type: "optional",
     innerType
   });
@@ -13350,7 +13351,7 @@ function exactOptional(innerType) {
   });
 }
 function nullable(innerType) {
-  return new ZodNullable2({
+  return new ZodNullable({
     type: "nullable",
     innerType
   });
@@ -13359,7 +13360,7 @@ function nullish2(innerType) {
   return optional(nullable(innerType));
 }
 function _default2(innerType, defaultValue) {
-  return new ZodDefault2({
+  return new ZodDefault({
     type: "default",
     innerType,
     get defaultValue() {
@@ -13390,14 +13391,14 @@ function success(innerType) {
   });
 }
 function _catch2(innerType, catchValue) {
-  return new ZodCatch2({
+  return new ZodCatch({
     type: "catch",
     innerType,
     catchValue: typeof catchValue === "function" ? catchValue : () => catchValue
   });
 }
 function nan(params) {
-  return _nan(ZodNaN2, params);
+  return _nan(ZodNaN, params);
 }
 function pipe(in_, out) {
   return new ZodPipe({
@@ -13427,7 +13428,7 @@ function invertCodec(codec2) {
   });
 }
 function readonly(innerType) {
-  return new ZodReadonly2({
+  return new ZodReadonly({
     type: "readonly",
     innerType
   });
@@ -13440,19 +13441,19 @@ function templateLiteral(parts, params) {
   });
 }
 function lazy(getter) {
-  return new ZodLazy2({
+  return new ZodLazy({
     type: "lazy",
     getter
   });
 }
 function promise(innerType) {
-  return new ZodPromise2({
+  return new ZodPromise({
     type: "promise",
     innerType
   });
 }
 function _function(params) {
-  return new ZodFunction2({
+  return new ZodFunction({
     type: "function",
     input: Array.isArray(params?.input) ? tuple(params?.input) : params?.input ?? array(unknown()),
     output: params?.output ?? unknown()
@@ -13510,7 +13511,7 @@ function preprocess(fn, schema) {
     out: schema
   });
 }
-var _installedGroups, ZodType2, _ZodString, ZodString2, ZodStringFormat, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodMAC, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodJWT, ZodCustomStringFormat, ZodNumber2, ZodNumberFormat, ZodBoolean2, ZodBigInt2, ZodBigIntFormat, ZodSymbol2, ZodUndefined2, ZodNull2, ZodAny2, ZodUnknown2, ZodNever2, ZodVoid2, ZodDate2, ZodArray2, ZodObject2, ZodUnion2, ZodXor, ZodDiscriminatedUnion2, ZodIntersection2, ZodTuple2, ZodRecord2, ZodMap2, ZodSet2, ZodEnum2, ZodLiteral2, ZodFile, ZodTransform, ZodOptional2, ZodExactOptional, ZodNullable2, ZodDefault2, ZodPrefault, ZodNonOptional, ZodSuccess, ZodCatch2, ZodNaN2, ZodPipe, ZodCodec, ZodPreprocess, ZodReadonly2, ZodTemplateLiteral, ZodLazy2, ZodPromise2, ZodFunction2, ZodCustom, describe2, meta2, stringbool;
+var _installedGroups, ZodType, _ZodString, ZodString, ZodStringFormat, ZodEmail, ZodGUID, ZodUUID, ZodURL, ZodEmoji, ZodNanoID, ZodCUID, ZodCUID2, ZodULID, ZodXID, ZodKSUID, ZodIPv4, ZodMAC, ZodIPv6, ZodCIDRv4, ZodCIDRv6, ZodBase64, ZodBase64URL, ZodE164, ZodJWT, ZodCustomStringFormat, ZodNumber, ZodNumberFormat, ZodBoolean, ZodBigInt, ZodBigIntFormat, ZodSymbol, ZodUndefined, ZodNull, ZodAny, ZodUnknown, ZodNever, ZodVoid, ZodDate, ZodArray, ZodObject, ZodUnion, ZodXor, ZodDiscriminatedUnion, ZodIntersection, ZodTuple, ZodRecord, ZodMap, ZodSet, ZodEnum, ZodLiteral, ZodFile, ZodTransform, ZodOptional, ZodExactOptional, ZodNullable, ZodDefault, ZodPrefault, ZodNonOptional, ZodSuccess, ZodCatch, ZodNaN, ZodPipe, ZodCodec, ZodPreprocess, ZodReadonly, ZodTemplateLiteral, ZodLazy, ZodPromise, ZodFunction, ZodCustom, describe2, meta2, stringbool;
 var init_schemas2 = __esm({
   "../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js"() {
     init_core2();
@@ -13521,7 +13522,7 @@ var init_schemas2 = __esm({
     init_iso();
     init_parse2();
     _installedGroups = /* @__PURE__ */ new WeakMap();
-    ZodType2 = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
+    ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
       $ZodType.init(inst, def);
       Object.assign(inst["~standard"], {
         jsonSchema: {
@@ -13534,9 +13535,9 @@ var init_schemas2 = __esm({
       inst.type = def.type;
       Object.defineProperty(inst, "_def", { value: def });
       inst.parse = (data, params) => parse2(inst, data, params, { callee: inst.parse });
-      inst.safeParse = (data, params) => safeParse3(inst, data, params);
+      inst.safeParse = (data, params) => safeParse2(inst, data, params);
       inst.parseAsync = async (data, params) => parseAsync2(inst, data, params, { callee: inst.parseAsync });
-      inst.safeParseAsync = async (data, params) => safeParseAsync3(inst, data, params);
+      inst.safeParseAsync = async (data, params) => safeParseAsync2(inst, data, params);
       inst.spa = inst.safeParseAsync;
       inst.encode = (data, params) => encode2(inst, data, params);
       inst.decode = (data, params) => decode2(inst, data, params);
@@ -13652,7 +13653,7 @@ var init_schemas2 = __esm({
     });
     _ZodString = /* @__PURE__ */ $constructor("_ZodString", (inst, def) => {
       $ZodString.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => stringProcessor(inst, ctx, json2, params);
       const bag = inst._zod.bag;
       inst.format = bag.format ?? null;
@@ -13706,7 +13707,7 @@ var init_schemas2 = __esm({
         }
       });
     });
-    ZodString2 = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
+    ZodString = /* @__PURE__ */ $constructor("ZodString", (inst, def) => {
       $ZodString.init(inst, def);
       _ZodString.init(inst, def);
       inst.email = (params) => inst.check(_email(ZodEmail, params));
@@ -13825,9 +13826,9 @@ var init_schemas2 = __esm({
       $ZodCustomStringFormat.init(inst, def);
       ZodStringFormat.init(inst, def);
     });
-    ZodNumber2 = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
+    ZodNumber = /* @__PURE__ */ $constructor("ZodNumber", (inst, def) => {
       $ZodNumber.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => numberProcessor(inst, ctx, json2, params);
       _installLazyMethods(inst, "ZodNumber", {
         gt(value, params) {
@@ -13885,16 +13886,16 @@ var init_schemas2 = __esm({
     });
     ZodNumberFormat = /* @__PURE__ */ $constructor("ZodNumberFormat", (inst, def) => {
       $ZodNumberFormat.init(inst, def);
-      ZodNumber2.init(inst, def);
+      ZodNumber.init(inst, def);
     });
-    ZodBoolean2 = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
+    ZodBoolean = /* @__PURE__ */ $constructor("ZodBoolean", (inst, def) => {
       $ZodBoolean.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => booleanProcessor(inst, ctx, json2, params);
     });
-    ZodBigInt2 = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
+    ZodBigInt = /* @__PURE__ */ $constructor("ZodBigInt", (inst, def) => {
       $ZodBigInt.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => bigintProcessor(inst, ctx, json2, params);
       inst.gte = (value, params) => inst.check(_gte(value, params));
       inst.min = (value, params) => inst.check(_gte(value, params));
@@ -13916,46 +13917,46 @@ var init_schemas2 = __esm({
     });
     ZodBigIntFormat = /* @__PURE__ */ $constructor("ZodBigIntFormat", (inst, def) => {
       $ZodBigIntFormat.init(inst, def);
-      ZodBigInt2.init(inst, def);
+      ZodBigInt.init(inst, def);
     });
-    ZodSymbol2 = /* @__PURE__ */ $constructor("ZodSymbol", (inst, def) => {
+    ZodSymbol = /* @__PURE__ */ $constructor("ZodSymbol", (inst, def) => {
       $ZodSymbol.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => symbolProcessor(inst, ctx, json2, params);
     });
-    ZodUndefined2 = /* @__PURE__ */ $constructor("ZodUndefined", (inst, def) => {
+    ZodUndefined = /* @__PURE__ */ $constructor("ZodUndefined", (inst, def) => {
       $ZodUndefined.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => undefinedProcessor(inst, ctx, json2, params);
     });
-    ZodNull2 = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
+    ZodNull = /* @__PURE__ */ $constructor("ZodNull", (inst, def) => {
       $ZodNull.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => nullProcessor(inst, ctx, json2, params);
     });
-    ZodAny2 = /* @__PURE__ */ $constructor("ZodAny", (inst, def) => {
+    ZodAny = /* @__PURE__ */ $constructor("ZodAny", (inst, def) => {
       $ZodAny.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => anyProcessor(inst, ctx, json2, params);
     });
-    ZodUnknown2 = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
+    ZodUnknown = /* @__PURE__ */ $constructor("ZodUnknown", (inst, def) => {
       $ZodUnknown.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => unknownProcessor(inst, ctx, json2, params);
     });
-    ZodNever2 = /* @__PURE__ */ $constructor("ZodNever", (inst, def) => {
+    ZodNever = /* @__PURE__ */ $constructor("ZodNever", (inst, def) => {
       $ZodNever.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => neverProcessor(inst, ctx, json2, params);
     });
-    ZodVoid2 = /* @__PURE__ */ $constructor("ZodVoid", (inst, def) => {
+    ZodVoid = /* @__PURE__ */ $constructor("ZodVoid", (inst, def) => {
       $ZodVoid.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => voidProcessor(inst, ctx, json2, params);
     });
-    ZodDate2 = /* @__PURE__ */ $constructor("ZodDate", (inst, def) => {
+    ZodDate = /* @__PURE__ */ $constructor("ZodDate", (inst, def) => {
       $ZodDate.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => dateProcessor(inst, ctx, json2, params);
       inst.min = (value, params) => inst.check(_gte(value, params));
       inst.max = (value, params) => inst.check(_lte(value, params));
@@ -13963,9 +13964,9 @@ var init_schemas2 = __esm({
       inst.minDate = c.minimum ? new Date(c.minimum) : null;
       inst.maxDate = c.maximum ? new Date(c.maximum) : null;
     });
-    ZodArray2 = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
+    ZodArray = /* @__PURE__ */ $constructor("ZodArray", (inst, def) => {
       $ZodArray.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => arrayProcessor(inst, ctx, json2, params);
       inst.element = def.element;
       _installLazyMethods(inst, "ZodArray", {
@@ -13986,9 +13987,9 @@ var init_schemas2 = __esm({
         }
       });
     });
-    ZodObject2 = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
+    ZodObject = /* @__PURE__ */ $constructor("ZodObject", (inst, def) => {
       $ZodObjectJIT.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => objectProcessor(inst, ctx, json2, params);
       util_exports.defineLazy(inst, "shape", () => {
         return def.shape;
@@ -14028,53 +14029,53 @@ var init_schemas2 = __esm({
           return util_exports.omit(this, mask);
         },
         partial(...args) {
-          return util_exports.partial(ZodOptional2, this, args[0]);
+          return util_exports.partial(ZodOptional, this, args[0]);
         },
         required(...args) {
           return util_exports.required(ZodNonOptional, this, args[0]);
         }
       });
     });
-    ZodUnion2 = /* @__PURE__ */ $constructor("ZodUnion", (inst, def) => {
+    ZodUnion = /* @__PURE__ */ $constructor("ZodUnion", (inst, def) => {
       $ZodUnion.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => unionProcessor(inst, ctx, json2, params);
       inst.options = def.options;
     });
     ZodXor = /* @__PURE__ */ $constructor("ZodXor", (inst, def) => {
-      ZodUnion2.init(inst, def);
+      ZodUnion.init(inst, def);
       $ZodXor.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => unionProcessor(inst, ctx, json2, params);
       inst.options = def.options;
     });
-    ZodDiscriminatedUnion2 = /* @__PURE__ */ $constructor("ZodDiscriminatedUnion", (inst, def) => {
-      ZodUnion2.init(inst, def);
+    ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("ZodDiscriminatedUnion", (inst, def) => {
+      ZodUnion.init(inst, def);
       $ZodDiscriminatedUnion.init(inst, def);
     });
-    ZodIntersection2 = /* @__PURE__ */ $constructor("ZodIntersection", (inst, def) => {
+    ZodIntersection = /* @__PURE__ */ $constructor("ZodIntersection", (inst, def) => {
       $ZodIntersection.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => intersectionProcessor(inst, ctx, json2, params);
     });
-    ZodTuple2 = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
+    ZodTuple = /* @__PURE__ */ $constructor("ZodTuple", (inst, def) => {
       $ZodTuple.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => tupleProcessor(inst, ctx, json2, params);
       inst.rest = (rest) => inst.clone({
         ...inst._zod.def,
         rest
       });
     });
-    ZodRecord2 = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
+    ZodRecord = /* @__PURE__ */ $constructor("ZodRecord", (inst, def) => {
       $ZodRecord.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => recordProcessor(inst, ctx, json2, params);
       inst.keyType = def.keyType;
       inst.valueType = def.valueType;
     });
-    ZodMap2 = /* @__PURE__ */ $constructor("ZodMap", (inst, def) => {
+    ZodMap = /* @__PURE__ */ $constructor("ZodMap", (inst, def) => {
       $ZodMap.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => mapProcessor(inst, ctx, json2, params);
       inst.keyType = def.keyType;
       inst.valueType = def.valueType;
@@ -14083,18 +14084,18 @@ var init_schemas2 = __esm({
       inst.max = (...args) => inst.check(_maxSize(...args));
       inst.size = (...args) => inst.check(_size(...args));
     });
-    ZodSet2 = /* @__PURE__ */ $constructor("ZodSet", (inst, def) => {
+    ZodSet = /* @__PURE__ */ $constructor("ZodSet", (inst, def) => {
       $ZodSet.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => setProcessor(inst, ctx, json2, params);
       inst.min = (...args) => inst.check(_minSize(...args));
       inst.nonempty = (params) => inst.check(_minSize(1, params));
       inst.max = (...args) => inst.check(_maxSize(...args));
       inst.size = (...args) => inst.check(_size(...args));
     });
-    ZodEnum2 = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
+    ZodEnum = /* @__PURE__ */ $constructor("ZodEnum", (inst, def) => {
       $ZodEnum.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => enumProcessor(inst, ctx, json2, params);
       inst.enum = def.entries;
       inst.options = Object.values(def.entries);
@@ -14107,7 +14108,7 @@ var init_schemas2 = __esm({
           } else
             throw new Error(`Key ${value} not found in enum`);
         }
-        return new ZodEnum2({
+        return new ZodEnum({
           ...def,
           checks: [],
           ...util_exports.normalizeParams(params),
@@ -14122,7 +14123,7 @@ var init_schemas2 = __esm({
           } else
             throw new Error(`Key ${value} not found in enum`);
         }
-        return new ZodEnum2({
+        return new ZodEnum({
           ...def,
           checks: [],
           ...util_exports.normalizeParams(params),
@@ -14130,9 +14131,9 @@ var init_schemas2 = __esm({
         });
       };
     });
-    ZodLiteral2 = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
+    ZodLiteral = /* @__PURE__ */ $constructor("ZodLiteral", (inst, def) => {
       $ZodLiteral.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => literalProcessor(inst, ctx, json2, params);
       inst.values = new Set(def.values);
       Object.defineProperty(inst, "value", {
@@ -14146,7 +14147,7 @@ var init_schemas2 = __esm({
     });
     ZodFile = /* @__PURE__ */ $constructor("ZodFile", (inst, def) => {
       $ZodFile.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => fileProcessor(inst, ctx, json2, params);
       inst.min = (size, params) => inst.check(_minSize(size, params));
       inst.max = (size, params) => inst.check(_maxSize(size, params));
@@ -14154,7 +14155,7 @@ var init_schemas2 = __esm({
     });
     ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
       $ZodTransform.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => transformProcessor(inst, ctx, json2, params);
       inst._zod.parse = (payload, _ctx) => {
         if (_ctx.direction === "backward") {
@@ -14186,64 +14187,64 @@ var init_schemas2 = __esm({
         return payload;
       };
     });
-    ZodOptional2 = /* @__PURE__ */ $constructor("ZodOptional", (inst, def) => {
+    ZodOptional = /* @__PURE__ */ $constructor("ZodOptional", (inst, def) => {
       $ZodOptional.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => optionalProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodExactOptional = /* @__PURE__ */ $constructor("ZodExactOptional", (inst, def) => {
       $ZodExactOptional.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => optionalProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
-    ZodNullable2 = /* @__PURE__ */ $constructor("ZodNullable", (inst, def) => {
+    ZodNullable = /* @__PURE__ */ $constructor("ZodNullable", (inst, def) => {
       $ZodNullable.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => nullableProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
-    ZodDefault2 = /* @__PURE__ */ $constructor("ZodDefault", (inst, def) => {
+    ZodDefault = /* @__PURE__ */ $constructor("ZodDefault", (inst, def) => {
       $ZodDefault.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => defaultProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
       inst.removeDefault = inst.unwrap;
     });
     ZodPrefault = /* @__PURE__ */ $constructor("ZodPrefault", (inst, def) => {
       $ZodPrefault.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => prefaultProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodNonOptional = /* @__PURE__ */ $constructor("ZodNonOptional", (inst, def) => {
       $ZodNonOptional.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => nonoptionalProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodSuccess = /* @__PURE__ */ $constructor("ZodSuccess", (inst, def) => {
       $ZodSuccess.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => successProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
-    ZodCatch2 = /* @__PURE__ */ $constructor("ZodCatch", (inst, def) => {
+    ZodCatch = /* @__PURE__ */ $constructor("ZodCatch", (inst, def) => {
       $ZodCatch.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => catchProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
       inst.removeCatch = inst.unwrap;
     });
-    ZodNaN2 = /* @__PURE__ */ $constructor("ZodNaN", (inst, def) => {
+    ZodNaN = /* @__PURE__ */ $constructor("ZodNaN", (inst, def) => {
       $ZodNaN.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => nanProcessor(inst, ctx, json2, params);
     });
     ZodPipe = /* @__PURE__ */ $constructor("ZodPipe", (inst, def) => {
       $ZodPipe.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => pipeProcessor(inst, ctx, json2, params);
       inst.in = def.in;
       inst.out = def.out;
@@ -14256,45 +14257,45 @@ var init_schemas2 = __esm({
       ZodPipe.init(inst, def);
       $ZodPreprocess.init(inst, def);
     });
-    ZodReadonly2 = /* @__PURE__ */ $constructor("ZodReadonly", (inst, def) => {
+    ZodReadonly = /* @__PURE__ */ $constructor("ZodReadonly", (inst, def) => {
       $ZodReadonly.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => readonlyProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
     ZodTemplateLiteral = /* @__PURE__ */ $constructor("ZodTemplateLiteral", (inst, def) => {
       $ZodTemplateLiteral.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => templateLiteralProcessor(inst, ctx, json2, params);
     });
-    ZodLazy2 = /* @__PURE__ */ $constructor("ZodLazy", (inst, def) => {
+    ZodLazy = /* @__PURE__ */ $constructor("ZodLazy", (inst, def) => {
       $ZodLazy.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => lazyProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.getter();
     });
-    ZodPromise2 = /* @__PURE__ */ $constructor("ZodPromise", (inst, def) => {
+    ZodPromise = /* @__PURE__ */ $constructor("ZodPromise", (inst, def) => {
       $ZodPromise.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => promiseProcessor(inst, ctx, json2, params);
       inst.unwrap = () => inst._zod.def.innerType;
     });
-    ZodFunction2 = /* @__PURE__ */ $constructor("ZodFunction", (inst, def) => {
+    ZodFunction = /* @__PURE__ */ $constructor("ZodFunction", (inst, def) => {
       $ZodFunction.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => functionProcessor(inst, ctx, json2, params);
     });
     ZodCustom = /* @__PURE__ */ $constructor("ZodCustom", (inst, def) => {
       $ZodCustom.init(inst, def);
-      ZodType2.init(inst, def);
+      ZodType.init(inst, def);
       inst._zod.processJSONSchema = (ctx, json2, params) => customProcessor(inst, ctx, json2, params);
     });
     describe2 = describe;
     meta2 = meta;
     stringbool = (...args) => _stringbool({
       Codec: ZodCodec,
-      Boolean: ZodBoolean2,
-      String: ZodString2
+      Boolean: ZodBoolean,
+      String: ZodString
     }, ...args);
   }
 });
@@ -14305,14 +14306,14 @@ function setErrorMap(map2) {
     customError: map2
   });
 }
-function getErrorMap2() {
+function getErrorMap() {
   return config().customError;
 }
-var ZodIssueCode2, ZodFirstPartyTypeKind2;
+var ZodIssueCode, ZodFirstPartyTypeKind;
 var init_compat = __esm({
   "../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/compat.js"() {
     init_core2();
-    ZodIssueCode2 = {
+    ZodIssueCode = {
       invalid_type: "invalid_type",
       too_big: "too_big",
       too_small: "too_small",
@@ -14326,7 +14327,7 @@ var init_compat = __esm({
       custom: "custom"
     };
     /* @__PURE__ */ (function(ZodFirstPartyTypeKind4) {
-    })(ZodFirstPartyTypeKind2 || (ZodFirstPartyTypeKind2 = {}));
+    })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
   }
 });
 
@@ -14743,7 +14744,7 @@ var init_from_json_schema = __esm({
     z = {
       ...schemas_exports2,
       ...checks_exports2,
-      iso: iso_exports2
+      iso: iso_exports
     };
     RECOGNIZED_KEYS = /* @__PURE__ */ new Set([
       // Schema identification
@@ -14820,8 +14821,8 @@ var init_from_json_schema = __esm({
 });
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js
-var coerce_exports2 = {};
-__export(coerce_exports2, {
+var coerce_exports = {};
+__export(coerce_exports, {
   bigint: () => bigint3,
   boolean: () => boolean3,
   date: () => date4,
@@ -14829,19 +14830,19 @@ __export(coerce_exports2, {
   string: () => string3
 });
 function string3(params) {
-  return _coercedString(ZodString2, params);
+  return _coercedString(ZodString, params);
 }
 function number3(params) {
-  return _coercedNumber(ZodNumber2, params);
+  return _coercedNumber(ZodNumber, params);
 }
 function boolean3(params) {
-  return _coercedBoolean(ZodBoolean2, params);
+  return _coercedBoolean(ZodBoolean, params);
 }
 function bigint3(params) {
-  return _coercedBigint(ZodBigInt2, params);
+  return _coercedBigint(ZodBigInt, params);
 }
 function date4(params) {
-  return _coercedDate(ZodDate2, params);
+  return _coercedDate(ZodDate, params);
 }
 var init_coerce = __esm({
   "../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/coerce.js"() {
@@ -14858,33 +14859,33 @@ __export(external_exports, {
   $output: () => $output,
   NEVER: () => NEVER,
   TimePrecision: () => TimePrecision,
-  ZodAny: () => ZodAny2,
-  ZodArray: () => ZodArray2,
+  ZodAny: () => ZodAny,
+  ZodArray: () => ZodArray,
   ZodBase64: () => ZodBase64,
   ZodBase64URL: () => ZodBase64URL,
-  ZodBigInt: () => ZodBigInt2,
+  ZodBigInt: () => ZodBigInt,
   ZodBigIntFormat: () => ZodBigIntFormat,
-  ZodBoolean: () => ZodBoolean2,
+  ZodBoolean: () => ZodBoolean,
   ZodCIDRv4: () => ZodCIDRv4,
   ZodCIDRv6: () => ZodCIDRv6,
   ZodCUID: () => ZodCUID,
   ZodCUID2: () => ZodCUID2,
-  ZodCatch: () => ZodCatch2,
+  ZodCatch: () => ZodCatch,
   ZodCodec: () => ZodCodec,
   ZodCustom: () => ZodCustom,
   ZodCustomStringFormat: () => ZodCustomStringFormat,
-  ZodDate: () => ZodDate2,
-  ZodDefault: () => ZodDefault2,
-  ZodDiscriminatedUnion: () => ZodDiscriminatedUnion2,
+  ZodDate: () => ZodDate,
+  ZodDefault: () => ZodDefault,
+  ZodDiscriminatedUnion: () => ZodDiscriminatedUnion,
   ZodE164: () => ZodE164,
   ZodEmail: () => ZodEmail,
   ZodEmoji: () => ZodEmoji,
-  ZodEnum: () => ZodEnum2,
-  ZodError: () => ZodError2,
+  ZodEnum: () => ZodEnum,
+  ZodError: () => ZodError,
   ZodExactOptional: () => ZodExactOptional,
   ZodFile: () => ZodFile,
-  ZodFirstPartyTypeKind: () => ZodFirstPartyTypeKind2,
-  ZodFunction: () => ZodFunction2,
+  ZodFirstPartyTypeKind: () => ZodFirstPartyTypeKind,
+  ZodFunction: () => ZodFunction,
   ZodGUID: () => ZodGUID,
   ZodIPv4: () => ZodIPv4,
   ZodIPv6: () => ZodIPv6,
@@ -14892,47 +14893,47 @@ __export(external_exports, {
   ZodISODateTime: () => ZodISODateTime,
   ZodISODuration: () => ZodISODuration,
   ZodISOTime: () => ZodISOTime,
-  ZodIntersection: () => ZodIntersection2,
-  ZodIssueCode: () => ZodIssueCode2,
+  ZodIntersection: () => ZodIntersection,
+  ZodIssueCode: () => ZodIssueCode,
   ZodJWT: () => ZodJWT,
   ZodKSUID: () => ZodKSUID,
-  ZodLazy: () => ZodLazy2,
-  ZodLiteral: () => ZodLiteral2,
+  ZodLazy: () => ZodLazy,
+  ZodLiteral: () => ZodLiteral,
   ZodMAC: () => ZodMAC,
-  ZodMap: () => ZodMap2,
-  ZodNaN: () => ZodNaN2,
+  ZodMap: () => ZodMap,
+  ZodNaN: () => ZodNaN,
   ZodNanoID: () => ZodNanoID,
-  ZodNever: () => ZodNever2,
+  ZodNever: () => ZodNever,
   ZodNonOptional: () => ZodNonOptional,
-  ZodNull: () => ZodNull2,
-  ZodNullable: () => ZodNullable2,
-  ZodNumber: () => ZodNumber2,
+  ZodNull: () => ZodNull,
+  ZodNullable: () => ZodNullable,
+  ZodNumber: () => ZodNumber,
   ZodNumberFormat: () => ZodNumberFormat,
-  ZodObject: () => ZodObject2,
-  ZodOptional: () => ZodOptional2,
+  ZodObject: () => ZodObject,
+  ZodOptional: () => ZodOptional,
   ZodPipe: () => ZodPipe,
   ZodPrefault: () => ZodPrefault,
   ZodPreprocess: () => ZodPreprocess,
-  ZodPromise: () => ZodPromise2,
-  ZodReadonly: () => ZodReadonly2,
+  ZodPromise: () => ZodPromise,
+  ZodReadonly: () => ZodReadonly,
   ZodRealError: () => ZodRealError,
-  ZodRecord: () => ZodRecord2,
-  ZodSet: () => ZodSet2,
-  ZodString: () => ZodString2,
+  ZodRecord: () => ZodRecord,
+  ZodSet: () => ZodSet,
+  ZodString: () => ZodString,
   ZodStringFormat: () => ZodStringFormat,
   ZodSuccess: () => ZodSuccess,
-  ZodSymbol: () => ZodSymbol2,
+  ZodSymbol: () => ZodSymbol,
   ZodTemplateLiteral: () => ZodTemplateLiteral,
   ZodTransform: () => ZodTransform,
-  ZodTuple: () => ZodTuple2,
-  ZodType: () => ZodType2,
+  ZodTuple: () => ZodTuple,
+  ZodType: () => ZodType,
   ZodULID: () => ZodULID,
   ZodURL: () => ZodURL,
   ZodUUID: () => ZodUUID,
-  ZodUndefined: () => ZodUndefined2,
-  ZodUnion: () => ZodUnion2,
-  ZodUnknown: () => ZodUnknown2,
-  ZodVoid: () => ZodVoid2,
+  ZodUndefined: () => ZodUndefined,
+  ZodUnion: () => ZodUnion,
+  ZodUnknown: () => ZodUnknown,
+  ZodVoid: () => ZodVoid,
   ZodXID: () => ZodXID,
   ZodXor: () => ZodXor,
   _ZodString: () => _ZodString,
@@ -14950,7 +14951,7 @@ __export(external_exports, {
   cidrv6: () => cidrv62,
   clone: () => clone,
   codec: () => codec,
-  coerce: () => coerce_exports2,
+  coerce: () => coerce_exports,
   config: () => config,
   core: () => core_exports2,
   cuid: () => cuid3,
@@ -14976,7 +14977,7 @@ __export(external_exports, {
   formatError: () => formatError,
   fromJSONSchema: () => fromJSONSchema,
   function: () => _function,
-  getErrorMap: () => getErrorMap2,
+  getErrorMap: () => getErrorMap,
   globalRegistry: () => globalRegistry,
   gt: () => _gt,
   gte: () => _gte,
@@ -14994,7 +14995,7 @@ __export(external_exports, {
   invertCodec: () => invertCodec,
   ipv4: () => ipv42,
   ipv6: () => ipv62,
-  iso: () => iso_exports2,
+  iso: () => iso_exports,
   json: () => json,
   jwt: () => jwt,
   keyof: () => keyof,
@@ -15030,7 +15031,7 @@ __export(external_exports, {
   nullable: () => nullable,
   nullish: () => nullish2,
   number: () => number2,
-  object: () => object2,
+  object: () => object,
   optional: () => optional,
   overwrite: () => _overwrite,
   parse: () => parse2,
@@ -15053,8 +15054,8 @@ __export(external_exports, {
   safeDecodeAsync: () => safeDecodeAsync2,
   safeEncode: () => safeEncode2,
   safeEncodeAsync: () => safeEncodeAsync2,
-  safeParse: () => safeParse3,
-  safeParseAsync: () => safeParseAsync3,
+  safeParse: () => safeParse2,
+  safeParseAsync: () => safeParseAsync2,
   set: () => set,
   setErrorMap: () => setErrorMap,
   size: () => _size,
@@ -15109,7 +15110,7 @@ var init_external = __esm({
     init_iso();
     init_iso();
     init_coerce();
-    config(en_default2());
+    config(en_default());
   }
 });
 
@@ -18057,7 +18058,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -18084,7 +18085,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -18712,7 +18713,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -18970,7 +18971,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -21914,6 +21915,1625 @@ var require_dist = __commonJS({
   }
 });
 
+// ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
+init_v4();
+var LATEST_PROTOCOL_VERSION = "2025-11-25";
+var SUPPORTED_PROTOCOL_VERSIONS = [LATEST_PROTOCOL_VERSION, "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
+var JSONRPC_VERSION = "2.0";
+var AssertObjectSchema = custom((v2) => v2 !== null && (typeof v2 === "object" || typeof v2 === "function"));
+var ProgressTokenSchema = union([string2(), number2().int()]);
+var CursorSchema = string2();
+looseObject({
+  /**
+   * Requested duration in milliseconds to retain task from creation.
+   */
+  ttl: number2().optional(),
+  /**
+   * Time in milliseconds to wait between task status requests.
+   */
+  pollInterval: number2().optional()
+});
+var TaskMetadataSchema = object({
+  ttl: number2().optional()
+});
+var RelatedTaskMetadataSchema = object({
+  taskId: string2()
+});
+var RequestMetaSchema = looseObject({
+  /**
+   * If specified, the caller is requesting out-of-band progress notifications for this request (as represented by notifications/progress). The value of this parameter is an opaque token that will be attached to any subsequent notifications. The receiver is not obligated to provide these notifications.
+   */
+  progressToken: ProgressTokenSchema.optional(),
+  /**
+   * If specified, this request is related to the provided task.
+   */
+  [RELATED_TASK_META_KEY]: RelatedTaskMetadataSchema.optional()
+});
+var BaseRequestParamsSchema = object({
+  /**
+   * See [General fields: `_meta`](/specification/draft/basic/index#meta) for notes on `_meta` usage.
+   */
+  _meta: RequestMetaSchema.optional()
+});
+var TaskAugmentedRequestParamsSchema = BaseRequestParamsSchema.extend({
+  /**
+   * If specified, the caller is requesting task-augmented execution for this request.
+   * The request will return a CreateTaskResult immediately, and the actual result can be
+   * retrieved later via tasks/result.
+   *
+   * Task augmentation is subject to capability negotiation - receivers MUST declare support
+   * for task augmentation of specific request types in their capabilities.
+   */
+  task: TaskMetadataSchema.optional()
+});
+var isTaskAugmentedRequestParams = (value) => TaskAugmentedRequestParamsSchema.safeParse(value).success;
+var RequestSchema = object({
+  method: string2(),
+  params: BaseRequestParamsSchema.loose().optional()
+});
+var NotificationsParamsSchema = object({
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: RequestMetaSchema.optional()
+});
+var NotificationSchema = object({
+  method: string2(),
+  params: NotificationsParamsSchema.loose().optional()
+});
+var ResultSchema = looseObject({
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: RequestMetaSchema.optional()
+});
+var RequestIdSchema = union([string2(), number2().int()]);
+var JSONRPCRequestSchema = object({
+  jsonrpc: literal(JSONRPC_VERSION),
+  id: RequestIdSchema,
+  ...RequestSchema.shape
+}).strict();
+var isJSONRPCRequest = (value) => JSONRPCRequestSchema.safeParse(value).success;
+var JSONRPCNotificationSchema = object({
+  jsonrpc: literal(JSONRPC_VERSION),
+  ...NotificationSchema.shape
+}).strict();
+var isJSONRPCNotification = (value) => JSONRPCNotificationSchema.safeParse(value).success;
+var JSONRPCResultResponseSchema = object({
+  jsonrpc: literal(JSONRPC_VERSION),
+  id: RequestIdSchema,
+  result: ResultSchema
+}).strict();
+var isJSONRPCResultResponse = (value) => JSONRPCResultResponseSchema.safeParse(value).success;
+var ErrorCode;
+(function(ErrorCode2) {
+  ErrorCode2[ErrorCode2["ConnectionClosed"] = -32e3] = "ConnectionClosed";
+  ErrorCode2[ErrorCode2["RequestTimeout"] = -32001] = "RequestTimeout";
+  ErrorCode2[ErrorCode2["ParseError"] = -32700] = "ParseError";
+  ErrorCode2[ErrorCode2["InvalidRequest"] = -32600] = "InvalidRequest";
+  ErrorCode2[ErrorCode2["MethodNotFound"] = -32601] = "MethodNotFound";
+  ErrorCode2[ErrorCode2["InvalidParams"] = -32602] = "InvalidParams";
+  ErrorCode2[ErrorCode2["InternalError"] = -32603] = "InternalError";
+  ErrorCode2[ErrorCode2["UrlElicitationRequired"] = -32042] = "UrlElicitationRequired";
+})(ErrorCode || (ErrorCode = {}));
+var JSONRPCErrorResponseSchema = object({
+  jsonrpc: literal(JSONRPC_VERSION),
+  id: RequestIdSchema.optional(),
+  error: object({
+    /**
+     * The error type that occurred.
+     */
+    code: number2().int(),
+    /**
+     * A short description of the error. The message SHOULD be limited to a concise single sentence.
+     */
+    message: string2(),
+    /**
+     * Additional information about the error. The value of this member is defined by the sender (e.g. detailed error information, nested errors etc.).
+     */
+    data: unknown().optional()
+  })
+}).strict();
+var isJSONRPCErrorResponse = (value) => JSONRPCErrorResponseSchema.safeParse(value).success;
+var JSONRPCMessageSchema = union([
+  JSONRPCRequestSchema,
+  JSONRPCNotificationSchema,
+  JSONRPCResultResponseSchema,
+  JSONRPCErrorResponseSchema
+]);
+union([JSONRPCResultResponseSchema, JSONRPCErrorResponseSchema]);
+var EmptyResultSchema = ResultSchema.strict();
+var CancelledNotificationParamsSchema = NotificationsParamsSchema.extend({
+  /**
+   * The ID of the request to cancel.
+   *
+   * This MUST correspond to the ID of a request previously issued in the same direction.
+   */
+  requestId: RequestIdSchema.optional(),
+  /**
+   * An optional string describing the reason for the cancellation. This MAY be logged or presented to the user.
+   */
+  reason: string2().optional()
+});
+var CancelledNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/cancelled"),
+  params: CancelledNotificationParamsSchema
+});
+var IconSchema = object({
+  /**
+   * URL or data URI for the icon.
+   */
+  src: string2(),
+  /**
+   * Optional MIME type for the icon.
+   */
+  mimeType: string2().optional(),
+  /**
+   * Optional array of strings that specify sizes at which the icon can be used.
+   * Each string should be in WxH format (e.g., `"48x48"`, `"96x96"`) or `"any"` for scalable formats like SVG.
+   *
+   * If not provided, the client should assume that the icon can be used at any size.
+   */
+  sizes: array(string2()).optional(),
+  /**
+   * Optional specifier for the theme this icon is designed for. `light` indicates
+   * the icon is designed to be used with a light background, and `dark` indicates
+   * the icon is designed to be used with a dark background.
+   *
+   * If not provided, the client should assume the icon can be used with any theme.
+   */
+  theme: _enum2(["light", "dark"]).optional()
+});
+var IconsSchema = object({
+  /**
+   * Optional set of sized icons that the client can display in a user interface.
+   *
+   * Clients that support rendering icons MUST support at least the following MIME types:
+   * - `image/png` - PNG images (safe, universal compatibility)
+   * - `image/jpeg` (and `image/jpg`) - JPEG images (safe, universal compatibility)
+   *
+   * Clients that support rendering icons SHOULD also support:
+   * - `image/svg+xml` - SVG images (scalable but requires security precautions)
+   * - `image/webp` - WebP images (modern, efficient format)
+   */
+  icons: array(IconSchema).optional()
+});
+var BaseMetadataSchema = object({
+  /** Intended for programmatic or logical use, but used as a display name in past specs or fallback */
+  name: string2(),
+  /**
+   * Intended for UI and end-user contexts — optimized to be human-readable and easily understood,
+   * even by those unfamiliar with domain-specific terminology.
+   *
+   * If not provided, the name should be used for display (except for Tool,
+   * where `annotations.title` should be given precedence over using `name`,
+   * if present).
+   */
+  title: string2().optional()
+});
+var ImplementationSchema = BaseMetadataSchema.extend({
+  ...BaseMetadataSchema.shape,
+  ...IconsSchema.shape,
+  version: string2(),
+  /**
+   * An optional URL of the website for this implementation.
+   */
+  websiteUrl: string2().optional(),
+  /**
+   * An optional human-readable description of what this implementation does.
+   *
+   * This can be used by clients or servers to provide context about their purpose
+   * and capabilities. For example, a server might describe the types of resources
+   * or tools it provides, while a client might describe its intended use case.
+   */
+  description: string2().optional()
+});
+var FormElicitationCapabilitySchema = intersection(object({
+  applyDefaults: boolean2().optional()
+}), record(string2(), unknown()));
+var ElicitationCapabilitySchema = preprocess((value) => {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    if (Object.keys(value).length === 0) {
+      return { form: {} };
+    }
+  }
+  return value;
+}, intersection(object({
+  form: FormElicitationCapabilitySchema.optional(),
+  url: AssertObjectSchema.optional()
+}), record(string2(), unknown()).optional()));
+var ClientTasksCapabilitySchema = looseObject({
+  /**
+   * Present if the client supports listing tasks.
+   */
+  list: AssertObjectSchema.optional(),
+  /**
+   * Present if the client supports cancelling tasks.
+   */
+  cancel: AssertObjectSchema.optional(),
+  /**
+   * Capabilities for task creation on specific request types.
+   */
+  requests: looseObject({
+    /**
+     * Task support for sampling requests.
+     */
+    sampling: looseObject({
+      createMessage: AssertObjectSchema.optional()
+    }).optional(),
+    /**
+     * Task support for elicitation requests.
+     */
+    elicitation: looseObject({
+      create: AssertObjectSchema.optional()
+    }).optional()
+  }).optional()
+});
+var ServerTasksCapabilitySchema = looseObject({
+  /**
+   * Present if the server supports listing tasks.
+   */
+  list: AssertObjectSchema.optional(),
+  /**
+   * Present if the server supports cancelling tasks.
+   */
+  cancel: AssertObjectSchema.optional(),
+  /**
+   * Capabilities for task creation on specific request types.
+   */
+  requests: looseObject({
+    /**
+     * Task support for tool requests.
+     */
+    tools: looseObject({
+      call: AssertObjectSchema.optional()
+    }).optional()
+  }).optional()
+});
+var ClientCapabilitiesSchema = object({
+  /**
+   * Experimental, non-standard capabilities that the client supports.
+   */
+  experimental: record(string2(), AssertObjectSchema).optional(),
+  /**
+   * Present if the client supports sampling from an LLM.
+   */
+  sampling: object({
+    /**
+     * Present if the client supports context inclusion via includeContext parameter.
+     * If not declared, servers SHOULD only use `includeContext: "none"` (or omit it).
+     */
+    context: AssertObjectSchema.optional(),
+    /**
+     * Present if the client supports tool use via tools and toolChoice parameters.
+     */
+    tools: AssertObjectSchema.optional()
+  }).optional(),
+  /**
+   * Present if the client supports eliciting user input.
+   */
+  elicitation: ElicitationCapabilitySchema.optional(),
+  /**
+   * Present if the client supports listing roots.
+   */
+  roots: object({
+    /**
+     * Whether the client supports issuing notifications for changes to the roots list.
+     */
+    listChanged: boolean2().optional()
+  }).optional(),
+  /**
+   * Present if the client supports task creation.
+   */
+  tasks: ClientTasksCapabilitySchema.optional(),
+  /**
+   * Extensions that the client supports. Keys are extension identifiers (vendor-prefix/extension-name).
+   */
+  extensions: record(string2(), AssertObjectSchema).optional()
+});
+var InitializeRequestParamsSchema = BaseRequestParamsSchema.extend({
+  /**
+   * The latest version of the Model Context Protocol that the client supports. The client MAY decide to support older versions as well.
+   */
+  protocolVersion: string2(),
+  capabilities: ClientCapabilitiesSchema,
+  clientInfo: ImplementationSchema
+});
+var InitializeRequestSchema = RequestSchema.extend({
+  method: literal("initialize"),
+  params: InitializeRequestParamsSchema
+});
+var ServerCapabilitiesSchema = object({
+  /**
+   * Experimental, non-standard capabilities that the server supports.
+   */
+  experimental: record(string2(), AssertObjectSchema).optional(),
+  /**
+   * Present if the server supports sending log messages to the client.
+   */
+  logging: AssertObjectSchema.optional(),
+  /**
+   * Present if the server supports sending completions to the client.
+   */
+  completions: AssertObjectSchema.optional(),
+  /**
+   * Present if the server offers any prompt templates.
+   */
+  prompts: object({
+    /**
+     * Whether this server supports issuing notifications for changes to the prompt list.
+     */
+    listChanged: boolean2().optional()
+  }).optional(),
+  /**
+   * Present if the server offers any resources to read.
+   */
+  resources: object({
+    /**
+     * Whether this server supports clients subscribing to resource updates.
+     */
+    subscribe: boolean2().optional(),
+    /**
+     * Whether this server supports issuing notifications for changes to the resource list.
+     */
+    listChanged: boolean2().optional()
+  }).optional(),
+  /**
+   * Present if the server offers any tools to call.
+   */
+  tools: object({
+    /**
+     * Whether this server supports issuing notifications for changes to the tool list.
+     */
+    listChanged: boolean2().optional()
+  }).optional(),
+  /**
+   * Present if the server supports task creation.
+   */
+  tasks: ServerTasksCapabilitySchema.optional(),
+  /**
+   * Extensions that the server supports. Keys are extension identifiers (vendor-prefix/extension-name).
+   */
+  extensions: record(string2(), AssertObjectSchema).optional()
+});
+var InitializeResultSchema = ResultSchema.extend({
+  /**
+   * The version of the Model Context Protocol that the server wants to use. This may not match the version that the client requested. If the client cannot support this version, it MUST disconnect.
+   */
+  protocolVersion: string2(),
+  capabilities: ServerCapabilitiesSchema,
+  serverInfo: ImplementationSchema,
+  /**
+   * Instructions describing how to use the server and its features.
+   *
+   * This can be used by clients to improve the LLM's understanding of available tools, resources, etc. It can be thought of like a "hint" to the model. For example, this information MAY be added to the system prompt.
+   */
+  instructions: string2().optional()
+});
+var InitializedNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/initialized"),
+  params: NotificationsParamsSchema.optional()
+});
+var PingRequestSchema = RequestSchema.extend({
+  method: literal("ping"),
+  params: BaseRequestParamsSchema.optional()
+});
+var ProgressSchema = object({
+  /**
+   * The progress thus far. This should increase every time progress is made, even if the total is unknown.
+   */
+  progress: number2(),
+  /**
+   * Total number of items to process (or total progress required), if known.
+   */
+  total: optional(number2()),
+  /**
+   * An optional message describing the current progress.
+   */
+  message: optional(string2())
+});
+var ProgressNotificationParamsSchema = object({
+  ...NotificationsParamsSchema.shape,
+  ...ProgressSchema.shape,
+  /**
+   * The progress token which was given in the initial request, used to associate this notification with the request that is proceeding.
+   */
+  progressToken: ProgressTokenSchema
+});
+var ProgressNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/progress"),
+  params: ProgressNotificationParamsSchema
+});
+var PaginatedRequestParamsSchema = BaseRequestParamsSchema.extend({
+  /**
+   * An opaque token representing the current pagination position.
+   * If provided, the server should return results starting after this cursor.
+   */
+  cursor: CursorSchema.optional()
+});
+var PaginatedRequestSchema = RequestSchema.extend({
+  params: PaginatedRequestParamsSchema.optional()
+});
+var PaginatedResultSchema = ResultSchema.extend({
+  /**
+   * An opaque token representing the pagination position after the last returned result.
+   * If present, there may be more results available.
+   */
+  nextCursor: CursorSchema.optional()
+});
+var TaskStatusSchema = _enum2(["working", "input_required", "completed", "failed", "cancelled"]);
+var TaskSchema = object({
+  taskId: string2(),
+  status: TaskStatusSchema,
+  /**
+   * Time in milliseconds to keep task results available after completion.
+   * If null, the task has unlimited lifetime until manually cleaned up.
+   */
+  ttl: union([number2(), _null3()]),
+  /**
+   * ISO 8601 timestamp when the task was created.
+   */
+  createdAt: string2(),
+  /**
+   * ISO 8601 timestamp when the task was last updated.
+   */
+  lastUpdatedAt: string2(),
+  pollInterval: optional(number2()),
+  /**
+   * Optional diagnostic message for failed tasks or other status information.
+   */
+  statusMessage: optional(string2())
+});
+var CreateTaskResultSchema = ResultSchema.extend({
+  task: TaskSchema
+});
+var TaskStatusNotificationParamsSchema = NotificationsParamsSchema.merge(TaskSchema);
+var TaskStatusNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/tasks/status"),
+  params: TaskStatusNotificationParamsSchema
+});
+var GetTaskRequestSchema = RequestSchema.extend({
+  method: literal("tasks/get"),
+  params: BaseRequestParamsSchema.extend({
+    taskId: string2()
+  })
+});
+var GetTaskResultSchema = ResultSchema.merge(TaskSchema);
+var GetTaskPayloadRequestSchema = RequestSchema.extend({
+  method: literal("tasks/result"),
+  params: BaseRequestParamsSchema.extend({
+    taskId: string2()
+  })
+});
+ResultSchema.loose();
+var ListTasksRequestSchema = PaginatedRequestSchema.extend({
+  method: literal("tasks/list")
+});
+var ListTasksResultSchema = PaginatedResultSchema.extend({
+  tasks: array(TaskSchema)
+});
+var CancelTaskRequestSchema = RequestSchema.extend({
+  method: literal("tasks/cancel"),
+  params: BaseRequestParamsSchema.extend({
+    taskId: string2()
+  })
+});
+var CancelTaskResultSchema = ResultSchema.merge(TaskSchema);
+var ResourceContentsSchema = object({
+  /**
+   * The URI of this resource.
+   */
+  uri: string2(),
+  /**
+   * The MIME type of this resource, if known.
+   */
+  mimeType: optional(string2()),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var TextResourceContentsSchema = ResourceContentsSchema.extend({
+  /**
+   * The text of the item. This must only be set if the item can actually be represented as text (not binary data).
+   */
+  text: string2()
+});
+var Base64Schema = string2().refine((val) => {
+  try {
+    atob(val);
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: "Invalid Base64 string" });
+var BlobResourceContentsSchema = ResourceContentsSchema.extend({
+  /**
+   * A base64-encoded string representing the binary data of the item.
+   */
+  blob: Base64Schema
+});
+var RoleSchema = _enum2(["user", "assistant"]);
+var AnnotationsSchema = object({
+  /**
+   * Intended audience(s) for the resource.
+   */
+  audience: array(RoleSchema).optional(),
+  /**
+   * Importance hint for the resource, from 0 (least) to 1 (most).
+   */
+  priority: number2().min(0).max(1).optional(),
+  /**
+   * ISO 8601 timestamp for the most recent modification.
+   */
+  lastModified: iso_exports.datetime({ offset: true }).optional()
+});
+var ResourceSchema = object({
+  ...BaseMetadataSchema.shape,
+  ...IconsSchema.shape,
+  /**
+   * The URI of this resource.
+   */
+  uri: string2(),
+  /**
+   * A description of what this resource represents.
+   *
+   * This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a "hint" to the model.
+   */
+  description: optional(string2()),
+  /**
+   * The MIME type of this resource, if known.
+   */
+  mimeType: optional(string2()),
+  /**
+   * The size of the raw resource content, in bytes (i.e., before base64 encoding or any tokenization), if known.
+   *
+   * This can be used by Hosts to display file sizes and estimate context window usage.
+   */
+  size: optional(number2()),
+  /**
+   * Optional annotations for the client.
+   */
+  annotations: AnnotationsSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: optional(looseObject({}))
+});
+var ResourceTemplateSchema = object({
+  ...BaseMetadataSchema.shape,
+  ...IconsSchema.shape,
+  /**
+   * A URI template (according to RFC 6570) that can be used to construct resource URIs.
+   */
+  uriTemplate: string2(),
+  /**
+   * A description of what this template is for.
+   *
+   * This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a "hint" to the model.
+   */
+  description: optional(string2()),
+  /**
+   * The MIME type for all resources that match this template. This should only be included if all resources matching this template have the same type.
+   */
+  mimeType: optional(string2()),
+  /**
+   * Optional annotations for the client.
+   */
+  annotations: AnnotationsSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: optional(looseObject({}))
+});
+var ListResourcesRequestSchema = PaginatedRequestSchema.extend({
+  method: literal("resources/list")
+});
+var ListResourcesResultSchema = PaginatedResultSchema.extend({
+  resources: array(ResourceSchema)
+});
+var ListResourceTemplatesRequestSchema = PaginatedRequestSchema.extend({
+  method: literal("resources/templates/list")
+});
+var ListResourceTemplatesResultSchema = PaginatedResultSchema.extend({
+  resourceTemplates: array(ResourceTemplateSchema)
+});
+var ResourceRequestParamsSchema = BaseRequestParamsSchema.extend({
+  /**
+   * The URI of the resource to read. The URI can use any protocol; it is up to the server how to interpret it.
+   *
+   * @format uri
+   */
+  uri: string2()
+});
+var ReadResourceRequestParamsSchema = ResourceRequestParamsSchema;
+var ReadResourceRequestSchema = RequestSchema.extend({
+  method: literal("resources/read"),
+  params: ReadResourceRequestParamsSchema
+});
+var ReadResourceResultSchema = ResultSchema.extend({
+  contents: array(union([TextResourceContentsSchema, BlobResourceContentsSchema]))
+});
+var ResourceListChangedNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/resources/list_changed"),
+  params: NotificationsParamsSchema.optional()
+});
+var SubscribeRequestParamsSchema = ResourceRequestParamsSchema;
+var SubscribeRequestSchema = RequestSchema.extend({
+  method: literal("resources/subscribe"),
+  params: SubscribeRequestParamsSchema
+});
+var UnsubscribeRequestParamsSchema = ResourceRequestParamsSchema;
+var UnsubscribeRequestSchema = RequestSchema.extend({
+  method: literal("resources/unsubscribe"),
+  params: UnsubscribeRequestParamsSchema
+});
+var ResourceUpdatedNotificationParamsSchema = NotificationsParamsSchema.extend({
+  /**
+   * The URI of the resource that has been updated. This might be a sub-resource of the one that the client actually subscribed to.
+   */
+  uri: string2()
+});
+var ResourceUpdatedNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/resources/updated"),
+  params: ResourceUpdatedNotificationParamsSchema
+});
+var PromptArgumentSchema = object({
+  /**
+   * The name of the argument.
+   */
+  name: string2(),
+  /**
+   * A human-readable description of the argument.
+   */
+  description: optional(string2()),
+  /**
+   * Whether this argument must be provided.
+   */
+  required: optional(boolean2())
+});
+var PromptSchema = object({
+  ...BaseMetadataSchema.shape,
+  ...IconsSchema.shape,
+  /**
+   * An optional description of what this prompt provides
+   */
+  description: optional(string2()),
+  /**
+   * A list of arguments to use for templating the prompt.
+   */
+  arguments: optional(array(PromptArgumentSchema)),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: optional(looseObject({}))
+});
+var ListPromptsRequestSchema = PaginatedRequestSchema.extend({
+  method: literal("prompts/list")
+});
+var ListPromptsResultSchema = PaginatedResultSchema.extend({
+  prompts: array(PromptSchema)
+});
+var GetPromptRequestParamsSchema = BaseRequestParamsSchema.extend({
+  /**
+   * The name of the prompt or prompt template.
+   */
+  name: string2(),
+  /**
+   * Arguments to use for templating the prompt.
+   */
+  arguments: record(string2(), string2()).optional()
+});
+var GetPromptRequestSchema = RequestSchema.extend({
+  method: literal("prompts/get"),
+  params: GetPromptRequestParamsSchema
+});
+var TextContentSchema = object({
+  type: literal("text"),
+  /**
+   * The text content of the message.
+   */
+  text: string2(),
+  /**
+   * Optional annotations for the client.
+   */
+  annotations: AnnotationsSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var ImageContentSchema = object({
+  type: literal("image"),
+  /**
+   * The base64-encoded image data.
+   */
+  data: Base64Schema,
+  /**
+   * The MIME type of the image. Different providers may support different image types.
+   */
+  mimeType: string2(),
+  /**
+   * Optional annotations for the client.
+   */
+  annotations: AnnotationsSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var AudioContentSchema = object({
+  type: literal("audio"),
+  /**
+   * The base64-encoded audio data.
+   */
+  data: Base64Schema,
+  /**
+   * The MIME type of the audio. Different providers may support different audio types.
+   */
+  mimeType: string2(),
+  /**
+   * Optional annotations for the client.
+   */
+  annotations: AnnotationsSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var ToolUseContentSchema = object({
+  type: literal("tool_use"),
+  /**
+   * The name of the tool to invoke.
+   * Must match a tool name from the request's tools array.
+   */
+  name: string2(),
+  /**
+   * Unique identifier for this tool call.
+   * Used to correlate with ToolResultContent in subsequent messages.
+   */
+  id: string2(),
+  /**
+   * Arguments to pass to the tool.
+   * Must conform to the tool's inputSchema.
+   */
+  input: record(string2(), unknown()),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var EmbeddedResourceSchema = object({
+  type: literal("resource"),
+  resource: union([TextResourceContentsSchema, BlobResourceContentsSchema]),
+  /**
+   * Optional annotations for the client.
+   */
+  annotations: AnnotationsSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var ResourceLinkSchema = ResourceSchema.extend({
+  type: literal("resource_link")
+});
+var ContentBlockSchema = union([
+  TextContentSchema,
+  ImageContentSchema,
+  AudioContentSchema,
+  ResourceLinkSchema,
+  EmbeddedResourceSchema
+]);
+var PromptMessageSchema = object({
+  role: RoleSchema,
+  content: ContentBlockSchema
+});
+var GetPromptResultSchema = ResultSchema.extend({
+  /**
+   * An optional description for the prompt.
+   */
+  description: string2().optional(),
+  messages: array(PromptMessageSchema)
+});
+var PromptListChangedNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/prompts/list_changed"),
+  params: NotificationsParamsSchema.optional()
+});
+var ToolAnnotationsSchema = object({
+  /**
+   * A human-readable title for the tool.
+   */
+  title: string2().optional(),
+  /**
+   * If true, the tool does not modify its environment.
+   *
+   * Default: false
+   */
+  readOnlyHint: boolean2().optional(),
+  /**
+   * If true, the tool may perform destructive updates to its environment.
+   * If false, the tool performs only additive updates.
+   *
+   * (This property is meaningful only when `readOnlyHint == false`)
+   *
+   * Default: true
+   */
+  destructiveHint: boolean2().optional(),
+  /**
+   * If true, calling the tool repeatedly with the same arguments
+   * will have no additional effect on the its environment.
+   *
+   * (This property is meaningful only when `readOnlyHint == false`)
+   *
+   * Default: false
+   */
+  idempotentHint: boolean2().optional(),
+  /**
+   * If true, this tool may interact with an "open world" of external
+   * entities. If false, the tool's domain of interaction is closed.
+   * For example, the world of a web search tool is open, whereas that
+   * of a memory tool is not.
+   *
+   * Default: true
+   */
+  openWorldHint: boolean2().optional()
+});
+var ToolExecutionSchema = object({
+  /**
+   * Indicates the tool's preference for task-augmented execution.
+   * - "required": Clients MUST invoke the tool as a task
+   * - "optional": Clients MAY invoke the tool as a task or normal request
+   * - "forbidden": Clients MUST NOT attempt to invoke the tool as a task
+   *
+   * If not present, defaults to "forbidden".
+   */
+  taskSupport: _enum2(["required", "optional", "forbidden"]).optional()
+});
+var ToolSchema = object({
+  ...BaseMetadataSchema.shape,
+  ...IconsSchema.shape,
+  /**
+   * A human-readable description of the tool.
+   */
+  description: string2().optional(),
+  /**
+   * A JSON Schema 2020-12 object defining the expected parameters for the tool.
+   * Must have type: 'object' at the root level per MCP spec.
+   */
+  inputSchema: object({
+    type: literal("object"),
+    properties: record(string2(), AssertObjectSchema).optional(),
+    required: array(string2()).optional()
+  }).catchall(unknown()),
+  /**
+   * An optional JSON Schema 2020-12 object defining the structure of the tool's output
+   * returned in the structuredContent field of a CallToolResult.
+   * Must have type: 'object' at the root level per MCP spec.
+   */
+  outputSchema: object({
+    type: literal("object"),
+    properties: record(string2(), AssertObjectSchema).optional(),
+    required: array(string2()).optional()
+  }).catchall(unknown()).optional(),
+  /**
+   * Optional additional tool information.
+   */
+  annotations: ToolAnnotationsSchema.optional(),
+  /**
+   * Execution-related properties for this tool.
+   */
+  execution: ToolExecutionSchema.optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var ListToolsRequestSchema = PaginatedRequestSchema.extend({
+  method: literal("tools/list")
+});
+var ListToolsResultSchema = PaginatedResultSchema.extend({
+  tools: array(ToolSchema)
+});
+var CallToolResultSchema = ResultSchema.extend({
+  /**
+   * A list of content objects that represent the result of the tool call.
+   *
+   * If the Tool does not define an outputSchema, this field MUST be present in the result.
+   * For backwards compatibility, this field is always present, but it may be empty.
+   */
+  content: array(ContentBlockSchema).default([]),
+  /**
+   * An object containing structured tool output.
+   *
+   * If the Tool defines an outputSchema, this field MUST be present in the result, and contain a JSON object that matches the schema.
+   */
+  structuredContent: record(string2(), unknown()).optional(),
+  /**
+   * Whether the tool call ended in an error.
+   *
+   * If not set, this is assumed to be false (the call was successful).
+   *
+   * Any errors that originate from the tool SHOULD be reported inside the result
+   * object, with `isError` set to true, _not_ as an MCP protocol-level error
+   * response. Otherwise, the LLM would not be able to see that an error occurred
+   * and self-correct.
+   *
+   * However, any errors in _finding_ the tool, an error indicating that the
+   * server does not support tool calls, or any other exceptional conditions,
+   * should be reported as an MCP error response.
+   */
+  isError: boolean2().optional()
+});
+CallToolResultSchema.or(ResultSchema.extend({
+  toolResult: unknown()
+}));
+var CallToolRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
+  /**
+   * The name of the tool to call.
+   */
+  name: string2(),
+  /**
+   * Arguments to pass to the tool.
+   */
+  arguments: record(string2(), unknown()).optional()
+});
+var CallToolRequestSchema = RequestSchema.extend({
+  method: literal("tools/call"),
+  params: CallToolRequestParamsSchema
+});
+var ToolListChangedNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/tools/list_changed"),
+  params: NotificationsParamsSchema.optional()
+});
+object({
+  /**
+   * If true, the list will be refreshed automatically when a list changed notification is received.
+   * The callback will be called with the updated list.
+   *
+   * If false, the callback will be called with null items, allowing manual refresh.
+   *
+   * @default true
+   */
+  autoRefresh: boolean2().default(true),
+  /**
+   * Debounce time in milliseconds for list changed notification processing.
+   *
+   * Multiple notifications received within this timeframe will only trigger one refresh.
+   * Set to 0 to disable debouncing.
+   *
+   * @default 300
+   */
+  debounceMs: number2().int().nonnegative().default(300)
+});
+var LoggingLevelSchema = _enum2(["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]);
+var SetLevelRequestParamsSchema = BaseRequestParamsSchema.extend({
+  /**
+   * The level of logging that the client wants to receive from the server. The server should send all logs at this level and higher (i.e., more severe) to the client as notifications/logging/message.
+   */
+  level: LoggingLevelSchema
+});
+var SetLevelRequestSchema = RequestSchema.extend({
+  method: literal("logging/setLevel"),
+  params: SetLevelRequestParamsSchema
+});
+var LoggingMessageNotificationParamsSchema = NotificationsParamsSchema.extend({
+  /**
+   * The severity of this log message.
+   */
+  level: LoggingLevelSchema,
+  /**
+   * An optional name of the logger issuing this message.
+   */
+  logger: string2().optional(),
+  /**
+   * The data to be logged, such as a string message or an object. Any JSON serializable type is allowed here.
+   */
+  data: unknown()
+});
+var LoggingMessageNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/message"),
+  params: LoggingMessageNotificationParamsSchema
+});
+var ModelHintSchema = object({
+  /**
+   * A hint for a model name.
+   */
+  name: string2().optional()
+});
+var ModelPreferencesSchema = object({
+  /**
+   * Optional hints to use for model selection.
+   */
+  hints: array(ModelHintSchema).optional(),
+  /**
+   * How much to prioritize cost when selecting a model.
+   */
+  costPriority: number2().min(0).max(1).optional(),
+  /**
+   * How much to prioritize sampling speed (latency) when selecting a model.
+   */
+  speedPriority: number2().min(0).max(1).optional(),
+  /**
+   * How much to prioritize intelligence and capabilities when selecting a model.
+   */
+  intelligencePriority: number2().min(0).max(1).optional()
+});
+var ToolChoiceSchema = object({
+  /**
+   * Controls when tools are used:
+   * - "auto": Model decides whether to use tools (default)
+   * - "required": Model MUST use at least one tool before completing
+   * - "none": Model MUST NOT use any tools
+   */
+  mode: _enum2(["auto", "required", "none"]).optional()
+});
+var ToolResultContentSchema = object({
+  type: literal("tool_result"),
+  toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
+  content: array(ContentBlockSchema).default([]),
+  structuredContent: object({}).loose().optional(),
+  isError: boolean2().optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var SamplingContentSchema = discriminatedUnion("type", [TextContentSchema, ImageContentSchema, AudioContentSchema]);
+var SamplingMessageContentBlockSchema = discriminatedUnion("type", [
+  TextContentSchema,
+  ImageContentSchema,
+  AudioContentSchema,
+  ToolUseContentSchema,
+  ToolResultContentSchema
+]);
+var SamplingMessageSchema = object({
+  role: RoleSchema,
+  content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)]),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var CreateMessageRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
+  messages: array(SamplingMessageSchema),
+  /**
+   * The server's preferences for which model to select. The client MAY modify or omit this request.
+   */
+  modelPreferences: ModelPreferencesSchema.optional(),
+  /**
+   * An optional system prompt the server wants to use for sampling. The client MAY modify or omit this prompt.
+   */
+  systemPrompt: string2().optional(),
+  /**
+   * A request to include context from one or more MCP servers (including the caller), to be attached to the prompt.
+   * The client MAY ignore this request.
+   *
+   * Default is "none". Values "thisServer" and "allServers" are soft-deprecated. Servers SHOULD only use these values if the client
+   * declares ClientCapabilities.sampling.context. These values may be removed in future spec releases.
+   */
+  includeContext: _enum2(["none", "thisServer", "allServers"]).optional(),
+  temperature: number2().optional(),
+  /**
+   * The requested maximum number of tokens to sample (to prevent runaway completions).
+   *
+   * The client MAY choose to sample fewer tokens than the requested maximum.
+   */
+  maxTokens: number2().int(),
+  stopSequences: array(string2()).optional(),
+  /**
+   * Optional metadata to pass through to the LLM provider. The format of this metadata is provider-specific.
+   */
+  metadata: AssertObjectSchema.optional(),
+  /**
+   * Tools that the model may use during generation.
+   * The client MUST return an error if this field is provided but ClientCapabilities.sampling.tools is not declared.
+   */
+  tools: array(ToolSchema).optional(),
+  /**
+   * Controls how the model uses tools.
+   * The client MUST return an error if this field is provided but ClientCapabilities.sampling.tools is not declared.
+   * Default is `{ mode: "auto" }`.
+   */
+  toolChoice: ToolChoiceSchema.optional()
+});
+var CreateMessageRequestSchema = RequestSchema.extend({
+  method: literal("sampling/createMessage"),
+  params: CreateMessageRequestParamsSchema
+});
+var CreateMessageResultSchema = ResultSchema.extend({
+  /**
+   * The name of the model that generated the message.
+   */
+  model: string2(),
+  /**
+   * The reason why sampling stopped, if known.
+   *
+   * Standard values:
+   * - "endTurn": Natural end of the assistant's turn
+   * - "stopSequence": A stop sequence was encountered
+   * - "maxTokens": Maximum token limit was reached
+   *
+   * This field is an open string to allow for provider-specific stop reasons.
+   */
+  stopReason: optional(_enum2(["endTurn", "stopSequence", "maxTokens"]).or(string2())),
+  role: RoleSchema,
+  /**
+   * Response content. Single content block (text, image, or audio).
+   */
+  content: SamplingContentSchema
+});
+var CreateMessageResultWithToolsSchema = ResultSchema.extend({
+  /**
+   * The name of the model that generated the message.
+   */
+  model: string2(),
+  /**
+   * The reason why sampling stopped, if known.
+   *
+   * Standard values:
+   * - "endTurn": Natural end of the assistant's turn
+   * - "stopSequence": A stop sequence was encountered
+   * - "maxTokens": Maximum token limit was reached
+   * - "toolUse": The model wants to use one or more tools
+   *
+   * This field is an open string to allow for provider-specific stop reasons.
+   */
+  stopReason: optional(_enum2(["endTurn", "stopSequence", "maxTokens", "toolUse"]).or(string2())),
+  role: RoleSchema,
+  /**
+   * Response content. May be a single block or array. May include ToolUseContent if stopReason is "toolUse".
+   */
+  content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)])
+});
+var BooleanSchemaSchema = object({
+  type: literal("boolean"),
+  title: string2().optional(),
+  description: string2().optional(),
+  default: boolean2().optional()
+});
+var StringSchemaSchema = object({
+  type: literal("string"),
+  title: string2().optional(),
+  description: string2().optional(),
+  minLength: number2().optional(),
+  maxLength: number2().optional(),
+  format: _enum2(["email", "uri", "date", "date-time"]).optional(),
+  default: string2().optional()
+});
+var NumberSchemaSchema = object({
+  type: _enum2(["number", "integer"]),
+  title: string2().optional(),
+  description: string2().optional(),
+  minimum: number2().optional(),
+  maximum: number2().optional(),
+  default: number2().optional()
+});
+var UntitledSingleSelectEnumSchemaSchema = object({
+  type: literal("string"),
+  title: string2().optional(),
+  description: string2().optional(),
+  enum: array(string2()),
+  default: string2().optional()
+});
+var TitledSingleSelectEnumSchemaSchema = object({
+  type: literal("string"),
+  title: string2().optional(),
+  description: string2().optional(),
+  oneOf: array(object({
+    const: string2(),
+    title: string2()
+  })),
+  default: string2().optional()
+});
+var LegacyTitledEnumSchemaSchema = object({
+  type: literal("string"),
+  title: string2().optional(),
+  description: string2().optional(),
+  enum: array(string2()),
+  enumNames: array(string2()).optional(),
+  default: string2().optional()
+});
+var SingleSelectEnumSchemaSchema = union([UntitledSingleSelectEnumSchemaSchema, TitledSingleSelectEnumSchemaSchema]);
+var UntitledMultiSelectEnumSchemaSchema = object({
+  type: literal("array"),
+  title: string2().optional(),
+  description: string2().optional(),
+  minItems: number2().optional(),
+  maxItems: number2().optional(),
+  items: object({
+    type: literal("string"),
+    enum: array(string2())
+  }),
+  default: array(string2()).optional()
+});
+var TitledMultiSelectEnumSchemaSchema = object({
+  type: literal("array"),
+  title: string2().optional(),
+  description: string2().optional(),
+  minItems: number2().optional(),
+  maxItems: number2().optional(),
+  items: object({
+    anyOf: array(object({
+      const: string2(),
+      title: string2()
+    }))
+  }),
+  default: array(string2()).optional()
+});
+var MultiSelectEnumSchemaSchema = union([UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema]);
+var EnumSchemaSchema = union([LegacyTitledEnumSchemaSchema, SingleSelectEnumSchemaSchema, MultiSelectEnumSchemaSchema]);
+var PrimitiveSchemaDefinitionSchema = union([EnumSchemaSchema, BooleanSchemaSchema, StringSchemaSchema, NumberSchemaSchema]);
+var ElicitRequestFormParamsSchema = TaskAugmentedRequestParamsSchema.extend({
+  /**
+   * The elicitation mode.
+   *
+   * Optional for backward compatibility. Clients MUST treat missing mode as "form".
+   */
+  mode: literal("form").optional(),
+  /**
+   * The message to present to the user describing what information is being requested.
+   */
+  message: string2(),
+  /**
+   * A restricted subset of JSON Schema.
+   * Only top-level properties are allowed, without nesting.
+   */
+  requestedSchema: object({
+    type: literal("object"),
+    properties: record(string2(), PrimitiveSchemaDefinitionSchema),
+    required: array(string2()).optional()
+  })
+});
+var ElicitRequestURLParamsSchema = TaskAugmentedRequestParamsSchema.extend({
+  /**
+   * The elicitation mode.
+   */
+  mode: literal("url"),
+  /**
+   * The message to present to the user explaining why the interaction is needed.
+   */
+  message: string2(),
+  /**
+   * The ID of the elicitation, which must be unique within the context of the server.
+   * The client MUST treat this ID as an opaque value.
+   */
+  elicitationId: string2(),
+  /**
+   * The URL that the user should navigate to.
+   */
+  url: string2().url()
+});
+var ElicitRequestParamsSchema = union([ElicitRequestFormParamsSchema, ElicitRequestURLParamsSchema]);
+var ElicitRequestSchema = RequestSchema.extend({
+  method: literal("elicitation/create"),
+  params: ElicitRequestParamsSchema
+});
+var ElicitationCompleteNotificationParamsSchema = NotificationsParamsSchema.extend({
+  /**
+   * The ID of the elicitation that completed.
+   */
+  elicitationId: string2()
+});
+var ElicitationCompleteNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/elicitation/complete"),
+  params: ElicitationCompleteNotificationParamsSchema
+});
+var ElicitResultSchema = ResultSchema.extend({
+  /**
+   * The user action in response to the elicitation.
+   * - "accept": User submitted the form/confirmed the action
+   * - "decline": User explicitly decline the action
+   * - "cancel": User dismissed without making an explicit choice
+   */
+  action: _enum2(["accept", "decline", "cancel"]),
+  /**
+   * The submitted form data, only present when action is "accept".
+   * Contains values matching the requested schema.
+   * Per MCP spec, content is "typically omitted" for decline/cancel actions.
+   * We normalize null to undefined for leniency while maintaining type compatibility.
+   */
+  content: preprocess((val) => val === null ? void 0 : val, record(string2(), union([string2(), number2(), boolean2(), array(string2())])).optional())
+});
+var ResourceTemplateReferenceSchema = object({
+  type: literal("ref/resource"),
+  /**
+   * The URI or URI template of the resource.
+   */
+  uri: string2()
+});
+var PromptReferenceSchema = object({
+  type: literal("ref/prompt"),
+  /**
+   * The name of the prompt or prompt template
+   */
+  name: string2()
+});
+var CompleteRequestParamsSchema = BaseRequestParamsSchema.extend({
+  ref: union([PromptReferenceSchema, ResourceTemplateReferenceSchema]),
+  /**
+   * The argument's information
+   */
+  argument: object({
+    /**
+     * The name of the argument
+     */
+    name: string2(),
+    /**
+     * The value of the argument to use for completion matching.
+     */
+    value: string2()
+  }),
+  context: object({
+    /**
+     * Previously-resolved variables in a URI template or prompt.
+     */
+    arguments: record(string2(), string2()).optional()
+  }).optional()
+});
+var CompleteRequestSchema = RequestSchema.extend({
+  method: literal("completion/complete"),
+  params: CompleteRequestParamsSchema
+});
+function assertCompleteRequestPrompt(request) {
+  if (request.params.ref.type !== "ref/prompt") {
+    throw new TypeError(`Expected CompleteRequestPrompt, but got ${request.params.ref.type}`);
+  }
+}
+function assertCompleteRequestResourceTemplate(request) {
+  if (request.params.ref.type !== "ref/resource") {
+    throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request.params.ref.type}`);
+  }
+}
+var CompleteResultSchema = ResultSchema.extend({
+  completion: looseObject({
+    /**
+     * An array of completion values. Must not exceed 100 items.
+     */
+    values: array(string2()).max(100),
+    /**
+     * The total number of completion options available. This can exceed the number of values actually sent in the response.
+     */
+    total: optional(number2().int()),
+    /**
+     * Indicates whether there are additional completion options beyond those provided in the current response, even if the exact total is unknown.
+     */
+    hasMore: optional(boolean2())
+  })
+});
+var RootSchema = object({
+  /**
+   * The URI identifying the root. This *must* start with file:// for now.
+   */
+  uri: string2().startsWith("file://"),
+  /**
+   * An optional name for the root.
+   */
+  name: string2().optional(),
+  /**
+   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
+   * for notes on _meta usage.
+   */
+  _meta: record(string2(), unknown()).optional()
+});
+var ListRootsRequestSchema = RequestSchema.extend({
+  method: literal("roots/list"),
+  params: BaseRequestParamsSchema.optional()
+});
+var ListRootsResultSchema = ResultSchema.extend({
+  roots: array(RootSchema)
+});
+var RootsListChangedNotificationSchema = NotificationSchema.extend({
+  method: literal("notifications/roots/list_changed"),
+  params: NotificationsParamsSchema.optional()
+});
+union([
+  PingRequestSchema,
+  InitializeRequestSchema,
+  CompleteRequestSchema,
+  SetLevelRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ReadResourceRequestSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  GetTaskRequestSchema,
+  GetTaskPayloadRequestSchema,
+  ListTasksRequestSchema,
+  CancelTaskRequestSchema
+]);
+union([
+  CancelledNotificationSchema,
+  ProgressNotificationSchema,
+  InitializedNotificationSchema,
+  RootsListChangedNotificationSchema,
+  TaskStatusNotificationSchema
+]);
+union([
+  EmptyResultSchema,
+  CreateMessageResultSchema,
+  CreateMessageResultWithToolsSchema,
+  ElicitResultSchema,
+  ListRootsResultSchema,
+  GetTaskResultSchema,
+  ListTasksResultSchema,
+  CreateTaskResultSchema
+]);
+union([
+  PingRequestSchema,
+  CreateMessageRequestSchema,
+  ElicitRequestSchema,
+  ListRootsRequestSchema,
+  GetTaskRequestSchema,
+  GetTaskPayloadRequestSchema,
+  ListTasksRequestSchema,
+  CancelTaskRequestSchema
+]);
+union([
+  CancelledNotificationSchema,
+  ProgressNotificationSchema,
+  LoggingMessageNotificationSchema,
+  ResourceUpdatedNotificationSchema,
+  ResourceListChangedNotificationSchema,
+  ToolListChangedNotificationSchema,
+  PromptListChangedNotificationSchema,
+  TaskStatusNotificationSchema,
+  ElicitationCompleteNotificationSchema
+]);
+union([
+  EmptyResultSchema,
+  InitializeResultSchema,
+  CompleteResultSchema,
+  GetPromptResultSchema,
+  ListPromptsResultSchema,
+  ListResourcesResultSchema,
+  ListResourceTemplatesResultSchema,
+  ReadResourceResultSchema,
+  CallToolResultSchema,
+  ListToolsResultSchema,
+  GetTaskResultSchema,
+  ListTasksResultSchema,
+  CreateTaskResultSchema
+]);
+var McpError = class _McpError extends Error {
+  constructor(code, message, data) {
+    super(`MCP error ${code}: ${message}`);
+    this.code = code;
+    this.data = data;
+    this.name = "McpError";
+  }
+  /**
+   * Factory method to create the appropriate error type based on the error code and data
+   */
+  static fromError(code, message, data) {
+    if (code === ErrorCode.UrlElicitationRequired && data) {
+      const errorData = data;
+      if (errorData.elicitations) {
+        return new UrlElicitationRequiredError(errorData.elicitations, message);
+      }
+    }
+    return new _McpError(code, message, data);
+  }
+};
+var UrlElicitationRequiredError = class extends McpError {
+  constructor(elicitations, message = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
+    super(ErrorCode.UrlElicitationRequired, message, {
+      elicitations
+    });
+  }
+  get elicitations() {
+    return this.data?.elicitations ?? [];
+  }
+};
+
+// ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
+var ReadBuffer = class {
+  append(chunk) {
+    this._buffer = this._buffer ? Buffer.concat([this._buffer, chunk]) : chunk;
+  }
+  readMessage() {
+    if (!this._buffer) {
+      return null;
+    }
+    const index = this._buffer.indexOf("\n");
+    if (index === -1) {
+      return null;
+    }
+    const line = this._buffer.toString("utf8", 0, index).replace(/\r$/, "");
+    this._buffer = this._buffer.subarray(index + 1);
+    return deserializeMessage(line);
+  }
+  clear() {
+    this._buffer = void 0;
+  }
+};
+function deserializeMessage(line) {
+  return JSONRPCMessageSchema.parse(JSON.parse(line));
+}
+function serializeMessage(message) {
+  return JSON.stringify(message) + "\n";
+}
+
+// ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
+var StdioServerTransport = class {
+  constructor(_stdin = process3.stdin, _stdout = process3.stdout) {
+    this._stdin = _stdin;
+    this._stdout = _stdout;
+    this._readBuffer = new ReadBuffer();
+    this._started = false;
+    this._ondata = (chunk) => {
+      this._readBuffer.append(chunk);
+      this.processReadBuffer();
+    };
+    this._onerror = (error51) => {
+      this.onerror?.(error51);
+    };
+  }
+  /**
+   * Starts listening for messages on stdin.
+   */
+  async start() {
+    if (this._started) {
+      throw new Error("StdioServerTransport already started! If using Server class, note that connect() calls start() automatically.");
+    }
+    this._started = true;
+    this._stdin.on("data", this._ondata);
+    this._stdin.on("error", this._onerror);
+  }
+  processReadBuffer() {
+    while (true) {
+      try {
+        const message = this._readBuffer.readMessage();
+        if (message === null) {
+          break;
+        }
+        this.onmessage?.(message);
+      } catch (error51) {
+        this.onerror?.(error51);
+      }
+    }
+  }
+  async close() {
+    this._stdin.off("data", this._ondata);
+    this._stdin.off("error", this._onerror);
+    const remainingDataListeners = this._stdin.listenerCount("data");
+    if (remainingDataListeners === 0) {
+      this._stdin.pause();
+    }
+    this._readBuffer.clear();
+    this.onclose?.();
+  }
+  send(message) {
+    return new Promise((resolve3) => {
+      const json2 = serializeMessage(message);
+      if (this._stdout.write(json2)) {
+        resolve3();
+      } else {
+        this._stdout.once("drain", resolve3);
+      }
+    });
+  }
+};
+
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v3/helpers/util.js
 var util;
 (function(util3) {
@@ -22006,7 +23626,7 @@ var ZodParsedType = util.arrayToEnum([
   "map",
   "set"
 ]);
-var getParsedType = (data) => {
+var getParsedType2 = (data) => {
   const t = typeof data;
   switch (t) {
     case "undefined":
@@ -22049,7 +23669,7 @@ var getParsedType = (data) => {
 };
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v3/ZodError.js
-var ZodIssueCode = util.arrayToEnum([
+var ZodIssueCode2 = util.arrayToEnum([
   "invalid_type",
   "invalid_literal",
   "custom",
@@ -22067,7 +23687,7 @@ var ZodIssueCode = util.arrayToEnum([
   "not_multiple_of",
   "not_finite"
 ]);
-var ZodError = class _ZodError extends Error {
+var ZodError2 = class _ZodError extends Error {
   get errors() {
     return this.issues;
   }
@@ -22157,8 +23777,8 @@ var ZodError = class _ZodError extends Error {
     return this.flatten();
   }
 };
-ZodError.create = (issues) => {
-  const error51 = new ZodError(issues);
+ZodError2.create = (issues) => {
+  const error51 = new ZodError2(issues);
   return error51;
 };
 
@@ -22166,38 +23786,38 @@ ZodError.create = (issues) => {
 var errorMap = (issue3, _ctx) => {
   let message;
   switch (issue3.code) {
-    case ZodIssueCode.invalid_type:
+    case ZodIssueCode2.invalid_type:
       if (issue3.received === ZodParsedType.undefined) {
         message = "Required";
       } else {
         message = `Expected ${issue3.expected}, received ${issue3.received}`;
       }
       break;
-    case ZodIssueCode.invalid_literal:
+    case ZodIssueCode2.invalid_literal:
       message = `Invalid literal value, expected ${JSON.stringify(issue3.expected, util.jsonStringifyReplacer)}`;
       break;
-    case ZodIssueCode.unrecognized_keys:
+    case ZodIssueCode2.unrecognized_keys:
       message = `Unrecognized key(s) in object: ${util.joinValues(issue3.keys, ", ")}`;
       break;
-    case ZodIssueCode.invalid_union:
+    case ZodIssueCode2.invalid_union:
       message = `Invalid input`;
       break;
-    case ZodIssueCode.invalid_union_discriminator:
+    case ZodIssueCode2.invalid_union_discriminator:
       message = `Invalid discriminator value. Expected ${util.joinValues(issue3.options)}`;
       break;
-    case ZodIssueCode.invalid_enum_value:
+    case ZodIssueCode2.invalid_enum_value:
       message = `Invalid enum value. Expected ${util.joinValues(issue3.options)}, received '${issue3.received}'`;
       break;
-    case ZodIssueCode.invalid_arguments:
+    case ZodIssueCode2.invalid_arguments:
       message = `Invalid function arguments`;
       break;
-    case ZodIssueCode.invalid_return_type:
+    case ZodIssueCode2.invalid_return_type:
       message = `Invalid function return type`;
       break;
-    case ZodIssueCode.invalid_date:
+    case ZodIssueCode2.invalid_date:
       message = `Invalid date`;
       break;
-    case ZodIssueCode.invalid_string:
+    case ZodIssueCode2.invalid_string:
       if (typeof issue3.validation === "object") {
         if ("includes" in issue3.validation) {
           message = `Invalid input: must include "${issue3.validation.includes}"`;
@@ -22217,7 +23837,7 @@ var errorMap = (issue3, _ctx) => {
         message = "Invalid";
       }
       break;
-    case ZodIssueCode.too_small:
+    case ZodIssueCode2.too_small:
       if (issue3.type === "array")
         message = `Array must contain ${issue3.exact ? "exactly" : issue3.inclusive ? `at least` : `more than`} ${issue3.minimum} element(s)`;
       else if (issue3.type === "string")
@@ -22231,7 +23851,7 @@ var errorMap = (issue3, _ctx) => {
       else
         message = "Invalid input";
       break;
-    case ZodIssueCode.too_big:
+    case ZodIssueCode2.too_big:
       if (issue3.type === "array")
         message = `Array must contain ${issue3.exact ? `exactly` : issue3.inclusive ? `at most` : `less than`} ${issue3.maximum} element(s)`;
       else if (issue3.type === "string")
@@ -22245,16 +23865,16 @@ var errorMap = (issue3, _ctx) => {
       else
         message = "Invalid input";
       break;
-    case ZodIssueCode.custom:
+    case ZodIssueCode2.custom:
       message = `Invalid input`;
       break;
-    case ZodIssueCode.invalid_intersection_types:
+    case ZodIssueCode2.invalid_intersection_types:
       message = `Intersection results could not be merged`;
       break;
-    case ZodIssueCode.not_multiple_of:
+    case ZodIssueCode2.not_multiple_of:
       message = `Number must be a multiple of ${issue3.multipleOf}`;
       break;
-    case ZodIssueCode.not_finite:
+    case ZodIssueCode2.not_finite:
       message = "Number must be finite";
       break;
     default:
@@ -22263,11 +23883,11 @@ var errorMap = (issue3, _ctx) => {
   }
   return { message };
 };
-var en_default = errorMap;
+var en_default2 = errorMap;
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v3/errors.js
-var overrideErrorMap = en_default;
-function getErrorMap() {
+var overrideErrorMap = en_default2;
+function getErrorMap2() {
   return overrideErrorMap;
 }
 
@@ -22298,7 +23918,7 @@ var makeIssue = (params) => {
   };
 };
 function addIssueToContext(ctx, issueData) {
-  const overrideMap = getErrorMap();
+  const overrideMap = getErrorMap2();
   const issue3 = makeIssue({
     issueData,
     data: ctx.data,
@@ -22310,7 +23930,7 @@ function addIssueToContext(ctx, issueData) {
       // then schema-bound map if available
       overrideMap,
       // then global override map
-      overrideMap === en_default ? void 0 : en_default
+      overrideMap === en_default2 ? void 0 : en_default2
       // then global default map
     ].filter((x) => !!x)
   });
@@ -22419,7 +24039,7 @@ var handleResult = (ctx, result) => {
       get error() {
         if (this._error)
           return this._error;
-        const error51 = new ZodError(ctx.common.issues);
+        const error51 = new ZodError2(ctx.common.issues);
         this._error = error51;
         return this._error;
       }
@@ -22449,18 +24069,18 @@ function processCreateParams(params) {
   };
   return { errorMap: customMap, description };
 }
-var ZodType = class {
+var ZodType2 = class {
   get description() {
     return this._def.description;
   }
   _getType(input) {
-    return getParsedType(input.data);
+    return getParsedType2(input.data);
   }
   _getOrReturnCtx(input, ctx) {
     return ctx || {
       common: input.parent.common,
       data: input.data,
-      parsedType: getParsedType(input.data),
+      parsedType: getParsedType2(input.data),
       schemaErrorMap: this._def.errorMap,
       path: input.path,
       parent: input.parent
@@ -22472,7 +24092,7 @@ var ZodType = class {
       ctx: {
         common: input.parent.common,
         data: input.data,
-        parsedType: getParsedType(input.data),
+        parsedType: getParsedType2(input.data),
         schemaErrorMap: this._def.errorMap,
         path: input.path,
         parent: input.parent
@@ -22507,7 +24127,7 @@ var ZodType = class {
       schemaErrorMap: this._def.errorMap,
       parent: null,
       data,
-      parsedType: getParsedType(data)
+      parsedType: getParsedType2(data)
     };
     const result = this._parseSync({ data, path: ctx.path, parent: ctx });
     return handleResult(ctx, result);
@@ -22522,7 +24142,7 @@ var ZodType = class {
       schemaErrorMap: this._def.errorMap,
       parent: null,
       data,
-      parsedType: getParsedType(data)
+      parsedType: getParsedType2(data)
     };
     if (!this["~standard"].async) {
       try {
@@ -22565,7 +24185,7 @@ var ZodType = class {
       schemaErrorMap: this._def.errorMap,
       parent: null,
       data,
-      parsedType: getParsedType(data)
+      parsedType: getParsedType2(data)
     };
     const maybeAsyncResult = this._parse({ data, path: ctx.path, parent: ctx });
     const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
@@ -22584,7 +24204,7 @@ var ZodType = class {
     return this._refinement((val, ctx) => {
       const result = check2(val);
       const setError = () => ctx.addIssue({
-        code: ZodIssueCode.custom,
+        code: ZodIssueCode2.custom,
         ...getIssueProperties(val)
       });
       if (typeof Promise !== "undefined" && result instanceof Promise) {
@@ -22618,7 +24238,7 @@ var ZodType = class {
   _refinement(refinement) {
     return new ZodEffects({
       schema: this,
-      typeName: ZodFirstPartyTypeKind.ZodEffects,
+      typeName: ZodFirstPartyTypeKind2.ZodEffects,
       effect: { type: "refinement", refinement }
     });
   }
@@ -22659,57 +24279,57 @@ var ZodType = class {
     };
   }
   optional() {
-    return ZodOptional.create(this, this._def);
+    return ZodOptional2.create(this, this._def);
   }
   nullable() {
-    return ZodNullable.create(this, this._def);
+    return ZodNullable2.create(this, this._def);
   }
   nullish() {
     return this.nullable().optional();
   }
   array() {
-    return ZodArray.create(this);
+    return ZodArray2.create(this);
   }
   promise() {
-    return ZodPromise.create(this, this._def);
+    return ZodPromise2.create(this, this._def);
   }
   or(option) {
-    return ZodUnion.create([this, option], this._def);
+    return ZodUnion2.create([this, option], this._def);
   }
   and(incoming) {
-    return ZodIntersection.create(this, incoming, this._def);
+    return ZodIntersection2.create(this, incoming, this._def);
   }
   transform(transform2) {
     return new ZodEffects({
       ...processCreateParams(this._def),
       schema: this,
-      typeName: ZodFirstPartyTypeKind.ZodEffects,
+      typeName: ZodFirstPartyTypeKind2.ZodEffects,
       effect: { type: "transform", transform: transform2 }
     });
   }
   default(def) {
     const defaultValueFunc = typeof def === "function" ? def : () => def;
-    return new ZodDefault({
+    return new ZodDefault2({
       ...processCreateParams(this._def),
       innerType: this,
       defaultValue: defaultValueFunc,
-      typeName: ZodFirstPartyTypeKind.ZodDefault
+      typeName: ZodFirstPartyTypeKind2.ZodDefault
     });
   }
   brand() {
     return new ZodBranded({
-      typeName: ZodFirstPartyTypeKind.ZodBranded,
+      typeName: ZodFirstPartyTypeKind2.ZodBranded,
       type: this,
       ...processCreateParams(this._def)
     });
   }
   catch(def) {
     const catchValueFunc = typeof def === "function" ? def : () => def;
-    return new ZodCatch({
+    return new ZodCatch2({
       ...processCreateParams(this._def),
       innerType: this,
       catchValue: catchValueFunc,
-      typeName: ZodFirstPartyTypeKind.ZodCatch
+      typeName: ZodFirstPartyTypeKind2.ZodCatch
     });
   }
   describe(description) {
@@ -22723,7 +24343,7 @@ var ZodType = class {
     return ZodPipeline.create(this, target);
   }
   readonly() {
-    return ZodReadonly.create(this);
+    return ZodReadonly2.create(this);
   }
   isOptional() {
     return this.safeParse(void 0).success;
@@ -22781,7 +24401,7 @@ function isValidIP(ip, version2) {
   }
   return false;
 }
-function isValidJWT(jwt2, alg) {
+function isValidJWT2(jwt2, alg) {
   if (!jwtRegex.test(jwt2))
     return false;
   try {
@@ -22812,7 +24432,7 @@ function isValidCidr(ip, version2) {
   }
   return false;
 }
-var ZodString = class _ZodString2 extends ZodType {
+var ZodString2 = class _ZodString2 extends ZodType2 {
   _parse(input) {
     if (this._def.coerce) {
       input.data = String(input.data);
@@ -22821,7 +24441,7 @@ var ZodString = class _ZodString2 extends ZodType {
     if (parsedType2 !== ZodParsedType.string) {
       const ctx2 = this._getOrReturnCtx(input);
       addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.string,
         received: ctx2.parsedType
       });
@@ -22834,7 +24454,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (input.data.length < check2.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
+            code: ZodIssueCode2.too_small,
             minimum: check2.value,
             type: "string",
             inclusive: true,
@@ -22847,7 +24467,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (input.data.length > check2.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
+            code: ZodIssueCode2.too_big,
             maximum: check2.value,
             type: "string",
             inclusive: true,
@@ -22863,7 +24483,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           if (tooBig) {
             addIssueToContext(ctx, {
-              code: ZodIssueCode.too_big,
+              code: ZodIssueCode2.too_big,
               maximum: check2.value,
               type: "string",
               inclusive: true,
@@ -22872,7 +24492,7 @@ var ZodString = class _ZodString2 extends ZodType {
             });
           } else if (tooSmall) {
             addIssueToContext(ctx, {
-              code: ZodIssueCode.too_small,
+              code: ZodIssueCode2.too_small,
               minimum: check2.value,
               type: "string",
               inclusive: true,
@@ -22887,7 +24507,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "email",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22900,7 +24520,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "emoji",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22910,7 +24530,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "uuid",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22920,7 +24540,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "nanoid",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22930,7 +24550,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "cuid",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22940,7 +24560,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "cuid2",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22950,7 +24570,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "ulid",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22962,7 +24582,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "url",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22974,7 +24594,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "regex",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -22985,7 +24605,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (!input.data.includes(check2.value, check2.position)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             validation: { includes: check2.value, position: check2.position },
             message: check2.message
           });
@@ -22999,7 +24619,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (!input.data.startsWith(check2.value)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             validation: { startsWith: check2.value },
             message: check2.message
           });
@@ -23009,7 +24629,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (!input.data.endsWith(check2.value)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             validation: { endsWith: check2.value },
             message: check2.message
           });
@@ -23020,7 +24640,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (!regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             validation: "datetime",
             message: check2.message
           });
@@ -23031,7 +24651,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (!regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             validation: "date",
             message: check2.message
           });
@@ -23042,7 +24662,7 @@ var ZodString = class _ZodString2 extends ZodType {
         if (!regex.test(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             validation: "time",
             message: check2.message
           });
@@ -23053,7 +24673,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "duration",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -23063,17 +24683,17 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "ip",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
         }
       } else if (check2.kind === "jwt") {
-        if (!isValidJWT(input.data, check2.alg)) {
+        if (!isValidJWT2(input.data, check2.alg)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "jwt",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -23083,7 +24703,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "cidr",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -23093,7 +24713,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "base64",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -23103,7 +24723,7 @@ var ZodString = class _ZodString2 extends ZodType {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
             validation: "base64url",
-            code: ZodIssueCode.invalid_string,
+            code: ZodIssueCode2.invalid_string,
             message: check2.message
           });
           status.dirty();
@@ -23117,7 +24737,7 @@ var ZodString = class _ZodString2 extends ZodType {
   _regex(regex, validation, message) {
     return this.refinement((data) => regex.test(data), {
       validation,
-      code: ZodIssueCode.invalid_string,
+      code: ZodIssueCode2.invalid_string,
       ...errorUtil.errToObj(message)
     });
   }
@@ -23350,15 +24970,15 @@ var ZodString = class _ZodString2 extends ZodType {
     return max;
   }
 };
-ZodString.create = (params) => {
-  return new ZodString({
+ZodString2.create = (params) => {
+  return new ZodString2({
     checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodString,
+    typeName: ZodFirstPartyTypeKind2.ZodString,
     coerce: params?.coerce ?? false,
     ...processCreateParams(params)
   });
 };
-function floatSafeRemainder(val, step) {
+function floatSafeRemainder2(val, step) {
   const valDecCount = (val.toString().split(".")[1] || "").length;
   const stepDecCount = (step.toString().split(".")[1] || "").length;
   const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount;
@@ -23366,7 +24986,7 @@ function floatSafeRemainder(val, step) {
   const stepInt = Number.parseInt(step.toFixed(decCount).replace(".", ""));
   return valInt % stepInt / 10 ** decCount;
 }
-var ZodNumber = class _ZodNumber extends ZodType {
+var ZodNumber2 = class _ZodNumber extends ZodType2 {
   constructor() {
     super(...arguments);
     this.min = this.gte;
@@ -23381,7 +25001,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
     if (parsedType2 !== ZodParsedType.number) {
       const ctx2 = this._getOrReturnCtx(input);
       addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.number,
         received: ctx2.parsedType
       });
@@ -23394,7 +25014,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
         if (!util.isInteger(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_type,
+            code: ZodIssueCode2.invalid_type,
             expected: "integer",
             received: "float",
             message: check2.message
@@ -23406,7 +25026,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
         if (tooSmall) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
+            code: ZodIssueCode2.too_small,
             minimum: check2.value,
             type: "number",
             inclusive: check2.inclusive,
@@ -23420,7 +25040,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
         if (tooBig) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
+            code: ZodIssueCode2.too_big,
             maximum: check2.value,
             type: "number",
             inclusive: check2.inclusive,
@@ -23430,10 +25050,10 @@ var ZodNumber = class _ZodNumber extends ZodType {
           status.dirty();
         }
       } else if (check2.kind === "multipleOf") {
-        if (floatSafeRemainder(input.data, check2.value) !== 0) {
+        if (floatSafeRemainder2(input.data, check2.value) !== 0) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.not_multiple_of,
+            code: ZodIssueCode2.not_multiple_of,
             multipleOf: check2.value,
             message: check2.message
           });
@@ -23443,7 +25063,7 @@ var ZodNumber = class _ZodNumber extends ZodType {
         if (!Number.isFinite(input.data)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.not_finite,
+            code: ZodIssueCode2.not_finite,
             message: check2.message
           });
           status.dirty();
@@ -23590,15 +25210,15 @@ var ZodNumber = class _ZodNumber extends ZodType {
     return Number.isFinite(min) && Number.isFinite(max);
   }
 };
-ZodNumber.create = (params) => {
-  return new ZodNumber({
+ZodNumber2.create = (params) => {
+  return new ZodNumber2({
     checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodNumber,
+    typeName: ZodFirstPartyTypeKind2.ZodNumber,
     coerce: params?.coerce || false,
     ...processCreateParams(params)
   });
 };
-var ZodBigInt = class _ZodBigInt extends ZodType {
+var ZodBigInt2 = class _ZodBigInt extends ZodType2 {
   constructor() {
     super(...arguments);
     this.min = this.gte;
@@ -23624,7 +25244,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
         if (tooSmall) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
+            code: ZodIssueCode2.too_small,
             type: "bigint",
             minimum: check2.value,
             inclusive: check2.inclusive,
@@ -23637,7 +25257,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
         if (tooBig) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
+            code: ZodIssueCode2.too_big,
             type: "bigint",
             maximum: check2.value,
             inclusive: check2.inclusive,
@@ -23649,7 +25269,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
         if (input.data % check2.value !== BigInt(0)) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.not_multiple_of,
+            code: ZodIssueCode2.not_multiple_of,
             multipleOf: check2.value,
             message: check2.message
           });
@@ -23664,7 +25284,7 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
   _getInvalidInput(input) {
     const ctx = this._getOrReturnCtx(input);
     addIssueToContext(ctx, {
-      code: ZodIssueCode.invalid_type,
+      code: ZodIssueCode2.invalid_type,
       expected: ZodParsedType.bigint,
       received: ctx.parsedType
     });
@@ -23762,15 +25382,15 @@ var ZodBigInt = class _ZodBigInt extends ZodType {
     return max;
   }
 };
-ZodBigInt.create = (params) => {
-  return new ZodBigInt({
+ZodBigInt2.create = (params) => {
+  return new ZodBigInt2({
     checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodBigInt,
+    typeName: ZodFirstPartyTypeKind2.ZodBigInt,
     coerce: params?.coerce ?? false,
     ...processCreateParams(params)
   });
 };
-var ZodBoolean = class extends ZodType {
+var ZodBoolean2 = class extends ZodType2 {
   _parse(input) {
     if (this._def.coerce) {
       input.data = Boolean(input.data);
@@ -23779,7 +25399,7 @@ var ZodBoolean = class extends ZodType {
     if (parsedType2 !== ZodParsedType.boolean) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.boolean,
         received: ctx.parsedType
       });
@@ -23788,14 +25408,14 @@ var ZodBoolean = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodBoolean.create = (params) => {
-  return new ZodBoolean({
-    typeName: ZodFirstPartyTypeKind.ZodBoolean,
+ZodBoolean2.create = (params) => {
+  return new ZodBoolean2({
+    typeName: ZodFirstPartyTypeKind2.ZodBoolean,
     coerce: params?.coerce || false,
     ...processCreateParams(params)
   });
 };
-var ZodDate = class _ZodDate extends ZodType {
+var ZodDate2 = class _ZodDate extends ZodType2 {
   _parse(input) {
     if (this._def.coerce) {
       input.data = new Date(input.data);
@@ -23804,7 +25424,7 @@ var ZodDate = class _ZodDate extends ZodType {
     if (parsedType2 !== ZodParsedType.date) {
       const ctx2 = this._getOrReturnCtx(input);
       addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.date,
         received: ctx2.parsedType
       });
@@ -23813,7 +25433,7 @@ var ZodDate = class _ZodDate extends ZodType {
     if (Number.isNaN(input.data.getTime())) {
       const ctx2 = this._getOrReturnCtx(input);
       addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_date
+        code: ZodIssueCode2.invalid_date
       });
       return INVALID;
     }
@@ -23824,7 +25444,7 @@ var ZodDate = class _ZodDate extends ZodType {
         if (input.data.getTime() < check2.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
+            code: ZodIssueCode2.too_small,
             message: check2.message,
             inclusive: true,
             exact: false,
@@ -23837,7 +25457,7 @@ var ZodDate = class _ZodDate extends ZodType {
         if (input.data.getTime() > check2.value) {
           ctx = this._getOrReturnCtx(input, ctx);
           addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
+            code: ZodIssueCode2.too_big,
             message: check2.message,
             inclusive: true,
             exact: false,
@@ -23896,21 +25516,21 @@ var ZodDate = class _ZodDate extends ZodType {
     return max != null ? new Date(max) : null;
   }
 };
-ZodDate.create = (params) => {
-  return new ZodDate({
+ZodDate2.create = (params) => {
+  return new ZodDate2({
     checks: [],
     coerce: params?.coerce || false,
-    typeName: ZodFirstPartyTypeKind.ZodDate,
+    typeName: ZodFirstPartyTypeKind2.ZodDate,
     ...processCreateParams(params)
   });
 };
-var ZodSymbol = class extends ZodType {
+var ZodSymbol2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.symbol) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.symbol,
         received: ctx.parsedType
       });
@@ -23919,19 +25539,19 @@ var ZodSymbol = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodSymbol.create = (params) => {
-  return new ZodSymbol({
-    typeName: ZodFirstPartyTypeKind.ZodSymbol,
+ZodSymbol2.create = (params) => {
+  return new ZodSymbol2({
+    typeName: ZodFirstPartyTypeKind2.ZodSymbol,
     ...processCreateParams(params)
   });
 };
-var ZodUndefined = class extends ZodType {
+var ZodUndefined2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.undefined) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.undefined,
         received: ctx.parsedType
       });
@@ -23940,19 +25560,19 @@ var ZodUndefined = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodUndefined.create = (params) => {
-  return new ZodUndefined({
-    typeName: ZodFirstPartyTypeKind.ZodUndefined,
+ZodUndefined2.create = (params) => {
+  return new ZodUndefined2({
+    typeName: ZodFirstPartyTypeKind2.ZodUndefined,
     ...processCreateParams(params)
   });
 };
-var ZodNull = class extends ZodType {
+var ZodNull2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.null) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.null,
         received: ctx.parsedType
       });
@@ -23961,13 +25581,13 @@ var ZodNull = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodNull.create = (params) => {
-  return new ZodNull({
-    typeName: ZodFirstPartyTypeKind.ZodNull,
+ZodNull2.create = (params) => {
+  return new ZodNull2({
+    typeName: ZodFirstPartyTypeKind2.ZodNull,
     ...processCreateParams(params)
   });
 };
-var ZodAny = class extends ZodType {
+var ZodAny2 = class extends ZodType2 {
   constructor() {
     super(...arguments);
     this._any = true;
@@ -23976,13 +25596,13 @@ var ZodAny = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodAny.create = (params) => {
-  return new ZodAny({
-    typeName: ZodFirstPartyTypeKind.ZodAny,
+ZodAny2.create = (params) => {
+  return new ZodAny2({
+    typeName: ZodFirstPartyTypeKind2.ZodAny,
     ...processCreateParams(params)
   });
 };
-var ZodUnknown = class extends ZodType {
+var ZodUnknown2 = class extends ZodType2 {
   constructor() {
     super(...arguments);
     this._unknown = true;
@@ -23991,36 +25611,36 @@ var ZodUnknown = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodUnknown.create = (params) => {
-  return new ZodUnknown({
-    typeName: ZodFirstPartyTypeKind.ZodUnknown,
+ZodUnknown2.create = (params) => {
+  return new ZodUnknown2({
+    typeName: ZodFirstPartyTypeKind2.ZodUnknown,
     ...processCreateParams(params)
   });
 };
-var ZodNever = class extends ZodType {
+var ZodNever2 = class extends ZodType2 {
   _parse(input) {
     const ctx = this._getOrReturnCtx(input);
     addIssueToContext(ctx, {
-      code: ZodIssueCode.invalid_type,
+      code: ZodIssueCode2.invalid_type,
       expected: ZodParsedType.never,
       received: ctx.parsedType
     });
     return INVALID;
   }
 };
-ZodNever.create = (params) => {
-  return new ZodNever({
-    typeName: ZodFirstPartyTypeKind.ZodNever,
+ZodNever2.create = (params) => {
+  return new ZodNever2({
+    typeName: ZodFirstPartyTypeKind2.ZodNever,
     ...processCreateParams(params)
   });
 };
-var ZodVoid = class extends ZodType {
+var ZodVoid2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.undefined) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.void,
         received: ctx.parsedType
       });
@@ -24029,19 +25649,19 @@ var ZodVoid = class extends ZodType {
     return OK(input.data);
   }
 };
-ZodVoid.create = (params) => {
-  return new ZodVoid({
-    typeName: ZodFirstPartyTypeKind.ZodVoid,
+ZodVoid2.create = (params) => {
+  return new ZodVoid2({
+    typeName: ZodFirstPartyTypeKind2.ZodVoid,
     ...processCreateParams(params)
   });
 };
-var ZodArray = class _ZodArray extends ZodType {
+var ZodArray2 = class _ZodArray extends ZodType2 {
   _parse(input) {
     const { ctx, status } = this._processInputParams(input);
     const def = this._def;
     if (ctx.parsedType !== ZodParsedType.array) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.array,
         received: ctx.parsedType
       });
@@ -24052,7 +25672,7 @@ var ZodArray = class _ZodArray extends ZodType {
       const tooSmall = ctx.data.length < def.exactLength.value;
       if (tooBig || tooSmall) {
         addIssueToContext(ctx, {
-          code: tooBig ? ZodIssueCode.too_big : ZodIssueCode.too_small,
+          code: tooBig ? ZodIssueCode2.too_big : ZodIssueCode2.too_small,
           minimum: tooSmall ? def.exactLength.value : void 0,
           maximum: tooBig ? def.exactLength.value : void 0,
           type: "array",
@@ -24066,7 +25686,7 @@ var ZodArray = class _ZodArray extends ZodType {
     if (def.minLength !== null) {
       if (ctx.data.length < def.minLength.value) {
         addIssueToContext(ctx, {
-          code: ZodIssueCode.too_small,
+          code: ZodIssueCode2.too_small,
           minimum: def.minLength.value,
           type: "array",
           inclusive: true,
@@ -24079,7 +25699,7 @@ var ZodArray = class _ZodArray extends ZodType {
     if (def.maxLength !== null) {
       if (ctx.data.length > def.maxLength.value) {
         addIssueToContext(ctx, {
-          code: ZodIssueCode.too_big,
+          code: ZodIssueCode2.too_big,
           maximum: def.maxLength.value,
           type: "array",
           inclusive: true,
@@ -24126,43 +25746,43 @@ var ZodArray = class _ZodArray extends ZodType {
     return this.min(1, message);
   }
 };
-ZodArray.create = (schema, params) => {
-  return new ZodArray({
+ZodArray2.create = (schema, params) => {
+  return new ZodArray2({
     type: schema,
     minLength: null,
     maxLength: null,
     exactLength: null,
-    typeName: ZodFirstPartyTypeKind.ZodArray,
+    typeName: ZodFirstPartyTypeKind2.ZodArray,
     ...processCreateParams(params)
   });
 };
 function deepPartialify(schema) {
-  if (schema instanceof ZodObject) {
+  if (schema instanceof ZodObject2) {
     const newShape = {};
     for (const key in schema.shape) {
       const fieldSchema = schema.shape[key];
-      newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
+      newShape[key] = ZodOptional2.create(deepPartialify(fieldSchema));
     }
-    return new ZodObject({
+    return new ZodObject2({
       ...schema._def,
       shape: () => newShape
     });
-  } else if (schema instanceof ZodArray) {
-    return new ZodArray({
+  } else if (schema instanceof ZodArray2) {
+    return new ZodArray2({
       ...schema._def,
       type: deepPartialify(schema.element)
     });
-  } else if (schema instanceof ZodOptional) {
-    return ZodOptional.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodNullable) {
-    return ZodNullable.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodTuple) {
-    return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
+  } else if (schema instanceof ZodOptional2) {
+    return ZodOptional2.create(deepPartialify(schema.unwrap()));
+  } else if (schema instanceof ZodNullable2) {
+    return ZodNullable2.create(deepPartialify(schema.unwrap()));
+  } else if (schema instanceof ZodTuple2) {
+    return ZodTuple2.create(schema.items.map((item) => deepPartialify(item)));
   } else {
     return schema;
   }
 }
-var ZodObject = class _ZodObject extends ZodType {
+var ZodObject2 = class _ZodObject extends ZodType2 {
   constructor() {
     super(...arguments);
     this._cached = null;
@@ -24182,7 +25802,7 @@ var ZodObject = class _ZodObject extends ZodType {
     if (parsedType2 !== ZodParsedType.object) {
       const ctx2 = this._getOrReturnCtx(input);
       addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.object,
         received: ctx2.parsedType
       });
@@ -24191,7 +25811,7 @@ var ZodObject = class _ZodObject extends ZodType {
     const { status, ctx } = this._processInputParams(input);
     const { shape, keys: shapeKeys } = this._getCached();
     const extraKeys = [];
-    if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
+    if (!(this._def.catchall instanceof ZodNever2 && this._def.unknownKeys === "strip")) {
       for (const key in ctx.data) {
         if (!shapeKeys.includes(key)) {
           extraKeys.push(key);
@@ -24208,7 +25828,7 @@ var ZodObject = class _ZodObject extends ZodType {
         alwaysSet: key in ctx.data
       });
     }
-    if (this._def.catchall instanceof ZodNever) {
+    if (this._def.catchall instanceof ZodNever2) {
       const unknownKeys = this._def.unknownKeys;
       if (unknownKeys === "passthrough") {
         for (const key of extraKeys) {
@@ -24220,7 +25840,7 @@ var ZodObject = class _ZodObject extends ZodType {
       } else if (unknownKeys === "strict") {
         if (extraKeys.length > 0) {
           addIssueToContext(ctx, {
-            code: ZodIssueCode.unrecognized_keys,
+            code: ZodIssueCode2.unrecognized_keys,
             keys: extraKeys
           });
           status.dirty();
@@ -24335,7 +25955,7 @@ var ZodObject = class _ZodObject extends ZodType {
         ...this._def.shape(),
         ...merging._def.shape()
       }),
-      typeName: ZodFirstPartyTypeKind.ZodObject
+      typeName: ZodFirstPartyTypeKind2.ZodObject
     });
     return merged;
   }
@@ -24457,7 +26077,7 @@ var ZodObject = class _ZodObject extends ZodType {
       } else {
         const fieldSchema = this.shape[key];
         let newField = fieldSchema;
-        while (newField instanceof ZodOptional) {
+        while (newField instanceof ZodOptional2) {
           newField = newField._def.innerType;
         }
         newShape[key] = newField;
@@ -24472,34 +26092,34 @@ var ZodObject = class _ZodObject extends ZodType {
     return createZodEnum(util.objectKeys(this.shape));
   }
 };
-ZodObject.create = (shape, params) => {
-  return new ZodObject({
+ZodObject2.create = (shape, params) => {
+  return new ZodObject2({
     shape: () => shape,
     unknownKeys: "strip",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject,
+    catchall: ZodNever2.create(),
+    typeName: ZodFirstPartyTypeKind2.ZodObject,
     ...processCreateParams(params)
   });
 };
-ZodObject.strictCreate = (shape, params) => {
-  return new ZodObject({
+ZodObject2.strictCreate = (shape, params) => {
+  return new ZodObject2({
     shape: () => shape,
     unknownKeys: "strict",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject,
+    catchall: ZodNever2.create(),
+    typeName: ZodFirstPartyTypeKind2.ZodObject,
     ...processCreateParams(params)
   });
 };
-ZodObject.lazycreate = (shape, params) => {
-  return new ZodObject({
+ZodObject2.lazycreate = (shape, params) => {
+  return new ZodObject2({
     shape,
     unknownKeys: "strip",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject,
+    catchall: ZodNever2.create(),
+    typeName: ZodFirstPartyTypeKind2.ZodObject,
     ...processCreateParams(params)
   });
 };
-var ZodUnion = class extends ZodType {
+var ZodUnion2 = class extends ZodType2 {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
     const options = this._def.options;
@@ -24515,9 +26135,9 @@ var ZodUnion = class extends ZodType {
           return result.result;
         }
       }
-      const unionErrors = results.map((result) => new ZodError(result.ctx.common.issues));
+      const unionErrors = results.map((result) => new ZodError2(result.ctx.common.issues));
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union,
+        code: ZodIssueCode2.invalid_union,
         unionErrors
       });
       return INVALID;
@@ -24571,9 +26191,9 @@ var ZodUnion = class extends ZodType {
         ctx.common.issues.push(...dirty.ctx.common.issues);
         return dirty.result;
       }
-      const unionErrors = issues.map((issues2) => new ZodError(issues2));
+      const unionErrors = issues.map((issues2) => new ZodError2(issues2));
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union,
+        code: ZodIssueCode2.invalid_union,
         unionErrors
       });
       return INVALID;
@@ -24583,16 +26203,16 @@ var ZodUnion = class extends ZodType {
     return this._def.options;
   }
 };
-ZodUnion.create = (types, params) => {
-  return new ZodUnion({
+ZodUnion2.create = (types, params) => {
+  return new ZodUnion2({
     options: types,
-    typeName: ZodFirstPartyTypeKind.ZodUnion,
+    typeName: ZodFirstPartyTypeKind2.ZodUnion,
     ...processCreateParams(params)
   });
 };
-function mergeValues(a, b) {
-  const aType = getParsedType(a);
-  const bType = getParsedType(b);
+function mergeValues2(a, b) {
+  const aType = getParsedType2(a);
+  const bType = getParsedType2(b);
   if (a === b) {
     return { valid: true, data: a };
   } else if (aType === ZodParsedType.object && bType === ZodParsedType.object) {
@@ -24600,7 +26220,7 @@ function mergeValues(a, b) {
     const sharedKeys = util.objectKeys(a).filter((key) => bKeys.indexOf(key) !== -1);
     const newObj = { ...a, ...b };
     for (const key of sharedKeys) {
-      const sharedValue = mergeValues(a[key], b[key]);
+      const sharedValue = mergeValues2(a[key], b[key]);
       if (!sharedValue.valid) {
         return { valid: false };
       }
@@ -24615,7 +26235,7 @@ function mergeValues(a, b) {
     for (let index = 0; index < a.length; index++) {
       const itemA = a[index];
       const itemB = b[index];
-      const sharedValue = mergeValues(itemA, itemB);
+      const sharedValue = mergeValues2(itemA, itemB);
       if (!sharedValue.valid) {
         return { valid: false };
       }
@@ -24628,17 +26248,17 @@ function mergeValues(a, b) {
     return { valid: false };
   }
 }
-var ZodIntersection = class extends ZodType {
+var ZodIntersection2 = class extends ZodType2 {
   _parse(input) {
     const { status, ctx } = this._processInputParams(input);
     const handleParsed = (parsedLeft, parsedRight) => {
       if (isAborted(parsedLeft) || isAborted(parsedRight)) {
         return INVALID;
       }
-      const merged = mergeValues(parsedLeft.value, parsedRight.value);
+      const merged = mergeValues2(parsedLeft.value, parsedRight.value);
       if (!merged.valid) {
         addIssueToContext(ctx, {
-          code: ZodIssueCode.invalid_intersection_types
+          code: ZodIssueCode2.invalid_intersection_types
         });
         return INVALID;
       }
@@ -24673,20 +26293,20 @@ var ZodIntersection = class extends ZodType {
     }
   }
 };
-ZodIntersection.create = (left, right, params) => {
-  return new ZodIntersection({
+ZodIntersection2.create = (left, right, params) => {
+  return new ZodIntersection2({
     left,
     right,
-    typeName: ZodFirstPartyTypeKind.ZodIntersection,
+    typeName: ZodFirstPartyTypeKind2.ZodIntersection,
     ...processCreateParams(params)
   });
 };
-var ZodTuple = class _ZodTuple extends ZodType {
+var ZodTuple2 = class _ZodTuple extends ZodType2 {
   _parse(input) {
     const { status, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.array) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.array,
         received: ctx.parsedType
       });
@@ -24694,7 +26314,7 @@ var ZodTuple = class _ZodTuple extends ZodType {
     }
     if (ctx.data.length < this._def.items.length) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.too_small,
+        code: ZodIssueCode2.too_small,
         minimum: this._def.items.length,
         inclusive: true,
         exact: false,
@@ -24705,7 +26325,7 @@ var ZodTuple = class _ZodTuple extends ZodType {
     const rest = this._def.rest;
     if (!rest && ctx.data.length > this._def.items.length) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.too_big,
+        code: ZodIssueCode2.too_big,
         maximum: this._def.items.length,
         inclusive: true,
         exact: false,
@@ -24737,18 +26357,18 @@ var ZodTuple = class _ZodTuple extends ZodType {
     });
   }
 };
-ZodTuple.create = (schemas, params) => {
+ZodTuple2.create = (schemas, params) => {
   if (!Array.isArray(schemas)) {
     throw new Error("You must pass an array of schemas to z.tuple([ ... ])");
   }
-  return new ZodTuple({
+  return new ZodTuple2({
     items: schemas,
-    typeName: ZodFirstPartyTypeKind.ZodTuple,
+    typeName: ZodFirstPartyTypeKind2.ZodTuple,
     rest: null,
     ...processCreateParams(params)
   });
 };
-var ZodMap = class extends ZodType {
+var ZodMap2 = class extends ZodType2 {
   get keySchema() {
     return this._def.keyType;
   }
@@ -24759,7 +26379,7 @@ var ZodMap = class extends ZodType {
     const { status, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.map) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.map,
         received: ctx.parsedType
       });
@@ -24806,20 +26426,20 @@ var ZodMap = class extends ZodType {
     }
   }
 };
-ZodMap.create = (keyType, valueType, params) => {
-  return new ZodMap({
+ZodMap2.create = (keyType, valueType, params) => {
+  return new ZodMap2({
     valueType,
     keyType,
-    typeName: ZodFirstPartyTypeKind.ZodMap,
+    typeName: ZodFirstPartyTypeKind2.ZodMap,
     ...processCreateParams(params)
   });
 };
-var ZodSet = class _ZodSet extends ZodType {
+var ZodSet2 = class _ZodSet extends ZodType2 {
   _parse(input) {
     const { status, ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.set) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.set,
         received: ctx.parsedType
       });
@@ -24829,7 +26449,7 @@ var ZodSet = class _ZodSet extends ZodType {
     if (def.minSize !== null) {
       if (ctx.data.size < def.minSize.value) {
         addIssueToContext(ctx, {
-          code: ZodIssueCode.too_small,
+          code: ZodIssueCode2.too_small,
           minimum: def.minSize.value,
           type: "set",
           inclusive: true,
@@ -24842,7 +26462,7 @@ var ZodSet = class _ZodSet extends ZodType {
     if (def.maxSize !== null) {
       if (ctx.data.size > def.maxSize.value) {
         addIssueToContext(ctx, {
-          code: ZodIssueCode.too_big,
+          code: ZodIssueCode2.too_big,
           maximum: def.maxSize.value,
           type: "set",
           inclusive: true,
@@ -24890,16 +26510,16 @@ var ZodSet = class _ZodSet extends ZodType {
     return this.min(1, message);
   }
 };
-ZodSet.create = (valueType, params) => {
-  return new ZodSet({
+ZodSet2.create = (valueType, params) => {
+  return new ZodSet2({
     valueType,
     minSize: null,
     maxSize: null,
-    typeName: ZodFirstPartyTypeKind.ZodSet,
+    typeName: ZodFirstPartyTypeKind2.ZodSet,
     ...processCreateParams(params)
   });
 };
-var ZodLazy = class extends ZodType {
+var ZodLazy2 = class extends ZodType2 {
   get schema() {
     return this._def.getter();
   }
@@ -24909,20 +26529,20 @@ var ZodLazy = class extends ZodType {
     return lazySchema._parse({ data: ctx.data, path: ctx.path, parent: ctx });
   }
 };
-ZodLazy.create = (getter, params) => {
-  return new ZodLazy({
+ZodLazy2.create = (getter, params) => {
+  return new ZodLazy2({
     getter,
-    typeName: ZodFirstPartyTypeKind.ZodLazy,
+    typeName: ZodFirstPartyTypeKind2.ZodLazy,
     ...processCreateParams(params)
   });
 };
-var ZodLiteral = class extends ZodType {
+var ZodLiteral2 = class extends ZodType2 {
   _parse(input) {
     if (input.data !== this._def.value) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
         received: ctx.data,
-        code: ZodIssueCode.invalid_literal,
+        code: ZodIssueCode2.invalid_literal,
         expected: this._def.value
       });
       return INVALID;
@@ -24933,21 +26553,21 @@ var ZodLiteral = class extends ZodType {
     return this._def.value;
   }
 };
-ZodLiteral.create = (value, params) => {
-  return new ZodLiteral({
+ZodLiteral2.create = (value, params) => {
+  return new ZodLiteral2({
     value,
-    typeName: ZodFirstPartyTypeKind.ZodLiteral,
+    typeName: ZodFirstPartyTypeKind2.ZodLiteral,
     ...processCreateParams(params)
   });
 };
 function createZodEnum(values, params) {
-  return new ZodEnum({
+  return new ZodEnum2({
     values,
-    typeName: ZodFirstPartyTypeKind.ZodEnum,
+    typeName: ZodFirstPartyTypeKind2.ZodEnum,
     ...processCreateParams(params)
   });
 }
-var ZodEnum = class _ZodEnum extends ZodType {
+var ZodEnum2 = class _ZodEnum extends ZodType2 {
   _parse(input) {
     if (typeof input.data !== "string") {
       const ctx = this._getOrReturnCtx(input);
@@ -24955,7 +26575,7 @@ var ZodEnum = class _ZodEnum extends ZodType {
       addIssueToContext(ctx, {
         expected: util.joinValues(expectedValues),
         received: ctx.parsedType,
-        code: ZodIssueCode.invalid_type
+        code: ZodIssueCode2.invalid_type
       });
       return INVALID;
     }
@@ -24967,7 +26587,7 @@ var ZodEnum = class _ZodEnum extends ZodType {
       const expectedValues = this._def.values;
       addIssueToContext(ctx, {
         received: ctx.data,
-        code: ZodIssueCode.invalid_enum_value,
+        code: ZodIssueCode2.invalid_enum_value,
         options: expectedValues
       });
       return INVALID;
@@ -25011,8 +26631,8 @@ var ZodEnum = class _ZodEnum extends ZodType {
     });
   }
 };
-ZodEnum.create = createZodEnum;
-var ZodNativeEnum = class extends ZodType {
+ZodEnum2.create = createZodEnum;
+var ZodNativeEnum = class extends ZodType2 {
   _parse(input) {
     const nativeEnumValues = util.getValidEnumValues(this._def.values);
     const ctx = this._getOrReturnCtx(input);
@@ -25021,7 +26641,7 @@ var ZodNativeEnum = class extends ZodType {
       addIssueToContext(ctx, {
         expected: util.joinValues(expectedValues),
         received: ctx.parsedType,
-        code: ZodIssueCode.invalid_type
+        code: ZodIssueCode2.invalid_type
       });
       return INVALID;
     }
@@ -25032,7 +26652,7 @@ var ZodNativeEnum = class extends ZodType {
       const expectedValues = util.objectValues(nativeEnumValues);
       addIssueToContext(ctx, {
         received: ctx.data,
-        code: ZodIssueCode.invalid_enum_value,
+        code: ZodIssueCode2.invalid_enum_value,
         options: expectedValues
       });
       return INVALID;
@@ -25046,11 +26666,11 @@ var ZodNativeEnum = class extends ZodType {
 ZodNativeEnum.create = (values, params) => {
   return new ZodNativeEnum({
     values,
-    typeName: ZodFirstPartyTypeKind.ZodNativeEnum,
+    typeName: ZodFirstPartyTypeKind2.ZodNativeEnum,
     ...processCreateParams(params)
   });
 };
-var ZodPromise = class extends ZodType {
+var ZodPromise2 = class extends ZodType2 {
   unwrap() {
     return this._def.type;
   }
@@ -25058,7 +26678,7 @@ var ZodPromise = class extends ZodType {
     const { ctx } = this._processInputParams(input);
     if (ctx.parsedType !== ZodParsedType.promise && ctx.common.async === false) {
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.promise,
         received: ctx.parsedType
       });
@@ -25073,19 +26693,19 @@ var ZodPromise = class extends ZodType {
     }));
   }
 };
-ZodPromise.create = (schema, params) => {
-  return new ZodPromise({
+ZodPromise2.create = (schema, params) => {
+  return new ZodPromise2({
     type: schema,
-    typeName: ZodFirstPartyTypeKind.ZodPromise,
+    typeName: ZodFirstPartyTypeKind2.ZodPromise,
     ...processCreateParams(params)
   });
 };
-var ZodEffects = class extends ZodType {
+var ZodEffects = class extends ZodType2 {
   innerType() {
     return this._def.schema;
   }
   sourceType() {
-    return this._def.schema._def.typeName === ZodFirstPartyTypeKind.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
+    return this._def.schema._def.typeName === ZodFirstPartyTypeKind2.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
   }
   _parse(input) {
     const { status, ctx } = this._processInputParams(input);
@@ -25206,7 +26826,7 @@ var ZodEffects = class extends ZodType {
 ZodEffects.create = (schema, effect, params) => {
   return new ZodEffects({
     schema,
-    typeName: ZodFirstPartyTypeKind.ZodEffects,
+    typeName: ZodFirstPartyTypeKind2.ZodEffects,
     effect,
     ...processCreateParams(params)
   });
@@ -25215,11 +26835,11 @@ ZodEffects.createWithPreprocess = (preprocess2, schema, params) => {
   return new ZodEffects({
     schema,
     effect: { type: "preprocess", transform: preprocess2 },
-    typeName: ZodFirstPartyTypeKind.ZodEffects,
+    typeName: ZodFirstPartyTypeKind2.ZodEffects,
     ...processCreateParams(params)
   });
 };
-var ZodOptional = class extends ZodType {
+var ZodOptional2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 === ZodParsedType.undefined) {
@@ -25231,14 +26851,14 @@ var ZodOptional = class extends ZodType {
     return this._def.innerType;
   }
 };
-ZodOptional.create = (type, params) => {
-  return new ZodOptional({
+ZodOptional2.create = (type, params) => {
+  return new ZodOptional2({
     innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodOptional,
+    typeName: ZodFirstPartyTypeKind2.ZodOptional,
     ...processCreateParams(params)
   });
 };
-var ZodNullable = class extends ZodType {
+var ZodNullable2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 === ZodParsedType.null) {
@@ -25250,14 +26870,14 @@ var ZodNullable = class extends ZodType {
     return this._def.innerType;
   }
 };
-ZodNullable.create = (type, params) => {
-  return new ZodNullable({
+ZodNullable2.create = (type, params) => {
+  return new ZodNullable2({
     innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodNullable,
+    typeName: ZodFirstPartyTypeKind2.ZodNullable,
     ...processCreateParams(params)
   });
 };
-var ZodDefault = class extends ZodType {
+var ZodDefault2 = class extends ZodType2 {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
     let data = ctx.data;
@@ -25274,15 +26894,15 @@ var ZodDefault = class extends ZodType {
     return this._def.innerType;
   }
 };
-ZodDefault.create = (type, params) => {
-  return new ZodDefault({
+ZodDefault2.create = (type, params) => {
+  return new ZodDefault2({
     innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodDefault,
+    typeName: ZodFirstPartyTypeKind2.ZodDefault,
     defaultValue: typeof params.default === "function" ? params.default : () => params.default,
     ...processCreateParams(params)
   });
 };
-var ZodCatch = class extends ZodType {
+var ZodCatch2 = class extends ZodType2 {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
     const newCtx = {
@@ -25305,7 +26925,7 @@ var ZodCatch = class extends ZodType {
           status: "valid",
           value: result2.status === "valid" ? result2.value : this._def.catchValue({
             get error() {
-              return new ZodError(newCtx.common.issues);
+              return new ZodError2(newCtx.common.issues);
             },
             input: newCtx.data
           })
@@ -25316,7 +26936,7 @@ var ZodCatch = class extends ZodType {
         status: "valid",
         value: result.status === "valid" ? result.value : this._def.catchValue({
           get error() {
-            return new ZodError(newCtx.common.issues);
+            return new ZodError2(newCtx.common.issues);
           },
           input: newCtx.data
         })
@@ -25327,21 +26947,21 @@ var ZodCatch = class extends ZodType {
     return this._def.innerType;
   }
 };
-ZodCatch.create = (type, params) => {
-  return new ZodCatch({
+ZodCatch2.create = (type, params) => {
+  return new ZodCatch2({
     innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodCatch,
+    typeName: ZodFirstPartyTypeKind2.ZodCatch,
     catchValue: typeof params.catch === "function" ? params.catch : () => params.catch,
     ...processCreateParams(params)
   });
 };
-var ZodNaN = class extends ZodType {
+var ZodNaN2 = class extends ZodType2 {
   _parse(input) {
     const parsedType2 = this._getType(input);
     if (parsedType2 !== ZodParsedType.nan) {
       const ctx = this._getOrReturnCtx(input);
       addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
+        code: ZodIssueCode2.invalid_type,
         expected: ZodParsedType.nan,
         received: ctx.parsedType
       });
@@ -25350,13 +26970,13 @@ var ZodNaN = class extends ZodType {
     return { status: "valid", value: input.data };
   }
 };
-ZodNaN.create = (params) => {
-  return new ZodNaN({
-    typeName: ZodFirstPartyTypeKind.ZodNaN,
+ZodNaN2.create = (params) => {
+  return new ZodNaN2({
+    typeName: ZodFirstPartyTypeKind2.ZodNaN,
     ...processCreateParams(params)
   });
 };
-var ZodBranded = class extends ZodType {
+var ZodBranded = class extends ZodType2 {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
     const data = ctx.data;
@@ -25370,7 +26990,7 @@ var ZodBranded = class extends ZodType {
     return this._def.type;
   }
 };
-var ZodPipeline = class _ZodPipeline extends ZodType {
+var ZodPipeline = class _ZodPipeline extends ZodType2 {
   _parse(input) {
     const { status, ctx } = this._processInputParams(input);
     if (ctx.common.async) {
@@ -25421,11 +27041,11 @@ var ZodPipeline = class _ZodPipeline extends ZodType {
     return new _ZodPipeline({
       in: a,
       out: b,
-      typeName: ZodFirstPartyTypeKind.ZodPipeline
+      typeName: ZodFirstPartyTypeKind2.ZodPipeline
     });
   }
 };
-var ZodReadonly = class extends ZodType {
+var ZodReadonly2 = class extends ZodType2 {
   _parse(input) {
     const result = this._def.innerType._parse(input);
     const freeze = (data) => {
@@ -25440,14 +27060,14 @@ var ZodReadonly = class extends ZodType {
     return this._def.innerType;
   }
 };
-ZodReadonly.create = (type, params) => {
-  return new ZodReadonly({
+ZodReadonly2.create = (type, params) => {
+  return new ZodReadonly2({
     innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodReadonly,
+    typeName: ZodFirstPartyTypeKind2.ZodReadonly,
     ...processCreateParams(params)
   });
 };
-var ZodFirstPartyTypeKind;
+var ZodFirstPartyTypeKind2;
 (function(ZodFirstPartyTypeKind4) {
   ZodFirstPartyTypeKind4["ZodString"] = "ZodString";
   ZodFirstPartyTypeKind4["ZodNumber"] = "ZodNumber";
@@ -25485,17 +27105,17 @@ var ZodFirstPartyTypeKind;
   ZodFirstPartyTypeKind4["ZodBranded"] = "ZodBranded";
   ZodFirstPartyTypeKind4["ZodPipeline"] = "ZodPipeline";
   ZodFirstPartyTypeKind4["ZodReadonly"] = "ZodReadonly";
-})(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
-ZodNever.create;
-ZodArray.create;
-var objectType = ZodObject.create;
-ZodUnion.create;
-ZodIntersection.create;
-ZodTuple.create;
-ZodEnum.create;
-ZodPromise.create;
-ZodOptional.create;
-ZodNullable.create;
+})(ZodFirstPartyTypeKind2 || (ZodFirstPartyTypeKind2 = {}));
+ZodNever2.create;
+ZodArray2.create;
+var objectType = ZodObject2.create;
+ZodUnion2.create;
+ZodIntersection2.create;
+ZodTuple2.create;
+ZodEnum2.create;
+ZodPromise2.create;
+ZodOptional2.create;
+ZodNullable2.create;
 
 // ../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/mini/external.js
 init_core2();
@@ -25542,7 +27162,7 @@ var ZodMiniObject = /* @__PURE__ */ $constructor("ZodMiniObject", (inst, def) =>
   defineLazy(inst, "shape", () => def.shape);
 });
 // @__NO_SIDE_EFFECTS__
-function object(shape, params) {
+function object2(shape, params) {
   const def = {
     type: "object",
     shape: shape ?? {},
@@ -25563,16 +27183,16 @@ function isZ4Schema(s) {
 function objectFromShape(shape) {
   const values = Object.values(shape);
   if (values.length === 0)
-    return object({});
+    return object2({});
   const allV4 = values.every(isZ4Schema);
   const allV3 = values.every((s) => !isZ4Schema(s));
   if (allV4)
-    return object(shape);
+    return object2(shape);
   if (allV3)
     return objectType(shape);
   throw new Error("Mixed Zod versions detected in object shape.");
 }
-function safeParse2(schema, data) {
+function safeParse3(schema, data) {
   if (isZ4Schema(schema)) {
     const result2 = safeParse(schema, data);
     return result2;
@@ -25581,7 +27201,7 @@ function safeParse2(schema, data) {
   const result = v3Schema.safeParse(data);
   return result;
 }
-async function safeParseAsync2(schema, data) {
+async function safeParseAsync3(schema, data) {
   if (isZ4Schema(schema)) {
     const result2 = await safeParseAsync(schema, data);
     return result2;
@@ -25699,1536 +27319,6 @@ function getLiteralValue(schema) {
   return void 0;
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
-init_v4();
-var LATEST_PROTOCOL_VERSION = "2025-11-25";
-var SUPPORTED_PROTOCOL_VERSIONS = [LATEST_PROTOCOL_VERSION, "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
-var RELATED_TASK_META_KEY = "io.modelcontextprotocol/related-task";
-var JSONRPC_VERSION = "2.0";
-var AssertObjectSchema = custom((v2) => v2 !== null && (typeof v2 === "object" || typeof v2 === "function"));
-var ProgressTokenSchema = union([string2(), number2().int()]);
-var CursorSchema = string2();
-looseObject({
-  /**
-   * Requested duration in milliseconds to retain task from creation.
-   */
-  ttl: number2().optional(),
-  /**
-   * Time in milliseconds to wait between task status requests.
-   */
-  pollInterval: number2().optional()
-});
-var TaskMetadataSchema = object2({
-  ttl: number2().optional()
-});
-var RelatedTaskMetadataSchema = object2({
-  taskId: string2()
-});
-var RequestMetaSchema = looseObject({
-  /**
-   * If specified, the caller is requesting out-of-band progress notifications for this request (as represented by notifications/progress). The value of this parameter is an opaque token that will be attached to any subsequent notifications. The receiver is not obligated to provide these notifications.
-   */
-  progressToken: ProgressTokenSchema.optional(),
-  /**
-   * If specified, this request is related to the provided task.
-   */
-  [RELATED_TASK_META_KEY]: RelatedTaskMetadataSchema.optional()
-});
-var BaseRequestParamsSchema = object2({
-  /**
-   * See [General fields: `_meta`](/specification/draft/basic/index#meta) for notes on `_meta` usage.
-   */
-  _meta: RequestMetaSchema.optional()
-});
-var TaskAugmentedRequestParamsSchema = BaseRequestParamsSchema.extend({
-  /**
-   * If specified, the caller is requesting task-augmented execution for this request.
-   * The request will return a CreateTaskResult immediately, and the actual result can be
-   * retrieved later via tasks/result.
-   *
-   * Task augmentation is subject to capability negotiation - receivers MUST declare support
-   * for task augmentation of specific request types in their capabilities.
-   */
-  task: TaskMetadataSchema.optional()
-});
-var isTaskAugmentedRequestParams = (value) => TaskAugmentedRequestParamsSchema.safeParse(value).success;
-var RequestSchema = object2({
-  method: string2(),
-  params: BaseRequestParamsSchema.loose().optional()
-});
-var NotificationsParamsSchema = object2({
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: RequestMetaSchema.optional()
-});
-var NotificationSchema = object2({
-  method: string2(),
-  params: NotificationsParamsSchema.loose().optional()
-});
-var ResultSchema = looseObject({
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: RequestMetaSchema.optional()
-});
-var RequestIdSchema = union([string2(), number2().int()]);
-var JSONRPCRequestSchema = object2({
-  jsonrpc: literal(JSONRPC_VERSION),
-  id: RequestIdSchema,
-  ...RequestSchema.shape
-}).strict();
-var isJSONRPCRequest = (value) => JSONRPCRequestSchema.safeParse(value).success;
-var JSONRPCNotificationSchema = object2({
-  jsonrpc: literal(JSONRPC_VERSION),
-  ...NotificationSchema.shape
-}).strict();
-var isJSONRPCNotification = (value) => JSONRPCNotificationSchema.safeParse(value).success;
-var JSONRPCResultResponseSchema = object2({
-  jsonrpc: literal(JSONRPC_VERSION),
-  id: RequestIdSchema,
-  result: ResultSchema
-}).strict();
-var isJSONRPCResultResponse = (value) => JSONRPCResultResponseSchema.safeParse(value).success;
-var ErrorCode;
-(function(ErrorCode2) {
-  ErrorCode2[ErrorCode2["ConnectionClosed"] = -32e3] = "ConnectionClosed";
-  ErrorCode2[ErrorCode2["RequestTimeout"] = -32001] = "RequestTimeout";
-  ErrorCode2[ErrorCode2["ParseError"] = -32700] = "ParseError";
-  ErrorCode2[ErrorCode2["InvalidRequest"] = -32600] = "InvalidRequest";
-  ErrorCode2[ErrorCode2["MethodNotFound"] = -32601] = "MethodNotFound";
-  ErrorCode2[ErrorCode2["InvalidParams"] = -32602] = "InvalidParams";
-  ErrorCode2[ErrorCode2["InternalError"] = -32603] = "InternalError";
-  ErrorCode2[ErrorCode2["UrlElicitationRequired"] = -32042] = "UrlElicitationRequired";
-})(ErrorCode || (ErrorCode = {}));
-var JSONRPCErrorResponseSchema = object2({
-  jsonrpc: literal(JSONRPC_VERSION),
-  id: RequestIdSchema.optional(),
-  error: object2({
-    /**
-     * The error type that occurred.
-     */
-    code: number2().int(),
-    /**
-     * A short description of the error. The message SHOULD be limited to a concise single sentence.
-     */
-    message: string2(),
-    /**
-     * Additional information about the error. The value of this member is defined by the sender (e.g. detailed error information, nested errors etc.).
-     */
-    data: unknown().optional()
-  })
-}).strict();
-var isJSONRPCErrorResponse = (value) => JSONRPCErrorResponseSchema.safeParse(value).success;
-var JSONRPCMessageSchema = union([
-  JSONRPCRequestSchema,
-  JSONRPCNotificationSchema,
-  JSONRPCResultResponseSchema,
-  JSONRPCErrorResponseSchema
-]);
-union([JSONRPCResultResponseSchema, JSONRPCErrorResponseSchema]);
-var EmptyResultSchema = ResultSchema.strict();
-var CancelledNotificationParamsSchema = NotificationsParamsSchema.extend({
-  /**
-   * The ID of the request to cancel.
-   *
-   * This MUST correspond to the ID of a request previously issued in the same direction.
-   */
-  requestId: RequestIdSchema.optional(),
-  /**
-   * An optional string describing the reason for the cancellation. This MAY be logged or presented to the user.
-   */
-  reason: string2().optional()
-});
-var CancelledNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/cancelled"),
-  params: CancelledNotificationParamsSchema
-});
-var IconSchema = object2({
-  /**
-   * URL or data URI for the icon.
-   */
-  src: string2(),
-  /**
-   * Optional MIME type for the icon.
-   */
-  mimeType: string2().optional(),
-  /**
-   * Optional array of strings that specify sizes at which the icon can be used.
-   * Each string should be in WxH format (e.g., `"48x48"`, `"96x96"`) or `"any"` for scalable formats like SVG.
-   *
-   * If not provided, the client should assume that the icon can be used at any size.
-   */
-  sizes: array(string2()).optional(),
-  /**
-   * Optional specifier for the theme this icon is designed for. `light` indicates
-   * the icon is designed to be used with a light background, and `dark` indicates
-   * the icon is designed to be used with a dark background.
-   *
-   * If not provided, the client should assume the icon can be used with any theme.
-   */
-  theme: _enum2(["light", "dark"]).optional()
-});
-var IconsSchema = object2({
-  /**
-   * Optional set of sized icons that the client can display in a user interface.
-   *
-   * Clients that support rendering icons MUST support at least the following MIME types:
-   * - `image/png` - PNG images (safe, universal compatibility)
-   * - `image/jpeg` (and `image/jpg`) - JPEG images (safe, universal compatibility)
-   *
-   * Clients that support rendering icons SHOULD also support:
-   * - `image/svg+xml` - SVG images (scalable but requires security precautions)
-   * - `image/webp` - WebP images (modern, efficient format)
-   */
-  icons: array(IconSchema).optional()
-});
-var BaseMetadataSchema = object2({
-  /** Intended for programmatic or logical use, but used as a display name in past specs or fallback */
-  name: string2(),
-  /**
-   * Intended for UI and end-user contexts — optimized to be human-readable and easily understood,
-   * even by those unfamiliar with domain-specific terminology.
-   *
-   * If not provided, the name should be used for display (except for Tool,
-   * where `annotations.title` should be given precedence over using `name`,
-   * if present).
-   */
-  title: string2().optional()
-});
-var ImplementationSchema = BaseMetadataSchema.extend({
-  ...BaseMetadataSchema.shape,
-  ...IconsSchema.shape,
-  version: string2(),
-  /**
-   * An optional URL of the website for this implementation.
-   */
-  websiteUrl: string2().optional(),
-  /**
-   * An optional human-readable description of what this implementation does.
-   *
-   * This can be used by clients or servers to provide context about their purpose
-   * and capabilities. For example, a server might describe the types of resources
-   * or tools it provides, while a client might describe its intended use case.
-   */
-  description: string2().optional()
-});
-var FormElicitationCapabilitySchema = intersection(object2({
-  applyDefaults: boolean2().optional()
-}), record(string2(), unknown()));
-var ElicitationCapabilitySchema = preprocess((value) => {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    if (Object.keys(value).length === 0) {
-      return { form: {} };
-    }
-  }
-  return value;
-}, intersection(object2({
-  form: FormElicitationCapabilitySchema.optional(),
-  url: AssertObjectSchema.optional()
-}), record(string2(), unknown()).optional()));
-var ClientTasksCapabilitySchema = looseObject({
-  /**
-   * Present if the client supports listing tasks.
-   */
-  list: AssertObjectSchema.optional(),
-  /**
-   * Present if the client supports cancelling tasks.
-   */
-  cancel: AssertObjectSchema.optional(),
-  /**
-   * Capabilities for task creation on specific request types.
-   */
-  requests: looseObject({
-    /**
-     * Task support for sampling requests.
-     */
-    sampling: looseObject({
-      createMessage: AssertObjectSchema.optional()
-    }).optional(),
-    /**
-     * Task support for elicitation requests.
-     */
-    elicitation: looseObject({
-      create: AssertObjectSchema.optional()
-    }).optional()
-  }).optional()
-});
-var ServerTasksCapabilitySchema = looseObject({
-  /**
-   * Present if the server supports listing tasks.
-   */
-  list: AssertObjectSchema.optional(),
-  /**
-   * Present if the server supports cancelling tasks.
-   */
-  cancel: AssertObjectSchema.optional(),
-  /**
-   * Capabilities for task creation on specific request types.
-   */
-  requests: looseObject({
-    /**
-     * Task support for tool requests.
-     */
-    tools: looseObject({
-      call: AssertObjectSchema.optional()
-    }).optional()
-  }).optional()
-});
-var ClientCapabilitiesSchema = object2({
-  /**
-   * Experimental, non-standard capabilities that the client supports.
-   */
-  experimental: record(string2(), AssertObjectSchema).optional(),
-  /**
-   * Present if the client supports sampling from an LLM.
-   */
-  sampling: object2({
-    /**
-     * Present if the client supports context inclusion via includeContext parameter.
-     * If not declared, servers SHOULD only use `includeContext: "none"` (or omit it).
-     */
-    context: AssertObjectSchema.optional(),
-    /**
-     * Present if the client supports tool use via tools and toolChoice parameters.
-     */
-    tools: AssertObjectSchema.optional()
-  }).optional(),
-  /**
-   * Present if the client supports eliciting user input.
-   */
-  elicitation: ElicitationCapabilitySchema.optional(),
-  /**
-   * Present if the client supports listing roots.
-   */
-  roots: object2({
-    /**
-     * Whether the client supports issuing notifications for changes to the roots list.
-     */
-    listChanged: boolean2().optional()
-  }).optional(),
-  /**
-   * Present if the client supports task creation.
-   */
-  tasks: ClientTasksCapabilitySchema.optional(),
-  /**
-   * Extensions that the client supports. Keys are extension identifiers (vendor-prefix/extension-name).
-   */
-  extensions: record(string2(), AssertObjectSchema).optional()
-});
-var InitializeRequestParamsSchema = BaseRequestParamsSchema.extend({
-  /**
-   * The latest version of the Model Context Protocol that the client supports. The client MAY decide to support older versions as well.
-   */
-  protocolVersion: string2(),
-  capabilities: ClientCapabilitiesSchema,
-  clientInfo: ImplementationSchema
-});
-var InitializeRequestSchema = RequestSchema.extend({
-  method: literal("initialize"),
-  params: InitializeRequestParamsSchema
-});
-var ServerCapabilitiesSchema = object2({
-  /**
-   * Experimental, non-standard capabilities that the server supports.
-   */
-  experimental: record(string2(), AssertObjectSchema).optional(),
-  /**
-   * Present if the server supports sending log messages to the client.
-   */
-  logging: AssertObjectSchema.optional(),
-  /**
-   * Present if the server supports sending completions to the client.
-   */
-  completions: AssertObjectSchema.optional(),
-  /**
-   * Present if the server offers any prompt templates.
-   */
-  prompts: object2({
-    /**
-     * Whether this server supports issuing notifications for changes to the prompt list.
-     */
-    listChanged: boolean2().optional()
-  }).optional(),
-  /**
-   * Present if the server offers any resources to read.
-   */
-  resources: object2({
-    /**
-     * Whether this server supports clients subscribing to resource updates.
-     */
-    subscribe: boolean2().optional(),
-    /**
-     * Whether this server supports issuing notifications for changes to the resource list.
-     */
-    listChanged: boolean2().optional()
-  }).optional(),
-  /**
-   * Present if the server offers any tools to call.
-   */
-  tools: object2({
-    /**
-     * Whether this server supports issuing notifications for changes to the tool list.
-     */
-    listChanged: boolean2().optional()
-  }).optional(),
-  /**
-   * Present if the server supports task creation.
-   */
-  tasks: ServerTasksCapabilitySchema.optional(),
-  /**
-   * Extensions that the server supports. Keys are extension identifiers (vendor-prefix/extension-name).
-   */
-  extensions: record(string2(), AssertObjectSchema).optional()
-});
-var InitializeResultSchema = ResultSchema.extend({
-  /**
-   * The version of the Model Context Protocol that the server wants to use. This may not match the version that the client requested. If the client cannot support this version, it MUST disconnect.
-   */
-  protocolVersion: string2(),
-  capabilities: ServerCapabilitiesSchema,
-  serverInfo: ImplementationSchema,
-  /**
-   * Instructions describing how to use the server and its features.
-   *
-   * This can be used by clients to improve the LLM's understanding of available tools, resources, etc. It can be thought of like a "hint" to the model. For example, this information MAY be added to the system prompt.
-   */
-  instructions: string2().optional()
-});
-var InitializedNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/initialized"),
-  params: NotificationsParamsSchema.optional()
-});
-var PingRequestSchema = RequestSchema.extend({
-  method: literal("ping"),
-  params: BaseRequestParamsSchema.optional()
-});
-var ProgressSchema = object2({
-  /**
-   * The progress thus far. This should increase every time progress is made, even if the total is unknown.
-   */
-  progress: number2(),
-  /**
-   * Total number of items to process (or total progress required), if known.
-   */
-  total: optional(number2()),
-  /**
-   * An optional message describing the current progress.
-   */
-  message: optional(string2())
-});
-var ProgressNotificationParamsSchema = object2({
-  ...NotificationsParamsSchema.shape,
-  ...ProgressSchema.shape,
-  /**
-   * The progress token which was given in the initial request, used to associate this notification with the request that is proceeding.
-   */
-  progressToken: ProgressTokenSchema
-});
-var ProgressNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/progress"),
-  params: ProgressNotificationParamsSchema
-});
-var PaginatedRequestParamsSchema = BaseRequestParamsSchema.extend({
-  /**
-   * An opaque token representing the current pagination position.
-   * If provided, the server should return results starting after this cursor.
-   */
-  cursor: CursorSchema.optional()
-});
-var PaginatedRequestSchema = RequestSchema.extend({
-  params: PaginatedRequestParamsSchema.optional()
-});
-var PaginatedResultSchema = ResultSchema.extend({
-  /**
-   * An opaque token representing the pagination position after the last returned result.
-   * If present, there may be more results available.
-   */
-  nextCursor: CursorSchema.optional()
-});
-var TaskStatusSchema = _enum2(["working", "input_required", "completed", "failed", "cancelled"]);
-var TaskSchema = object2({
-  taskId: string2(),
-  status: TaskStatusSchema,
-  /**
-   * Time in milliseconds to keep task results available after completion.
-   * If null, the task has unlimited lifetime until manually cleaned up.
-   */
-  ttl: union([number2(), _null3()]),
-  /**
-   * ISO 8601 timestamp when the task was created.
-   */
-  createdAt: string2(),
-  /**
-   * ISO 8601 timestamp when the task was last updated.
-   */
-  lastUpdatedAt: string2(),
-  pollInterval: optional(number2()),
-  /**
-   * Optional diagnostic message for failed tasks or other status information.
-   */
-  statusMessage: optional(string2())
-});
-var CreateTaskResultSchema = ResultSchema.extend({
-  task: TaskSchema
-});
-var TaskStatusNotificationParamsSchema = NotificationsParamsSchema.merge(TaskSchema);
-var TaskStatusNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/tasks/status"),
-  params: TaskStatusNotificationParamsSchema
-});
-var GetTaskRequestSchema = RequestSchema.extend({
-  method: literal("tasks/get"),
-  params: BaseRequestParamsSchema.extend({
-    taskId: string2()
-  })
-});
-var GetTaskResultSchema = ResultSchema.merge(TaskSchema);
-var GetTaskPayloadRequestSchema = RequestSchema.extend({
-  method: literal("tasks/result"),
-  params: BaseRequestParamsSchema.extend({
-    taskId: string2()
-  })
-});
-ResultSchema.loose();
-var ListTasksRequestSchema = PaginatedRequestSchema.extend({
-  method: literal("tasks/list")
-});
-var ListTasksResultSchema = PaginatedResultSchema.extend({
-  tasks: array(TaskSchema)
-});
-var CancelTaskRequestSchema = RequestSchema.extend({
-  method: literal("tasks/cancel"),
-  params: BaseRequestParamsSchema.extend({
-    taskId: string2()
-  })
-});
-var CancelTaskResultSchema = ResultSchema.merge(TaskSchema);
-var ResourceContentsSchema = object2({
-  /**
-   * The URI of this resource.
-   */
-  uri: string2(),
-  /**
-   * The MIME type of this resource, if known.
-   */
-  mimeType: optional(string2()),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var TextResourceContentsSchema = ResourceContentsSchema.extend({
-  /**
-   * The text of the item. This must only be set if the item can actually be represented as text (not binary data).
-   */
-  text: string2()
-});
-var Base64Schema = string2().refine((val) => {
-  try {
-    atob(val);
-    return true;
-  } catch {
-    return false;
-  }
-}, { message: "Invalid Base64 string" });
-var BlobResourceContentsSchema = ResourceContentsSchema.extend({
-  /**
-   * A base64-encoded string representing the binary data of the item.
-   */
-  blob: Base64Schema
-});
-var RoleSchema = _enum2(["user", "assistant"]);
-var AnnotationsSchema = object2({
-  /**
-   * Intended audience(s) for the resource.
-   */
-  audience: array(RoleSchema).optional(),
-  /**
-   * Importance hint for the resource, from 0 (least) to 1 (most).
-   */
-  priority: number2().min(0).max(1).optional(),
-  /**
-   * ISO 8601 timestamp for the most recent modification.
-   */
-  lastModified: iso_exports2.datetime({ offset: true }).optional()
-});
-var ResourceSchema = object2({
-  ...BaseMetadataSchema.shape,
-  ...IconsSchema.shape,
-  /**
-   * The URI of this resource.
-   */
-  uri: string2(),
-  /**
-   * A description of what this resource represents.
-   *
-   * This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a "hint" to the model.
-   */
-  description: optional(string2()),
-  /**
-   * The MIME type of this resource, if known.
-   */
-  mimeType: optional(string2()),
-  /**
-   * The size of the raw resource content, in bytes (i.e., before base64 encoding or any tokenization), if known.
-   *
-   * This can be used by Hosts to display file sizes and estimate context window usage.
-   */
-  size: optional(number2()),
-  /**
-   * Optional annotations for the client.
-   */
-  annotations: AnnotationsSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: optional(looseObject({}))
-});
-var ResourceTemplateSchema = object2({
-  ...BaseMetadataSchema.shape,
-  ...IconsSchema.shape,
-  /**
-   * A URI template (according to RFC 6570) that can be used to construct resource URIs.
-   */
-  uriTemplate: string2(),
-  /**
-   * A description of what this template is for.
-   *
-   * This can be used by clients to improve the LLM's understanding of available resources. It can be thought of like a "hint" to the model.
-   */
-  description: optional(string2()),
-  /**
-   * The MIME type for all resources that match this template. This should only be included if all resources matching this template have the same type.
-   */
-  mimeType: optional(string2()),
-  /**
-   * Optional annotations for the client.
-   */
-  annotations: AnnotationsSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: optional(looseObject({}))
-});
-var ListResourcesRequestSchema = PaginatedRequestSchema.extend({
-  method: literal("resources/list")
-});
-var ListResourcesResultSchema = PaginatedResultSchema.extend({
-  resources: array(ResourceSchema)
-});
-var ListResourceTemplatesRequestSchema = PaginatedRequestSchema.extend({
-  method: literal("resources/templates/list")
-});
-var ListResourceTemplatesResultSchema = PaginatedResultSchema.extend({
-  resourceTemplates: array(ResourceTemplateSchema)
-});
-var ResourceRequestParamsSchema = BaseRequestParamsSchema.extend({
-  /**
-   * The URI of the resource to read. The URI can use any protocol; it is up to the server how to interpret it.
-   *
-   * @format uri
-   */
-  uri: string2()
-});
-var ReadResourceRequestParamsSchema = ResourceRequestParamsSchema;
-var ReadResourceRequestSchema = RequestSchema.extend({
-  method: literal("resources/read"),
-  params: ReadResourceRequestParamsSchema
-});
-var ReadResourceResultSchema = ResultSchema.extend({
-  contents: array(union([TextResourceContentsSchema, BlobResourceContentsSchema]))
-});
-var ResourceListChangedNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/resources/list_changed"),
-  params: NotificationsParamsSchema.optional()
-});
-var SubscribeRequestParamsSchema = ResourceRequestParamsSchema;
-var SubscribeRequestSchema = RequestSchema.extend({
-  method: literal("resources/subscribe"),
-  params: SubscribeRequestParamsSchema
-});
-var UnsubscribeRequestParamsSchema = ResourceRequestParamsSchema;
-var UnsubscribeRequestSchema = RequestSchema.extend({
-  method: literal("resources/unsubscribe"),
-  params: UnsubscribeRequestParamsSchema
-});
-var ResourceUpdatedNotificationParamsSchema = NotificationsParamsSchema.extend({
-  /**
-   * The URI of the resource that has been updated. This might be a sub-resource of the one that the client actually subscribed to.
-   */
-  uri: string2()
-});
-var ResourceUpdatedNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/resources/updated"),
-  params: ResourceUpdatedNotificationParamsSchema
-});
-var PromptArgumentSchema = object2({
-  /**
-   * The name of the argument.
-   */
-  name: string2(),
-  /**
-   * A human-readable description of the argument.
-   */
-  description: optional(string2()),
-  /**
-   * Whether this argument must be provided.
-   */
-  required: optional(boolean2())
-});
-var PromptSchema = object2({
-  ...BaseMetadataSchema.shape,
-  ...IconsSchema.shape,
-  /**
-   * An optional description of what this prompt provides
-   */
-  description: optional(string2()),
-  /**
-   * A list of arguments to use for templating the prompt.
-   */
-  arguments: optional(array(PromptArgumentSchema)),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: optional(looseObject({}))
-});
-var ListPromptsRequestSchema = PaginatedRequestSchema.extend({
-  method: literal("prompts/list")
-});
-var ListPromptsResultSchema = PaginatedResultSchema.extend({
-  prompts: array(PromptSchema)
-});
-var GetPromptRequestParamsSchema = BaseRequestParamsSchema.extend({
-  /**
-   * The name of the prompt or prompt template.
-   */
-  name: string2(),
-  /**
-   * Arguments to use for templating the prompt.
-   */
-  arguments: record(string2(), string2()).optional()
-});
-var GetPromptRequestSchema = RequestSchema.extend({
-  method: literal("prompts/get"),
-  params: GetPromptRequestParamsSchema
-});
-var TextContentSchema = object2({
-  type: literal("text"),
-  /**
-   * The text content of the message.
-   */
-  text: string2(),
-  /**
-   * Optional annotations for the client.
-   */
-  annotations: AnnotationsSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var ImageContentSchema = object2({
-  type: literal("image"),
-  /**
-   * The base64-encoded image data.
-   */
-  data: Base64Schema,
-  /**
-   * The MIME type of the image. Different providers may support different image types.
-   */
-  mimeType: string2(),
-  /**
-   * Optional annotations for the client.
-   */
-  annotations: AnnotationsSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var AudioContentSchema = object2({
-  type: literal("audio"),
-  /**
-   * The base64-encoded audio data.
-   */
-  data: Base64Schema,
-  /**
-   * The MIME type of the audio. Different providers may support different audio types.
-   */
-  mimeType: string2(),
-  /**
-   * Optional annotations for the client.
-   */
-  annotations: AnnotationsSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var ToolUseContentSchema = object2({
-  type: literal("tool_use"),
-  /**
-   * The name of the tool to invoke.
-   * Must match a tool name from the request's tools array.
-   */
-  name: string2(),
-  /**
-   * Unique identifier for this tool call.
-   * Used to correlate with ToolResultContent in subsequent messages.
-   */
-  id: string2(),
-  /**
-   * Arguments to pass to the tool.
-   * Must conform to the tool's inputSchema.
-   */
-  input: record(string2(), unknown()),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var EmbeddedResourceSchema = object2({
-  type: literal("resource"),
-  resource: union([TextResourceContentsSchema, BlobResourceContentsSchema]),
-  /**
-   * Optional annotations for the client.
-   */
-  annotations: AnnotationsSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var ResourceLinkSchema = ResourceSchema.extend({
-  type: literal("resource_link")
-});
-var ContentBlockSchema = union([
-  TextContentSchema,
-  ImageContentSchema,
-  AudioContentSchema,
-  ResourceLinkSchema,
-  EmbeddedResourceSchema
-]);
-var PromptMessageSchema = object2({
-  role: RoleSchema,
-  content: ContentBlockSchema
-});
-var GetPromptResultSchema = ResultSchema.extend({
-  /**
-   * An optional description for the prompt.
-   */
-  description: string2().optional(),
-  messages: array(PromptMessageSchema)
-});
-var PromptListChangedNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/prompts/list_changed"),
-  params: NotificationsParamsSchema.optional()
-});
-var ToolAnnotationsSchema = object2({
-  /**
-   * A human-readable title for the tool.
-   */
-  title: string2().optional(),
-  /**
-   * If true, the tool does not modify its environment.
-   *
-   * Default: false
-   */
-  readOnlyHint: boolean2().optional(),
-  /**
-   * If true, the tool may perform destructive updates to its environment.
-   * If false, the tool performs only additive updates.
-   *
-   * (This property is meaningful only when `readOnlyHint == false`)
-   *
-   * Default: true
-   */
-  destructiveHint: boolean2().optional(),
-  /**
-   * If true, calling the tool repeatedly with the same arguments
-   * will have no additional effect on the its environment.
-   *
-   * (This property is meaningful only when `readOnlyHint == false`)
-   *
-   * Default: false
-   */
-  idempotentHint: boolean2().optional(),
-  /**
-   * If true, this tool may interact with an "open world" of external
-   * entities. If false, the tool's domain of interaction is closed.
-   * For example, the world of a web search tool is open, whereas that
-   * of a memory tool is not.
-   *
-   * Default: true
-   */
-  openWorldHint: boolean2().optional()
-});
-var ToolExecutionSchema = object2({
-  /**
-   * Indicates the tool's preference for task-augmented execution.
-   * - "required": Clients MUST invoke the tool as a task
-   * - "optional": Clients MAY invoke the tool as a task or normal request
-   * - "forbidden": Clients MUST NOT attempt to invoke the tool as a task
-   *
-   * If not present, defaults to "forbidden".
-   */
-  taskSupport: _enum2(["required", "optional", "forbidden"]).optional()
-});
-var ToolSchema = object2({
-  ...BaseMetadataSchema.shape,
-  ...IconsSchema.shape,
-  /**
-   * A human-readable description of the tool.
-   */
-  description: string2().optional(),
-  /**
-   * A JSON Schema 2020-12 object defining the expected parameters for the tool.
-   * Must have type: 'object' at the root level per MCP spec.
-   */
-  inputSchema: object2({
-    type: literal("object"),
-    properties: record(string2(), AssertObjectSchema).optional(),
-    required: array(string2()).optional()
-  }).catchall(unknown()),
-  /**
-   * An optional JSON Schema 2020-12 object defining the structure of the tool's output
-   * returned in the structuredContent field of a CallToolResult.
-   * Must have type: 'object' at the root level per MCP spec.
-   */
-  outputSchema: object2({
-    type: literal("object"),
-    properties: record(string2(), AssertObjectSchema).optional(),
-    required: array(string2()).optional()
-  }).catchall(unknown()).optional(),
-  /**
-   * Optional additional tool information.
-   */
-  annotations: ToolAnnotationsSchema.optional(),
-  /**
-   * Execution-related properties for this tool.
-   */
-  execution: ToolExecutionSchema.optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var ListToolsRequestSchema = PaginatedRequestSchema.extend({
-  method: literal("tools/list")
-});
-var ListToolsResultSchema = PaginatedResultSchema.extend({
-  tools: array(ToolSchema)
-});
-var CallToolResultSchema = ResultSchema.extend({
-  /**
-   * A list of content objects that represent the result of the tool call.
-   *
-   * If the Tool does not define an outputSchema, this field MUST be present in the result.
-   * For backwards compatibility, this field is always present, but it may be empty.
-   */
-  content: array(ContentBlockSchema).default([]),
-  /**
-   * An object containing structured tool output.
-   *
-   * If the Tool defines an outputSchema, this field MUST be present in the result, and contain a JSON object that matches the schema.
-   */
-  structuredContent: record(string2(), unknown()).optional(),
-  /**
-   * Whether the tool call ended in an error.
-   *
-   * If not set, this is assumed to be false (the call was successful).
-   *
-   * Any errors that originate from the tool SHOULD be reported inside the result
-   * object, with `isError` set to true, _not_ as an MCP protocol-level error
-   * response. Otherwise, the LLM would not be able to see that an error occurred
-   * and self-correct.
-   *
-   * However, any errors in _finding_ the tool, an error indicating that the
-   * server does not support tool calls, or any other exceptional conditions,
-   * should be reported as an MCP error response.
-   */
-  isError: boolean2().optional()
-});
-CallToolResultSchema.or(ResultSchema.extend({
-  toolResult: unknown()
-}));
-var CallToolRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
-  /**
-   * The name of the tool to call.
-   */
-  name: string2(),
-  /**
-   * Arguments to pass to the tool.
-   */
-  arguments: record(string2(), unknown()).optional()
-});
-var CallToolRequestSchema = RequestSchema.extend({
-  method: literal("tools/call"),
-  params: CallToolRequestParamsSchema
-});
-var ToolListChangedNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/tools/list_changed"),
-  params: NotificationsParamsSchema.optional()
-});
-object2({
-  /**
-   * If true, the list will be refreshed automatically when a list changed notification is received.
-   * The callback will be called with the updated list.
-   *
-   * If false, the callback will be called with null items, allowing manual refresh.
-   *
-   * @default true
-   */
-  autoRefresh: boolean2().default(true),
-  /**
-   * Debounce time in milliseconds for list changed notification processing.
-   *
-   * Multiple notifications received within this timeframe will only trigger one refresh.
-   * Set to 0 to disable debouncing.
-   *
-   * @default 300
-   */
-  debounceMs: number2().int().nonnegative().default(300)
-});
-var LoggingLevelSchema = _enum2(["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]);
-var SetLevelRequestParamsSchema = BaseRequestParamsSchema.extend({
-  /**
-   * The level of logging that the client wants to receive from the server. The server should send all logs at this level and higher (i.e., more severe) to the client as notifications/logging/message.
-   */
-  level: LoggingLevelSchema
-});
-var SetLevelRequestSchema = RequestSchema.extend({
-  method: literal("logging/setLevel"),
-  params: SetLevelRequestParamsSchema
-});
-var LoggingMessageNotificationParamsSchema = NotificationsParamsSchema.extend({
-  /**
-   * The severity of this log message.
-   */
-  level: LoggingLevelSchema,
-  /**
-   * An optional name of the logger issuing this message.
-   */
-  logger: string2().optional(),
-  /**
-   * The data to be logged, such as a string message or an object. Any JSON serializable type is allowed here.
-   */
-  data: unknown()
-});
-var LoggingMessageNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/message"),
-  params: LoggingMessageNotificationParamsSchema
-});
-var ModelHintSchema = object2({
-  /**
-   * A hint for a model name.
-   */
-  name: string2().optional()
-});
-var ModelPreferencesSchema = object2({
-  /**
-   * Optional hints to use for model selection.
-   */
-  hints: array(ModelHintSchema).optional(),
-  /**
-   * How much to prioritize cost when selecting a model.
-   */
-  costPriority: number2().min(0).max(1).optional(),
-  /**
-   * How much to prioritize sampling speed (latency) when selecting a model.
-   */
-  speedPriority: number2().min(0).max(1).optional(),
-  /**
-   * How much to prioritize intelligence and capabilities when selecting a model.
-   */
-  intelligencePriority: number2().min(0).max(1).optional()
-});
-var ToolChoiceSchema = object2({
-  /**
-   * Controls when tools are used:
-   * - "auto": Model decides whether to use tools (default)
-   * - "required": Model MUST use at least one tool before completing
-   * - "none": Model MUST NOT use any tools
-   */
-  mode: _enum2(["auto", "required", "none"]).optional()
-});
-var ToolResultContentSchema = object2({
-  type: literal("tool_result"),
-  toolUseId: string2().describe("The unique identifier for the corresponding tool call."),
-  content: array(ContentBlockSchema).default([]),
-  structuredContent: object2({}).loose().optional(),
-  isError: boolean2().optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var SamplingContentSchema = discriminatedUnion("type", [TextContentSchema, ImageContentSchema, AudioContentSchema]);
-var SamplingMessageContentBlockSchema = discriminatedUnion("type", [
-  TextContentSchema,
-  ImageContentSchema,
-  AudioContentSchema,
-  ToolUseContentSchema,
-  ToolResultContentSchema
-]);
-var SamplingMessageSchema = object2({
-  role: RoleSchema,
-  content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)]),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var CreateMessageRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
-  messages: array(SamplingMessageSchema),
-  /**
-   * The server's preferences for which model to select. The client MAY modify or omit this request.
-   */
-  modelPreferences: ModelPreferencesSchema.optional(),
-  /**
-   * An optional system prompt the server wants to use for sampling. The client MAY modify or omit this prompt.
-   */
-  systemPrompt: string2().optional(),
-  /**
-   * A request to include context from one or more MCP servers (including the caller), to be attached to the prompt.
-   * The client MAY ignore this request.
-   *
-   * Default is "none". Values "thisServer" and "allServers" are soft-deprecated. Servers SHOULD only use these values if the client
-   * declares ClientCapabilities.sampling.context. These values may be removed in future spec releases.
-   */
-  includeContext: _enum2(["none", "thisServer", "allServers"]).optional(),
-  temperature: number2().optional(),
-  /**
-   * The requested maximum number of tokens to sample (to prevent runaway completions).
-   *
-   * The client MAY choose to sample fewer tokens than the requested maximum.
-   */
-  maxTokens: number2().int(),
-  stopSequences: array(string2()).optional(),
-  /**
-   * Optional metadata to pass through to the LLM provider. The format of this metadata is provider-specific.
-   */
-  metadata: AssertObjectSchema.optional(),
-  /**
-   * Tools that the model may use during generation.
-   * The client MUST return an error if this field is provided but ClientCapabilities.sampling.tools is not declared.
-   */
-  tools: array(ToolSchema).optional(),
-  /**
-   * Controls how the model uses tools.
-   * The client MUST return an error if this field is provided but ClientCapabilities.sampling.tools is not declared.
-   * Default is `{ mode: "auto" }`.
-   */
-  toolChoice: ToolChoiceSchema.optional()
-});
-var CreateMessageRequestSchema = RequestSchema.extend({
-  method: literal("sampling/createMessage"),
-  params: CreateMessageRequestParamsSchema
-});
-var CreateMessageResultSchema = ResultSchema.extend({
-  /**
-   * The name of the model that generated the message.
-   */
-  model: string2(),
-  /**
-   * The reason why sampling stopped, if known.
-   *
-   * Standard values:
-   * - "endTurn": Natural end of the assistant's turn
-   * - "stopSequence": A stop sequence was encountered
-   * - "maxTokens": Maximum token limit was reached
-   *
-   * This field is an open string to allow for provider-specific stop reasons.
-   */
-  stopReason: optional(_enum2(["endTurn", "stopSequence", "maxTokens"]).or(string2())),
-  role: RoleSchema,
-  /**
-   * Response content. Single content block (text, image, or audio).
-   */
-  content: SamplingContentSchema
-});
-var CreateMessageResultWithToolsSchema = ResultSchema.extend({
-  /**
-   * The name of the model that generated the message.
-   */
-  model: string2(),
-  /**
-   * The reason why sampling stopped, if known.
-   *
-   * Standard values:
-   * - "endTurn": Natural end of the assistant's turn
-   * - "stopSequence": A stop sequence was encountered
-   * - "maxTokens": Maximum token limit was reached
-   * - "toolUse": The model wants to use one or more tools
-   *
-   * This field is an open string to allow for provider-specific stop reasons.
-   */
-  stopReason: optional(_enum2(["endTurn", "stopSequence", "maxTokens", "toolUse"]).or(string2())),
-  role: RoleSchema,
-  /**
-   * Response content. May be a single block or array. May include ToolUseContent if stopReason is "toolUse".
-   */
-  content: union([SamplingMessageContentBlockSchema, array(SamplingMessageContentBlockSchema)])
-});
-var BooleanSchemaSchema = object2({
-  type: literal("boolean"),
-  title: string2().optional(),
-  description: string2().optional(),
-  default: boolean2().optional()
-});
-var StringSchemaSchema = object2({
-  type: literal("string"),
-  title: string2().optional(),
-  description: string2().optional(),
-  minLength: number2().optional(),
-  maxLength: number2().optional(),
-  format: _enum2(["email", "uri", "date", "date-time"]).optional(),
-  default: string2().optional()
-});
-var NumberSchemaSchema = object2({
-  type: _enum2(["number", "integer"]),
-  title: string2().optional(),
-  description: string2().optional(),
-  minimum: number2().optional(),
-  maximum: number2().optional(),
-  default: number2().optional()
-});
-var UntitledSingleSelectEnumSchemaSchema = object2({
-  type: literal("string"),
-  title: string2().optional(),
-  description: string2().optional(),
-  enum: array(string2()),
-  default: string2().optional()
-});
-var TitledSingleSelectEnumSchemaSchema = object2({
-  type: literal("string"),
-  title: string2().optional(),
-  description: string2().optional(),
-  oneOf: array(object2({
-    const: string2(),
-    title: string2()
-  })),
-  default: string2().optional()
-});
-var LegacyTitledEnumSchemaSchema = object2({
-  type: literal("string"),
-  title: string2().optional(),
-  description: string2().optional(),
-  enum: array(string2()),
-  enumNames: array(string2()).optional(),
-  default: string2().optional()
-});
-var SingleSelectEnumSchemaSchema = union([UntitledSingleSelectEnumSchemaSchema, TitledSingleSelectEnumSchemaSchema]);
-var UntitledMultiSelectEnumSchemaSchema = object2({
-  type: literal("array"),
-  title: string2().optional(),
-  description: string2().optional(),
-  minItems: number2().optional(),
-  maxItems: number2().optional(),
-  items: object2({
-    type: literal("string"),
-    enum: array(string2())
-  }),
-  default: array(string2()).optional()
-});
-var TitledMultiSelectEnumSchemaSchema = object2({
-  type: literal("array"),
-  title: string2().optional(),
-  description: string2().optional(),
-  minItems: number2().optional(),
-  maxItems: number2().optional(),
-  items: object2({
-    anyOf: array(object2({
-      const: string2(),
-      title: string2()
-    }))
-  }),
-  default: array(string2()).optional()
-});
-var MultiSelectEnumSchemaSchema = union([UntitledMultiSelectEnumSchemaSchema, TitledMultiSelectEnumSchemaSchema]);
-var EnumSchemaSchema = union([LegacyTitledEnumSchemaSchema, SingleSelectEnumSchemaSchema, MultiSelectEnumSchemaSchema]);
-var PrimitiveSchemaDefinitionSchema = union([EnumSchemaSchema, BooleanSchemaSchema, StringSchemaSchema, NumberSchemaSchema]);
-var ElicitRequestFormParamsSchema = TaskAugmentedRequestParamsSchema.extend({
-  /**
-   * The elicitation mode.
-   *
-   * Optional for backward compatibility. Clients MUST treat missing mode as "form".
-   */
-  mode: literal("form").optional(),
-  /**
-   * The message to present to the user describing what information is being requested.
-   */
-  message: string2(),
-  /**
-   * A restricted subset of JSON Schema.
-   * Only top-level properties are allowed, without nesting.
-   */
-  requestedSchema: object2({
-    type: literal("object"),
-    properties: record(string2(), PrimitiveSchemaDefinitionSchema),
-    required: array(string2()).optional()
-  })
-});
-var ElicitRequestURLParamsSchema = TaskAugmentedRequestParamsSchema.extend({
-  /**
-   * The elicitation mode.
-   */
-  mode: literal("url"),
-  /**
-   * The message to present to the user explaining why the interaction is needed.
-   */
-  message: string2(),
-  /**
-   * The ID of the elicitation, which must be unique within the context of the server.
-   * The client MUST treat this ID as an opaque value.
-   */
-  elicitationId: string2(),
-  /**
-   * The URL that the user should navigate to.
-   */
-  url: string2().url()
-});
-var ElicitRequestParamsSchema = union([ElicitRequestFormParamsSchema, ElicitRequestURLParamsSchema]);
-var ElicitRequestSchema = RequestSchema.extend({
-  method: literal("elicitation/create"),
-  params: ElicitRequestParamsSchema
-});
-var ElicitationCompleteNotificationParamsSchema = NotificationsParamsSchema.extend({
-  /**
-   * The ID of the elicitation that completed.
-   */
-  elicitationId: string2()
-});
-var ElicitationCompleteNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/elicitation/complete"),
-  params: ElicitationCompleteNotificationParamsSchema
-});
-var ElicitResultSchema = ResultSchema.extend({
-  /**
-   * The user action in response to the elicitation.
-   * - "accept": User submitted the form/confirmed the action
-   * - "decline": User explicitly decline the action
-   * - "cancel": User dismissed without making an explicit choice
-   */
-  action: _enum2(["accept", "decline", "cancel"]),
-  /**
-   * The submitted form data, only present when action is "accept".
-   * Contains values matching the requested schema.
-   * Per MCP spec, content is "typically omitted" for decline/cancel actions.
-   * We normalize null to undefined for leniency while maintaining type compatibility.
-   */
-  content: preprocess((val) => val === null ? void 0 : val, record(string2(), union([string2(), number2(), boolean2(), array(string2())])).optional())
-});
-var ResourceTemplateReferenceSchema = object2({
-  type: literal("ref/resource"),
-  /**
-   * The URI or URI template of the resource.
-   */
-  uri: string2()
-});
-var PromptReferenceSchema = object2({
-  type: literal("ref/prompt"),
-  /**
-   * The name of the prompt or prompt template
-   */
-  name: string2()
-});
-var CompleteRequestParamsSchema = BaseRequestParamsSchema.extend({
-  ref: union([PromptReferenceSchema, ResourceTemplateReferenceSchema]),
-  /**
-   * The argument's information
-   */
-  argument: object2({
-    /**
-     * The name of the argument
-     */
-    name: string2(),
-    /**
-     * The value of the argument to use for completion matching.
-     */
-    value: string2()
-  }),
-  context: object2({
-    /**
-     * Previously-resolved variables in a URI template or prompt.
-     */
-    arguments: record(string2(), string2()).optional()
-  }).optional()
-});
-var CompleteRequestSchema = RequestSchema.extend({
-  method: literal("completion/complete"),
-  params: CompleteRequestParamsSchema
-});
-function assertCompleteRequestPrompt(request) {
-  if (request.params.ref.type !== "ref/prompt") {
-    throw new TypeError(`Expected CompleteRequestPrompt, but got ${request.params.ref.type}`);
-  }
-}
-function assertCompleteRequestResourceTemplate(request) {
-  if (request.params.ref.type !== "ref/resource") {
-    throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request.params.ref.type}`);
-  }
-}
-var CompleteResultSchema = ResultSchema.extend({
-  completion: looseObject({
-    /**
-     * An array of completion values. Must not exceed 100 items.
-     */
-    values: array(string2()).max(100),
-    /**
-     * The total number of completion options available. This can exceed the number of values actually sent in the response.
-     */
-    total: optional(number2().int()),
-    /**
-     * Indicates whether there are additional completion options beyond those provided in the current response, even if the exact total is unknown.
-     */
-    hasMore: optional(boolean2())
-  })
-});
-var RootSchema = object2({
-  /**
-   * The URI identifying the root. This *must* start with file:// for now.
-   */
-  uri: string2().startsWith("file://"),
-  /**
-   * An optional name for the root.
-   */
-  name: string2().optional(),
-  /**
-   * See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
-   * for notes on _meta usage.
-   */
-  _meta: record(string2(), unknown()).optional()
-});
-var ListRootsRequestSchema = RequestSchema.extend({
-  method: literal("roots/list"),
-  params: BaseRequestParamsSchema.optional()
-});
-var ListRootsResultSchema = ResultSchema.extend({
-  roots: array(RootSchema)
-});
-var RootsListChangedNotificationSchema = NotificationSchema.extend({
-  method: literal("notifications/roots/list_changed"),
-  params: NotificationsParamsSchema.optional()
-});
-union([
-  PingRequestSchema,
-  InitializeRequestSchema,
-  CompleteRequestSchema,
-  SetLevelRequestSchema,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ReadResourceRequestSchema,
-  SubscribeRequestSchema,
-  UnsubscribeRequestSchema,
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  GetTaskRequestSchema,
-  GetTaskPayloadRequestSchema,
-  ListTasksRequestSchema,
-  CancelTaskRequestSchema
-]);
-union([
-  CancelledNotificationSchema,
-  ProgressNotificationSchema,
-  InitializedNotificationSchema,
-  RootsListChangedNotificationSchema,
-  TaskStatusNotificationSchema
-]);
-union([
-  EmptyResultSchema,
-  CreateMessageResultSchema,
-  CreateMessageResultWithToolsSchema,
-  ElicitResultSchema,
-  ListRootsResultSchema,
-  GetTaskResultSchema,
-  ListTasksResultSchema,
-  CreateTaskResultSchema
-]);
-union([
-  PingRequestSchema,
-  CreateMessageRequestSchema,
-  ElicitRequestSchema,
-  ListRootsRequestSchema,
-  GetTaskRequestSchema,
-  GetTaskPayloadRequestSchema,
-  ListTasksRequestSchema,
-  CancelTaskRequestSchema
-]);
-union([
-  CancelledNotificationSchema,
-  ProgressNotificationSchema,
-  LoggingMessageNotificationSchema,
-  ResourceUpdatedNotificationSchema,
-  ResourceListChangedNotificationSchema,
-  ToolListChangedNotificationSchema,
-  PromptListChangedNotificationSchema,
-  TaskStatusNotificationSchema,
-  ElicitationCompleteNotificationSchema
-]);
-union([
-  EmptyResultSchema,
-  InitializeResultSchema,
-  CompleteResultSchema,
-  GetPromptResultSchema,
-  ListPromptsResultSchema,
-  ListResourcesResultSchema,
-  ListResourceTemplatesResultSchema,
-  ReadResourceResultSchema,
-  CallToolResultSchema,
-  ListToolsResultSchema,
-  GetTaskResultSchema,
-  ListTasksResultSchema,
-  CreateTaskResultSchema
-]);
-var McpError = class _McpError extends Error {
-  constructor(code, message, data) {
-    super(`MCP error ${code}: ${message}`);
-    this.code = code;
-    this.data = data;
-    this.name = "McpError";
-  }
-  /**
-   * Factory method to create the appropriate error type based on the error code and data
-   */
-  static fromError(code, message, data) {
-    if (code === ErrorCode.UrlElicitationRequired && data) {
-      const errorData = data;
-      if (errorData.elicitations) {
-        return new UrlElicitationRequiredError(errorData.elicitations, message);
-      }
-    }
-    return new _McpError(code, message, data);
-  }
-};
-var UrlElicitationRequiredError = class extends McpError {
-  constructor(elicitations, message = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
-    super(ErrorCode.UrlElicitationRequired, message, {
-      elicitations
-    });
-  }
-  get elicitations() {
-    return this.data?.elicitations ?? [];
-  }
-};
-
 // ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/interfaces.js
 function isTerminal(status) {
   return status === "completed" || status === "failed" || status === "cancelled";
@@ -27336,7 +27426,7 @@ function parseArrayDef(def, refs) {
   const res = {
     type: "array"
   };
-  if (def.type?._def && def.type?._def?.typeName !== ZodFirstPartyTypeKind.ZodAny) {
+  if (def.type?._def && def.type?._def?.typeName !== ZodFirstPartyTypeKind2.ZodAny) {
     res.items = parseDef(def.type._def, {
       ...refs,
       currentPath: [...refs.currentPath, "items"]
@@ -27883,7 +27973,7 @@ function parseRecordDef(def, refs) {
   if (refs.target === "openAi") {
     console.warn("Warning: OpenAI may not support records in schemas! Try an array of key-value pairs instead.");
   }
-  if (refs.target === "openApi3" && def.keyType?._def.typeName === ZodFirstPartyTypeKind.ZodEnum) {
+  if (refs.target === "openApi3" && def.keyType?._def.typeName === ZodFirstPartyTypeKind2.ZodEnum) {
     return {
       type: "object",
       required: def.keyType._def.values,
@@ -27907,20 +27997,20 @@ function parseRecordDef(def, refs) {
   if (refs.target === "openApi3") {
     return schema;
   }
-  if (def.keyType?._def.typeName === ZodFirstPartyTypeKind.ZodString && def.keyType._def.checks?.length) {
+  if (def.keyType?._def.typeName === ZodFirstPartyTypeKind2.ZodString && def.keyType._def.checks?.length) {
     const { type, ...keyType } = parseStringDef(def.keyType._def, refs);
     return {
       ...schema,
       propertyNames: keyType
     };
-  } else if (def.keyType?._def.typeName === ZodFirstPartyTypeKind.ZodEnum) {
+  } else if (def.keyType?._def.typeName === ZodFirstPartyTypeKind2.ZodEnum) {
     return {
       ...schema,
       propertyNames: {
         enum: def.keyType._def.values
       }
     };
-  } else if (def.keyType?._def.typeName === ZodFirstPartyTypeKind.ZodBranded && def.keyType._def.type._def.typeName === ZodFirstPartyTypeKind.ZodString && def.keyType._def.type._def.checks?.length) {
+  } else if (def.keyType?._def.typeName === ZodFirstPartyTypeKind2.ZodBranded && def.keyType._def.type._def.typeName === ZodFirstPartyTypeKind2.ZodString && def.keyType._def.type._def.checks?.length) {
     const { type, ...keyType } = parseBrandedDef(def.keyType._def, refs);
     return {
       ...schema,
@@ -28320,73 +28410,73 @@ var parseReadonlyDef = (def, refs) => {
 // ../../node_modules/.pnpm/zod-to-json-schema@3.25.2_zod@4.4.3/node_modules/zod-to-json-schema/dist/esm/selectParser.js
 var selectParser = (def, typeName, refs) => {
   switch (typeName) {
-    case ZodFirstPartyTypeKind.ZodString:
+    case ZodFirstPartyTypeKind2.ZodString:
       return parseStringDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodNumber:
+    case ZodFirstPartyTypeKind2.ZodNumber:
       return parseNumberDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodObject:
+    case ZodFirstPartyTypeKind2.ZodObject:
       return parseObjectDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodBigInt:
+    case ZodFirstPartyTypeKind2.ZodBigInt:
       return parseBigintDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodBoolean:
+    case ZodFirstPartyTypeKind2.ZodBoolean:
       return parseBooleanDef();
-    case ZodFirstPartyTypeKind.ZodDate:
+    case ZodFirstPartyTypeKind2.ZodDate:
       return parseDateDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodUndefined:
+    case ZodFirstPartyTypeKind2.ZodUndefined:
       return parseUndefinedDef(refs);
-    case ZodFirstPartyTypeKind.ZodNull:
+    case ZodFirstPartyTypeKind2.ZodNull:
       return parseNullDef(refs);
-    case ZodFirstPartyTypeKind.ZodArray:
+    case ZodFirstPartyTypeKind2.ZodArray:
       return parseArrayDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodUnion:
-    case ZodFirstPartyTypeKind.ZodDiscriminatedUnion:
+    case ZodFirstPartyTypeKind2.ZodUnion:
+    case ZodFirstPartyTypeKind2.ZodDiscriminatedUnion:
       return parseUnionDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodIntersection:
+    case ZodFirstPartyTypeKind2.ZodIntersection:
       return parseIntersectionDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodTuple:
+    case ZodFirstPartyTypeKind2.ZodTuple:
       return parseTupleDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodRecord:
+    case ZodFirstPartyTypeKind2.ZodRecord:
       return parseRecordDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodLiteral:
+    case ZodFirstPartyTypeKind2.ZodLiteral:
       return parseLiteralDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodEnum:
+    case ZodFirstPartyTypeKind2.ZodEnum:
       return parseEnumDef(def);
-    case ZodFirstPartyTypeKind.ZodNativeEnum:
+    case ZodFirstPartyTypeKind2.ZodNativeEnum:
       return parseNativeEnumDef(def);
-    case ZodFirstPartyTypeKind.ZodNullable:
+    case ZodFirstPartyTypeKind2.ZodNullable:
       return parseNullableDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodOptional:
+    case ZodFirstPartyTypeKind2.ZodOptional:
       return parseOptionalDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodMap:
+    case ZodFirstPartyTypeKind2.ZodMap:
       return parseMapDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodSet:
+    case ZodFirstPartyTypeKind2.ZodSet:
       return parseSetDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodLazy:
+    case ZodFirstPartyTypeKind2.ZodLazy:
       return () => def.getter()._def;
-    case ZodFirstPartyTypeKind.ZodPromise:
+    case ZodFirstPartyTypeKind2.ZodPromise:
       return parsePromiseDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodNaN:
-    case ZodFirstPartyTypeKind.ZodNever:
+    case ZodFirstPartyTypeKind2.ZodNaN:
+    case ZodFirstPartyTypeKind2.ZodNever:
       return parseNeverDef(refs);
-    case ZodFirstPartyTypeKind.ZodEffects:
+    case ZodFirstPartyTypeKind2.ZodEffects:
       return parseEffectsDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodAny:
+    case ZodFirstPartyTypeKind2.ZodAny:
       return parseAnyDef(refs);
-    case ZodFirstPartyTypeKind.ZodUnknown:
+    case ZodFirstPartyTypeKind2.ZodUnknown:
       return parseUnknownDef(refs);
-    case ZodFirstPartyTypeKind.ZodDefault:
+    case ZodFirstPartyTypeKind2.ZodDefault:
       return parseDefaultDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodBranded:
+    case ZodFirstPartyTypeKind2.ZodBranded:
       return parseBrandedDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodReadonly:
+    case ZodFirstPartyTypeKind2.ZodReadonly:
       return parseReadonlyDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodCatch:
+    case ZodFirstPartyTypeKind2.ZodCatch:
       return parseCatchDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodPipeline:
+    case ZodFirstPartyTypeKind2.ZodPipeline:
       return parsePipelineDef(def, refs);
-    case ZodFirstPartyTypeKind.ZodFunction:
-    case ZodFirstPartyTypeKind.ZodVoid:
-    case ZodFirstPartyTypeKind.ZodSymbol:
+    case ZodFirstPartyTypeKind2.ZodFunction:
+    case ZodFirstPartyTypeKind2.ZodVoid:
+    case ZodFirstPartyTypeKind2.ZodSymbol:
       return void 0;
     default:
       return /* @__PURE__ */ ((_2) => void 0)();
@@ -28546,7 +28636,7 @@ function getMethodLiteral(schema) {
   return value;
 }
 function parseWithCompat(schema, data) {
-  const result = safeParse2(schema, data);
+  const result = safeParse3(schema, data);
   if (!result.success) {
     throw result.error;
   }
@@ -29053,7 +29143,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error51) {
@@ -29070,7 +29160,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error51) => {
         reject(error51);
       };
@@ -29144,11 +29234,11 @@ var Protocol = class {
           return reject(response);
         }
         try {
-          const parseResult = safeParse2(resultSchema, response.result);
+          const parseResult = safeParse3(resultSchema, response.result);
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error51) {
           reject(error51);
@@ -29409,12 +29499,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval);
+      const timeoutId = setTimeout(resolve3, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -29506,6 +29596,334 @@ function mergeCapabilities(base, additional) {
   }
   return result;
 }
+
+// ../../node_modules/.pnpm/@modelcontextprotocol+ext-apps@1.7.4_@modelcontextprotocol+sdk@1.29.0_@cfworker+json-sc_2f167acb315f757fa38c054c6811df60/node_modules/@modelcontextprotocol/ext-apps/dist/src/server/index.js
+init_v4();
+((Z) => typeof __require < "u" ? __require : typeof Proxy < "u" ? new Proxy(Z, { get: ($, J) => (typeof __require < "u" ? __require : $)[J] }) : Z)(function(Z) {
+  if (typeof __require < "u") return __require.apply(this, arguments);
+  throw Error('Dynamic require of "' + Z + '" is not supported');
+});
+var v = external_exports.union([external_exports.literal("light"), external_exports.literal("dark")]).describe("Color theme preference for the host environment.");
+var K = external_exports.union([external_exports.literal("inline"), external_exports.literal("fullscreen"), external_exports.literal("pip")]).describe("Display mode for UI presentation.");
+var QQ = external_exports.union([external_exports.literal("--color-background-primary"), external_exports.literal("--color-background-secondary"), external_exports.literal("--color-background-tertiary"), external_exports.literal("--color-background-inverse"), external_exports.literal("--color-background-ghost"), external_exports.literal("--color-background-info"), external_exports.literal("--color-background-danger"), external_exports.literal("--color-background-success"), external_exports.literal("--color-background-warning"), external_exports.literal("--color-background-disabled"), external_exports.literal("--color-text-primary"), external_exports.literal("--color-text-secondary"), external_exports.literal("--color-text-tertiary"), external_exports.literal("--color-text-inverse"), external_exports.literal("--color-text-ghost"), external_exports.literal("--color-text-info"), external_exports.literal("--color-text-danger"), external_exports.literal("--color-text-success"), external_exports.literal("--color-text-warning"), external_exports.literal("--color-text-disabled"), external_exports.literal("--color-border-primary"), external_exports.literal("--color-border-secondary"), external_exports.literal("--color-border-tertiary"), external_exports.literal("--color-border-inverse"), external_exports.literal("--color-border-ghost"), external_exports.literal("--color-border-info"), external_exports.literal("--color-border-danger"), external_exports.literal("--color-border-success"), external_exports.literal("--color-border-warning"), external_exports.literal("--color-border-disabled"), external_exports.literal("--color-ring-primary"), external_exports.literal("--color-ring-secondary"), external_exports.literal("--color-ring-inverse"), external_exports.literal("--color-ring-info"), external_exports.literal("--color-ring-danger"), external_exports.literal("--color-ring-success"), external_exports.literal("--color-ring-warning"), external_exports.literal("--font-sans"), external_exports.literal("--font-mono"), external_exports.literal("--font-weight-normal"), external_exports.literal("--font-weight-medium"), external_exports.literal("--font-weight-semibold"), external_exports.literal("--font-weight-bold"), external_exports.literal("--font-text-xs-size"), external_exports.literal("--font-text-sm-size"), external_exports.literal("--font-text-md-size"), external_exports.literal("--font-text-lg-size"), external_exports.literal("--font-heading-xs-size"), external_exports.literal("--font-heading-sm-size"), external_exports.literal("--font-heading-md-size"), external_exports.literal("--font-heading-lg-size"), external_exports.literal("--font-heading-xl-size"), external_exports.literal("--font-heading-2xl-size"), external_exports.literal("--font-heading-3xl-size"), external_exports.literal("--font-text-xs-line-height"), external_exports.literal("--font-text-sm-line-height"), external_exports.literal("--font-text-md-line-height"), external_exports.literal("--font-text-lg-line-height"), external_exports.literal("--font-heading-xs-line-height"), external_exports.literal("--font-heading-sm-line-height"), external_exports.literal("--font-heading-md-line-height"), external_exports.literal("--font-heading-lg-line-height"), external_exports.literal("--font-heading-xl-line-height"), external_exports.literal("--font-heading-2xl-line-height"), external_exports.literal("--font-heading-3xl-line-height"), external_exports.literal("--border-radius-xs"), external_exports.literal("--border-radius-sm"), external_exports.literal("--border-radius-md"), external_exports.literal("--border-radius-lg"), external_exports.literal("--border-radius-xl"), external_exports.literal("--border-radius-full"), external_exports.literal("--border-width-regular"), external_exports.literal("--shadow-hairline"), external_exports.literal("--shadow-sm"), external_exports.literal("--shadow-md"), external_exports.literal("--shadow-lg")]).describe("CSS variable keys available to MCP apps for theming.");
+var ZQ = external_exports.record(QQ.describe(`Style variables for theming MCP apps.
+
+Individual style keys are optional - hosts may provide any subset of these values.
+Values are strings containing CSS values (colors, sizes, font stacks, etc.).
+
+Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
+for compatibility with Zod schema generation. Both are functionally equivalent for validation.`), external_exports.union([external_exports.string(), external_exports.undefined()]).describe(`Style variables for theming MCP apps.
+
+Individual style keys are optional - hosts may provide any subset of these values.
+Values are strings containing CSS values (colors, sizes, font stacks, etc.).
+
+Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
+for compatibility with Zod schema generation. Both are functionally equivalent for validation.`)).describe(`Style variables for theming MCP apps.
+
+Individual style keys are optional - hosts may provide any subset of these values.
+Values are strings containing CSS values (colors, sizes, font stacks, etc.).
+
+Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
+for compatibility with Zod schema generation. Both are functionally equivalent for validation.`);
+external_exports.object({ method: external_exports.literal("ui/open-link"), params: external_exports.object({ url: external_exports.string().describe("URL to open in the host's browser") }) });
+external_exports.object({ isError: external_exports.boolean().optional().describe("True if the host failed to open the URL (e.g., due to security policy).") }).passthrough();
+external_exports.object({ isError: external_exports.boolean().optional().describe("True if the download failed (e.g., user cancelled or host denied).") }).passthrough();
+external_exports.object({ isError: external_exports.boolean().optional().describe("True if the host rejected or failed to deliver the message.") }).passthrough();
+external_exports.object({ method: external_exports.literal("ui/notifications/sandbox-proxy-ready"), params: external_exports.object({}) });
+var Y = external_exports.object({ connectDomains: external_exports.array(external_exports.string()).optional().describe(`Origins for network requests (fetch/XHR/WebSocket).
+
+- Maps to CSP \`connect-src\` directive
+- Empty or omitted \u2192 no network connections (secure default)`), resourceDomains: external_exports.array(external_exports.string()).optional().describe("Origins for static resources (images, scripts, stylesheets, fonts, media).\n\n- Maps to CSP `img-src`, `script-src`, `style-src`, `font-src`, `media-src` directives\n- Wildcard subdomains supported: `https://*.example.com`\n- Empty or omitted \u2192 no network resources (secure default)"), frameDomains: external_exports.array(external_exports.string()).optional().describe("Origins for nested iframes.\n\n- Maps to CSP `frame-src` directive\n- Empty or omitted \u2192 no nested iframes allowed (`frame-src 'none'`)"), baseUriDomains: external_exports.array(external_exports.string()).optional().describe("Allowed base URIs for the document.\n\n- Maps to CSP `base-uri` directive\n- Empty or omitted \u2192 only same origin allowed (`base-uri 'self'`)") });
+var j = external_exports.object({ camera: external_exports.object({}).optional().describe("Request camera access.\n\nMaps to Permission Policy `camera` feature."), microphone: external_exports.object({}).optional().describe("Request microphone access.\n\nMaps to Permission Policy `microphone` feature."), geolocation: external_exports.object({}).optional().describe("Request geolocation access.\n\nMaps to Permission Policy `geolocation` feature."), clipboardWrite: external_exports.object({}).optional().describe("Request clipboard write access.\n\nMaps to Permission Policy `clipboard-write` feature.") });
+external_exports.object({ method: external_exports.literal("ui/notifications/size-changed"), params: external_exports.object({ width: external_exports.number().optional().describe("New width in pixels."), height: external_exports.number().optional().describe("New height in pixels.") }) });
+external_exports.object({ method: external_exports.literal("ui/notifications/tool-input"), params: external_exports.object({ arguments: external_exports.record(external_exports.string(), external_exports.unknown().describe("Complete tool call arguments as key-value pairs.")).optional().describe("Complete tool call arguments as key-value pairs.") }) });
+external_exports.object({ method: external_exports.literal("ui/notifications/tool-input-partial"), params: external_exports.object({ arguments: external_exports.record(external_exports.string(), external_exports.unknown().describe("Partial tool call arguments (incomplete, may change).")).optional().describe("Partial tool call arguments (incomplete, may change).") }) });
+external_exports.object({ method: external_exports.literal("ui/notifications/tool-cancelled"), params: external_exports.object({ reason: external_exports.string().optional().describe('Optional reason for the cancellation (e.g., "user action", "timeout").') }) });
+var f = external_exports.object({ fonts: external_exports.string().optional() });
+var u = external_exports.object({ variables: ZQ.optional().describe("CSS variables for theming the app."), css: f.optional().describe("CSS blocks that apps can inject.") });
+external_exports.object({ method: external_exports.literal("ui/resource-teardown"), params: external_exports.object({}) });
+external_exports.record(external_exports.string(), external_exports.unknown());
+var O = external_exports.object({ text: external_exports.object({}).optional().describe("Host supports text content blocks."), image: external_exports.object({}).optional().describe("Host supports image content blocks."), audio: external_exports.object({}).optional().describe("Host supports audio content blocks."), resource: external_exports.object({}).optional().describe("Host supports resource content blocks."), resourceLink: external_exports.object({}).optional().describe("Host supports resource link content blocks."), structuredContent: external_exports.object({}).optional().describe("Host supports structured content.") });
+external_exports.object({ method: external_exports.literal("ui/notifications/request-teardown"), params: external_exports.object({}).optional() });
+var d = external_exports.object({ experimental: external_exports.object({}).optional().describe("Experimental features (structure TBD)."), openLinks: external_exports.object({}).optional().describe("Host supports opening external URLs."), downloadFile: external_exports.object({}).optional().describe("Host supports file downloads via ui/download-file."), serverTools: external_exports.object({ listChanged: external_exports.boolean().optional().describe("Host supports tools/list_changed notifications.") }).optional().describe("Host can proxy tool calls to the MCP server."), serverResources: external_exports.object({ listChanged: external_exports.boolean().optional().describe("Host supports resources/list_changed notifications.") }).optional().describe("Host can proxy resource reads to the MCP server."), logging: external_exports.object({}).optional().describe("Host accepts log messages."), sandbox: external_exports.object({ permissions: j.optional().describe("Permissions granted by the host (camera, microphone, geolocation)."), csp: Y.optional().describe("CSP domains approved by the host.") }).optional().describe("Sandbox configuration applied by the host."), updateModelContext: O.optional().describe("Host accepts context updates (ui/update-model-context) to be included in the model's context for future turns."), message: O.optional().describe("Host supports receiving content messages (ui/message) from the view."), sampling: external_exports.object({ tools: external_exports.object({}).optional().describe("Host supports tool use via `tools` and `toolChoice` parameters.") }).optional().describe("Host supports LLM sampling (sampling/createMessage) from the view.\nMirrors the MCP `ClientCapabilities.sampling` shape so hosts can pass it through.") });
+var h = external_exports.object({ experimental: external_exports.object({}).optional().describe("Experimental features (structure TBD)."), tools: external_exports.object({ listChanged: external_exports.boolean().optional().describe("App supports tools/list_changed notifications.") }).optional().describe("App exposes MCP-style tools that the host can call."), availableDisplayModes: external_exports.array(K).optional().describe("Display modes the app supports.") });
+external_exports.object({ method: external_exports.literal("ui/notifications/initialized"), params: external_exports.object({}).optional() });
+external_exports.object({ csp: Y.optional().describe("Content Security Policy configuration for UI resources."), permissions: j.optional().describe("Sandbox permissions requested by the UI resource."), domain: external_exports.string().optional().describe(`Dedicated origin for view sandbox.
+
+Useful when views need stable, dedicated origins for OAuth callbacks, CORS policies, or API key allowlists.
+
+**Host-dependent:** The format and validation rules for this field are determined by each host. Servers MUST consult host-specific documentation for the expected domain format. Common patterns include:
+- Hash-based subdomains (e.g., \`{hash}.claudemcpcontent.com\`)
+- URL-derived subdomains (e.g., \`www-example-com.oaiusercontent.com\`)
+
+If omitted, host uses default sandbox origin (typically per-conversation).`), prefersBorder: external_exports.boolean().optional().describe(`Visual boundary preference - true if view prefers a visible border.
+
+Boolean requesting whether a visible border and background is provided by the host. Specifying an explicit value for this is recommended because hosts' defaults may vary.
+
+- \`true\`: request visible border + background
+- \`false\`: request no visible border + background
+- omitted: host decides border`) });
+external_exports.object({ method: external_exports.literal("ui/request-display-mode"), params: external_exports.object({ mode: K.describe("The display mode being requested.") }) });
+external_exports.object({ mode: K.describe("The display mode that was actually set. May differ from requested if not supported.") }).passthrough();
+var m = external_exports.union([external_exports.literal("model"), external_exports.literal("app")]).describe("Tool visibility scope - who can access the tool.");
+external_exports.object({ resourceUri: external_exports.string().optional(), visibility: external_exports.array(m).optional().describe(`Who can access this tool. Default: ["model", "app"]
+- "model": Tool visible to and callable by the agent
+- "app": Tool callable by the app from this server only`), csp: external_exports.never().optional(), permissions: external_exports.never().optional() });
+external_exports.object({ mimeTypes: external_exports.array(external_exports.string()).optional().describe('Array of supported MIME types for UI resources.\nMust include `"text/html;profile=mcp-app"` for MCP Apps support.') });
+external_exports.object({ method: external_exports.literal("ui/download-file"), params: external_exports.object({ contents: external_exports.array(external_exports.union([EmbeddedResourceSchema, ResourceLinkSchema])).describe("Resource contents to download \u2014 embedded (inline data) or linked (host fetches). Uses standard MCP resource types.") }) });
+external_exports.object({ method: external_exports.literal("ui/message"), params: external_exports.object({ role: external_exports.literal("user").describe('Message role, currently only "user" is supported.'), content: external_exports.array(ContentBlockSchema).describe("Message content blocks (text, image, etc.).") }) });
+external_exports.object({ method: external_exports.literal("ui/notifications/sandbox-resource-ready"), params: external_exports.object({ html: external_exports.string().describe("HTML content to load into the inner iframe."), sandbox: external_exports.string().optional().describe("Optional override for the inner iframe's sandbox attribute."), csp: Y.optional().describe("CSP configuration from resource metadata."), permissions: j.optional().describe("Sandbox permissions from resource metadata.") }) });
+external_exports.object({ method: external_exports.literal("ui/notifications/tool-result"), params: CallToolResultSchema.describe("Standard MCP tool execution result.") });
+var T = external_exports.object({ toolInfo: external_exports.object({ id: RequestIdSchema.optional().describe("JSON-RPC id of the tools/call request."), tool: ToolSchema.describe("Tool definition including name, inputSchema, etc.") }).optional().describe("Metadata of the tool call that instantiated this App."), theme: v.optional().describe("Current color theme preference."), styles: u.optional().describe("Style configuration for theming the app."), displayMode: K.optional().describe("How the UI is currently displayed."), availableDisplayModes: external_exports.array(K).optional().describe("Display modes the host supports."), containerDimensions: external_exports.union([external_exports.object({ height: external_exports.number().describe("Fixed container height in pixels.") }), external_exports.object({ maxHeight: external_exports.union([external_exports.number(), external_exports.undefined()]).optional().describe("Maximum container height in pixels.") })]).and(external_exports.union([external_exports.object({ width: external_exports.number().describe("Fixed container width in pixels.") }), external_exports.object({ maxWidth: external_exports.union([external_exports.number(), external_exports.undefined()]).optional().describe("Maximum container width in pixels.") })])).optional().describe(`Container dimensions. Represents the dimensions of the iframe or other
+container holding the app. Specify either width or maxWidth, and either height or maxHeight.`), locale: external_exports.string().optional().describe("User's language and region preference in BCP 47 format."), timeZone: external_exports.string().optional().describe("User's timezone in IANA format."), userAgent: external_exports.string().optional().describe("Host application identifier."), platform: external_exports.union([external_exports.literal("web"), external_exports.literal("desktop"), external_exports.literal("mobile")]).optional().describe("Platform type for responsive design decisions."), deviceCapabilities: external_exports.object({ touch: external_exports.boolean().optional().describe("Whether the device supports touch input."), hover: external_exports.boolean().optional().describe("Whether the device supports hover interactions.") }).optional().describe("Device input capabilities."), safeAreaInsets: external_exports.object({ top: external_exports.number().describe("Top safe area inset in pixels."), right: external_exports.number().describe("Right safe area inset in pixels."), bottom: external_exports.number().describe("Bottom safe area inset in pixels."), left: external_exports.number().describe("Left safe area inset in pixels.") }).optional().describe("Mobile safe area boundaries in pixels.") }).passthrough();
+external_exports.object({ method: external_exports.literal("ui/notifications/host-context-changed"), params: T.describe("Partial context update containing only changed fields.") });
+external_exports.object({ method: external_exports.literal("ui/update-model-context"), params: external_exports.object({ content: external_exports.array(ContentBlockSchema).optional().describe("Context content blocks (text, image, etc.)."), structuredContent: external_exports.record(external_exports.string(), external_exports.unknown().describe("Structured content for machine-readable context data.")).optional().describe("Structured content for machine-readable context data.") }) });
+external_exports.object({ method: external_exports.literal("ui/initialize"), params: external_exports.object({ appInfo: ImplementationSchema.describe("App identification (name and version)."), appCapabilities: h.describe("Features and capabilities this app provides."), protocolVersion: external_exports.string().describe("Protocol version this app supports.") }) });
+external_exports.object({ protocolVersion: external_exports.string().describe('Negotiated protocol version string (e.g., "2025-11-21").'), hostInfo: ImplementationSchema.describe("Host application identification and version."), hostCapabilities: d.describe("Features and capabilities provided by the host."), hostContext: T.describe("Rich context about the host environment.") }).passthrough();
+var C = "ui/resourceUri";
+var p = "text/html;profile=mcp-app";
+function K3(Z, $, J, X) {
+  let V = J._meta, D = V.ui, L = V[C], W = V;
+  if (D?.resourceUri && !L) W = { ...V, [C]: D.resourceUri };
+  else if (L && !D?.resourceUri) W = { ...V, ui: { ...D, resourceUri: L } };
+  return Z.registerTool($, { ...J, _meta: W }, X);
+}
+function N3(Z, $, J, X, V) {
+  return Z.registerResource($, J, { mimeType: p, ...X }, V);
+}
+
+// ../../packages/shared-mcp/dist/wire-schema.js
+var SCHEMA_MAP_KEYWORDS = /* @__PURE__ */ new Set([
+  "$defs",
+  "definitions",
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+  "x-clash-fragments"
+]);
+var SCHEMA_KEYWORDS = /* @__PURE__ */ new Set([
+  "additionalProperties",
+  "contains",
+  "contentSchema",
+  "else",
+  "if",
+  "not",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties"
+]);
+var SCHEMA_ARRAY_KEYWORDS = /* @__PURE__ */ new Set(["allOf", "anyOf", "oneOf"]);
+function cloneJson(value) {
+  if (Array.isArray(value))
+    return value.map(cloneJson);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+      key,
+      cloneJson(child)
+    ]));
+  }
+  return value;
+}
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record2 = value;
+    return `{${Object.keys(record2).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record2[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+function normalizeHomogeneousTuple(schema, tuple2, path, context) {
+  if (tuple2.length === 0) {
+    throw new Error(`Unsupported empty tuple in ${context} at ${path}`);
+  }
+  const [first, ...rest] = tuple2;
+  const canonical = canonicalJson(first);
+  if (!rest.every((entry) => canonicalJson(entry) === canonical)) {
+    throw new Error(`Unsupported heterogeneous tuple in ${context} at ${path}`);
+  }
+  for (const bound of ["minItems", "maxItems"]) {
+    if (schema[bound] !== void 0 && schema[bound] !== tuple2.length) {
+      throw new Error(`Tuple ${bound} conflicts with its length in ${context} at ${path}`);
+    }
+  }
+  schema.items = first;
+  schema.minItems = tuple2.length;
+  schema.maxItems = tuple2.length;
+}
+function projectSchemaMap(value, context, path) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return cloneJson(value);
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    projectClashMcpWireJsonSchema(child, context, `${path}.${key}`)
+  ]));
+}
+function projectClashMcpWireJsonSchema(value, context = "Clash MCP tool schema", path = "$") {
+  if (typeof value === "boolean")
+    return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return cloneJson(value);
+  }
+  const source = value;
+  const schema = cloneJson(source);
+  for (const keyword of SCHEMA_MAP_KEYWORDS) {
+    if (source[keyword] !== void 0) {
+      schema[keyword] = projectSchemaMap(source[keyword], context, `${path}.${keyword}`);
+    }
+  }
+  for (const keyword of SCHEMA_KEYWORDS) {
+    if (source[keyword] !== void 0) {
+      schema[keyword] = projectClashMcpWireJsonSchema(source[keyword], context, `${path}.${keyword}`);
+    }
+  }
+  for (const keyword of SCHEMA_ARRAY_KEYWORDS) {
+    if (Array.isArray(source[keyword])) {
+      schema[keyword] = source[keyword].map((child, index) => projectClashMcpWireJsonSchema(child, context, `${path}.${keyword}[${index}]`));
+    }
+  }
+  if (Array.isArray(source.prefixItems)) {
+    const projectedTuple = source.prefixItems.map((child, index) => projectClashMcpWireJsonSchema(child, context, `${path}.prefixItems[${index}]`));
+    if (source.items !== void 0 && source.items !== false) {
+      throw new Error(`Unsupported tuple rest schema in ${context} at ${path}.items`);
+    }
+    normalizeHomogeneousTuple(schema, projectedTuple, `${path}.prefixItems`, context);
+    delete schema.prefixItems;
+  } else if (Array.isArray(source.items)) {
+    const projectedTuple = source.items.map((child, index) => projectClashMcpWireJsonSchema(child, context, `${path}.items[${index}]`));
+    if (source.additionalItems !== void 0 && source.additionalItems !== false) {
+      throw new Error(`Unsupported tuple additionalItems in ${context} at ${path}.additionalItems`);
+    }
+    normalizeHomogeneousTuple(schema, projectedTuple, `${path}.items`, context);
+    delete schema.additionalItems;
+  } else if (source.items !== void 0) {
+    schema.items = projectClashMcpWireJsonSchema(source.items, context, `${path}.items`);
+  }
+  return schema;
+}
+
+// ../../packages/shared-mcp/dist/compatibility-transport.js
+function isRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+function toolsListRequestId(message) {
+  if (!isRecord(message))
+    return void 0;
+  const record2 = message;
+  return record2.method === "tools/list" && (typeof record2.id === "string" || typeof record2.id === "number") ? record2.id : void 0;
+}
+function responseId(message) {
+  if (!isRecord(message))
+    return void 0;
+  return ("result" in message || "error" in message) && (typeof message.id === "string" || typeof message.id === "number") ? message.id : void 0;
+}
+function projectToolsListResponse(message, filterTools) {
+  const record2 = message;
+  if (!isRecord(message) || !isRecord(record2.result)) {
+    throw new Error("tools/list response did not contain an object result");
+  }
+  const result = record2.result;
+  if (!Array.isArray(result.tools)) {
+    throw new Error("tools/list response did not contain a tools array");
+  }
+  const projectedTools = result.tools.map((value, index) => {
+    if (!isRecord(value) || typeof value.name !== "string") {
+      throw new Error(`tools/list entry ${index} is not a named tool`);
+    }
+    const tool = { ...value };
+    if (value.inputSchema !== void 0) {
+      tool.inputSchema = projectClashMcpWireJsonSchema(value.inputSchema, `${value.name} input schema`);
+    }
+    if (value.outputSchema !== void 0) {
+      tool.outputSchema = projectClashMcpWireJsonSchema(value.outputSchema, `${value.name} output schema`);
+    }
+    return tool;
+  });
+  const tools = filterTools ? filterTools(projectedTools) : projectedTools;
+  return {
+    ...message,
+    result: { ...result, tools }
+  };
+}
+function internalErrorResponse(message, error51) {
+  const id = responseId(message);
+  if (id === void 0)
+    return message;
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code: -32603,
+      message: `Clash MCP tools/list schema projection failed: ${error51 instanceof Error ? error51.message : String(error51)}`
+    }
+  };
+}
+var McpSchemaCompatibilityTransport = class {
+  #transport;
+  #filterTools;
+  #pendingToolsListIds = /* @__PURE__ */ new Set();
+  onclose;
+  onerror;
+  onmessage;
+  constructor(transport, options = {}) {
+    this.#transport = transport;
+    this.#filterTools = options.filterTools;
+  }
+  get sessionId() {
+    return this.#transport.sessionId;
+  }
+  set sessionId(value) {
+    this.#transport.sessionId = value;
+  }
+  setProtocolVersion(version2) {
+    this.#transport.setProtocolVersion?.(version2);
+  }
+  async start() {
+    const existingClose = this.#transport.onclose;
+    const existingError = this.#transport.onerror;
+    const existingMessage = this.#transport.onmessage;
+    this.#transport.onclose = () => {
+      this.#pendingToolsListIds.clear();
+      existingClose?.();
+      this.onclose?.();
+    };
+    this.#transport.onerror = (error51) => {
+      existingError?.(error51);
+      this.onerror?.(error51);
+    };
+    this.#transport.onmessage = (message, extra) => {
+      existingMessage?.(message, extra);
+      const id = toolsListRequestId(message);
+      if (id !== void 0)
+        this.#pendingToolsListIds.add(id);
+      this.onmessage?.(message, extra);
+    };
+    await this.#transport.start();
+  }
+  async send(message, options) {
+    const id = responseId(message);
+    if (id === void 0 || !this.#pendingToolsListIds.delete(id)) {
+      await this.#transport.send(message, options);
+      return;
+    }
+    let projected = message;
+    if ("result" in message) {
+      try {
+        projected = projectToolsListResponse(message, this.#filterTools);
+      } catch (error51) {
+        projected = internalErrorResponse(message, error51);
+      }
+    }
+    await this.#transport.send(projected, options);
+  }
+  async close() {
+    this.#pendingToolsListIds.clear();
+    await this.#transport.close();
+  }
+};
 
 // ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js
 var import_ajv = __toESM(require_ajv());
@@ -29901,7 +30319,7 @@ var Server = class extends Protocol {
     const method = methodValue;
     if (method === "tools/call") {
       const wrappedHandler = async (request, extra) => {
-        const validatedRequest = safeParse2(CallToolRequestSchema, request);
+        const validatedRequest = safeParse3(CallToolRequestSchema, request);
         if (!validatedRequest.success) {
           const errorMessage = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
           throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call request: ${errorMessage}`);
@@ -29909,14 +30327,14 @@ var Server = class extends Protocol {
         const { params } = validatedRequest.data;
         const result = await Promise.resolve(handler(request, extra));
         if (params.task) {
-          const taskValidationResult = safeParse2(CreateTaskResultSchema, result);
+          const taskValidationResult = safeParse3(CreateTaskResultSchema, result);
           if (!taskValidationResult.success) {
             const errorMessage = taskValidationResult.error instanceof Error ? taskValidationResult.error.message : String(taskValidationResult.error);
             throw new McpError(ErrorCode.InvalidParams, `Invalid task creation result: ${errorMessage}`);
           }
           return taskValidationResult.data;
         }
-        const validationResult = safeParse2(CallToolResultSchema, result);
+        const validationResult = safeParse3(CallToolResultSchema, result);
         if (!validationResult.success) {
           const errorMessage = validationResult.error instanceof Error ? validationResult.error.message : String(validationResult.error);
           throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call result: ${errorMessage}`);
@@ -30428,7 +30846,7 @@ var McpServer = class {
     }
     const inputObj = normalizeObjectSchema(tool.inputSchema);
     const schemaToParse = inputObj ?? tool.inputSchema;
-    const parseResult = await safeParseAsync2(schemaToParse, args);
+    const parseResult = await safeParseAsync3(schemaToParse, args);
     if (!parseResult.success) {
       const error51 = "error" in parseResult ? parseResult.error : "Unknown error";
       const errorMessage = getParseErrorMessage(error51);
@@ -30453,7 +30871,7 @@ var McpServer = class {
       throw new McpError(ErrorCode.InvalidParams, `Output validation error: Tool ${toolName} has an output schema but no structured content was provided`);
     }
     const outputObj = normalizeObjectSchema(tool.outputSchema);
-    const parseResult = await safeParseAsync2(outputObj, result.structuredContent);
+    const parseResult = await safeParseAsync3(outputObj, result.structuredContent);
     if (!parseResult.success) {
       const error51 = "error" in parseResult ? parseResult.error : "Unknown error";
       const errorMessage = getParseErrorMessage(error51);
@@ -30505,7 +30923,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -30666,7 +31084,7 @@ var McpServer = class {
       }
       if (prompt.argsSchema) {
         const argsObj = normalizeObjectSchema(prompt.argsSchema);
-        const parseResult = await safeParseAsync2(argsObj, request.params.arguments);
+        const parseResult = await safeParseAsync3(argsObj, request.params.arguments);
         if (!parseResult.success) {
           const error51 = "error" in parseResult ? parseResult.error : "Unknown error";
           const errorMessage = getParseErrorMessage(error51);
@@ -30826,7 +31244,7 @@ var McpServer = class {
     this._registeredPrompts[name] = registeredPrompt;
     if (argsSchema) {
       const hasCompletable = Object.values(argsSchema).some((field2) => {
-        const inner = field2 instanceof ZodOptional2 ? field2._def?.innerType : field2;
+        const inner = field2 instanceof ZodOptional ? field2._def?.innerType : field2;
         return isCompletable(inner);
       });
       if (hasCompletable) {
@@ -31073,188 +31491,383 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
-var ReadBuffer = class {
-  append(chunk) {
-    this._buffer = this._buffer ? Buffer.concat([this._buffer, chunk]) : chunk;
+// ../../packages/shared-runtime/dist/mcp-command-menu.js
+var CLASH_MCP_COMMAND_IDS = [
+  "workspace",
+  "canvas",
+  "director",
+  "timeline"
+];
+var CLASH_MCP_COMMANDS = [
+  {
+    id: "workspace",
+    title: "Workspace",
+    useWhen: "binding or inspecting the local Clash project workspace"
+  },
+  {
+    id: "canvas",
+    title: "Canvas",
+    useWhen: "creating, finding, connecting, or executing media and generation nodes"
+  },
+  {
+    id: "director",
+    title: "Director Stage",
+    useWhen: "blocking characters, cameras, shots, performance, and spatial continuity"
+  },
+  {
+    id: "timeline",
+    title: "Timeline editor",
+    useWhen: "assembling picture, sound, captions, transitions, graphics, and editorial timing"
   }
-  readMessage() {
-    if (!this._buffer) {
-      return null;
-    }
-    const index = this._buffer.indexOf("\n");
-    if (index === -1) {
-      return null;
-    }
-    const line = this._buffer.toString("utf8", 0, index).replace(/\r$/, "");
-    this._buffer = this._buffer.subarray(index + 1);
-    return deserializeMessage(line);
-  }
-  clear() {
-    this._buffer = void 0;
-  }
-};
-function deserializeMessage(line) {
-  return JSONRPCMessageSchema.parse(JSON.parse(line));
+];
+function classifyClashMcpTool(name) {
+  if (name.startsWith("clash_workspace_") || name.startsWith("clash_studio_"))
+    return "workspace";
+  if (name.startsWith("clash_canvas_"))
+    return "canvas";
+  if (name.startsWith("clash_director_"))
+    return "director";
+  if (name.startsWith("clash_timeline_"))
+    return "timeline";
+  return "other";
 }
-function serializeMessage(message) {
-  return JSON.stringify(message) + "\n";
+function getClashMcpCommand(id) {
+  const command = CLASH_MCP_COMMANDS.find((candidate) => candidate.id === id);
+  if (!command)
+    throw new Error(`Unknown Clash MCP command: ${id}`);
+  return command;
+}
+function buildClashMcpCommandMenu(input) {
+  const operationsFor = (command2) => input.operations.filter((operation) => input.belongsToCommand(operation, command2));
+  const root = {
+    schemaVersion: 1,
+    commands: CLASH_MCP_COMMANDS.map((command2) => ({
+      id: command2.id,
+      title: command2.title,
+      useWhen: command2.useWhen,
+      availableOperations: operationsFor(command2).length
+    }))
+  };
+  if (!input.selectedCommand)
+    return root;
+  const command = getClashMcpCommand(input.selectedCommand);
+  return {
+    ...root,
+    selectedCommand: command.id,
+    operations: operationsFor(command)
+  };
 }
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+sdk@1.29.0_@cfworker+json-schema@4.1.1_zod@4.4.3/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
-var StdioServerTransport = class {
-  constructor(_stdin = process3.stdin, _stdout = process3.stdout) {
-    this._stdin = _stdin;
-    this._stdout = _stdout;
-    this._readBuffer = new ReadBuffer();
-    this._started = false;
-    this._ondata = (chunk) => {
-      this._readBuffer.append(chunk);
-      this.processReadBuffer();
-    };
-    this._onerror = (error51) => {
-      this.onerror?.(error51);
-    };
-  }
-  /**
-   * Starts listening for messages on stdin.
-   */
-  async start() {
-    if (this._started) {
-      throw new Error("StdioServerTransport already started! If using Server class, note that connect() calls start() automatically.");
-    }
-    this._started = true;
-    this._stdin.on("data", this._ondata);
-    this._stdin.on("error", this._onerror);
-  }
-  processReadBuffer() {
-    while (true) {
-      try {
-        const message = this._readBuffer.readMessage();
-        if (message === null) {
-          break;
+// ../../packages/shared-mcp/dist/tool-guidance.js
+function sentence(label, value) {
+  const trimmed = value.trim();
+  if (!trimmed)
+    throw new Error(`Clash tool guidance ${label} must not be empty`);
+  return `${trimmed.replace(/[.!?]+$/u, "")}.`;
+}
+function describeClashTool(guidance) {
+  return [
+    `Use when: ${sentence("useWhen", guidance.useWhen)}`,
+    `Effect: ${sentence("effect", guidance.effect)}`,
+    `Returns: ${sentence("returns", guidance.returns)}`,
+    `Next: ${sentence("next", guidance.next)}`
+  ].join(" ");
+}
+
+// ../../packages/shared-mcp/dist/server.js
+var CLASH_ROOT_TOOL_NAME = "clash";
+var CLASH_COMMAND_TOOL_NAMES = {
+  canvas: "clash_canvas",
+  director: "clash_director",
+  timeline: "clash_timeline"
+};
+var CLASH_MCP_INSTRUCTIONS = [
+  "Clash discloses product operations progressively.",
+  `Call the root ${CLASH_ROOT_TOOL_NAME} tool to see its command menu, then use the fixed clash_canvas, clash_director, or clash_timeline command tool to reveal and execute that command's operations.`,
+  "A command tool with no operation returns live contracts; passing operation and arguments validates and executes that registered leaf without requiring a tools/list refresh.",
+  "Within a selected command, tool descriptions, schemas, structured results, and recovery guidance are the operational source of truth."
+].join(" ");
+function modelVisible(meta3) {
+  const ui = meta3?.ui;
+  if (!ui || typeof ui !== "object" || Array.isArray(ui))
+    return true;
+  const visibility = ui.visibility;
+  return !Array.isArray(visibility) || visibility.includes("model");
+}
+function annotationsOf(handle) {
+  return handle.annotations ?? {};
+}
+function inputJsonSchemaOf(handle) {
+  const input = normalizeObjectSchema(handle.inputSchema);
+  const jsonSchema = input ? toJsonSchemaCompat(input, { strictUnions: true, pipeStrategy: "input" }) : { type: "object", properties: {} };
+  return projectClashMcpWireJsonSchema(jsonSchema);
+}
+function outputJsonSchemaOf(handle) {
+  const output = normalizeObjectSchema(handle.outputSchema);
+  if (!output)
+    return void 0;
+  return projectClashMcpWireJsonSchema(toJsonSchemaCompat(output, {
+    strictUnions: true,
+    pipeStrategy: "output"
+  }));
+}
+function nextGuidance(description) {
+  return description?.match(/(?:^|\s)Next:\s*(.+)$/u)?.[1]?.trim() ?? "Inspect structuredContent.error and follow any retryTool or recovery fields before retrying.";
+}
+function clashMetadata(meta3) {
+  if (!meta3)
+    return void 0;
+  const entries = Object.entries(meta3).filter(([key]) => key.startsWith("clash/"));
+  return entries.length ? Object.fromEntries(entries) : void 0;
+}
+var ClashMcpServer = class extends McpServer {
+  #registeredClashTools = /* @__PURE__ */ new Set();
+  constructor(serverInfo, options = {}) {
+    const additionalInstructions = options.instructions?.trim();
+    super(serverInfo, {
+      ...options,
+      instructions: additionalInstructions ? `${CLASH_MCP_INSTRUCTIONS}
+
+${additionalInstructions}` : CLASH_MCP_INSTRUCTIONS
+    });
+    super.registerTool(CLASH_ROOT_TOOL_NAME, {
+      title: "Clash",
+      description: describeClashTool({
+        useWhen: "you need the compact Clash command menu or want to navigate to another product command",
+        effect: "returns fixed command-group entry points and operation counts without changing the advertised tool list",
+        returns: "available commands and the fixed dispatcher for the selected command",
+        next: "call clash_canvas, clash_director, or clash_timeline without arguments to inspect live contracts, then pass operation and arguments to that group tool"
+      }),
+      inputSchema: {
+        command: external_exports.enum(CLASH_MCP_COMMAND_IDS).optional().describe("Root command to reveal; omit to show the root menu and fold leaf operations away"),
+        operation: external_exports.string().min(1).optional().describe("Exact registered operation name to execute; use a name returned by the selected command view"),
+        arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+      },
+      _meta: { ui: { visibility: ["model"] } }
+    }, async ({ command, operation, arguments: operationArguments }, extra) => {
+      const selectedCommand = command;
+      if (operation) {
+        return this.#dispatchOperation({
+          operation,
+          arguments: operationArguments ?? {},
+          selectedCommand,
+          extra
+        });
+      }
+      const view = this.#rootView(selectedCommand);
+      const selected = selectedCommand ? view.commands.find(({ id }) => id === selectedCommand) : void 0;
+      const operationCount = selected?.availableOperations ?? 0;
+      if (selectedCommand && operationCount === 0) {
+        return {
+          content: [{
+            type: "text",
+            text: `The ${selectedCommand} command has no operations in this Clash host.`
+          }],
+          structuredContent: view,
+          isError: true
+        };
+      }
+      return {
+        content: [{
+          type: "text",
+          text: selectedCommand ? `Use ${view.selectedDispatcher} to inspect ${operationCount} ${selectedCommand} operation${operationCount === 1 ? "" : "s"}.` : `Clash offers ${view.commands.filter(({ availableOperations }) => availableOperations > 0).length} available commands.`
+        }],
+        structuredContent: view
+      };
+    });
+    for (const command of Object.keys(CLASH_COMMAND_TOOL_NAMES)) {
+      const commandDefinition = getClashMcpCommand(command);
+      const toolName = CLASH_COMMAND_TOOL_NAMES[command];
+      super.registerTool(toolName, {
+        title: commandDefinition.title,
+        description: describeClashTool({
+          useWhen: `you need to inspect or execute ${commandDefinition.title} operations`,
+          effect: `returns live ${command} contracts when operation is omitted, or validates arguments and executes the selected registered ${command} leaf exactly once`,
+          returns: "typed operation contracts or the selected leaf operation's exact result",
+          next: "choose the smallest matching operation, then call this command tool with operation and arguments"
+        }),
+        inputSchema: {
+          operation: external_exports.string().min(1).optional().describe(`Exact ${command} operation name returned by this command tool`),
+          arguments: external_exports.record(external_exports.string(), external_exports.unknown()).optional().describe("Arguments validated against the selected operation's live input schema")
+        },
+        _meta: { ui: { visibility: ["model"] } }
+      }, async ({ operation, arguments: operationArguments }, extra) => {
+        if (operation) {
+          return this.#dispatchOperation({
+            operation,
+            arguments: operationArguments ?? {},
+            selectedCommand: command,
+            extra
+          });
         }
-        this.onmessage?.(message);
-      } catch (error51) {
-        this.onerror?.(error51);
-      }
+        const view = this.#commandView(command);
+        const operationCount = view.operations?.length ?? 0;
+        if (operationCount === 0) {
+          return {
+            content: [{
+              type: "text",
+              text: `The ${command} command has no operations in this Clash host.`
+            }],
+            structuredContent: view,
+            isError: true
+          };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: `Revealed ${operationCount} ${command} operation${operationCount === 1 ? "" : "s"}.`
+          }],
+          structuredContent: view
+        };
+      });
     }
   }
-  async close() {
-    this._stdin.off("data", this._ondata);
-    this._stdin.off("error", this._onerror);
-    const remainingDataListeners = this._stdin.listenerCount("data");
-    if (remainingDataListeners === 0) {
-      this._stdin.pause();
+  registerTool(name, config2, callback) {
+    if (name === CLASH_ROOT_TOOL_NAME || Object.values(CLASH_COMMAND_TOOL_NAMES).includes(name)) {
+      throw new Error(`${name} is provided by ClashMcpServer`);
     }
-    this._readBuffer.clear();
-    this.onclose?.();
+    const handle = super.registerTool(name, config2, callback);
+    const registered = { name, removed: false, handle };
+    this.#registeredClashTools.add(registered);
+    const update = handle.update.bind(handle);
+    handle.update = ((updates) => {
+      update(updates);
+      if (updates.name === null)
+        registered.removed = true;
+      if (typeof updates.name === "string")
+        registered.name = updates.name;
+    });
+    return handle;
   }
-  send(message) {
-    return new Promise((resolve2) => {
-      const json2 = serializeMessage(message);
-      if (this._stdout.write(json2)) {
-        resolve2();
-      } else {
-        this._stdout.once("drain", resolve2);
-      }
+  #liveModelTools() {
+    return [...this.#registeredClashTools].filter(({ removed, handle }) => !removed && handle.enabled && modelVisible(handle._meta)).sort((left, right) => left.name.localeCompare(right.name));
+  }
+  #commandView(selectedCommand) {
+    const operations = this.#liveModelTools().map(({ name, handle }) => {
+      const metadata = clashMetadata(handle._meta);
+      const outputSchema = outputJsonSchemaOf(handle);
+      return {
+        name,
+        title: handle.title ?? name,
+        description: handle.description ?? "",
+        readOnly: annotationsOf(handle).readOnlyHint === true,
+        destructive: annotationsOf(handle).destructiveHint === true,
+        inputSchema: inputJsonSchemaOf(handle),
+        ...outputSchema ? { outputSchema } : {},
+        recovery: {
+          guidance: nextGuidance(handle.description),
+          retryOperationPath: "structuredContent.error.retryTool",
+          staleMergePath: "structuredContent.error.recovery"
+        },
+        ...metadata ? { metadata } : {}
+      };
+    });
+    return buildClashMcpCommandMenu({
+      operations,
+      ...selectedCommand ? { selectedCommand } : {},
+      belongsToCommand: (operation, command) => classifyClashMcpTool(operation.name) === command.id
     });
   }
+  #rootView(selectedCommand) {
+    const menu = this.#commandView();
+    const commands = menu.commands.map((command) => ({
+      ...command,
+      ...command.id === "workspace" ? command.availableOperations > 0 ? { dispatcher: "clash_workspace_init" } : {} : { dispatcher: CLASH_COMMAND_TOOL_NAMES[command.id] }
+    }));
+    if (!selectedCommand)
+      return { ...menu, commands };
+    const selected = commands.find(({ id }) => id === selectedCommand);
+    return {
+      ...menu,
+      commands,
+      selectedCommand,
+      ...selected?.dispatcher ? { selectedDispatcher: selected.dispatcher } : {}
+    };
+  }
+  async #dispatchOperation(input) {
+    const registered = this.#liveModelTools().find(({ name }) => name === input.operation);
+    if (!registered) {
+      throw new Error(`Clash operation ${input.operation} is not registered, enabled, and model-visible in this host.`);
+    }
+    const family = classifyClashMcpTool(registered.name);
+    if (family === "other") {
+      throw new Error(`Clash operation ${registered.name} is not part of a root command.`);
+    }
+    if (input.selectedCommand && family !== input.selectedCommand) {
+      throw new Error(`Clash operation ${registered.name} belongs to ${family}, not ${input.selectedCommand}.`);
+    }
+    const { handle } = registered;
+    const normalizedInput = normalizeObjectSchema(handle.inputSchema);
+    const schemaToParse = normalizedInput ?? handle.inputSchema;
+    let parsedArguments = void 0;
+    if (schemaToParse) {
+      const parsed = await safeParseAsync3(schemaToParse, input.arguments);
+      if (!parsed.success) {
+        throw new Error(`Invalid arguments for Clash operation ${registered.name}: ${getParseErrorMessage(parsed.error)}`);
+      }
+      parsedArguments = parsed.data;
+    }
+    if (typeof handle.handler !== "function") {
+      throw new Error(`Task-based Clash operation ${registered.name} cannot use root dispatch.`);
+    }
+    const result = handle.inputSchema ? await handle.handler(parsedArguments, input.extra) : await handle.handler(input.extra);
+    if (handle.outputSchema && !result.isError) {
+      if (!result.structuredContent) {
+        throw new Error(`Clash operation ${registered.name} has an output schema but returned no structured content.`);
+      }
+      const normalizedOutput = normalizeObjectSchema(handle.outputSchema);
+      const schema = normalizedOutput ?? handle.outputSchema;
+      const parsed = await safeParseAsync3(schema, result.structuredContent);
+      if (!parsed.success) {
+        throw new Error(`Invalid structured content from Clash operation ${registered.name}: ${getParseErrorMessage(parsed.error)}`);
+      }
+    }
+    return result;
+  }
+  #visibleTools(tools) {
+    return tools.filter((tool) => {
+      if (typeof tool.name !== "string")
+        return false;
+      if (tool.name === CLASH_ROOT_TOOL_NAME || Object.values(CLASH_COMMAND_TOOL_NAMES).includes(tool.name) || tool.name === "clash_workspace_init")
+        return true;
+      return classifyClashMcpTool(tool.name) === "other";
+    });
+  }
+  async connect(transport) {
+    await super.connect(new McpSchemaCompatibilityTransport(transport, {
+      filterTools: (tools) => this.#visibleTools(tools)
+    }));
+  }
 };
 
-// ../../node_modules/.pnpm/@modelcontextprotocol+ext-apps@1.7.4_@modelcontextprotocol+sdk@1.29.0_@cfworker+json-sc_2f167acb315f757fa38c054c6811df60/node_modules/@modelcontextprotocol/ext-apps/dist/src/server/index.js
-init_v4();
-((Z) => typeof __require < "u" ? __require : typeof Proxy < "u" ? new Proxy(Z, { get: ($, J) => (typeof __require < "u" ? __require : $)[J] }) : Z)(function(Z) {
-  if (typeof __require < "u") return __require.apply(this, arguments);
-  throw Error('Dynamic require of "' + Z + '" is not supported');
-});
-var v = external_exports.union([external_exports.literal("light"), external_exports.literal("dark")]).describe("Color theme preference for the host environment.");
-var K = external_exports.union([external_exports.literal("inline"), external_exports.literal("fullscreen"), external_exports.literal("pip")]).describe("Display mode for UI presentation.");
-var QQ = external_exports.union([external_exports.literal("--color-background-primary"), external_exports.literal("--color-background-secondary"), external_exports.literal("--color-background-tertiary"), external_exports.literal("--color-background-inverse"), external_exports.literal("--color-background-ghost"), external_exports.literal("--color-background-info"), external_exports.literal("--color-background-danger"), external_exports.literal("--color-background-success"), external_exports.literal("--color-background-warning"), external_exports.literal("--color-background-disabled"), external_exports.literal("--color-text-primary"), external_exports.literal("--color-text-secondary"), external_exports.literal("--color-text-tertiary"), external_exports.literal("--color-text-inverse"), external_exports.literal("--color-text-ghost"), external_exports.literal("--color-text-info"), external_exports.literal("--color-text-danger"), external_exports.literal("--color-text-success"), external_exports.literal("--color-text-warning"), external_exports.literal("--color-text-disabled"), external_exports.literal("--color-border-primary"), external_exports.literal("--color-border-secondary"), external_exports.literal("--color-border-tertiary"), external_exports.literal("--color-border-inverse"), external_exports.literal("--color-border-ghost"), external_exports.literal("--color-border-info"), external_exports.literal("--color-border-danger"), external_exports.literal("--color-border-success"), external_exports.literal("--color-border-warning"), external_exports.literal("--color-border-disabled"), external_exports.literal("--color-ring-primary"), external_exports.literal("--color-ring-secondary"), external_exports.literal("--color-ring-inverse"), external_exports.literal("--color-ring-info"), external_exports.literal("--color-ring-danger"), external_exports.literal("--color-ring-success"), external_exports.literal("--color-ring-warning"), external_exports.literal("--font-sans"), external_exports.literal("--font-mono"), external_exports.literal("--font-weight-normal"), external_exports.literal("--font-weight-medium"), external_exports.literal("--font-weight-semibold"), external_exports.literal("--font-weight-bold"), external_exports.literal("--font-text-xs-size"), external_exports.literal("--font-text-sm-size"), external_exports.literal("--font-text-md-size"), external_exports.literal("--font-text-lg-size"), external_exports.literal("--font-heading-xs-size"), external_exports.literal("--font-heading-sm-size"), external_exports.literal("--font-heading-md-size"), external_exports.literal("--font-heading-lg-size"), external_exports.literal("--font-heading-xl-size"), external_exports.literal("--font-heading-2xl-size"), external_exports.literal("--font-heading-3xl-size"), external_exports.literal("--font-text-xs-line-height"), external_exports.literal("--font-text-sm-line-height"), external_exports.literal("--font-text-md-line-height"), external_exports.literal("--font-text-lg-line-height"), external_exports.literal("--font-heading-xs-line-height"), external_exports.literal("--font-heading-sm-line-height"), external_exports.literal("--font-heading-md-line-height"), external_exports.literal("--font-heading-lg-line-height"), external_exports.literal("--font-heading-xl-line-height"), external_exports.literal("--font-heading-2xl-line-height"), external_exports.literal("--font-heading-3xl-line-height"), external_exports.literal("--border-radius-xs"), external_exports.literal("--border-radius-sm"), external_exports.literal("--border-radius-md"), external_exports.literal("--border-radius-lg"), external_exports.literal("--border-radius-xl"), external_exports.literal("--border-radius-full"), external_exports.literal("--border-width-regular"), external_exports.literal("--shadow-hairline"), external_exports.literal("--shadow-sm"), external_exports.literal("--shadow-md"), external_exports.literal("--shadow-lg")]).describe("CSS variable keys available to MCP apps for theming.");
-var ZQ = external_exports.record(QQ.describe(`Style variables for theming MCP apps.
-
-Individual style keys are optional - hosts may provide any subset of these values.
-Values are strings containing CSS values (colors, sizes, font stacks, etc.).
-
-Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
-for compatibility with Zod schema generation. Both are functionally equivalent for validation.`), external_exports.union([external_exports.string(), external_exports.undefined()]).describe(`Style variables for theming MCP apps.
-
-Individual style keys are optional - hosts may provide any subset of these values.
-Values are strings containing CSS values (colors, sizes, font stacks, etc.).
-
-Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
-for compatibility with Zod schema generation. Both are functionally equivalent for validation.`)).describe(`Style variables for theming MCP apps.
-
-Individual style keys are optional - hosts may provide any subset of these values.
-Values are strings containing CSS values (colors, sizes, font stacks, etc.).
-
-Note: This type uses \`Record<K, string | undefined>\` rather than \`Partial<Record<K, string>>\`
-for compatibility with Zod schema generation. Both are functionally equivalent for validation.`);
-external_exports.object({ method: external_exports.literal("ui/open-link"), params: external_exports.object({ url: external_exports.string().describe("URL to open in the host's browser") }) });
-external_exports.object({ isError: external_exports.boolean().optional().describe("True if the host failed to open the URL (e.g., due to security policy).") }).passthrough();
-external_exports.object({ isError: external_exports.boolean().optional().describe("True if the download failed (e.g., user cancelled or host denied).") }).passthrough();
-external_exports.object({ isError: external_exports.boolean().optional().describe("True if the host rejected or failed to deliver the message.") }).passthrough();
-external_exports.object({ method: external_exports.literal("ui/notifications/sandbox-proxy-ready"), params: external_exports.object({}) });
-var Y = external_exports.object({ connectDomains: external_exports.array(external_exports.string()).optional().describe(`Origins for network requests (fetch/XHR/WebSocket).
-
-- Maps to CSP \`connect-src\` directive
-- Empty or omitted \u2192 no network connections (secure default)`), resourceDomains: external_exports.array(external_exports.string()).optional().describe("Origins for static resources (images, scripts, stylesheets, fonts, media).\n\n- Maps to CSP `img-src`, `script-src`, `style-src`, `font-src`, `media-src` directives\n- Wildcard subdomains supported: `https://*.example.com`\n- Empty or omitted \u2192 no network resources (secure default)"), frameDomains: external_exports.array(external_exports.string()).optional().describe("Origins for nested iframes.\n\n- Maps to CSP `frame-src` directive\n- Empty or omitted \u2192 no nested iframes allowed (`frame-src 'none'`)"), baseUriDomains: external_exports.array(external_exports.string()).optional().describe("Allowed base URIs for the document.\n\n- Maps to CSP `base-uri` directive\n- Empty or omitted \u2192 only same origin allowed (`base-uri 'self'`)") });
-var j = external_exports.object({ camera: external_exports.object({}).optional().describe("Request camera access.\n\nMaps to Permission Policy `camera` feature."), microphone: external_exports.object({}).optional().describe("Request microphone access.\n\nMaps to Permission Policy `microphone` feature."), geolocation: external_exports.object({}).optional().describe("Request geolocation access.\n\nMaps to Permission Policy `geolocation` feature."), clipboardWrite: external_exports.object({}).optional().describe("Request clipboard write access.\n\nMaps to Permission Policy `clipboard-write` feature.") });
-external_exports.object({ method: external_exports.literal("ui/notifications/size-changed"), params: external_exports.object({ width: external_exports.number().optional().describe("New width in pixels."), height: external_exports.number().optional().describe("New height in pixels.") }) });
-external_exports.object({ method: external_exports.literal("ui/notifications/tool-input"), params: external_exports.object({ arguments: external_exports.record(external_exports.string(), external_exports.unknown().describe("Complete tool call arguments as key-value pairs.")).optional().describe("Complete tool call arguments as key-value pairs.") }) });
-external_exports.object({ method: external_exports.literal("ui/notifications/tool-input-partial"), params: external_exports.object({ arguments: external_exports.record(external_exports.string(), external_exports.unknown().describe("Partial tool call arguments (incomplete, may change).")).optional().describe("Partial tool call arguments (incomplete, may change).") }) });
-external_exports.object({ method: external_exports.literal("ui/notifications/tool-cancelled"), params: external_exports.object({ reason: external_exports.string().optional().describe('Optional reason for the cancellation (e.g., "user action", "timeout").') }) });
-var f = external_exports.object({ fonts: external_exports.string().optional() });
-var u = external_exports.object({ variables: ZQ.optional().describe("CSS variables for theming the app."), css: f.optional().describe("CSS blocks that apps can inject.") });
-external_exports.object({ method: external_exports.literal("ui/resource-teardown"), params: external_exports.object({}) });
-external_exports.record(external_exports.string(), external_exports.unknown());
-var O = external_exports.object({ text: external_exports.object({}).optional().describe("Host supports text content blocks."), image: external_exports.object({}).optional().describe("Host supports image content blocks."), audio: external_exports.object({}).optional().describe("Host supports audio content blocks."), resource: external_exports.object({}).optional().describe("Host supports resource content blocks."), resourceLink: external_exports.object({}).optional().describe("Host supports resource link content blocks."), structuredContent: external_exports.object({}).optional().describe("Host supports structured content.") });
-external_exports.object({ method: external_exports.literal("ui/notifications/request-teardown"), params: external_exports.object({}).optional() });
-var d = external_exports.object({ experimental: external_exports.object({}).optional().describe("Experimental features (structure TBD)."), openLinks: external_exports.object({}).optional().describe("Host supports opening external URLs."), downloadFile: external_exports.object({}).optional().describe("Host supports file downloads via ui/download-file."), serverTools: external_exports.object({ listChanged: external_exports.boolean().optional().describe("Host supports tools/list_changed notifications.") }).optional().describe("Host can proxy tool calls to the MCP server."), serverResources: external_exports.object({ listChanged: external_exports.boolean().optional().describe("Host supports resources/list_changed notifications.") }).optional().describe("Host can proxy resource reads to the MCP server."), logging: external_exports.object({}).optional().describe("Host accepts log messages."), sandbox: external_exports.object({ permissions: j.optional().describe("Permissions granted by the host (camera, microphone, geolocation)."), csp: Y.optional().describe("CSP domains approved by the host.") }).optional().describe("Sandbox configuration applied by the host."), updateModelContext: O.optional().describe("Host accepts context updates (ui/update-model-context) to be included in the model's context for future turns."), message: O.optional().describe("Host supports receiving content messages (ui/message) from the view."), sampling: external_exports.object({ tools: external_exports.object({}).optional().describe("Host supports tool use via `tools` and `toolChoice` parameters.") }).optional().describe("Host supports LLM sampling (sampling/createMessage) from the view.\nMirrors the MCP `ClientCapabilities.sampling` shape so hosts can pass it through.") });
-var h = external_exports.object({ experimental: external_exports.object({}).optional().describe("Experimental features (structure TBD)."), tools: external_exports.object({ listChanged: external_exports.boolean().optional().describe("App supports tools/list_changed notifications.") }).optional().describe("App exposes MCP-style tools that the host can call."), availableDisplayModes: external_exports.array(K).optional().describe("Display modes the app supports.") });
-external_exports.object({ method: external_exports.literal("ui/notifications/initialized"), params: external_exports.object({}).optional() });
-external_exports.object({ csp: Y.optional().describe("Content Security Policy configuration for UI resources."), permissions: j.optional().describe("Sandbox permissions requested by the UI resource."), domain: external_exports.string().optional().describe(`Dedicated origin for view sandbox.
-
-Useful when views need stable, dedicated origins for OAuth callbacks, CORS policies, or API key allowlists.
-
-**Host-dependent:** The format and validation rules for this field are determined by each host. Servers MUST consult host-specific documentation for the expected domain format. Common patterns include:
-- Hash-based subdomains (e.g., \`{hash}.claudemcpcontent.com\`)
-- URL-derived subdomains (e.g., \`www-example-com.oaiusercontent.com\`)
-
-If omitted, host uses default sandbox origin (typically per-conversation).`), prefersBorder: external_exports.boolean().optional().describe(`Visual boundary preference - true if view prefers a visible border.
-
-Boolean requesting whether a visible border and background is provided by the host. Specifying an explicit value for this is recommended because hosts' defaults may vary.
-
-- \`true\`: request visible border + background
-- \`false\`: request no visible border + background
-- omitted: host decides border`) });
-external_exports.object({ method: external_exports.literal("ui/request-display-mode"), params: external_exports.object({ mode: K.describe("The display mode being requested.") }) });
-external_exports.object({ mode: K.describe("The display mode that was actually set. May differ from requested if not supported.") }).passthrough();
-var m = external_exports.union([external_exports.literal("model"), external_exports.literal("app")]).describe("Tool visibility scope - who can access the tool.");
-external_exports.object({ resourceUri: external_exports.string().optional(), visibility: external_exports.array(m).optional().describe(`Who can access this tool. Default: ["model", "app"]
-- "model": Tool visible to and callable by the agent
-- "app": Tool callable by the app from this server only`), csp: external_exports.never().optional(), permissions: external_exports.never().optional() });
-external_exports.object({ mimeTypes: external_exports.array(external_exports.string()).optional().describe('Array of supported MIME types for UI resources.\nMust include `"text/html;profile=mcp-app"` for MCP Apps support.') });
-external_exports.object({ method: external_exports.literal("ui/download-file"), params: external_exports.object({ contents: external_exports.array(external_exports.union([EmbeddedResourceSchema, ResourceLinkSchema])).describe("Resource contents to download \u2014 embedded (inline data) or linked (host fetches). Uses standard MCP resource types.") }) });
-external_exports.object({ method: external_exports.literal("ui/message"), params: external_exports.object({ role: external_exports.literal("user").describe('Message role, currently only "user" is supported.'), content: external_exports.array(ContentBlockSchema).describe("Message content blocks (text, image, etc.).") }) });
-external_exports.object({ method: external_exports.literal("ui/notifications/sandbox-resource-ready"), params: external_exports.object({ html: external_exports.string().describe("HTML content to load into the inner iframe."), sandbox: external_exports.string().optional().describe("Optional override for the inner iframe's sandbox attribute."), csp: Y.optional().describe("CSP configuration from resource metadata."), permissions: j.optional().describe("Sandbox permissions from resource metadata.") }) });
-external_exports.object({ method: external_exports.literal("ui/notifications/tool-result"), params: CallToolResultSchema.describe("Standard MCP tool execution result.") });
-var T = external_exports.object({ toolInfo: external_exports.object({ id: RequestIdSchema.optional().describe("JSON-RPC id of the tools/call request."), tool: ToolSchema.describe("Tool definition including name, inputSchema, etc.") }).optional().describe("Metadata of the tool call that instantiated this App."), theme: v.optional().describe("Current color theme preference."), styles: u.optional().describe("Style configuration for theming the app."), displayMode: K.optional().describe("How the UI is currently displayed."), availableDisplayModes: external_exports.array(K).optional().describe("Display modes the host supports."), containerDimensions: external_exports.union([external_exports.object({ height: external_exports.number().describe("Fixed container height in pixels.") }), external_exports.object({ maxHeight: external_exports.union([external_exports.number(), external_exports.undefined()]).optional().describe("Maximum container height in pixels.") })]).and(external_exports.union([external_exports.object({ width: external_exports.number().describe("Fixed container width in pixels.") }), external_exports.object({ maxWidth: external_exports.union([external_exports.number(), external_exports.undefined()]).optional().describe("Maximum container width in pixels.") })])).optional().describe(`Container dimensions. Represents the dimensions of the iframe or other
-container holding the app. Specify either width or maxWidth, and either height or maxHeight.`), locale: external_exports.string().optional().describe("User's language and region preference in BCP 47 format."), timeZone: external_exports.string().optional().describe("User's timezone in IANA format."), userAgent: external_exports.string().optional().describe("Host application identifier."), platform: external_exports.union([external_exports.literal("web"), external_exports.literal("desktop"), external_exports.literal("mobile")]).optional().describe("Platform type for responsive design decisions."), deviceCapabilities: external_exports.object({ touch: external_exports.boolean().optional().describe("Whether the device supports touch input."), hover: external_exports.boolean().optional().describe("Whether the device supports hover interactions.") }).optional().describe("Device input capabilities."), safeAreaInsets: external_exports.object({ top: external_exports.number().describe("Top safe area inset in pixels."), right: external_exports.number().describe("Right safe area inset in pixels."), bottom: external_exports.number().describe("Bottom safe area inset in pixels."), left: external_exports.number().describe("Left safe area inset in pixels.") }).optional().describe("Mobile safe area boundaries in pixels.") }).passthrough();
-external_exports.object({ method: external_exports.literal("ui/notifications/host-context-changed"), params: T.describe("Partial context update containing only changed fields.") });
-external_exports.object({ method: external_exports.literal("ui/update-model-context"), params: external_exports.object({ content: external_exports.array(ContentBlockSchema).optional().describe("Context content blocks (text, image, etc.)."), structuredContent: external_exports.record(external_exports.string(), external_exports.unknown().describe("Structured content for machine-readable context data.")).optional().describe("Structured content for machine-readable context data.") }) });
-external_exports.object({ method: external_exports.literal("ui/initialize"), params: external_exports.object({ appInfo: ImplementationSchema.describe("App identification (name and version)."), appCapabilities: h.describe("Features and capabilities this app provides."), protocolVersion: external_exports.string().describe("Protocol version this app supports.") }) });
-external_exports.object({ protocolVersion: external_exports.string().describe('Negotiated protocol version string (e.g., "2025-11-21").'), hostInfo: ImplementationSchema.describe("Host application identification and version."), hostCapabilities: d.describe("Features and capabilities provided by the host."), hostContext: T.describe("Rich context about the host environment.") }).passthrough();
-var C = "ui/resourceUri";
-var p = "text/html;profile=mcp-app";
-function K3(Z, $, J, X) {
-  let V = J._meta, D = V.ui, L = V[C], W = V;
-  if (D?.resourceUri && !L) W = { ...V, [C]: D.resourceUri };
-  else if (L && !D?.resourceUri) W = { ...V, ui: { ...D, resourceUri: L } };
-  return Z.registerTool($, { ...J, _meta: W }, X);
+// ../../packages/shared-mcp/dist/recovery-error.js
+var RECOVERY_MARKER = " CLASH_RECOVERY=";
+function parseClashRecoveryError(rawMessage) {
+  const explicit = rawMessage.match(/(?:^|[\r\n])\s*(?:Error:\s*)?([A-Z][A-Z0-9_]+:[^\r\n]*)/)?.[1]?.trim() ?? rawMessage.trim();
+  const markerIndex = explicit.indexOf(RECOVERY_MARKER);
+  if (markerIndex < 0)
+    return { message: explicit };
+  const message = explicit.slice(0, markerIndex).trim();
+  try {
+    const parsed = JSON.parse(explicit.slice(markerIndex + RECOVERY_MARKER.length));
+    return isStaleRecovery(parsed) ? { message, recovery: parsed } : { message: explicit };
+  } catch {
+    return { message: explicit };
+  }
 }
-function N3(Z, $, J, X, V) {
-  return Z.registerResource($, J, { mimeType: p, ...X }, V);
+function isStaleRecovery(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return false;
+  const record2 = value;
+  return record2.schemaVersion === 1 && record2.code === "STALE_READ" && record2.resubmitted === false && [
+    "entityKind",
+    "entityId",
+    "currentRevisionId",
+    "editedProjectionPath",
+    "latestProjectionPath",
+    "recoveryReceiptPath",
+    "next"
+  ].every((key) => typeof record2[key] === "string" && record2[key].length > 0);
 }
 
 // ../../node_modules/.pnpm/zod@3.24.4/node_modules/zod/lib/index.mjs
@@ -35315,64 +35928,6 @@ var z2 = /* @__PURE__ */ Object.freeze({
   ZodError: ZodError3
 });
 
-// ../../packages/shared-types/dist/chunk-6ZDYRAYK.js
-var MgAnimationPropertySchema = z2.enum(["x", "y", "opacity", "scale", "rotation"]);
-var MgEasingSchema = z2.enum(["linear", "easeInCubic", "easeOutCubic", "easeInOutCubic"]);
-var MgAnimationSchema = z2.object({
-  property: MgAnimationPropertySchema,
-  from: z2.number(),
-  to: z2.number(),
-  startFrame: z2.number().int().min(0),
-  durationInFrames: z2.number().int().positive(),
-  easing: MgEasingSchema.default("linear")
-});
-var MgLayerBaseSchema = z2.object({
-  id: z2.string().min(1),
-  from: z2.number().int().min(0).default(0),
-  durationInFrames: z2.number().int().positive(),
-  zIndex: z2.number().int().default(0),
-  x: z2.number().default(0),
-  y: z2.number().default(0),
-  width: z2.number().positive().optional(),
-  height: z2.number().positive().optional(),
-  opacity: z2.number().min(0).max(1).default(1),
-  scale: z2.number().positive().default(1),
-  rotation: z2.number().default(0),
-  animations: z2.array(MgAnimationSchema).default([])
-});
-var MgTextLayerSchema = MgLayerBaseSchema.extend({
-  type: z2.literal("text"),
-  text: z2.string(),
-  fontFamily: z2.string().default("Inter, system-ui, sans-serif"),
-  fontSize: z2.number().positive().default(64),
-  fontWeight: z2.union([z2.string(), z2.number()]).default(700),
-  color: z2.string().default("#ffffff"),
-  letterSpacing: z2.number().default(0),
-  align: z2.enum(["left", "center", "right"]).default("left")
-});
-var MgShapeLayerSchema = MgLayerBaseSchema.extend({
-  type: z2.literal("shape"),
-  shape: z2.enum(["rect", "rounded-rect", "circle"]),
-  fill: z2.string().default("#ffffff"),
-  stroke: z2.string().optional(),
-  strokeWidth: z2.number().min(0).optional(),
-  radius: z2.number().min(0).default(0)
-});
-var MgCompositionLayerSchema = z2.discriminatedUnion("type", [
-  MgTextLayerSchema,
-  MgShapeLayerSchema
-]);
-var MgCompositionSpecSchema = z2.object({
-  id: z2.string().min(1),
-  name: z2.string().optional(),
-  width: z2.number().int().positive(),
-  height: z2.number().int().positive(),
-  fps: z2.number().positive(),
-  durationInFrames: z2.number().int().positive(),
-  background: z2.string().default("transparent"),
-  layers: z2.array(MgCompositionLayerSchema).default([])
-});
-
 // ../../node_modules/.pnpm/zod-to-json-schema@3.24.6_zod@3.24.4/node_modules/zod-to-json-schema/dist/esm/Options.js
 var ignoreOverride2 = /* @__PURE__ */ Symbol("Let zodToJsonSchema decide on which parser to use");
 var defaultOptions2 = {
@@ -36650,7 +37205,7 @@ var zodToJsonSchema2 = (schema, options) => {
   return combined;
 };
 
-// ../../packages/shared-types/dist/chunk-JG7AU5JR.js
+// ../../packages/shared-types/dist/chunk-PVL2FXUQ.js
 var TIMELINE_KEYFRAME_INTERPOLATIONS = ["hold", "linear"];
 var DEFAULT_TIMELINE_KEYFRAME_INTERPOLATION = "linear";
 var TIMELINE_KEYFRAME_SAMPLING_POLICY = Object.freeze({
@@ -37048,7 +37603,7 @@ var TIMELINE_DSL_TRACK_ROLES = [
 var TIMELINE_DSL_CATEGORY_ALLOWED_ITEM_TYPES = {
   effect: ["composition", "transition"],
   text: ["text"],
-  visual: ["video", "image", "solid", "sticker", "derived-overlay"],
+  visual: ["video", "image", "solid", "sticker", "composition", "derived-overlay"],
   primary: ["video", "image", "solid"],
   audio: ["audio"]
 };
@@ -37095,7 +37650,6 @@ var TIMELINE_DERIVATION_KINDS = [
   "trim",
   "crop",
   "caption-burn",
-  "mg-render",
   "transcode",
   "other"
 ];
@@ -37675,7 +38229,7 @@ var itemTypeFields = {
     })
   },
   composition: {
-    compositionKind: authored(z2.enum(TIMELINE_COMPOSITION_KINDS), "First-party motion-graphics or custom composition kind.", {
+    compositionKind: authored(z2.enum(TIMELINE_COMPOSITION_KINDS), "Composition domain label; motion-graphics must resolve a live Remotion Canvas component.", {
       required: true,
       editor: propertiesControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"]
@@ -37695,12 +38249,12 @@ var itemTypeFields = {
       editor: noControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"]
     }),
-    renderedAssetPath: derived(NonEmptyStringSchema, "Host-produced rendered preview/export asset path; required for React and Remotion composition states and preserved by agents.", {
+    renderedAssetPath: derived(NonEmptyStringSchema, "Host-produced rendered preview/export asset path for legacy React composition states, preserved by agents.", {
       required: false,
       editor: noControl,
       runtimeConsumers: ["preview", "render", "export"]
     }),
-    spec: authored(z2.union([MgCompositionSpecSchema, z2.record(z2.unknown())]), "Agent-authored composition spec; first-party motion graphics use MgCompositionSpec.", {
+    spec: authored(z2.record(z2.unknown()), "Optional runtime configuration for legacy custom compositions; motion graphics use Canvas Remotion component source instead.", {
       required: false,
       editor: propertiesControl,
       runtimeConsumers: ["composition-runtime", "preview", "render"]
@@ -37850,6 +38404,29 @@ var TimelineApplyOutputSchema = z2.object({
   filePath: IdentifierSchema,
   sources: z2.array(IdentifierSchema),
   timelineHash: IdentifierSchema
+}).passthrough();
+var TimelineRenderTargetSchema = z2.discriminatedUnion("kind", [
+  z2.object({ kind: z2.literal("project-assets") }).strict(),
+  z2.object({
+    kind: z2.literal("canvas"),
+    canvasId: IdentifierSchema,
+    actionNodeId: IdentifierSchema
+  }).strict()
+]);
+var TimelineRenderReceiptSchema = z2.object({
+  submitted: z2.literal(true),
+  completed: z2.boolean(),
+  timelineId: IdentifierSchema,
+  sourceTimelineRevisionId: IdentifierSchema,
+  renderNodeId: IdentifierSchema,
+  target: TimelineRenderTargetSchema,
+  status: z2.enum(["pending", "completed", "failed"]),
+  asset: z2.object({
+    id: IdentifierSchema,
+    signedUrl: IdentifierSchema.optional(),
+    srcR2Key: IdentifierSchema.optional()
+  }).passthrough().optional(),
+  error: z2.string().min(1).optional()
 }).passthrough();
 var timelineEditorItemVariantSchemas = TIMELINE_DSL_ITEM_TYPES.map((type) => z2.object({
   ...timelineDslAnnotatedObjectShape(
@@ -38110,6 +38687,28 @@ var agent = {
     description: "Copy a Timeline Action into another Canvas using copy-on-write identity.",
     runtimeConsumers: ["cli", "mcp", "local-host", "project-workspace", "canvas"],
     surfaceBindings: ["cli:timeline copy", "mcp:clash_timeline_copy"],
+    agentCallable: true
+  }),
+  "timeline.render": agentOperation({
+    id: "timeline.render",
+    kind: "agent",
+    inputSchema: z2.object({
+      timelineId: IdentifierSchema,
+      wait: z2.boolean().optional(),
+      timeoutMs: z2.number().int().min(1e3).max(9e5).optional()
+    }).strict(),
+    outputSchema: TimelineRenderReceiptSchema,
+    access: "write",
+    readOnly: false,
+    cas: "none",
+    readProof: "records-observation",
+    preconditions: [
+      "The Timeline exists and contains at least one renderable item.",
+      "The local daemon has a healthy packaged Remotion rendering backend."
+    ],
+    description: "Submit the current Timeline revision to the daemon renderer and optionally wait for persisted Asset readback.",
+    runtimeConsumers: ["cli", "mcp", "local-host", "remotion-renderer", "agent-runtime"],
+    surfaceBindings: ["cli:timeline render", "mcp:clash_timeline_render"],
     agentCallable: true
   }),
   "timeline.pull": agentOperation({
@@ -38525,7 +39124,6 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
   { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
   { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
   { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.composition.mg-spec", kind: "referenced-schema", objectPath: "tracks[].items[].spec", schema: "MgCompositionSpec" },
   { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
   { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
   { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
@@ -38843,25 +39441,25 @@ function evaluateStructuralSemanticRules(context) {
             "composition renderedAssetPath must be a local project path"
           ));
         }
-        if (item.runtime === "html" && item.compositionKind === "motion-graphics" && item.spec === void 0) {
+        if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
           issues.push(issue2(
             "timeline.composition.preview-contract",
-            [...itemPath, "spec"],
-            "HTML motion-graphics composition requires a first-party spec"
+            [...itemPath, "runtime"],
+            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId"
           ));
         }
-        if (item.runtime !== "html" && !isLocalProjectPath(item.renderedAssetPath)) {
+        if (item.runtime === "remotion" && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)) {
+          issues.push(issue2(
+            "timeline.composition.preview-contract",
+            [...itemPath, "sourceNodeId"],
+            "Remotion compositions require a live Canvas sourceNodeId"
+          ));
+        }
+        if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
           issues.push(issue2(
             "timeline.composition.preview-contract",
             [...itemPath, "renderedAssetPath"],
-            "React and Remotion compositions require a local renderedAssetPath"
-          ));
-        }
-        if (item.compositionKind === "motion-graphics" && item.spec !== void 0 && !MgCompositionSpecSchema.safeParse(item.spec).success) {
-          issues.push(issue2(
-            "timeline.composition.mg-spec",
-            [...itemPath, "spec"],
-            "motion-graphics composition spec must satisfy MgCompositionSpec"
+            "React compositions require a local renderedAssetPath"
           ));
         }
       }
@@ -38940,7 +39538,6 @@ var TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
   "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
   "timeline.composition.local-path": evaluateStructuralSemanticRules,
   "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
-  "timeline.composition.mg-spec": evaluateStructuralSemanticRules,
   "timeline.caption.structured": evaluateCaptionSemanticRules,
   "timeline.caption.lineage": evaluateCaptionSemanticRules,
   "timeline.derived-overlay.local-path": evaluateStructuralSemanticRules,
@@ -39280,7 +39877,7 @@ function timelineDslContractFingerprint(value) {
   return `fnv1a32:${(hash2 >>> 0).toString(16).padStart(8, "0")}`;
 }
 var timelineDslSerializableDefinition = {
-  schemaVersion: 3,
+  schemaVersion: 5,
   format: "clash.timeline.yaml",
   description: "Agent-facing Timeline YAML DSL. Pull before editing and apply with the matching read proof.",
   fieldCatalog: TIMELINE_DSL_FIELD_CATALOG,
@@ -39385,11 +39982,6 @@ function timelineOperationMetadata(toolName) {
   if (!binding) return void 0;
   return TIMELINE_DSL_DEFINITION.operationCatalog.agent[binding.operationId];
 }
-function timelineStateJsonSchema() {
-  return cloneJsonSchema(
-    TIMELINE_DSL_DEFINITION.jsonSchema
-  );
-}
 function validateTimelineState(state) {
   const validation = validateTimelineDsl(state);
   return validation.ok ? { ok: true, issues: [] } : { ok: false, issues: validation.issues };
@@ -39415,20 +40007,11 @@ function cloneJsonSchema(value) {
   return JSON.parse(JSON.stringify(value));
 }
 function timelineContractJsonSchemaMetadata() {
-  const timelineSchema = timelineStateJsonSchema();
-  const definitions = timelineSchema.definitions;
-  if (!definitions || typeof definitions !== "object" || Array.isArray(definitions)) {
-    throw new Error("Timeline JSON Schema is missing definitions");
-  }
-  const metadata = {
-    definitions: cloneJsonSchema(definitions),
+  return {
     "x-clash-contract-fingerprint": TIMELINE_DSL_DEFINITION.contractFingerprint,
-    "x-clash-schema-version": TIMELINE_DSL_DEFINITION.schemaVersion
+    "x-clash-schema-version": TIMELINE_DSL_DEFINITION.schemaVersion,
+    "x-clash-schema-tool": "clash_timeline_schema"
   };
-  for (const [key, value] of Object.entries(timelineSchema)) {
-    if (key.startsWith("x-clash-")) metadata[key] = cloneJsonSchema(value);
-  }
-  return metadata;
 }
 var TIMELINE_MCP_SCOPE_JSON_SCHEMA = Object.freeze({
   cwd: {
@@ -39442,8 +40025,21 @@ var TIMELINE_MCP_SCOPE_JSON_SCHEMA = Object.freeze({
     description: "Project ID override; normally resolved from the workspace marker"
   }
 });
+function compactTimelineStateSchema() {
+  return {
+    type: "object",
+    description: [
+      "Complete Timeline DSL state, not a patch.",
+      "Call clash_timeline_schema for the authoritative fields and constraints."
+    ].join(" "),
+    additionalProperties: true,
+    "x-clash-contract-ref": "TimelineDsl",
+    "x-clash-schema-tool": "clash_timeline_schema",
+    "x-clash-contract-fingerprint": TIMELINE_DSL_DEFINITION.contractFingerprint
+  };
+}
 function timelineContractReferenceSchema(original) {
-  const timelineReference = { $ref: "#/definitions/TimelineDsl" };
+  const timelineReference = compactTimelineStateSchema();
   if (!original || typeof original !== "object" || Array.isArray(original)) {
     return timelineReference;
   }
@@ -39503,10 +40099,7 @@ function expandTimelineEntityStateSchemas(value) {
   let expanded = false;
   const properties = schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties) ? schema.properties : void 0;
   if (properties?.state && properties.id && properties.name && properties.owner) {
-    properties.state = {
-      $ref: "#/definitions/TimelineDsl",
-      description: "Complete annotation-generated Timeline DSL state."
-    };
+    properties.state = compactTimelineStateSchema();
     expanded = true;
   }
   for (const entry of Object.values(schema)) {
@@ -39707,6 +40300,13 @@ function buildTimelineCliArgs(name, input) {
       if (input.newNodeId?.trim()) args.push("--new-node", input.newNodeId.trim());
       appendPosition(args, input);
       break;
+    case "clash_timeline_render":
+      args.push("render", "--timeline", required2(input, "timelineId"));
+      if (input.wait === false) args.push("--no-wait");
+      if (input.timeoutMs !== void 0) {
+        args.push("--timeout-ms", String(input.timeoutMs));
+      }
+      break;
     default:
       throw new Error(`Timeline operation ${name} is not exposed`);
   }
@@ -39808,6 +40408,7 @@ function createTimelineAdapter(options = {}) {
     attach: (input) => invoke("clash_timeline_attach", input),
     detach: (input) => invoke("clash_timeline_detach", input),
     copy: (input) => invoke("clash_timeline_copy", input),
+    render: async (input) => objectResult(await invoke("clash_timeline_render", input)),
     async save(input) {
       const timelineId = input.timelineId?.trim();
       if (!timelineId) throw new Error("timelineId is required");
@@ -39815,18 +40416,9 @@ function createTimelineAdapter(options = {}) {
         throw new Error("state must be a Timeline object");
       }
       assertTimelineState(input.state);
-      const current = await get(input);
       const baseRevisionId = input.baseRevisionId?.trim();
       if (!baseRevisionId) {
         throw new Error("baseRevisionId is required; read the Timeline before saving");
-      }
-      if (!current.revisionId) {
-        throw new Error(`Timeline ${timelineId} did not expose a revisionId; read it again before saving`);
-      }
-      if (current.revisionId !== baseRevisionId) {
-        throw new Error(
-          `STALE_TIMELINE: save is based on ${baseRevisionId}, but Timeline ${timelineId} is now ${current.revisionId}. Read again and reapply the edit.`
-        );
       }
       const cwd = timelineWorkspaceCwd(input);
       const filePath = join(
@@ -39842,7 +40434,9 @@ function createTimelineAdapter(options = {}) {
         "--timeline",
         timelineId,
         "--file",
-        filePath
+        filePath,
+        "--base-revision",
+        baseRevisionId
       ];
       if (input.projectId?.trim()) args.push("--project", input.projectId.trim());
       args.push("--json");
@@ -40335,6 +40929,18 @@ var TIMELINE_MCP_EXECUTORS = {
       ...input.position === void 0 ? {} : { position: input.position }
     }),
     summary: jsonSummary
+  },
+  "timeline.render": {
+    title: "Render timeline",
+    inputSchema: timelineOperationInputSchema("timeline.render"),
+    outputSchema: timelineOperationOutputSchema("timeline.render"),
+    execute: (input, adapter) => adapter.render({
+      ...transportScope(input),
+      timelineId: input.timelineId,
+      ...input.wait === void 0 ? {} : { wait: input.wait },
+      ...input.timeoutMs === void 0 ? {} : { timeoutMs: input.timeoutMs }
+    }),
+    summary: jsonSummary
   }
 };
 function sharedTimelineMcpOperationIds() {
@@ -40364,6 +40970,79 @@ function timelineMcpExecutor(operationId) {
 }
 
 // src/server.ts
+var TIMELINE_TOOL_GUIDANCE = {
+  "timeline.open": {
+    useWhen: "a human needs the interactive Timeline surface for review or manual adjustment",
+    effect: "opens the Timeline app with the selected or first Timeline without mutating product state",
+    returns: "the resolved workspace, available Timelines, and current selection",
+    next: "review the selection, then use the specific read or mutation capability that matches the intended change"
+  },
+  "timeline.schema": {
+    useWhen: "authoring a Timeline document or recovering from a Timeline DSL validation error",
+    effect: "reads the complete authoritative Timeline DSL contract without mutating product state",
+    returns: "schema version, fields, features, semantic rules, and machine-readable JSON Schema",
+    next: "build a complete state that satisfies the contract, then validate it before creating or saving"
+  },
+  "timeline.validate": {
+    useWhen: "checking a complete Timeline object, JSON document, or YAML document before mutation",
+    effect: "validates structure and semantic rules without changing the Timeline",
+    returns: "validation success or stable issues with paths and rule identifiers",
+    next: "resolve every issue; then read the target Timeline for its current revision before saving"
+  },
+  "timeline.list": {
+    useWhen: "discovering Timeline identifiers or choosing among existing Timelines",
+    effect: "reads Timeline summaries without changing product state",
+    returns: "the Timelines visible in the resolved project scope",
+    next: "read the chosen Timeline before planning or applying an edit"
+  },
+  "timeline.get": {
+    useWhen: "editing an existing Timeline or recovering from a stale or read-required response",
+    effect: "reads the full persisted Timeline and records the observation needed for a safe later write",
+    returns: "complete state, current revision, ownership, contract identity, and validation results",
+    next: "preserve unrelated fields and submit a complete replacement against the returned revision"
+  },
+  "timeline.create": {
+    useWhen: "a genuinely new Timeline is required rather than a revision of an existing one",
+    effect: "creates a Timeline and optionally applies a complete typed Timeline state",
+    returns: "the persisted Timeline entity and its current state",
+    next: "read back the new Timeline before making another revision or attaching it to Canvas"
+  },
+  "timeline.save": {
+    useWhen: "a complete typed Timeline state is ready after reading the current revision",
+    effect: "atomically replaces the entire Timeline state under baseRevisionId; it never applies a partial patch",
+    returns: "whether the replacement was applied and the resulting revision identifier",
+    next: "read back the persisted Timeline; on a stale response, use the automatically pulled latest projection and structured paths to merge, then resubmit"
+  },
+  "timeline.attach": {
+    useWhen: "an existing Timeline should become the editable composition owned by a Canvas action",
+    effect: "attaches the Timeline to the requested Canvas location and action ownership",
+    returns: "the persisted Timeline with its updated ownership",
+    next: "read the Timeline and inspect the owning Canvas action before making dependent changes"
+  },
+  "timeline.detach": {
+    useWhen: "a Timeline should be made standalone without deleting its editable state",
+    effect: "removes the Canvas ownership link while preserving the Timeline",
+    returns: "the persisted standalone Timeline",
+    next: "read back the Timeline and update any workflow that depended on its former owner"
+  },
+  "timeline.copy": {
+    useWhen: "a Canvas needs an independent copy while the source Timeline and its references remain unchanged",
+    effect: "creates a copy and attaches the new Timeline to the target Canvas location",
+    returns: "the persisted copy with independent identity, state, revision, and ownership",
+    next: "read the copy before editing it and leave source references on the original until explicitly rewired"
+  },
+  "timeline.render": {
+    useWhen: "a validated editable Timeline must become real playable media through the Clash product renderer",
+    effect: "submits the current persisted Timeline revision to the daemon-owned Remotion renderer, resolving every runtime: remotion item from the latest TSX on its stable Canvas sourceNodeId, and waits by default",
+    returns: "a render node receipt, source revision, completion status, and immutable Asset readback including its download URL",
+    next: "only claim completion when status is completed; link or download the returned Asset for review, and inspect error when failed"
+  }
+};
+function timelineToolDescription(operationId) {
+  const guidance = TIMELINE_TOOL_GUIDANCE[operationId];
+  if (!guidance) throw new Error(`Missing Timeline MCP guidance for ${operationId}`);
+  return describeClashTool(guidance);
+}
 function structured(value) {
   if (Array.isArray(value)) return { items: value };
   if (value && typeof value === "object") return value;
@@ -40371,13 +41050,11 @@ function structured(value) {
 }
 function timelineToolErrorPayload(error51) {
   const rawMessage = error51 instanceof Error ? error51.message : String(error51);
-  const explicitError = rawMessage.match(
-    /(?:^|[\r\n])\s*(?:Error:\s*)?([A-Z][A-Z0-9_]+:[^\r\n]*)/
-  )?.[1]?.trim();
-  const message = explicitError ?? rawMessage;
+  const parsedRecovery = parseClashRecoveryError(rawMessage);
+  const message = parsedRecovery.message;
   const explicitCode = message.match(/^([A-Z][A-Z0-9_]+):/)?.[1];
   const code = explicitCode ?? (/baseRevisionId is required|read .* before saving/i.test(message) ? "READ_REQUIRED" : /not found/i.test(message) ? "TIMELINE_NOT_FOUND" : /validation|Timeline item|\berror:/i.test(message) ? "TIMELINE_DSL_INVALID" : "TIMELINE_OPERATION_FAILED");
-  const retryTool = code === "STALE_TIMELINE" || code === "STALE_READ" || code === "READ_REQUIRED" ? "clash_timeline_get" : code === "TIMELINE_DSL_INVALID" ? "clash_timeline_schema" : code === "TIMELINE_NOT_FOUND" ? "clash_timeline_list" : void 0;
+  const retryTool = !parsedRecovery.recovery && (code === "STALE_TIMELINE" || code === "STALE_READ" || code === "READ_REQUIRED") ? "clash_timeline_get" : code === "TIMELINE_DSL_INVALID" ? "clash_timeline_schema" : code === "TIMELINE_NOT_FOUND" ? "clash_timeline_list" : void 0;
   const issues = error51 && typeof error51 === "object" && Array.isArray(
     error51.issues
   ) ? error51.issues : void 0;
@@ -40385,6 +41062,7 @@ function timelineToolErrorPayload(error51) {
     code,
     message,
     ...retryTool ? { retryTool } : {},
+    ...parsedRecovery.recovery ? { recovery: parsedRecovery.recovery } : {},
     ...issues ? { issues } : {}
   };
 }
@@ -40397,7 +41075,7 @@ function registerTimelinePluginMcp(server, adapter, bundledAppJavascript, option
     const operation = timelineOperationMetadata(name);
     K3(server, name, {
       title: executor.title,
-      description: operation.description,
+      description: timelineToolDescription(binding.operationId),
       inputSchema: executor.inputSchema,
       outputSchema: executor.outputSchema,
       annotations: { readOnlyHint: operation.readOnly },
@@ -40437,7 +41115,7 @@ function registerTimelinePluginMcp(server, adapter, bundledAppJavascript, option
   }));
 }
 function createTimelinePluginServer(options = {}) {
-  const server = new McpServer({ name: "clash-timeline", version: "0.1.0" });
+  const server = new ClashMcpServer({ name: "clash-timeline", version: "0.1.0" });
   const bundledAppJavascript = options.bundledAppJavascript ?? readFileSync(
     new URL("./app-client.js", import.meta.url),
     "utf8"

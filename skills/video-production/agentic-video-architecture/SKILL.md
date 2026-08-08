@@ -77,6 +77,8 @@ When using this skill, produce:
 ## Migration Notes
 
 - OpenMontage suggests pipeline manifests, stage directors, and broad tool maps.
-- HyperFrames suggests an agent-friendly composition router plus domain skills.
+- HyperFrames suggests agent-friendly editable React composition authoring plus
+  domain skills; Clash delivers that source through its Remotion Canvas node and
+  Timeline path.
 - Montage-style systems suggest keeping deterministic analysis independent of
   optional LLM creative direction.

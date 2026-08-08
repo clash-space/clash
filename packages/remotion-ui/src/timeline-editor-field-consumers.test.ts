@@ -1,8 +1,4 @@
 import {
-  MgAnimationSchema,
-  MgCompositionSpecSchema,
-  MgShapeLayerSchema,
-  MgTextLayerSchema,
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_DSL_ITEM_TYPES,
 } from '@clash/shared-types';
@@ -103,34 +99,9 @@ describe('editor Timeline field consumer gate', () => {
     expect(registry.audio?.properties?.consumers).toContain('unsupported');
     expect(registry.transition?.mask?.consumers).toContain('unsupported');
     expect(registry.transition?.effect?.consumers).toContain('unsupported');
-    expect(registry.composition?.spec?.consumers).toContain('editor');
+    expect(registry.composition?.spec?.consumers).toContain('unsupported');
     expect(registry.composition?.sourcePath?.consumers).toContain('meta');
     expect(registry['derived-overlay']?.derivation?.consumers).toContain('meta');
-  });
-
-  it('classifies every nested first-party MG field exposed or preserved by the editor', () => {
-    const mgRegistry = (
-      ui as unknown as {
-        TIMELINE_MG_EDITOR_FIELD_CONSUMERS?: Record<string, Record<string, Classification>>;
-      }
-    ).TIMELINE_MG_EDITOR_FIELD_CONSUMERS ?? {};
-
-    expect(Object.keys(mgRegistry.spec ?? {}).sort()).toEqual(
-      Object.keys(MgCompositionSpecSchema.shape).sort(),
-    );
-    expect(Object.keys(mgRegistry.textLayer ?? {}).sort()).toEqual(
-      Object.keys(MgTextLayerSchema.shape).sort(),
-    );
-    expect(Object.keys(mgRegistry.shapeLayer ?? {}).sort()).toEqual(
-      Object.keys(MgShapeLayerSchema.shape).sort(),
-    );
-    expect(Object.keys(mgRegistry.animation ?? {}).sort()).toEqual(
-      Object.keys(MgAnimationSchema.shape).sort(),
-    );
-    expect(mgRegistry.spec?.background?.consumers).toContain('editor');
-    expect(mgRegistry.textLayer?.fontFamily?.consumers).toContain('unsupported');
-    expect(mgRegistry.shapeLayer?.shape?.consumers).toContain('unsupported');
-    expect(mgRegistry.animation?.property?.consumers).toContain('unsupported');
   });
 
   it('classifies every shared fallback and exposes any editor override explicitly', () => {

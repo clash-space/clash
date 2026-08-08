@@ -1,32 +1,25 @@
+import { LocalDaemonLaunchResult } from '@clash/shared-runtime/local-daemon';
 import { ClashRuntimeProfile } from '@clash/shared-runtime/local-paths';
 import { LocalHostDiscoveryRecord } from '@clash/shared-runtime';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-type PluginHostRecord = LocalHostDiscoveryRecord & {
-    agentCliPath: string;
-};
-type OwnedPluginHost = {
-    record: PluginHostRecord;
-    close(): Promise<void>;
-};
+type PluginHostRecord = LocalHostDiscoveryRecord;
 interface PluginHostManager {
     ensureHost(): Promise<PluginHostRecord>;
-    ownsHost(): boolean;
+    /** Releases this client bootstrap only. The shared daemon remains running. */
     close(): Promise<void>;
 }
 type StartHost = (context: {
-    ownerClientId: string;
     runDir: string;
     dataDir: string;
     env: NodeJS.ProcessEnv;
-}) => Promise<OwnedPluginHost>;
+}) => Promise<LocalDaemonLaunchResult>;
 declare function readActivePluginHost(runDir: string, profile?: ClashRuntimeProfile): Promise<PluginHostRecord | undefined>;
 declare function createPluginHostManager(options?: {
-    ownerClientId?: string;
     runDir?: string;
     dataDir?: string;
     env?: NodeJS.ProcessEnv;
-    readHost?: () => Promise<PluginHostRecord | undefined>;
+    probeHost?: (record: LocalHostDiscoveryRecord) => Promise<boolean>;
     startHost?: StartHost;
 }): PluginHostManager;
 
@@ -34,6 +27,8 @@ type HostCliRunner = (args: string[], cwd?: string) => Promise<unknown>;
 declare function createHostCliRunner(options?: {
     runDir?: string;
     env?: NodeJS.ProcessEnv;
+    command?: string;
+    bundledCliPath?: string;
     hostManager?: Pick<PluginHostManager, "ensureHost">;
 }): HostCliRunner;
 
@@ -59,4 +54,4 @@ declare function serveClashPluginStdio(options?: ClashPluginServerOptions): Prom
 
 declare function isDirectExecution(moduleUrl: string, argvEntry?: string, cwd?: string): boolean;
 
-export { type ClashPluginAppBundles, type ClashPluginServerOptions, type HostCliRunner, type OwnedPluginHost, type PluginHostManager, type PluginHostRecord, createClashPluginRuntime, createClashPluginServer, createHostCliRunner, createPluginHostManager, isDirectExecution, readActivePluginHost, serveClashPluginStdio };
+export { type ClashPluginAppBundles, type ClashPluginServerOptions, type HostCliRunner, type PluginHostManager, type PluginHostRecord, createClashPluginRuntime, createClashPluginServer, createHostCliRunner, createPluginHostManager, isDirectExecution, readActivePluginHost, serveClashPluginStdio };

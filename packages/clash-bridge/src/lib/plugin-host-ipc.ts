@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
@@ -64,6 +65,39 @@ type PluginHostResponse = {
 };
 
 const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
+// macOS permits at most 103 address bytes for a Unix-domain socket (Linux
+// permits 107). Keep a little headroom so the same path is portable and Node
+// never silently binds a truncated address that cannot subsequently be chmod'd.
+const UNIX_SOCKET_PATH_BUDGET_BYTES = 96;
+
+// Starting two embedded hosts for the same Unix socket must be one atomic
+// operation. Without this queue, both callers can observe a stale/missing
+// path, then one caller can unlink the socket after the other has started
+// listening but before it chmods the path. The resulting ENOENT takes down
+// the local daemon and leaves neither caller as a reliable owner.
+const socketStartupTails = new Map<string, Promise<void>>();
+
+async function withSocketStartupLock<T>(
+  socketPath: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = socketStartupTails.get(socketPath) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  socketStartupTails.set(socketPath, current);
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (socketStartupTails.get(socketPath) === current) {
+      socketStartupTails.delete(socketPath);
+    }
+  }
+}
 
 export function pluginHostSocketPath(
   env: Record<string, string | undefined> = process.env,
@@ -75,7 +109,15 @@ export function pluginHostSocketPath(
     const suffix = createHash("sha256").update(configDir).digest("hex").slice(0, 16);
     return `\\\\.\\pipe\\clash-plugin-host-${suffix}`;
   }
-  return join(configDir, "sockets", "plugin-host.sock");
+  const preferred = join(configDir, "sockets", "plugin-host.sock");
+  if (Buffer.byteLength(preferred) <= UNIX_SOCKET_PATH_BUDGET_BYTES) return preferred;
+
+  const suffix = createHash("sha256").update(configDir).digest("hex").slice(0, 16);
+  const basename = `clash-plugin-host-${suffix}.sock`;
+  const temporary = join(tmpdir(), basename);
+  return Buffer.byteLength(temporary) <= UNIX_SOCKET_PATH_BUDGET_BYTES
+    ? temporary
+    : join("/tmp", basename);
 }
 
 function nonEmptyString(value: unknown, field: string): string {
@@ -210,71 +252,73 @@ export async function startPluginHostIpcServer(options: {
   socketPath?: string;
 }): Promise<PluginHostIpcServer> {
   const socketPath = options.socketPath ?? pluginHostSocketPath();
-  if (process.platform !== "win32") {
-    await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
-    if (await socketIsActive(socketPath)) {
-      const error = new Error(`Clash plugin host is already listening at ${socketPath}.`) as NodeJS.ErrnoException;
-      error.code = "EADDRINUSE";
-      throw error;
-    }
-    await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error;
-    });
-  }
-  const server: Server = createServer((socket) => {
-    let buffer = "";
-    socket.on("data", (chunk) => {
-      buffer += chunk.toString("utf8");
-      if (Buffer.byteLength(buffer) > MAX_MESSAGE_BYTES) {
-        writeResponse(socket, {
-          protocol: "clash.plugin-host/v1",
-          requestId: "unknown",
-          status: "error",
-          error: { code: "message_too_large", message: "Plugin host request is too large." },
-        });
-        return;
+  return withSocketStartupLock(socketPath, async () => {
+    if (process.platform !== "win32") {
+      await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
+      if (await socketIsActive(socketPath)) {
+        const error = new Error(`Clash plugin host is already listening at ${socketPath}.`) as NodeJS.ErrnoException;
+        error.code = "EADDRINUSE";
+        throw error;
       }
-      const newline = buffer.indexOf("\n");
-      if (newline < 0) return;
-      const line = buffer.slice(0, newline);
-      buffer = "";
-      let message: unknown;
-      try {
-        message = JSON.parse(line);
-      } catch (error) {
-        writeResponse(socket, {
-          protocol: "clash.plugin-host/v1",
-          requestId: "unknown",
-          status: "error",
-          error: { code: "invalid_json", message: (error as Error).message },
-        });
-        return;
-      }
-      void handleRequest(options.host, message).then((response) => writeResponse(socket, response));
-    });
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(socketPath, () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  if (process.platform !== "win32") await chmod(socketPath, 0o600);
-
-  return {
-    socketPath,
-    close: async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => error ? reject(error) : resolve());
+      await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
       });
-      if (process.platform !== "win32") {
-        await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error;
+    }
+    const server: Server = createServer((socket) => {
+      let buffer = "";
+      socket.on("data", (chunk) => {
+        buffer += chunk.toString("utf8");
+        if (Buffer.byteLength(buffer) > MAX_MESSAGE_BYTES) {
+          writeResponse(socket, {
+            protocol: "clash.plugin-host/v1",
+            requestId: "unknown",
+            status: "error",
+            error: { code: "message_too_large", message: "Plugin host request is too large." },
+          });
+          return;
+        }
+        const newline = buffer.indexOf("\n");
+        if (newline < 0) return;
+        const line = buffer.slice(0, newline);
+        buffer = "";
+        let message: unknown;
+        try {
+          message = JSON.parse(line);
+        } catch (error) {
+          writeResponse(socket, {
+            protocol: "clash.plugin-host/v1",
+            requestId: "unknown",
+            status: "error",
+            error: { code: "invalid_json", message: (error as Error).message },
+          });
+          return;
+        }
+        void handleRequest(options.host, message).then((response) => writeResponse(socket, response));
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    if (process.platform !== "win32") await chmod(socketPath, 0o600);
+
+    return {
+      socketPath,
+      close: async () => {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => error ? reject(error) : resolve());
         });
-      }
-    },
-  };
+        if (process.platform !== "win32") {
+          await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error;
+          });
+        }
+      },
+    };
+  });
 }
 
 export class PluginHostClient {

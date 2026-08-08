@@ -1,10 +1,8 @@
 import { z } from 'zod';
-import { MgCompositionSpecSchema } from './mg-composition';
 
 export const TIMELINE_LIBRARY_CATEGORIES = [
   'text',
   'stickers',
-  'motion-graphics',
   'sound-effects',
   'transitions',
   'fx',
@@ -14,7 +12,6 @@ export const TIMELINE_LIBRARY_CATEGORIES = [
   'captions',
   'filters',
   'adjustments',
-  'templates',
 ] as const;
 
 export type TimelineLibraryCategory = (typeof TIMELINE_LIBRARY_CATEGORIES)[number];
@@ -22,7 +19,7 @@ export type TimelineLibraryCategory = (typeof TIMELINE_LIBRARY_CATEGORIES)[numbe
 export const TIMELINE_LIBRARY_GROUPS = [
   { id: 'recommended', label: 'Recommended', categories: [] },
   { id: 'text', label: 'Text & Captions', categories: ['text', 'captions'] },
-  { id: 'graphics', label: 'Graphics', categories: ['stickers', 'motion-graphics', 'templates'] },
+  { id: 'graphics', label: 'Graphics', categories: ['stickers'] },
   { id: 'transitions', label: 'Transitions', categories: ['transitions'] },
   { id: 'visual-effects', label: 'Visual Effects', categories: ['fx', 'zoom'] },
   { id: 'color-looks', label: 'Color Looks', categories: ['filters', 'luts', 'adjustments'] },
@@ -84,12 +81,6 @@ export const TIMELINE_LIBRARY_CATEGORY_CONTRACTS = {
     applyKind: 'insert-sticker-item',
     catalogFirst: true,
   },
-  'motion-graphics': {
-    domain: 'composition',
-    target: 'video-track',
-    applyKind: 'insert-composition-item',
-    catalogFirst: true,
-  },
   'sound-effects': {
     domain: 'asset',
     target: 'audio-track',
@@ -142,12 +133,6 @@ export const TIMELINE_LIBRARY_CATEGORY_CONTRACTS = {
     domain: 'visual-processor',
     target: 'visual-item',
     applyKind: 'attach-visual-effect',
-    catalogFirst: true,
-  },
-  templates: {
-    domain: 'composition',
-    target: 'video-track',
-    applyKind: 'insert-composition-item',
     catalogFirst: true,
   },
 } as const satisfies Record<TimelineLibraryCategory, TimelineLibraryCategoryContract>;
@@ -273,22 +258,6 @@ const StickerLibraryItemSchema = z.object({
   apply: z.object({ kind: z.literal('insert-sticker-item') }).strict(),
 }).strict();
 
-const MotionGraphicLibraryItemSchema = z.object({
-  ...TimelineLibraryBaseShape,
-  category: z.literal('motion-graphics'),
-  artifact: z.object({
-    kind: z.literal('mg-composition'),
-    spec: MgCompositionSpecSchema,
-    sourcePath: z.string().min(1).optional(),
-    renderedAssetPath: z.string().min(1).optional(),
-  }).strict(),
-  apply: z.object({
-    kind: z.literal('insert-composition-item'),
-    compositionKind: z.literal('motion-graphics'),
-    runtime: z.literal('html'),
-  }).strict(),
-}).strict();
-
 const SoundEffectLibraryItemSchema = z.object({
   ...TimelineLibraryBaseShape,
   category: z.literal('sound-effects'),
@@ -392,26 +361,9 @@ const AdjustmentLibraryItemSchema = z.object({
   }).strict(),
 }).strict();
 
-const TemplateLibraryItemSchema = z.object({
-  ...TimelineLibraryBaseShape,
-  category: z.literal('templates'),
-  artifact: z.object({
-    kind: z.literal('mg-composition'),
-    spec: MgCompositionSpecSchema,
-    sourcePath: z.string().min(1).optional(),
-    renderedAssetPath: z.string().min(1).optional(),
-  }).strict(),
-  apply: z.object({
-    kind: z.literal('insert-composition-item'),
-    compositionKind: z.literal('motion-graphics'),
-    runtime: z.literal('html'),
-  }).strict(),
-}).strict();
-
 export const TimelineLibraryItemSchema = z.discriminatedUnion('category', [
   TextLibraryItemSchema,
   StickerLibraryItemSchema,
-  MotionGraphicLibraryItemSchema,
   SoundEffectLibraryItemSchema,
   TransitionLibraryItemSchema,
   VisualEffectLibraryItemSchema,
@@ -421,7 +373,6 @@ export const TimelineLibraryItemSchema = z.discriminatedUnion('category', [
   CaptionLibraryItemSchema,
   FilterLibraryItemSchema,
   AdjustmentLibraryItemSchema,
-  TemplateLibraryItemSchema,
 ]);
 
 export type TimelineLibraryItem = z.infer<typeof TimelineLibraryItemSchema>;

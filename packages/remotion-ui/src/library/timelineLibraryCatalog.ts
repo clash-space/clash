@@ -176,108 +176,6 @@ function effectRecord(options: {
   };
 }
 
-const lowerThirdSpec = {
-  id: 'library-editorial-lower-third',
-  name: 'Editorial Lower Third',
-  width: 1920,
-  height: 1080,
-  fps: 30,
-  durationInFrames: 120,
-  background: 'transparent',
-  layers: [
-    {
-      id: 'accent',
-      type: 'shape',
-      shape: 'rounded-rect',
-      fill: '#ff6b50',
-      radius: 16,
-      from: 0,
-      durationInFrames: 120,
-      x: 112,
-      y: 790,
-      width: 18,
-      height: 142,
-      animations: [{ property: 'scale', from: 0, to: 1, startFrame: 0, durationInFrames: 12, easing: 'easeOutCubic' }],
-    },
-    {
-      id: 'name',
-      type: 'text',
-      text: 'NAME SURNAME',
-      color: '#ffffff',
-      fontSize: 54,
-      fontWeight: 750,
-      from: 0,
-      durationInFrames: 120,
-      x: 158,
-      y: 792,
-      opacity: 0,
-      animations: [
-        { property: 'x', from: 108, to: 158, startFrame: 3, durationInFrames: 16, easing: 'easeOutCubic' },
-        { property: 'opacity', from: 0, to: 1, startFrame: 3, durationInFrames: 10, easing: 'linear' },
-      ],
-    },
-    {
-      id: 'role',
-      type: 'text',
-      text: 'CREATIVE DIRECTOR',
-      color: '#ffd9d1',
-      fontSize: 26,
-      fontWeight: 600,
-      from: 0,
-      durationInFrames: 120,
-      x: 160,
-      y: 860,
-      opacity: 0,
-      animations: [{ property: 'opacity', from: 0, to: 1, startFrame: 10, durationInFrames: 12, easing: 'linear' }],
-    },
-  ],
-};
-
-const socialTitleSpec = {
-  id: 'library-social-title',
-  name: 'Social Title',
-  width: 1080,
-  height: 1920,
-  fps: 30,
-  durationInFrames: 90,
-  background: 'transparent',
-  layers: [
-    {
-      id: 'card',
-      type: 'shape',
-      shape: 'rounded-rect',
-      fill: '#fff8f1',
-      radius: 40,
-      from: 0,
-      durationInFrames: 90,
-      x: 90,
-      y: 700,
-      width: 900,
-      height: 420,
-      scale: 0.86,
-      opacity: 0,
-      animations: [
-        { property: 'scale', from: 0.86, to: 1, startFrame: 0, durationInFrames: 18, easing: 'easeOutCubic' },
-        { property: 'opacity', from: 0, to: 1, startFrame: 0, durationInFrames: 10, easing: 'linear' },
-      ],
-    },
-    {
-      id: 'headline',
-      type: 'text',
-      text: 'YOUR BIG IDEA',
-      color: '#182235',
-      fontSize: 84,
-      fontWeight: 800,
-      from: 0,
-      durationInFrames: 90,
-      x: 148,
-      y: 830,
-      opacity: 0,
-      animations: [{ property: 'opacity', from: 0, to: 1, startFrame: 8, durationInFrames: 12, easing: 'linear' }],
-    },
-  ],
-};
-
 const rawRecords: TimelineLibraryCatalogRecord[] = [
   ...[
     ['Editorial Title', 'YOUR STORY', 82, '800'],
@@ -311,23 +209,7 @@ const rawRecords: TimelineLibraryCatalogRecord[] = [
     }),
     preview: { kind: 'image', src },
   })),
-  ...[
-    ['Lower Third', lowerThirdSpec],
-    ['Social Title', socialTitleSpec],
-  ].map(([label, spec]): TimelineLibraryCatalogRecord => ({
-    item: parseTimelineLibraryItem({
-      id: `library:motion:${String(label).toLowerCase().replace(/\s+/g, '-')}`,
-      version: 1,
-      label,
-      description: `First-party frame-driven ${String(label).toLowerCase()} motion graphic.`,
-      category: 'motion-graphics',
-      tags: ['bundled', 'curated', 'motion', 'title'],
-      artifact: { kind: 'mg-composition', spec, sourcePath: `library/motion-graphics/${(spec as typeof lowerThirdSpec).id}.html` },
-      apply: { kind: 'insert-composition-item', compositionKind: 'motion-graphics', runtime: 'html' },
-      agent: { description: `Insert ${label}`, searchTerms: [String(label), 'motion graphic', 'title'], catalogFirst: true },
-    }),
-    preview: { kind: 'motion', colors: ['#ff6b50', '#1b2a41'] },
-  })),
+
 ];
 
 const soundDefinitions = [
@@ -442,26 +324,6 @@ for (const caption of [
       agent: { description: `Style captions as ${caption.label}`, searchTerms: [caption.label, 'caption', 'subtitle', 'typography'], catalogFirst: true },
     }),
     preview: { kind: 'text', colors: [caption.style.backgroundColor, caption.style.color] },
-  });
-}
-
-for (const [label, spec] of [
-  ['Social Title Pack', socialTitleSpec],
-  ['Editorial Lower Third Pack', lowerThirdSpec],
-] as const) {
-  rawRecords.push({
-    item: parseTimelineLibraryItem({
-      id: `library:template:${label.toLowerCase().replace(/\s+/g, '-')}`,
-      version: 1,
-      label,
-      description: 'Reusable first-party motion composition template.',
-      category: 'templates',
-      tags: ['bundled', 'curated', 'template', 'motion'],
-      artifact: { kind: 'mg-composition', spec, sourcePath: `library/templates/${spec.id}.html` },
-      apply: { kind: 'insert-composition-item', compositionKind: 'motion-graphics', runtime: 'html' },
-      agent: { description: `Insert ${label}`, searchTerms: [label, 'template', 'motion graphic'], catalogFirst: true },
-    }),
-    preview: { kind: 'motion', colors: ['#fff2e9', '#ff6b50'] },
   });
 }
 

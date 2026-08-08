@@ -12,6 +12,7 @@ const AGENT_OPERATION_KEYS = [
   "timeline.attach",
   "timeline.detach",
   "timeline.copy",
+  "timeline.render",
   "timeline.pull",
   "timeline.apply",
 ] as const;
@@ -123,6 +124,10 @@ describe("Timeline operation annotations", () => {
     expect(registry.agent["timeline.save"].surfaceBindings).toEqual([
       "mcp:clash_timeline_save",
     ]);
+    expect(registry.agent["timeline.render"].surfaceBindings).toEqual([
+      "cli:timeline render",
+      "mcp:clash_timeline_render",
+    ]);
     expect(registry.agent["timeline.pull"].surfaceBindings).toEqual([
       "cli:timeline pull",
     ]);
@@ -152,6 +157,13 @@ describe("Timeline operation annotations", () => {
       readOnly: false,
       cas: "host-enforced",
       readProof: "none",
+    });
+
+    expect(registry.agent["timeline.render"]).toMatchObject({
+      access: "write",
+      readOnly: false,
+      cas: "none",
+      readProof: "records-observation",
     });
 
     for (const id of [

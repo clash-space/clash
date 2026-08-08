@@ -23,6 +23,7 @@ test("maps MCP tools to the executable annotation registry", async () => {
     clash_timeline_attach: "timeline.attach",
     clash_timeline_detach: "timeline.detach",
     clash_timeline_copy: "timeline.copy",
+    clash_timeline_render: "timeline.render",
   });
 
   for (const [toolName, operationId] of Object.entries(
@@ -101,4 +102,46 @@ test("adapts shared Zod v3 validation into stable MCP rule ids", async () => {
     (error: any) => error?.code === "TIMELINE_DSL_INVALID"
       && error?.issues?.[0]?.ruleId === "timeline.dsl.structure",
   );
+});
+
+test("runtime validation preserves every authoritative Timeline field", async () => {
+  const module = await adapterModule();
+  const state = {
+    compositionWidth: 1080,
+    compositionHeight: 1920,
+    fps: 30,
+    durationInFrames: 90,
+    primaryTrackId: null,
+    assetTranscripts: {
+      speech: {
+        schemaVersion: 1,
+        kind: "clash.editor.asset-transcript",
+        assetId: "speech",
+        text: "hello",
+        durationMs: 1000,
+        words: [{ id: "w1", text: "hello", startMs: 0, endMs: 500 }],
+      },
+    },
+    mediaAssetRefs: [{ assetId: "speech" }],
+    "x-project-extension": { keep: true },
+    tracks: [{
+      id: "voice",
+      name: "Voice",
+      role: "narration",
+      category: "audio",
+      hidden: false,
+      locked: false,
+      "x-track-extension": { keep: true },
+      items: [],
+    }],
+  };
+
+  const parsed = module.timelineOperationInputSchema("timeline.save").safeParse({
+    timelineId: "rough-cut",
+    baseRevisionId: "revision-1",
+    state,
+  });
+
+  assert.equal(parsed.success, true);
+  assert.deepEqual(parsed.data.state, state);
 });

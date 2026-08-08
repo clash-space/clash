@@ -59,12 +59,12 @@ const stickerSvg = encodeSvg(`
 
 const chapterCopy: Record<TimelineLibraryDemoSegmentId, { kicker: string; title: string; detail: string }> = {
   intro: { kicker: 'CLASH · TIMELINE LIBRARY', title: 'Every edit primitive. One system.', detail: 'Typed assets, versioned effects, deterministic preview and export.' },
-  motion: { kicker: 'TEXT · STICKERS · MOTION GRAPHICS · TEMPLATES', title: 'Design that lives on the timeline.', detail: 'Composable layers, animated specs, editable type and reusable templates.' },
+  motion: { kicker: 'TEXT · STICKERS', title: 'Design that lives on the timeline.', detail: 'Editable type and visual assets remain native timeline primitives.' },
   effects: { kicker: 'FX · ZOOM · ADJUSTMENTS', title: 'Stack effects. Keep control.', detail: 'Ordered, version-pinned parameters stay editable in Inspector.' },
   color: { kicker: 'LUTS · FILTERS', title: 'Color as a reversible decision.', detail: 'The same effect stack drives canvas preview and Remotion export.' },
   transitions: { kicker: 'TRANSITIONS · WEBGL2', title: 'Transitions with optical energy.', detail: 'Shader packages use two frame inputs and a typed progress contract.' },
   audio: { kicker: 'SOUND EFFECTS · AUDIO FX · CAPTIONS', title: 'Sound and words, in sync.', detail: 'SFX gets its own lane; captions keep deterministic frame timing.' },
-  outro: { kicker: 'ONE CATALOG · THIRTEEN CATEGORIES', title: 'Built for editors. Extensible by agents.', detail: 'Search → preview → apply → tune → render.' },
+  outro: { kicker: 'ONE CATALOG · ELEVEN CATEGORIES', title: 'Built for editors. Extensible by agents.', detail: 'Search → preview → apply → tune → render.' },
 };
 
 export const TimelineLibraryDemo: React.FC = () => {
@@ -129,7 +129,7 @@ const Intro: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const reveal = spring({ frame, fps, config: { damping: 18, stiffness: 110, mass: 0.9 } });
-  const categories = ['Text', 'Stickers', 'Motion Graphics', 'Sound FX', 'Transitions', 'FX', 'Zoom', 'LUTs', 'Audio FX', 'Captions', 'Filters', 'Adjust', 'Templates'];
+  const categories = ['Text', 'Stickers', 'Sound FX', 'Transitions', 'FX', 'Zoom', 'LUTs', 'Audio FX', 'Captions', 'Filters', 'Adjust'];
   return (
     <AbsoluteFill style={{ padding: '54px 62px', background: `linear-gradient(135deg, ${C.paper}, #e9e3d9)` }}>
       <div style={{ color: C.coral, fontSize: 13, fontWeight: 800, letterSpacing: 3 }}>CLASH · TIMELINE LIBRARY</div>
@@ -150,18 +150,10 @@ const Intro: React.FC = () => {
 const MotionScene: React.FC<{ duration: number }> = ({ duration }) => {
   const tracks: Track[] = [
     { id: 'primary', name: 'Primary', role: 'primary-video', category: 'primary', items: [{ id: 'scene', type: 'image', src: sceneSvg, from: 0, durationInFrames: duration }] },
-    { id: 'mg', name: 'Motion Graphics', role: 'overlay', category: 'effect', items: [{
-      id: 'mg-card', type: 'composition', compositionKind: 'motion-graphics', runtime: 'html', compositionId: 'demo-lower-third', sourcePath: 'library/motion/lower-third', from: 0, durationInFrames: duration,
-      spec: { layers: [
-        { id: 'line', type: 'shape', shape: 'rounded-rect', fill: C.coral, x: 72, y: 72, width: 7, height: 92, radius: 4, animations: [{ property: 'y', from: 108, to: 72, startFrame: 0, durationInFrames: 16, easing: 'easeOutCubic' }] },
-        { id: 'label', type: 'text', text: 'EDIT SYSTEM / 01', x: 96, y: 76, fontSize: 22, fontWeight: 800, color: C.ink, animations: [{ property: 'x', from: 70, to: 96, startFrame: 2, durationInFrames: 16, easing: 'easeOutCubic' }] },
-        { id: 'sub', type: 'text', text: 'Reusable motion spec', x: 96, y: 112, fontSize: 16, fontWeight: 600, color: C.muted, animations: [{ property: 'opacity', from: 0, to: 1, startFrame: 10, durationInFrames: 14 }] },
-      ] },
-    }] },
     { id: 'text', name: 'Text', role: 'subtitle', category: 'text', items: [{ id: 'headline', type: 'text', text: 'TYPE, IN MOTION', color: '#fffdf9', fontSize: 54, fontFamily: 'Arial', fontWeight: '800', from: 12, durationInFrames: duration - 12, properties: { x: 250, y: 230, width: .55, height: .18, opacity: 1 } }] },
     { id: 'sticker', name: 'Stickers', role: 'overlay', category: 'visual', items: [{ id: 'wow', type: 'sticker', src: stickerSvg, from: 20, durationInFrames: duration - 20, properties: { x: 480, y: -190, width: .13, height: .23, rotation: 8, opacity: 1 } }] },
   ];
-  return <DarkScene><PreviewFrame><VideoComposition tracks={tracks} selectedItemId={null} /></PreviewFrame><LibraryBadges labels={['Editable text', 'SVG sticker', 'MG spec', 'Template']} /></DarkScene>;
+  return <DarkScene><PreviewFrame><VideoComposition tracks={tracks} selectedItemId={null} /></PreviewFrame><LibraryBadges labels={['Editable text', 'SVG sticker']} /></DarkScene>;
 };
 
 const EffectsScene: React.FC<{ duration: number }> = ({ duration }) => {
@@ -222,7 +214,7 @@ const Outro: React.FC = () => {
   const reveal = spring({ frame, fps, config: { damping: 20, stiffness: 100 } });
   return (
     <AbsoluteFill style={{ padding: 64, backgroundColor: C.paper }}>
-      <div style={{ color: C.coral, fontSize: 13, fontWeight: 800, letterSpacing: 3 }}>ONE CATALOG · THIRTEEN CATEGORIES</div>
+      <div style={{ color: C.coral, fontSize: 13, fontWeight: 800, letterSpacing: 3 }}>ONE CATALOG · ELEVEN CATEGORIES</div>
       <div style={{ marginTop: 104, display: 'grid', gridTemplateColumns: '1.1fr .9fr', gap: 90, alignItems: 'center', opacity: reveal }}>
         <div style={{ fontSize: 70, lineHeight: .98, fontWeight: 800, letterSpacing: -4.1 }}>Built for editors.<br />Extensible by agents.</div>
         <div style={{ borderTop: `1px solid ${C.line}` }}>

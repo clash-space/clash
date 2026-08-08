@@ -5,8 +5,10 @@ test("exposes the complete agent-first Director tool contract", async () => {
   const module = await import("./contract.js").catch(() => ({} as Record<string, unknown>));
   assert.deepEqual(module.DIRECTOR_PLUGIN_TOOL_NAMES, [
     "clash_director_open",
+    "clash_director_schema",
     "clash_director_list",
     "clash_director_get",
+    "clash_director_capture",
     "clash_director_create",
     "clash_director_save",
     "clash_director_attach",

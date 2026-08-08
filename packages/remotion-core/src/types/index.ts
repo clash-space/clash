@@ -1,5 +1,4 @@
 import type {
-  MgCompositionSpec,
   TimelineItemKeyframes,
   TimelineItemMask,
 } from '@clash/shared-types';
@@ -238,8 +237,8 @@ export type CompositionItem = BaseItem & {
   sourcePath: string;
   /** Optional rendered preview/export asset path. */
   renderedAssetPath?: string;
-  /** Agent-authored spec for first-party renderers such as MG HTML previews. */
-  spec?: MgCompositionSpec | Record<string, unknown>;
+  /** Optional inert configuration preserved for legacy custom compositions. */
+  spec?: Record<string, unknown>;
 };
 
 export type CaptionCue = {
@@ -286,7 +285,7 @@ export type DerivedOverlayItem = BaseItem & {
   sourceAssetId: string;
   derivedAssetId: string;
   derivation: {
-    kind: 'trim' | 'crop' | 'caption-burn' | 'mg-render' | 'transcode' | 'other';
+    kind: 'trim' | 'crop' | 'caption-burn' | 'transcode' | 'other';
     description?: string;
     parameters?: Record<string, unknown>;
   };

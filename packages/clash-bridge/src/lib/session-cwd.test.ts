@@ -157,7 +157,7 @@ it("ensureAgentCwd honors CLASH_HOME for managed project cwd", async () => {
   }
 });
 
-it("ensureAgentCwd links the canonical Clash skill into a declared native cwd path", async () => {
+it("ensureAgentCwd links the canonical Clash skill without injecting repository instructions", async () => {
   const originalHome = process.env.HOME;
   const home = await mkdtemp(join(tmpdir(), "clash-session-cwd-"));
   process.env.HOME = home;
@@ -165,7 +165,6 @@ it("ensureAgentCwd links the canonical Clash skill into a declared native cwd pa
     const cwd = await ensureAgentCwd("master-clash", "proj_setup_guidance", {
       harnessId: "codex-acp",
     });
-    const agents = await readFile(join(cwd, "AGENTS.md"), "utf-8");
     const bundledSkillDir = join(
       resolveBundledAgentsDir(),
       "master-clash",
@@ -176,42 +175,16 @@ it("ensureAgentCwd links the canonical Clash skill into a declared native cwd pa
     );
     const clashSkill = await readFile(join(bundledSkillDir, "SKILL.md"), "utf-8");
 
-    expect(agents).toMatch(/bundled Clash MCP/i);
-    expect(agents).toMatch(/must use.*MCP/is);
-    expect(agents).toContain(".clash/project.toml");
-    expect(agents).toContain("project working tree");
-    expect(agents).toContain("clash_canvas_list");
-    expect(agents).toContain("clash_canvas_get");
-    expect(agents).toContain("clash_canvas_add");
-    expect(agents).toContain("clash_canvas_execute");
-    expect(agents).not.toContain("clash canvas list --json");
-    expect(agents).toMatch(/never.*shell.*Clash CLI/is);
-    expect(agents).toContain("projections/text/");
-    expect(agents).toContain("clash_cli_text");
-    expect(agents).toContain("timelines/");
-    expect(agents).toContain("projections/timelines/");
-    expect(agents).toContain("clash_cli_timeline");
-    expect(agents).toContain("CAS observation internally");
-    expect(agents).toContain("projection lock/revision sidecars");
-    expect(agents).toContain("stale");
-    expect(agents).not.toContain("lock/read-proof sidecars");
-    expect(agents).toContain("assets/links");
-    expect(agents).toContain("clash_cli_assets");
-    expect(agents).toMatch(/Canvas copy-on-write tools/);
-    expect(agents).toContain("product-internal replicator");
-    expect(agents).toMatch(/same local\s+replica/);
-    expect(agents).toContain("never creates a second project workspace");
-    expect(agents).toContain("Never search for or edit `snapshot.bin`");
-    expect(agents).not.toContain("clash project status --json");
-    expect(agents).not.toContain("editablePaths");
-    expect(agents).not.toContain("currentWorkspace");
-    expect(agents).toContain("Master Clash");
-    expect(agents.toLowerCase()).not.toContain(`cr${"ew"}`);
-    expect(clashSkill).toContain("Use the bundled `clash_*` tools");
+    await expect(readFile(join(cwd, "AGENTS.md"), "utf-8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(cwd, "CLAUDE.md"), "utf-8")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(cwd, "GEMINI.md"), "utf-8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(clashSkill).toContain("# Use Clash");
+    expect(clashSkill).toContain("clash --help");
+    expect(clashSkill).toContain("root `clash` tool");
     const codexSkill = join(cwd, ".agents", "skills", "clash");
     expect((await lstat(codexSkill)).isSymbolicLink()).toBe(true);
     expect(await readlink(codexSkill)).toBe(bundledSkillDir);
-    expect(await readFile(join(codexSkill, "SKILL.md"), "utf8")).toContain("# Clash");
+    expect(await readFile(join(codexSkill, "SKILL.md"), "utf8")).toContain("# Use Clash");
 
     const nativePaths = [
       ["claude-acp", ".claude/skills"],

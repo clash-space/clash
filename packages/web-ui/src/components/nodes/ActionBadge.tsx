@@ -2,6 +2,7 @@ import { Fragment, memo, useState, useEffect, useCallback, useMemo, useRef, type
 import { Handle, NodeToolbar, Position, type Node as RFNode, NodeProps, useReactFlow, useNodeConnections } from '@xyflow/react';
 import { VideoCamera, Image as ImageIcon, CaretDown, X, Play, Spinner, PuzzlePiece, Plus, Lock, Copy, SpeakerHigh, TextT, SlidersHorizontal } from '@phosphor-icons/react';
 import { motion, Reorder } from 'framer-motion';
+import { AspectRatioPicker, parseAspectRatio, type AspectRatioOption } from '@master-clash/remotion-ui';
 import { useProject } from '../ProjectContext';
 import { useOptionalLoroSyncContext } from '../LoroSyncContext';
 import { usePeersSelectingNode } from '../PresenceAwarenessContext';
@@ -631,6 +632,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
     }, [id, data.hasRun, connectedEdges, getNode, getEdges]);
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [paramsPopoverOpen, setParamsPopoverOpen] = useState(false);
+    const [aspectRatioPopoverOpen, setAspectRatioPopoverOpen] = useState(false);
 
     const resolveConfiguredModelId = (
         type: 'image-gen' | 'video-gen',
@@ -2261,9 +2263,28 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
         });
         return chips;
     }, [isCustom, customActionParams, customDef, selectedModel, modelParams]);
+    const aspectRatioParamId = isCustom
+        ? 'aspect_ratio'
+        : (selectedModel?.aspectRatioParam ?? 'aspect_ratio');
+    const activeParameters = (isCustom ? customDef?.parameters : selectedModel?.parameters) ?? [];
+    const aspectRatioParameter = activeParameters.find((parameter) => (
+        parameter.type === 'select'
+        && parameter.id === aspectRatioParamId
+        && (parameter.options ?? []).some((option) => parseAspectRatio(option) !== null)
+    )) as ModelParameter | undefined;
+    const aspectRatioCurrentValue = aspectRatioParameter
+        ? (isCustom ? customActionParams : modelParams)[aspectRatioParameter.id] ?? aspectRatioParameter.defaultValue
+        : undefined;
+    const aspectRatioCurrentLabel = aspectRatioParameter
+        ? aspectRatioParameter.options?.find((option) => String(option.value) === String(aspectRatioCurrentValue))?.label
+            ?? String(aspectRatioCurrentValue)
+        : '';
+    const secondaryParamChips = paramChips.filter((chip) => chip.paramId !== aspectRatioParamId);
+    const secondaryParameters = activeParameters.filter((parameter) => parameter.id !== aspectRatioParamId);
 
     const closeConfigPanelControls = useCallback(() => {
         setParamsPopoverOpen(false);
+        setAspectRatioPopoverOpen(false);
         setRefPickerTarget(null);
     }, []);
 
@@ -2695,6 +2716,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                     className="pointer-events-auto w-full rounded-2xl bg-warm-surface shadow-2xl border border-warm-border overflow-visible"
                     onClick={() => {
                         setParamsPopoverOpen(false);
+                        setAspectRatioPopoverOpen(false);
                     }}
                 >
                     {/* Prompt editor with inline @ mention chips. Materialized
@@ -2773,6 +2795,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         onValueChange={(nextChoice) => {
                                             void handleGenerationChoiceChange(nextChoice);
                                             setParamsPopoverOpen(false);
+                                            setAspectRatioPopoverOpen(false);
                                         }}
                                         ariaLabel="Model"
                                         triggerLabel={modelDisplay}
@@ -2793,12 +2816,60 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                             )}
                         </div>
 
-                        {/* Combined params chip → opens single popover with all params */}
-                        {paramChips.length > 0 && (
+                        {/* Aspect ratio is a first-class toolbar control. It opens
+                            its own secondary panel instead of hiding inside the
+                            generic parameter accordion. */}
+                        {aspectRatioParameter && (
+                            <Popover
+                                open={aspectRatioPopoverOpen}
+                                onOpenChange={(nextOpen) => {
+                                    setAspectRatioPopoverOpen(nextOpen);
+                                    if (nextOpen) setParamsPopoverOpen(false);
+                                }}
+                            >
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        aria-label={`${aspectRatioParameter.label}: ${aspectRatioCurrentLabel}`}
+                                        disabled={aspectRatioParameter.readOnly}
+                                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors ${
+                                            aspectRatioPopoverOpen
+                                                ? 'bg-warm-hover text-slate-900 dark:text-slate-50'
+                                                : 'bg-warm-muted hover:bg-warm-hover text-stone-700 dark:text-stone-300'
+                                        } h-auto min-h-0 border-0 shadow-none`}
+                                        onClick={(event) => event.stopPropagation()}
+                                    >
+                                        <span className="font-medium text-current">{aspectRatioCurrentLabel}</span>
+                                        <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                    side="top"
+                                    align="start"
+                                    sideOffset={-16}
+                                    className="z-[9999] w-[min(32.5rem,calc(100vw-2rem))] overflow-hidden rounded-[14px] p-5"
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                    onClick={(event) => event.stopPropagation()}
+                                >
+                                    <div className="text-[15px] font-medium tracking-[-0.012em] text-content-primary">Aspect ratio</div>
+                                    <div className="mt-2.5">
+                                        <AspectRatioPicker<string | number>
+                                            ariaLabel="Model aspect ratio"
+                                            options={(aspectRatioParameter.options ?? []) as AspectRatioOption<string | number>[]}
+                                            value={aspectRatioCurrentValue as string | number}
+                                            onValueChange={(nextValue) => updateModelParam(aspectRatioParameter.id, nextValue)}
+                                        />
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        )}
+
+                        {/* Remaining parameters share the compact generic panel. */}
+                        {secondaryParamChips.length > 0 && (
                             <Popover
                                 open={paramsPopoverOpen}
                                 onOpenChange={(nextOpen) => {
                                     setParamsPopoverOpen(nextOpen);
+                                    if (nextOpen) setAspectRatioPopoverOpen(false);
                                 }}
                             >
                                 <PopoverTrigger asChild>
@@ -2809,7 +2880,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <span className="font-medium text-current">
-                                            {paramChips.map((c) => c.value).join(' · ')}
+                                            {secondaryParamChips.map((c) => c.value).join(' · ')}
                                         </span>
                                         <CaretDown size={10} weight="bold" className="text-stone-700 dark:text-stone-300" />
                                     </Button>
@@ -2822,7 +2893,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <Accordion type="single" collapsible>
-                                        {((isCustom ? customDef?.parameters : selectedModel?.parameters) ?? []).map((param: any, idx: number) => {
+                                        {secondaryParameters.map((param: any, idx: number) => {
                                             const p = param as ModelParameter;
                                             const currentVal = (isCustom ? customActionParams : modelParams)[p.id] ?? p.defaultValue;
                                             const currentLabel = p.type === 'select'
@@ -2861,7 +2932,7 @@ const PromptActionNode = ({ data, selected, id }: NodeProps<RFNode<Record<string
                                                     </AccordionTrigger>
                                                     <AccordionContent>
                                                         <div className="px-3 pb-3">
-                                                            {(p.type === 'select') && (
+                                                            {p.type === 'select' && (
                                                                 <SelectMenu<SelectValue>
                                                                     ariaLabel={p.label}
                                                                     value={currentVal as SelectValue}

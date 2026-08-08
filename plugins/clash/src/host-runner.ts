@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   createPluginHostManager,
@@ -23,6 +24,8 @@ function parseOutput(stdout: string): unknown {
 export function createHostCliRunner(options: {
   runDir?: string;
   env?: NodeJS.ProcessEnv;
+  command?: string;
+  bundledCliPath?: string;
   hostManager?: Pick<PluginHostManager, "ensureHost">;
 } = {}): HostCliRunner {
   const env = options.env ?? process.env;
@@ -34,15 +37,25 @@ export function createHostCliRunner(options: {
     env.CLASH_WORKSPACE_ROOT?.trim() ||
     env.CODEX_WORKSPACE_ROOT?.trim() ||
     process.cwd();
+  const configuredCommand =
+    options.command?.trim() || env.CLASH_CLI_ENTRY_PATH?.trim();
+  const bundledCliPath =
+    options.bundledCliPath ??
+    fileURLToPath(new URL("./clash-cli.cjs", import.meta.url));
+  const command = configuredCommand || process.execPath;
+  const argsPrefix = configuredCommand ? [] : [bundledCliPath];
   return async (args, cwd) => {
-    const host = await hostManager.ensureHost();
-    const command = host.agentCliPath;
+    const explicitApiUrl = env.CLASH_API_URL?.trim();
+    const host = explicitApiUrl ? undefined : await hostManager.ensureHost();
     const workingDirectory = cwd?.trim()
       ? isAbsolute(cwd) ? cwd : resolve(cwd)
       : isAbsolute(sessionWorkspace) ? sessionWorkspace : resolve(sessionWorkspace);
-    const { stdout } = await execFileAsync(command, args, {
+    const { stdout } = await execFileAsync(command, [...argsPrefix, ...args], {
       cwd: workingDirectory,
-      env,
+      env: {
+        ...env,
+        ...(host ? { CLASH_API_URL: host.endpoint } : {}),
+      },
       maxBuffer: 16 * 1024 * 1024,
     });
     return parseOutput(stdout);

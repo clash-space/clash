@@ -315,6 +315,17 @@ describe("local API server configuration", () => {
       pid: process.pid,
       protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
     });
+    const health = await fetch(new URL("/health", discovery.record.endpoint));
+    expect(await health.json()).toMatchObject({
+      ok: true,
+      mode: "local",
+      host: {
+        hostId: discovery.record.hostId,
+        pid: discovery.record.pid,
+        profile: discovery.record.profile,
+        protocolVersion: discovery.record.protocolVersion,
+      },
+    });
     const shimText = await readFile(join(dataDir, "agent-bin", "clash"), "utf8");
     expect(shimText).toContain(`CLASH_API_URL='${discovery.record.endpoint}'`);
     expect(shimText).not.toContain("CLASH_API_URL='http://127.0.0.1:0'");

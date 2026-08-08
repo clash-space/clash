@@ -439,28 +439,35 @@ tracks:
     expect(parsed.error).toMatch(/derived overlay.*sourceAssetId.*derivedAssetId.*derivation/i);
   });
 
-  it("rejects unsafe MG composition items before they reach timeline apply", () => {
+  it("rejects the legacy HTML MG authoring contract before timeline apply", () => {
     const parsed = timelineDslFromYaml(`
 tracks:
   - id: overlays
     role: overlay
     items:
-      - id: remote-mg
+      - id: legacy-mg
         type: composition
         from: 0
         durationInFrames: 120
         compositionKind: motion-graphics
         runtime: html
         compositionId: lower-third
-        sourcePath: https://example.invalid/lower-third.html
+        sourcePath: compositions/lower-third/index.html
+        spec:
+          id: lower-third
+          width: 1080
+          height: 1920
+          fps: 30
+          durationInFrames: 120
+          layers: []
 `);
 
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error).toMatch(/composition.*sourcePath.*local project path/i);
+    expect(parsed.error).toMatch(/motion-graphics.*Remotion.*sourceNodeId/i);
   });
 
-  it("rejects React or Remotion composition items without rendered timeline preview assets", () => {
+  it("rejects Remotion composition items without a live Canvas source node", () => {
     const parsed = timelineDslFromYaml(`
 tracks:
   - id: overlays
@@ -478,10 +485,10 @@ tracks:
 
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error).toMatch(/renderedAssetPath/i);
+    expect(parsed.error).toMatch(/sourceNodeId/i);
   });
 
-  it("accepts React or Remotion composition items with local rendered timeline preview assets", () => {
+  it("accepts a live Remotion component reference without a pre-rendered asset", () => {
     const parsed = timelineDslFromYaml(`
 tracks:
   - id: overlays
@@ -495,10 +502,16 @@ tracks:
         runtime: remotion
         compositionId: react-chart
         sourcePath: compositions/react-chart/Composition.tsx
-        renderedAssetPath: assets/renders/react-chart.webm
+        sourceNodeId: remotion-component-node
 `);
 
     expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.dsl.tracks[0]?.items[0]).toMatchObject({
+      type: "composition",
+      runtime: "remotion",
+      sourceNodeId: "remotion-component-node",
+    });
   });
 });
 

@@ -18,6 +18,7 @@ test("exposes one cohesive Timeline plugin tool contract", async () => {
     "clash_timeline_attach",
     "clash_timeline_detach",
     "clash_timeline_copy",
+    "clash_timeline_render",
   ]);
 });
 
@@ -65,6 +66,13 @@ test("maps typed Timeline operations to exact shell-free Clash CLI argv", async 
     "timeline", "copy", "--timeline", "social-cut", "--canvas", "review",
     "--new-timeline", "review-cut", "--new-node", "review-action",
     "--x", "56", "--y", "78", "--json",
+  ]);
+  assert.deepEqual(build("clash_timeline_render", {
+    timelineId: "social-cut",
+    timeoutMs: 120_000,
+  }), [
+    "timeline", "render", "--timeline", "social-cut",
+    "--timeout-ms", "120000", "--json",
   ]);
 });
 

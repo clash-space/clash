@@ -13,14 +13,30 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     stderr: "pipe",
     env: {
       ...isolatedEnv,
+      // Schema/validation are local operations. Pin an explicit inert endpoint
+      // so this packaging test cannot discover or bootstrap a user's daemon.
+      CLASH_API_URL: "http://127.0.0.1:9",
       PATH: "",
     },
   });
 
   try {
     await client.connect(transport);
+    const rootTools = await client.listTools();
+    assert.deepEqual(rootTools.tools.map((tool) => tool.name), ["clash"]);
+    const menu = await client.callTool({
+      name: "clash",
+      arguments: { command: "timeline" },
+    });
+    assert.notEqual(menu.isError, true, JSON.stringify(menu));
+    assert.equal(
+      (menu.structuredContent as { selectedCommand?: unknown })?.selectedCommand,
+      "timeline",
+    );
     const tools = await client.listTools();
-    for (const tool of tools.tools) {
+    const timelineTools = tools.tools.filter((tool) => tool.name !== "clash");
+    assert.equal(timelineTools.length, 10);
+    for (const tool of timelineTools) {
       const operationId = (tool._meta as any)?.["clash/timelineOperation"]?.id;
       assert.ok(operationId, `${tool.name} must publish shared operation metadata`);
       assert.equal(
@@ -33,22 +49,10 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     const validateTool = tools.tools.find((tool) => tool.name === "clash_timeline_validate");
     const validateSchema = validateTool?.inputSchema as any;
     assert.ok(validateSchema?.properties?.document?.anyOf?.some(
-      (variant: any) => variant.$ref === "#/definitions/TimelineDsl",
+      (variant: any) => variant.type === "object"
+        && variant["x-clash-schema-tool"] === "clash_timeline_schema",
     ));
-    assert.ok(validateSchema?.definitions?.TimelineDsl?.properties?.assetTranscripts);
-    assert.ok(validateSchema?.definitions?.TimelineDsl?.properties?.mediaAssetRefs);
-    const publicItemVariants = validateSchema?.definitions?.TimelineDsl
-      ?.properties?.tracks?.items?.properties?.items?.items?.anyOf ?? [];
-    assert.deepEqual(
-      new Set(publicItemVariants.map((variant: any) => variant.properties.type.const)),
-      new Set([
-        "video", "audio", "image", "solid", "text", "sticker",
-        "composition", "derived-overlay", "transition",
-      ]),
-    );
-    assert.ok(publicItemVariants.find(
-      (variant: any) => variant.properties.type.const === "transition",
-    )?.properties?.fromItemId);
+    assert.equal(validateSchema?.definitions, undefined);
     assert.equal(
       (validateTool?._meta as any)?.["clash/timelineOperation"]?.id,
       "timeline.validate",
@@ -59,13 +63,14 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
       "timeline.save",
     );
     assert.equal(
-      (saveTool?.inputSchema as any)?.properties?.state?.$ref,
-      "#/definitions/TimelineDsl",
+      (saveTool?.inputSchema as any)?.properties?.state?.["x-clash-contract-ref"],
+      "TimelineDsl",
     );
     const getTool = tools.tools.find((tool) => tool.name === "clash_timeline_get");
     assert.equal(
-      (getTool?.outputSchema as any)?.properties?.timeline?.properties?.state?.$ref,
-      "#/definitions/TimelineDsl",
+      (getTool?.outputSchema as any)?.properties?.timeline?.properties?.state
+        ?.["x-clash-contract-ref"],
+      "TimelineDsl",
     );
     const result = await client.callTool({
       name: "clash_timeline_schema",
@@ -74,7 +79,7 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     const structured = result.structuredContent as any;
 
     assert.notEqual(result.isError, true, JSON.stringify(result));
-    assert.equal(structured?.schemaVersion, 3);
+    assert.equal(structured?.schemaVersion, 5);
     assert.equal(
       validateSchema?.["x-clash-contract-fingerprint"],
       structured?.contractFingerprint,
@@ -85,6 +90,17 @@ test("built standalone runtime serves its schema without a global Clash CLI", as
     );
     assert.ok(structured?.fieldCatalog?.root?.fields?.assetTranscripts);
     assert.ok(structured?.fieldCatalog?.itemTypes?.transition?.fields?.fromItemId);
+    assert.ok(structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.assetTranscripts);
+    assert.ok(structured?.jsonSchema?.definitions?.TimelineDsl?.properties?.mediaAssetRefs);
+    const authoritativeItemVariants = structured?.jsonSchema?.definitions?.TimelineDsl
+      ?.properties?.tracks?.items?.properties?.items?.items?.anyOf ?? [];
+    assert.deepEqual(
+      new Set(authoritativeItemVariants.map((variant: any) => variant.properties.type.const)),
+      new Set([
+        "video", "audio", "image", "solid", "text", "sticker",
+        "composition", "derived-overlay", "transition",
+      ]),
+    );
     assert.deepEqual(
       structured?.features?.clipMask?.animatedChannels,
       ["maskPosition", "maskSize", "maskRotation", "maskFeather"],

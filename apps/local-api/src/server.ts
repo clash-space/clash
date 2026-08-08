@@ -12,7 +12,11 @@ import {
   type PluginHostIpcServer,
 } from "@clash-space/bridge/plugin-host";
 import { ActionsHost } from "@clash-space/bridge/actions-host";
-import type { HostLaunchMode, HostStartedBy } from "@clash/shared-runtime";
+import {
+  LOCAL_HOST_PROTOCOL_VERSION,
+  type HostLaunchMode,
+  type HostStartedBy,
+} from "@clash/shared-runtime";
 import {
   buildEffectiveModelCards,
   composeExecutablePluginModelCards,
@@ -81,6 +85,10 @@ import {
   resolveClashProfile,
 } from "./local-paths.js";
 import { watchClashUserConfig } from "./user-config.js";
+import type { LocalDirectorStageRenderer } from "./director-stage-renderer.js";
+
+export { createRemotionTimelineRenderer } from "./remotion-timeline-renderer.js";
+export { createHeadlessDirectorStageRenderer } from "./director-stage-renderer.js";
 
 export {
   clashHomeForLocalDataDir,
@@ -94,6 +102,7 @@ export interface LocalApiServerOptions {
   port: number;
   dataDir: string;
   timelineRenderer?: LocalTimelineRenderer;
+  directorStageRenderer?: LocalDirectorStageRenderer;
   localAcp?: LocalAcpRuntimeAdapter;
   audioConfig?: LocalAudioConfigStore;
   remotePersistence?: RemoteLoroPersistenceSource | null;
@@ -678,6 +687,9 @@ export function createLocalPluginBrokerServices(options: {
 
 export function startLocalApiServer(options: LocalApiServerOptions) {
   const clashHome = clashHomeForLocalDataDir(options.dataDir);
+  const discoveryEnabled = options.discovery?.enabled !== false;
+  const pendingDiscoveryHostId = discoveryEnabled ? randomUUID() : undefined;
+  const discoveryProfile = resolveClashProfile(process.env);
   const codexImagegenMarketplace = createCodexImagegenMarketplace({
     actionsRoot: join(clashHome, "actions"),
   });
@@ -827,6 +839,12 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
   });
   const app = createLocalApiApp({
     dataDir: options.dataDir,
+    hostIdentity: pendingDiscoveryHostId ? {
+      hostId: pendingDiscoveryHostId,
+      pid: process.pid,
+      profile: discoveryProfile,
+      protocolVersion: LOCAL_HOST_PROTOCOL_VERSION,
+    } : undefined,
     localAcp,
     localAcpReady,
     falMock,
@@ -854,6 +872,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       return pluginHostClient.resolveBinding(pluginId, exportId, kind);
     },
     listPluginCards,
+    directorStageRenderer: options.directorStageRenderer,
   });
   const workflowProcessor = createLocalWorkflowProcessor({
     dataDir: options.dataDir,
@@ -920,7 +939,7 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
     resolveListening = resolve;
     rejectListening = reject;
   });
-  let discoveryHostId: string | undefined;
+  let publishedDiscoveryHostId: string | undefined;
   const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: options.port }, (info) => {
     settled = true;
     localAcp.updateSpawnEnv(createLocalAgentToolEnv({
@@ -936,12 +955,14 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       }
     });
     void (async () => {
-      if (options.discovery?.enabled !== false) {
-        discoveryHostId = await writeServerDiscoveryRecord(
+      if (pendingDiscoveryHostId) {
+        publishedDiscoveryHostId = await writeServerDiscoveryRecord(
           info.port,
           options,
           discoveryRunDir,
           pluginBrokerToken,
+          pendingDiscoveryHostId,
+          discoveryProfile,
         );
       }
       resolveListening(server);
@@ -957,13 +978,14 @@ export function startLocalApiServer(options: LocalApiServerOptions) {
       stopConfigWatcher();
       await Promise.all([
         localAcp.disposeAll(),
-        (pluginRuntimeReady ?? Promise.resolve()).catch(() => undefined).then(async () => {
+        options.directorStageRenderer?.dispose(),
+        (pluginRuntimeReady ?? bundledPluginsReady).catch(() => undefined).then(async () => {
           await embeddedPluginIpc?.close().catch(() => undefined);
           await embeddedPluginHost?.stopAll().catch(() => undefined);
         }),
       ]);
     },
-    () => discoveryHostId,
+    () => publishedDiscoveryHostId,
     discoveryRunDir,
   );
   server.once("error", (error) => {
@@ -983,14 +1005,18 @@ async function writeServerDiscoveryRecord(
   options: LocalApiServerOptions,
   runDir: string,
   pluginBrokerToken: string,
+  hostId: string,
+  profile: "dev" | "prod",
 ): Promise<string> {
   const record = createHostDiscoveryRecord({
+    hostId,
     endpoint: `http://127.0.0.1:${actualPort}`,
     agentCliPath: join(options.dataDir, "agent-bin", "clash"),
     launchMode: options.discovery?.launchMode ?? "cli-once",
     startedBy: options.discovery?.startedBy ?? "cli",
     ownerClientId: options.discovery?.ownerClientId,
     pluginBrokerToken,
+    profile,
   });
   await writeHostDiscovery(record, { runDir });
   return record.hostId;
@@ -1024,6 +1050,6 @@ function wrapServerCloseWithLifecycleCleanup(
 }
 
 const directRunUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
-if (import.meta.url === directRunUrl && !process.env.CLASH_PLUGIN_OWNER_CLIENT_ID) {
+if (import.meta.url === directRunUrl && !process.env.CLASH_LOCAL_API_WRAPPER_ENTRY) {
   void startLocalApiServer({ port, dataDir });
 }

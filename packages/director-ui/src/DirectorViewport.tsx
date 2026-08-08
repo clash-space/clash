@@ -21,6 +21,7 @@ import {
   PerspectiveCamera,
   TransformControls,
   useGLTF,
+  useProgress,
   useTexture,
 } from "@react-three/drei";
 import * as THREE from "three";
@@ -71,6 +72,11 @@ import {
   createDirectorAnnyMotionClipLibrary,
   resolveDirectorAnnyMotionPlayback,
 } from "./humanoid-motion";
+import {
+  createDirectorFramePublicationGate,
+  renderDirectorFrameNow,
+  type DirectorRenderedFrame,
+} from "./headless-render-boundary";
 
 export const DIRECTOR_RENDERER_OPTIONS = {
   antialias: true,
@@ -155,6 +161,7 @@ export interface DirectorViewportProps {
   onObjectContextMenu?: (objectId: string) => void;
   onTransformCommit?: (objectId: string, transform: DirectorStageTransform) => void;
   onReady?: (canvas: HTMLCanvasElement) => void;
+  onFrameRendered?: (frame: DirectorRenderedFrame) => void;
   renderPalette?: Partial<DirectorRenderPalette>;
   fallback?: React.ReactNode;
   className?: string;
@@ -1505,6 +1512,7 @@ function DirectorScene({
   onObjectContextMenu,
   onTransformCommit,
   onCameraAccessor,
+  onFrameRendered,
 }: Omit<DirectorViewportProps, "className" | "fallback" | "onReady" | "renderPalette"> & {
   onCameraAccessor: (accessor: () => DirectorCameraPose) => void;
   renderPalette: DirectorRenderPalette;
@@ -1642,6 +1650,12 @@ function DirectorScene({
       <Suspense fallback={null}>
         <AnnyAssetsReady>
           {rootObjects.map(renderSceneObject)}
+          {onFrameRendered ? (
+            <DirectorFramePublisher
+              timeSeconds={timeSeconds}
+              publish={onFrameRendered}
+            />
+          ) : null}
         </AnnyAssetsReady>
       </Suspense>
       {viewMode === "director" && (
@@ -1654,6 +1668,33 @@ function DirectorScene({
       )}
     </>
   );
+}
+
+function DirectorFramePublisher({
+  timeSeconds,
+  publish,
+}: {
+  timeSeconds: number;
+  publish: (frame: DirectorRenderedFrame) => void;
+}) {
+  const { active } = useProgress();
+  const publicationGate = useRef(createDirectorFramePublicationGate());
+  useEffect(() => {
+    publicationGate.current.reset();
+  }, [timeSeconds]);
+  useFrame(({ gl, scene, camera }) => {
+    gl.render(scene, camera);
+    if (!publicationGate.current.tick(active)) return;
+    renderDirectorFrameNow({
+      renderer: gl,
+      scene,
+      camera,
+      timeSeconds,
+      canvas: gl.domElement,
+      publish,
+    });
+  }, 1);
+  return null;
 }
 
 function drawCroppedCanvas(source: HTMLCanvasElement, output: HTMLCanvasElement): void {
@@ -1807,6 +1848,7 @@ export const DirectorViewport = forwardRef<DirectorViewportHandle, DirectorViewp
     onObjectContextMenu,
     onTransformCommit,
     onReady,
+    onFrameRendered,
     fallback,
     className,
   }, ref) {
@@ -1904,6 +1946,7 @@ export const DirectorViewport = forwardRef<DirectorViewportHandle, DirectorViewp
             onObjectContextMenu={onObjectContextMenu}
             onTransformCommit={onTransformCommit}
             onCameraAccessor={setCameraAccessor}
+            onFrameRendered={onFrameRendered}
           />
         </Canvas>
       </div>

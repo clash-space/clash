@@ -1,0 +1,41 @@
+{
+  "name": "@clash/shared-mcp",
+  "version": "0.1.0",
+  "description": "Shared Clash MCP server and wire-schema compatibility boundary",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "node --import tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clash/shared-runtime": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "license": "MIT",
+  "files": [
+    "README.md",
+    "dist",
+    "src"
+  ]
+}

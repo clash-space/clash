@@ -8,7 +8,6 @@ import {
   type TimelineDslTrackRole,
 } from "./timeline-field-annotations";
 import { parseFromExpression } from "./timeline-from-expression";
-import { MgCompositionSpecSchema } from "./mg-composition";
 
 export type TimelineDslSemanticIssue = {
   ruleId: string;
@@ -35,7 +34,6 @@ export const TIMELINE_DSL_GLOBAL_SEMANTIC_RULES = [
   { id: "timeline.audio.ducking-track-role", kind: "field-requires-owner-value", objectPath: "tracks[].items[]", field: "audioDucking", ownerField: "role", ownerValue: "music" },
   { id: "timeline.composition.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["sourcePath", "renderedAssetPath"] },
   { id: "timeline.composition.preview-contract", kind: "conditional-required", objectPath: "tracks[].items[]" },
-  { id: "timeline.composition.mg-spec", kind: "referenced-schema", objectPath: "tracks[].items[].spec", schema: "MgCompositionSpec" },
   { id: "timeline.caption.structured", kind: "conditional-required", objectPath: "tracks[].items[]" },
   { id: "timeline.caption.lineage", kind: "cross-field-lineage", objectPath: "tracks[].items[]" },
   { id: "timeline.derived-overlay.local-path", kind: "local-path", objectPath: "tracks[].items[]", fields: ["src"] },
@@ -487,33 +485,28 @@ function evaluateStructuralSemanticRules(
             "composition renderedAssetPath must be a local project path",
           ));
         }
+        if (item.compositionKind === "motion-graphics" && item.runtime !== "remotion") {
+          issues.push(issue(
+            "timeline.composition.preview-contract",
+            [...itemPath, "runtime"],
+            "motion-graphics compositions must use Remotion with a live Canvas sourceNodeId",
+          ));
+        }
         if (
-          item.runtime === "html"
-          && item.compositionKind === "motion-graphics"
-          && item.spec === undefined
+          item.runtime === "remotion"
+          && (typeof item.sourceNodeId !== "string" || item.sourceNodeId.length === 0)
         ) {
           issues.push(issue(
             "timeline.composition.preview-contract",
-            [...itemPath, "spec"],
-            "HTML motion-graphics composition requires a first-party spec",
+            [...itemPath, "sourceNodeId"],
+            "Remotion compositions require a live Canvas sourceNodeId",
           ));
         }
-        if (item.runtime !== "html" && !isLocalProjectPath(item.renderedAssetPath)) {
+        if (item.runtime === "react" && !isLocalProjectPath(item.renderedAssetPath)) {
           issues.push(issue(
             "timeline.composition.preview-contract",
             [...itemPath, "renderedAssetPath"],
-            "React and Remotion compositions require a local renderedAssetPath",
-          ));
-        }
-        if (
-          item.compositionKind === "motion-graphics"
-          && item.spec !== undefined
-          && !MgCompositionSpecSchema.safeParse(item.spec).success
-        ) {
-          issues.push(issue(
-            "timeline.composition.mg-spec",
-            [...itemPath, "spec"],
-            "motion-graphics composition spec must satisfy MgCompositionSpec",
+            "React compositions require a local renderedAssetPath",
           ));
         }
       }
@@ -617,7 +610,6 @@ export const TIMELINE_DSL_GLOBAL_SEMANTIC_EVALUATORS = Object.freeze({
   "timeline.audio.ducking-track-role": evaluateStructuralSemanticRules,
   "timeline.composition.local-path": evaluateStructuralSemanticRules,
   "timeline.composition.preview-contract": evaluateStructuralSemanticRules,
-  "timeline.composition.mg-spec": evaluateStructuralSemanticRules,
   "timeline.caption.structured": evaluateCaptionSemanticRules,
   "timeline.caption.lineage": evaluateCaptionSemanticRules,
   "timeline.derived-overlay.local-path": evaluateStructuralSemanticRules,

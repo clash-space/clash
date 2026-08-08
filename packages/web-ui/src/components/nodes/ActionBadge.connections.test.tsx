@@ -740,6 +740,36 @@ describe("ActionBadge canvas subscriptions", () => {
     }));
   });
 
+  it("opens the aspect-ratio secondary panel directly from its toolbar chip", async () => {
+    render(
+      <CanvasTransientUiProvider>
+        <PromptActionNode
+          {...baseNodeProps}
+          id="ratio-action"
+          type="action-badge"
+          data={{
+            actionType: "image-gen",
+            content: "A vertical studio portrait",
+            label: "Image Prompt",
+            modelId: "nano-banana-2",
+          }}
+        />
+      </CanvasTransientUiProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Configure action" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aspect Ratio: 16:9" }));
+
+    expect(screen.getByLabelText("Model aspect ratio")).toBeTruthy();
+    expect(screen.getByText("Aspect ratio")).toBeTruthy();
+    expect(screen.queryByText("Choose a preset or drag the frame")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "9:16" }));
+
+    await waitFor(() => expect(spawnAssetMock.latestInput.modelParams).toMatchObject({
+      aspect_ratio: "9:16",
+    }));
+  });
+
   it("keeps exactly one action configuration panel open", () => {
     render(
       <CanvasTransientUiProvider>

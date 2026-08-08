@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { timelineDslToYaml } from "@clash/shared-types";
 import { timelineProjectionCasApply } from "./timeline-projection";
 
@@ -17,7 +17,7 @@ type ProductionAssetManifest = {
 };
 
 export type DerivedOverlayMediaType = "image" | "video";
-export type DerivedOverlayDerivationKind = "trim" | "crop" | "caption-burn" | "mg-render" | "transcode" | "other";
+export type DerivedOverlayDerivationKind = "trim" | "crop" | "caption-burn" | "transcode" | "other";
 
 export type ProjectDerivedOverlayOptions = {
   cwd: string;
@@ -188,10 +188,6 @@ function resolveProjectPath(cwd: string, rawPath: string, label: string): string
 function isInsideOrEqual(parent: string, child: string): boolean {
   const relativePath = relative(parent, child);
   return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
-}
-
-function toProjectPath(cwd: string, absolutePath: string): string {
-  return relative(cwd, absolutePath).split(sep).join("/");
 }
 
 function safeSlug(value: string): string {

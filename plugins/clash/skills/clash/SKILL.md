@@ -1,100 +1,102 @@
 ---
 name: clash
-description: Operate a local Clash creative workspace through the installed Clash Codex Plugin, including projects, Canvas, Timeline, Director, assets, models, tasks, text, and production.
+description: Operate a Clash video project through either the Clash CLI or its peer stdio MCP transport. Use when an agent needs to initialize a workspace, discover current commands or tools progressively, mutate product state, or verify a persisted result.
 ---
 
-# Clash
+# Use Clash
 
-Use the bundled `clash_*` tools when the user asks to inspect or change a Clash
-project. The plugin is a client of an already running Clash host; it does not own
-project state. It may own the lifecycle of the bundled local-api process it
-starts, but never owns a separate project store.
+Clash has two peer transports over the same product state: the `clash` CLI and
+the Clash stdio MCP server. Choose the transport that is actually available in
+the current agent session. Do not invoke one transport through a wrapper in the
+other, and do not expect repository-level AGENTS instructions to provide the
+product manual.
 
-In a built-in self-host ACP session, all Clash product operations MUST go
-through these MCP tools. Never run a shell `clash` command and never fall back
-to a globally installed Clash skill or binary.
+## Establish the collaboration runtime
 
-The user message is not a project snapshot. Discover the latest product state
-on demand with the smallest relevant typed MCP read; do not assume that Canvas,
-Timeline, Director, asset, or text state was embedded in the prompt, and do not
-scan every entity unless the task actually requires a workspace-wide inventory.
+Treat the Clash daemon as a prerequisite for product work, not as part of the
+creative outcome. The normal CLI or MCP entry point owns the daemon probe and
+start: invoke it normally, let it reuse a compatible daemon or start one when
+none exists, and treat its readiness error as authoritative. Do not manually
+launch an internal JavaScript entrypoint, a second daemon command, or a
+background substitute.
 
-## Runtime boundary
+Some headless environments establish the workspace binding and daemon before
+the agent starts. When they provide a ready receipt, use that project as-is and
+do not run init or start a daemon again. If readiness cannot be established,
+stop with an infrastructure error. Never replace a failed product operation
+with handwritten lookalike state, a direct FFmpeg render, or other
+filesystem-only evidence.
 
-- The plugin automatically reuses an active Desktop/standalone local-api host.
-  If none exists, its first product tool call starts the bundled local-api.
-- The host discovery record publishes the host-owned agent CLI shim used by this
-  plugin. Do not fall back to an arbitrary shell command or fabricate empty
-  project state.
-- The plugin may close only a host whose launch mode, starter, and owner client
-  id prove that this MCP process started it. Never stop Desktop, a user service,
-  or another plugin process's host.
-- Concurrent plugin processes coordinate startup through the shared run
-  directory so that only one local host is created.
-- Pass the absolute current workspace `cwd` whenever the task is scoped by a
-  `.clash/project.toml` marker.
-- In a built-in ACP session, `CLASH_WORKSPACE_ROOT` pins omitted `cwd` values to
-  that session's working tree. The marker remains authoritative; the environment
-  is only a transport binding and never creates a second project store.
+## Confirm the workspace
 
-## Tools and Apps
+Resolve the intended working directory before writing. Initialization creates
+only the Clash project binding under `.clash/project.toml`; it must not replace
+the repository's own instructions or source files.
 
-1. Use `clash_studio_open` for the real host/project overview GUI.
-2. Use typed `clash_canvas_*` tools for Canvas work and `clash_canvas_open` for
-   the direct-manipulation Canvas App.
-3. Use typed `clash_timeline_*` tools for Timeline work and
-   `clash_timeline_open` for the Timeline App.
-4. Use typed `clash_director_*` tools for Director Stage work and
-   `clash_director_open` for the Director App.
-5. Use exact-argv `clash_cli_*` namespace tools for project, asset, model, task,
-   action, text, production, audit, auth, doctor, and effect operations that do
-   not yet have a typed tool. Include `--json` when supported.
-6. `clash_cli_mcp` is intentionally unavailable to prevent recursive server
-   launch.
+- CLI: run `clash init --json`, or `clash init --project <id> --json` when the
+  project identity is known.
+- MCP: call `clash_workspace_init` with the absolute `cwd` and optional
+  `projectId`.
 
-The Studio, Canvas, Timeline, and Director interfaces are separate focused MCP
-Apps inside one plugin. Do not iframe the Desktop application or add GUI controls
-that are not backed by a real tool call.
+Both entry points return the same initialization contract. Inspect the result:
+`reused: false` means a new local project binding was created; `reused: true`
+means the existing project binding was preserved. A conflicting requested
+project identity must fail rather than overwrite `.clash/project.toml`.
 
-## Working-tree projections
+Do not assume every working directory is new. If it is already bound, continue
+with the returned `projectId`; if it is unbound, let init generate a local ID or
+provide the explicitly intended ID. In a runner-managed headless workspace,
+init is infrastructure-owned and should already be complete before the task is
+handed to the agent.
 
-<!-- BEGIN GENERATED TIMELINE DSL WORKFLOW -->
-- The complete Timeline root, track, common item, item-variant, mask, and keyframe contract is generated from implementation annotations at
-  schema version `3` with fingerprint
-  `fnv1a32:e3826b91`.
-- Before authoring unfamiliar Timeline fields, call `clash_timeline_schema`
-  for the versioned JSON Schema, feature semantics, and executable examples.
-- Before apply or `clash_timeline_save`, validate the complete draft without
-  mutation through `clash_timeline_validate` (CLI equivalent:
-  `clash timeline validate --file <path> --json`). Resolve every reported contract issue before
-  writing; never treat schema discovery alone as validation.
-<!-- END GENERATED TIMELINE DSL WORKFLOW -->
-- Discover Project Timelines with `clash_cli_timeline` and
-  `args: ["list", "--json"]`. The owning Canvas node exposes the stable id as
-  `data.timelineId`.
-- Round-trip a Timeline through the working tree:
+## Navigate progressively
 
-  1. Call `clash_cli_timeline` with
-     `args: ["pull", "--timeline", "<id>", "--file",
-     "timelines/<id>.timeline.yaml", "--json"]`.
-  2. Edit `timelines/<id>.timeline.yaml`.
-  3. Call `clash_cli_timeline` with
-     `args: ["apply", "--timeline", "<id>", "--file",
-     "timelines/<id>.timeline.yaml", "--json"]`.
+For CLI work, begin with the built-in command tree:
 
-- For typed `clash_timeline_save`, pass the `revisionId` from
-  `clash_timeline_get` as `baseRevisionId`; stale full-state saves are rejected.
-- Round-trip mutable text through `clash_cli_text` with `pull` and `apply`
-  argument arrays.
-- Reads and pulls record the CAS observation internally. Do not create or
-  preserve projection lock/revision sidecars. On a stale conflict, read again
-  and rebase the intended edit.
+```text
+clash --help
+clash <command> --help
+```
 
-## Mutation rules
+Common command groups include `canvas`, `timeline`, and `director`. Read the
+current help before using an unfamiliar subcommand; use `--json` when the
+command supports structured output.
 
-- Read the target entity before changing, replacing, deleting, or applying it.
-- Preserve the CLI/local-api read-proof, CAS, immutability, and copy-on-write
-  behavior. Never add a force bypass.
-- Use graph-aware deletion planning before destructive Canvas changes.
-- Keep media assets and applied revisions immutable; create a new revision or
-  copy when the product contract requires it.
+For MCP work, use the root `clash` tool only for navigation. Call it without
+arguments for the menu, then with `command` to receive the stable dispatcher:
+
+- Use `clash_canvas` for Canvas operations.
+- Use `clash_composition` for both temporal composition in Timeline and spatial
+  composition in Director Stage. Pass `kind: "timeline"` for Timeline or
+  `kind: "director-stage"` for Director Stage when revealing contracts or using
+  a short operation.
+
+Call the selected dispatcher without `operation` to reveal live contracts, then
+call that dispatcher with `operation` and `arguments` to execute. Each contract
+includes `operation`, the command-local short name such as `get`, and `name`,
+the complete `clash_*` leaf name retained for compatibility. Prefer the short
+name on the appropriate dispatcher. The advertised tool list does not change.
+Use each operation's live description, schemas, structured result, and recovery
+guidance; there are no `clash_cli_*` MCP namespace wrappers.
+
+## Operate and verify
+
+Read the smallest relevant state before changing it. Preserve returned IDs,
+revisions, read proofs, and copy-on-write boundaries. If a guarded mutation is
+stale, Clash will automatically pull the latest projection into the reported
+`.clash/recovery` path while preserving the edited projection. Inspect both,
+merge the intended change into the latest state, and retry through the same
+guarded path. Clash will never automatically replay or resubmit a stale edit.
+If a write says a read is required, read first and rebase; never force an
+overwrite or manufacture a revision token. Treat an accepted render or
+generation request as submission, not completion; follow the returned identity
+and read product state again before claiming a finished artifact.
+
+Files in the working tree are drafts and inputs. A claimed product outcome must
+be persisted through Clash and read back from the same project. If the product
+path is unavailable, report that limitation honestly instead of manufacturing
+a substitute artifact outside Clash.
+
+Use the specialist Director, Timeline, motion-graphics, or finishing skill for
+creative judgment. This skill owns transport navigation and product evidence,
+not the artistic recipe.

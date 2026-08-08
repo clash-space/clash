@@ -50,7 +50,7 @@ export async function runHostStatus(options: {
   } else {
     stdout("Host: inactive");
     stdout(`Profile: ${output.profile}`);
-    stdout("Open Clash Desktop or start the local-api host.");
+    stdout("No local daemon is active; the next local Clash command starts one automatically.");
   }
 
   return output;

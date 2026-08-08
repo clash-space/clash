@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "sourceAudioSha256": "5e4ceb5dd8a05fac7c343f7d17443431d6ff1285ec2bf9092ccf12bd3901aad8",
+  "speechGenerator": {
+    "engine": "macOS say",
+    "voice": "Tingting",
+    "rate": 185
+  },
+  "alignment": {
+    "engine": "mlx-whisper",
+    "model": "mlx-community/whisper-small-mlx",
+    "wordTimestamps": true,
+    "correction": "Restored the known synthetic false-start words from the Tiny alignment; all body timings remain Whisper Small output."
+  },
+  "fps": 30,
+  "durationMs": 43633
+}

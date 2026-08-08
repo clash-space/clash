@@ -14,6 +14,15 @@ export default defineConfig({
   bundle: true,
   splitting: false,
   dts: true,
-  noExternal: ["@modelcontextprotocol/ext-apps", "@modelcontextprotocol/sdk", "zod"],
-  banner: { js: "#!/usr/bin/env node" },
+  external: ["loro-crdt"],
+  noExternal: [
+    "@clash/shared-mcp",
+    "@clash/shared-types",
+    "@modelcontextprotocol/ext-apps",
+    "@modelcontextprotocol/sdk",
+    "zod",
+  ],
+  banner: {
+    js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+  },
 });

@@ -1,0 +1,16 @@
+compositionWidth: 1080
+compositionHeight: 1920
+fps: 30
+durationInFrames: 90
+tracks:
+  - id: graphics
+    items:
+      - id: lower-third
+        type: composition
+        from: 0
+        durationInFrames: 90
+        compositionKind: custom
+        runtime: remotion
+        compositionId: lower-third
+        sourcePath: examples/remotion/lower-third/LowerThird.tsx
+        sourceNodeId: replace-with-returned-remotion-node-id

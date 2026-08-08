@@ -59,7 +59,6 @@
   },
   "files": [
     "dist",
-    "src/mg-composition.ts",
     "python",
     "agents.json"
   ],

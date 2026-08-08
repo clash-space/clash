@@ -1,8 +1,4 @@
 import {
-  MgAnimationSchema,
-  MgCompositionSpecSchema,
-  MgShapeLayerSchema,
-  MgTextLayerSchema,
   TIMELINE_DSL_FIELD_ANNOTATIONS,
   TIMELINE_DSL_ITEM_TYPES,
 } from '@clash/shared-types';
@@ -105,7 +101,7 @@ describe('renderer Timeline field consumer gate', () => {
     expect(registry.audio?.properties?.consumers).toContain('unsupported');
     expect(registry.transition?.keyframes?.consumers).toContain('unsupported');
     expect(registry.composition?.sourcePath?.consumers).toContain('unsupported');
-    expect(registry.composition?.spec?.consumers).toContain('rendered');
+    expect(registry.composition?.spec?.consumers).toContain('unsupported');
     expect(registry.composition?.renderedAssetPath?.consumers).toContain('rendered');
     expect(registry['derived-overlay']?.derivation?.consumers).toContain('meta');
   });
@@ -141,33 +137,6 @@ describe('renderer Timeline field consumer gate', () => {
     expect(transitionRegistry.text?.fontWeight?.consumers).toContain('rendered');
     expect(transitionRegistry.text?.textAlign?.consumers).toContain('unsupported');
     expect(transitionRegistry.text?.cues?.consumers).toContain('unsupported');
-  });
-
-  it('classifies every first-party MG field used by the direct renderer', () => {
-    const mgRegistry = (
-      components as unknown as {
-        TIMELINE_MG_RENDER_FIELD_CONSUMERS?: Record<string, Record<string, Classification>>;
-      }
-    ).TIMELINE_MG_RENDER_FIELD_CONSUMERS ?? {};
-
-    expect(Object.keys(mgRegistry.spec ?? {}).sort()).toEqual(
-      Object.keys(MgCompositionSpecSchema.shape).sort(),
-    );
-    expect(Object.keys(mgRegistry.textLayer ?? {}).sort()).toEqual(
-      Object.keys(MgTextLayerSchema.shape).sort(),
-    );
-    expect(Object.keys(mgRegistry.shapeLayer ?? {}).sort()).toEqual(
-      Object.keys(MgShapeLayerSchema.shape).sort(),
-    );
-    expect(Object.keys(mgRegistry.animation ?? {}).sort()).toEqual(
-      Object.keys(MgAnimationSchema.shape).sort(),
-    );
-    expect(mgRegistry.spec?.background?.consumers).toContain('unsupported');
-    expect(mgRegistry.textLayer?.letterSpacing?.consumers).toContain('unsupported');
-    expect(mgRegistry.textLayer?.align?.consumers).toContain('unsupported');
-    expect(mgRegistry.shapeLayer?.stroke?.consumers).toContain('unsupported');
-    expect(mgRegistry.shapeLayer?.strokeWidth?.consumers).toContain('unsupported');
-    expect(mgRegistry.animation?.property?.consumers).toContain('rendered');
   });
 
   it('classifies every shared fallback and exposes any renderer override explicitly', () => {

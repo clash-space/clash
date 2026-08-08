@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash Video Finishing"
+  short_description: "Unify picture, sound, typography, and final delivery"
+  default_prompt: "Use $clash-video-finishing to make the complete video creatively coherent across story, color, sound, motion, and typography."

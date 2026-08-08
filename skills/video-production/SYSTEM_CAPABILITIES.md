@@ -13,17 +13,16 @@ timeline CAS apply, and canvas/timeline projections.
 ## Available Or Partial
 
 - `media.asset-registry`: partially available through existing asset nodes,
-  generation records, local `assets/manifest.json`, MG snapshot/video export
-  asset entries, and storyboard panel asset registration; needs SQLite-backed
-  rows and canvas node mappings.
+  generation records, completed Timeline render Assets, local
+  `assets/manifest.json`, and storyboard panel asset registration; needs
+  consistent SQLite-backed rows and path ownership checks across every media
+  workflow.
 - `timeline.cas-projection`: partially available for timeline/text projections.
-- `render.export-validation`: partially available through render-server smoke
-  tests, deterministic MG SVG snapshot export manifests, and local MG WebM/MP4
-  video exports validated by ffprobe for codec, dimensions, duration, VP9
-  `alpha_mode`, and decoded alpha-plane pixel sampling on transparent WebM
-  exports. TVC delivery validation can also consume ffprobe media probes for
-  rendered variants; full render-server/provider export and broader
-  referenced-media validation remain missing.
+- `render.export-validation`: partially available through Timeline render
+  receipts, playable final Assets, render-server smoke tests, and TVC delivery
+  validation that consumes ffprobe media probes for rendered variants. Full
+  loudness, OCR/logo, provider export, and broader referenced-media validation
+  remain missing.
 - `audio.word-timestamps`: partially available through the built-in local
   FunASR runtime and `/api/v1/local/audio/transcriptions`, which return a
   validated `clash.asr.timed-transcript` with millisecond word/token ranges,
@@ -37,27 +36,11 @@ timeline CAS apply, and canvas/timeline projections.
   `clash.talking-head.asr-transcript.projection` under
   `projections/transcripts`. Transcript correction UI, diarization review,
   persistent model workers, and durable transcript storage are still missing.
-- `render.remotion-composition`: partially available through Remotion packages,
-  render-server, and preview rendering for structural `composition`, `caption`,
-  and `derived-overlay` timeline items. The preview keeps structural item types
-  when hydrating backing asset rows, exposes inspectable DOM attributes for
-  caption cue ids, MG composition ids, and derived overlay source/derived asset
-  lineage. Non-HTML React/Remotion composition timeline items are accepted only
-  after a local `renderedAssetPath` exists for preview; raw React source paths
-  alone are rejected by timeline validation. Already rendered Remotion assets
-  can be registered in `assets/manifest.json` and projected into timeline via
-  `clash production project-composition-timeline`. Full managed render-server
-  parity is still missing.
-- `render.composition-router`: partially available through `clash production
-  plan-composition-route`, which reads a portable composition route request and
-  writes a `clash.render.composition-route` plan with selected runtime,
-  validation plan, decision log, and `fallbackUsed: false`. It blocks React/
-  timeline-editor routes when Remotion is unavailable instead of silently
-  falling back to HTML or FFmpeg, and requires React/Remotion timeline items to
-  be backed by a local rendered preview asset before apply. `clash production
-  project-composition-timeline` turns a planned Remotion route plus registered
-  rendered asset into a CAS-required composition timeline projection. Host
-  runtime probing and Remotion/Manim execution orchestration are still missing.
+- `render.remotion-composition`: available for agent-authored composition code.
+  Canvas `remotion-component` nodes hold editable default-exported Remotion TSX;
+  Timeline `composition` items bind the fixed Canvas identity through
+  `sourceNodeId`; preview and final render resolve the latest node source. A
+  completed Timeline render creates the playable product Asset and receipt.
 - `review.stage-gates`: partially available through `clash production
   plan-review-gate` and `clash production approve-review-gate`, which write
   local `clash.review.stage-gate` artifacts and path-bound cwd observations.
@@ -92,19 +75,6 @@ timeline CAS apply, and canvas/timeline projections.
   `thirdPartyReferences`; needs dependency scanning, NOTICE generation, and
   explicit review workflow before vendoring third-party code, models, prompts,
   or templates.
-- `render.html-composition`: partially available through first-party MG specs,
-  deterministic frame evaluation, self-contained seekable HTML previews with
-  browser-verifiable `data-current-frame` state and `clash-mg-frame` events,
-  `clash production render-mg` projection generation with explicit
-  `clash timeline apply` boundaries and host-managed implicit CAS,
-  `clash production export-mg-snapshots` SVG asset export,
-  `clash production export-mg-video` local WebM/MP4 export, timeline
-  `composition` items, VP9 alpha-mode verification, decoded alpha-plane pixel
-  sampling, and Remotion preview rendering with inspectable composition DOM
-  contracts. MG manifests declare the renderer as Clash first-party, MIT
-  licensed, external-runtime-free, and no copied third-party code, with
-  HyperFrames recorded only as a research reference; needs richer renderer
-  parity.
 - `caption.retime-and-render`: partially available through structured caption
   items with cue word references, source frame ranges, source-to-output maps,
   subtitle-track validation, renderer preview, talking-head metadata
@@ -326,12 +296,10 @@ timeline CAS apply, and canvas/timeline projections.
   Editable storyboard host UI/apply integration is still missing.
 - `workflow.production-action-runner`: partially available through
   repo-hosted marketplace action contracts for representative local CLI
-  production primitives, plus `clash production apply-metadata`,
-  `clash production render-mg`, and
-  production planners/exporters such as `plan-composition-route`,
+  production primitives, plus `clash production apply-metadata` and
+  production planners/exporters such as
   `plan-review-gate`, `approve-review-gate`, `plan-dry-run-cost-gate`,
-  `export-mg-snapshots`, `plan-text-cut`, `export-text-cut-media`,
-  `export-mg-video`, `project-derived-overlay`,
+  `plan-text-cut`, `export-text-cut-media`, `project-derived-overlay`,
   `export-captions`, `project-caption-overlay`, `export-caption-burn`, `export-timeline-handoff`, `analyze-audio-beats`, `plan-lyrics-alignment`,
   `plan-visual-moments`, `project-mv-beat-cuts`, `plan-ad-delivery-spec`,
   `extract-ad-visual-frames`, `analyze-ad-visual-pixels`, `plan-ad-visual-qa`,
@@ -345,7 +313,7 @@ timeline CAS apply, and canvas/timeline projections.
   `project-storyboard-prompt-pack`, `apply-storyboard-prompt-pack`,
   `replace-storyboard-prompt-pack`, and `project-storyboard-timeline`, which apply action/spec/media/transcript/
   storyboard JSON into local metadata, assets, and `projections/*` without
-  mutating canvas; MG, derived-overlay, caption overlay, MV beat-cut,
+  mutating canvas; derived-overlay, caption overlay, MV beat-cut,
   storyboard prompt-pack, and storyboard timeline projections now carry explicit
   CAS apply boundaries,
   product/logo QA fails closed on locked reference evidence, analysis backend
@@ -358,6 +326,8 @@ timeline CAS apply, and canvas/timeline projections.
   never execute OCR/logo/pixel analysis backends, and content
   credential plans register unsigned/external manifests without signing C2PA;
   review gates use path-bound cwd observations and implicit CAS.
+  Authored motion graphics bypass this legacy action layer and use a live
+  Canvas `remotion-component` followed by Timeline render.
   It still needs provider execution,
   durable project DB integration, multi-user review UI, and managed timeline
   apply orchestration.

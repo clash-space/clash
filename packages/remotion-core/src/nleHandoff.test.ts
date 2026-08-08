@@ -26,9 +26,10 @@ describe('NLE handoff', () => {
       {
         id: 'lower-third',
         type: 'composition',
-        compositionKind: 'motion-graphics',
+        compositionKind: 'custom',
         runtime: 'remotion',
         compositionId: 'lower-third',
+        sourceNodeId: 'remotion-lower-third',
         sourcePath: 'compositions/lower-third/index.tsx',
         from: 30,
         durationInFrames: 60,
@@ -60,9 +61,10 @@ describe('NLE handoff', () => {
         {
           id: 'lower-third',
           type: 'composition',
-          compositionKind: 'motion-graphics',
+          compositionKind: 'custom',
           runtime: 'remotion',
           compositionId: 'lower-third',
+          sourceNodeId: 'remotion-lower-third',
           sourcePath: 'compositions/lower-third/index.tsx',
           renderedAssetPath: 'https://media.example/bakes/lower-third.mov',
           from: 30,

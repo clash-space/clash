@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clash.local/schemas/remotion-component-delivery.schema.json",
+  "title": "Remotion Component Delivery Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "component", "timeline", "render"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "clash.remotion-component.delivery-evidence" },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "nodeType", "componentId", "sourcePath", "defaultExport", "sourceBytes"],
+      "properties": {
+        "nodeId": { "type": "string", "minLength": 1 },
+        "nodeType": { "const": "remotion-component" },
+        "componentId": { "type": "string", "minLength": 1 },
+        "sourcePath": { "type": "string", "pattern": "\\.tsx$" },
+        "defaultExport": { "const": true },
+        "sourceBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "timeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timelineId", "item", "resolvesLatestSource"],
+      "properties": {
+        "timelineId": { "type": "string", "minLength": 1 },
+        "item": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "type", "from", "durationInFrames", "compositionKind", "runtime", "compositionId", "sourceNodeId"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "type": { "const": "composition" },
+            "from": { "type": "integer", "minimum": 0 },
+            "durationInFrames": { "type": "integer", "minimum": 1 },
+            "compositionKind": { "const": "custom" },
+            "runtime": { "const": "remotion" },
+            "compositionId": { "type": "string", "minLength": 1 },
+            "sourceNodeId": { "type": "string", "minLength": 1 }
+          }
+        },
+        "resolvesLatestSource": { "const": true }
+      }
+    },
+    "render": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "status", "assetId", "playable"],
+      "properties": {
+        "command": { "const": "clash timeline render" },
+        "status": { "const": "completed" },
+        "assetId": { "type": "string", "minLength": 1 },
+        "playable": { "const": true }
+      }
+    }
+  }
+}

@@ -37,7 +37,8 @@
   "dependencies": {
     "@clash/shared-types": "workspace:*",
     "@master-clash/remotion-core": "workspace:*",
-    "@master-clash/remotion-effects": "workspace:*"
+    "@master-clash/remotion-effects": "workspace:*",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "@remotion/cli": "4.0.370",
@@ -51,7 +52,6 @@
     "react-dom": "^19.2.5",
     "remotion": "4.0.370",
     "tsup": "^8.0.0",
-    "typescript": "^5.9.3",
     "vitest": "^1.3.1"
   }
 }

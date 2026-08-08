@@ -25,6 +25,7 @@
     "test:startup:real-codex-cold": "pnpm --filter @master-clash/desktop test:startup:real-codex-cold",
     "test:startup:real-codex": "pnpm --filter @master-clash/desktop test:startup:real-codex",
     "test:startup:real-codex-resume": "pnpm --filter @master-clash/desktop test:startup:real-codex-resume",
+    "benchmark:artifacts": "pnpm --dir packages/shared-artifact-evals exec tsx src/cli.ts",
     "assets:director:anny": "tsx scripts/generate-director-anny-assets.ts",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",

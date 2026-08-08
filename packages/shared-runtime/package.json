@@ -16,6 +16,11 @@
       "types": "./dist/local-paths.d.ts",
       "import": "./dist/local-paths.js",
       "default": "./dist/local-paths.js"
+    },
+    "./local-daemon": {
+      "types": "./dist/local-daemon.d.ts",
+      "import": "./dist/local-daemon.js",
+      "default": "./dist/local-daemon.js"
     }
   },
   "scripts": {

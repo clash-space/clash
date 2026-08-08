@@ -1,0 +1,251 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  effectiveMcpToolName,
+  matchRequiredProductOperations,
+} from "./product-operations";
+
+describe("transport-neutral product operation evidence", () => {
+  it("attributes root-dispatched MCP calls to the selected leaf operation", () => {
+    expect(
+      effectiveMcpToolName({
+        tool: "clash",
+        arguments: {
+          command: "timeline",
+          operation: "clash_timeline_render",
+          arguments: { timelineId: "main" },
+        },
+      }),
+    ).toBe("clash_timeline_render");
+    expect(
+      effectiveMcpToolName({ tool: "clash", arguments: { command: "timeline" } }),
+    ).toBe("clash");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash",
+        arguments: { operation: "timeline.render" },
+      }),
+    ).toBe("clash");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash",
+        arguments: { operation: "clash_timeline_render" },
+      }),
+    ).toBe("clash_timeline_render");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_timeline",
+        arguments: {
+          operation: "clash_timeline_render",
+          arguments: { timelineId: "main" },
+        },
+      }),
+    ).toBe("clash_timeline_render");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_timeline",
+        arguments: { operation: "clash_director_capture" },
+      }),
+    ).toBe("clash_timeline");
+  });
+
+  it("attributes fixed Canvas and Composition dispatcher short names to live leaves", () => {
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_canvas",
+        arguments: { operation: "get", arguments: { nodeId: "node-1" } },
+      }),
+    ).toBe("clash_canvas_get");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_composition",
+        arguments: {
+          kind: "timeline",
+          operation: "render",
+          arguments: { timelineId: "main" },
+        },
+      }),
+    ).toBe("clash_timeline_render");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_composition",
+        arguments: {
+          kind: "director-stage",
+          operation: "capture",
+          arguments: { stageId: "main" },
+        },
+      }),
+    ).toBe("clash_director_capture");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_composition",
+        arguments: { operation: "clash_timeline_render" },
+      }),
+    ).toBe("clash_timeline_render");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_composition",
+        arguments: { operation: "render" },
+      }),
+    ).toBe("clash_composition");
+    expect(
+      effectiveMcpToolName({
+        tool: "clash_composition",
+        arguments: {
+          kind: "timeline",
+          operation: "clash_director_capture",
+        },
+      }),
+    ).toBe("clash_composition");
+  });
+
+  it("accepts successful MCP and CLI invocations as peer transports", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: ["canvas.add", "timeline.render"],
+        successfulMcpTools: ["clash_canvas_add"],
+        successfulCliArgv: [
+          ["timeline", "render", "--timeline", "main", "--json"],
+        ],
+      }),
+    ).toEqual({
+      observedProductOperations: [
+        {
+          operation: "canvas.add",
+          transport: "mcp",
+          invocation: "clash_canvas_add",
+        },
+        {
+          operation: "timeline.render",
+          transport: "cli",
+          invocation: "timeline render --timeline main --json",
+        },
+      ],
+      missingProductOperations: [],
+    });
+  });
+
+  it("records every transport that satisfies the same semantic operation", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: ["timeline.render"],
+        successfulMcpTools: ["clash_timeline_render"],
+        successfulCliArgv: [["timeline", "render", "--timeline", "main"]],
+      }).observedProductOperations,
+    ).toEqual([
+      {
+        operation: "timeline.render",
+        transport: "mcp",
+        invocation: "clash_timeline_render",
+      },
+      {
+        operation: "timeline.render",
+        transport: "cli",
+        invocation: "timeline render --timeline main",
+      },
+    ]);
+  });
+
+  it("uses the canonical CLI pull/apply projections for get/save operations", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: [
+          "director.get",
+          "director.mutate",
+          "timeline.get",
+          "timeline.save",
+        ],
+        successfulMcpTools: [],
+        successfulCliArgv: [
+          ["director", "pull", "--stage", "main", "--json"],
+          ["director", "apply", "--stage", "main", "--json"],
+          ["timeline", "pull", "--timeline", "main", "--json"],
+          ["timeline", "apply", "--timeline", "main", "--json"],
+        ],
+      }).observedProductOperations,
+    ).toEqual([
+      expect.objectContaining({
+        operation: "director.get",
+        transport: "cli",
+        invocation: "director pull --stage main --json",
+      }),
+      expect.objectContaining({
+        operation: "director.mutate",
+        transport: "cli",
+        invocation: "director apply --stage main --json",
+      }),
+      expect.objectContaining({
+        operation: "timeline.get",
+        transport: "cli",
+        invocation: "timeline pull --timeline main --json",
+      }),
+      expect.objectContaining({
+        operation: "timeline.save",
+        transport: "cli",
+        invocation: "timeline apply --timeline main --json",
+      }),
+    ]);
+  });
+
+  it("treats whole-state and focused Director writes as the same mutate operation", () => {
+    const mcp = matchRequiredProductOperations({
+      requiredProductOperations: ["director.mutate"],
+      successfulMcpTools: ["clash_director_camera_update"],
+      successfulCliArgv: [],
+    });
+    const cli = matchRequiredProductOperations({
+      requiredProductOperations: ["director.mutate"],
+      successfulMcpTools: [],
+      successfulCliArgv: [
+        ["director", "keyframe", "upsert", "--stage", "main"],
+      ],
+    });
+
+    expect(mcp).toEqual({
+      observedProductOperations: [
+        {
+          operation: "director.mutate",
+          transport: "mcp",
+          invocation: "clash_director_camera_update",
+        },
+      ],
+      missingProductOperations: [],
+    });
+    expect(cli).toEqual({
+      observedProductOperations: [
+        {
+          operation: "director.mutate",
+          transport: "cli",
+          invocation: "director keyframe upsert --stage main",
+        },
+      ],
+      missingProductOperations: [],
+    });
+  });
+
+  it("does not count discovery, infrastructure init, help, or failed-call-shaped input", () => {
+    expect(
+      matchRequiredProductOperations({
+        requiredProductOperations: ["timeline.create", "timeline.render"],
+        successfulMcpTools: ["clash", "clash_workspace_init"],
+        successfulCliArgv: [
+          ["timeline", "render", "--help"],
+          ["init", "--project", "old-project", "--json"],
+        ],
+      }),
+    ).toEqual({
+      observedProductOperations: [],
+      missingProductOperations: ["timeline.create", "timeline.render"],
+    });
+  });
+
+  it("fails closed for an operation outside the shared registry", () => {
+    expect(() =>
+      matchRequiredProductOperations({
+        requiredProductOperations: ["timeline.lookalike"],
+        successfulMcpTools: [],
+        successfulCliArgv: [],
+      }),
+    ).toThrow(/Unknown Clash product operation/);
+  });
+});

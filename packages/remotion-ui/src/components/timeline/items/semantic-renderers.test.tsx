@@ -31,19 +31,15 @@ const captionItem: SubtitleTextItem = {
 };
 
 const compositionItem: CompositionItem = {
-  id: 'mg-lower-third',
+  id: 'live-card',
   type: 'composition',
   from: 0,
   durationInFrames: 60,
-  compositionKind: 'motion-graphics',
-  runtime: 'html',
-  compositionId: 'lower-third',
-  sourcePath: 'compositions/lower-third/index.html',
-  spec: {
-    layers: [
-      { id: 'headline', type: 'text', text: 'MG Overlay', from: 0, durationInFrames: 60 },
-    ],
-  },
+  compositionKind: 'custom',
+  runtime: 'remotion',
+  compositionId: 'LiveCard',
+  sourceNodeId: 'remotion-node-fixed',
+  sourcePath: 'components/live-card.tsx',
 };
 
 const derivedOverlayItem: DerivedOverlayItem = {
@@ -86,18 +82,18 @@ describe('semantic timeline item renderers', () => {
       .toBe('var(--clash-timeline-item-text-foreground, #343434)');
   });
 
-  it('renders composition items with runtime, composition id, and first-party layer count', () => {
+  it('renders live Remotion composition identity without legacy layer metadata', () => {
     const Renderer = getRendererForItem(compositionItem);
     const { container } = render(
       <Renderer item={compositionItem} asset={null} width={260} height={44} pixelsPerFrame={2} />,
     );
 
-    expect(screen.getByText('MG')).toBeTruthy();
-    expect(screen.getByText('lower-third')).toBeTruthy();
-    expect(screen.getByText('html')).toBeTruthy();
-    expect(screen.getByText('1 layer')).toBeTruthy();
+    expect(screen.getByText('R')).toBeTruthy();
+    expect(screen.getByText('LiveCard')).toBeTruthy();
+    expect(screen.getByText('remotion')).toBeTruthy();
+    expect(screen.queryByText(/layer/)).toBeNull();
     expect((container.firstElementChild as HTMLElement).dataset.timelineItemType).toBe('composition');
-    expect((container.firstElementChild as HTMLElement).title).toContain('compositions/lower-third/index.html');
+    expect((container.firstElementChild as HTMLElement).title).toContain('components/live-card.tsx');
   });
 
   it('renders derived overlays as copy-on-write assets with source and derived ids', () => {

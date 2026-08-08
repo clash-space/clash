@@ -869,6 +869,30 @@ describe("local API app", () => {
     });
     const app = createLocalApiApp({ dataDir, userId: "local-user", audioConfig });
 
+    const catalogBeforeInstall = await app.request("/api/v1/models/catalog");
+    expect(catalogBeforeInstall.status).toBe(200);
+    const catalogBeforeInstallJson = await catalogBeforeInstall.json() as {
+      models: Array<{
+        model: { id: string };
+        runtimeReadiness?: {
+          capability: string;
+          model: string;
+          readiness: string;
+          executable: boolean;
+          message?: string;
+        };
+      }>;
+    };
+    expect(catalogBeforeInstallJson.models.find(({ model }) => model.id === "piper-huayan-tts")).toMatchObject({
+      runtimeReadiness: {
+        capability: "text-to-speech",
+        model: "zh_CN-huayan-medium",
+        readiness: "not-installed",
+        executable: false,
+        message: "Piper voice is not downloaded",
+      },
+    });
+
     const install = await app.request("/api/v1/local/audio/install", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -897,6 +921,8 @@ describe("local API app", () => {
       capability: "text-to-speech",
       model: "zh_CN-huayan-medium",
       available: true,
+      readiness: "ready",
+      readToken: expect.stringMatching(LOCAL_CONFIG_RECEIPT_READ_TOKEN_RE),
     });
 
     const synthesis = await app.request("/api/v1/local/audio/speech", {

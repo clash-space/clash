@@ -18,6 +18,7 @@ import {
 
 vi.mock('./InteractiveCanvasV2', () => ({
   InteractiveCanvas: (props: {
+    allNodesMap?: Map<string, unknown>;
     viewportCommand?: { type: string; zoom?: number };
     audioMeterEnabled?: boolean;
     onTransformStart?: () => void;
@@ -27,6 +28,7 @@ vi.mock('./InteractiveCanvasV2', () => ({
     <>
       <div
         data-testid="interactive-canvas"
+        data-runtime-node-ids={[...(props.allNodesMap?.keys() ?? [])].join(',')}
         data-viewport-command={props.viewportCommand
           ? `${props.viewportCommand.type}:${props.viewportCommand.zoom ?? ''}`
           : ''}
@@ -75,6 +77,7 @@ function renderPreview(props: {
   audioMeterOpen?: boolean;
   onToggleAudioMeter?: () => void;
   audioMeterStore?: PreviewAudioMeterStore;
+  runtimeNodes?: Array<{ id: string; type: string; data: Record<string, unknown> }>;
 } = {}) {
   return render(
     <EditorProvider
@@ -114,6 +117,19 @@ afterEach(() => {
 });
 
 describe('CanvasPreview transport', () => {
+  it('passes live non-media runtime nodes into the shared VideoComposition resolver', () => {
+    renderPreview({
+      runtimeNodes: [{
+        id: 'remotion-live',
+        type: 'remotion-component',
+        data: { content: 'export default function Live(){ return <div />; }' },
+      }],
+    });
+
+    expect(screen.getByTestId('interactive-canvas').getAttribute('data-runtime-node-ids'))
+      .toContain('remotion-live');
+  });
+
   it('owns frame-accurate time and playback without a progress bar', async () => {
     renderPreview();
 
