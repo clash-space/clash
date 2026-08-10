@@ -96,6 +96,9 @@ export async function handleInvocation(
     invocationId = invocation.invocationId;
     const executor = EXECUTORS[invocation.target.exportId];
     if (executor) {
+      // Anything thrown past this point came from talking to the provider, not from mapping
+      // parameters. Which half failed is the first thing a reader wants to know.
+      executionFailed = true;
       const step = invocation.operation === "poll"
         ? await executor.poll(invocation, context)
         : await executor.submit(invocation, context);
