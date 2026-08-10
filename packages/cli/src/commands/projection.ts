@@ -2,9 +2,20 @@ import { Command } from "commander";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { directorStageJsonSchema, TIMELINE_DSL_DEFINITION } from "@clash/shared-types";
+import {
+  directorStageJsonSchema,
+  projectTimelineReadToken,
+  timelineDslToYaml,
+  TIMELINE_DSL_DEFINITION,
+} from "@clash/shared-types";
 
 import { isJsonMode, printJson } from "../lib/output";
+import type { ResolvedProjectContext } from "../lib/project-context";
+import { normalizeTimelineDslForYaml } from "../lib/timeline-projection";
+import { applyTimelineProjection, listTimelineEntities } from "./timeline";
+import { readAssetMetadataProjection } from "./asset-metadata";
+import { listDeclaredAssetMetadataKinds } from "@clash/shared-types";
+import { loadWorkspaceMetadataKinds } from "../lib/workspace-metadata-kinds";
 import { resolveCanvasActor, resolveCanvasProjectContext } from "./canvas";
 import {
   applyTextContent,
@@ -28,6 +39,7 @@ import {
   projectionFilePath,
   projectionKindsForMetadata,
   projectionObservationEntityKind,
+  type ProjectionKind,
 } from "../lib/projection-kinds";
 import { listDeclaredAssetMetadataKindNames } from "../lib/workspace-metadata-kinds";
 
@@ -62,8 +74,13 @@ projectionCommand
   .action(async (options) => {
     // Declared metadata kinds are projectable too, so a kind a workspace or
     // plugin declares shows up here without a code change.
+    // Every declared metadata kind is projectable, whether it came with the build or with a
+    // workspace declaration. Listing only the workspace's own left the built-in kinds visible to
+    // `assets metadata kinds` and invisible here -- one concept read from two places, which is how
+    // a kind ends up advertised by one command and unusable through another.
+    await loadWorkspaceMetadataKinds(process.cwd()).catch(() => []);
     const declared = projectionKindsForMetadata(
-      await listDeclaredAssetMetadataKindNames(process.cwd()).catch(() => []),
+      listDeclaredAssetMetadataKinds(),
     );
     const payload = [...listProjectionKinds(), ...declared].map((kind) => ({
       kind: kind.kind,
@@ -120,6 +137,114 @@ projectionCommand
   });
 
 /**
+ * Reads one projectable entity into the text that goes in the file, plus the revision the write
+ * back will be checked against.
+ *
+ * Every kind reaches the file the same way; only the entity's own read differs. Keeping that
+ * difference here, dispatched on the declared `source`, is what lets one pair of commands serve
+ * canvas nodes and host entities alike -- and why `source` is a closed set: the host owns the read,
+ * the write, and the CAS rule, and a plugin picks a shape rather than supplying its own.
+ */
+async function readProjection(
+  declared: ProjectionKind,
+  context: ResolvedProjectContext,
+  entityId: string,
+): Promise<{ content: string; revision: string; immutable: boolean }> {
+  if (declared.source.from === "host-entity") {
+    if (declared.source.entity === "timeline") {
+      const listed = await listTimelineEntities(context);
+      const timeline = listed.timelines.find((candidate) => candidate.id === entityId);
+      if (!timeline) throw new Error(`Timeline ${entityId} not found`);
+      return {
+        content: timelineDslToYaml(normalizeTimelineDslForYaml(timeline.state)),
+        revision: listed.versions[timeline.id] ?? projectTimelineReadToken(timeline),
+        immutable: false,
+      };
+    }
+    throw new Error(`Projection kind ${declared.kind} has no host reader.`);
+  }
+
+  if (declared.source.from === "asset-metadata") {
+    return {
+      ...(await readAssetMetadataProjection({
+        cwd: process.cwd(),
+        assetId: entityId,
+        metadataKind: declared.source.metadataKind,
+      })),
+      immutable: false,
+    };
+  }
+
+  const node = await readNode(context.projectId, entityId);
+  if (!node) throw new Error(`Node not found: ${entityId}`);
+  if (declared.nodeType && node.type !== declared.nodeType) {
+    throw new Error(
+      `Node ${entityId} has type "${node.type}", but kind ${declared.kind} projects "${declared.nodeType}".`,
+    );
+  }
+  const content = textContentFromNode(node);
+  return {
+    content,
+    revision: node.readToken ?? textReadToken({ projectId: context.projectId, nodeId: entityId, content }),
+    immutable: node.immutable ?? false,
+  };
+}
+
+/**
+ * Writes an edited projection back to the entity it came from, under the revision the pull saw.
+ *
+ * Symmetric with {@link readProjection}: the CAS check above is identical for every kind, and only
+ * the entity's own write differs. Keeping both halves dispatched on the same declared `source` is
+ * what makes one pair of commands enough -- otherwise every new projectable entity needs its own
+ * pull and apply, which is how `timeline` and `director` each ended up with a command pair that
+ * does what this one does.
+ */
+async function writeProjection(
+  declared: ProjectionKind,
+  context: ResolvedProjectContext,
+  entityId: string,
+  content: string,
+  observedVersion: string,
+  filePath: string,
+): Promise<{ version: string; textRevision?: Parameters<typeof registerTextRevisionIndex>[0]; mutation?: Record<string, unknown> }> {
+  if (declared.source.from === "host-entity") {
+    if (declared.source.entity === "timeline") {
+      const applied = await applyTimelineProjection({
+        context,
+        timelineId: entityId,
+        content,
+        observedVersion,
+        filePath,
+      });
+      return { version: applied.version };
+    }
+    throw new Error(`Projection kind ${declared.kind} has no host writer.`);
+  }
+
+  const actor = await resolveCanvasActor();
+  const result = await applyTextContent(context.projectId, entityId, content, {
+    observedVersion,
+    filePath,
+    cwd: process.cwd(),
+    actor,
+  });
+  const applied = result.textRevision ?? createTextAppliedRevision({
+    projectId: context.projectId,
+    nodeId: entityId,
+    cwd: process.cwd(),
+    filePath,
+    content,
+    actor,
+  });
+  return {
+    version: result.readToken ?? result.version
+      ?? textReadToken({ projectId: context.projectId, nodeId: entityId, content }),
+    textRevision: applied,
+    mutation: result as unknown as Record<string, unknown>,
+  };
+}
+
+/**
  * Observations are concurrency evidence, not permissions -- so they are recorded
  * and required for every client, not only agent-tagged ones. That is what lets
  * the projection loop close without exposing a read token.
@@ -160,14 +285,8 @@ async function requireProjectionObservation(
   return observation.revision;
 }
 
-function requireCanvasNodeKind(kind: string) {
-  const declared = getProjectionKind(kind);
-  if (declared.idKind !== "canvas-node") {
-    throw new Error(
-      `Kind ${kind} is a ${declared.idKind} entity; use \`clash ${declared.idKind === "timeline" ? "timeline" : "director"} pull/apply\` for its lifecycle-bearing commands.`,
-    );
-  }
-  return declared;
+function requireProjectionKind(kind: string) {
+  return getProjectionKind(kind);
 }
 
 projectionCommand
@@ -180,23 +299,13 @@ projectionCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     try {
-      const declared = requireCanvasNodeKind(options.kind);
+      const declared = requireProjectionKind(options.kind);
       const context = await resolveCanvasProjectContext(options);
       const projectId = context.projectId;
       const filePath = options.file
         ?? projectionFilePath({ cwd: process.cwd(), kind: declared.kind, entityId: options.id });
 
-      const node = await readNode(projectId, options.id);
-      if (!node) throw new Error(`Node not found: ${options.id}`);
-      if (declared.nodeType && node.type !== declared.nodeType) {
-        throw new Error(
-          `Node ${options.id} has type "${node.type}", but kind ${declared.kind} projects "${declared.nodeType}".`,
-        );
-      }
-
-      const content = textContentFromNode(node);
-      const version = node.readToken
-        ?? textReadToken({ projectId, nodeId: options.id, content });
+      const { content, revision: version, immutable } = await readProjection(declared, context, options.id);
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, content, "utf8");
       await recordProjectionObservation(context, declared.kind, options.id, version);
@@ -209,7 +318,7 @@ projectionCommand
         filePath,
         version,
         contentHash: textHash(content),
-        immutable: node.immutable ?? false,
+        immutable,
       };
       if (isJsonMode(options)) printJson(payload);
       else process.stderr.write(`wrote ${filePath}\n`);
@@ -229,49 +338,36 @@ projectionCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     try {
-      const declared = requireCanvasNodeKind(options.kind);
+      const declared = requireProjectionKind(options.kind);
       const context = await resolveCanvasProjectContext(options);
       const projectId = context.projectId;
       const filePath = options.file
         ?? projectionFilePath({ cwd: process.cwd(), kind: declared.kind, entityId: options.id });
-      const actor = await resolveCanvasActor();
-
       // Implicit CAS with no agent-visible token: the pull recorded what was
       // read, and this write must still match it.
       const expectedVersion = await requireProjectionObservation(context, declared.kind, options.id);
       const content = readFileSync(filePath, "utf8");
-      const result = await applyTextContent(projectId, options.id, content, {
-        observedVersion: expectedVersion,
-        filePath,
-        cwd: process.cwd(),
-        actor,
-      });
-
-      const revision = result.textRevision ?? createTextAppliedRevision({
-        projectId,
-        nodeId: options.id,
-        cwd: process.cwd(),
-        filePath,
-        content,
-        actor,
-      });
-      await recordProjectionObservation(
+      const written = await writeProjection(
+        declared,
         context,
-        declared.kind,
         options.id,
-        result.readToken ?? result.version
-          ?? textReadToken({ projectId, nodeId: options.id, content }),
+        content,
+        expectedVersion,
+        filePath,
       );
-      const revisionIndex = await registerTextRevisionIndex(revision, content);
+      await recordProjectionObservation(context, declared.kind, options.id, written.version);
+      const revisionIndex = written.textRevision
+        ? await registerTextRevisionIndex(written.textRevision, content)
+        : undefined;
 
       const payload = {
-        ...publicTextMutationResult(result),
+        ...(written.mutation ? publicTextMutationResult(written.mutation) : { applied: true as const }),
         kind: declared.kind,
         projectId,
         entityId: options.id,
         filePath,
-        revision,
-        revisionIndex,
+        revision: written.version,
+        ...(revisionIndex ? { revisionIndex } : {}),
         contentHash: textHash(content),
       };
       if (isJsonMode(options)) printJson(payload);

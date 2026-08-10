@@ -18,6 +18,34 @@ import { requireAgentObservation, recordAgentObservation } from "../lib/agent-wo
  * One generic verb set over every declared metadata kind. `--kind` is a
  * parameter, never a command name, so declaring a new kind adds no CLI surface.
  */
+/**
+ * Reads one asset's metadata body as editable text, and the identity a write back is checked
+ * against.
+ *
+ * Extracted so `projection pull` reaches metadata the same way `metadata get --body` does. Metadata
+ * is projectable because it is authored: a description is written, and a transcript the host
+ * produced is still corrected by hand. What is not projectable is the media itself -- bytes are not
+ * text, and the CAS owns them.
+ */
+export async function readAssetMetadataProjection(options: {
+  cwd: string;
+  assetId: string;
+  metadataKind: string;
+  assetsPath?: string;
+}): Promise<{ content: string; revision: string }> {
+  const { manifest } = await readAssetManifest(options.cwd, options.assetsPath);
+  const asset = manifest.assets?.find((candidate) => candidate.id === options.assetId);
+  if (!asset) throw new Error(`Asset ${options.assetId} not found`);
+  const attached = asset.metadata?.[options.metadataKind];
+  if (!attached) throw new Error(`Asset ${options.assetId} has no ${options.metadataKind} metadata`);
+  const bodyHash = (attached as { bodyHash?: unknown }).bodyHash;
+  if (typeof bodyHash !== "string") {
+    throw new Error(`${options.metadataKind} on ${options.assetId} has no stored body`);
+  }
+  const body = await readAssetMetadataBody({ contentHash: bodyHash });
+  return { content: `${JSON.stringify(body, null, 2)}\n`, revision: bodyHash };
+}
+
 export const assetMetadataCommand = new Command("metadata")
   .description("Read and attach declared metadata on an asset");
 

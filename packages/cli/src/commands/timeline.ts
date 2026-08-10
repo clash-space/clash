@@ -269,7 +269,51 @@ function timelinePosition(value: unknown, option: string): number {
   return parsed;
 }
 
-async function listTimelineEntities(
+/**
+ * Applies an edited Timeline projection under an already-established observation.
+ *
+ * Extracted so the generic `projection apply` can write a Timeline the same way this command does.
+ * The observation is passed in rather than recorded here: the CAS rule is the projection loop's,
+ * identical for every kind, and duplicating it per entity is what produced two commands doing one
+ * job.
+ */
+export async function applyTimelineProjection(options: {
+  context: ResolvedProjectContext;
+  timelineId: string;
+  content: string;
+  observedVersion: string;
+  filePath: string;
+}): Promise<{ version: string }> {
+  const parsed = parseTimelineFileForApply(options.content);
+  if (!parsed.ok) throw new Error(parsed.error);
+  let result: TimelineWorkspaceResult;
+  if (isDaemonRunning(options.context.projectId)) {
+    result = await sendCommand(options.context.projectId, {
+      action: "update_timeline_state",
+      timelineId: options.timelineId,
+      state: parsed.dsl,
+      sourceNodeIds: parsed.sources,
+      actorClientType: resolveCanvasPresenceOptions().clientType,
+      observedVersion: options.observedVersion,
+      ifMatch: options.observedVersion,
+    }) as TimelineWorkspaceResult;
+  } else {
+    assertTimelineEntityHostWrite("Timeline apply");
+    const client = await connectToProject(options.context.projectId);
+    try {
+      const updated = client.updateTimelineState(options.timelineId, parsed.dsl);
+      result = updated.ok
+        ? { timeline: updated.timeline, version: projectTimelineReadToken(updated.timeline) }
+        : { error: updated.error };
+    } finally {
+      await client.disconnect();
+    }
+  }
+  if (result.error) throw new Error(result.error);
+  return { version: result.version ?? "" };
+}
+
+export async function listTimelineEntities(
   context: ResolvedProjectContext,
   transport: TimelineDaemonTransport = defaultTimelineDaemonTransport,
 ): Promise<{ timelines: ProjectTimeline[]; versions: Record<string, string> }> {
