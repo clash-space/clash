@@ -542,6 +542,12 @@ export {
   type CredentialSourceKind,
 } from './credential-sources';
 
+export {
+  MINIMAX_ENDPOINTS,
+  minimaxBaseUrl,
+  type MinimaxRegion,
+} from './minimax-region';
+
 
 export {
   CANONICAL_RESOLUTION_TIERS,

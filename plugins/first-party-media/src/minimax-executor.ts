@@ -46,6 +46,12 @@ type FetchLike = (url: string, init?: {
   text(): Promise<string>;
 }>;
 
+/**
+ * MiniMax answers on two hosts and an account works on exactly one of them: `minimax.io` for the
+ * international service, `minimaxi.com` for the domestic one. The host is chosen by whoever holds
+ * the account and arrives as `baseUrl`; this constant is only the fallback for accounts recorded
+ * before that choice existed.
+ */
 const DEFAULT_BASE_URL = "https://api.minimax.io";
 
 function apiUrl(baseUrl: string | undefined, path: string): string {
@@ -194,6 +200,24 @@ export async function minimaxSubmit(options: {
   return { status: "accepted", pollState: { taskId } };
 }
 
+/**
+ * The states MiniMax uses while a task is still alive.
+ *
+ * Named positively, because the alternative — accept anything that is not `succeeded` — hands every
+ * word nobody has thought about yet to another poll. A state MiniMax adds later, or spells
+ * differently for a new model family, would then be asked about until the host's own budget ran out,
+ * with nothing to show for it: the node sits at `generating` and no error is ever raised.
+ *
+ * Three names, each with evidence. `queued` is what a missing status already defaults to, in the
+ * moments after submission before MiniMax fills the field in. `processing` and `running` are both
+ * observed intermediate states — the second from the sibling H3 implementation in api-cf, which
+ * polls through it on the way to `succeeded`.
+ *
+ * Deliberately short. A state that is really still running costs one loud error on a run someone
+ * can fix; the same state assumed to be running costs an indefinite wait that says nothing.
+ */
+const RUNNING_STATUSES = new Set(["queued", "processing", "running"]);
+
 export type MinimaxPollResult =
   | { status: "accepted"; pollState: MinimaxPollState }
   | { status: "completed"; media: MinimaxVideoMedia; taskId: string };
@@ -230,9 +254,18 @@ export async function minimaxPoll(options: {
         : status;
     throw new Error(`MiniMax video generation failed: ${detail}`);
   }
-  if (status !== "succeeded") {
+  if (RUNNING_STATUSES.has(status)) {
     // Unchanged state: MiniMax identifies the task the same way for as long as it exists.
     return { status: "accepted", pollState: options.state };
+  }
+  if (status !== "succeeded") {
+    // Neither finished, nor failed, nor a state this executor can vouch for as still running. The
+    // quoted spelling is what MiniMax actually sent, so whoever reads this can add it here or find
+    // out what it means.
+    throw new Error(
+      `MiniMax reported status "${String(task.status)}" for task ${taskId}, which this executor `
+        + "does not recognise. Refusing to keep waiting on a task whose state is unknown.",
+    );
   }
 
   const url = nested(task, "content")?.url;

@@ -223,6 +223,32 @@ describe("gemini omni executor", () => {
       await expect(geminiPoll({ state, apiKey, fetch: fetch as never }))
         .rejects.toThrow(/without a video/i);
     });
+
+    it("ends the wait on a status it cannot place, quoting what Google said", async () => {
+      // The check used to read `anything that is not success is still running`, which sounds careful
+      // and hands every unfamiliar word an unbounded wait: a state added upstream, a spelling that
+      // differs by model family, a refusal phrased in a way this list never learned. Nothing
+      // surfaces — the interaction is dead, the host keeps asking, the node sits at generating.
+      //
+      // Quoting the status is what makes the error actionable: the reader learns the exact word to
+      // add, rather than being told a generation failed and going to look at the prompt.
+      const fetch = async () => jsonResponse({
+        id: "interactions/abc",
+        status: "THROTTLED_PENDING_REVIEW",
+      });
+      await expect(geminiPoll({ state, apiKey, fetch: fetch as never }))
+        .rejects.toThrow(/THROTTLED_PENDING_REVIEW.*does not recognise/is);
+    });
+
+    it("still waits on the running states it does name", async () => {
+      // The inversion is only safe if the states that genuinely mean progress are still recognised;
+      // otherwise every ordinary generation dies on its first poll.
+      for (const status of ["queued", "in_progress"]) {
+        const fetch = async () => jsonResponse({ id: "interactions/abc", status });
+        const result = await geminiPoll({ state, apiKey, fetch: fetch as never });
+        expect(result.status, status).toBe("accepted");
+      }
+    });
   });
 
   describe("poll, waiting on the Files API", () => {
@@ -314,6 +340,22 @@ describe("gemini omni executor", () => {
       const fetch = async () => jsonResponse({ state: "FAILED" });
       await expect(geminiPoll({ state: fileState, apiKey, fetch: fetch as never }))
         .rejects.toThrow(/file processing failed/i);
+    });
+
+    it("ends the second wait too, on a file state it cannot place", async () => {
+      // Gemini's two waits strand a render in the same way. A file left in a state nobody named is
+      // a finished, billed video that never becomes downloadable, and polling it forever says so to
+      // no one.
+      const fileState: GeminiPollState = {
+        phase: "file",
+        interactionId: "interactions/abc",
+        fileId: "vid123",
+        filesBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+        mimeType: "video/mp4",
+      };
+      const fetch = async () => jsonResponse({ state: "QUARANTINED" });
+      await expect(geminiPoll({ state: fileState, apiKey, fetch: fetch as never }))
+        .rejects.toThrow(/QUARANTINED.*does not recognise/is);
     });
   });
 

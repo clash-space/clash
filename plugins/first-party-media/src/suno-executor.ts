@@ -52,6 +52,32 @@ const TERMINAL_FAILURES = new Set([
   "SENSITIVE_WORD_ERROR",
 ]);
 
+/**
+ * Statuses worth asking again about. Everything outside this set ends the wait.
+ *
+ * Only `PENDING` is named because only `PENDING` is evidenced: it is the value this file substitutes
+ * when Suno omits the status entirely, and it is the one running state the tests exercise. Adding
+ * states nobody here has observed would be guessing about a provider, and a guess that reads as
+ * still-running is exactly the guess that costs nothing to make and everything to be wrong about.
+ *
+ * The direction matters more than the contents. Asking "is this one of the states I know are
+ * running?" bounds the wait to what someone considered. Asking "is this not SUCCESS?" -- which is
+ * what stood here -- hands every unfamiliar word an unbounded wait: a state Suno adds later, a
+ * spelling that differs between model families, a terminal failure phrased in a way
+ * `TERMINAL_FAILURES` never learned. The node sits at generating and nothing happens, which is the
+ * one failure here with no symptom.
+ *
+ * The cloud path this was ported from hid that behind a 120-attempt ceiling, so the mistake ended
+ * itself after ten minutes. The split removed the ceiling along with the loop, and the host that
+ * now schedules the asking has no vocabulary for this provider and cannot supply one.
+ *
+ * Naming too few is the cheap direction to be wrong in: an unrecognised status arrives as an error
+ * quoting the word itself, on a run someone can look at, and adding it here is one line.
+ */
+const RUNNING_STATUSES = new Set([
+  "PENDING",
+]);
+
 function normalizeBaseUrl(baseUrl: string | undefined): string {
   return (baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
@@ -156,9 +182,17 @@ export async function sunoPoll(options: {
       : status;
     throw new Error(`Suno API generation failed: ${reason}`);
   }
-  if (status !== "SUCCESS") {
+  if (RUNNING_STATUSES.has(status)) {
     // Unchanged state: Suno identifies the task the same way for as long as it exists.
     return { status: "accepted", pollState: options.state };
+  }
+  if (status !== "SUCCESS") {
+    // Neither running, nor finished, nor a failure this file knows by name. Continuing to poll
+    // would be waiting on a state nobody can say is still alive.
+    throw new Error(
+      `Suno API task ${taskId} reported status "${status}", which this executor does not recognise. `
+      + "Refusing to keep waiting on a task whose state is unknown.",
+    );
   }
 
   const song = firstSong(data);

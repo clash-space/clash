@@ -50,6 +50,16 @@ type FetchLike = (url: string, init?: {
 }>;
 
 /**
+ * The `done` values that mean the render is still in flight.
+ *
+ * There is no status word to enumerate here. An Operation reports progress through `done`, which is
+ * absent while the job runs and `false` when Vertex spells it out; those two are the whole set.
+ * Naming it as a set is the point. `done` merely being falsy used to stand for "still running",
+ * which quietly handed every reply that was not an Operation an unbounded wait.
+ */
+const RUNNING_DONE_VALUES: readonly unknown[] = [undefined, false];
+
+/**
  * Vertex spells the global endpoint as the bare host; every other location is a prefix.
  *
  * Prefixing `global` produces a hostname that does not resolve, and an operation started against
@@ -144,10 +154,27 @@ export async function googleagentPoll(options: {
   });
   const operation = await readOperation(response, "poll");
 
-  if (!operation.done) {
-    // Vertex signals progress by omitting `done`, not by naming a state, so anything short of done
-    // is still running. Unchanged state: the operation keeps its name for as long as it exists.
-    return { status: "accepted", pollState: options.state };
+  const done = operation.done;
+
+  if (done !== true) {
+    // Accepted is returned only for a reply this executor can place: one that names the operation it
+    // asked about and has not reported done. Unchanged state -- the operation keeps its name for as
+    // long as it exists.
+    //
+    // The inverse used to be here, and it is the one mistake in polling with no symptom. Treating
+    // whatever is not done as still running means anything shaped differently from an Operation --
+    // most concretely the model's own metadata, which is what this path answers with when asked as
+    // a GET, and which never carries `done` -- is polled forever while the render it was meant to
+    // track has already finished or failed. The node sits at generating and nothing happens.
+    if (RUNNING_DONE_VALUES.includes(done) && operation.name === operationName) {
+      return { status: "accepted", pollState: options.state };
+    }
+    throw new Error(
+      `Google Cloud Agent Platform video poll for ${operationName} returned a reply this executor `
+      + `does not recognise as that operation still running: done=${JSON.stringify(done)}, `
+      + `name=${JSON.stringify(operation.name)}. Refusing to keep waiting on work whose state is `
+      + "unknown.",
+    );
   }
 
   if (operation.error) {

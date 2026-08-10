@@ -1,3 +1,5 @@
+import { MINIMAX_ENDPOINTS } from "@clash/shared-types";
+
 export interface MiniMaxAudioParams {
   prompt: string;
   modelName?: string;
@@ -11,7 +13,8 @@ export interface MiniMaxAudioResult {
   model: string;
 }
 
-const DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io";
+/** The international host, kept as the fallback for accounts recorded before regions existed. */
+const DEFAULT_MINIMAX_BASE_URL = MINIMAX_ENDPOINTS.global;
 const MINIMAX_MODEL_MAP: Record<string, string> = {
   "minimax-tts": "speech-02-hd",
 };

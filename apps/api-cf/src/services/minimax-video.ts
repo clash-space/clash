@@ -1,4 +1,4 @@
-import type { OrderedPromptContentPart } from "@clash/shared-types";
+import { minimaxBaseUrl, type OrderedPromptContentPart } from "@clash/shared-types";
 import { buildMiniMaxH3Content } from "@clash/shared-runtime";
 
 export interface MiniMaxVideoParams {
@@ -28,8 +28,8 @@ export interface MiniMaxVideoResult {
   ratio?: string;
 }
 
-function normalizeBaseUrl(baseUrl: string | undefined): string {
-  return (baseUrl || "https://api.minimax.io").replace(/\/+$/, "");
+function normalizeBaseUrl(baseUrl: string | undefined, region?: string): string {
+  return minimaxBaseUrl(region, baseUrl);
 }
 
 async function parseResponse(response: Response, operation: string): Promise<any> {

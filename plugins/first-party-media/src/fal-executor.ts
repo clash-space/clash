@@ -36,6 +36,23 @@ type FetchLike = (url: string, init?: {
 
 const DEFAULT_QUEUE_BASE_URL = "https://queue.fal.run";
 
+/**
+ * The states fal keeps a job in while it is still working.
+ *
+ * Named positively, so that accepting more waiting is a decision rather than a fallthrough. Written
+ * the other way round -- `status !== "COMPLETED"` -- every word fal might add later reads as
+ * still-running: a state introduced upstream, a spelling that differs between model families, a
+ * terminal failure phrased unfamiliarly. That is the one mistake in polling with no symptom. The
+ * host keeps asking about a request that may already have died, the node sits at generating, and
+ * nothing ever happens.
+ *
+ * Two names, because two are all there is evidence for: fal's queue status is a closed union in this
+ * repo's own mock of it, IN_QUEUE and IN_PROGRESS ahead of COMPLETED, and the loop this executor
+ * replaced seeded itself with IN_QUEUE. Naming fewer is the safe direction -- an unfamiliar status
+ * surfaces loudly and can be added, where a guessed one silently resumes the endless wait.
+ */
+const RUNNING_STATUSES = new Set(["IN_QUEUE", "IN_PROGRESS"]);
+
 function queueUrl(baseUrl: string | undefined, path: string): string {
   const base = (baseUrl ?? DEFAULT_QUEUE_BASE_URL).replace(/\/+$/, "");
   return `${base}/${path.replace(/^\/+/, "")}`;
@@ -104,9 +121,15 @@ export async function falPoll(options: {
   if (status === "FAILED" || status === "ERROR") {
     throw new Error(`fal request failed: ${String(statusBody.error ?? status)}`);
   }
-  if (status !== "COMPLETED") {
+  if (RUNNING_STATUSES.has(status)) {
     // Unchanged state: fal identifies the job the same way for as long as it exists.
     return { status: "accepted", pollState: options.state };
+  }
+  if (status !== "COMPLETED") {
+    throw new Error(
+      `fal request ${requestId} reported status "${status}", which this executor does not `
+      + "recognise. Refusing to keep waiting on a request whose state is unknown.",
+    );
   }
 
   const resultBody = await readJson(

@@ -86,6 +86,24 @@ const SUCCESS_STATUSES = ["completed", "succeeded", "success"];
  */
 const TERMINAL_STATUSES = ["failed", "cancelled", "canceled", "error", "incomplete"];
 
+/**
+ * Status values that mean the render is still moving, and the only ones worth another poll.
+ *
+ * Named positively on purpose. Written the other way round — anything that is not one of the three
+ * success spellings is still running — the check reads as careful and hands every word nobody has
+ * thought of yet an unbounded wait: a state Google adds later, a spelling that differs between
+ * model families, a refusal phrased unfamiliarly. That failure has no symptom. The interaction is
+ * dead, the host keeps asking, and the node sits at generating until something else gives up.
+ *
+ * The list is short because these two are what there is evidence for. Naming a state that is not
+ * really a state would put the same silent wait back for that word alone; an unfamiliar one
+ * surfacing loudly costs a single error that quotes it, on a run someone can fix.
+ */
+const RUNNING_STATUSES = ["queued", "in_progress"];
+
+/** File states worth another poll. `ACTIVE` completes and `FAILED` throws; nothing else is known. */
+const RUNNING_FILE_STATES = ["PROCESSING"];
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
@@ -326,9 +344,17 @@ export async function geminiPoll(options: {
   if (TERMINAL_STATUSES.includes(status)) {
     throw new Error(failureMessage(interaction, status));
   }
-  if (!SUCCESS_STATUSES.includes(status)) {
+  if (RUNNING_STATUSES.includes(status)) {
     // Unchanged state: Google keeps naming the interaction the same way for as long as it exists.
     return { status: "accepted", pollState: options.state };
+  }
+  if (!SUCCESS_STATUSES.includes(status)) {
+    // Neither finished, nor failed, nor a state this executor can place. Ending the wait here is
+    // the whole point: the alternative is asking about it forever and reporting nothing.
+    throw new Error(
+      `Gemini Omni interaction ${id} reported status "${status}", which this executor does not `
+        + "recognise. Refusing to keep waiting on a state it cannot place.",
+    );
   }
 
   const output = findVideo(interaction.steps) ?? findVideo(interaction);
@@ -418,8 +444,16 @@ async function pollFile(
   if (fileState === "FAILED") {
     throw new Error("Gemini Omni generated video file processing failed.");
   }
-  if (fileState !== "ACTIVE") {
+  if (RUNNING_FILE_STATES.includes(fileState)) {
     return { status: "accepted", pollState: state };
+  }
+  if (fileState !== "ACTIVE") {
+    // The second wait can strand a render exactly like the first one can. A file stuck in a state
+    // nobody named is a finished, billed video that never becomes downloadable.
+    throw new Error(
+      `Gemini Omni file ${state.fileId} reported state "${fileState}", which this executor does not `
+        + "recognise. Refusing to keep waiting on a state it cannot place.",
+    );
   }
   return {
     status: "completed",

@@ -100,6 +100,20 @@ describe("minimax executor", () => {
         .rejects.toThrow(/cancelled/);
     });
 
+    it("ends the wait on a status it cannot place, quoting what MiniMax sent", async () => {
+      // The mistake this guards against has no symptom. `status !== "succeeded"` reads as careful
+      // and hands every unfamiliar word to another poll: a state MiniMax adds later, or spells
+      // differently for a new model family, would be asked about until the host's budget ran out
+      // while the node sat at generating and nothing was ever raised.
+      //
+      // Quoting the spelling MiniMax actually used is the point of the message — it is what lets
+      // whoever reads it decide whether to add the state here or find out why it appeared.
+      const state: MinimaxPollState = { taskId: "task-9" };
+      const fetch = async () => jsonResponse({ task: { status: "Preparing" } });
+      await expect(minimaxPoll({ state, apiKey, fetch: fetch as never }))
+        .rejects.toThrow(/"Preparing".*does not recognise/s);
+    });
+
     it("returns the media url once MiniMax reports success", async () => {
       const state: MinimaxPollState = { taskId: "task-9" };
       const calls: string[] = [];

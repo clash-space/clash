@@ -66,6 +66,30 @@ describe("fal executor", () => {
       .rejects.toThrow(/capacity|FAILED/);
   });
 
+  it("ends the wait on a status it cannot place, quoting what fal said", async () => {
+    // Waiting is granted to the states fal is known to queue work in, not withheld from the one
+    // state that means finished. The difference only shows up on a word nobody anticipated, and
+    // that is precisely when it matters: under the old test this returned `accepted` and the host
+    // went on asking forever about a request that may already have died, with the node stuck at
+    // generating and no error anywhere to explain it.
+    //
+    // Quoting the status is what makes the failure actionable -- whoever reads it learns the word
+    // to add rather than that something unspecified went wrong.
+    const state: FalPollState = { requestId: "req-1", endpoint };
+    const fetch = async () => jsonResponse({ status: "THROTTLED_PENDING_REVIEW" });
+    await expect(falPoll({ state, apiKey, kind: "video", fetch: fetch as never }))
+      .rejects.toThrow(/THROTTLED_PENDING_REVIEW/);
+  });
+
+  it("keeps waiting while fal reports the job queued", async () => {
+    // IN_QUEUE is the state fal opens with, so treating it as unrecognised would fail every
+    // generation on its first status check.
+    const state: FalPollState = { requestId: "req-1", endpoint };
+    const fetch = async () => jsonResponse({ status: "IN_QUEUE", queue_position: 0 });
+    const result = await falPoll({ state, apiKey, kind: "video", fetch: fetch as never });
+    expect(result.status).toBe("accepted");
+  });
+
   it("returns the media url once fal reports completion", async () => {
     const state: FalPollState = { requestId: "req-1", endpoint };
     const calls: string[] = [];

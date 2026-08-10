@@ -1728,6 +1728,14 @@ type ModelProviderCredentialField = {
     ariaLabel?: string;
     placeholder?: string;
     allowMultiple?: boolean;
+    /**
+     * A closed set of answers, rendered as a choice rather than a text field.
+     *
+     * Some account facts are not secrets to paste but selections from a list the provider defines —
+     * which of two services an account belongs to, for one. Asking for those as free text invites a
+     * typo in the character that distinguishes them, and tells nobody the alternative exists.
+     */
+    options?: { value: string; label: string }[];
 };
 
 type ModelProviderSetup = {
@@ -1929,6 +1937,26 @@ function modelProviderSetup(provider: Pick<ModelProviderAccountInfo, 'providerId
             title: 'MiniMax',
             description: 'Official MiniMax speech generation through Clash-hosted execution.',
             apiKey: 'apiKey',
+            credentials: [
+                {
+                    key: 'apiKey',
+                    label: 'API key',
+                    ariaLabel: 'MiniMax API key',
+                    allowMultiple: true,
+                },
+                {
+                    // Not a preference. A key issued by one service is unknown to the other, and the
+                    // rejection arrives as an authentication error naming neither, so the wrong
+                    // answer here looks exactly like a bad key.
+                    key: 'region',
+                    label: 'Service',
+                    ariaLabel: 'MiniMax service region',
+                    options: [
+                        { value: 'global', label: 'International (api.minimax.io)' },
+                        { value: 'cn', label: 'Mainland China (api.minimaxi.com)' },
+                    ],
+                },
+            ],
         };
     }
     if (provider.providerId === 'jimeng') {
@@ -3747,6 +3775,19 @@ function ModelRoutingSection({
                     {credentialFields.map((credential, index) => (
                         <label key={credential.key} className="block">
                             <span className="mb-1 block text-xs font-medium text-stone-500 dark:text-stone-400">{credential.label}</span>
+                            {credential.options ? (
+                                // Not every account fact is a secret to paste. A closed set is
+                                // rendered as a choice: masking it would hide the answer from the
+                                // person checking it, and a text field would invite a typo in the
+                                // one character that separates two services.
+                                <SelectMenu
+                                    ariaLabel={credential.ariaLabel ?? `${setup.title} ${credential.label}`}
+                                    value={draft.apiKeys?.[credential.key] ?? credential.options[0]?.value ?? ''}
+                                    onValueChange={(value) => updateCredentialDraft(credential.key, value)}
+                                    options={credential.options}
+                                    variant="field"
+                                />
+                            ) : (
                             <span className="relative block">
                                 <Input
                                     aria-label={credential.ariaLabel ?? `${setup.title} ${credential.label}`}
@@ -3760,6 +3801,7 @@ function ModelRoutingSection({
                                 />
                                 <Eye className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
                             </span>
+                            )}
                         </label>
                     ))}
                     {setup.baseUrlKey && (

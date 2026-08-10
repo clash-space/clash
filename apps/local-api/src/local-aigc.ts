@@ -15,6 +15,7 @@ import {
   type ProviderUsageAuditEvent,
   type ExecutablePluginBinding,
   type ExecutablePluginReference,
+  minimaxBaseUrl,
 } from "@clash/shared-types";
 import {
   buildMiniMaxH3Content,
@@ -2039,7 +2040,13 @@ async function generateMiniMaxMedia(
   apiKey: string,
   accountBaseUrl?: string,
 ): Promise<MockMediaGenerationCompleted> {
-  const baseUrl = normalizeBaseUrl(accountBaseUrl || options.minimaxBaseUrl, "https://api.minimax.io");
+  // Which MiniMax answers depends on where the account was issued: an international key is not
+  // recognised by the domestic host, and the refusal arrives as an authentication error naming
+  // neither. An explicit base url still wins, because that is a proxy, not a region.
+  const baseUrl = normalizeBaseUrl(
+    accountBaseUrl || options.minimaxBaseUrl,
+    minimaxBaseUrl(route.region),
+  );
   const headers = {
     authorization: `Bearer ${apiKey}`,
     "content-type": "application/json",
