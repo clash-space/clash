@@ -188,50 +188,38 @@ when it does not. The threshold is not a duration to tune: it is whether losing 
 mid-call would lose the work. If it would, the work needs a name the host can keep.
 
 
+
 ## Saying what the provider said
 
-The three states are the host's: `running`, `completed`, `failed`. A provider's own words are its
-own — `IN_QUEUE`, `PENDING`, `submitted`, `processing` and `RUNNING` all describe the first one, and
-which of them you get depends on the model family.
+Whether a generation is still alive is your plugin's answer, written in code, next to the response
+it read. It cannot be a table of words somewhere else, because a status is rarely one word: Hub
+reports `message="success"` on the envelope while the task underneath has failed, MiniMax carries a
+second verdict in `base_resp.status_code`, and KIE and Suno bury application failures inside HTTP
+200. A mapping from a flat string cannot describe any of those, and a plugin forced to fill one in
+would be answering a different question than the one being asked.
 
-So a pollable entry declares the translation in its manifest, and reports the provider's word
-untranslated in its result:
+What the protocol fixes is the shape of your answer -- `completed`, `accepted`, `failed` -- and one
+rule about the last of them:
 
-```json
-{
-  "id": "hub-execute",
-  "kind": "provider-executor",
-  "handler": "execute",
-  "operations": ["submit", "poll"],
-  "statusMapping": {
-    "running": ["processing", "queued", "in_progress"],
-    "completed": ["success", "completed"],
-    "failed": ["failed", "canceled", "insufficient_balance"]
-  }
-}
-```
+**A status you do not recognise is a failure, not a wait.**
+
+The tempting default runs the other way. Listing the words you know and letting everything else mean
+"not finished yet" reads as cautious, and it is the one mistake here with no symptom: a state added
+upstream next month, a spelling off by a letter, a terminal failure phrased unfamiliarly, and the
+host keeps asking about work that has already died while the node sits at generating and nothing
+ever happens.
 
 ```ts
-return { status: "accepted", pollState: { taskId }, providerStatus: raw.status };
+if (!RUNNING_STATUSES.has(status)) {
+  throw new Error(`Task ${id} reported status "${status}", which this plugin does not recognise.`);
+}
+return { status: "accepted", pollState: { taskId: id } };
 ```
 
-The host reads one against the other. This is not ceremony: deciding whether a generation is alive
-is not shape translation, and a plugin left to decide reaches for the same rule every time —
-*anything I do not recognise is still running*. That rule is wrong in the one direction that costs
-money. A status introduced upstream next month, a spelling that differs by a letter, a terminal
-failure phrased in a way the list never learned: each becomes an unbounded wait for work that has
-already died, and the only symptom is that nothing ever happens.
+Being wrong in this direction costs one surfaced error naming the word you did not handle, on a run
+someone can fix. Being wrong in the other costs an indefinite wait that names nothing. Those are not
+comparable.
 
-Inverting it costs a surfaced error naming the word you did not map, on a run you can fix. Those are
-not comparable, so an unmapped status is `failed`.
-
-Two rules follow, both enforced at activation rather than discovered in someone's paid generation:
-
-- an entry that declares `poll` must declare `statusMapping` — polling reads the answer against
-  something, or it reads it against nothing;
-- an entry that does not poll must not declare one — a vocabulary nothing reads looks like the
-  question was considered.
-
-Every state needs at least one word. A mapping with no failure words cannot report a failure, and a
-dead job would then sit until the host's own deadline expires. That deadline exists for silence, not
-as a substitute for reading what the provider said.
+The host bounds the silence as a backstop -- forty-five minutes, against a longest-measured
+generation of 275 seconds -- but that is there for a provider that stops answering, not as a
+substitute for reading what it said.

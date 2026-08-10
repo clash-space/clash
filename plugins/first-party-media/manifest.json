@@ -155,32 +155,7 @@
         "operations": [
           "submit",
           "poll"
-        ],
-        "statusMapping": {
-          "running": [
-            "IN_QUEUE",
-            "IN_PROGRESS",
-            "starting",
-            "processing",
-            "pending",
-            "queued",
-            "submitted"
-          ],
-          "completed": [
-            "COMPLETED",
-            "succeeded",
-            "success",
-            "completed"
-          ],
-          "failed": [
-            "FAILED",
-            "ERROR",
-            "failed",
-            "error",
-            "canceled",
-            "cancelled"
-          ]
-        }
+        ]
       }
     ]
   },
