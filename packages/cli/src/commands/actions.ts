@@ -1142,7 +1142,12 @@ actionsCommand
   .option("--json", "Output as JSON")
   .action(async (options) => {
     if (options.local) {
-      const installed = readLocalInstalls();
+      const installed = await Promise.all(
+        readLocalInstalls().map(async (entry) => ({
+          ...entry,
+          drifted: await localInstallDrift(entry.dir, entry.id),
+        })),
+      );
       if (isJsonMode(options)) {
         printJson(installed);
       } else if (installed.length === 0) {
@@ -1151,7 +1156,11 @@ actionsCommand
       } else {
         for (const a of installed) {
           const version = a.version ? `@${a.version}` : "";
-          console.log(`  🖥  ${(a.name ?? a.id).padEnd(25)} ${a.id}${version}`);
+          const drift = a.drifted ? "  ⚠ differs from its activation receipt" : "";
+          console.log(`  🖥  ${(a.name ?? a.id).padEnd(25)} ${a.id}${version}${drift}`);
+        }
+        if (installed.some((a) => a.drifted)) {
+          console.log("\nReactivate a drifted plugin before editing it: clash action activate <dir>");
         }
         console.log(`\n${installed.length} local action(s) at ${localActionsDir()}`);
       }
@@ -1485,6 +1494,33 @@ async function installFromRegistry(
 }
 
 /** Read every manifest.json under $CLASH_HOME/actions/ for `list --local`. */
+/**
+ * Whether an installed plugin still matches the receipt written when it was activated.
+ *
+ * Drift is otherwise discovered only by `action checkout`, so a package that cannot be edited
+ * lists as healthy and the problem surfaces at the moment the user wanted to do something else.
+ * It is reachable without doing anything unusual: running a build inside managed storage leaves
+ * `.turbo/`, `dist/`, and a bundler config behind, and the content hash stops matching.
+ */
+async function localInstallDrift(dir: string, id: string): Promise<boolean> {
+  try {
+    const receiptPath = executablePluginActivationReceiptPath(localActionsDir(), id);
+    if (!existsSync(receiptPath)) return false;
+    const stored = ExecutablePluginActivationReceiptSchema.parse(
+      JSON.parse(await readFileAsync(receiptPath, "utf8")),
+    );
+    const current = await createExecutablePluginActivationReceipt(dir);
+    return stored.pluginId !== current.pluginId
+      || stored.version !== current.version
+      || stored.schemaHash !== current.schemaHash
+      || stored.contentHash !== current.contentHash;
+  } catch {
+    // A receipt that cannot be read or recomputed is not evidence of drift; checkout reports the
+    // real reason. Listing must not turn an unrelated failure into a scary label.
+    return false;
+  }
+}
+
 function readLocalInstalls(): Array<{
   id: string;
   name?: string;
