@@ -1146,6 +1146,12 @@ export const ExecutablePluginContractTestDocumentSchema = z.object({
       status: z.literal("completed"),
       outputs: z.array(ExecutablePluginOutputSchema).default([]),
     }).strict(),
+    // Pinning what a submit hands back is the only way to catch a plugin that silently changes how
+    // its own poll state is shaped, which would strand every generation already in flight.
+    z.object({
+      status: z.literal("accepted"),
+      pollState: ExecutablePluginJsonValueSchema,
+    }).strict(),
     z.object({
       status: z.literal("failed"),
       error: z.object({

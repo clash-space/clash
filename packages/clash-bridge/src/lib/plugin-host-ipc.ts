@@ -7,12 +7,14 @@ import { dirname, join } from "node:path";
 import {
   ExecutablePluginBindingSchema,
   ExecutablePluginCardRegistrationSchema,
+  ExecutablePluginFunctionExportSchema,
   ExecutablePluginModelBindingRegistrationSchema,
   ExecutablePluginProviderRegistrationSchema,
   ExecutablePluginInvocationSchema,
   ExecutablePluginResultSchema,
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
+  type ExecutablePluginFunctionExport,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginProviderRegistration,
   type ExecutablePluginInvocation,
@@ -25,6 +27,7 @@ export interface PluginInvocationHost {
   listCards(): ExecutablePluginCardRegistration[];
   listProviders?(): ExecutablePluginProviderRegistration[];
   listModelBindings?(): ExecutablePluginModelBindingRegistration[];
+  listFunctionExports?(pluginId: string): ExecutablePluginFunctionExport[];
   resolveBinding(
     pluginId: string,
     exportId: string,
@@ -48,6 +51,9 @@ type PluginHostRequest = PluginHostRequestBase & ({
   operation: "list-providers";
 } | {
   operation: "list-model-bindings";
+} | {
+  operation: "list-function-exports";
+  pluginId: string;
 } | {
   operation: "resolve";
   pluginId: string;
@@ -168,6 +174,14 @@ function parseRequest(value: unknown): PluginHostRequest {
   const request = value as Record<string, unknown>;
   if (request.protocol !== "clash.plugin-host/v1") throw new Error("Unsupported plugin host protocol.");
   const requestId = nonEmptyString(request.requestId, "requestId");
+  if (request.operation === "list-function-exports") {
+    return {
+      protocol: "clash.plugin-host/v1",
+      requestId,
+      operation: "list-function-exports",
+      pluginId: nonEmptyString(request.pluginId, "pluginId"),
+    };
+  }
   if (request.operation === "list-providers" || request.operation === "list-model-bindings") {
     return { protocol: "clash.plugin-host/v1", requestId, operation: request.operation };
   }
@@ -257,6 +271,16 @@ async function handleRequest(host: PluginInvocationHost, input: unknown): Promis
         status: "ok",
         result: ExecutablePluginProviderRegistrationSchema.array().parse(
           host.listProviders?.() ?? [],
+        ),
+      };
+    }
+    if (request.operation === "list-function-exports") {
+      return {
+        protocol: "clash.plugin-host/v1",
+        requestId,
+        status: "ok",
+        result: ExecutablePluginFunctionExportSchema.array().parse(
+          host.listFunctionExports?.(request.pluginId) ?? [],
         ),
       };
     }
@@ -459,6 +483,22 @@ export class PluginHostClient {
       protocol: "clash.plugin-host/v1",
       requestId: randomUUID(),
       operation: "list-model-bindings",
+    }));
+  }
+
+  /**
+   * What one plugin's entry points say they can do.
+   *
+   * Read by the host before it believes an acceptance: a plugin that takes work it cannot be asked
+   * about again has spent money nobody can collect. Declaring this method without implementing it
+   * made every acceptance fail closed, which is the safe direction but not a working one.
+   */
+  async listFunctionExports(pluginId: string): Promise<ExecutablePluginFunctionExport[]> {
+    return ExecutablePluginFunctionExportSchema.array().parse(await this.request({
+      protocol: "clash.plugin-host/v1",
+      requestId: randomUUID(),
+      operation: "list-function-exports",
+      pluginId,
     }));
   }
 

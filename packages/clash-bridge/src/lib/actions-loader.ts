@@ -56,6 +56,7 @@ import {
   type ExecutablePluginBinding,
   type ExecutablePluginCardRegistration,
   type ExecutablePluginProviderRegistration,
+  type ExecutablePluginFunctionExport,
   type ExecutablePluginModelBindingRegistration,
   type ExecutablePluginActivationReceipt,
   type ExecutablePluginCardDocument,
@@ -644,6 +645,21 @@ export class ActionsHost {
         `${right.pluginId}:${right.document.spec.id}`,
       ),
     );
+  }
+
+  /**
+   * What one activated plugin's entry points declare they can answer.
+   *
+   * The host reads this before believing an acceptance. A plugin that takes work without declaring
+   * poll has spent money on a result nobody can collect, and the only cheap moment to notice is
+   * before the node is marked as running.
+   */
+  listFunctionExports(pluginId: string): ExecutablePluginFunctionExport[] {
+    const supervised = this.actions.get(pluginId);
+    if (!supervised) return [];
+    const { manifest } = supervised.loaded;
+    if (!isExecutablePluginManifest(manifest)) return [];
+    return manifest.exports.functions ?? [];
   }
 
   /** Activated provider-side implementations that attach to Cards by id. */

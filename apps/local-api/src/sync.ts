@@ -186,6 +186,7 @@ export class LocalLoroRoom {
   private updateBytesSinceSnapshot = 0;
   private activityThrottle = new Map<string, number>();
   private pendingWorkQueue: Promise<void> = Promise.resolve();
+  private pollTimer: ReturnType<typeof setTimeout> | undefined;
 
   private constructor(
     private readonly projectId: string,
@@ -423,7 +424,45 @@ export class LocalLoroRoom {
   private processPendingWork(): Promise<void> {
     const run = this.pendingWorkQueue.then(() => this.processPendingWorkOnce());
     this.pendingWorkQueue = run.catch(() => undefined);
+    void run.then(() => this.scheduleNextPoll()).catch(() => undefined);
     return run;
+  }
+
+  /**
+   * Comes back for work a provider is still holding.
+   *
+   * Pending work otherwise runs only when the document changes or a room loads, which was enough
+   * while a generation was one long await -- the call that started it also finished it. Once submit
+   * and poll became separate, nothing returned: a node sat at `generating` with its due time ten
+   * minutes past and nobody looking, while the result waited upstream, paid for.
+   *
+   * Woken for the node due soonest rather than on a fixed tick, because the interval is the
+   * provider's to state: a fixed one either wastes requests on a provider that asked for a long
+   * wait or ignores one that asked for a short one.
+   */
+  private scheduleNextPoll(): void {
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+    if (!this.workflowProcessor) return;
+    let earliest = Number.POSITIVE_INFINITY;
+    const nodes = this.doc.getMap("nodes");
+    for (const id of nodes.keys()) {
+      const node = nodes.get(id) as { data?: Record<string, unknown> } | undefined;
+      const data = node?.data;
+      if (!data || data.providerPollState === undefined) continue;
+      const dueAt = typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
+      if (dueAt < earliest) earliest = dueAt;
+    }
+    if (!Number.isFinite(earliest)) return;
+    // A floor, so a provider that asks for no delay cannot turn this into a busy loop.
+    const delay = Math.max(1_000, earliest - Date.now());
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = undefined;
+      void this.processPendingWork();
+    }, delay);
+    this.pollTimer.unref?.();
   }
 
   private async processPendingWorkOnce(): Promise<void> {

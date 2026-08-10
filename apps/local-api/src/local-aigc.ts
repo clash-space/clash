@@ -1492,6 +1492,10 @@ function providerPluginExecutorRequest(
     projectId: input.projectId ?? "local",
     ...(input.nodeId ? { nodeId: input.nodeId } : {}),
     ...(input.pluginBinding ? { binding: input.pluginBinding } : {}),
+    // Carried through untouched. Dropping it here silently turns every resume into a fresh
+    // submission: the node keeps its record, the plugin never sees it, and the same generation is
+    // bought again on every restart.
+    ...(input.pollState === undefined ? {} : { pollState: input.pollState }),
     input: {
       values: {
         modelId: route.modelCode,

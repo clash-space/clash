@@ -139,6 +139,15 @@ function aspectRatioFromData(data: Record<string, unknown>): string | undefined 
  * a request is ever made -- `seedance-2-fast-startend` offers [auto, 4, 6, 8, 10, 15] and
  * was handed 5.
  */
+/**
+ * How long the host will keep asking about accepted work.
+ *
+ * Generous on purpose: the longest legitimate generation measured here was 275 seconds, and video
+ * models under load run longer. This is not a timeout for slow work — it is the point at which
+ * continued silence is better reported than waited on.
+ */
+const PROVIDER_POLL_BUDGET_MS = 45 * 60 * 1000;
+
 export function cardDurationFallback(card: ModelCard): number | string | undefined {
   const declared = card.defaultParams?.duration;
   if (declared !== undefined) return declared as number | string;
@@ -949,6 +958,29 @@ export function createLocalWorkflowProcessor(
           const providerPollState = data.providerPollState;
           const resuming = providerPollState !== undefined;
           if (resuming) {
+            // A plugin decides what its provider's statuses mean by listing the words it knows, so
+            // anything unlisted reads as "not finished". That used to self-correct when the plugin
+            // owned a bounded loop; now that the host does the asking, the same gap polls forever
+            // for a job that already died. The host cannot know the vocabulary, but it can refuse to
+            // wait on silence indefinitely.
+            const acceptedAt = typeof data.providerAcceptedAt === "number"
+              ? data.providerAcceptedAt
+              : Date.now();
+            if (Date.now() - acceptedAt > PROVIDER_POLL_BUDGET_MS) {
+              nodes.set(nodeId, {
+                ...node,
+                data: {
+                  ...data,
+                  status: "failed",
+                  error: `Provider did not reach a final state within ${
+                    Math.round(PROVIDER_POLL_BUDGET_MS / 60000)
+                  } minutes. The work may have finished or failed upstream without a status this `
+                    + "plugin recognises.",
+                },
+              });
+              changed = true;
+              continue;
+            }
             const dueAt = typeof data.providerPollAt === "number" ? data.providerPollAt : 0;
             // Asking sooner than the provider allowed gets the host rate-limited, and a provider
             // that throttles status checks throttles submissions on the same credential.
@@ -983,6 +1015,9 @@ export function createLocalWorkflowProcessor(
                 status: "generating",
                 providerPollState: generated.pollState,
                 providerPollAt: Date.now() + Math.max(1000, generated.retryAfterMs ?? 5000),
+                providerAcceptedAt: typeof data.providerAcceptedAt === "number"
+                  ? data.providerAcceptedAt
+                  : Date.now(),
                 ...(generated.pluginBinding ? { pluginBinding: generated.pluginBinding } : {}),
               },
             });
