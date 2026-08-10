@@ -189,6 +189,7 @@ describe("Bridge plugin host IPC", () => {
         target: { ...binding, kind: "provider-projector" as const },
         input: { values: { prompt: "hello" }, references: [] },
         actor: { kind: "agent" as const, id: "agent-1" },
+        operation: "submit" as const,
       };
       await expect(client.invoke("first-party-media", invocation)).resolves.toMatchObject({
         invocationId: "invocation-ipc-1",
@@ -268,6 +269,7 @@ describe("Bridge plugin host IPC", () => {
         target: { ...binding, kind: "action" },
         input: { values: {}, references: [] },
         actor: { kind: "user" },
+        operation: "submit" as const,
       }, { timeoutMs: 100 })).resolves.toMatchObject({ status: "completed" });
     } finally {
       await server.close();

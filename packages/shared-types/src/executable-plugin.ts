@@ -1130,6 +1130,16 @@ export const ExecutablePluginContractTestDocumentSchema = z.object({
     values: z.record(ExecutablePluginJsonValueSchema).default({}),
     references: z.array(ExecutablePluginReferenceSchema).default([]),
   }).strict(),
+  /**
+   * Which half of an executor this case exercises.
+   *
+   * A poll is a different translation from a submit, with a different input and a different set of
+   * answers, so a suite that can only describe submits leaves the resuming path uncovered -- and
+   * that is the path that runs after a restart, when nobody is watching.
+   */
+  operation: z.enum(["submit", "poll", "callback"]).default("submit"),
+  /** The state a poll is asking about, as the plugin would have returned it. */
+  pollState: ExecutablePluginJsonValueSchema.optional(),
   brokerFixtures: z.array(ExecutablePluginContractBrokerFixtureSchema).default([]),
   expect: z.discriminatedUnion("status", [
     z.object({

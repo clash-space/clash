@@ -1558,6 +1558,10 @@ export async function runExecutablePluginContractTests(
           kind: contractTest.target.kind,
         },
         input: contractTest.input,
+        // Without these a poll case silently runs as a submit, and the suite reports a pass for a
+        // path it never exercised.
+        operation: contractTest.operation,
+        ...(contractTest.pollState === undefined ? {} : { pollState: contractTest.pollState }),
         actor: { kind: "system", id: "contract-test-runner" },
       }, { timeoutMs: contractTest.timeoutMs });
       if (fixtureIndex !== contractTest.brokerFixtures.length) {

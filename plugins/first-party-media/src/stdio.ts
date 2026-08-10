@@ -9,6 +9,7 @@ import {
   type ExecutablePluginResult,
 } from "@clash/shared-types/executable-plugin";
 
+import { falPoll, falSubmit, type FalPollState } from "./fal-executor";
 import {
   projectFalH3,
   projectFalMiniMaxMusic3,
@@ -30,16 +31,104 @@ function projectorInput(invocation: ExecutablePluginInvocation): ProjectorInput 
   } as ProjectorInput;
 }
 
-export function handleInvocation(input: unknown): ExecutablePluginResult {
+/**
+ * Everything an executor needs from outside itself.
+ *
+ * Passed in rather than reached for, so a test can drive the whole dispatcher without a network and
+ * without a credential. The key arrives from the broker at call time and is never stored here.
+ */
+export interface ExecutorContext {
+  fetch?: typeof globalThis.fetch;
+  apiKey?: string;
+  endpoint?: string;
+  queueBaseUrl?: string;
+}
+
+const EXECUTORS: Record<string, (
+  invocation: ExecutablePluginInvocation,
+  context: ExecutorContext,
+) => Promise<ExecutablePluginResult>> = {
+  "fal-execute": async (invocation, context) => {
+    const fetchImpl = context.fetch ?? globalThis.fetch;
+    const apiKey = context.apiKey ?? "";
+    if (invocation.operation === "poll") {
+      // Opaque to the host, which means it arrives typed as anything. The plugin that issued it is
+      // the only party that can say whether it is intact, so it checks rather than assumes: a
+      // truncated or hand-edited record would otherwise be polled as though it were valid.
+      const state = readFalPollState(invocation.pollState);
+      const result = await falPoll({
+        state,
+        apiKey,
+        kind: falKind(invocation),
+        fetch: fetchImpl as never,
+        ...(context.queueBaseUrl ? { queueBaseUrl: context.queueBaseUrl } : {}),
+      });
+      if (result.status === "accepted") {
+        return accepted(invocation.invocationId, result.pollState);
+      }
+      return {
+        protocol: "clash.plugin.result/v1",
+        invocationId: invocation.invocationId,
+        status: "completed",
+        outputs: [{
+          slot: "media",
+          kind: "value",
+          value: { url: result.media.url, requestId: result.requestId },
+        }],
+      };
+    }
+    const submitted = await falSubmit({
+      endpoint: context.endpoint ?? String(invocation.input.values.endpoint ?? ""),
+      apiKey,
+      body: (invocation.input.values.body as Record<string, unknown>) ?? invocation.input.values,
+      fetch: fetchImpl as never,
+      ...(context.queueBaseUrl ? { queueBaseUrl: context.queueBaseUrl } : {}),
+    });
+    return accepted(invocation.invocationId, submitted.pollState);
+  },
+};
+
+function accepted(invocationId: string, pollState: unknown): ExecutablePluginResult {
+  return ExecutablePluginResultSchema.parse({
+    protocol: "clash.plugin.result/v1",
+    invocationId,
+    status: "accepted",
+    pollState,
+  });
+}
+
+function readFalPollState(value: unknown): FalPollState {
+  const state = value as Partial<FalPollState> | null;
+  if (!state || typeof state.requestId !== "string" || typeof state.endpoint !== "string") {
+    throw new Error("fal poll state is missing its request id or endpoint.");
+  }
+  return { requestId: state.requestId, endpoint: state.endpoint };
+}
+
+function falKind(invocation: ExecutablePluginInvocation): "image" | "video" | "audio" {
+  const declared = invocation.input.values.kind;
+  return declared === "video" || declared === "audio" ? declared : "image";
+}
+
+export async function handleInvocation(
+  input: unknown,
+  context: ExecutorContext = {},
+): Promise<ExecutablePluginResult> {
   let invocationId = "unknown";
+  let executionFailed = false;
   try {
     if (input && typeof input === "object" && "invocationId" in input) {
       invocationId = String((input as { invocationId: unknown }).invocationId);
     }
     const invocation = ExecutablePluginInvocationSchema.parse(input);
     invocationId = invocation.invocationId;
+    const executor = EXECUTORS[invocation.target.exportId];
+    if (executor) {
+      executionFailed = true;
+      return await executor(invocation, context);
+    }
     const projector = PROJECTORS[invocation.target.exportId];
-    if (!projector) throw new Error(`Unknown projector export: ${invocation.target.exportId}`);
+    if (!projector) throw new Error(`Unknown export: ${invocation.target.exportId}`);
     return ExecutablePluginResultSchema.parse({
       protocol: "clash.plugin.result/v1",
       invocationId,
@@ -56,12 +145,30 @@ export function handleInvocation(input: unknown): ExecutablePluginResult {
       invocationId,
       status: "failed",
       error: {
-        code: "projection_failed",
+        // Which half failed is the first thing a reader wants, and an executor reporting
+      // `projection_failed` sends them to look at parameter mapping when the provider refused.
+      code: executionFailed ? "execution_failed" : "projection_failed",
         message: (error as Error).message,
         retryable: false,
       },
     });
   }
+}
+
+/**
+ * The credential and endpoint the host supplies for this run.
+ *
+ * Read at call time from the environment the broker prepared, never stored and never written to a
+ * result. A plugin that kept one would be keeping a secret the host is responsible for rotating.
+ */
+function executorContext(): ExecutorContext {
+  return {
+    ...(process.env.CLASH_PROVIDER_API_KEY ? { apiKey: process.env.CLASH_PROVIDER_API_KEY } : {}),
+    ...(process.env.CLASH_PROVIDER_ENDPOINT ? { endpoint: process.env.CLASH_PROVIDER_ENDPOINT } : {}),
+    ...(process.env.CLASH_FAL_QUEUE_BASE_URL
+      ? { queueBaseUrl: process.env.CLASH_FAL_QUEUE_BASE_URL }
+      : {}),
+  };
 }
 
 if (process.argv[1]
@@ -75,6 +182,10 @@ if (process.argv[1]
     } catch (error) {
       message = { invocationId: "unknown", invalidJson: (error as Error).message };
     }
-    process.stdout.write(`${JSON.stringify(handleInvocation(message))}\n`);
+    // Serialising the promise itself would write `{}` and leave the host waiting on a plugin that
+    // has already answered. One reply per line, in the order they finish.
+    void handleInvocation(message, executorContext()).then((result) => {
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+    });
   });
 }
