@@ -1,7 +1,7 @@
 {
   "name": "@clash-space/action-sdk",
   "version": "0.1.0-beta.1",
-  "description": "SDK for building Clash canvas actions — types and utilities for action authors",
+  "description": "SDK for building Clash canvas actions \u2014 types and utilities for action authors",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "vitest run"
   },
   "publishConfig": {
     "access": "public"
@@ -26,6 +27,7 @@
     "@clash/shared-types": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.0"
   }
 }

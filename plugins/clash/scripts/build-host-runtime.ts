@@ -21,6 +21,19 @@ assertDependencyDistIsFresh([
   resolve(import.meta.dirname, "../../../apps/local-api"),
 ]);
 
+/**
+ * Prefixed to every emitted bundle.
+ *
+ * A bundle sits beside the sources it inlined, so a reader who opens one -- or who searches with
+ * `--no-ignore-dot` to compare what shipped against what the source says -- needs to know inside one
+ * line that this is machine output. Minified `esbuild` code otherwise opens with anonymous helper
+ * declarations that read exactly like authored source, and an identifier found here proves only that
+ * it was inlined at some past build, not that it exists in the tree today.
+ */
+const GENERATED_BANNER =
+  "// GENERATED FILE -- DO NOT EDIT. Written by plugins/clash/scripts/build-host-runtime.ts;\n"
+  + "// edit the TypeScript sources it bundles and rebuild. Identifiers here may be stale or renamed.\n";
+
 await build({
   entryPoints: [resolve(pluginRoot, "src/local-api-entry.ts")],
   outfile: resolve(runtimeDir, "local-api.cjs"),
@@ -31,7 +44,7 @@ await build({
   external: ["@remotion/renderer"],
   define: { "import.meta.url": importMetaUrlShim },
   banner: {
-    js: `const ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
+    js: `${GENERATED_BANNER}const ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
   },
 });
 
@@ -44,7 +57,7 @@ await build({
   target: "node22",
   define: { "import.meta.url": importMetaUrlShim },
   banner: {
-    js: `#!/usr/bin/env node\nconst ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
+    js: `#!/usr/bin/env node\n${GENERATED_BANNER}const ${importMetaUrlShim} = require("node:url").pathToFileURL(__filename).href;`,
   },
 });
 

@@ -1,0 +1,30 @@
+# Search-tool ignores (ripgrep, fd, and editors that honour `.ignore`).
+#
+# This file is not `.gitignore`. Everything listed here is tracked on purpose and must stay in
+# git -- it just has no business answering a source search.
+#
+# Committed bundles under `plugins/*/runtime/` are the published npm payload: `runtime` is in
+# `files` and both `bin` entries resolve through it. They are also minified copies of the sources
+# beside them, so every identifier in the repo appears twice -- once where it is defined and once
+# where it was inlined -- and a search tool cannot tell which is which.
+#
+# The duplication is misleading rather than merely noisy, because a bundle and its source drift.
+# Searching for `list-model-bindings` matched a bundle and implied the IPC layer handled the
+# operation, while the source implemented it zero times and the bundle was what ran. Searching for
+# `durationFromData(data, card)` matched a *parameter* name in minified output and sent a reader
+# after a call site that has never existed; the source says `modelCard`.
+#
+# To read a bundle on purpose -- comparing what shipped against what the source says is how that
+# drift gets found -- pass `rg --no-ignore-dot`.
+plugins/*/runtime/
+
+# Emitted agent trees mirror the repo's own layout (`dist/agents/master-clash/plugins/clash/...`),
+# so a hit inside one reads as a hit in `plugins/clash`. `dist/` is gitignored and therefore
+# already skipped; this states the intent so a future emitter writing to a tracked path is not
+# silently searchable.
+**/dist/agents/
+
+# Tracked source living in a dotted directory, which ripgrep skips by default. Negated here so it
+# is searchable without `--hidden`: it is hand-authored configuration, and a config nobody can
+# grep is the same hazard as a bundle everybody greps, in the opposite direction.
+!apps/docs/.vitepress/

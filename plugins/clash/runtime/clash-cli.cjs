@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// GENERATED FILE -- DO NOT EDIT. Written by plugins/clash/scripts/build-host-runtime.ts;
+// edit the TypeScript sources it bundles and rebuild. Identifiers here may be stale or renamed.
 const __clash_import_meta_url = require("node:url").pathToFileURL(__filename).href;
 "use strict";
 var __create = Object.create;
@@ -33,6 +35,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // ../../node_modules/.pnpm/commander@13.0.0/node_modules/commander/lib/error.js
 var require_error = __commonJS({
@@ -1138,7 +1141,7 @@ var require_command = __commonJS({
     var childProcess = require("node:child_process");
     var path = require("node:path");
     var fs = require("node:fs");
-    var process4 = require("node:process");
+    var process5 = require("node:process");
     var { Argument: Argument2, humanReadableArgName } = require_argument();
     var { CommanderError: CommanderError2 } = require_error();
     var { Help: Help2, stripColor } = require_help();
@@ -1185,13 +1188,13 @@ var require_command = __commonJS({
         this._showSuggestionAfterError = true;
         this._savedState = null;
         this._outputConfiguration = {
-          writeOut: (str) => process4.stdout.write(str),
-          writeErr: (str) => process4.stderr.write(str),
+          writeOut: (str) => process5.stdout.write(str),
+          writeErr: (str) => process5.stderr.write(str),
           outputError: (str, write) => write(str),
-          getOutHelpWidth: () => process4.stdout.isTTY ? process4.stdout.columns : void 0,
-          getErrHelpWidth: () => process4.stderr.isTTY ? process4.stderr.columns : void 0,
-          getOutHasColors: () => useColor() ?? (process4.stdout.isTTY && process4.stdout.hasColors?.()),
-          getErrHasColors: () => useColor() ?? (process4.stderr.isTTY && process4.stderr.hasColors?.()),
+          getOutHelpWidth: () => process5.stdout.isTTY ? process5.stdout.columns : void 0,
+          getErrHelpWidth: () => process5.stderr.isTTY ? process5.stderr.columns : void 0,
+          getOutHasColors: () => useColor() ?? (process5.stdout.isTTY && process5.stdout.hasColors?.()),
+          getErrHasColors: () => useColor() ?? (process5.stderr.isTTY && process5.stderr.hasColors?.()),
           stripColor: (str) => stripColor(str)
         };
         this._hidden = false;
@@ -1574,7 +1577,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         if (this._exitCallback) {
           this._exitCallback(new CommanderError2(exitCode, code, message2));
         }
-        process4.exit(exitCode);
+        process5.exit(exitCode);
       }
       /**
        * Register callback `fn` for the command.
@@ -1972,16 +1975,16 @@ Expecting one of '${allowedValues.join("', '")}'`);
         }
         parseOptions = parseOptions || {};
         if (argv === void 0 && parseOptions.from === void 0) {
-          if (process4.versions?.electron) {
+          if (process5.versions?.electron) {
             parseOptions.from = "electron";
           }
-          const execArgv = process4.execArgv ?? [];
+          const execArgv = process5.execArgv ?? [];
           if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
             parseOptions.from = "eval";
           }
         }
         if (argv === void 0) {
-          argv = process4.argv;
+          argv = process5.argv;
         }
         this.rawArgs = argv.slice();
         let userArgs;
@@ -1992,7 +1995,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             userArgs = argv.slice(2);
             break;
           case "electron":
-            if (process4.defaultApp) {
+            if (process5.defaultApp) {
               this._scriptPath = argv[1];
               userArgs = argv.slice(2);
             } else {
@@ -2179,11 +2182,11 @@ Expecting one of '${allowedValues.join("', '")}'`);
         }
         launchWithNode = sourceExt.includes(path.extname(executableFile));
         let proc;
-        if (process4.platform !== "win32") {
+        if (process5.platform !== "win32") {
           if (launchWithNode) {
             args.unshift(executableFile);
-            args = incrementNodeInspectorPort(process4.execArgv).concat(args);
-            proc = childProcess.spawn(process4.argv[0], args, { stdio: "inherit" });
+            args = incrementNodeInspectorPort(process5.execArgv).concat(args);
+            proc = childProcess.spawn(process5.argv[0], args, { stdio: "inherit" });
           } else {
             proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
           }
@@ -2194,13 +2197,13 @@ Expecting one of '${allowedValues.join("', '")}'`);
             subcommand._name
           );
           args.unshift(executableFile);
-          args = incrementNodeInspectorPort(process4.execArgv).concat(args);
-          proc = childProcess.spawn(process4.execPath, args, { stdio: "inherit" });
+          args = incrementNodeInspectorPort(process5.execArgv).concat(args);
+          proc = childProcess.spawn(process5.execPath, args, { stdio: "inherit" });
         }
         if (!proc.killed) {
           const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
           signals.forEach((signal) => {
-            process4.on(signal, () => {
+            process5.on(signal, () => {
               if (proc.killed === false && proc.exitCode === null) {
                 proc.kill(signal);
               }
@@ -2211,7 +2214,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
         proc.on("close", (code) => {
           code = code ?? 1;
           if (!exitCallback) {
-            process4.exit(code);
+            process5.exit(code);
           } else {
             exitCallback(
               new CommanderError2(
@@ -2233,7 +2236,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             throw new Error(`'${executableFile}' not executable`);
           }
           if (!exitCallback) {
-            process4.exit(1);
+            process5.exit(1);
           } else {
             const wrappedError = new CommanderError2(
               1,
@@ -2728,13 +2731,13 @@ Expecting one of '${allowedValues.join("', '")}'`);
        */
       _parseOptionsEnv() {
         this.options.forEach((option) => {
-          if (option.envVar && option.envVar in process4.env) {
+          if (option.envVar && option.envVar in process5.env) {
             const optionKey = option.attributeName();
             if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
               this.getOptionValueSource(optionKey)
             )) {
               if (option.required || option.optional) {
-                this.emit(`optionEnv:${option.name()}`, process4.env[option.envVar]);
+                this.emit(`optionEnv:${option.name()}`, process5.env[option.envVar]);
               } else {
                 this.emit(`optionEnv:${option.name()}`);
               }
@@ -3189,7 +3192,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
        */
       help(contextOptions) {
         this.outputHelp(contextOptions);
-        let exitCode = Number(process4.exitCode ?? 0);
+        let exitCode = Number(process5.exitCode ?? 0);
         if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
           exitCode = 1;
         }
@@ -3279,9 +3282,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
       });
     }
     function useColor() {
-      if (process4.env.NO_COLOR || process4.env.FORCE_COLOR === "0" || process4.env.FORCE_COLOR === "false")
+      if (process5.env.NO_COLOR || process5.env.FORCE_COLOR === "0" || process5.env.FORCE_COLOR === "false")
         return false;
-      if (process4.env.FORCE_COLOR || process4.env.CLICOLOR_FORCE !== void 0)
+      if (process5.env.FORCE_COLOR || process5.env.CLICOLOR_FORCE !== void 0)
         return true;
       return void 0;
     }
@@ -11525,8 +11528,8 @@ function satisfies(version2, range) {
     return false;
   return true;
 }
-function isElectronRuntime(execPath, env) {
-  if (env.ELECTRON_RUN_AS_NODE)
+function isElectronRuntime(execPath, env2) {
+  if (env2.ELECTRON_RUN_AS_NODE)
     return true;
   if (!execPath)
     return false;
@@ -11547,10 +11550,10 @@ function defaultProbeVersion(nodePath) {
   }
 }
 function resolveDaemonNodeRuntime(options) {
-  const env = options.env ?? {};
+  const env2 = options.env ?? {};
   const probeVersion = options.probeVersion ?? defaultProbeVersion;
   const fileExists = options.fileExists ?? import_node_fs.existsSync;
-  const explicit = env.CLASH_DAEMON_NODE_PATH?.trim();
+  const explicit = env2.CLASH_DAEMON_NODE_PATH?.trim();
   if (explicit) {
     return {
       nodePath: explicit,
@@ -11561,7 +11564,7 @@ function resolveDaemonNodeRuntime(options) {
   }
   const execPath = options.execPath;
   let reason;
-  if (isElectronRuntime(execPath, env)) {
+  if (isElectronRuntime(execPath, env2)) {
     reason = "launcher is an Electron runtime, which belongs to the GUI shell";
   } else if (execPath) {
     const version2 = probeVersion(execPath);
@@ -11582,12 +11585,12 @@ function resolveDaemonNodeRuntime(options) {
   }
   throw new Error(`No Node runtime satisfying ${options.supportedRange} was found for the Clash daemon (${reason ?? "no candidates"}). Set CLASH_DAEMON_NODE_PATH to pin one.`);
 }
-function defaultDaemonNodeCandidates(env = {}, deps = {}) {
+function defaultDaemonNodeCandidates(env2 = {}, deps = {}) {
   const candidates = [];
-  const home = env.HOME?.trim();
+  const home = env2.HOME?.trim();
   if (home) {
     candidates.push(`${home}/.local/share/clash/runtime/bin/node`);
-    const nvmRoot = env.NVM_DIR?.trim() || `${home}/.nvm`;
+    const nvmRoot = env2.NVM_DIR?.trim() || `${home}/.nvm`;
     const listVersions = deps.listNvmVersions ?? defaultListNvmVersions;
     const versions = [...listVersions(nvmRoot)].filter((entry) => /^v\d+\.\d+\.\d+$/u.test(entry)).sort(compareVersionDesc);
     for (const version2 of versions) {
@@ -49770,20 +49773,20 @@ var require_compile = __commonJS({
     var util_1 = require_util();
     var validate_1 = require_validate();
     var SchemaEnv = class {
-      constructor(env) {
+      constructor(env2) {
         var _a3;
         this.refs = {};
         this.dynamicAnchors = {};
         let schema;
-        if (typeof env.schema == "object")
-          schema = env.schema;
-        this.schema = env.schema;
-        this.schemaId = env.schemaId;
-        this.root = env.root || this;
-        this.baseId = (_a3 = env.baseId) !== null && _a3 !== void 0 ? _a3 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env.schemaId || "$id"]);
-        this.schemaPath = env.schemaPath;
-        this.localRefs = env.localRefs;
-        this.meta = env.meta;
+        if (typeof env2.schema == "object")
+          schema = env2.schema;
+        this.schema = env2.schema;
+        this.schemaId = env2.schemaId;
+        this.root = env2.root || this;
+        this.baseId = (_a3 = env2.baseId) !== null && _a3 !== void 0 ? _a3 : (0, resolve_1.normalizeId)(schema === null || schema === void 0 ? void 0 : schema[env2.schemaId || "$id"]);
+        this.schemaPath = env2.schemaPath;
+        this.localRefs = env2.localRefs;
+        this.meta = env2.meta;
         this.$async = schema === null || schema === void 0 ? void 0 : schema.$async;
         this.refs = {};
       }
@@ -49967,15 +49970,15 @@ var require_compile = __commonJS({
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
         }
       }
-      let env;
+      let env2;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env = resolveSchema.call(this, root, $ref);
+        env2 = resolveSchema.call(this, root, $ref);
       }
       const { schemaId } = this.opts;
-      env = env || new SchemaEnv({ schema, schemaId, root, baseId });
-      if (env.schema !== env.root.schema)
-        return env;
+      env2 = env2 || new SchemaEnv({ schema, schemaId, root, baseId });
+      if (env2.schema !== env2.root.schema)
+        return env2;
       return void 0;
     }
   }
@@ -51463,8 +51466,8 @@ var require_ref = __commonJS({
       schemaType: "string",
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
-        const { baseId, schemaEnv: env, validateName, opts, self: self2 } = it;
-        const { root } = env;
+        const { baseId, schemaEnv: env2, validateName, opts, self: self2 } = it;
+        const { root } = env2;
         if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
           return callRootRef();
         const schOrEnv = compile_1.resolveRef.call(self2, root, baseId, $ref);
@@ -51474,8 +51477,8 @@ var require_ref = __commonJS({
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env === root)
-            return callRef(cxt, validateName, env, env.$async);
+          if (env2 === root)
+            return callRef(cxt, validateName, env2, env2.$async);
           const rootName = gen.scopeValue("root", { ref: root });
           return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
         }
@@ -51505,14 +51508,14 @@ var require_ref = __commonJS({
     exports2.getValidate = getValidate;
     function callRef(cxt, v2, sch, $async) {
       const { gen, it } = cxt;
-      const { allErrors, schemaEnv: env, opts } = it;
+      const { allErrors, schemaEnv: env2, opts } = it;
       const passCxt = opts.passContext ? names_1.default.this : codegen_1.nil;
       if ($async)
         callAsyncRef();
       else
         callSyncRef();
       function callAsyncRef() {
-        if (!env.$async)
+        if (!env2.$async)
           throw new Error("async schema referenced by sync schema");
         const valid = gen.let("valid");
         gen.try(() => {
@@ -57313,7 +57316,7 @@ var require_ms = __commonJS({
 // ../../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/common.js
 var require_common = __commonJS({
   "../../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/common.js"(exports2, module2) {
-    function setup(env) {
+    function setup(env2) {
       createDebug.debug = createDebug;
       createDebug.default = createDebug;
       createDebug.coerce = coerce2;
@@ -57322,8 +57325,8 @@ var require_common = __commonJS({
       createDebug.enabled = enabled;
       createDebug.humanize = require_ms();
       createDebug.destroy = destroy;
-      Object.keys(env).forEach((key) => {
-        createDebug[key] = env[key];
+      Object.keys(env2).forEach((key) => {
+        createDebug[key] = env2[key];
       });
       createDebug.names = [];
       createDebug.skips = [];
@@ -57657,125 +57660,159 @@ var require_browser = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/has-flag@4.0.0/node_modules/has-flag/index.js
-var require_has_flag = __commonJS({
-  "../../node_modules/.pnpm/has-flag@4.0.0/node_modules/has-flag/index.js"(exports2, module2) {
-    "use strict";
-    module2.exports = (flag, argv = process.argv) => {
-      const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
-      const position = argv.indexOf(prefix + flag);
-      const terminatorPosition = argv.indexOf("--");
-      return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
-    };
-  }
+// ../../node_modules/.pnpm/supports-color@10.2.2/node_modules/supports-color/index.js
+var supports_color_exports = {};
+__export(supports_color_exports, {
+  createSupportsColor: () => createSupportsColor,
+  default: () => supports_color_default
 });
-
-// ../../node_modules/.pnpm/supports-color@7.2.0/node_modules/supports-color/index.js
-var require_supports_color = __commonJS({
-  "../../node_modules/.pnpm/supports-color@7.2.0/node_modules/supports-color/index.js"(exports2, module2) {
-    "use strict";
-    var os = require("os");
-    var tty = require("tty");
-    var hasFlag = require_has_flag();
-    var { env } = process;
-    var forceColor;
+function hasFlag(flag, argv = globalThis.Deno ? globalThis.Deno.args : import_node_process2.default.argv) {
+  const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
+  const position = argv.indexOf(prefix + flag);
+  const terminatorPosition = argv.indexOf("--");
+  return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
+}
+function envForceColor() {
+  if (!("FORCE_COLOR" in env)) {
+    return;
+  }
+  if (env.FORCE_COLOR === "true") {
+    return 1;
+  }
+  if (env.FORCE_COLOR === "false") {
+    return 0;
+  }
+  if (env.FORCE_COLOR.length === 0) {
+    return 1;
+  }
+  const level = Math.min(Number.parseInt(env.FORCE_COLOR, 10), 3);
+  if (![0, 1, 2, 3].includes(level)) {
+    return;
+  }
+  return level;
+}
+function translateLevel(level) {
+  if (level === 0) {
+    return false;
+  }
+  return {
+    level,
+    hasBasic: true,
+    has256: level >= 2,
+    has16m: level >= 3
+  };
+}
+function _supportsColor(haveStream, { streamIsTTY, sniffFlags = true } = {}) {
+  const noFlagForceColor = envForceColor();
+  if (noFlagForceColor !== void 0) {
+    flagForceColor = noFlagForceColor;
+  }
+  const forceColor = sniffFlags ? flagForceColor : noFlagForceColor;
+  if (forceColor === 0) {
+    return 0;
+  }
+  if (sniffFlags) {
+    if (hasFlag("color=16m") || hasFlag("color=full") || hasFlag("color=truecolor")) {
+      return 3;
+    }
+    if (hasFlag("color=256")) {
+      return 2;
+    }
+  }
+  if ("TF_BUILD" in env && "AGENT_NAME" in env) {
+    return 1;
+  }
+  if (haveStream && !streamIsTTY && forceColor === void 0) {
+    return 0;
+  }
+  const min = forceColor || 0;
+  if (env.TERM === "dumb") {
+    return min;
+  }
+  if (import_node_process2.default.platform === "win32") {
+    const osRelease = import_node_os3.default.release().split(".");
+    if (Number(osRelease[0]) >= 10 && Number(osRelease[2]) >= 10586) {
+      return Number(osRelease[2]) >= 14931 ? 3 : 2;
+    }
+    return 1;
+  }
+  if ("CI" in env) {
+    if (["GITHUB_ACTIONS", "GITEA_ACTIONS", "CIRCLECI"].some((key) => key in env)) {
+      return 3;
+    }
+    if (["TRAVIS", "APPVEYOR", "GITLAB_CI", "BUILDKITE", "DRONE"].some((sign) => sign in env) || env.CI_NAME === "codeship") {
+      return 1;
+    }
+    return min;
+  }
+  if ("TEAMCITY_VERSION" in env) {
+    return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
+  }
+  if (env.COLORTERM === "truecolor") {
+    return 3;
+  }
+  if (env.TERM === "xterm-kitty") {
+    return 3;
+  }
+  if (env.TERM === "xterm-ghostty") {
+    return 3;
+  }
+  if (env.TERM === "wezterm") {
+    return 3;
+  }
+  if ("TERM_PROGRAM" in env) {
+    const version2 = Number.parseInt((env.TERM_PROGRAM_VERSION || "").split(".")[0], 10);
+    switch (env.TERM_PROGRAM) {
+      case "iTerm.app": {
+        return version2 >= 3 ? 3 : 2;
+      }
+      case "Apple_Terminal": {
+        return 2;
+      }
+    }
+  }
+  if (/-256(color)?$/i.test(env.TERM)) {
+    return 2;
+  }
+  if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
+    return 1;
+  }
+  if ("COLORTERM" in env) {
+    return 1;
+  }
+  return min;
+}
+function createSupportsColor(stream, options = {}) {
+  const level = _supportsColor(stream, {
+    streamIsTTY: stream && stream.isTTY,
+    ...options
+  });
+  return translateLevel(level);
+}
+var import_node_process2, import_node_os3, import_node_tty, env, flagForceColor, supportsColor, supports_color_default;
+var init_supports_color = __esm({
+  "../../node_modules/.pnpm/supports-color@10.2.2/node_modules/supports-color/index.js"() {
+    import_node_process2 = __toESM(require("node:process"), 1);
+    import_node_os3 = __toESM(require("node:os"), 1);
+    import_node_tty = __toESM(require("node:tty"), 1);
+    ({ env } = import_node_process2.default);
     if (hasFlag("no-color") || hasFlag("no-colors") || hasFlag("color=false") || hasFlag("color=never")) {
-      forceColor = 0;
+      flagForceColor = 0;
     } else if (hasFlag("color") || hasFlag("colors") || hasFlag("color=true") || hasFlag("color=always")) {
-      forceColor = 1;
+      flagForceColor = 1;
     }
-    if ("FORCE_COLOR" in env) {
-      if (env.FORCE_COLOR === "true") {
-        forceColor = 1;
-      } else if (env.FORCE_COLOR === "false") {
-        forceColor = 0;
-      } else {
-        forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
-      }
-    }
-    function translateLevel(level) {
-      if (level === 0) {
-        return false;
-      }
-      return {
-        level,
-        hasBasic: true,
-        has256: level >= 2,
-        has16m: level >= 3
-      };
-    }
-    function supportsColor(haveStream, streamIsTTY) {
-      if (forceColor === 0) {
-        return 0;
-      }
-      if (hasFlag("color=16m") || hasFlag("color=full") || hasFlag("color=truecolor")) {
-        return 3;
-      }
-      if (hasFlag("color=256")) {
-        return 2;
-      }
-      if (haveStream && !streamIsTTY && forceColor === void 0) {
-        return 0;
-      }
-      const min = forceColor || 0;
-      if (env.TERM === "dumb") {
-        return min;
-      }
-      if (process.platform === "win32") {
-        const osRelease = os.release().split(".");
-        if (Number(osRelease[0]) >= 10 && Number(osRelease[2]) >= 10586) {
-          return Number(osRelease[2]) >= 14931 ? 3 : 2;
-        }
-        return 1;
-      }
-      if ("CI" in env) {
-        if (["TRAVIS", "CIRCLECI", "APPVEYOR", "GITLAB_CI", "GITHUB_ACTIONS", "BUILDKITE"].some((sign) => sign in env) || env.CI_NAME === "codeship") {
-          return 1;
-        }
-        return min;
-      }
-      if ("TEAMCITY_VERSION" in env) {
-        return /^(9\.(0*[1-9]\d*)\.|\d{2,}\.)/.test(env.TEAMCITY_VERSION) ? 1 : 0;
-      }
-      if (env.COLORTERM === "truecolor") {
-        return 3;
-      }
-      if ("TERM_PROGRAM" in env) {
-        const version2 = parseInt((env.TERM_PROGRAM_VERSION || "").split(".")[0], 10);
-        switch (env.TERM_PROGRAM) {
-          case "iTerm.app":
-            return version2 >= 3 ? 3 : 2;
-          case "Apple_Terminal":
-            return 2;
-        }
-      }
-      if (/-256(color)?$/i.test(env.TERM)) {
-        return 2;
-      }
-      if (/^screen|^xterm|^vt100|^vt220|^rxvt|color|ansi|cygwin|linux/i.test(env.TERM)) {
-        return 1;
-      }
-      if ("COLORTERM" in env) {
-        return 1;
-      }
-      return min;
-    }
-    function getSupportLevel(stream) {
-      const level = supportsColor(stream, stream && stream.isTTY);
-      return translateLevel(level);
-    }
-    module2.exports = {
-      supportsColor: getSupportLevel,
-      stdout: translateLevel(supportsColor(true, tty.isatty(1))),
-      stderr: translateLevel(supportsColor(true, tty.isatty(2)))
+    supportsColor = {
+      stdout: createSupportsColor({ isTTY: import_node_tty.default.isatty(1) }),
+      stderr: createSupportsColor({ isTTY: import_node_tty.default.isatty(2) })
     };
+    supports_color_default = supportsColor;
   }
 });
 
 // ../../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/node.js
 var require_node = __commonJS({
   "../../node_modules/.pnpm/debug@4.4.3/node_modules/debug/src/node.js"(exports2, module2) {
-    var tty = require("tty");
+    var tty2 = require("tty");
     var util3 = require("util");
     exports2.init = init;
     exports2.log = log;
@@ -57790,8 +57827,8 @@ var require_node = __commonJS({
     );
     exports2.colors = [6, 2, 3, 4, 5, 1];
     try {
-      const supportsColor = require_supports_color();
-      if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
+      const supportsColor2 = (init_supports_color(), __toCommonJS(supports_color_exports));
+      if (supportsColor2 && (supportsColor2.stderr || supportsColor2).level >= 2) {
         exports2.colors = [
           20,
           21,
@@ -57893,7 +57930,7 @@ var require_node = __commonJS({
       return obj;
     }, {});
     function useColors() {
-      return "colors" in exports2.inspectOpts ? Boolean(exports2.inspectOpts.colors) : tty.isatty(process.stderr.fd);
+      return "colors" in exports2.inspectOpts ? Boolean(exports2.inspectOpts.colors) : tty2.isatty(process.stderr.fd);
     }
     function formatArgs(args) {
       const { namespace: name, useColors: useColors2 } = this;
@@ -75931,7 +75968,7 @@ var require_finalhandler = __commonJS({
     module2.exports = finalhandler;
     function finalhandler(req, res, options) {
       var opts = options || {};
-      var env = opts.env || process.env.NODE_ENV || "development";
+      var env2 = opts.env || process.env.NODE_ENV || "development";
       var onerror = opts.onerror;
       return function(err) {
         var headers;
@@ -75948,7 +75985,7 @@ var require_finalhandler = __commonJS({
           } else {
             headers = getErrorHeaders(err);
           }
-          msg = getErrorMessage(err, status, env);
+          msg = getErrorMessage(err, status, env2);
         } else {
           status = 404;
           msg = "Cannot " + req.method + " " + encodeUrl(getResourceName(req));
@@ -75973,9 +76010,9 @@ var require_finalhandler = __commonJS({
       }
       return { ...err.headers };
     }
-    function getErrorMessage(err, status, env) {
+    function getErrorMessage(err, status, env2) {
       var msg;
-      if (env !== "production") {
+      if (env2 !== "production") {
         msg = err.stack;
         if (!msg && typeof err.toString === "function") {
           msg = err.toString();
@@ -77543,10 +77580,10 @@ var require_dist4 = __commonJS({
       const keys = [];
       let source = "";
       let combinations = 0;
-      function process4(path2) {
+      function process5(path2) {
         if (Array.isArray(path2)) {
           for (const p2 of path2)
-            process4(p2);
+            process5(p2);
           return;
         }
         const data = typeof path2 === "object" ? path2 : parse5(path2, options);
@@ -77560,7 +77597,7 @@ var require_dist4 = __commonJS({
           combinations++;
         });
       }
-      process4(path);
+      process5(path);
       let pattern = `^(?:${source})`;
       if (trailing)
         pattern += "(?:" + escape2(delimiter2) + "$)?";
@@ -78397,10 +78434,10 @@ var require_application = __commonJS({
       });
     };
     app.defaultConfiguration = function defaultConfiguration() {
-      var env = process.env.NODE_ENV || "development";
+      var env2 = process.env.NODE_ENV || "development";
       this.enable("x-powered-by");
       this.set("etag", "weak");
-      this.set("env", env);
+      this.set("env", env2);
       this.set("query parser", "simple");
       this.set("subdomain offset", 2);
       this.set("trust proxy", false);
@@ -78408,7 +78445,7 @@ var require_application = __commonJS({
         configurable: true,
         value: true
       });
-      debug("booting in %s mode", env);
+      debug("booting in %s mode", env2);
       this.on("mount", function onmount(parent) {
         if (this.settings[trustProxyDefaultSymbol] === true && typeof parent.settings["trust proxy fn"] === "function") {
           delete this.settings["trust proxy"];
@@ -78425,7 +78462,7 @@ var require_application = __commonJS({
       this.set("view", View);
       this.set("views", resolve20("views"));
       this.set("jsonp callback name", "callback");
-      if (env === "production") {
+      if (env2 === "production") {
         this.enable("view cache");
       }
     };
@@ -81290,12 +81327,12 @@ function buildCanvasCliArgs(name, input) {
 function createClashCliRunner(options = {}) {
   const command = options.command ?? process.env.CLASH_CLI_BIN ?? "clash";
   const argsPrefix = options.argsPrefix ?? [];
-  const env = options.env ?? process.env;
-  const defaultCwd = options.cwd ?? env.CLASH_WORKSPACE_ROOT ?? env.CODEX_WORKSPACE_ROOT ?? process.cwd();
+  const env2 = options.env ?? process.env;
+  const defaultCwd = options.cwd ?? env2.CLASH_WORKSPACE_ROOT ?? env2.CODEX_WORKSPACE_ROOT ?? process.cwd();
   return async (args, cwd) => {
     const { stdout } = await execFileAsync(command, [...argsPrefix, ...args], {
       cwd: cwd ?? defaultCwd,
-      env,
+      env: env2,
       maxBuffer: 16 * 1024 * 1024
     });
     const text = stdout.trim();
@@ -82015,7 +82052,7 @@ var require_main = __commonJS({
       }
       return to;
     };
-    var __toCommonJS = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var __toCommonJS2 = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
     var node_exports = {};
     __export2(node_exports, {
       analyzeMetafile: () => analyzeMetafile,
@@ -82032,7 +82069,7 @@ var require_main = __commonJS({
       transformSync: () => transformSync,
       version: () => version2
     });
-    module2.exports = __toCommonJS(node_exports);
+    module2.exports = __toCommonJS2(node_exports);
     function encodePacket(packet) {
       let visit = (value) => {
         if (value === null) {
@@ -83581,7 +83618,7 @@ ${file2}:${line}:${column}: ERROR: ${pluginText}${e.text}`;
       };
     }
     var fs = require("fs");
-    var os = require("os");
+    var os2 = require("os");
     var path = require("path");
     var ESBUILD_BINARY_PATH = process.env.ESBUILD_BINARY_PATH || ESBUILD_BINARY_PATH;
     var isValidBinaryPath = (x) => !!x && x !== "/usr/bin/esbuild";
@@ -83622,7 +83659,7 @@ ${file2}:${line}:${column}: ERROR: ${pluginText}${e.text}`;
       let pkg;
       let subpath;
       let isWASM = false;
-      let platformKey = `${process.platform} ${os.arch()} ${os.endianness()}`;
+      let platformKey = `${process.platform} ${os2.arch()} ${os2.endianness()}`;
       if (platformKey in knownWindowsPackages) {
         pkg = knownWindowsPackages[platformKey];
         subpath = "esbuild.exe";
@@ -83772,8 +83809,8 @@ for your current platform.`);
     var crypto3 = require("crypto");
     var path2 = require("path");
     var fs2 = require("fs");
-    var os2 = require("os");
-    var tty = require("tty");
+    var os22 = require("os");
+    var tty2 = require("tty");
     var worker_threads;
     if (process.env.ESBUILD_WORKER_THREADS !== "0") {
       try {
@@ -83809,7 +83846,7 @@ More information: The file containing the code for esbuild's JavaScript API (${_
         }
       }
     };
-    var isTTY = () => tty.isatty(2);
+    var isTTY = () => tty2.isatty(2);
     var fsSync = {
       readFile(tempFile, callback) {
         try {
@@ -84077,7 +84114,7 @@ More information: The file containing the code for esbuild's JavaScript API (${_
       afterClose(null);
     };
     var randomFileName = () => {
-      return path2.join(os2.tmpdir(), `esbuild-${crypto3.randomBytes(32).toString("hex")}`);
+      return path2.join(os22.tmpdir(), `esbuild-${crypto3.randomBytes(32).toString("hex")}`);
     };
     var workerThreadService = null;
     var startWorkerThreadService = (worker_threads2) => {
@@ -84248,22 +84285,22 @@ init_dist();
 // ../../packages/shared-runtime/dist/local-paths.js
 var import_node_os = require("node:os");
 var import_node_path4 = require("node:path");
-function resolveClashProfile(env = process.env) {
-  const profile = env.CLASH_PROFILE?.trim() || "prod";
+function resolveClashProfile(env2 = process.env) {
+  const profile = env2.CLASH_PROFILE?.trim() || "prod";
   if (profile === "dev" || profile === "prod")
     return profile;
   throw new Error("CLASH_PROFILE must be dev or prod");
 }
-function defaultClashHome(env = process.env) {
-  const explicit = env.CLASH_HOME?.trim();
+function defaultClashHome(env2 = process.env) {
+  const explicit = env2.CLASH_HOME?.trim();
   if (explicit)
     return (0, import_node_path4.resolve)(explicit);
   const root = (0, import_node_path4.join)((0, import_node_os.homedir)(), ".clash");
-  return resolveClashProfile(env) === "dev" ? (0, import_node_path4.join)(root, "profiles", "dev") : root;
+  return resolveClashProfile(env2) === "dev" ? (0, import_node_path4.join)(root, "profiles", "dev") : root;
 }
-function defaultLocalApiDataDir(env = process.env) {
-  const explicit = env.CLASH_LOCAL_DATA_DIR?.trim();
-  return explicit ? (0, import_node_path4.resolve)(explicit) : (0, import_node_path4.join)(defaultClashHome(env), "local-api");
+function defaultLocalApiDataDir(env2 = process.env) {
+  const explicit = env2.CLASH_LOCAL_DATA_DIR?.trim();
+  return explicit ? (0, import_node_path4.resolve)(explicit) : (0, import_node_path4.join)(defaultClashHome(env2), "local-api");
 }
 function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
   if (explicitClashHome?.trim())
@@ -84273,8 +84310,8 @@ function clashHomeForLocalDataDir(localDataDir, explicitClashHome) {
 }
 
 // ../../packages/cli/src/lib/clash-home.ts
-function resolveClashRoot(env = process.env) {
-  return defaultClashHome(env);
+function resolveClashRoot(env2 = process.env) {
+  return defaultClashHome(env2);
 }
 
 // ../../packages/cli/src/lib/host-discovery.ts
@@ -84333,14 +84370,14 @@ function isNotFound(error51) {
 }
 
 // ../../packages/cli/src/lib/config.ts
-function configDir(env = process.env) {
-  return resolveClashRoot(env);
+function configDir(env2 = process.env) {
+  return resolveClashRoot(env2);
 }
-function configFilePath(env = process.env) {
-  return (0, import_node_path6.join)(configDir(env), "config.yaml");
+function configFilePath(env2 = process.env) {
+  return (0, import_node_path6.join)(configDir(env2), "config.yaml");
 }
-function credentialsFilePath(env = process.env) {
-  return (0, import_node_path6.join)(configDir(env), "credentials.json");
+function credentialsFilePath(env2 = process.env) {
+  return (0, import_node_path6.join)(configDir(env2), "credentials.json");
 }
 function isRecord(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -84424,16 +84461,16 @@ function updateCliCredential(path, apiKey) {
   atomicWrite(path, `${JSON.stringify(credentials, null, 2)}
 `);
 }
-function migrateLegacyConfig(env = process.env) {
-  const dir = configDir(env);
+function migrateLegacyConfig(env2 = process.env) {
+  const dir = configDir(env2);
   const legacyPath = (0, import_node_path6.join)(dir, "config.json");
   if (!(0, import_node_fs2.existsSync)(legacyPath)) return;
   const legacy = readObject(legacyPath);
-  const configPath = configFilePath(env);
-  const credentialsPath = credentialsFilePath(env);
+  const configPath = configFilePath(env2);
+  const credentialsPath = credentialsFilePath(env2);
   (0, import_node_fs2.mkdirSync)(dir, { recursive: true, mode: 448 });
   withConfigLock(dir, () => {
-    const existing = loadConfigFiles(env);
+    const existing = loadConfigFiles(env2);
     updateYamlServerUrl(
       configPath,
       existing.serverUrl ?? (typeof legacy.serverUrl === "string" ? legacy.serverUrl : void 0)
@@ -84445,9 +84482,9 @@ function migrateLegacyConfig(env = process.env) {
     (0, import_node_fs2.unlinkSync)(legacyPath);
   });
 }
-function loadConfigFiles(env = process.env) {
+function loadConfigFiles(env2 = process.env) {
   let serverUrl;
-  const configPath = configFilePath(env);
+  const configPath = configFilePath(env2);
   if ((0, import_node_fs2.existsSync)(configPath)) {
     try {
       const document2 = (0, import_yaml.parseDocument)((0, import_node_fs2.readFileSync)(configPath, "utf8"));
@@ -84458,7 +84495,7 @@ function loadConfigFiles(env = process.env) {
     } catch {
     }
   }
-  const credentials = readObject(credentialsFilePath(env));
+  const credentials = readObject(credentialsFilePath(env2));
   return {
     ...typeof credentials.cliApiKey === "string" ? { apiKey: credentials.cliApiKey } : {},
     ...serverUrl ? { serverUrl } : {}
@@ -84539,8 +84576,8 @@ function normalizeHttpOrigin(value, label) {
   }
   return url3.origin;
 }
-function resolveCliBrowserOrigin(serverUrl, env = process.env) {
-  const configured = env.CLASH_AUTH_URL?.trim();
+function resolveCliBrowserOrigin(serverUrl, env2 = process.env) {
+  const configured = env2.CLASH_AUTH_URL?.trim();
   if (configured) return normalizeHttpOrigin(configured, "CLASH_AUTH_URL");
   const apiOrigin = new URL(normalizeHttpOrigin(serverUrl, "Clash API URL"));
   if (apiOrigin.hostname === "api.clash.video") {
@@ -84898,8 +84935,8 @@ function readProductReplicationState(options) {
     db?.close();
   }
 }
-function syncStateFromEnv(env) {
-  const remoteUrl = env.CLASH_REMOTE_LORO_URL?.trim();
+function syncStateFromEnv(env2) {
+  const remoteUrl = env2.CLASH_REMOTE_LORO_URL?.trim();
   return remoteUrl ? { mode: "cloud-sync", capabilities: emptyCapabilities() } : { mode: "local-only", capabilities: emptyCapabilities() };
 }
 function syncStateFromStoredConfig(value) {
@@ -85075,7 +85112,7 @@ async function findProjectMarker(startCwd) {
 }
 async function resolveProjectContext(options = {}) {
   const cwd = options.cwd ?? process.cwd();
-  const env = options.env ?? process.env;
+  const env2 = options.env ?? process.env;
   const explicitProjectId = cleanProjectId(options.project);
   const markerPath = await findProjectMarker(cwd);
   if (explicitProjectId) {
@@ -85086,7 +85123,7 @@ async function resolveProjectContext(options = {}) {
     };
   }
   const marker = markerPath ? await readProjectMarker(markerPath) : void 0;
-  const envProjectId = cleanProjectId(env.CLASH_PROJECT_ID);
+  const envProjectId = cleanProjectId(env2.CLASH_PROJECT_ID);
   if (marker && envProjectId && marker.projectId !== envProjectId) {
     throw new Error(
       `Project context conflict: ${markerPath} points to ${marker.projectId}, but CLASH_PROJECT_ID is ${envProjectId}. Pass --project <id> to choose explicitly.`
@@ -85425,8 +85462,8 @@ var INTERNAL_MUTATION_FIELDS = /* @__PURE__ */ new Set([
   "expectedHash",
   "expectedReadToken"
 ]);
-function isAgentInvocation(env = process.env) {
-  return Boolean(env.CLASH_AGENT_MEMBER_ID?.trim());
+function isAgentInvocation(env2 = process.env) {
+  return Boolean(env2.CLASH_AGENT_MEMBER_ID?.trim());
 }
 function publicAgentCommandResult(result) {
   return sanitizePublicValue(result, "result");
@@ -85443,9 +85480,9 @@ function sanitizePublicValue(value, context) {
   }));
 }
 async function recordAgentObservation(options) {
-  const env = options.env ?? process.env;
-  if (!isAgentInvocation(env)) return;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const env2 = options.env ?? process.env;
+  if (!isAgentInvocation(env2)) return;
+  const context = await resolveProjectContext({ cwd: options.cwd, env: env2 });
   if (typeof options.revision !== "string" || !options.revision.trim()) {
     throw new Error("Host read did not return an entity version.");
   }
@@ -85462,9 +85499,9 @@ async function recordAgentObservation(options) {
   });
 }
 async function requireAgentObservation(options) {
-  const env = options.env ?? process.env;
-  if (!isAgentInvocation(env)) return void 0;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const env2 = options.env ?? process.env;
+  if (!isAgentInvocation(env2)) return void 0;
+  const context = await resolveProjectContext({ cwd: options.cwd, env: env2 });
   if (!context.workspaceRoot) {
     throw new Error("READ_REQUIRED: Run the command from a cwd linked through .clash/project.toml and read the target first.");
   }
@@ -85478,9 +85515,9 @@ async function requireAgentObservation(options) {
   return observation.revision;
 }
 async function forgetAgentObservation(options) {
-  const env = options.env ?? process.env;
-  if (!isAgentInvocation(env)) return;
-  const context = await resolveProjectContext({ cwd: options.cwd, env });
+  const env2 = options.env ?? process.env;
+  if (!isAgentInvocation(env2)) return;
+  const context = await resolveProjectContext({ cwd: options.cwd, env: env2 });
   if (!context.workspaceRoot) return;
   await forgetWorktreeObservation({
     workspaceRoot: context.workspaceRoot,
@@ -85530,13 +85567,13 @@ async function initProject(options = {}) {
   return initializeClashWorkspace(options);
 }
 async function resolveProjectStatus(options = {}) {
-  const env = options.env ?? process.env;
+  const env2 = options.env ?? process.env;
   const cwd = (0, import_node_path11.resolve)(options.cwd ?? process.cwd());
-  const clashRoot = options.clashRoot ?? (options.homeDir ? (0, import_node_path11.join)(options.homeDir, ".clash") : resolveClashRoot(env));
+  const clashRoot = options.clashRoot ?? (options.homeDir ? (0, import_node_path11.join)(options.homeDir, ".clash") : resolveClashRoot(env2));
   const context = await resolveProjectContext({
     project: options.project,
     cwd,
-    env
+    env: env2
   });
   let marker = null;
   if (context.markerPath) {
@@ -85545,7 +85582,7 @@ async function resolveProjectStatus(options = {}) {
   }
   const replicationState = options.replicationState === void 0 ? readProductReplicationState({
     localApiDataDir: (0, import_node_path11.join)(clashRoot, "local-api"),
-    env
+    env: env2
   }) : options.replicationState;
   return buildProjectStatus2(context, {
     marker,
@@ -105705,8 +105742,8 @@ var CliActionsHost = class {
   actions = /* @__PURE__ */ new Map();
   env;
   stopping = false;
-  constructor(env) {
-    this.env = env;
+  constructor(env2) {
+    this.env = env2;
   }
   async start() {
     const spawned = [];
@@ -106127,20 +106164,20 @@ function requireCurrentTextVersion(options) {
 var IDLE_TIMEOUT_MS = 10 * 60 * 1e3;
 var HEARTBEAT_INTERVAL_MS = 30 * 1e3;
 var DAEMON_READ_RECEIPT_SECRET = (0, import_node_crypto8.randomBytes)(32).toString("hex");
-function daemonSocketDir(env = process.env) {
-  return (0, import_node_path14.join)(resolveClashRoot(env), "sockets");
+function daemonSocketDir(env2 = process.env) {
+  return (0, import_node_path14.join)(resolveClashRoot(env2), "sockets");
 }
 function daemonProjectKey(projectId) {
   return (0, import_node_crypto8.createHash)("sha256").update(projectId).digest("hex").slice(0, 32);
 }
-function getSocketPath(projectId, env = process.env) {
-  return (0, import_node_path14.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.sock`);
+function getSocketPath(projectId, env2 = process.env) {
+  return (0, import_node_path14.join)(daemonSocketDir(env2), `${daemonProjectKey(projectId)}.sock`);
 }
-function getPidPath(projectId, env = process.env) {
-  return (0, import_node_path14.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.pid`);
+function getPidPath(projectId, env2 = process.env) {
+  return (0, import_node_path14.join)(daemonSocketDir(env2), `${daemonProjectKey(projectId)}.pid`);
 }
-function getMcpPath(projectId, env = process.env) {
-  return (0, import_node_path14.join)(daemonSocketDir(env), `${daemonProjectKey(projectId)}.mcp.json`);
+function getMcpPath(projectId, env2 = process.env) {
+  return (0, import_node_path14.join)(daemonSocketDir(env2), `${daemonProjectKey(projectId)}.mcp.json`);
 }
 function getDaemonMcpEndpoint(projectId) {
   try {
@@ -106151,8 +106188,8 @@ function getDaemonMcpEndpoint(projectId) {
   }
 }
 function isDaemonRunning(projectId, options = {}) {
-  const env = options.env ?? process.env;
-  const pidPath = getPidPath(projectId, env);
+  const env2 = options.env ?? process.env;
+  const pidPath = getPidPath(projectId, env2);
   if (!(0, import_node_fs6.existsSync)(pidPath)) return false;
   let pid;
   try {
@@ -106161,7 +106198,7 @@ function isDaemonRunning(projectId, options = {}) {
     pid = Number(contents);
     if (!Number.isSafeInteger(pid)) throw new Error("Invalid daemon pid");
   } catch {
-    cleanup(projectId, env);
+    cleanup(projectId, env2);
     return false;
   }
   try {
@@ -106171,13 +106208,13 @@ function isDaemonRunning(projectId, options = {}) {
     if (typeof error51 === "object" && error51 !== null && "code" in error51 && error51.code === "EPERM") {
       return true;
     }
-    cleanup(projectId, env);
+    cleanup(projectId, env2);
     return false;
   }
 }
-function cleanup(projectId, env = process.env) {
-  const sockPath = getSocketPath(projectId, env);
-  const pidPath = getPidPath(projectId, env);
+function cleanup(projectId, env2 = process.env) {
+  const sockPath = getSocketPath(projectId, env2);
+  const pidPath = getPidPath(projectId, env2);
   try {
     (0, import_node_fs6.unlinkSync)(sockPath);
   } catch {
@@ -106187,7 +106224,7 @@ function cleanup(projectId, env = process.env) {
   } catch {
   }
   try {
-    (0, import_node_fs6.unlinkSync)(getMcpPath(projectId, env));
+    (0, import_node_fs6.unlinkSync)(getMcpPath(projectId, env2));
   } catch {
   }
 }
@@ -107416,11 +107453,11 @@ var activeCanvasId = DEFAULT_CANVAS_ID;
 function resolveCanvasCommandCanvasId(options = {}) {
   return options.canvas?.trim() || process.env.CLASH_CANVAS_ID?.trim() || DEFAULT_CANVAS_ID;
 }
-function resolveCanvasPresenceOptions(env = process.env) {
-  const userId = env.CLASH_USER_ID?.trim();
-  const userName = env.CLASH_USER_NAME?.trim();
-  const agentMemberId = env.CLASH_AGENT_MEMBER_ID?.trim();
-  const agentName = env.CLASH_AGENT_NAME?.trim() || agentMemberId;
+function resolveCanvasPresenceOptions(env2 = process.env) {
+  const userId = env2.CLASH_USER_ID?.trim();
+  const userName = env2.CLASH_USER_NAME?.trim();
+  const agentMemberId = env2.CLASH_AGENT_MEMBER_ID?.trim();
+  const agentName = env2.CLASH_AGENT_NAME?.trim() || agentMemberId;
   const base = {
     ...userId ? { userId } : {},
     ...userName ? { userName } : {}
@@ -107434,9 +107471,9 @@ function resolveCanvasPresenceOptions(env = process.env) {
   }
   return { ...base, clientType: "cli" };
 }
-async function resolveCanvasActor(env = process.env) {
-  const configuredUserId = env.CLASH_USER_ID?.trim();
-  const configuredAgentId = env.CLASH_AGENT_MEMBER_ID?.trim();
+async function resolveCanvasActor(env2 = process.env) {
+  const configuredUserId = env2.CLASH_USER_ID?.trim();
+  const configuredAgentId = env2.CLASH_AGENT_MEMBER_ID?.trim();
   if (configuredUserId) {
     return configuredAgentId ? { actorType: "agent", actorUserId: configuredUserId, actorAgentId: configuredAgentId } : { actorType: "user", actorUserId: configuredUserId };
   }
@@ -107828,8 +107865,8 @@ canvasCommand.command("delete-plan").description("Read a graph-aware batch delet
     await client.disconnect();
   }
 });
-function assetCacheDir(env = process.env) {
-  return (0, import_node_path15.join)(resolveClashRoot(env), "cache", "assets");
+function assetCacheDir(env2 = process.env) {
+  return (0, import_node_path15.join)(resolveClashRoot(env2), "cache", "assets");
 }
 function resolveAssetDownloadUrl(signedUrl, serverUrl = getServerUrl()) {
   return new URL(signedUrl, `${serverUrl.replace(/\/+$/, "")}/`).toString();
@@ -109201,7 +109238,7 @@ async function createExecutablePluginActivationReceipt(pluginDir) {
   });
 }
 function credentialFreePluginEnv(manifest, inherited = process.env) {
-  const env = {
+  const env2 = {
     CLASH_PLUGIN_ID: manifest.id,
     CLASH_PLUGIN_VERSION: manifest.version,
     CLASH_PLUGIN_TRANSPORT: "stdio",
@@ -109220,9 +109257,9 @@ function credentialFreePluginEnv(manifest, inherited = process.env) {
     "WINDIR",
     "PATHEXT"
   ]) {
-    if (inherited[key] !== void 0) env[key] = inherited[key];
+    if (inherited[key] !== void 0) env2[key] = inherited[key];
   }
-  return env;
+  return env2;
 }
 function resolveExecutablePluginNodePath(inherited = process.env, fallback = process.execPath) {
   return inherited.CLASH_NODE_EXEC_PATH?.trim() || fallback;
@@ -109351,11 +109388,11 @@ function executablePluginPythonArgs(entrypointPath, runtimeArgs) {
   return ["-B", "-s", entrypointPath, ...runtimeArgs];
 }
 function executablePluginPythonEnv(manifest, sdkPythonDir, pluginDir) {
-  const env = credentialFreePluginEnv(manifest);
+  const env2 = credentialFreePluginEnv(manifest);
   const guardDir = ensurePythonNetworkGuardDir();
-  env.PYTHONPATH = sdkPythonDir ? `${guardDir}${import_path2.delimiter}${sdkPythonDir}` : guardDir;
-  env.PYTHONDONTWRITEBYTECODE = "1";
-  env.PYTHONNOUSERSITE = "1";
+  env2.PYTHONPATH = sdkPythonDir ? `${guardDir}${import_path2.delimiter}${sdkPythonDir}` : guardDir;
+  env2.PYTHONDONTWRITEBYTECODE = "1";
+  env2.PYTHONNOUSERSITE = "1";
   if (pluginDir) {
     const declaredReads = manifest.permissions?.filesystem?.read ?? [];
     const allowed = [
@@ -109364,9 +109401,9 @@ function executablePluginPythonEnv(manifest, sdkPythonDir, pluginDir) {
       guardDir,
       ...declaredReads
     ];
-    env.CLASH_PLUGIN_ALLOWED_PATHS = allowed.join(import_path2.delimiter);
+    env2.CLASH_PLUGIN_ALLOWED_PATHS = allowed.join(import_path2.delimiter);
   }
-  return env;
+  return env2;
 }
 function managedLocalModelsPythonBin() {
   const venvDir = (0, import_path2.join)(paths().configDir, "runtimes", "python", "local-models", "venv");
@@ -109670,15 +109707,15 @@ var import_node_path16 = require("node:path");
 function managedStorageDraftHint() {
   return "Keep plugin drafts in your own working directory, then register one with `clash action activate <directory>`; Clash stores and owns the activated copy. Start a new draft with `clash action init-plugin <directory>`, or pull an active plugin out to edit with `clash action checkout <id> <directory>`.";
 }
-function isInsideManagedStorage(candidate, env = process.env) {
-  const managedRoot = (0, import_node_path16.resolve)(configDir(env));
+function isInsideManagedStorage(candidate, env2 = process.env) {
+  const managedRoot = (0, import_node_path16.resolve)(configDir(env2));
   const target = (0, import_node_path16.resolve)(candidate);
   if (target === managedRoot) return true;
   const rel = (0, import_node_path16.relative)(managedRoot, target);
   return rel.length > 0 && !rel.startsWith("..") && !(0, import_node_path16.isAbsolute)(rel);
 }
-function assertDraftOutsideManagedStorage(candidate, env = process.env) {
-  if (!isInsideManagedStorage(candidate, env)) return;
+function assertDraftOutsideManagedStorage(candidate, env2 = process.env) {
+  if (!isInsideManagedStorage(candidate, env2)) return;
   throw new Error(
     `Refusing to use ${(0, import_node_path16.resolve)(candidate)} as a plugin draft: it is inside Clash's product-internal storage, which holds activated plugins and their rollback state. ${managedStorageDraftHint()}`
   );
@@ -109756,8 +109793,8 @@ async function buildPluginEntrypointIfDeclared(pluginDir, runtime) {
 
 // ../../packages/cli/src/commands/actions.ts
 var REGISTRY_URL = "https://raw.githubusercontent.com/clash-community/awesome-actions/main/registry.json";
-function localActionsDir(env = process.env) {
-  return (0, import_node_path18.join)(resolveClashRoot(env), "actions");
+function localActionsDir(env2 = process.env) {
+  return (0, import_node_path18.join)(resolveClashRoot(env2), "actions");
 }
 function customActionSecretHint(runtime) {
   return runtime === "local" ? "  \u2192 Local actions read credentials from their local runtime environment." : "  \u2192 Remote worker action secrets are managed in hosted/remote Settings.";
@@ -110989,9 +111026,9 @@ async function providerCredentialsFromOptions(options) {
   }
   return { vertexCredentials: JSON.stringify(parsed) };
 }
-function providerWriteHeaders(options = {}, env = process.env) {
+function providerWriteHeaders(options = {}, env2 = process.env) {
   const headers = {};
-  if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
+  if (env2.CLASH_AGENT_MEMBER_ID?.trim()) {
     headers["x-clash-client-type"] = "agent";
   }
   if (options.observedVersion?.trim()) {
@@ -112022,8 +112059,8 @@ async function replaceAssetFile(options) {
 }
 function agentWriteHeaders(options) {
   const headers = {};
-  const env = options.env ?? process.env;
-  if (env.CLASH_AGENT_MEMBER_ID?.trim()) {
+  const env2 = options.env ?? process.env;
+  if (env2.CLASH_AGENT_MEMBER_ID?.trim()) {
     headers["x-clash-client-type"] = "agent";
   }
   if (options.observedVersion?.trim()) {
@@ -117827,21 +117864,21 @@ function processExists(pid) {
 }
 function launchDetachedLocalDaemon(options) {
   const spawnProcess = options.spawnProcess ?? import_node_child_process4.spawn;
-  const env = options.env ?? process.env;
+  const env2 = options.env ?? process.env;
   const runtime = options.nodePath ? {
     nodePath: options.nodePath,
     source: "explicit",
     inheritedFromLauncher: false
   } : resolveDaemonNodeRuntime({
     execPath: process.execPath,
-    env,
+    env: env2,
     supportedRange: DAEMON_SUPPORTED_NODE_RANGE,
-    candidates: defaultDaemonNodeCandidates(env)
+    candidates: defaultDaemonNodeCandidates(env2)
   });
   const child = spawnProcess(runtime.nodePath, [options.entryPath], {
     detached: true,
     env: {
-      ...env,
+      ...env2,
       ...options.daemonEnv ?? {},
       CLASH_LOCAL_DATA_DIR: options.dataDir,
       CLASH_HOST_RUN_DIR: options.runDir,
@@ -118045,20 +118082,20 @@ function createLocalDaemonBootstrap(options) {
 // ../../packages/cli/src/lib/local-daemon-bootstrap.ts
 var import_node_path37 = require("node:path");
 async function ensureCliLocalDaemon(options) {
-  const env = options.env ?? process.env;
-  if (env.CLASH_API_URL?.trim()) return void 0;
-  const dataDir = defaultLocalApiDataDir(env);
+  const env2 = options.env ?? process.env;
+  if (env2.CLASH_API_URL?.trim()) return void 0;
+  const dataDir = defaultLocalApiDataDir(env2);
   const runDir = (0, import_node_path37.join)(clashHomeForLocalDataDir(dataDir), "run");
   const bootstrap = createLocalDaemonBootstrap({
     runDir,
-    profile: resolveClashProfile(env),
+    profile: resolveClashProfile(env2),
     probe: options.probeHost,
-    launch: options.launch ?? (() => launchDetachedLocalDaemon({
+    launch: options.launch ?? (async () => launchDetachedLocalDaemon({
       entryPath: options.daemonEntryPath,
       cliEntryPath: options.cliEntryPath,
       dataDir,
       runDir,
-      env,
+      env: env2,
       daemonEnv: {
         CLASH_DAEMON_STARTED_BY: "cli",
         CLASH_NODE_EXEC_PATH: process.execPath,
@@ -118068,7 +118105,7 @@ async function ensureCliLocalDaemon(options) {
     }))
   });
   const record2 = await bootstrap.ensureDaemon();
-  env.CLASH_API_URL = record2.endpoint;
+  env2.CLASH_API_URL = record2.endpoint;
   return record2;
 }
 
@@ -118084,10 +118121,10 @@ function appendTrace(path, event) {
   }
 }
 function installCliTrace(input = {}) {
-  const env = input.env ?? process.env;
-  const configuredPath = env.CLASH_CLI_TRACE_PATH?.trim();
+  const env2 = input.env ?? process.env;
+  const configuredPath = env2.CLASH_CLI_TRACE_PATH?.trim();
   if (!configuredPath) return;
-  const origin = env.CLASH_CLI_TRACE_ORIGIN?.trim() === "mcp-transport" ? "mcp-transport" : void 0;
+  const origin = env2.CLASH_CLI_TRACE_ORIGIN?.trim() === "mcp-transport" ? "mcp-transport" : void 0;
   const path = (0, import_node_path38.resolve)(configuredPath);
   const now = input.now ?? (() => /* @__PURE__ */ new Date());
   const monotonicNow = input.monotonicNow ?? (() => process.hrtime.bigint());
@@ -118099,7 +118136,7 @@ function installCliTrace(input = {}) {
     parentPid: input.parentPid ?? process.ppid,
     cwd: input.cwd ?? process.cwd(),
     argv: input.argv ?? process.argv.slice(2),
-    ...env.CLASH_BENCH_CASE_ID ? { caseId: env.CLASH_BENCH_CASE_ID } : {},
+    ...env2.CLASH_BENCH_CASE_ID ? { caseId: env2.CLASH_BENCH_CASE_ID } : {},
     ...origin ? { origin } : {}
   };
   appendTrace(path, started);

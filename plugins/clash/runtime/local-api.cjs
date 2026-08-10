@@ -1,3 +1,5 @@
+// GENERATED FILE -- DO NOT EDIT. Written by plugins/clash/scripts/build-host-runtime.ts;
+// edit the TypeScript sources it bundles and rebuild. Identifiers here may be stale or renamed.
 const __clash_import_meta_url = require("node:url").pathToFileURL(__filename).href;
 "use strict";
 var __create = Object.create;

@@ -21,8 +21,6 @@ import {
 
 import { paths } from "./platform.js";
 
-type PluginFunctionKind = "action" | "provider-projector";
-
 export interface PluginInvocationHost {
   listCards(): ExecutablePluginCardRegistration[];
   listProviders?(): ExecutablePluginProviderRegistration[];
@@ -94,6 +92,15 @@ type PluginHostResponse = {
  * the protocol rejecting the only kind that does the work.
  */
 export const PLUGIN_FUNCTION_KINDS = ["action", "provider-projector", "provider-executor"] as const;
+
+/**
+ * Derived from the runtime list so the two cannot disagree.
+ *
+ * They were separate declarations of one fact, and they drifted: the array gained
+ * `provider-executor` -- the only kind that runs a generation -- while the type kept two members, so
+ * the value passed the protocol check and then failed to compile at the call site.
+ */
+type PluginFunctionKind = (typeof PLUGIN_FUNCTION_KINDS)[number];
 
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 // macOS permits at most 103 address bytes for a Unix-domain socket (Linux

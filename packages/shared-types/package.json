@@ -51,8 +51,9 @@
     "zod-to-json-schema": "3.24.6"
   },
   "devDependencies": {
-    "tsup": "^8.0.0",
+    "ajv": "^8.17.1",
     "ts-node": "^10.9.2",
+    "tsup": "^8.0.0",
     "tsx": "^4.23.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.2"
