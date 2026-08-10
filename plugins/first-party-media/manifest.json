@@ -1,7 +1,7 @@
 {
   "apiVersion": "clash.plugin/v1",
   "id": "clash-first-party-media",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "name": "Clash First-party Media Projectors",
   "description": "Pure provider request projectors for first-party media Model Cards.",
   "runtime": {
@@ -156,6 +156,15 @@
           "submit",
           "poll"
         ]
+      },
+      {
+        "id": "minimax-execute",
+        "kind": "provider-executor",
+        "handler": "minimaxExecute",
+        "operations": [
+          "submit",
+          "poll"
+        ]
       }
     ]
   },
@@ -164,6 +173,7 @@
     "contract-tests/fal-h3.json",
     "contract-tests/fal-seedance-2.json",
     "contract-tests/fal-minimax-music-3.json",
-    "contract-tests/fal-execute.json"
+    "contract-tests/fal-execute.json",
+    "contract-tests/minimax-execute.json"
   ]
 }

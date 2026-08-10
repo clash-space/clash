@@ -1,3 +1,6 @@
+import { falAdapter } from "./fal-adapter";
+import { minimaxAdapter } from "./minimax-adapter";
+import type { ProviderExecutor } from "./executor-contract";
 import { createInterface } from "node:readline";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -44,49 +47,18 @@ export interface ExecutorContext {
   queueBaseUrl?: string;
 }
 
-const EXECUTORS: Record<string, (
-  invocation: ExecutablePluginInvocation,
-  context: ExecutorContext,
-) => Promise<ExecutablePluginResult>> = {
-  "fal-execute": async (invocation, context) => {
-    const fetchImpl = context.fetch ?? globalThis.fetch;
-    const apiKey = context.apiKey ?? "";
-    if (invocation.operation === "poll") {
-      // Opaque to the host, which means it arrives typed as anything. The plugin that issued it is
-      // the only party that can say whether it is intact, so it checks rather than assumes: a
-      // truncated or hand-edited record would otherwise be polled as though it were valid.
-      const state = readFalPollState(invocation.pollState);
-      const result = await falPoll({
-        state,
-        apiKey,
-        kind: falKind(invocation),
-        fetch: fetchImpl as never,
-        ...(context.queueBaseUrl ? { queueBaseUrl: context.queueBaseUrl } : {}),
-      });
-      if (result.status === "accepted") {
-        return accepted(invocation.invocationId, result.pollState);
-      }
-      return {
-        protocol: "clash.plugin.result/v1",
-        invocationId: invocation.invocationId,
-        status: "completed",
-        outputs: [{
-          slot: "media",
-          kind: "value",
-          value: { url: result.media.url, requestId: result.requestId },
-        }],
-      };
-    }
-    const submitted = await falSubmit({
-      endpoint: context.endpoint ?? String(invocation.input.values.endpoint ?? ""),
-      apiKey,
-      body: (invocation.input.values.body as Record<string, unknown>) ?? invocation.input.values,
-      fetch: fetchImpl as never,
-      ...(context.queueBaseUrl ? { queueBaseUrl: context.queueBaseUrl } : {}),
-    });
-    return accepted(invocation.invocationId, submitted.pollState);
-  },
+/**
+ * One entry per API shape, each answering the same two questions.
+ *
+ * The dispatch below is the whole of it: no provider gets a branch here, because a branch is where
+ * a retry budget, a sleep, or a private idea of "still running" starts. Those were per-plugin
+ * decisions once and became eight hand-written loops.
+ */
+const EXECUTORS: Record<string, ProviderExecutor> = {
+  "fal-execute": falAdapter,
+  "minimax-execute": minimaxAdapter,
 };
+
 
 function accepted(invocationId: string, pollState: unknown): ExecutablePluginResult {
   return ExecutablePluginResultSchema.parse({
@@ -124,8 +96,23 @@ export async function handleInvocation(
     invocationId = invocation.invocationId;
     const executor = EXECUTORS[invocation.target.exportId];
     if (executor) {
-      executionFailed = true;
-      return await executor(invocation, context);
+      const step = invocation.operation === "poll"
+        ? await executor.poll(invocation, context)
+        : await executor.submit(invocation, context);
+      return ExecutablePluginResultSchema.parse(step.status === "accepted"
+        ? {
+          protocol: "clash.plugin.result/v1",
+          invocationId: invocation.invocationId,
+          status: "accepted",
+          pollState: step.pollState,
+          ...(step.retryAfterMs === undefined ? {} : { retryAfterMs: step.retryAfterMs }),
+        }
+        : {
+          protocol: "clash.plugin.result/v1",
+          invocationId: invocation.invocationId,
+          status: "completed",
+          outputs: step.outputs,
+        });
     }
     const projector = PROJECTORS[invocation.target.exportId];
     if (!projector) throw new Error(`Unknown export: ${invocation.target.exportId}`);

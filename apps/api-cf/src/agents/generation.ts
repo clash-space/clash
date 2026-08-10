@@ -1,10 +1,10 @@
 /**
  * GenerationWorkflow — durable dispatcher for AIGC tasks.
  *
- * Platform responsibility: resolve the right provider, build a
- * GenerationContext, run provider.execute(ctx), surface failures.
+ * Platform responsibility: resolve the right adapter, build a
+ * GenerationContext, run adapter.execute(ctx), surface failures.
  *
- * Per-model / per-service step graphs live in src/generation/providers/*.ts.
+ * Per-model / per-service step graphs live in src/generation/adapters/*.ts.
  * Shared primitives (R2 IO, probe, asset insert, Loro notify, step wrapper)
  * are in src/generation/context.ts.
  */
@@ -15,7 +15,7 @@ import { log } from "../logger";
 import { GenerationContext } from "../generation/context";
 import { resolveGenerationModelProviderRoute } from "../generation/model-provider-route";
 import type { GenerationParams } from "../generation/params";
-import { resolveProvider } from "../generation/registry";
+import { resolveAdapter } from "../generation/registry";
 import { getPlugins } from "../plugins/registry";
 import { recordGenerationEvent } from "../observability/events";
 import {
@@ -44,12 +44,13 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
     log.info("Workflow started", tag);
 
     const ctx = new GenerationContext(params, step, this.env);
-    const provider = resolveProvider(params);
+    const adapter = resolveAdapter(params);
     const plugins = getPlugins();
     const hookCtx = { params, env: this.env };
     const eventBase = {
       type: params.type,
-      provider: provider.name,
+      // Telemetry field name kept as `provider`: dashboards and queries already read it.
+      provider: adapter.name,
       taskId: params.taskId,
       nodeId: params.nodeId,
       projectId: (params as any).projectId,
@@ -77,9 +78,9 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
         if (validationError) throw new Error(validationError);
       }
       await plugins.generation?.beforeGenerate?.(hookCtx);
-      await provider.execute(ctx);
+      await adapter.execute(ctx);
       await plugins.generation?.afterGenerate?.(hookCtx, {});
-      log.info("Workflow completed", { ...tag, provider: provider.name });
+      log.info("Workflow completed", { ...tag, provider: adapter.name });
       recordGenerationEvent({ ...eventBase, outcome: "success", durationMs: Date.now() - startedAt });
     } catch (err) {
       await plugins.generation?.onFailure?.(hookCtx, err);
@@ -87,7 +88,7 @@ export class GenerationWorkflow extends WorkflowEntrypoint<Env, GenerationParams
       const anyErr = err as any;
       log.error("Workflow failed — marking node Failed", {
         ...tag,
-        provider: provider.name,
+        provider: adapter.name,
         error: message,
         name: anyErr?.name,
         stack: anyErr?.stack,

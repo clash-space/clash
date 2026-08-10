@@ -1,0 +1,26 @@
+{
+  "apiVersion": "clash.plugin.contract-test/v1",
+  "id": "minimax-execute-rejects-unusable-poll-state",
+  "target": {
+    "exportId": "minimax-execute",
+    "kind": "provider-executor"
+  },
+  "operation": "poll",
+  "pollState": {
+    "upstreamModel": "MiniMax-H3"
+  },
+  "input": {
+    "values": {
+      "kind": "video"
+    },
+    "references": []
+  },
+  "expect": {
+    "status": "failed",
+    "error": {
+      "code": "execution_failed",
+      "message": "MiniMax poll state is missing its taskId.",
+      "retryable": false
+    }
+  }
+}

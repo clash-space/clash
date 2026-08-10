@@ -76,7 +76,7 @@ async function uploadR2ToFal(
 
 // ─── fal.ai Provider ────────────────────────────────────
 
-const falVideoProvider: VideoProvider = {
+const falVideoAdapter: VideoProvider = {
   async generate(env, params) {
     const falApiKey = params.credentials?.apiKey;
     if (!falApiKey) throw new Error("fal provider account is missing apiKey.");
@@ -160,5 +160,5 @@ export function resolveVideoProvider(modelName: string | undefined): VideoProvid
   if (modelName && GOOGLE_VIDEO_MODELS.has(modelName)) {
     return googleVideoProvider;
   }
-  return falVideoProvider;
+  return falVideoAdapter;
 }

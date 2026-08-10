@@ -1,27 +1,27 @@
 import type { GenerationParams } from "./params";
-import type { GenerationProvider } from "./provider";
-import { veoProvider } from "./providers/veo";
-import { falVideoProvider } from "./providers/fal-video";
-import { googleImageProvider } from "./providers/google-image";
-import { falImageProvider } from "./providers/fal-image";
-import { openaiImageProvider } from "./providers/openai-image";
-import { geminiTtsProvider } from "./providers/gemini-tts";
-import { minimaxAudioProvider } from "./providers/minimax-audio";
-import { falAudioProvider } from "./providers/fal-audio";
-import { minimaxVideoProvider } from "./providers/minimax-video";
-import { geminiOmniProvider } from "./providers/gemini-omni";
-import { elevenLabsTtsProvider } from "./providers/elevenlabs-tts";
-import { sunoAudioProvider } from "./providers/suno-audio";
-import { klingVideoProvider } from "./providers/kling-video";
-import { volcengineVideoProvider } from "./providers/modelark-video";
-import { videoRenderProvider } from "./providers/render";
-import { customActionProvider } from "./providers/custom-action";
-import { textGenProvider } from "./providers/text-gen";
-import { googleTextProvider } from "./providers/google-text";
-import { understandProvider } from "./providers/understand";
-import { describeProvider } from "./providers/describe";
-import { pikaMediaProvider } from "./providers/pika-media";
-import { bflVideoProvider } from "./providers/bfl-video";
+import type { GenerationAdapter } from "./adapter";
+import { googleAgentPlatformVideoAdapter } from "./adapters/google-agent-platform-video";
+import { falVideoAdapter } from "./adapters/fal-video";
+import { googleAgentPlatformImageAdapter } from "./adapters/google-agent-platform-image";
+import { falImageAdapter } from "./adapters/fal-image";
+import { openaiImageAdapter } from "./adapters/openai-image";
+import { googleAiStudioAudioAdapter } from "./adapters/google-ai-studio-audio";
+import { minimaxAudioAdapter } from "./adapters/minimax-audio";
+import { falAudioAdapter } from "./adapters/fal-audio";
+import { minimaxVideoAdapter } from "./adapters/minimax-video";
+import { googleAiStudioInteractionsAdapter } from "./adapters/google-ai-studio-interactions";
+import { elevenlabsAudioAdapter } from "./adapters/elevenlabs-audio";
+import { sunoAudioAdapter } from "./adapters/suno-audio";
+import { klingVideoAdapter } from "./adapters/kling-video";
+import { volcengineVideoAdapter } from "./adapters/modelark-video";
+import { videoRenderAdapter } from "./adapters/render";
+import { customActionAdapter } from "./adapters/custom-action";
+import { textGenAdapter } from "./adapters/text-gen";
+import { googleAgentPlatformTextAdapter } from "./adapters/google-agent-platform-text";
+import { understandAdapter } from "./adapters/understand";
+import { describeAdapter } from "./adapters/describe";
+import { pikaMediaAdapter } from "./adapters/pika-media";
+import { bflVideoAdapter } from "./adapters/bfl-video";
 
 function selectedRoute(params: GenerationParams) {
   if (!params.selectedRoute) {
@@ -38,54 +38,73 @@ function unsupportedRoute(params: GenerationParams): never {
   );
 }
 
-export function resolveProvider(params: GenerationParams): GenerationProvider {
+/**
+ * Picks the adapter that speaks this route's wire format.
+ *
+ * Selection is by `apiShape` or `upstreamId`, never by `providerId`. A provider says whose
+ * credential pays; it does not change how the request is shaped, and the same model reached through
+ * two providers is often the same wire format.
+ *
+ * The effective key is the pair (generation type, route key), not the route key alone: three
+ * different adapters answer `upstreamId === "google-agent-platform"` and three answer
+ * `apiShape === "fal"`, disambiguated only by the `params.type` arm they sit in. Adapter names
+ * carry both halves for that reason — `googleAgentPlatformVideoAdapter`, `falImageAdapter`.
+ *
+ * Naming them after the key rather than after a model is what keeps them honest as routes are
+ * added. An adapter called `veo` did serve exactly the veo models, but only by coincidence of
+ * today's table: it answers every google-agent-platform video route, so the first such model not
+ * named veo would arrive at an adapter claiming otherwise. Same for the one selected by
+ * `google-ai-studio-interactions`, which was named after gemini-omni — the shape is Google's async
+ * Interactions API, and the next model on it will have some other name.
+ */
+export function resolveAdapter(params: GenerationParams): GenerationAdapter {
   switch (params.type) {
     case "video_gen": {
       const route = selectedRoute(params);
-      if (route?.apiShape === "pika") return pikaMediaProvider;
-      if (route?.apiShape === "bfl") return bflVideoProvider;
-      if (route?.apiShape === "google-ai-studio-interactions") return geminiOmniProvider;
-      if (route?.upstreamId === "google-agent-platform") return veoProvider;
-      if (route?.upstreamId === "kling") return klingVideoProvider;
+      if (route?.apiShape === "pika") return pikaMediaAdapter;
+      if (route?.apiShape === "bfl") return bflVideoAdapter;
+      if (route?.apiShape === "google-ai-studio-interactions") return googleAiStudioInteractionsAdapter;
+      if (route?.upstreamId === "google-agent-platform") return googleAgentPlatformVideoAdapter;
+      if (route?.upstreamId === "kling") return klingVideoAdapter;
       if (route?.apiShape === "dreamina-cli") {
         throw new Error("Dreamina CLI generation is only available in the local desktop runtime.");
       }
-      if (route?.upstreamId === "volcengine") return volcengineVideoProvider;
-      if (route?.upstreamId === "minimax") return minimaxVideoProvider;
-      if (route?.apiShape === "fal") return falVideoProvider;
+      if (route?.upstreamId === "volcengine") return volcengineVideoAdapter;
+      if (route?.upstreamId === "minimax") return minimaxVideoAdapter;
+      if (route?.apiShape === "fal") return falVideoAdapter;
       return unsupportedRoute(params);
     }
     case "image_gen": {
       const route = selectedRoute(params);
-      if (route?.apiShape === "pika") return pikaMediaProvider;
-      if (route?.upstreamId === "openai") return openaiImageProvider;
-      if (route?.upstreamId === "google-agent-platform") return googleImageProvider;
-      if (route?.apiShape === "fal") return falImageProvider;
+      if (route?.apiShape === "pika") return pikaMediaAdapter;
+      if (route?.upstreamId === "openai") return openaiImageAdapter;
+      if (route?.upstreamId === "google-agent-platform") return googleAgentPlatformImageAdapter;
+      if (route?.apiShape === "fal") return falImageAdapter;
       return unsupportedRoute(params);
     }
     case "audio_gen": {
       const route = selectedRoute(params);
-      if (route?.apiShape === "pika") return pikaMediaProvider;
-      if (route?.apiShape === "fal") return falAudioProvider;
-      if (route?.upstreamId === "google-ai-studio") return geminiTtsProvider;
-      if (route?.upstreamId === "minimax") return minimaxAudioProvider;
-      if (route?.upstreamId === "elevenlabs") return elevenLabsTtsProvider;
-      if (route?.upstreamId === "suno") return sunoAudioProvider;
+      if (route?.apiShape === "pika") return pikaMediaAdapter;
+      if (route?.apiShape === "fal") return falAudioAdapter;
+      if (route?.upstreamId === "google-ai-studio") return googleAiStudioAudioAdapter;
+      if (route?.upstreamId === "minimax") return minimaxAudioAdapter;
+      if (route?.upstreamId === "elevenlabs") return elevenlabsAudioAdapter;
+      if (route?.upstreamId === "suno") return sunoAudioAdapter;
       return unsupportedRoute(params);
     }
     case "video_render":
-      return videoRenderProvider;
+      return videoRenderAdapter;
     case "custom_action":
-      return customActionProvider;
+      return customActionAdapter;
     case "text_gen":
       return selectedRoute(params).upstreamId === "google-agent-platform"
-        ? googleTextProvider
-        : textGenProvider;
+        ? googleAgentPlatformTextAdapter
+        : textGenAdapter;
     case "understand":
-      return understandProvider;
+      return understandAdapter;
     case "image_desc":
     case "video_desc":
-      return describeProvider;
+      return describeAdapter;
     default:
       throw new Error(`Unknown generation type: ${(params as { type: string }).type}`);
   }

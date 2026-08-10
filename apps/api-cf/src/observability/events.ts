@@ -12,7 +12,11 @@
  *   outcome            — "success" | "failure"
  *   type               — image_gen | video_gen | video_render | audio_gen
  *                         | text_gen | image_desc | video_desc | video_thumbnail
- *   provider           — provider.name (google-image, video-render, fal-image, …)
+ *   provider           — the adapter's `name` tag (google-image, video-render,
+ *                         fal-image, …). Field and values are unchanged: these
+ *                         are what dashboards already query. The adapter symbols
+ *                         in src/generation/adapters/ are named after the wire
+ *                         format they translate and do not track these strings.
  *   model_id           — set when params carry one (workflow can be
  *                         provider-only without a specific model)
  *   project_id         — for per-project rollups

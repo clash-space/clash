@@ -35,7 +35,7 @@ export interface ImageProvider {
 
 // ─── fal.ai Provider ────────────────────────────────────
 
-const falImageProvider: ImageProvider = {
+const falImageAdapter: ImageProvider = {
   async generate(_env, params) {
     const falKey = params.credentials?.apiKey;
     if (!falKey) throw new Error("fal provider account is missing apiKey.");
@@ -53,7 +53,7 @@ const falImageProvider: ImageProvider = {
 
 // ─── Google Vertex Provider ─────────────────────────────
 
-const googleImageProvider: ImageProvider = {
+const googleAgentPlatformImageAdapter: ImageProvider = {
   async generate(_env, params) {
     if (!params.vertexCredentials) throw new Error("Google Cloud Agent Platform provider account is missing service account credentials.");
     const result = await generateGoogleImage(params.vertexCredentials, {
@@ -70,7 +70,7 @@ const googleImageProvider: ImageProvider = {
 
 export function resolveImageProvider(modelName: string | undefined): ImageProvider {
   if (modelName && GOOGLE_IMAGE_MODELS.has(modelName)) {
-    return googleImageProvider;
+    return googleAgentPlatformImageAdapter;
   }
-  return falImageProvider;
+  return falImageAdapter;
 }

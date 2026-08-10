@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ModelUpstreamRoute } from "@clash/shared-types";
 
 import type { GenerationParams } from "./params";
-import { resolveProvider } from "./registry";
+import { resolveAdapter } from "./registry";
 
 function params(
   type: GenerationParams["type"],
@@ -33,15 +33,15 @@ describe("generation provider registry", () => {
       apiShape: "pika",
       priority: 18,
     };
-    expect(resolveProvider(params("image_gen", "nano-banana-2", route)).name).toBe("pika-media");
-    expect(resolveProvider(params("video_gen", "pika-2.5", { ...route, modelCode: "pika-2.5", kind: "video" })).name)
+    expect(resolveAdapter(params("image_gen", "nano-banana-2", route)).name).toBe("pika-media");
+    expect(resolveAdapter(params("video_gen", "pika-2.5", { ...route, modelCode: "pika-2.5", kind: "video" })).name)
       .toBe("pika-media");
-    expect(resolveProvider(params("audio_gen", "minimax-music-3", { ...route, modelCode: "minimax-music-3", kind: "audio" })).name)
+    expect(resolveAdapter(params("audio_gen", "minimax-music-3", { ...route, modelCode: "minimax-music-3", kind: "audio" })).name)
       .toBe("pika-media");
   });
 
   it("routes Seedance model codes to the hosted Volcengine video provider", () => {
-    expect(resolveProvider(params("video_gen", "seedance-2-ref", {
+    expect(resolveAdapter(params("video_gen", "seedance-2-ref", {
       modelCode: "seedance-2-ref",
       kind: "video",
       providerId: "volcengine",
@@ -53,7 +53,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes Kling model codes to the hosted Kling video provider", () => {
-    expect(resolveProvider(params("video_gen", "kling-3", {
+    expect(resolveAdapter(params("video_gen", "kling-3", {
       modelCode: "kling-3",
       kind: "video",
       providerId: "kling",
@@ -65,7 +65,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes Google image model codes to the Google image provider", () => {
-    expect(resolveProvider(params("image_gen", "nano-banana-2", {
+    expect(resolveAdapter(params("image_gen", "nano-banana-2", {
       modelCode: "nano-banana-2",
       kind: "image",
       providerId: "official",
@@ -98,18 +98,18 @@ describe("generation provider registry", () => {
       priority: 10,
     };
 
-    expect(resolveProvider(params("image_gen", "gpt-image-2", falRoute)).name).toBe("fal-image");
-    expect(resolveProvider(params("image_gen", "gpt-image-2", officialRoute)).name).toBe("openai-image");
+    expect(resolveAdapter(params("image_gen", "gpt-image-2", falRoute)).name).toBe("fal-image");
+    expect(resolveAdapter(params("image_gen", "gpt-image-2", officialRoute)).name).toBe("openai-image");
   });
 
   it("does not choose a default image provider when no route was selected", () => {
-    expect(() => resolveProvider(params("image_gen", "gpt-image-2"))).toThrow(
+    expect(() => resolveAdapter(params("image_gen", "gpt-image-2"))).toThrow(
       "No configured provider route",
     );
   });
 
   it("routes MiniMax TTS to the hosted MiniMax audio provider", () => {
-    expect(resolveProvider(params("audio_gen", "minimax-tts", {
+    expect(resolveAdapter(params("audio_gen", "minimax-tts", {
       modelCode: "minimax-tts",
       kind: "audio",
       providerId: "minimax",
@@ -121,7 +121,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes the selected fal MiniMax Music 3 implementation to the fal audio provider", () => {
-    expect(resolveProvider(params("audio_gen", "minimax-music-3", {
+    expect(resolveAdapter(params("audio_gen", "minimax-music-3", {
       modelCode: "minimax-music-3",
       kind: "audio",
       providerId: "fal",
@@ -133,7 +133,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes MiniMax H3 to the hosted MiniMax video provider", () => {
-    expect(resolveProvider(params("video_gen", "minimax-h3", {
+    expect(resolveAdapter(params("video_gen", "minimax-h3", {
       modelCode: "minimax-h3",
       kind: "video",
       providerId: "minimax",
@@ -145,7 +145,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes Gemini Omni to the Google AI Studio Interactions provider", () => {
-    expect(resolveProvider(params("video_gen", "gemini-omni-flash", {
+    expect(resolveAdapter(params("video_gen", "gemini-omni-flash", {
       modelCode: "gemini-omni-flash",
       kind: "video",
       providerId: "official",
@@ -157,7 +157,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes the official FLUX 3 implementation to BFL", () => {
-    expect(resolveProvider(params("video_gen", "flux-3-video", {
+    expect(resolveAdapter(params("video_gen", "flux-3-video", {
       modelCode: "flux-3-video",
       kind: "video",
       providerId: "official",
@@ -169,7 +169,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes ElevenLabs TTS to the hosted ElevenLabs audio provider", () => {
-    expect(resolveProvider(params("audio_gen", "elevenlabs-tts", {
+    expect(resolveAdapter(params("audio_gen", "elevenlabs-tts", {
       modelCode: "elevenlabs-tts",
       kind: "audio",
       providerId: "elevenlabs",
@@ -181,7 +181,7 @@ describe("generation provider registry", () => {
   });
 
   it("routes the selected Suno account to the Suno adapter", () => {
-    expect(resolveProvider(params("audio_gen", "suno-v5.5", {
+    expect(resolveAdapter(params("audio_gen", "suno-v5.5", {
       modelCode: "suno-v5.5",
       kind: "audio",
       providerId: "suno",
